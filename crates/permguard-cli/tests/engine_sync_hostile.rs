@@ -33,6 +33,8 @@ use ring::signature::{Ed25519KeyPair, KeyPair as _};
 struct EngineRemote {
     store: FileObjectStore,
     key: Ed25519KeyPair,
+    /// The mutation transaction its ref updates run in (WP-7.12).
+    mutations: permguard_host::composition::MutationHandle,
 }
 
 impl EngineRemote {
@@ -41,7 +43,11 @@ impl EngineRemote {
         let _ = std::fs::remove_dir_all(&dir);
         let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
         Self {
-            store: FileObjectStore::new(dir),
+            store: FileObjectStore::new(dir.join("ledger")),
+            mutations: permguard_control_plane::store::testing::offline_ref_mutations(
+                &dir.join("volume"),
+            )
+            .expect("a mutation transaction opens"),
             key: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
         }
     }
@@ -52,6 +58,12 @@ impl EngineRemote {
             authority: [0x11; 16],
             // A test signer binds no ring: the engine names none.
             ring: (0, permguard_objects::Digest::from_raw([0; 32])),
+            caller: "tester".into(),
+            mutations: &self.mutations,
+            transfer: permguard_control_plane::engine::TransferPolicy {
+                ttl: std::time::Duration::from_secs(900),
+                grace: std::time::Duration::from_secs(3600),
+            },
             identity: LedgerIdentity {
                 zone_id: "zone-guid".into(),
                 ledger_id: "ledger-guid".into(),

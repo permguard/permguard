@@ -18,16 +18,20 @@
 //! # The rule, and why it is safe
 //!
 //! ```text
-//! keep  =  reachable from ANY ref   ∪   younger than the grace period
+//! keep  =  reachable from ANY ref   ∪   pinned by a kept transfer session   ∪   younger than the grace period
 //! ```
 //!
 //! Reachability is computed from **every ref of the ledger**, not the default
 //! one, walking commits to their predecessors, their manifest and their tree,
 //! and trees to their entries. Everything else is a candidate — and a
 //! candidate is only removed once it is **older than `storage.gc.grace`**,
-//! which is what keeps a push in flight safe: its uploads are unreachable and
-//! new, so they are never candidates. The server refuses a grace period short
-//! enough to make that untrue.
+//! which keeps an object a crash left behind safe for a while. What keeps a
+//! push in flight safe is its transfer session (WP-7.12): every object its
+//! closure declared is pinned while the session is open, and for the grace
+//! after it ends, however long the push takes. An open session past its expiry
+//! is closed first, and a pull session pins what its negotiation answered
+//! missing until it expires. The server refuses a grace period shorter than any
+//! write lasts.
 //!
 //! Two more properties this relies on, both already true of the store:
 //! objects are **immutable and content-addressed**, so an object removed by
@@ -447,6 +451,22 @@ pub fn sweep_once(store: &FileObjectStore, grace: Duration) -> Result<Swept> {
             0
         }
     };
+    // The transfer sessions first (WP-7.12): one past its expiry is closed before it stops
+    // counting, and every session still kept pins what its transfer may touch. A session that
+    // does not read stops the sweep of this ledger: what it pins is not known.
+    let now = SystemTime::now();
+    // Held to the end of the sweep: a negotiation that pins an object waits until the sweep has
+    // decided, so nothing it was told is present is removed after it was told.
+    let transfers = store.transfers().map_err(|error| anyhow!("{error}"))?;
+    let pinned = {
+        let unix = now
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        transfers
+            .sweep(unix, grace)
+            .map_err(|error| anyhow!("{error}"))?;
+        transfers.pins().map_err(|error| anyhow!("{error}"))?
+    };
     let held = store.list_objects().map_err(|error| anyhow!("{error}"))?;
     if held.is_empty() {
         return Ok(Swept {
@@ -454,8 +474,8 @@ pub fn sweep_once(store: &FileObjectStore, grace: Duration) -> Result<Swept> {
             ..Swept::default()
         });
     }
-    let reachable = reachable(store)?;
-    let now = SystemTime::now();
+    let mut reachable = reachable(store)?;
+    reachable.extend(pinned);
     let mut swept = Swept {
         temporaries,
         ..Swept::default()
@@ -479,6 +499,7 @@ pub fn sweep_once(store: &FileObjectStore, grace: Duration) -> Result<Swept> {
         swept.removed += 1;
         swept.reclaimed += reclaimed;
     }
+    drop(transfers);
 
     Ok(swept)
 }

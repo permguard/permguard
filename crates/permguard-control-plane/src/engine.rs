@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::store::{FileObjectStore, RefState, RefUpdate, StoreError};
+use crate::transfer;
 use permguard_core::codes;
 use permguard_notp::*;
 use permguard_objects::digest::Digest;
@@ -30,10 +31,6 @@ pub use permguard_objects::policy_id::{
 
 /// The well-known root entry holding the manifest.
 const MANIFEST_ENTRY: &str = "manifest";
-
-/// How long a transfer session stays open, in seconds. Until WP-7.12 makes sessions durable the
-/// expiry is advisory: the server issues it and does not yet enforce it.
-pub const TRANSFER_TTL_SECONDS: u64 = 900;
 
 /// A hard stop on history walks, far above any real ledger: a corrupted
 /// predecessor loop must terminate, not spin.
@@ -70,6 +67,15 @@ pub enum EngineError {
     Validation { code: &'static str, message: String },
     /// The ref moved, or a creation raced: carries what is current.
     Conflict { current: Option<RefState> },
+    /// A transfer session refused the message: unknown, ended, or bound to something else.
+    Transfer { code: &'static str, message: String },
+    /// The ref update was applied, or may have been, and its record could not be written: the
+    /// caller reads the state before retrying.
+    Unrecorded { detail: String },
+    /// The audit trail cannot record a security mutation: nothing was applied.
+    AuditUnavailable { detail: String },
+    /// The mutation journal could not be written: nothing was applied.
+    MutationsUnavailable { detail: String },
     /// Nothing answers: an absent ref, an absent object.
     NotFound { what: String },
     /// A quota refused the work.
@@ -86,6 +92,19 @@ impl std::fmt::Display for EngineError {
         match self {
             EngineError::Validation { code, message } => write!(f, "{code}: {message}"),
             EngineError::Conflict { .. } => write!(f, "the ref moved: compare-and-swap conflict"),
+            EngineError::Transfer { code, message } => write!(f, "{code}: {message}"),
+            EngineError::Unrecorded { detail } => {
+                write!(
+                    f,
+                    "the ref update may have landed and was not recorded: {detail}"
+                )
+            }
+            EngineError::AuditUnavailable { detail } => {
+                write!(f, "the audit trail cannot record the ref update: {detail}")
+            }
+            EngineError::MutationsUnavailable { detail } => {
+                write!(f, "the mutation journal is unavailable: {detail}")
+            }
             EngineError::NotFound { what } => write!(f, "not found: {what}"),
             EngineError::Unavailable { message } => write!(f, "refused by quota: {message}"),
             EngineError::SigningUnavailable { message } => {
@@ -147,6 +166,40 @@ fn alias_mirrors(
             ),
         )),
     }
+}
+
+/// A transfer session refusal with its stable code.
+fn transfer_refusal(code: &'static str, message: impl Into<String>) -> EngineError {
+    EngineError::Transfer {
+        code,
+        message: message.into(),
+    }
+}
+
+fn unknown_transfer() -> EngineError {
+    transfer_refusal(
+        codes::notp::TRANSFER_UNKNOWN,
+        "no transfer of this ledger has this id for this caller",
+    )
+}
+
+/// The digest a push session binds: the request, its closure sorted and its request id left out,
+/// so the same push reordered is the same push.
+fn push_parameters(request: &NegotiatePushRequest) -> Result<Digest> {
+    let mut closure = request.closure.clone();
+    closure.sort_by(|a, b| a.digest.cmp(&b.digest).then(a.size.cmp(&b.size)));
+    let normalized = NegotiatePushRequest {
+        r#ref: request.r#ref.clone(),
+        new_head: request.new_head.clone(),
+        expected_ref: request.expected_ref.clone(),
+        closure,
+        request_id: "-".to_owned(),
+    };
+    Ok(Digest::compute(&normalized.encode().map_err(|error| {
+        EngineError::Internal {
+            detail: format!("encoding a push's parameters: {error}"),
+        }
+    })?))
 }
 
 fn invalid(code: &'static str, message: impl Into<String>) -> EngineError {
@@ -211,8 +264,26 @@ pub struct Engine<'a> {
     /// than accept a ledger it will then refuse to serve.
     pub enabled: permguard_languages::registry::Enabled,
     /// Where a head statement's `signed_at` comes from: the signing ring's time, which for a ring
-    /// the Host hands out is the Host's time guard (WP-2.12).
+    /// the Host hands out is the Host's time guard (WP-2.12). Sessions expire on it too.
     pub clock: &'a dyn permguard_core::time::Clock,
+    /// The authorization principal of the caller: what a transfer session is bound to.
+    pub caller: String,
+    /// How long a session stays open, and how long a closed one keeps its pins and answer.
+    pub transfer: TransferPolicy,
+    /// The Host's security mutation transaction for the ref updates (WP-3.6).
+    pub mutations: &'a permguard_host::composition::MutationHandle,
+}
+
+/// The `security` action a ref update records at each of its phases.
+pub const LEDGER_PUSHED: &str = "ledger.pushed";
+
+/// The lifetimes of a transfer session (WP-7.12; owner decision of 2026-10-14).
+#[derive(Debug, Clone, Copy)]
+pub struct TransferPolicy {
+    /// `notp.transfer_ttl`.
+    pub ttl: std::time::Duration,
+    /// `storage.gc.grace`.
+    pub grace: std::time::Duration,
 }
 
 /// What one partition's walk gathers for the set-level semantic check: every
@@ -233,7 +304,11 @@ struct PartitionSources {
 impl Engine<'_> {
     // ---- negotiation ----
 
-    /// Push negotiation: preflight the declared delta, answer what is missing.
+    /// Push negotiation: preflight the declared delta, open (or resume) the transfer session
+    /// that reserves its bytes and pins its closure, answer what is missing.
+    ///
+    /// The same caller, request id and parameters resume the session they opened, which answers
+    /// what is still missing; the same request id with other parameters is `transfer_mismatch`.
     pub fn negotiate_push(&self, request: &NegotiatePushRequest) -> Result<NegotiatePushResponse> {
         grammar::validate_ref_name(&request.r#ref)
             .map_err(|e| invalid(codes::notp::GRAMMAR, e.to_string()))?;
@@ -254,7 +329,11 @@ impl Engine<'_> {
         {
             expected_head(request.expected_ref.as_ref(), current)?;
         }
-        let declared_bytes: u64 = request.closure.iter().map(|c| c.size).sum();
+        let declared_bytes = request
+            .closure
+            .iter()
+            .map(|c| c.size)
+            .fold(0u64, u64::saturating_add);
         if declared_bytes > self.limits.max_push_bytes {
             return Err(EngineError::Unavailable {
                 message: format!(
@@ -263,6 +342,73 @@ impl Engine<'_> {
                 ),
             });
         }
+        let parameters = push_parameters(request)?;
+        let now = self.now();
+        let transfers = self.store.transfers()?;
+        transfers.sweep(now, self.transfer.grace)?;
+        let session = match transfers.find_request(
+            &self.caller,
+            transfer::Direction::Push,
+            &request.request_id,
+        )? {
+            Some(session) if session.parameters != parameters => {
+                return Err(transfer_refusal(
+                    codes::notp::TRANSFER_MISMATCH,
+                    "this request id opened a transfer with other parameters",
+                ));
+            }
+            Some(session) if session.state == transfer::State::Open => session,
+            Some(session) if session.state == transfer::State::Committed => session,
+            Some(_) => {
+                return Err(transfer_refusal(
+                    codes::notp::TRANSFER_EXPIRED,
+                    "the transfer this request opened has ended: negotiate with a new request id",
+                ));
+            }
+            None => {
+                let open = transfers.list()?;
+                self.admit(&open, now, transfer::Direction::Push)?;
+                // The quota counts what the ledger holds and what every open push may still
+                // land: a reservation is made before a byte of it arrives.
+                let used = self.ledger_bytes()?;
+                let reserved = transfers.reserved()?;
+                if used.saturating_add(reserved).saturating_add(declared_bytes)
+                    > self.limits.ledger_quota_bytes
+                {
+                    return Err(EngineError::Unavailable {
+                        message: "the ledger storage quota cannot reserve this push".to_string(),
+                    });
+                }
+                let mut pins: Vec<Digest> =
+                    request.closure.iter().map(|c| c.digest.clone()).collect();
+                pins.sort();
+                pins.dedup();
+                let session = transfer::Session {
+                    transfer_id: self.transfer_id()?,
+                    direction: transfer::Direction::Push,
+                    principal: self.caller.clone(),
+                    authority_host_id: self.authority,
+                    zone: self.identity.zone_id.clone(),
+                    ledger: self.identity.ledger_id.clone(),
+                    r#ref: request.r#ref.clone(),
+                    request_id: request.request_id.clone(),
+                    parameters,
+                    new_head: Some(request.new_head.clone()),
+                    expected_ref: request.expected_ref.clone(),
+                    max_batch_bytes: self.limits.max_batch_bytes,
+                    max_batch_objects: self.limits.max_batch_objects,
+                    reservation: declared_bytes,
+                    landed: 0,
+                    expiry: now.saturating_add(self.transfer.ttl.as_secs()),
+                    state: transfer::State::Open,
+                    closed_at: None,
+                    pins,
+                    result: None,
+                };
+                transfers.put(&session)?;
+                session
+            }
+        };
         let missing = request
             .closure
             .iter()
@@ -273,17 +419,18 @@ impl Engine<'_> {
         // compression, the engine only ever sees canonical bytes.
         Ok(NegotiatePushResponse {
             missing,
-            max_batch_bytes: self.limits.max_batch_bytes,
-            max_batch_objects: self.limits.max_batch_objects,
+            max_batch_bytes: session.max_batch_bytes,
+            max_batch_objects: session.max_batch_objects,
             compression: None,
-            transfer_id: self.transfer_id()?,
-            reservation: declared_bytes,
-            expiry: self.expiry(),
+            transfer_id: session.transfer_id,
+            reservation: session.reservation,
+            expiry: session.expiry,
         })
     }
 
-    /// Ingest one batch: canonical, within limits, media types validated,
-    /// idempotent — and inside the ledger quota, checked before writing.
+    /// Ingest one batch into the open push session it names: canonical, within limits, media
+    /// types validated, idempotent, each object one the session declared, and inside what the
+    /// session reserved.
     pub fn upload(&self, request: &UploadObjectsRequest) -> Result<UploadObjectsResponse> {
         if request.objects.len() as u64 > self.limits.max_batch_objects {
             return Err(invalid(
@@ -298,36 +445,89 @@ impl Engine<'_> {
                 "more bytes than the advertised batch limit",
             ));
         }
-        let used = self.ledger_bytes()?;
-        if used.saturating_add(batch_bytes) > self.limits.ledger_quota_bytes {
+        // The session is held for the whole batch: two batches of one session land one after
+        // the other, so neither lands past what the session reserved.
+        let transfers = self.store.transfers()?;
+        let mut session =
+            self.session(&transfers, &request.transfer_id, transfer::Direction::Push)?;
+        let mut arriving = Vec::with_capacity(request.objects.len());
+        let mut new_bytes = 0u64;
+        for bytes in &request.objects {
+            let digest = Digest::compute(bytes);
+            if !session.pinned(&digest) {
+                return Err(transfer_refusal(
+                    codes::notp::TRANSFER_MISMATCH,
+                    format!("{digest} is not in the closure this transfer declared"),
+                ));
+            }
+            if !self.store.has_object(&digest) {
+                new_bytes = new_bytes.saturating_add(bytes.len() as u64);
+            }
+            arriving.push(digest);
+        }
+        if session.landed.saturating_add(new_bytes) > session.reservation {
+            return Err(EngineError::Unavailable {
+                message: "the batch lands past what the transfer reserved".to_string(),
+            });
+        }
+        // The ledger's own bound too, on what it holds now: a reservation is a promise inside
+        // it, never a way past it.
+        if self.ledger_bytes()?.saturating_add(new_bytes) > self.limits.ledger_quota_bytes {
             return Err(EngineError::Unavailable {
                 message: "the ledger storage quota is exhausted".to_string(),
             });
         }
+        // Each object is checked before it lands and counted as it lands: a batch refused half
+        // way keeps what landed before, and the session counts it, so a retry cannot land it
+        // again outside the reservation.
         let mut received = Vec::with_capacity(request.objects.len());
+        let mut outcome = Ok(());
         for bytes in &request.objects {
-            let (digest, decoded) = self.store.put_object(bytes)?;
-            if let Object::Blob(blob) = &decoded {
-                validate_blob(&blob.media_type, &blob.data)?;
+            match self.land(bytes) {
+                Ok((digest, written)) => {
+                    if written {
+                        session.landed = session.landed.saturating_add(bytes.len() as u64);
+                    }
+                    received.push(digest);
+                }
+                Err(error) => {
+                    outcome = Err(error);
+                    break;
+                }
             }
-            received.push(digest);
         }
-        // The session's reservation is not durable until WP-7.12: what is left is what the
-        // ledger's quota still allows.
-        let remaining = self
-            .limits
-            .ledger_quota_bytes
-            .saturating_sub(used.saturating_add(batch_bytes));
+        transfers.put(&session)?;
+        outcome?;
+        debug_assert_eq!(received, arriving);
         Ok(UploadObjectsResponse {
             received,
-            remaining,
+            remaining: session.reservation.saturating_sub(session.landed),
         })
+    }
+
+    /// One object of a batch: decoded and its blob validated before anything is written, then
+    /// published; answers whether this call wrote it.
+    fn land(&self, bytes: &[u8]) -> Result<(Digest, bool)> {
+        if let Object::Blob(blob) = object::decode(bytes).map_err(|error| {
+            invalid(
+                permguard_core::codes::notp::OBJECT_REJECTED,
+                error.to_string(),
+            )
+        })? {
+            validate_blob(&blob.media_type, &blob.data)?;
+        }
+        let (digest, _, published) = self.store.publish_object(bytes)?;
+        Ok((
+            digest,
+            published == permguard_host::storage::write::Published::Written,
+        ))
     }
 
     // ---- commit ----
 
-    /// The commit: every acceptance invariant, re-run on what is actually on
-    /// disk, then the idempotent CAS, then the signed statement.
+    /// The commit: the session it names, bound to this caller, ref, head, expected state and
+    /// request; every acceptance invariant, re-run on what is actually on disk; the idempotent
+    /// CAS; the signed statement. A commit the session already answered is answered again.
     pub fn commit_push(
         &self,
         request: &CommitPushRequest,
@@ -335,7 +535,92 @@ impl Engine<'_> {
     ) -> Result<CommitPushResponse> {
         grammar::validate_ref_name(&request.r#ref)
             .map_err(|e| invalid(codes::notp::GRAMMAR, e.to_string()))?;
+        let session = {
+            let transfers = self.store.transfers()?;
+            let session = match transfers.get(&request.transfer_id)? {
+                Some(session) => session,
+                None => return Err(unknown_transfer()),
+            };
+            self.bound(&session, transfer::Direction::Push)?;
+            if session.r#ref != request.r#ref
+                || session.new_head.as_ref() != Some(&request.new_head)
+                || session.expected_ref != request.expected_ref
+                || session.request_id != request.request_id
+            {
+                return Err(transfer_refusal(
+                    codes::notp::TRANSFER_MISMATCH,
+                    "the commit names another ref, head, expected state or request than its \
+                     transfer",
+                ));
+            }
+            if session.state == transfer::State::Committed
+                && let Some(result) = &session.result
+            {
+                return CommitPushResponse::decode(result).map_err(|error| EngineError::Internal {
+                    detail: format!("a committed transfer's answer: {error}"),
+                });
+            }
+            self.open_or_expire(&transfers, session)?
+        };
 
+        // The lock is not held while the commit is verified: the ref's compare-and-swap is what
+        // serializes two commits, and the session is only closed once the outcome is durable.
+        let outcome = self.commit_bound(request, signer);
+        // The session's bookkeeping follows the outcome and never changes it: a ref that landed
+        // is answered as landed even when its session could not be closed now; a retry learns
+        // it from the ref.
+        if let Err(error) = self.close(&session.transfer_id, &outcome) {
+            tracing::warn!(
+                event.name = "notp.transfer_unclosed",
+                component = "control-plane",
+                error = %error,
+                "a commit's transfer session could not be closed; a retry closes it"
+            );
+        }
+        outcome
+    }
+
+    /// Ends the session `transfer_id` as `outcome` ends its commit: `committed` with the answer
+    /// on success, `aborted` on a refusal of what the session is bound to, which the same commit
+    /// would meet again; open on any other failure, for the retry.
+    fn close(&self, transfer_id: &TransferId, outcome: &Result<CommitPushResponse>) -> Result<()> {
+        let transfers = self.store.transfers()?;
+        let Some(mut latest) = transfers.get(transfer_id)? else {
+            return Ok(());
+        };
+        match (outcome, latest.state) {
+            // Another commit of it closed it meanwhile: what that one wrote stands.
+            (_, transfer::State::Committed | transfer::State::Aborted) => return Ok(()),
+            // Expired while this commit ran, which landed: the ref is durable, so the session
+            // is what it answered, not a refusal a retry would meet.
+            (Ok(response), transfer::State::Open | transfer::State::Expired) => {
+                latest.state = transfer::State::Committed;
+                latest.result = Some(response.encode().map_err(|error| EngineError::Internal {
+                    detail: format!("encoding a committed transfer's answer: {error}"),
+                })?);
+                if latest.closed_at.is_none() {
+                    latest.closed_at = Some(self.now());
+                }
+            }
+            (
+                Err(EngineError::Validation { .. } | EngineError::Conflict { .. }),
+                transfer::State::Open,
+            ) => {
+                latest.state = transfer::State::Aborted;
+                latest.closed_at = Some(self.now());
+            }
+            (Err(_), _) => return Ok(()),
+        }
+        transfers.put(&latest)?;
+        transfers.retire(&self.caller, transfer::KEEP_CLOSED_PER_PRINCIPAL)?;
+        Ok(())
+    }
+
+    fn commit_bound(
+        &self,
+        request: &CommitPushRequest,
+        signer: HeadSigner<'_>,
+    ) -> Result<CommitPushResponse> {
         // Idempotency first: a retry whose commit already landed is a
         // success and re-runs nothing.
         let current = self.store.read_ref(&request.r#ref)?;
@@ -376,22 +661,90 @@ impl Engine<'_> {
             self.store.make_durable(&region)?;
         }
 
-        let updated = self.store.update_ref(
-            &request.r#ref,
-            request.expected_ref.as_ref(),
-            &request.new_head,
-        )?;
-        let state = match updated {
-            RefUpdate::Updated(state) | RefUpdate::AlreadyCurrent(state) => state,
-        };
+        let state = self.update_ref(request)?;
         let response = self.sign_and_cache(&request.r#ref, &state, signer)?;
         Ok(response)
+    }
+
+    /// The ref's compare-and-swap, as one operation of the Host's security mutation transaction
+    /// (WP-3.6): intent, the durable write carrying the operation id, commit, its audit records.
+    /// A retry of the same request inside the transaction's window learns the first answer.
+    fn update_ref(&self, request: &CommitPushRequest) -> Result<RefState> {
+        use permguard_host::operations::journal::{Initiator, RequestKey};
+        use permguard_host::operations::mutation::{Applied, Begin, Failure, MutationError};
+
+        let target = crate::store::RefDomain::target(
+            &self.identity.zone_id,
+            &self.identity.ledger_id,
+            &request.r#ref,
+        );
+        let digest = Digest::compute(&request.encode().map_err(|error| EngineError::Internal {
+            detail: format!("encoding a commit: {error}"),
+        })?);
+        let begin = Begin {
+            domain: crate::store::REFS_DOMAIN,
+            operation: crate::store::REF_UPDATE,
+            action: LEDGER_PUSHED,
+            initiator: Initiator::Principal(self.caller.clone()),
+            request: Some(RequestKey {
+                request_id: request.request_id.clone(),
+                digest: digest.to_string(),
+            }),
+            target: Some(target.clone()),
+        };
+        let outcome = self.mutations.run_checked(
+            begin,
+            || Ok::<(), EngineError>(()),
+            |applying| match self.store.update_ref(
+                applying,
+                &request.r#ref,
+                request.expected_ref.as_ref(),
+                &request.new_head,
+            ) {
+                Ok(RefUpdate::Updated(state) | RefUpdate::AlreadyCurrent(state)) => Ok(Applied {
+                    revision: state.counter,
+                    target: Some(target.clone()),
+                    value: (),
+                }),
+                // A write that failed may have landed: recovery asks the record.
+                Err(StoreError::Backend { detail }) => {
+                    Err(Failure::Indeterminate(EngineError::Internal { detail }))
+                }
+                Err(other) => Err(Failure::Refused(other.into())),
+            },
+        );
+        match outcome {
+            Ok(_) => {
+                let current = self.store.read_ref(&request.r#ref)?;
+                match current {
+                    Some(state) if state.head == request.new_head => Ok(state),
+                    // A replayed answer whose ref has moved on since: the truth is what is now.
+                    current => Err(EngineError::Conflict { current }),
+                }
+            }
+            Err(MutationError::Refused(error)) => Err(error),
+            Err(MutationError::RequestIdReused(detail)) => Err(EngineError::Transfer {
+                code: permguard_core::codes::host::REQUEST_ID_REUSED,
+                message: detail.to_owned(),
+            }),
+            Err(MutationError::AuditUnavailable(detail)) => {
+                Err(EngineError::AuditUnavailable { detail })
+            }
+            Err(MutationError::Unrecorded(detail)) => Err(EngineError::Unrecorded { detail }),
+            Err(MutationError::Indeterminate(error)) => Err(EngineError::Unrecorded {
+                detail: error.to_string(),
+            }),
+            Err(MutationError::Unavailable(detail)) => {
+                Err(EngineError::MutationsUnavailable { detail })
+            }
+        }
     }
 
     // ---- pull ----
 
     /// Pull negotiation: the head (or a pinned commit reachable from it),
-    /// the signed statement, and the delta past the client's checkpoints.
+    /// the signed statement, and the delta past the client's checkpoints, in a pull session
+    /// that pins it until the session's expiry.
     pub fn negotiate_pull(
         &self,
         request: &NegotiatePullRequest,
@@ -433,21 +786,72 @@ impl Engine<'_> {
             .collect::<Vec<_>>();
 
         let statement = self.current_statement(&request.r#ref, &state, signer)?;
+
+        let now = self.now();
+        let expiry = now.saturating_add(self.transfer.ttl.as_secs());
+        // Nothing to fetch, nothing to keep: the round that finds its mirror current opens no
+        // session, and a fetch naming its id finds none.
+        if missing.is_empty() {
+            return Ok(NegotiatePullResponse {
+                ref_digest: crate::store::ref_digest(&state)?,
+                head: state.head,
+                counter: state.counter,
+                statement,
+                missing,
+                max_batch_bytes: self.limits.max_batch_bytes,
+                max_batch_objects: self.limits.max_batch_objects,
+                compression: None,
+                transfer_id: self.transfer_id()?,
+                expiry,
+            });
+        }
+        let transfers = self.store.transfers()?;
+        transfers.sweep(now, self.transfer.grace)?;
+        self.admit(&transfers.list()?, now, transfer::Direction::Pull)?;
+        let session = transfer::Session {
+            transfer_id: self.transfer_id()?,
+            direction: transfer::Direction::Pull,
+            principal: self.caller.clone(),
+            authority_host_id: self.authority,
+            zone: self.identity.zone_id.clone(),
+            ledger: self.identity.ledger_id.clone(),
+            r#ref: request.r#ref.clone(),
+            request_id: String::new(),
+            parameters: Digest::compute(&request.encode().map_err(|error| {
+                EngineError::Internal {
+                    detail: format!("encoding a pull's parameters: {error}"),
+                }
+            })?),
+            new_head: None,
+            expected_ref: None,
+            max_batch_bytes: self.limits.max_batch_bytes,
+            max_batch_objects: self.limits.max_batch_objects,
+            reservation: 0,
+            landed: 0,
+            expiry,
+            state: transfer::State::Open,
+            closed_at: None,
+            // `walk_region` answers a set: sorted, each once.
+            pins: missing.clone(),
+            result: None,
+        };
+        transfers.put(&session)?;
         Ok(NegotiatePullResponse {
             ref_digest: crate::store::ref_digest(&state)?,
             head: state.head,
             counter: state.counter,
             statement,
             missing,
-            max_batch_bytes: self.limits.max_batch_bytes,
-            max_batch_objects: self.limits.max_batch_objects,
+            max_batch_bytes: session.max_batch_bytes,
+            max_batch_objects: session.max_batch_objects,
             compression: None,
-            transfer_id: self.transfer_id()?,
-            expiry: self.expiry(),
+            transfer_id: session.transfer_id,
+            expiry: session.expiry,
         })
     }
 
-    /// Serve objects, hash-verified on the way out.
+    /// Serve objects of the open pull session the request names, hash-verified on the way out:
+    /// only what that negotiation answered missing.
     pub fn fetch(&self, request: &FetchObjectsRequest) -> Result<FetchObjectsResponse> {
         if request.digests.len() as u64 > self.limits.max_batch_objects {
             return Err(invalid(
@@ -455,6 +859,31 @@ impl Engine<'_> {
                 "more objects than the advertised batch limit",
             ));
         }
+        let session = {
+            let transfers = self.store.transfers()?;
+            let mut session =
+                self.session(&transfers, &request.transfer_id, transfer::Direction::Pull)?;
+            if let Some(digest) = request
+                .digests
+                .iter()
+                .find(|digest| !session.pinned(digest))
+            {
+                return Err(transfer_refusal(
+                    codes::notp::TRANSFER_MISMATCH,
+                    format!("{digest} is not an object this transfer answered missing"),
+                ));
+            }
+            // What is fetched is fetched: the session pins what is still to come, and ends with
+            // the last of it.
+            let asked: BTreeSet<&Digest> = request.digests.iter().collect();
+            session.pins.retain(|digest| !asked.contains(digest));
+            if session.pins.is_empty() {
+                transfers.remove(&session.transfer_id)?;
+            } else {
+                transfers.put(&session)?;
+            }
+            session
+        };
         let mut objects = Vec::with_capacity(request.digests.len());
         for digest in &request.digests {
             let bytes = self
@@ -468,8 +897,99 @@ impl Engine<'_> {
         Ok(FetchObjectsResponse {
             objects,
             compression: None,
-            expiry: self.expiry(),
+            expiry: session.expiry,
         })
+    }
+
+    // ---- sessions ----
+
+    fn now(&self) -> u64 {
+        transfer::unix_now(self.clock)
+    }
+
+    /// Whether this caller may open one more session on this ledger: the ledger keeps a bounded
+    /// number open, and one caller a bounded number of pushes. Pulls end as they are fetched, and
+    /// public readers share one principal, so they are bounded by the ledger alone.
+    fn admit(
+        &self,
+        kept: &[transfer::Session],
+        now: u64,
+        direction: transfer::Direction,
+    ) -> Result<()> {
+        let open: Vec<&transfer::Session> = kept.iter().filter(|s| s.live(now)).collect();
+        if open.len() >= transfer::MAX_OPEN
+            || (direction == transfer::Direction::Push
+                && open
+                    .iter()
+                    .filter(|session| {
+                        session.direction == transfer::Direction::Push
+                            && session.principal == self.caller
+                    })
+                    .count()
+                    >= transfer::MAX_OPEN_PER_PRINCIPAL)
+        {
+            return Err(EngineError::Unavailable {
+                message: "this ledger has as many open transfers as it keeps".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// The open session `transfer_id` names, bound to this caller and `direction`; one past its
+    /// expiry is closed `expired` first.
+    fn session(
+        &self,
+        transfers: &transfer::Transfers<'_>,
+        transfer_id: &TransferId,
+        direction: transfer::Direction,
+    ) -> Result<transfer::Session> {
+        let session = transfers.get(transfer_id)?.ok_or_else(unknown_transfer)?;
+        self.bound(&session, direction)?;
+        self.open_or_expire(transfers, session)
+    }
+
+    /// Whether `session` is this caller's, on this ledger, in `direction`. A session of another
+    /// caller is refused as unknown: its existence is not this caller's to learn.
+    fn bound(&self, session: &transfer::Session, direction: transfer::Direction) -> Result<()> {
+        if session.principal != self.caller
+            || session.zone != self.identity.zone_id
+            || session.ledger != self.identity.ledger_id
+            || session.authority_host_id != self.authority
+        {
+            return Err(unknown_transfer());
+        }
+        if session.direction != direction {
+            return Err(transfer_refusal(
+                codes::notp::TRANSFER_MISMATCH,
+                "the transfer moves objects the other way",
+            ));
+        }
+        Ok(())
+    }
+
+    fn open_or_expire(
+        &self,
+        transfers: &transfer::Transfers<'_>,
+        mut session: transfer::Session,
+    ) -> Result<transfer::Session> {
+        let now = self.now();
+        if session.state == transfer::State::Open && now >= session.expiry {
+            // Closed durably before anything it reserved is released; a pull keeps nothing.
+            if session.direction == transfer::Direction::Pull {
+                transfers.remove(&session.transfer_id)?;
+            } else {
+                session.state = transfer::State::Expired;
+                session.closed_at = Some(now);
+                transfers.put(&session)?;
+            }
+        }
+        if session.state != transfer::State::Open {
+            return Err(transfer_refusal(
+                codes::notp::TRANSFER_EXPIRED,
+                "the transfer has ended: negotiate again",
+            ));
+        }
+        Ok(session)
     }
 
     /// The advertised ref: state plus current statement.
@@ -1311,8 +1831,8 @@ impl Engine<'_> {
 
     // ---- transfer sessions ----
 
-    /// A fresh transfer session id: 16 random bytes. Sessions are stateless until WP-7.12, so the
-    /// id is issued and named by every later message, not yet looked up.
+    /// A fresh transfer session id: 16 random bytes, unguessable, so a session is named only by
+    /// the caller it was answered to.
     fn transfer_id(&self) -> Result<TransferId> {
         use ring::rand::SecureRandom as _;
         let mut id = [0u8; 16];
@@ -1322,13 +1842,6 @@ impl Engine<'_> {
                 detail: "no randomness for a transfer id".to_string(),
             })?;
         Ok(id)
-    }
-
-    /// When a session issued now closes, in unix seconds.
-    fn expiry(&self) -> u64 {
-        u64::try_from(self.clock.now())
-            .unwrap_or(0)
-            .saturating_add(TRANSFER_TTL_SECONDS)
     }
 
     // ---- statements ----

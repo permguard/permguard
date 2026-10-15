@@ -31,6 +31,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
+use permguard_host::operations::journal::OperationId;
+use permguard_host::operations::mutation::{Applying, Domain, Observed};
 use permguard_host::storage::write::{Published, publish_immutable};
 use permguard_host::storage::{Dir, StorageError};
 use permguard_notp::ExpectedRef;
@@ -63,6 +65,127 @@ pub enum RefUpdate {
     /// The current head already equals the new head: a retry landed —
     /// success, counter untouched.
     AlreadyCurrent(RefState),
+}
+
+/// The domain of the ref updates (WP-3.6): what recovery asks of the ledgers' refs.
+pub const REFS_DOMAIN: &str = "ledger.refs";
+/// The operation of one ref update.
+pub const REF_UPDATE: &str = "ledger.ref.update";
+
+/// The refs of every ledger under a zones root, as the mutation transaction's domain: an
+/// operation shows when the ref its intent targets, `<zone>/<ledger>/<ref>`, was written by it.
+#[derive(Debug, Clone)]
+pub struct RefDomain {
+    pub zones_root: PathBuf,
+}
+
+impl RefDomain {
+    /// The intent's target of an update of `name` in the ledger `zone`/`ledger`.
+    pub fn target(zone: &str, ledger: &str, name: &str) -> String {
+        format!("{zone}/{ledger}/{name}")
+    }
+}
+
+impl Domain for RefDomain {
+    fn name(&self) -> &'static str {
+        REFS_DOMAIN
+    }
+
+    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
+        let (zone, rest) = target?.split_once('/')?;
+        let (ledger, name) = rest.split_once('/')?;
+        // Ids from the catalog, never a path the target could climb out of.
+        if [zone, ledger]
+            .iter()
+            .any(|id| id.is_empty() || id.contains(['/', '\\']) || id.starts_with('.'))
+        {
+            return None;
+        }
+        let store = FileObjectStore::new(self.zones_root.join(zone).join("ledgers").join(ledger));
+        let written = store.ref_operation(name).ok()??;
+        if written != operation_id.to_string() {
+            return None;
+        }
+        let state = store.read_ref(name).ok()??;
+        Some(Observed {
+            revision: state.counter,
+            target: target.map(str::to_owned),
+        })
+    }
+}
+
+/// What a test or an offline tool needs to write a ref the way the server does: through an offline
+/// mutation transaction of its own.
+#[doc(hidden)]
+pub mod testing {
+    use std::path::Path;
+    use std::sync::Arc;
+
+    use permguard_host::composition::MutationHandle;
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::{Applied, Begin, Failure, Mutations};
+
+    use super::{FileObjectStore, REF_UPDATE, REFS_DOMAIN, RefUpdate, StoreError};
+    use permguard_notp::ExpectedRef;
+    use permguard_objects::digest::Digest;
+
+    /// A mutation transaction of the ref updates over an offline engine on a fresh volume at
+    /// `directory`.
+    pub fn offline_ref_mutations(directory: &Path) -> Result<MutationHandle, String> {
+        let volume = permguard_host::storage::volume::Volume::claim(
+            directory,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .map_err(|error| error.to_string())?;
+        let engine = Mutations::open_offline(&volume, "test")?;
+        Ok(MutationHandle::new(Arc::new(engine), REFS_DOMAIN))
+    }
+
+    /// [`FileObjectStore::update_ref`], as one operation of `mutations`.
+    pub fn update_ref(
+        mutations: &MutationHandle,
+        store: &FileObjectStore,
+        name: &str,
+        expected: Option<&ExpectedRef>,
+        new: &Digest,
+    ) -> Result<RefUpdate, StoreError> {
+        let answer = std::cell::RefCell::new(None);
+        let _ = mutations.run_checked(
+            Begin {
+                domain: REFS_DOMAIN,
+                operation: REF_UPDATE,
+                action: crate::engine::LEDGER_PUSHED,
+                initiator: Initiator::System("test".to_owned()),
+                request: None,
+                target: Some(name.to_owned()),
+            },
+            || Ok::<(), StoreError>(()),
+            |applying| match store.update_ref(applying, name, expected, new) {
+                Ok(update) => {
+                    let revision = match &update {
+                        RefUpdate::Updated(state) | RefUpdate::AlreadyCurrent(state) => {
+                            state.counter
+                        }
+                    };
+                    *answer.borrow_mut() = Some(Ok(update));
+                    Ok(Applied {
+                        revision,
+                        target: None,
+                        value: (),
+                    })
+                }
+                Err(error) => {
+                    *answer.borrow_mut() = Some(Err(error.clone()));
+                    Err(Failure::Refused(error))
+                }
+            },
+        );
+        answer.into_inner().unwrap_or_else(|| {
+            Err(StoreError::Backend {
+                detail: "the mutation transaction ran nothing".to_owned(),
+            })
+        })
+    }
 }
 
 /// Why the store refused.
@@ -132,6 +255,8 @@ pub struct FileObjectStore {
     root: PathBuf,
     /// Serialises ref mutations; object writes are idempotent and need none.
     refs_lock: Mutex<()>,
+    /// Serialises the transitions of the transfer sessions (WP-7.12).
+    transfers_lock: Mutex<()>,
     /// The `FORMAT` gate, checked once per store lifetime.
     format: OnceLock<Result<()>>,
 }
@@ -143,6 +268,7 @@ impl FileObjectStore {
         Self {
             root: ledger_directory.into(),
             refs_lock: Mutex::new(()),
+            transfers_lock: Mutex::new(()),
             format: OnceLock::new(),
         }
     }
@@ -316,6 +442,16 @@ impl FileObjectStore {
             .map(Some)
     }
 
+    /// The WP-3.6 operation that wrote the ref `name`, when its record names one.
+    pub fn ref_operation(&self, name: &str) -> Result<Option<String>> {
+        grammar::validate_ref_name(name)?;
+        match fs::read_to_string(self.ref_path(name)) {
+            Ok(text) => Ok(parse_operation(&text)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(backend("reading ref", error)),
+        }
+    }
+
     /// Every object in the store: its digest, how old the file is, and how
     /// many bytes it occupies.
     ///
@@ -482,8 +618,13 @@ impl FileObjectStore {
     ///
     /// `expected = None` is the creation case: it succeeds only while the
     /// ref does not exist, and the counter starts at 1.
+    ///
+    /// A ref update is a security mutation (WP-3.6): it runs inside the Host's transaction, whose
+    /// token it takes, and the record it writes carries the operation id, so recovery tells an
+    /// update that landed from one that did not.
     pub fn update_ref(
         &self,
+        applying: &Applying<'_>,
         name: &str,
         expected: Option<&ExpectedRef>,
         new: &Digest,
@@ -519,9 +660,21 @@ impl FileObjectStore {
         write_durable(
             &self.root,
             &format!("refs/{name}"),
-            render_ref(&state).as_bytes(),
+            render_ref(&state, Some(&applying.operation_id())).as_bytes(),
         )?;
         Ok(RefUpdate::Updated(state))
+    }
+
+    /// This ledger's transfer sessions, held under its transfer lock until the answer is dropped.
+    pub fn transfers(&self) -> Result<crate::transfer::Transfers<'_>> {
+        self.check_format()?;
+        let guard = self
+            .transfers_lock
+            .lock()
+            .map_err(|_| StoreError::Backend {
+                detail: "the transfer lock is poisoned".into(),
+            })?;
+        Ok(crate::transfer::Transfers::new(self, guard))
     }
 
     /// Store the signed head statement for a ref — a cache, replaced on
@@ -556,7 +709,7 @@ impl permguard_host::storage::authority::Declared for FileObjectStore {
             FileClass {
                 pattern: "refs/<name>",
                 authority: Authority::Authoritative,
-                why: "each ref's head and monotonic counter",
+                why: "each ref's head, monotonic counter and previous state's digest",
             },
             FileClass {
                 pattern: "FORMAT",
@@ -567,6 +720,11 @@ impl permguard_host::storage::authority::Declared for FileObjectStore {
                 pattern: "signatures/<ref>",
                 authority: Authority::Rebuildable,
                 why: "a cache of the head statements, signed again whenever it is missing or stale",
+            },
+            FileClass {
+                pattern: "transfers/<32 hex>.cbor",
+                authority: Authority::Authoritative,
+                why: "a transfer session: its binding, reservation, pins and answer (WP-7.12)",
             },
         ]
     }
@@ -584,7 +742,7 @@ fn storage(what: &str, error: StorageError) -> StoreError {
 /// flushed. Below `root` every directory is opened relative to its parent without following a
 /// link, and every directory created is flushed into its parent. The temporary's name is random,
 /// so two writers of one file never share a temporary; a failed flush is reported, never ignored.
-fn write_durable(root: &Path, relative: &str, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_durable(root: &Path, relative: &str, bytes: &[u8]) -> Result<()> {
     let parts: Vec<&str> = relative.split('/').collect();
     let Some((name, parents)) = parts.split_last() else {
         return Err(StoreError::Backend {
@@ -643,17 +801,29 @@ pub fn ref_digest(state: &RefState) -> Result<Digest> {
         .map_err(|error| backend("the ref digest", error))
 }
 
-fn render_ref(state: &RefState) -> String {
-    match &state.previous_ref_digest {
-        Some(previous) => format!(
-            "{{\"version\":1,\"head\":\"{}\",\"counter\":{},\"previous\":\"{}\"}}\n",
-            state.head, state.counter, previous
-        ),
-        None => format!(
-            "{{\"version\":1,\"head\":\"{}\",\"counter\":{}}}\n",
-            state.head, state.counter
-        ),
-    }
+fn render_ref(state: &RefState, operation: Option<&OperationId>) -> String {
+    let previous = state
+        .previous_ref_digest
+        .as_ref()
+        .map(|previous| format!(",\"previous\":\"{previous}\""))
+        .unwrap_or_default();
+    let operation = operation
+        .map(|operation| format!(",\"op\":\"{operation}\""))
+        .unwrap_or_default();
+    format!(
+        "{{\"version\":1,\"head\":\"{}\",\"counter\":{}{previous}{operation}}}\n",
+        state.head, state.counter
+    )
+}
+
+/// The operation id a ref record names: the WP-3.6 operation that wrote it, absent in a record
+/// written before the transaction.
+fn parse_operation(text: &str) -> Option<String> {
+    let key = "\"op\":\"";
+    let start = text.find(key)? + key.len();
+    let end = text[start..].find('"')? + start;
+    let id = &text[start..end];
+    (id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit())).then(|| id.to_owned())
 }
 
 /// Parse the ref record without a JSON dependency: the format is ours, one
@@ -747,6 +917,24 @@ mod tests {
         dir
     }
 
+    /// One ref update through an offline mutation transaction, on a volume of its own.
+    fn update(
+        store: &FileObjectStore,
+        name: &str,
+        expected: Option<&ExpectedRef>,
+        new: &Digest,
+    ) -> Result<RefUpdate> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let volume = std::env::temp_dir().join(format!(
+            "permguard-gitlike-volume-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        ));
+        let _ = fs::remove_dir_all(&volume);
+        let mutations = super::testing::offline_ref_mutations(&volume).unwrap();
+        super::testing::update_ref(&mutations, store, name, expected, new)
+    }
+
     fn blob_bytes(text: &str) -> Vec<u8> {
         Blob {
             media_type: "application/vnd.permguard.policy.cedar".into(),
@@ -809,7 +997,7 @@ mod tests {
         let store = FileObjectStore::new(scratch());
         let (digest, _) = store.put_object(&blob_bytes("kept")).unwrap();
         let head = digest.clone();
-        store.update_ref("feature/login", None, &head).unwrap();
+        update(&store, "feature/login", None, &head).unwrap();
         store.write_signature("feature/login", b"envelope").unwrap();
         let (shard, _) = FileObjectStore::object_location(&digest);
         let root = store.root().to_path_buf();
@@ -875,7 +1063,7 @@ mod tests {
             store.root().join("refs"),
             permguard_core::fault::Fault::Fsync,
         );
-        let refused = store.update_ref("main", None, &digest).unwrap_err();
+        let refused = update(&store, "main", None, &digest).unwrap_err();
         assert!(matches!(refused, StoreError::Backend { .. }), "{refused}");
     }
 
@@ -885,12 +1073,12 @@ mod tests {
     fn a_failed_directory_flush_while_writing_a_ref_is_reported() {
         let store = FileObjectStore::new(scratch());
         let (digest, _) = store.put_object(&blob_bytes("x")).unwrap();
-        store.update_ref("other", None, &digest).unwrap();
+        update(&store, "other", None, &digest).unwrap();
         let _guard = permguard_core::fault::inject_exact(
             store.root().join("refs"),
             permguard_core::fault::Fault::Fsync,
         );
-        assert!(store.update_ref("main", None, &digest).is_err());
+        assert!(update(&store, "main", None, &digest).is_err());
     }
 
     /// The idempotent answer flushes too: the ref file and its directory, each on its own.
@@ -898,7 +1086,7 @@ mod tests {
     fn an_already_current_ref_is_answered_only_after_a_flush() {
         let store = FileObjectStore::new(scratch());
         let (digest, _) = store.put_object(&blob_bytes("x")).unwrap();
-        store.update_ref("main", None, &digest).unwrap();
+        update(&store, "main", None, &digest).unwrap();
         for path in [
             store.root().join("refs"),
             store.root().join("refs").join("main"),
@@ -909,13 +1097,13 @@ mod tests {
                 permguard_core::fault::Fault::FsyncTimes { remaining: 1 },
             );
             assert!(
-                store.update_ref("main", None, &digest).is_err(),
+                update(&store, "main", None, &digest).is_err(),
                 "{}",
                 path.display()
             );
         }
         assert!(matches!(
-            store.update_ref("main", None, &digest).unwrap(),
+            update(&store, "main", None, &digest).unwrap(),
             RefUpdate::AlreadyCurrent(_)
         ));
     }
@@ -971,13 +1159,13 @@ mod tests {
         let c = Digest::compute(b"c");
 
         // Creation: expected None, counter starts at 1, no previous state.
-        let created = store.update_ref("main", None, &a).unwrap();
+        let created = update(&store, "main", None, &a).unwrap();
         let first = RefState::first(a.clone());
         assert_eq!(created, RefUpdate::Updated(first.clone()));
 
         // Creating again against an existing ref: conflict.
         assert!(matches!(
-            store.update_ref("main", None, &b),
+            update(&store, "main", None, &b),
             Err(StoreError::Conflict { .. })
         ));
 
@@ -986,7 +1174,7 @@ mod tests {
             counter: 1,
             digest: first.ref_digest().unwrap(),
         };
-        let updated = store.update_ref("main", Some(&expected), &b).unwrap();
+        let updated = update(&store, "main", Some(&expected), &b).unwrap();
         let second = first.successor(b.clone()).unwrap();
         assert_eq!(updated, RefUpdate::Updated(second.clone()));
         assert_eq!(
@@ -996,11 +1184,11 @@ mod tests {
         );
 
         // Lost-response retry: same target, already current — success, same counter.
-        let retried = store.update_ref("main", Some(&expected), &b).unwrap();
+        let retried = update(&store, "main", Some(&expected), &b).unwrap();
         assert_eq!(retried, RefUpdate::AlreadyCurrent(second.clone()));
 
         // Stale expectation: conflict carrying the current state.
-        match store.update_ref("main", Some(&expected), &c) {
+        match update(&store, "main", Some(&expected), &c) {
             Err(StoreError::Conflict {
                 current: Some(state),
             }) => assert_eq!(state, second),
@@ -1013,7 +1201,7 @@ mod tests {
             digest: first.ref_digest().unwrap(),
         };
         assert!(matches!(
-            store.update_ref("main", Some(&forged), &c),
+            update(&store, "main", Some(&forged), &c),
             Err(StoreError::Conflict { .. })
         ));
 
@@ -1028,8 +1216,8 @@ mod tests {
     fn refs_list_and_signatures_cache() {
         let store = FileObjectStore::new(scratch());
         let a = Digest::compute(b"a");
-        store.update_ref("main", None, &a).unwrap();
-        store.update_ref("feature/login", None, &a).unwrap();
+        update(&store, "main", None, &a).unwrap();
+        update(&store, "feature/login", None, &a).unwrap();
         let refs = store.list_refs().unwrap();
         assert_eq!(
             refs.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
@@ -1047,7 +1235,7 @@ mod tests {
     fn a_ref_record_that_is_no_ref_state_is_refused() {
         let store = FileObjectStore::new(scratch());
         let a = Digest::compute(b"a");
-        store.update_ref("main", None, &a).unwrap();
+        update(&store, "main", None, &a).unwrap();
         let path = store.root().join("refs").join("main");
         for broken in [
             format!("{{\"version\":1,\"head\":\"{a}\",\"counter\":0}}\n"),
@@ -1075,7 +1263,7 @@ mod tests {
         let store = FileObjectStore::new(scratch());
         let a = Digest::compute(b"a");
         for bad in ["../escape", "UPPER", "a//b", ""] {
-            assert!(store.update_ref(bad, None, &a).is_err(), "accepted: {bad}");
+            assert!(update(&store, bad, None, &a).is_err(), "accepted: {bad}");
             assert!(store.read_ref(bad).is_err());
         }
     }

@@ -12,7 +12,7 @@ use ring::signature::{Ed25519KeyPair, KeyPair as _};
 
 use permguard_control_plane::engine::{
     ANNOTATION_POLICY_ALIAS, ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND, Engine, EngineError,
-    EngineLimits, LedgerIdentity, MEDIA_TYPE_MANIFEST, MEDIA_TYPE_POLICY_CEDAR,
+    EngineLimits, LedgerIdentity, MEDIA_TYPE_MANIFEST, MEDIA_TYPE_POLICY_CEDAR, TransferPolicy,
 };
 use permguard_objects::digest::Digest;
 use permguard_objects::manifest::{
@@ -87,14 +87,21 @@ fn limits() -> EngineLimits {
 struct Fixture {
     store: FileObjectStore,
     key: Ed25519KeyPair,
+    mutations: permguard_host::composition::MutationHandle,
+    /// The volume the mutation transaction keeps its journal and trails on.
+    volume: PathBuf,
 }
 
 impl Fixture {
     fn new(tag: &str) -> Self {
         let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+        let volume = scratch(&format!("{tag}-volume"));
         Self {
-            store: FileObjectStore::new(scratch(tag)),
+            store: FileObjectStore::new(scratch(tag).join("ledger")),
             key: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
+            mutations: permguard_control_plane::store::testing::offline_ref_mutations(&volume)
+                .unwrap(),
+            volume,
         }
     }
 
@@ -104,6 +111,12 @@ impl Fixture {
             authority: [0x11; 16],
             // A test signer binds no ring: the engine names none.
             ring: (0, permguard_objects::Digest::from_raw([0; 32])),
+            caller: "tester".into(),
+            mutations: &self.mutations,
+            transfer: TransferPolicy {
+                ttl: std::time::Duration::from_secs(900),
+                grace: std::time::Duration::from_secs(3600),
+            },
             identity: LedgerIdentity {
                 zone_id: "zone-1".into(),
                 ledger_id: "ledger-1".into(),
@@ -233,6 +246,98 @@ fn expected(fixture: &Fixture, old: Option<&Digest>) -> Option<ExpectedRef> {
     }
 }
 
+/// The request id of a push of `head` to `name`, unique per ref and head as a client names it.
+fn request_of(name: &str, head: &Digest) -> String {
+    format!("{name}-{}", &head.to_string()["sha256:".len()..][..16])
+}
+
+fn claims(objects: &[Vec<u8>]) -> Vec<ObjectClaim> {
+    objects
+        .iter()
+        .map(|bytes| ObjectClaim {
+            digest: Digest::compute(bytes),
+            size: bytes.len() as u64,
+        })
+        .collect()
+}
+
+/// Opens the push session of `head` on `name` over `objects`, as a client negotiates before it
+/// uploads; the request id is the head's, as the CLI names it.
+fn open(
+    fixture: &Fixture,
+    name: &str,
+    head: &Digest,
+    expected_ref: Option<ExpectedRef>,
+    objects: &[Vec<u8>],
+) -> Result<[u8; 16], EngineError> {
+    Ok(fixture
+        .engine()
+        .negotiate_push(&NegotiatePushRequest {
+            request_id: request_of(name, head),
+            r#ref: name.into(),
+            new_head: head.clone(),
+            expected_ref,
+            closure: claims(objects),
+        })?
+        .transfer_id)
+}
+
+/// The commit of the session `open` answered.
+fn commit_request(
+    name: &str,
+    head: &Digest,
+    expected_ref: Option<ExpectedRef>,
+    transfer_id: [u8; 16],
+) -> CommitPushRequest {
+    CommitPushRequest {
+        request_id: request_of(name, head),
+        transfer_id,
+        r#ref: name.into(),
+        new_head: head.clone(),
+        expected_ref,
+    }
+}
+
+/// The session the test caller opened for `head`, still kept.
+fn transfer_of(fixture: &Fixture, head: &Digest) -> [u8; 16] {
+    fixture
+        .store
+        .transfers()
+        .unwrap()
+        .find_request(
+            "tester",
+            permguard_control_plane::transfer::Direction::Push,
+            &request_of("main", head),
+        )
+        .unwrap()
+        .expect("a session of this head")
+        .transfer_id
+}
+
+/// One whole push of `objects` to `name`: negotiate, upload each object, commit; the outcome
+/// answered, not unwrapped.
+fn try_commit(
+    fixture: &Fixture,
+    name: &str,
+    head: &Digest,
+    expected_ref: Option<ExpectedRef>,
+    objects: &[Vec<u8>],
+) -> Result<CommitPushResponse, EngineError> {
+    let engine = fixture.engine();
+    let transfer_id = open(fixture, name, head, expected_ref.clone(), objects)?;
+    for bytes in objects {
+        engine.upload(&UploadObjectsRequest {
+            transfer_id,
+            compression: None,
+            objects: vec![bytes.clone()],
+        })?;
+    }
+    engine.commit_push(
+        &commit_request(name, head, expected_ref, transfer_id),
+        &fixture.signer(),
+    )
+}
+
 fn push(
     fixture: &Fixture,
     objects: &[Vec<u8>],
@@ -240,20 +345,14 @@ fn push(
     expected_old: Option<Digest>,
 ) -> CommitPushResponse {
     let engine = fixture.engine();
-    let claims = objects
-        .iter()
-        .map(|bytes| ObjectClaim {
-            digest: Digest::compute(bytes),
-            size: bytes.len() as u64,
-        })
-        .collect();
+    let expected_ref = expected(fixture, expected_old.as_ref());
     let negotiated = engine
         .negotiate_push(&NegotiatePushRequest {
-            request_id: "push-1".into(),
+            request_id: request_of("main", head),
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_ref: expected(fixture, expected_old.as_ref()),
-            closure: claims,
+            expected_ref: expected_ref.clone(),
+            closure: claims(objects),
         })
         .unwrap();
     let to_send: Vec<Vec<u8>> = objects
@@ -263,7 +362,7 @@ fn push(
         .collect();
     engine
         .upload(&UploadObjectsRequest {
-            transfer_id: [0x7a; 16],
+            transfer_id: negotiated.transfer_id,
             objects: to_send,
             compression: None,
         })
@@ -271,13 +370,7 @@ fn push(
     let signer = fixture.signer();
     engine
         .commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head.clone(),
-                expected_ref: expected(fixture, expected_old.as_ref()),
-            },
+            &commit_request("main", head, expected_ref, negotiated.transfer_id),
             &signer,
         )
         .unwrap()
@@ -305,13 +398,7 @@ fn push_then_pull_round_trips_the_worked_example() {
     let signer = fixture.signer();
     let retried = engine
         .commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head.clone(),
-                expected_ref: None,
-            },
+            &commit_request("main", &head, None, transfer_of(&fixture, &head)),
             &signer,
         )
         .unwrap();
@@ -344,7 +431,7 @@ fn push_then_pull_round_trips_the_worked_example() {
     assert!(pulled.missing.contains(&head2));
     let fetched = engine
         .fetch(&FetchObjectsRequest {
-            transfer_id: [0x7a; 16],
+            transfer_id: pulled.transfer_id,
             accept_compression: None,
             digests: pulled.missing.clone(),
         })
@@ -411,32 +498,11 @@ fn the_refusals_hold() {
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
     push(&fixture, &objects, &head, None);
 
-    // Recreating an existing ref is refused: conflict.
+    // Recreating an existing ref is refused: conflict, at negotiation already.
     let (objects2, head2) = build_commit("forbid(principal, action, resource);", vec![]);
-    for bytes in &objects2 {
-        engine
-            .upload(&UploadObjectsRequest {
-                transfer_id: [0x7a; 16],
-                compression: None,
-                objects: vec![bytes.clone()],
-            })
-            .unwrap();
-    }
     assert!(matches!(
-        engine.commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head2.clone(),
-                expected_ref: None
-            },
-            &signer,
-        ),
-        Err(EngineError::Validation {
-            code: "not_a_root",
-            ..
-        }) | Err(EngineError::Conflict { .. })
+        try_commit(&fixture, "main", &head2, None, &objects2),
+        Err(EngineError::Conflict { .. })
     ));
 
     // Non-fast-forward: expected old that is not an ancestor.
@@ -444,25 +510,14 @@ fn the_refusals_hold() {
         "permit(principal, action, resource) when { true };",
         vec![head2.clone()],
     );
-    for bytes in &objects3 {
-        engine
-            .upload(&UploadObjectsRequest {
-                transfer_id: [0x7a; 16],
-                compression: None,
-                objects: vec![bytes.clone()],
-            })
-            .unwrap();
-    }
+    let all: Vec<Vec<u8>> = objects2.iter().chain(&objects3).cloned().collect();
     assert!(matches!(
-        engine.commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head3,
-                expected_ref: expected(&fixture, Some(&head.clone()))
-            },
-            &signer,
+        try_commit(
+            &fixture,
+            "main",
+            &head3,
+            expected(&fixture, Some(&head)),
+            &all
         ),
         Err(EngineError::Validation {
             code: "not_fast_forward",
@@ -476,15 +531,12 @@ fn the_refusals_hold() {
         vec![head.clone()],
     );
     assert!(matches!(
-        engine.commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: absent_head,
-                expected_ref: expected(&fixture, Some(&head.clone()))
-            },
-            &signer,
+        try_commit(
+            &fixture,
+            "main",
+            &absent_head,
+            expected(&fixture, Some(&head)),
+            &[]
         ),
         Err(EngineError::NotFound { .. })
     ));
@@ -496,9 +548,21 @@ fn the_refusals_hold() {
     }
     .encode()
     .unwrap();
+    let (_, alien_head) = build_commit(
+        "forbid(principal, action, resource) when { 2 == 2 };",
+        vec![head.clone()],
+    );
+    let transfer_id = open(
+        &fixture,
+        "main",
+        &alien_head,
+        expected(&fixture, Some(&head)),
+        std::slice::from_ref(&alien),
+    )
+    .unwrap();
     assert!(matches!(
         engine.upload(&UploadObjectsRequest {
-            transfer_id: [0x7a; 16],
+            transfer_id,
             compression: None,
             objects: vec![alien]
         }),
@@ -532,18 +596,7 @@ fn branching_at_an_existing_commit_is_free() {
     push(&fixture, &objects, &head, None);
 
     // Create `feature` at main's head: nothing uploaded, counter starts at 1.
-    let branched = engine
-        .commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "feature/login".into(),
-                new_head: head.clone(),
-                expected_ref: None,
-            },
-            &signer,
-        )
-        .unwrap();
+    let branched = try_commit(&fixture, "feature/login", &head, None, &[]).unwrap();
     assert_eq!(branched.head, head);
     assert_eq!(branched.counter, 1);
 
@@ -560,8 +613,6 @@ fn branching_at_an_existing_commit_is_free() {
 #[test]
 fn policy_identity_is_recomputed_and_enforced() {
     let fixture = Fixture::new("identity");
-    let engine = fixture.engine();
-    let signer = fixture.signer();
 
     // A commit whose policy annotation does not match the cascade: rejected.
     let source = "permit(principal, action, resource);";
@@ -619,26 +670,8 @@ fn policy_identity_is_recomputed_and_enforced() {
         root_bytes,
         commit_bytes,
     ];
-    for bytes in &objects {
-        engine
-            .upload(&UploadObjectsRequest {
-                transfer_id: [0x7a; 16],
-                compression: None,
-                objects: vec![bytes.clone()],
-            })
-            .unwrap();
-    }
     assert!(matches!(
-        engine.commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head,
-                expected_ref: None
-            },
-            &signer,
-        ),
+        try_commit(&fixture, "main", &head, None, &objects),
         Err(EngineError::Validation {
             code: "policy_id_mismatch",
             ..
@@ -719,27 +752,7 @@ fn policy_identity_is_recomputed_and_enforced() {
             head,
         )
     };
-    for bytes in &objects2 {
-        engine
-            .upload(&UploadObjectsRequest {
-                transfer_id: [0x7a; 16],
-                compression: None,
-                objects: vec![bytes.clone()],
-            })
-            .unwrap();
-    }
-    let committed = engine
-        .commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "declared".into(),
-                new_head: head2,
-                expected_ref: None,
-            },
-            &signer,
-        )
-        .unwrap();
+    let committed = try_commit(&fixture, "declared", &head2, None, &objects2).unwrap();
     assert_eq!(committed.counter, 1);
 }
 
@@ -762,7 +775,7 @@ fn multi_batch_transfer_lifecycle() {
         .collect();
     let negotiated = engine
         .negotiate_push(&NegotiatePushRequest {
-            request_id: "push-1".into(),
+            request_id: request_of("main", &head),
             r#ref: "main".into(),
             new_head: head.clone(),
             expected_ref: None,
@@ -779,20 +792,14 @@ fn multi_batch_transfer_lifecycle() {
     // the ref: the server verifies completeness on disk, not client claims.
     engine
         .upload(&UploadObjectsRequest {
-            transfer_id: [0x7a; 16],
+            transfer_id: negotiated.transfer_id,
             compression: None,
             objects: batches[0].to_vec(),
         })
         .unwrap();
     assert!(matches!(
         engine.commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head.clone(),
-                expected_ref: None
-            },
+            &commit_request("main", &head, None, negotiated.transfer_id),
             &signer,
         ),
         Err(EngineError::NotFound { .. })
@@ -802,17 +809,25 @@ fn multi_batch_transfer_lifecycle() {
         "the ref moved on a premature commit"
     );
 
-    // The retry path: only what is still missing travels. Re-negotiating is
-    // legal (stateless) and now reports fewer missing objects.
+    // The retry path: only what is still missing travels. Re-negotiating with the same request
+    // resumes the same session, and now reports fewer missing objects.
     let renegotiated = engine
         .negotiate_push(&NegotiatePushRequest {
-            request_id: "push-1".into(),
+            request_id: request_of("main", &head),
             r#ref: "main".into(),
             new_head: head.clone(),
             expected_ref: None,
             closure: claims.clone(),
         })
         .unwrap();
+    assert_eq!(
+        renegotiated.transfer_id, negotiated.transfer_id,
+        "the session resumes"
+    );
+    assert_eq!(
+        renegotiated.expiry, negotiated.expiry,
+        "and keeps its expiry"
+    );
     assert!(renegotiated.missing.len() < objects.len());
     assert_eq!(renegotiated.missing.len(), objects.len() - batches[0].len());
 
@@ -821,7 +836,7 @@ fn multi_batch_transfer_lifecycle() {
     for batch in &batches[1..] {
         engine
             .upload(&UploadObjectsRequest {
-                transfer_id: [0x7a; 16],
+                transfer_id: negotiated.transfer_id,
                 compression: None,
                 objects: batch.to_vec(),
             })
@@ -829,7 +844,7 @@ fn multi_batch_transfer_lifecycle() {
     }
     engine
         .upload(&UploadObjectsRequest {
-            transfer_id: [0x7a; 16],
+            transfer_id: negotiated.transfer_id,
             compression: None,
             objects: batches[0].to_vec(),
         })
@@ -838,7 +853,7 @@ fn multi_batch_transfer_lifecycle() {
     // missing = [] now: the client proceeds straight to CommitPush.
     let done = engine
         .negotiate_push(&NegotiatePushRequest {
-            request_id: "push-1".into(),
+            request_id: request_of("main", &head),
             r#ref: "main".into(),
             new_head: head.clone(),
             expected_ref: None,
@@ -850,13 +865,7 @@ fn multi_batch_transfer_lifecycle() {
     // Finalize ONCE: the ref moves only now.
     let committed = engine
         .commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head.clone(),
-                expected_ref: None,
-            },
+            &commit_request("main", &head, None, negotiated.transfer_id),
             &signer,
         )
         .unwrap();
@@ -880,7 +889,7 @@ fn multi_batch_transfer_lifecycle() {
     for chunk in pulled.missing.chunks(2) {
         let fetched = engine
             .fetch(&FetchObjectsRequest {
-                transfer_id: [0x7a; 16],
+                transfer_id: pulled.transfer_id,
                 accept_compression: None,
                 digests: chunk.to_vec(),
             })
@@ -917,13 +926,16 @@ fn multi_batch_transfer_lifecycle() {
 fn tampered_uploads_are_rejected() {
     let fixture = Fixture::new("tampered");
     let engine = fixture.engine();
-    let (objects, _) = build_commit("permit(principal, action, resource);", vec![]);
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
 
     let mut tampered = objects[0].clone();
     tampered.push(0x00);
+    // Each declared, so the bytes themselves are what is refused.
+    let declared = vec![objects[0].clone(), tampered.clone(), b"garbage".to_vec()];
+    let transfer_id = open(&fixture, "main", &head, None, &declared).unwrap();
     assert!(matches!(
         engine.upload(&UploadObjectsRequest {
-            transfer_id: [0x7a; 16],
+            transfer_id,
             compression: None,
             objects: vec![tampered]
         }),
@@ -936,7 +948,7 @@ fn tampered_uploads_are_rejected() {
     assert!(
         engine
             .upload(&UploadObjectsRequest {
-                transfer_id: [0x7a; 16],
+                transfer_id,
                 compression: None,
                 objects: garbage_last.clone()
             })
@@ -946,11 +958,24 @@ fn tampered_uploads_are_rejected() {
     garbage_last.pop();
     engine
         .upload(&UploadObjectsRequest {
-            transfer_id: [0x7a; 16],
+            transfer_id,
             compression: None,
             objects: garbage_last,
         })
         .unwrap();
+
+    // An object the session never declared is refused before it is read.
+    assert!(matches!(
+        engine.upload(&UploadObjectsRequest {
+            transfer_id,
+            compression: None,
+            objects: vec![objects[1].clone()]
+        }),
+        Err(EngineError::Transfer {
+            code: "transfer_mismatch",
+            ..
+        })
+    ));
 }
 
 /// The alias carries identity across a rename: same bytes, same @alias, a
@@ -960,8 +985,6 @@ fn tampered_uploads_are_rejected() {
 #[test]
 fn alias_carries_identity_across_renames() {
     let fixture = Fixture::new("alias-rename");
-    let engine = fixture.engine();
-    let signer = fixture.signer();
 
     let source = "@alias(\"billing-access\")\npermit(principal, action, resource);";
     let expected_id = derive_policy_id(source.as_bytes());
@@ -1035,52 +1058,19 @@ fn alias_carries_identity_across_renames() {
 
     // Commit 1: the policy at its original name.
     let (objects, head) = build("billing-view.cedar", vec![]);
-    for bytes in &objects {
-        engine
-            .upload(&UploadObjectsRequest {
-                transfer_id: [0x7a; 16],
-                compression: None,
-                objects: vec![bytes.clone()],
-            })
-            .unwrap();
-    }
-    engine
-        .commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head.clone(),
-                expected_ref: None,
-            },
-            &signer,
-        )
-        .unwrap();
+    try_commit(&fixture, "main", &head, None, &objects).unwrap();
 
     // Commit 2: renamed entry, same alias — the SAME id must be accepted
     // (carried by alias, since no path matches).
     let (objects2, head2) = build("billing-access.cedar", vec![head.clone()]);
-    for bytes in &objects2 {
-        engine
-            .upload(&UploadObjectsRequest {
-                transfer_id: [0x7a; 16],
-                compression: None,
-                objects: vec![bytes.clone()],
-            })
-            .unwrap();
-    }
-    let committed = engine
-        .commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head2,
-                expected_ref: expected(&fixture, Some(&head)),
-            },
-            &signer,
-        )
-        .unwrap();
+    let committed = try_commit(
+        &fixture,
+        "main",
+        &head2,
+        expected(&fixture, Some(&head)),
+        &objects2,
+    )
+    .unwrap();
     assert_eq!(committed.counter, 2);
 }
 
@@ -1180,27 +1170,30 @@ fn try_push(
     objects: &[Vec<u8>],
     head: &Digest,
 ) -> Result<CommitPushResponse, EngineError> {
-    let engine = fixture.engine();
-    for bytes in objects {
-        engine
-            .upload(&UploadObjectsRequest {
-                transfer_id: [0x7a; 16],
-                compression: None,
-                objects: vec![bytes.clone()],
-            })
-            .unwrap();
-    }
-    let signer = fixture.signer();
-    engine.commit_push(
-        &CommitPushRequest {
-            request_id: "commit-1".into(),
-            transfer_id: [0x7a; 16],
+    try_commit(fixture, "main", head, None, objects)
+}
+
+/// A second session of a head that already landed, opened under another request id: its
+/// commit takes the idempotent path of a ref already where it asks.
+fn reopen(fixture: &Fixture, head: &Digest, request_id: &str) -> CommitPushRequest {
+    let transfer_id = fixture
+        .engine()
+        .negotiate_push(&NegotiatePushRequest {
+            request_id: request_id.into(),
             r#ref: "main".into(),
             new_head: head.clone(),
             expected_ref: None,
-        },
-        &signer,
-    )
+            closure: Vec::new(),
+        })
+        .unwrap()
+        .transfer_id;
+    CommitPushRequest {
+        request_id: request_id.into(),
+        transfer_id,
+        r#ref: "main".into(),
+        new_head: head.clone(),
+        expected_ref: None,
+    }
 }
 
 const SCHEMA_COVERING: &str = "entity User;\nentity Document;\naction view appliesTo { principal: [User], resource: [Document] };\n";
@@ -1267,16 +1260,7 @@ fn a_retried_commit_whose_statement_was_lost_is_signed_again() {
     let signer = fixture.signer();
     let retried = fixture
         .engine()
-        .commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head.clone(),
-                expected_ref: None,
-            },
-            &signer,
-        )
+        .commit_push(&reopen(&fixture, &head, "again"), &signer)
         .unwrap();
     let statement = SignedHead::decode(&retried.statement)
         .unwrap()
@@ -1321,7 +1305,8 @@ fn every_file_of_a_populated_ledger_is_declared() {
             "objects/<2 hex>/<62 hex>",
             "refs/<name>",
             "FORMAT",
-            "signatures/<ref>"
+            "signatures/<ref>",
+            "transfers/<32 hex>.cbor"
         ]
     );
     let hex = |text: &str, length: usize| {
@@ -1350,6 +1335,7 @@ fn every_file_of_a_populated_ledger_is_declared() {
         let matched = match parts.as_slice() {
             ["FORMAT"] => true,
             ["objects", fan, rest] => hex(fan, 2) && hex(rest, 62),
+            ["transfers", session] => session.strip_suffix(".cbor").is_some_and(|id| hex(id, 32)),
             ["refs", name @ ..] | ["signatures", name @ ..] => {
                 permguard_objects::grammar::validate_ref_name(&name.join("/")).is_ok()
             }
@@ -1367,9 +1353,10 @@ fn a_commit_flushes_the_objects_it_reaches_before_writing_the_ref() {
     let fixture = Fixture::new("commit-durable");
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
     let engine = fixture.engine();
+    let transfer_id = open(&fixture, "main", &head, None, &objects).unwrap();
     engine
         .upload(&UploadObjectsRequest {
-            transfer_id: [0x7a; 16],
+            transfer_id,
             objects: objects.clone(),
             compression: None,
         })
@@ -1383,16 +1370,7 @@ fn a_commit_flushes_the_objects_it_reaches_before_writing_the_ref() {
         );
         assert!(
             engine
-                .commit_push(
-                    &CommitPushRequest {
-                        request_id: "commit-1".into(),
-                        transfer_id: [0x7a; 16],
-                        r#ref: "main".into(),
-                        new_head: head.clone(),
-                        expected_ref: None,
-                    },
-                    &signer,
-                )
+                .commit_push(&commit_request("main", &head, None, transfer_id), &signer)
                 .is_err(),
             "the objects could not be made durable, so the commit does not land"
         );
@@ -1411,6 +1389,7 @@ fn a_retried_commit_is_answered_only_after_its_ref_is_flushed() {
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
     push(&fixture, &objects, &head, None);
     let signer = fixture.signer();
+    let again = reopen(&fixture, &head, "again");
     let refs = fixture.store.root().join("refs");
     for path in [refs.clone(), refs.join("main")] {
         // One failure only: a retry within the call would succeed, and the call must not.
@@ -1419,35 +1398,14 @@ fn a_retried_commit_is_answered_only_after_its_ref_is_flushed() {
             permguard_core::fault::Fault::FsyncTimes { remaining: 1 },
         );
         assert!(
-            fixture
-                .engine()
-                .commit_push(
-                    &CommitPushRequest {
-                        request_id: "commit-1".into(),
-                        transfer_id: [0x7a; 16],
-                        r#ref: "main".into(),
-                        new_head: head.clone(),
-                        expected_ref: None,
-                    },
-                    &signer,
-                )
-                .is_err(),
+            fixture.engine().commit_push(&again, &signer).is_err(),
             "{}",
             path.display()
         );
     }
     let retried = fixture
         .engine()
-        .commit_push(
-            &CommitPushRequest {
-                request_id: "commit-1".into(),
-                transfer_id: [0x7a; 16],
-                r#ref: "main".into(),
-                new_head: head.clone(),
-                expected_ref: None,
-            },
-            &signer,
-        )
+        .commit_push(&again, &signer)
         .expect("answered once the flush succeeds");
     assert_eq!((retried.head, retried.counter), (head, 1));
 }
@@ -1513,13 +1471,13 @@ fn a_negotiation_naming_a_state_that_is_not_current_conflicts() {
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
     push(&fixture, &objects, &head, None);
     let (_, next) = build_commit("forbid(principal, action, resource);", vec![head.clone()]);
-    let negotiate = |new_head: &Digest, expected_ref: Option<ExpectedRef>| {
+    let negotiate = |new_head: &Digest, expected_ref: Option<ExpectedRef>, request_id: &str| {
         fixture.engine().negotiate_push(&NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: new_head.clone(),
             expected_ref,
             closure: Vec::new(),
-            request_id: "push-2".into(),
+            request_id: request_id.into(),
         })
     };
 
@@ -1528,13 +1486,546 @@ fn a_negotiation_naming_a_state_that_is_not_current_conflicts() {
         digest: Digest::compute(b"not the state"),
     };
     assert!(matches!(
-        negotiate(&next, Some(stale)),
+        negotiate(&next, Some(stale), "stale"),
         Err(EngineError::Conflict { current: Some(_) })
     ));
     assert!(matches!(
-        negotiate(&next, None),
+        negotiate(&next, None, "creation"),
         Err(EngineError::Conflict { current: Some(_) })
     ));
-    negotiate(&head, None).expect("a retry of the landed head negotiates");
-    negotiate(&next, expected(&fixture, Some(&head))).expect("the current state negotiates");
+    negotiate(&head, None, "retry").expect("a retry of the landed head negotiates");
+    negotiate(&next, expected(&fixture, Some(&head)), "next")
+        .expect("the current state negotiates");
+}
+
+/// WP-7.12: a ref update is one operation of the Host's mutation transaction. Its record names
+/// the operation, which is what recovery asks: the operation that wrote the ref is observed at
+/// the ref's counter, any other is not.
+#[test]
+fn a_ref_update_names_its_operation_for_recovery() {
+    use permguard_host::operations::journal::OperationId;
+    use permguard_host::operations::mutation::Domain as _;
+
+    let fixture = Fixture::new("operation");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    push(&fixture, &objects, &head, None);
+    let written = fixture
+        .store
+        .ref_operation("main")
+        .unwrap()
+        .expect("the record names its operation");
+    let bytes: [u8; 16] = (0..16)
+        .map(|at| u8::from_str_radix(&written[at * 2..at * 2 + 2], 16).unwrap())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+
+    let ledger = fixture.store.root();
+    let zones = ledger.parent().unwrap().join("zones");
+    std::fs::create_dir_all(zones.join("zone-1").join("ledgers")).unwrap();
+    std::fs::rename(
+        ledger,
+        zones.join("zone-1").join("ledgers").join("ledger-1"),
+    )
+    .unwrap();
+    let domain = permguard_control_plane::store::RefDomain { zones_root: zones };
+    let target = permguard_control_plane::store::RefDomain::target("zone-1", "ledger-1", "main");
+    let observed = domain
+        .observe(&OperationId::from_bytes(bytes), Some(&target))
+        .expect("the operation that wrote the ref is observed");
+    assert_eq!(observed.revision, 1);
+    assert!(
+        domain
+            .observe(&OperationId::from_bytes([0xee; 16]), Some(&target))
+            .is_none(),
+        "another operation is not"
+    );
+    assert!(
+        domain
+            .observe(&OperationId::from_bytes(bytes), Some("../escape/main"))
+            .is_none(),
+        "nor a target outside the zones"
+    );
+}
+
+/// WP-7.12: a ref update the audit trail cannot record is refused before anything is applied,
+/// and the transfer stays open for the retry once the trail is back.
+#[test]
+fn a_ref_update_the_audit_cannot_record_moves_nothing() {
+    let fixture = Fixture::new("audit-down");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    let engine = fixture.engine();
+    let transfer_id = open(&fixture, "main", &head, None, &objects).unwrap();
+    engine
+        .upload(&UploadObjectsRequest {
+            transfer_id,
+            objects: objects.clone(),
+            compression: None,
+        })
+        .unwrap();
+    let signer = fixture.signer();
+    {
+        let _guard = permguard_core::fault::inject(
+            fixture.volume.join("host").join("audit").join("trails"),
+            permguard_core::fault::Fault::Fsync,
+        );
+        let refused = engine
+            .commit_push(&commit_request("main", &head, None, transfer_id), &signer)
+            .expect_err("the intent cannot be recorded");
+        assert!(
+            matches!(refused, EngineError::AuditUnavailable { .. }),
+            "{refused}"
+        );
+    }
+    assert!(
+        fixture.store.read_ref("main").unwrap().is_none(),
+        "nothing was applied"
+    );
+    let committed = engine
+        .commit_push(&commit_request("main", &head, None, transfer_id), &signer)
+        .expect("the same transfer commits once the trail is back");
+    assert_eq!(committed.counter, 1);
+}
+
+/// WP-7.12: a transfer is its caller's. Another caller naming it learns nothing of it, on upload
+/// and on commit; the session it names is the one the commit is bound to.
+#[test]
+fn another_caller_cannot_use_a_transfer() {
+    let fixture = Fixture::new("substitution");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    let transfer_id = open(&fixture, "main", &head, None, &objects).unwrap();
+    let mallory = Engine {
+        caller: "mallory".into(),
+        ..fixture.engine()
+    };
+    assert!(matches!(
+        mallory.upload(&UploadObjectsRequest {
+            transfer_id,
+            compression: None,
+            objects: objects.clone(),
+        }),
+        Err(EngineError::Transfer {
+            code: "transfer_unknown",
+            ..
+        })
+    ));
+    assert!(matches!(
+        mallory.commit_push(
+            &commit_request("main", &head, None, transfer_id),
+            &fixture.signer()
+        ),
+        Err(EngineError::Transfer {
+            code: "transfer_unknown",
+            ..
+        })
+    ));
+    // The rightful caller's commit, under another request id, is not the session's.
+    let mut other = commit_request("main", &head, None, transfer_id);
+    other.request_id = "another".into();
+    assert!(matches!(
+        fixture.engine().commit_push(&other, &fixture.signer()),
+        Err(EngineError::Transfer {
+            code: "transfer_mismatch",
+            ..
+        })
+    ));
+    assert!(fixture.store.read_ref("main").unwrap().is_none());
+}
+
+/// WP-7.12: a session past its expiry is closed before anything it reserved is released, and
+/// refuses what names it; a new request opens a new one.
+#[test]
+fn an_expired_transfer_is_closed_and_releases_its_reservation() {
+    let fixture = Fixture::new("expired");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    let instant = Engine {
+        transfer: TransferPolicy {
+            ttl: std::time::Duration::ZERO,
+            grace: std::time::Duration::from_secs(3600),
+        },
+        ..fixture.engine()
+    };
+    let negotiated = instant
+        .negotiate_push(&NegotiatePushRequest {
+            request_id: "short".into(),
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: claims(&objects),
+        })
+        .unwrap();
+    assert!(matches!(
+        instant.upload(&UploadObjectsRequest {
+            transfer_id: negotiated.transfer_id,
+            compression: None,
+            objects: objects.clone(),
+        }),
+        Err(EngineError::Transfer {
+            code: "transfer_expired",
+            ..
+        })
+    ));
+    let transfers = fixture.store.transfers().unwrap();
+    let session = transfers.get(&negotiated.transfer_id).unwrap().unwrap();
+    assert_eq!(
+        session.state,
+        permguard_control_plane::transfer::State::Expired,
+        "closed durably"
+    );
+    assert_eq!(
+        transfers.reserved().unwrap(),
+        0,
+        "its reservation is released"
+    );
+    assert_eq!(
+        transfers.pins().unwrap().len(),
+        objects.len(),
+        "its pins hold for the grace"
+    );
+    drop(transfers);
+    // The same request again is told the transfer ended.
+    assert!(matches!(
+        instant.negotiate_push(&NegotiatePushRequest {
+            request_id: "short".into(),
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: claims(&objects),
+        }),
+        Err(EngineError::Transfer {
+            code: "transfer_expired",
+            ..
+        })
+    ));
+    // A new request pushes.
+    try_commit(&fixture, "main", &head, None, &objects).expect("a new transfer commits");
+}
+
+/// WP-7.12: the quota is reserved at negotiation: a push the ledger cannot hold beside what the
+/// open transfers reserved is refused before a byte arrives, and an upload cannot land past what
+/// its own session reserved.
+#[test]
+fn the_quota_is_reserved_before_anything_lands() {
+    let fixture = Fixture::new("quota");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    let declared: u64 = objects.iter().map(|bytes| bytes.len() as u64).sum();
+    let tight = Engine {
+        limits: EngineLimits {
+            ledger_quota_bytes: declared + declared / 2,
+            ..limits()
+        },
+        ..fixture.engine()
+    };
+    let first = tight
+        .negotiate_push(&NegotiatePushRequest {
+            request_id: "first".into(),
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: claims(&objects),
+        })
+        .unwrap();
+    assert_eq!(first.reservation, declared);
+    let refused = tight.negotiate_push(&NegotiatePushRequest {
+        request_id: "second".into(),
+        r#ref: "other".into(),
+        new_head: head.clone(),
+        expected_ref: None,
+        closure: claims(&objects),
+    });
+    assert!(
+        matches!(refused, Err(EngineError::Unavailable { .. })),
+        "the first transfer's reservation is held: {refused:?}"
+    );
+
+    // A session that declared less than it uploads cannot land past its reservation.
+    let understated: Vec<ObjectClaim> = claims(&objects)
+        .into_iter()
+        .map(|claim| ObjectClaim { size: 1, ..claim })
+        .collect();
+    let small = fixture
+        .engine()
+        .negotiate_push(&NegotiatePushRequest {
+            request_id: "understated".into(),
+            r#ref: "small".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: understated,
+        })
+        .unwrap();
+    assert!(matches!(
+        fixture.engine().upload(&UploadObjectsRequest {
+            transfer_id: small.transfer_id,
+            compression: None,
+            objects: objects.clone(),
+        }),
+        Err(EngineError::Unavailable { .. })
+    ));
+}
+
+/// WP-7.12: a batch refused half way keeps what landed before the refusal, and its session
+/// counts it; the refused object never lands, its blob checked before it is written.
+#[test]
+fn a_batch_refused_half_way_counts_what_landed() {
+    let fixture = Fixture::new("half-batch");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    let alien = Blob {
+        media_type: "application/vnd.acme.unknown".into(),
+        data: vec![1],
+    }
+    .encode()
+    .unwrap();
+    let declared: Vec<Vec<u8>> = objects.iter().cloned().chain([alien.clone()]).collect();
+    let transfer_id = open(&fixture, "main", &head, None, &declared).unwrap();
+    assert!(
+        fixture
+            .engine()
+            .upload(&UploadObjectsRequest {
+                transfer_id,
+                compression: None,
+                objects: vec![objects[0].clone(), alien.clone()],
+            })
+            .is_err()
+    );
+    assert!(fixture.store.has_object(&Digest::compute(&objects[0])));
+    assert!(
+        !fixture.store.has_object(&Digest::compute(&alien)),
+        "a blob its media type refuses never lands"
+    );
+    let session = fixture
+        .store
+        .transfers()
+        .unwrap()
+        .get(&transfer_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        session.landed,
+        objects[0].len() as u64,
+        "what landed is counted"
+    );
+}
+
+/// WP-7.12: pulls end as they are fetched, and a round that finds nothing to fetch opens no
+/// session, so one caller's rounds never run into a cap however often they come.
+#[test]
+fn repeated_pull_rounds_are_never_refused() {
+    let fixture = Fixture::new("rounds");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    push(&fixture, &objects, &head, None);
+    let engine = fixture.engine();
+    let signer = fixture.signer();
+    for round in 0..(permguard_control_plane::transfer::MAX_OPEN_PER_PRINCIPAL * 2) {
+        let pulled = engine
+            .negotiate_pull(
+                &NegotiatePullRequest {
+                    checkpoint: None,
+                    r#ref: "main".into(),
+                    at: None,
+                    have: vec![],
+                },
+                &signer,
+            )
+            .unwrap_or_else(|error| panic!("round {round}: {error}"));
+        engine
+            .fetch(&FetchObjectsRequest {
+                transfer_id: pulled.transfer_id,
+                accept_compression: None,
+                digests: pulled.missing.clone(),
+            })
+            .unwrap_or_else(|error| panic!("round {round}: {error}"));
+        // Fetched whole, the session is gone: its id names nothing more.
+        assert!(matches!(
+            engine.fetch(&FetchObjectsRequest {
+                transfer_id: pulled.transfer_id,
+                accept_compression: None,
+                digests: pulled.missing,
+            }),
+            Err(EngineError::Transfer {
+                code: "transfer_unknown",
+                ..
+            })
+        ));
+        // A current mirror opens nothing.
+        let current = engine
+            .negotiate_pull(
+                &NegotiatePullRequest {
+                    checkpoint: None,
+                    r#ref: "main".into(),
+                    at: None,
+                    have: vec![head.clone()],
+                },
+                &signer,
+            )
+            .unwrap();
+        assert!(current.missing.is_empty());
+    }
+    let kept = fixture.store.transfers().unwrap().list().unwrap();
+    assert!(
+        kept.iter()
+            .all(|session| session.direction == permguard_control_plane::transfer::Direction::Push),
+        "no pull session outlives its fetch"
+    );
+}
+
+/// WP-7.12: the same request id with other parameters is another push, refused; the session is
+/// a push's, and a fetch naming it is told so; a fetch asks only what its negotiation answered.
+#[test]
+fn a_session_is_bound_to_its_request_and_direction() {
+    let fixture = Fixture::new("bound");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    let engine = fixture.engine();
+    let transfer_id = open(&fixture, "main", &head, None, &objects).unwrap();
+    assert!(matches!(
+        engine.negotiate_push(&NegotiatePushRequest {
+            request_id: request_of("main", &head),
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: claims(&objects[..1]),
+        }),
+        Err(EngineError::Transfer {
+            code: "transfer_mismatch",
+            ..
+        })
+    ));
+    assert!(matches!(
+        engine.fetch(&FetchObjectsRequest {
+            transfer_id,
+            accept_compression: None,
+            digests: Vec::new(),
+        }),
+        Err(EngineError::Transfer {
+            code: "transfer_mismatch",
+            ..
+        })
+    ));
+
+    push(&fixture, &objects, &head, None);
+    let pulled = engine
+        .negotiate_pull(
+            &NegotiatePullRequest {
+                checkpoint: None,
+                r#ref: "main".into(),
+                at: None,
+                have: vec![],
+            },
+            &fixture.signer(),
+        )
+        .unwrap();
+    assert!(matches!(
+        engine.fetch(&FetchObjectsRequest {
+            transfer_id: pulled.transfer_id,
+            accept_compression: None,
+            digests: vec![Digest::compute(b"never answered")],
+        }),
+        Err(EngineError::Transfer {
+            code: "transfer_mismatch",
+            ..
+        })
+    ));
+}
+
+/// WP-7.12: a commit refused for what its session is bound to ends the session, which releases
+/// its reservation; the same commit again is told the transfer ended.
+#[test]
+fn a_refused_commit_aborts_its_transfer() {
+    let fixture = Fixture::new("aborted");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    push(&fixture, &objects, &head, None);
+    let (objects2, head2) = build_commit("forbid(principal, action, resource);", vec![]);
+    // A transfer that creates `other`, opened while `other` does not exist yet.
+    let transfer_id = open(&fixture, "other", &head2, None, &objects2).unwrap();
+    let engine = fixture.engine();
+    engine
+        .upload(&UploadObjectsRequest {
+            transfer_id,
+            compression: None,
+            objects: objects2.clone(),
+        })
+        .unwrap();
+    // Another commit took `other` meanwhile.
+    try_commit(&fixture, "other", &head, None, &[]).unwrap();
+    let refused = engine
+        .commit_push(
+            &commit_request("other", &head2, None, transfer_id),
+            &fixture.signer(),
+        )
+        .expect_err("the ref exists now");
+    assert!(matches!(refused, EngineError::Conflict { .. }), "{refused}");
+    let transfers = fixture.store.transfers().unwrap();
+    let session = transfers.get(&transfer_id).unwrap().unwrap();
+    assert_eq!(
+        session.state,
+        permguard_control_plane::transfer::State::Aborted
+    );
+    assert_eq!(transfers.reserved().unwrap(), 0);
+    drop(transfers);
+    assert!(matches!(
+        engine.commit_push(
+            &commit_request("other", &head2, None, transfer_id),
+            &fixture.signer()
+        ),
+        Err(EngineError::Transfer {
+            code: "transfer_expired",
+            ..
+        })
+    ));
+}
+
+/// WP-7.12: one caller keeps a bounded number of pushes open on a ledger; another caller is not
+/// held back by it.
+#[test]
+fn a_caller_keeps_a_bounded_number_of_pushes_open() {
+    use permguard_control_plane::transfer::MAX_OPEN_PER_PRINCIPAL;
+
+    let fixture = Fixture::new("cap");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    let engine = fixture.engine();
+    let negotiate = |engine: &Engine<'_>, at: usize| {
+        engine.negotiate_push(&NegotiatePushRequest {
+            request_id: format!("push-{at}"),
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: claims(&objects[..1]),
+        })
+    };
+    for at in 0..MAX_OPEN_PER_PRINCIPAL {
+        negotiate(&engine, at).unwrap();
+    }
+    assert!(matches!(
+        negotiate(&engine, MAX_OPEN_PER_PRINCIPAL),
+        Err(EngineError::Unavailable { .. })
+    ));
+    let other = Engine {
+        caller: "another".into(),
+        ..fixture.engine()
+    };
+    negotiate(&other, 0).expect("another caller opens its own");
+}
+
+/// WP-7.12: the ledger's bound holds at upload as well, on what it holds now: a quota lowered
+/// after a transfer reserved refuses what would pass it.
+#[test]
+fn an_upload_past_the_ledger_quota_is_refused() {
+    let fixture = Fixture::new("lowered");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    let transfer_id = open(&fixture, "main", &head, None, &objects).unwrap();
+    let lowered = Engine {
+        limits: EngineLimits {
+            ledger_quota_bytes: 1,
+            ..limits()
+        },
+        ..fixture.engine()
+    };
+    assert!(matches!(
+        lowered.upload(&UploadObjectsRequest {
+            transfer_id,
+            compression: None,
+            objects: objects.clone(),
+        }),
+        Err(EngineError::Unavailable { .. })
+    ));
+    assert!(!fixture.store.has_object(&Digest::compute(&objects[0])));
 }

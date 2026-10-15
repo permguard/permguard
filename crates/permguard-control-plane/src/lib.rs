@@ -18,6 +18,7 @@ mod handles;
 pub mod inventory;
 mod service;
 pub mod store;
+pub mod transfer;
 mod v1;
 pub mod verify;
 mod wire;

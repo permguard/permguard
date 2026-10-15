@@ -73,7 +73,7 @@ Forward compatibility is carried by versions, never by silently ignored fields.
 | `objects.json`        | blob, tree and commit                              | `blob`, `tree`, `commit`                                                                           |
 | `manifest.json`       | ledger manifest blob payload                       | `manifest`                                                                                         |
 | `head-statement.json` | the target signed head statement (WP-7.1)          | `cose_sign1`                                                                                       |
-| `notp.json`           | NOTP bodies, the `GET ref` answer, the ref state   | `ref_state`, then one per message                                                                  |
+| `notp.json`           | NOTP bodies, the `GET ref` answer, the ref state   | `ref_state`, one per message, `get_ref_request`, `mirror_request`                                  |
 | `sealed-key.json`     | sealed private key and its two sealing contexts    | `sealed_key`, `content_context`, `wrap_context`                                                    |
 | `key-set.json`        | key-set digest input                               | `key_set`                                                                                          |
 | `kdf.json`            | HKDF `info` tuples                                 | `host_local_info`, `zone_root_info`, `zone_use_info`                                               |
@@ -86,6 +86,7 @@ Forward compatibility is carried by versions, never by silently ignored fields.
 | `operation-plan.json` | plan receipt, approval and the plan body           | `plan_receipt`, `plan_approval`, `plan_body`                                                       |
 
 `notp.json` also registers `ref_answer`, the `GET …/refs/{name}` body, and `ref_state`, the bytes a `ref_digest` is taken over, which never travel.
+It registers `get_ref_request` and `mirror_request` too, the messages of the `policy.mirror` task that carry a pull over the Host task transport.
 Label 3 of `negotiate_push_request` and `commit_push_request`, today's `expected_old`, is retired by `expected_ref` and never reused.
 The `statement` members of the NOTP bodies are the COSE_Sign1 bytes that `head-statement.json` registers.
 

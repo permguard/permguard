@@ -318,6 +318,12 @@ mod tests {
                 max_push_bytes: 64 * 1024 * 1024,
                 ledger_quota_bytes: 256 * 1024 * 1024,
             },
+            crate::engine::TransferPolicy {
+                ttl: Duration::from_secs(900),
+                grace: Duration::from_secs(3600),
+            },
+            crate::handles::ref_mutations_for_tests(&root.join("volume")),
+            None,
             permguard_languages::registry::Enabled::everything(),
             true,
             None,

@@ -287,6 +287,59 @@ impl Incidents for SessionIncidents<'_> {
     }
 }
 
+/// A handler a Plane provides once it is composed, after the Host built its task sessions
+/// (WP-7.12): until the Plane fills it, it answers `not_served_yet`, as an unregistered contract
+/// does.
+#[derive(Default)]
+pub struct Deferred(std::sync::OnceLock<Arc<dyn TaskHandler>>);
+
+impl std::fmt::Debug for Deferred {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Deferred(filled: {})", self.0.get().is_some())
+    }
+}
+
+impl Deferred {
+    /// Fills it with `handler`; it is filled once, and a second Plane's handler is refused.
+    pub fn fill(&self, handler: Arc<dyn TaskHandler>) -> Result<(), MembershipError> {
+        self.0.set(handler).map_err(|_| {
+            MembershipError::Invalid("a deferred task handler is filled once".to_owned())
+        })
+    }
+
+    fn unserved() -> Refusal {
+        refusal(
+            codes::host::NOT_SERVED_YET,
+            "the Plane that serves this task is not composed",
+        )
+    }
+}
+
+impl TaskHandler for Deferred {
+    fn handle(&self, context: &TaskContext, body: &[u8]) -> Result<Vec<u8>, Refusal> {
+        match self.0.get() {
+            Some(handler) => handler.handle(context, body),
+            None => Err(Self::unserved()),
+        }
+    }
+
+    fn handle_with(
+        &self,
+        context: &TaskContext,
+        body: &[u8],
+        incidents: &dyn Incidents,
+    ) -> Result<Vec<u8>, Refusal> {
+        match self.0.get() {
+            Some(handler) => handler.handle_with(context, body, incidents),
+            None => Err(Self::unserved()),
+        }
+    }
+
+    fn keeps_answers(&self) -> bool {
+        self.0.get().is_none_or(|handler| handler.keeps_answers())
+    }
+}
+
 /// The task handlers by task type and contract version (WP-4.4). A contract a Plane declared
 /// without registering its handler answers `not_served_yet`.
 #[derive(Clone, Default)]

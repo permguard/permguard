@@ -135,6 +135,10 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
         1,
     )
     .expect("issued");
+    let ref_mutations = std::sync::Arc::new(
+        permguard_host::operations::mutation::Mutations::open_offline(&held, "test")
+            .expect("the mutation journal opens"),
+    );
     std::mem::forget(held);
 
     let module = permguard_control_plane::module();
@@ -142,6 +146,8 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
         .ring(CONTROL_ATTEST, keys)
         // Every head statement names its Host (WP-7.1): NOTP is served only with one.
         .host_id([0x11; 16])
+        // Every ref update runs in a mutation transaction (WP-7.12).
+        .mutations(ref_mutations)
         .authorization(Arc::new(Authorization::new(store, public)))
         .build()
         .register(module.declaration(config))

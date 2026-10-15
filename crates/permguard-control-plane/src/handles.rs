@@ -40,7 +40,6 @@ impl AuditSchema for ControlPlaneAudit {
         "ledger.create.refused",
         "ledger.rename.refused",
         "ledger.delete.refused",
-        "ledger.pushed",
         "notp.push.negotiate.refused",
         "notp.upload.refused",
         "notp.push.commit.refused",
@@ -61,6 +60,7 @@ pub(crate) fn declaration() -> Declaration {
         .signs::<HeadStatementV1>()
         .reads_public_keys(DATA_ATTEST)
         .audits::<ControlPlaneAudit>()
+        .mutates(crate::store::REFS_DOMAIN)
         .handles_task(TaskType::PolicyMirror, 1)
         .handles_task(TaskType::EventsImport, 1)
         .uses_task(TaskType::DecisionsShip, 1)
@@ -86,6 +86,26 @@ pub(crate) fn authorization(
         || Arc::new(permguard_host::composition::Authorization::closed()),
         |registration| registration.authorization(),
     )
+}
+
+/// The mutation transaction the ref updates run in (WP-3.6), when the Host composes one.
+pub(crate) fn ref_mutations(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::MutationHandle> {
+    registration(context)?
+        .mutations(crate::store::REFS_DOMAIN)
+        .ok()
+        .flatten()
+}
+
+/// A mutation transaction of the ref updates over an offline engine of its own on a fresh volume
+/// under `directory`, for a test.
+#[cfg(test)]
+pub(crate) fn ref_mutations_for_tests(
+    directory: &std::path::Path,
+) -> permguard_host::composition::MutationHandle {
+    crate::store::testing::offline_ref_mutations(directory)
+        .unwrap_or_else(|error| unreachable!("a test mutation transaction opens: {error}"))
 }
 
 /// The audit handle, when an audit recorder is composed.

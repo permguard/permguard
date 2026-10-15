@@ -361,6 +361,11 @@ pub const SETTING_NOTP_MAX_PUSH_BYTES: &str = "PERMGUARD_NOTP_MAX_PUSH_BYTES";
 /// the ceiling that keeps them from costing the volume.
 pub const SETTING_NOTP_LEDGER_QUOTA_BYTES: &str = "PERMGUARD_NOTP_LEDGER_QUOTA_BYTES";
 
+/// Runtime setting key for how long a NOTP transfer session stays open (WP-7.12): a push that
+/// has not committed by then is closed `expired` and its reservation released, its pins and
+/// answer kept for `storage.gc.grace`; a pull not fetched by then ends.
+pub const SETTING_NOTP_TRANSFER_TTL: &str = "PERMGUARD_NOTP_TRANSFER_TTL";
+
 /// Runtime setting keys for a mirroring plane's synchronization loop.
 ///
 /// The *servers* it follows are a structured record and come from the configuration file (see
@@ -1017,6 +1022,10 @@ const DEFAULT_NOTP_MAX_BATCH_OBJECTS: u64 = 1_000;
 const DEFAULT_NOTP_MAX_PUSH_OBJECTS: u64 = 10_000;
 const DEFAULT_NOTP_MAX_PUSH_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_NOTP_LEDGER_QUOTA_BYTES: u64 = 1024 * 1024 * 1024;
+/// Fifteen minutes: a push that takes longer negotiates again (owner decision, 2026-10-14).
+const DEFAULT_NOTP_TRANSFER_TTL: Duration = Duration::from_secs(15 * 60);
+/// A session's expiry is bounded: one hour at most.
+const MAXIMUM_NOTP_TRANSFER_TTL: Duration = Duration::from_secs(60 * 60);
 
 /// Where the key ring lives inside the volume when nothing says otherwise.
 ///
@@ -1313,6 +1322,7 @@ pub struct Config {
     notp_max_push_objects: u64,
     notp_max_push_bytes: u64,
     notp_ledger_quota_bytes: u64,
+    notp_transfer_ttl: Duration,
     audit_directory: Option<String>,
     audit_retention: Duration,
     audit_retention_security: Option<Duration>,
@@ -1493,6 +1503,7 @@ impl Default for Config {
             notp_max_push_objects: DEFAULT_NOTP_MAX_PUSH_OBJECTS,
             notp_max_push_bytes: DEFAULT_NOTP_MAX_PUSH_BYTES,
             notp_ledger_quota_bytes: DEFAULT_NOTP_LEDGER_QUOTA_BYTES,
+            notp_transfer_ttl: DEFAULT_NOTP_TRANSFER_TTL,
             audit_directory: None,
             audit_retention: DEFAULT_AUDIT_RETENTION,
             audit_retention_security: None,
@@ -3681,6 +3692,11 @@ produce: use `EdDSA` or `ES256`"
         self.notp_ledger_quota_bytes
     }
 
+    /// Returns how long a NOTP transfer session stays open.
+    pub fn notp_transfer_ttl(&self) -> Duration {
+        self.notp_transfer_ttl
+    }
+
     /// Reports whether this deployment publishes signing keys.
     pub fn keys_enabled(&self) -> bool {
         self.keys_enabled
@@ -4122,6 +4138,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_NOTP_MAX_PUSH_OBJECTS => n(self.notp_max_push_objects),
             SETTING_NOTP_MAX_PUSH_BYTES => n(self.notp_max_push_bytes),
             SETTING_NOTP_LEDGER_QUOTA_BYTES => n(self.notp_ledger_quota_bytes),
+            SETTING_NOTP_TRANSFER_TTL => d(self.notp_transfer_ttl),
             SETTING_NOTP_COMPRESSION => b(self.notp_compression),
             SETTING_MIRRORS_ENABLED => b(self.mirrors_enabled),
             SETTING_MIRRORS_INTERVAL => d(self.mirrors_interval),
@@ -5219,6 +5236,18 @@ produce: use `EdDSA` or `ES256`"
                 .with_context(|| format!("reading {SETTING_NOTP_LEDGER_QUOTA_BYTES}"))?;
         }
 
+        if let Some(value) = settings.get(SETTING_NOTP_TRANSFER_TTL) {
+            self.notp_transfer_ttl = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_NOTP_TRANSFER_TTL}"))?;
+            if self.notp_transfer_ttl > MAXIMUM_NOTP_TRANSFER_TTL {
+                bail!(
+                    "reading {SETTING_NOTP_TRANSFER_TTL}: `{value}` is longer than {}s, the \
+                     longest a transfer session may stay open",
+                    MAXIMUM_NOTP_TRANSFER_TTL.as_secs()
+                );
+            }
+        }
+
         if let Some(value) = settings.get(SETTING_AUDIT_RETENTION) {
             self.audit_retention = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_AUDIT_RETENTION}"))?;
@@ -5732,6 +5761,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_NOTP_MAX_BATCH_OBJECTS,
     SETTING_NOTP_MAX_PUSH_BYTES,
     SETTING_NOTP_MAX_PUSH_OBJECTS,
+    SETTING_NOTP_TRANSFER_TTL,
     SETTING_OTEL_ENABLED,
     SETTING_OTEL_ENDPOINT,
     SETTING_OTEL_SAMPLE_RATE,

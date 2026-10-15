@@ -104,8 +104,10 @@ impl Workspace<'_> {
         let commit_bytes = commit.encode().map_err(|error| err(error.to_string()))?;
         let new_head = inventory::put(self.store, &commit_bytes).map_err(err)?;
         let expected_ref = self.expected_ref(remote, ledger, &r#ref, checkpoint.as_ref())?;
-        // The new head names the request: a retry of this apply is the same request.
-        let request_id = new_head.to_string();
+        // The ref and the new head name the request: a retry of this apply is the same request,
+        // and the same commit applied to another ref is another one.
+        let request_id =
+            Digest::compute(format!("{ref}\n{new_head}", ref = r#ref).as_bytes()).to_string();
 
         // The delta closure: reachable from the new head, minus the old one.
         let stop = match &expected_old {

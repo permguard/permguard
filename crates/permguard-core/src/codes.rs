@@ -271,6 +271,13 @@ pub mod notp {
     pub const POLICY_ID_MISSING: &str = "policy_id_missing";
     pub const POLICY_KIND_MISSING: &str = "policy_kind_missing";
     pub const SCHEMA_AMBIGUOUS: &str = "schema_ambiguous";
+    /// No transfer session of this ledger has the id a message names (WP-7.12).
+    pub const TRANSFER_UNKNOWN: &str = "transfer_unknown";
+    /// The transfer session expired, or ended: negotiate again.
+    pub const TRANSFER_EXPIRED: &str = "transfer_expired";
+    /// The message does not match the session's binding: another caller, direction, ref,
+    /// request or parameters.
+    pub const TRANSFER_MISMATCH: &str = "transfer_mismatch";
 }
 
 /// Codes the command line and the client answer for their own failures.
@@ -652,6 +659,9 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         notp::POLICY_ID_MISSING,
         notp::POLICY_KIND_MISSING,
         notp::SCHEMA_AMBIGUOUS,
+        notp::TRANSFER_UNKNOWN,
+        notp::TRANSFER_EXPIRED,
+        notp::TRANSFER_MISMATCH,
         client::USAGE,
         client::TRANSPORT_FAILED,
         client::CONNECT_FAILED,

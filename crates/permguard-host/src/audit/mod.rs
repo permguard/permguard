@@ -370,7 +370,8 @@ pub const REGISTRY: &[ActionSchema] = &[
     action("ledger.create.refused", Class::Security, CONTROL),
     action("ledger.rename.refused", Class::Security, CONTROL),
     action("ledger.delete.refused", Class::Security, CONTROL),
-    action("ledger.pushed", Class::Security, CONTROL),
+    // A ref update (WP-7.12): a phase of one mutation transaction (WP-3.6).
+    mutation("ledger.pushed", CONTROL),
     action("notp.push.negotiate.refused", Class::Security, CONTROL),
     action("notp.upload.refused", Class::Security, CONTROL),
     action("notp.push.commit.refused", Class::Security, CONTROL),

@@ -122,6 +122,7 @@ pub struct Declaration {
     streams: Vec<String>,
     tasks: Vec<crate::membership::record::Capability>,
     scope_schemas: Vec<String>,
+    mutations: Vec<&'static str>,
 }
 
 impl Declaration {
@@ -189,6 +190,13 @@ impl Declaration {
     /// The task contracts this declaration registers (WP-4.4).
     pub fn task_contracts(&self) -> &[crate::membership::record::Capability] {
         &self.tasks
+    }
+
+    /// Declares a domain of security mutations this Plane applies through the Host's mutation
+    /// transaction (WP-3.6): its handle runs and recovers that domain's operations only.
+    pub fn mutates(mut self, domain: &'static str) -> Self {
+        self.mutations.push(domain);
+        self
     }
 
     /// Declares a resource scope schema this Plane owns.
@@ -264,6 +272,12 @@ impl std::error::Error for CompositionError {}
 
 /// The Host: every generic capability, implemented once.
 pub struct Host {
+    mutations: Option<Arc<crate::operations::mutation::Mutations>>,
+    task_slots: BTreeMap<
+        (crate::membership::record::TaskType, u64),
+        Arc<crate::membership::task::Deferred>,
+    >,
+    hub: Option<Arc<crate::membership::watch::Hub>>,
     memberships: Option<Arc<dyn ServingMembers>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
@@ -284,6 +298,12 @@ struct Claims {
 /// Builds the [`Host`] from the collaborators composition resolved.
 #[derive(Default)]
 pub struct HostBuilder {
+    mutations: Option<Arc<crate::operations::mutation::Mutations>>,
+    task_slots: BTreeMap<
+        (crate::membership::record::TaskType, u64),
+        Arc<crate::membership::task::Deferred>,
+    >,
+    hub: Option<Arc<crate::membership::watch::Hub>>,
     memberships: Option<Arc<dyn ServingMembers>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
@@ -342,6 +362,32 @@ impl HostBuilder {
         self
     }
 
+    /// The Host's security mutation transaction (WP-3.6): a Plane that declared a mutation
+    /// domain applies it through a handle over this engine.
+    pub fn mutations(mut self, mutations: Arc<crate::operations::mutation::Mutations>) -> Self {
+        self.mutations = Some(mutations);
+        self
+    }
+
+    /// The slot of the handler a Plane provides for `task` at `version`, which the Host's task
+    /// sessions already route to (WP-7.12).
+    pub fn task_slot(
+        mut self,
+        task: crate::membership::record::TaskType,
+        version: u64,
+        slot: Arc<crate::membership::task::Deferred>,
+    ) -> Self {
+        self.task_slots.insert((task, version), slot);
+        self
+    }
+
+    /// Where the Host's watches take their hints (WP-4.4): a Plane that provides a task
+    /// publishes the hints of its resources there.
+    pub fn watch_hub(mut self, hub: Arc<crate::membership::watch::Hub>) -> Self {
+        self.hub = Some(hub);
+        self
+    }
+
     /// Who serves a resource under this Host's memberships (WP-4.4): handed to the Plane that
     /// provides `policy.mirror`.
     pub fn memberships(mut self, memberships: Arc<dyn ServingMembers>) -> Self {
@@ -351,6 +397,9 @@ impl HostBuilder {
 
     pub fn build(self) -> Host {
         Host {
+            mutations: self.mutations,
+            task_slots: self.task_slots,
+            hub: self.hub,
             memberships: self.memberships,
             streams: self.streams,
             rings: self.rings,
@@ -450,6 +499,12 @@ impl Host {
                     .iter()
                     .map(|name| ("scope schema", name.clone())),
             );
+            claimed.extend(
+                declaration
+                    .mutations
+                    .iter()
+                    .map(|domain| ("mutation domain", (*domain).to_owned())),
+            );
             claimed.sort();
             // A Plane signing two artifacts with one ring claims the ring once; anything else it
             // names twice is a collision with itself.
@@ -493,7 +548,28 @@ impl Host {
                     .map(|producer| (stream.clone(), producer))
             })
             .collect();
+        let provided: Vec<(crate::membership::record::TaskType, u64)> = declaration
+            .tasks
+            .iter()
+            .filter(|contract| contract.role == crate::membership::record::ContractRole::Provider)
+            .map(|contract| (contract.task_type, contract.version))
+            .collect();
         Ok(Registration {
+            task_slots: provided
+                .iter()
+                .filter_map(|key| {
+                    self.task_slots
+                        .get(key)
+                        .map(|slot| (*key, Arc::clone(slot)))
+                })
+                .collect(),
+            hints: self.hub.as_ref().map(|hub| Hints {
+                hub: Arc::clone(hub),
+                tasks: provided.iter().map(|(task, _)| *task).collect(),
+            }),
+            provided,
+            mutations: self.mutations.as_ref().map(Arc::clone),
+            declared_mutations: declaration.mutations.clone(),
             plane,
             signers: declaration
                 .signers
@@ -550,6 +626,14 @@ impl Host {
 
 /// A Plane's handles: what its declaration granted, and nothing else.
 pub struct Registration {
+    task_slots: BTreeMap<
+        (crate::membership::record::TaskType, u64),
+        Arc<crate::membership::task::Deferred>,
+    >,
+    provided: Vec<(crate::membership::record::TaskType, u64)>,
+    hints: Option<Hints>,
+    mutations: Option<Arc<crate::operations::mutation::Mutations>>,
+    declared_mutations: Vec<&'static str>,
     plane: String,
     signers: BTreeMap<&'static str, (RingId, Arc<dyn KeyManager>)>,
     declared_signers: Vec<&'static str>,
@@ -667,6 +751,57 @@ impl Registration {
             return Err(self.undeclared(format!("the zone keys of `{}`", purpose.as_str())));
         }
         Ok(self.zone_keys.get(&purpose).cloned())
+    }
+
+    /// Serves `task` at `version`, which the Plane declared it provides, with `handler`: the
+    /// Host's task sessions route its messages there from now on. Answers whether the Host
+    /// routes the task at all; one without task sessions does not.
+    pub fn serve_task(
+        &self,
+        task: crate::membership::record::TaskType,
+        version: u64,
+        handler: Arc<dyn crate::membership::task::TaskHandler>,
+    ) -> Result<bool, CompositionError> {
+        if !self.provided.contains(&(task, version)) {
+            return Err(self.undeclared(format!(
+                "the provider of `{}` version {version}",
+                task.as_str()
+            )));
+        }
+        match self.task_slots.get(&(task, version)) {
+            Some(slot) => {
+                slot.fill(handler)
+                    .map(|()| true)
+                    .map_err(|error| CompositionError::Collision {
+                        what: "task handler",
+                        name: format!("{} {version}: {error}", task.as_str()),
+                        first: "an earlier registration".to_owned(),
+                        second: self.plane.clone(),
+                    })
+            }
+            None => Ok(false),
+        }
+    }
+
+    /// Where this Plane publishes the watch hints of the tasks it provides, when the Host keeps
+    /// watches.
+    pub fn hints(&self) -> Option<Hints> {
+        self.hints.clone()
+    }
+
+    /// The handle to the mutation transaction for `domain`, which the Plane declared: `None`
+    /// when this Host composes no mutation engine.
+    pub fn mutations(
+        &self,
+        domain: &'static str,
+    ) -> Result<Option<MutationHandle>, CompositionError> {
+        if !self.declared_mutations.contains(&domain) {
+            return Err(self.undeclared(format!("the mutation domain `{domain}`")));
+        }
+        Ok(self.mutations.as_ref().map(|engine| MutationHandle {
+            engine: Arc::clone(engine),
+            domain,
+        }))
     }
 
     /// This Host's `host_id`, when the composition knows it: public, the salt of a Host-local
@@ -1012,6 +1147,109 @@ impl permguard_core::keys::PublicSet for PublicKeys {
     }
 }
 
+/// The watch hints of the tasks one Plane provides (WP-4.4): a hint grants nothing, it schedules
+/// the member's ordinary round.
+#[derive(Clone)]
+pub struct Hints {
+    hub: Arc<crate::membership::watch::Hub>,
+    tasks: Vec<crate::membership::record::TaskType>,
+}
+
+impl std::fmt::Debug for Hints {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Hints")
+            .field("tasks", &self.tasks)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Hints {
+    /// Offers `hint` about `resource` to the live watches of `task`; a task this Plane does not
+    /// provide reaches no one.
+    pub fn publish(
+        &self,
+        task: crate::membership::record::TaskType,
+        resource: &permguard_core::authz::Resource,
+        hint: &crate::membership::record::WatchHint,
+    ) {
+        if self.tasks.contains(&task) {
+            self.hub.publish(task, resource, hint);
+        }
+    }
+}
+
+/// The mutation transaction of one declared domain (WP-3.6): it runs and recovers that domain's
+/// operations, and no other domain's.
+#[derive(Clone)]
+pub struct MutationHandle {
+    engine: Arc<crate::operations::mutation::Mutations>,
+    domain: &'static str,
+}
+
+impl std::fmt::Debug for MutationHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MutationHandle({})", self.domain)
+    }
+}
+
+impl MutationHandle {
+    /// A handle over `engine` for `domain`, for a test or a composition that holds the engine
+    /// itself.
+    pub fn new(engine: Arc<crate::operations::mutation::Mutations>, domain: &'static str) -> Self {
+        Self { engine, domain }
+    }
+
+    /// The domain it applies.
+    pub fn domain(&self) -> &'static str {
+        self.domain
+    }
+
+    /// [`crate::operations::mutation::Mutations::run_checked`], for an operation of this domain;
+    /// one of another domain is refused before anything is written.
+    pub fn run_checked<T, E>(
+        &self,
+        begin: crate::operations::mutation::Begin,
+        check: impl FnOnce() -> Result<(), E>,
+        apply: impl FnOnce(
+            &crate::operations::mutation::Applying<'_>,
+        ) -> Result<
+            crate::operations::mutation::Applied<T>,
+            crate::operations::mutation::Failure<E>,
+        >,
+    ) -> Result<
+        crate::operations::mutation::Outcome<T>,
+        crate::operations::mutation::MutationError<E>,
+    >
+    where
+        T: serde::Serialize + serde::de::DeserializeOwned,
+    {
+        if begin.domain != self.domain {
+            return Err(crate::operations::mutation::MutationError::Unavailable(
+                format!(
+                    "this handle applies `{}`, not `{}`",
+                    self.domain, begin.domain
+                ),
+            ));
+        }
+        self.engine.run_checked(begin, check, apply)
+    }
+
+    /// Resolves the open operations this domain left at a crash.
+    pub fn recover(
+        &self,
+        domain: &dyn crate::operations::mutation::Domain,
+    ) -> Result<crate::operations::mutation::Recovered, crate::storage::StorageError> {
+        if domain.name() != self.domain {
+            return Err(crate::storage::StorageError::Refused(format!(
+                "this handle recovers `{}`, not `{}`",
+                self.domain,
+                domain.name()
+            )));
+        }
+        self.engine.recover(domain)
+    }
+}
+
 /// Records the actions schema `T` declares, and refuses any other.
 pub struct AuditHandle<T: AuditSchema> {
     recorder: AuditRecorder,
@@ -1307,6 +1545,226 @@ mod tests {
                 algorithm: "EdDSA",
             })
         }
+    }
+
+    /// WP-7.12: a mutation handle runs and recovers its own domain's operations, never
+    /// another's, and refuses before anything is written.
+    #[test]
+    fn a_mutation_handle_applies_its_own_domain_only() {
+        use crate::operations::journal::Initiator;
+        use crate::operations::mutation::{Applied, Begin, Domain, Mutations, Observed};
+
+        struct Other;
+        impl Domain for Other {
+            fn name(&self) -> &'static str {
+                "other"
+            }
+            fn observe(
+                &self,
+                _: &crate::operations::journal::OperationId,
+                _: Option<&str>,
+            ) -> Option<Observed> {
+                None
+            }
+        }
+
+        let root =
+            std::env::temp_dir().join(format!("permguard-handle-domain-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let volume = crate::storage::volume::Volume::claim(
+            &root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        let engine = Arc::new(Mutations::open_offline(&volume, "test").expect("opens"));
+        let handle = MutationHandle::new(Arc::clone(&engine), "mine");
+        let applied = std::cell::Cell::new(false);
+        let refused = handle.run_checked(
+            Begin {
+                domain: "other",
+                operation: "other.change",
+                action: "host.grant.issued",
+                initiator: Initiator::System("test".to_owned()),
+                request: None,
+                target: None,
+            },
+            || Ok::<(), String>(()),
+            |_| {
+                applied.set(true);
+                Ok(Applied {
+                    revision: 1,
+                    target: None,
+                    value: (),
+                })
+            },
+        );
+        assert!(refused.is_err(), "another domain's operation is refused");
+        assert!(!applied.get(), "and nothing of it was applied");
+        assert!(engine.open_intents().is_empty(), "nor written");
+        assert!(
+            handle.recover(&Other).is_err(),
+            "nor another domain recovered"
+        );
+    }
+
+    /// A task context of `resource`, for the deferred handler's tests.
+    fn task_context(resource: &str) -> crate::membership::task::TaskContext {
+        crate::membership::task::TaskContext {
+            membership_id: [1; 16],
+            task_id: "mirror".to_owned(),
+            task_type: crate::membership::record::TaskType::PolicyMirror,
+            version: 1,
+            epoch: 1,
+            resource: resource.to_owned(),
+            member: [2; 16],
+            request_id: "r".to_owned(),
+            limits: crate::membership::record::Limits {
+                max_body_bytes: 1024,
+                max_concurrency: 1,
+                max_rate_per_minute: 60,
+                max_batch_records: 10,
+                retention_seconds: 60,
+            },
+            channel_binding: [3; 32],
+        }
+    }
+
+    struct Echo;
+
+    impl crate::membership::task::TaskHandler for Echo {
+        fn handle(
+            &self,
+            _context: &crate::membership::task::TaskContext,
+            body: &[u8],
+        ) -> Result<Vec<u8>, crate::session::Refusal> {
+            Ok(body.to_vec())
+        }
+    }
+
+    /// WP-7.12: the Host routes a task to a slot before the Plane that provides it is composed;
+    /// the slot answers `not_served_yet` until that Plane fills it, once, and only a Plane that
+    /// declared the task may.
+    #[test]
+    fn a_task_slot_is_served_once_by_the_plane_that_declared_it() {
+        use crate::membership::record::TaskType;
+        use crate::membership::task::TaskHandler as _;
+
+        let slot = Arc::new(crate::membership::task::Deferred::default());
+        let host = Host::builder()
+            .task_slot(TaskType::PolicyMirror, 1, Arc::clone(&slot))
+            .build();
+        let context = task_context("plane/control");
+        assert_eq!(
+            slot.handle(&context, b"x")
+                .expect_err("nothing serves it yet")
+                .code,
+            permguard_core::codes::host::NOT_SERVED_YET
+        );
+
+        let stranger = host
+            .register(Declaration::new("data").uses_task(TaskType::PolicyMirror, 1))
+            .expect("registers");
+        assert!(
+            stranger
+                .serve_task(TaskType::PolicyMirror, 1, Arc::new(Echo))
+                .is_err(),
+            "a consumer does not serve the task"
+        );
+        let provider = host
+            .register(Declaration::new("control").handles_task(TaskType::PolicyMirror, 1))
+            .expect("registers");
+        assert_eq!(
+            provider.serve_task(TaskType::PolicyMirror, 1, Arc::new(Echo)),
+            Ok(true)
+        );
+        assert_eq!(slot.handle(&context, b"x").expect("served"), b"x");
+        assert!(
+            provider
+                .serve_task(TaskType::PolicyMirror, 1, Arc::new(Echo))
+                .is_err(),
+            "the slot is filled once"
+        );
+    }
+
+    /// WP-7.12: a Plane publishes the hints of the tasks it provides, and of no other; a Host
+    /// without watches hands out none.
+    #[test]
+    fn hints_reach_the_watches_of_a_task_the_plane_provides() {
+        use crate::membership::record::{Lease, Limits, TaskType, WatchHint, WatchRequest};
+
+        let hub = Arc::new(crate::membership::watch::Hub::default());
+        let host = Host::builder().watch_hub(Arc::clone(&hub)).build();
+        let provider = host
+            .register(Declaration::new("control").handles_task(TaskType::PolicyMirror, 1))
+            .expect("registers");
+        let other = host
+            .register(Declaration::new("data").handles_task(TaskType::EventsShip, 1))
+            .expect("registers");
+        let lease = Lease {
+            membership_id: [1; 16],
+            task_id: "mirror".to_owned(),
+            epoch: 1,
+            coordinator: [2; 16],
+            member: [3; 16],
+            coordinator_boot_id: [4; 16],
+            member_boot_id: [5; 16],
+            selector: permguard_core::authz::Selector::parse("plane/control/*")
+                .expect("a selector"),
+            resource: "plane/control/zone/z".to_owned(),
+            limits: Limits {
+                max_body_bytes: 1024,
+                max_concurrency: 1,
+                max_rate_per_minute: 60,
+                max_batch_records: 10,
+                retention_seconds: 60,
+            },
+            issued_at: 0,
+            expires_at: 60,
+            channel_binding: [6; 32],
+            binding_digest: None,
+        };
+        let queue = hub
+            .subscribe(
+                TaskType::PolicyMirror,
+                &lease,
+                &WatchRequest {
+                    positions: Vec::new(),
+                },
+            )
+            .expect("subscribes");
+        let resource = permguard_core::authz::Resource::ledger("control", "z", "l");
+        let hint = |counter| WatchHint {
+            key: "z/l/main".to_owned(),
+            head: "sha256:00".to_owned(),
+            counter,
+        };
+        other
+            .hints()
+            .expect("hints")
+            .publish(TaskType::PolicyMirror, &resource, &hint(1));
+        assert_eq!(
+            queue.take(),
+            Some(Vec::new()),
+            "another Plane's task reaches no one"
+        );
+        let hints = provider.hints().expect("hints");
+        hints.publish(TaskType::PolicyMirror, &resource, &hint(1));
+        hints.publish(TaskType::PolicyMirror, &resource, &hint(3));
+        hints.publish(TaskType::PolicyMirror, &resource, &hint(2));
+        assert_eq!(
+            queue.take(),
+            Some(vec![hint(3)]),
+            "coalesced, the newest counter wins"
+        );
+
+        assert!(
+            Host::builder()
+                .build()
+                .register(Declaration::new("control").handles_task(TaskType::PolicyMirror, 1))
+                .expect("registers")
+                .hints()
+                .is_none()
+        );
     }
 
     /// WP-7.1: a head statement binds the epoch and set of the ring it is signed under, and a

@@ -490,7 +490,8 @@ dataPlane:
 #   max_batch_objects: "1000"   # most objects one batch may carry
 #   max_push_objects: "10000"   # most objects one push delta may declare (preflight + at commit)
 #   max_push_bytes: "64M"       # most bytes one push delta may declare
-#   ledger_quota_bytes: "1G"    # storage quota of one ledger's objects, checked at upload
+#   ledger_quota_bytes: "1G"    # storage quota of one ledger's objects, reserved at negotiate
+#   transfer_ttl: "15m"         # how long a transfer session stays open; at most 1h
 
 operations:
   keys:

@@ -12,6 +12,7 @@
 
 pub(crate) mod grpc;
 pub(crate) mod http;
+pub(crate) mod mirror;
 
 use permguard_core::keys::PublicSet as _;
 use std::collections::HashMap;
@@ -73,6 +74,12 @@ pub(crate) struct NotpFacade {
     pub(crate) keys:
         permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
     pub(crate) limits: EngineLimits,
+    /// How long a transfer session stays open, and how long a closed one is kept (WP-7.12).
+    pub(crate) transfer: crate::engine::TransferPolicy,
+    /// The Host's mutation transaction, for the ref updates (WP-3.6).
+    pub(crate) mutations: permguard_host::composition::MutationHandle,
+    /// Where a commit's `WatchRefs` hint goes, when the Host keeps watches.
+    pub(crate) hints: Option<permguard_host::composition::Hints>,
     /// The `host_id` of this Control Plane Host, the authority every head statement names (WP-7.1).
     pub(crate) authority: [u8; 16],
     /// What this deployment has opted into among the provisional contracts, for the ingest gate.
@@ -110,6 +117,9 @@ impl NotpFacade {
         keys: permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
         authority: [u8; 16],
         limits: EngineLimits,
+        transfer: crate::engine::TransferPolicy,
+        mutations: permguard_host::composition::MutationHandle,
+        hints: Option<permguard_host::composition::Hints>,
         enabled: permguard_languages::registry::Enabled,
         compression: bool,
         recorder: Option<crate::handles::Audit>,
@@ -124,6 +134,9 @@ impl NotpFacade {
             keys,
             authority,
             limits,
+            transfer,
+            mutations,
+            hints,
             enabled,
             compression,
             recorder,
@@ -248,6 +261,23 @@ impl NotpFacade {
         );
     }
 
+    /// The ids of the zone and ledger a request names, by name or id.
+    pub(crate) fn ledger_ids(
+        &self,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<(String, String), ApiError> {
+        let zone = self
+            .catalog
+            .get_zone(&Selector::parse(zone))
+            .map_err(crate::catalog::api_error)?;
+        let ledger = self
+            .catalog
+            .get_ledger(&Selector::Id(zone.id.clone()), &Selector::parse(ledger))
+            .map_err(crate::catalog::api_error)?;
+        Ok((zone.id, ledger.id))
+    }
+
     /// Resolves the ledger a request names — name or id, like every surface —
     /// and answers its identity plus its process-shared store.
     fn resolve(
@@ -286,7 +316,21 @@ impl NotpFacade {
         ))
     }
 
-    fn engine<'a>(&'a self, identity: LedgerIdentity, store: &'a FileObjectStore) -> Engine<'a> {
+    /// The principal `actor`'s transfer sessions are bound to. Authorization refused an actor no
+    /// rule maps before any engine is built.
+    fn caller_of(actor: &permguard_core::authz::Actor) -> String {
+        actor
+            .principal()
+            .map_or_else(|_| String::new(), |principal| principal.as_str().to_owned())
+    }
+
+    /// The engine over one ledger, for `caller`: the principal its transfer sessions bind.
+    fn engine<'a>(
+        &'a self,
+        caller: &str,
+        identity: LedgerIdentity,
+        store: &'a FileObjectStore,
+    ) -> Engine<'a> {
         Engine {
             store,
             identity,
@@ -300,6 +344,9 @@ impl NotpFacade {
             limits: self.limits,
             enabled: self.enabled.clone(),
             clock: self,
+            caller: caller.to_owned(),
+            transfer: self.transfer,
+            mutations: &self.mutations,
         }
     }
 
@@ -336,11 +383,23 @@ impl NotpFacade {
         name: &str,
     ) -> Result<GetRefResponse, crate::wire::Refusal> {
         self.authorize_read(actor, zone, ledger)?;
+        self.get_ref_as(&Self::caller_of(actor), zone, ledger, name)
+            .map_err(Into::into)
+    }
+
+    /// The advertised ref, for a caller the surface already authorized.
+    pub(crate) fn get_ref_as(
+        &self,
+        caller: &str,
+        zone: &str,
+        ledger: &str,
+        name: &str,
+    ) -> Result<GetRefResponse, ApiError> {
         let started = std::time::Instant::now();
         let result = (|| {
             let (identity, store) = self.resolve(zone, ledger)?;
             let signer = self.signer();
-            let engine = self.engine(identity, &store);
+            let engine = self.engine(caller, identity, &store);
             let (state, statement) = engine.get_ref(name, &signer).map_err(api_error)?;
             Ok(GetRefResponse {
                 ref_digest: crate::store::ref_digest(&state).map_err(|e| api_error(e.into()))?,
@@ -349,7 +408,7 @@ impl NotpFacade {
                 statement,
             })
         })();
-        self.observed("ref", started, result).map_err(Into::into)
+        self.observed("ref", started, result)
     }
 
     #[tracing::instrument(name = "notp.push_negotiate", skip_all, fields(zone = %zone, ledger = %ledger))]
@@ -363,13 +422,18 @@ impl NotpFacade {
         self.authorize_push(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = match self.resolve(zone, ledger) {
-            Ok((identity, store)) => match self.engine(identity, &store).negotiate_push(request) {
-                Ok(mut response) => {
-                    response.compression = self.advertised();
-                    Ok(response)
+            Ok((identity, store)) => {
+                match self
+                    .engine(&Self::caller_of(actor), identity, &store)
+                    .negotiate_push(request)
+                {
+                    Ok(mut response) => {
+                        response.compression = self.advertised();
+                        Ok(response)
+                    }
+                    Err(error) => Err(self.refused("notp.push.negotiate.refused", error).await),
                 }
-                Err(error) => Err(self.refused("notp.push.negotiate.refused", error).await),
-            },
+            }
             Err(error) => Err(error),
         };
         self.observed("push_negotiate", started, result)
@@ -388,7 +452,10 @@ impl NotpFacade {
         let started = std::time::Instant::now();
         let result = match self.resolve(zone, ledger) {
             Ok((identity, store)) => match self.decode_batch(request) {
-                Ok(raw) => match self.engine(identity, &store).upload(&raw) {
+                Ok(raw) => match self
+                    .engine(&Self::caller_of(actor), identity, &store)
+                    .upload(&raw)
+                {
                     Ok(response) => {
                         let wire: u64 = request.objects.iter().map(|o| o.len() as u64).sum();
                         self.observed_batch(
@@ -420,19 +487,17 @@ impl NotpFacade {
         let started = std::time::Instant::now();
         let result = match self.resolve(zone, ledger) {
             Ok((identity, store)) => {
-                let ledger_id = identity.ledger_id.clone();
+                // The ref update is recorded by the mutation transaction it runs in (WP-3.6).
                 let signer = self.signer();
-                match self.engine(identity, &store).commit_push(request, &signer) {
-                    Ok(response) => self
-                        .record(
-                            "ledger.pushed",
-                            &format!(
-                                "{ledger_id} {} {} #{}",
-                                request.r#ref, response.head, response.counter
-                            ),
-                        )
-                        .await
-                        .map(|()| response),
+                let (zone_id, ledger_id) = (identity.zone_id.clone(), identity.ledger_id.clone());
+                match self
+                    .engine(&Self::caller_of(actor), identity, &store)
+                    .commit_push(request, &signer)
+                {
+                    Ok(response) => {
+                        self.hint(&zone_id, &ledger_id, &request.r#ref, &response);
+                        Ok(response)
+                    }
                     Err(error) => Err(self.refused("notp.push.commit.refused", error).await),
                 }
             }
@@ -451,17 +516,28 @@ impl NotpFacade {
         request: &NegotiatePullRequest,
     ) -> Result<NegotiatePullResponse, crate::wire::Refusal> {
         self.authorize_read(actor, zone, ledger)?;
+        self.negotiate_pull_as(&Self::caller_of(actor), zone, ledger, request)
+            .map_err(Into::into)
+    }
+
+    /// A pull negotiation, for a caller the surface already authorized.
+    pub(crate) fn negotiate_pull_as(
+        &self,
+        caller: &str,
+        zone: &str,
+        ledger: &str,
+        request: &NegotiatePullRequest,
+    ) -> Result<NegotiatePullResponse, ApiError> {
         let started = std::time::Instant::now();
         let result = (|| {
             let (identity, store) = self.resolve(zone, ledger)?;
             let signer = self.signer();
-            let engine = self.engine(identity, &store);
+            let engine = self.engine(caller, identity, &store);
             let mut response = engine.negotiate_pull(request, &signer).map_err(api_error)?;
             response.compression = self.advertised();
             Ok(response)
         })();
         self.observed("pull_negotiate", started, result)
-            .map_err(Into::into)
     }
 
     #[tracing::instrument(name = "notp.fetch", skip_all, fields(zone = %zone, ledger = %ledger))]
@@ -473,10 +549,22 @@ impl NotpFacade {
         request: &FetchObjectsRequest,
     ) -> Result<FetchObjectsResponse, crate::wire::Refusal> {
         self.authorize_read(actor, zone, ledger)?;
+        self.fetch_as(&Self::caller_of(actor), zone, ledger, request)
+            .map_err(Into::into)
+    }
+
+    /// A fetch, for a caller the surface already authorized.
+    pub(crate) fn fetch_as(
+        &self,
+        caller: &str,
+        zone: &str,
+        ledger: &str,
+        request: &FetchObjectsRequest,
+    ) -> Result<FetchObjectsResponse, ApiError> {
         let started = std::time::Instant::now();
         let result = (|| {
             let (identity, store) = self.resolve(zone, ledger)?;
-            let engine = self.engine(identity, &store);
+            let engine = self.engine(caller, identity, &store);
             let mut response = engine.fetch(request).map_err(api_error)?;
             if self.compression && request.accept_compression.as_deref() == Some(compress::DEFLATE)
             {
@@ -496,7 +584,23 @@ impl NotpFacade {
             );
             Ok(response)
         })();
-        self.observed("fetch", started, result).map_err(Into::into)
+        self.observed("fetch", started, result)
+    }
+
+    /// Tells the watches of the ledger that a ref moved (`WatchRefs`, WP-7.12): coalesced by the
+    /// Host per ref, the newest counter winning. A hint grants nothing: the member pulls.
+    fn hint(&self, zone_id: &str, ledger_id: &str, name: &str, committed: &CommitPushResponse) {
+        if let Some(hints) = &self.hints {
+            hints.publish(
+                permguard_host::membership::record::TaskType::PolicyMirror,
+                &permguard_core::authz::Resource::ledger(crate::service::PLANE, zone_id, ledger_id),
+                &permguard_host::membership::record::WatchHint {
+                    key: format!("{zone_id}/{ledger_id}/{name}"),
+                    head: committed.head.to_string(),
+                    counter: committed.counter,
+                },
+            );
+        }
     }
 
     /// The algorithm negotiate responses advertise, when one is on.
@@ -585,9 +689,8 @@ impl NotpFacade {
 
     // ---- auditing, the catalog's discipline verbatim ----
 
-    /// A failed record does not undo the push, and is answered `mutation_unrecorded` rather than
-    /// success (owner decision of 2026-10-07). `TODO(WP-15)`: the push becomes an operation of
-    /// the Host's security-mutation transaction (WP-3.6).
+    /// A refusal's record, when the deployment keeps them: a ref update itself is recorded by
+    /// the Host's security-mutation transaction it runs in (WP-3.6).
     async fn record(&self, action: &'static str, target: &str) -> Result<(), ApiError> {
         let Some(recorder) = &self.recorder else {
             return Ok(());
@@ -652,6 +755,36 @@ pub(crate) fn api_error(error: EngineError) -> ApiError {
             }
             api
         }
+        EngineError::Transfer { code, message } => ApiError::new(
+            if code == permguard_core::codes::notp::TRANSFER_UNKNOWN {
+                ErrorClass::NotFound
+            } else {
+                ErrorClass::Conflict
+            },
+            leak_code(code),
+            message,
+        ),
+        EngineError::Unrecorded { detail } => {
+            tracing::error!(
+                event.name = "notp.mutation_unrecorded",
+                component = "control-plane",
+                error = %detail,
+                "a ref update may have landed and its record could not be written"
+            );
+            crate::unrecorded(detail)
+        }
+        EngineError::AuditUnavailable { detail } => ApiError::new(
+            ErrorClass::Unavailable,
+            permguard_core::codes::host::AUDIT_UNAVAILABLE,
+            "the audit trail cannot record a ref update: nothing was applied",
+        )
+        .with_internal(detail),
+        EngineError::MutationsUnavailable { detail } => ApiError::new(
+            ErrorClass::Unavailable,
+            permguard_core::codes::common::UNAVAILABLE,
+            "the mutation journal is unavailable: nothing was applied",
+        )
+        .with_internal(detail),
         EngineError::NotFound { what } => ApiError::new(
             ErrorClass::NotFound,
             permguard_core::codes::common::NOT_FOUND,
@@ -772,6 +905,12 @@ mod tests {
                 max_push_bytes: 1024,
                 ledger_quota_bytes: 1024,
             },
+            crate::engine::TransferPolicy {
+                ttl: Duration::from_secs(900),
+                grace: Duration::from_secs(3600),
+            },
+            crate::handles::ref_mutations_for_tests(&root.join("volume")),
+            None,
             permguard_languages::registry::Enabled::everything(),
             false,
             None,

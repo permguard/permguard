@@ -1890,6 +1890,11 @@ impl App {
         // Who serves a ledger under this Host's memberships, for the Plane that provides
         // `policy.mirror` (WP-4.4); none without a Host listener.
         let mut serving: Option<Arc<permguard_host::api::HostApi>> = None;
+        // The handler of `policy.mirror` is the Control Plane's, which is composed after the task
+        // sessions: they route to a slot it fills (WP-7.12). The watches' hub is shared the same
+        // way, so a commit's hint reaches every watch of the ledger.
+        let mirror_slot = Arc::new(permguard_host::membership::task::Deferred::default());
+        let watch_hub = Arc::new(permguard_host::membership::watch::Hub::default());
         // The coordinator side of the re-pin pass, with the Host API's member side (WP-4.5).
         let mut repinning_coordinator: Option<
             Arc<permguard_host::membership::service::Coordinating>,
@@ -1991,9 +1996,18 @@ impl App {
                     .map_err(|error| anyhow::anyhow!("{error}"))?,
                 None => handlers,
             };
+            let handlers = handlers
+                .register(
+                    permguard_host::membership::record::TaskType::PolicyMirror,
+                    1,
+                    Arc::clone(&mirror_slot)
+                        as Arc<dyn permguard_host::membership::task::TaskHandler>,
+                )
+                .map_err(|error| anyhow::anyhow!("{error}"))?;
             let tasks = Arc::new(permguard_host::membership::task::Tasks {
                 appraisal: Arc::new(appraisal.clone()),
                 handlers,
+                hub: Arc::clone(&watch_hub),
                 ..permguard_host::membership::task::Tasks::default()
             });
             // What a coordinator serves on a proven session: an enrollment, a manifest fetch, a
@@ -2115,7 +2129,16 @@ impl App {
             .audit(recorder)
             .authorization(authorization)
             .time(Arc::clone(&time))
-            .host_id(host_identity.host_id());
+            .host_id(host_identity.host_id())
+            // A Plane's security mutations run in the Host's transaction (WP-3.6): the Control
+            // Plane's ref updates (WP-7.12).
+            .mutations(Arc::clone(&mutations))
+            .task_slot(
+                permguard_host::membership::record::TaskType::PolicyMirror,
+                1,
+                mirror_slot,
+            )
+            .watch_hub(watch_hub);
         if let Some(streams) = streams {
             host = host.streams(streams);
         }

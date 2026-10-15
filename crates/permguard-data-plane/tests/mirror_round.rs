@@ -94,6 +94,18 @@ mod plane {
             .ring(permguard_host::composition::CONTROL_ATTEST, keys)
             // Every head statement names its Host (WP-7.1): NOTP is served only with one.
             .host_id([0x11; 16])
+            // Every ref update runs in a mutation transaction (WP-7.12).
+            .mutations(Arc::new(
+                permguard_host::operations::mutation::Mutations::open_offline(
+                    &permguard_host::storage::volume::Volume::claim(
+                        &volume.join("host-volume"),
+                        permguard_core::assurance::AssuranceProfile::Development,
+                    )
+                    .expect("the volume is claimed"),
+                    "test",
+                )
+                .expect("the mutation journal opens"),
+            ))
             // This suite is about mirroring, not about who may read the catalog.
             .authorization(Arc::new(
                 permguard_host::composition::Authorization::permissive(),

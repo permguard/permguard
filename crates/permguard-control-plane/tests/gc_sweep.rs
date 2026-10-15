@@ -104,9 +104,7 @@ fn commit_over(store: &FileObjectStore, r#ref: &str, blobs: &[(&str, Digest)]) -
         )
         .expect("the commit is stored")
         .0;
-    store
-        .update_ref(r#ref, None, &commit)
-        .expect("the ref is created");
+    write_ref(store, r#ref, &commit);
 
     commit
 }
@@ -233,6 +231,106 @@ fn a_push_in_flight_is_never_swept() {
     assert!(present(&store, &uploading));
 }
 
+/// The session of a push pinning `digest`, open until `expiry`, or closed at `closed_at`.
+fn pinning_session(
+    digest: &Digest,
+    expiry: u64,
+    closed_at: Option<u64>,
+) -> permguard_control_plane::transfer::Session {
+    use permguard_control_plane::transfer::{Direction, Session, State};
+    Session {
+        transfer_id: [7; 16],
+        direction: Direction::Push,
+        principal: "operator".to_owned(),
+        authority_host_id: [1; 16],
+        zone: "zone".to_owned(),
+        ledger: "ledger".to_owned(),
+        r#ref: "main".to_owned(),
+        request_id: "push-1".to_owned(),
+        parameters: Digest::compute(b"parameters"),
+        new_head: Some(Digest::compute(b"head")),
+        expected_ref: None,
+        max_batch_bytes: 1024,
+        max_batch_objects: 10,
+        reservation: 100,
+        landed: 0,
+        expiry,
+        state: if closed_at.is_some() {
+            State::Committed
+        } else {
+            State::Open
+        },
+        closed_at,
+        pins: vec![digest.clone()],
+        result: None,
+    }
+}
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("after the epoch")
+        .as_secs()
+}
+
+/// WP-7.12: a push that outlives the grace is kept by its session, not by its age: what an open
+/// session pins stays, and so does what a closed one pins for the grace after it ended; past
+/// that, it is an orphan like any other.
+#[test]
+fn a_transfer_session_pins_its_closure_however_old() {
+    let store = FileObjectStore::new(scratch("pinned"));
+    commit_over(&store, "main", &[("policy.cedar", blob(&store, "kept"))]);
+    let uploading = blob(&store, "uploaded long ago");
+    age(&store, &uploading, Duration::from_secs(2 * 60 * 60));
+    let grace = Duration::from_secs(60 * 60);
+    let now = unix_now();
+
+    store
+        .transfers()
+        .unwrap()
+        .put(&pinning_session(&uploading, now + 600, None))
+        .unwrap();
+    let swept = gc::sweep_once(&store, grace).expect("the sweep runs");
+    assert_eq!(swept.removed, 0, "an open session pins its closure");
+    assert!(present(&store, &uploading));
+
+    store
+        .transfers()
+        .unwrap()
+        .put(&pinning_session(&uploading, now - 600, Some(now - 600)))
+        .unwrap();
+    let swept = gc::sweep_once(&store, grace).expect("the sweep runs");
+    assert_eq!(swept.removed, 0, "and a closed one for the grace after it");
+
+    store
+        .transfers()
+        .unwrap()
+        .put(&pinning_session(&uploading, now - 7_200, Some(now - 7_200)))
+        .unwrap();
+    let swept = gc::sweep_once(&store, grace).expect("the sweep runs");
+    assert_eq!(
+        swept.removed, 1,
+        "past the grace the session and its pin are gone"
+    );
+    assert!(!present(&store, &uploading));
+    assert!(store.transfers().unwrap().list().unwrap().is_empty());
+}
+
+/// A session record that does not read stops the sweep of its ledger: what it pins is unknown.
+#[test]
+fn an_unreadable_session_leaves_the_ledger_as_it_was() {
+    let store = FileObjectStore::new(scratch("unreadable-session"));
+    commit_over(&store, "main", &[("policy.cedar", blob(&store, "kept"))]);
+    let orphan = blob(&store, "abandoned");
+    age(&store, &orphan, Duration::from_secs(2 * 60 * 60));
+    let directory = store.root().join("transfers");
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(directory.join(format!("{}.cbor", "ab".repeat(16))), b"rot").unwrap();
+
+    assert!(gc::sweep_once(&store, Duration::from_secs(60 * 60)).is_err());
+    assert!(present(&store, &orphan), "nothing was removed");
+}
+
 #[test]
 fn every_ref_protects_its_own_history() {
     let store = FileObjectStore::new(scratch("two-refs"));
@@ -314,4 +412,23 @@ fn the_sweep_removes_old_temporaries_and_keeps_young_ones() {
     assert_eq!(swept.temporaries, 1);
     assert!(!old.exists());
     assert!(young.exists());
+}
+
+/// A ref written the way the server writes one: through an offline mutation transaction.
+fn write_ref(
+    store: &FileObjectStore,
+    name: &str,
+    head: &permguard_objects::Digest,
+) -> permguard_control_plane::store::RefUpdate {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let volume = std::env::temp_dir().join(format!(
+        "permguard-test-volume-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    ));
+    let _ = std::fs::remove_dir_all(&volume);
+    let mutations = permguard_control_plane::store::testing::offline_ref_mutations(&volume)
+        .expect("a mutation transaction opens");
+    permguard_control_plane::store::testing::update_ref(&mutations, store, name, None, head)
+        .expect("the ref is created")
 }

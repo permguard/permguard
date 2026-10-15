@@ -16,6 +16,30 @@ use permguard_objects::digest::Digest;
 
 use crate::codec::*;
 
+/// The ref a `get_ref` read names, where a framing carries it in a body (`policy.mirror`):
+/// `{1 ref}`. The REST framing names it in the path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GetRefRequest {
+    pub r#ref: String,
+}
+
+impl GetRefRequest {
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        Ok(cbor::encode(&map(vec![(
+            1,
+            Value::Text(self.r#ref.clone()),
+        )]))?)
+    }
+
+    pub fn decode(input: &[u8]) -> Result<Self> {
+        let value = cbor::decode_canonical(input)?;
+        let pairs = closed(&value, &[1])?;
+        Ok(Self {
+            r#ref: text(need(pairs, 1)?)?,
+        })
+    }
+}
+
 /// `GET …/refs/{name}`: `{1 head, 2 counter, 3 statement, 4 ref_digest}`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetRefResponse {

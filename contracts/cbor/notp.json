@@ -1,6 +1,6 @@
 {
   "artifact": "NOTP message bodies (application/vnd.permguard.notp.v1+cbor)",
-  "authority": "6-contracts/6-contract-ledger-notp.md#refs-and-head-statement and #messages (the target, WP-7.1); crates/permguard-objects/src/refstate.rs (RefState), crates/permguard-notp/src/push.rs, pull.rs and codec.rs (each encode and decode)",
+  "authority": "6-contracts/6-contract-ledger-notp.md#refs-and-head-statement and #messages (the target, WP-7.1); crates/permguard-objects/src/refstate.rs (RefState), crates/permguard-notp/src/push.rs, pull.rs, mirror.rs and codec.rs (each encode and decode)",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "ref_state": {
@@ -530,6 +530,59 @@
         }
       ],
       "grpc_message": "permguard.control.v1.FetchObjectsResponse"
+    },
+    "get_ref_request": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "ref",
+          "type": "text",
+          "occurs": "required",
+          "grpc_field": "ref"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.GetRefRequest",
+      "grpc_only": [
+        "zone",
+        "ledger"
+      ],
+      "grpc_note": "`zone` and `ledger` travel in the REST path or the `policy.mirror` message, and REST names the ref in the path too"
+    },
+    "mirror_request": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "operation",
+          "type": "uint",
+          "occurs": "required",
+          "note": "1 get_ref, 2 negotiate_pull, 3 fetch_objects, 4 key_ring"
+        },
+        {
+          "label": 2,
+          "name": "zone",
+          "type": "text",
+          "occurs": "required",
+          "note": "the zone id"
+        },
+        {
+          "label": 3,
+          "name": "ledger",
+          "type": "text",
+          "occurs": "required",
+          "note": "the ledger id"
+        },
+        {
+          "label": 4,
+          "name": "body",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "the operation's own NOTP message; empty for the key ring"
+        }
+      ],
+      "grpc_message": null,
+      "grpc_note": "a `policy.mirror` Host task message (WP-7.12): never on the public gRPC surface"
     }
   },
   "arrays": {},
@@ -545,6 +598,8 @@
     "negotiate_pull_request",
     "negotiate_pull_response",
     "fetch_objects_request",
-    "fetch_objects_response"
+    "fetch_objects_response",
+    "get_ref_request",
+    "mirror_request"
   ]
 }

@@ -1986,3 +1986,26 @@ fn test_security_audit_days_are_kept_for_ever_unless_their_retention_is_set() {
     );
     assert_eq!(set.audit_retention(), Duration::from_secs(90 * 86_400));
 }
+
+/// WP-7.12: a transfer session stays open fifteen minutes by default, and at most an hour.
+#[test]
+fn test_a_transfer_session_is_open_at_most_an_hour() {
+    assert_eq!(
+        config(&[], &[], &[]).notp_transfer_ttl(),
+        Duration::from_secs(15 * 60)
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_NOTP_TRANSFER_TTL, "1h")], &[]).notp_transfer_ttl(),
+        Duration::from_secs(60 * 60)
+    );
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_environment(pairs(&[(SETTING_NOTP_TRANSFER_TTL, "61m")])),
+    )
+    .expect_err("past an hour");
+    assert!(
+        format!("{refused:#}").contains("longest a transfer session"),
+        "{refused:#}"
+    );
+}

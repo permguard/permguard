@@ -6,7 +6,7 @@
 
 use permguard_notp::pull::*;
 use permguard_notp::push::*;
-use permguard_notp::{ExpectedRef, TransferId};
+use permguard_notp::{ExpectedRef, MirrorOperation, MirrorRequest, TransferId};
 use permguard_objects::cbor::{self, Value};
 use permguard_objects::digest::Digest;
 
@@ -79,6 +79,13 @@ fn test_every_message_refuses_an_unknown_label() {
             => CommitPushResponse,
         GetRefResponse { head: digest(), counter: 1, statement: vec![1], ref_digest: digest() }
             => GetRefResponse,
+        GetRefRequest { r#ref: "main".to_owned() } => GetRefRequest,
+        MirrorRequest {
+            operation: MirrorOperation::NegotiatePull,
+            zone: "zone".to_owned(),
+            ledger: "ledger".to_owned(),
+            body: vec![1],
+        } => MirrorRequest,
         NegotiatePullRequest {
             r#ref: "main".to_owned(),
             at: Some(digest()),
@@ -200,4 +207,46 @@ fn test_request_and_transfer_ids_are_held_to_their_form() {
     }
     let bytes = cbor::encode(&Value::Map(pairs)).expect("encodes");
     assert!(CommitPushRequest::decode(&bytes).is_err());
+}
+
+/// WP-7.12: a `policy.mirror` message names one of the four reads and its ledger; each round
+/// trips, an operation outside them is refused, and the key ring is asked with an empty body.
+#[test]
+fn test_a_mirror_message_names_one_of_its_reads() {
+    for operation in [
+        MirrorOperation::GetRef,
+        MirrorOperation::NegotiatePull,
+        MirrorOperation::FetchObjects,
+        MirrorOperation::KeyRing,
+    ] {
+        let message = MirrorRequest {
+            operation,
+            zone: "zone".to_owned(),
+            ledger: "ledger".to_owned(),
+            body: if operation == MirrorOperation::KeyRing {
+                Vec::new()
+            } else {
+                vec![0xa0]
+            },
+        };
+        assert_eq!(
+            MirrorRequest::decode(&message.encode().expect("encodes")).expect("decodes"),
+            message
+        );
+    }
+    let outside = cbor::encode(&Value::Map(vec![
+        (Value::Int(1), Value::Int(5)),
+        (Value::Int(2), Value::Text("zone".to_owned())),
+        (Value::Int(3), Value::Text("ledger".to_owned())),
+        (Value::Int(4), Value::Bytes(Vec::new())),
+    ]))
+    .expect("encodes");
+    assert!(MirrorRequest::decode(&outside).is_err());
+    let keys_with_body = MirrorRequest {
+        operation: MirrorOperation::KeyRing,
+        zone: "zone".to_owned(),
+        ledger: "ledger".to_owned(),
+        body: vec![1],
+    };
+    assert!(MirrorRequest::decode(&keys_with_body.encode().expect("encodes")).is_err());
 }

@@ -53,7 +53,7 @@ pub const CONTRACTS: [Contract; 6] = [
         provided_by: Server::Plane("control"),
         consumed_by: Server::Plane("data"),
         messages: "6-contracts/6-contract-ledger-notp.md: the NOTP pull messages and WatchRefs",
-        served: false,
+        served: true,
     },
     Contract {
         task_type: TaskType::DecisionsShip,

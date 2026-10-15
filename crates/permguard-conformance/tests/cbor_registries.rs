@@ -16,8 +16,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use permguard_host::membership::zone;
 use permguard_notp::{
     CommitPushRequest, CommitPushResponse, ExpectedRef, FetchObjectsRequest, FetchObjectsResponse,
-    GetRefResponse, NegotiatePullRequest, NegotiatePullResponse, NegotiatePushRequest,
-    NegotiatePushResponse, ObjectClaim, UploadObjectsRequest, UploadObjectsResponse,
+    GetRefRequest, GetRefResponse, MirrorOperation, MirrorRequest, NegotiatePullRequest,
+    NegotiatePullResponse, NegotiatePushRequest, NegotiatePushResponse, ObjectClaim,
+    UploadObjectsRequest, UploadObjectsResponse,
 };
 use permguard_objects::Digest;
 use permguard_objects::cbor::{self, Value};
@@ -2413,6 +2414,37 @@ fn notp_samples() -> Vec<Sample> {
             &[],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(GetRefResponse::decode(bytes))
+            })),
+        ),
+        sample(
+            "get_ref_request",
+            GetRefRequest {
+                r#ref: "main".into(),
+            }
+            .encode()
+            .expect("it encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(GetRefRequest::decode(bytes))
+            })),
+        ),
+        sample(
+            "mirror_request",
+            MirrorRequest {
+                operation: MirrorOperation::GetRef,
+                zone: "0198f2aa-0000-7000-8000-000000000001".into(),
+                ledger: "0198f3bb-0000-7000-8000-000000000002".into(),
+                body: GetRefRequest {
+                    r#ref: "main".into(),
+                }
+                .encode()
+                .expect("it encodes"),
+            }
+            .encode()
+            .expect("it encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(MirrorRequest::decode(bytes))
             })),
         ),
         sample(

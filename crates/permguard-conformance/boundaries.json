@@ -263,10 +263,30 @@
     {
       "crate": "permguard-notp",
       "source": "crates/permguard-notp/src/pull.rs",
+      "item": "GetRefRequest::decode",
+      "entry": "permguard_notp::GetRefRequest::decode",
+      "max_input_bytes": 8388608,
+      "limit": "carried inside a `policy.mirror` task message, inside the task's `max_body_bytes`",
+      "enforced_at_decoder": false,
+      "fuzz": "notp_decode"
+    },
+    {
+      "crate": "permguard-notp",
+      "source": "crates/permguard-notp/src/pull.rs",
       "item": "GetRefResponse::decode",
       "entry": "permguard_notp::GetRefResponse::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
+      "fuzz": "notp_decode"
+    },
+    {
+      "crate": "permguard-notp",
+      "source": "crates/permguard-notp/src/mirror.rs",
+      "item": "MirrorRequest::decode",
+      "entry": "permguard_notp::MirrorRequest::decode",
+      "max_input_bytes": 8388608,
+      "limit": "a Host task message body, inside the task's signed `max_body_bytes`",
       "enforced_at_decoder": false,
       "fuzz": "notp_decode"
     },

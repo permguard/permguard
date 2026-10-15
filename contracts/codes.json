@@ -821,6 +821,24 @@
       "kind": "refusal",
       "class": "validation"
     },
+    "notp.TRANSFER_EXPIRED": {
+      "code": "transfer_expired",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "notp.TRANSFER_MISMATCH": {
+      "code": "transfer_mismatch",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "notp.TRANSFER_UNKNOWN": {
+      "code": "transfer_unknown",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
     "notp.VALUE_UNREPRESENTABLE": {
       "code": "value_unrepresentable",
       "contract": "6-contracts/1-contract-pdp-native-v1.md",

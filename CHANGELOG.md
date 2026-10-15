@@ -19,6 +19,15 @@ is cut.
 
 ### Added
 
+- **NOTP transfers are durable sessions, and a push is a security mutation.**
+  A negotiation opens a transfer session, one record under `transfers/` beside the ledger, bound to the caller, the ledger, the ref, the request id and the request; the same request resumes it, the same request id with other parameters is refused `transfer_mismatch`.
+  A push reserves the bytes it declares against `notp.ledger_quota_bytes` before anything lands, uploads only the objects its closure declared and no byte past the reservation, and pins its closure, so garbage collection keeps an upload however long the push takes, and for `storage.gc.grace` after it ends.
+  Uploads, commits and fetches name their session and are refused `transfer_unknown` for another caller's, `transfer_expired` once it ended; a session stays open for `notp.transfer_ttl`, 15 minutes by default and at most one hour.
+  The ref update runs in the Host's security mutation transaction: its intent, the ref record carrying the operation id and the commit are durable before the answer, `ledger.pushed` is recorded at each phase, and a start resolves an update a crash left open; a Control Plane composed without the transaction does not serve NOTP.
+  REST, gRPC and the Host task transport share one facade and one compare-and-swap per ledger.
+  A data plane member pulls over the `policy.mirror` task, its reads bound to its membership and the resource of its session, and every commit sends a `WatchRefs` hint to the watches of its ledger.
+  The refusal codes `transfer_unknown`, `transfer_expired` and `transfer_mismatch` are new.
+
 - **NOTP speaks its target messages: ref states, transfer sessions and a head statement bound to its authority.**
   A ref's state is now `(head, counter, previous_ref_digest)`, and its `ref_digest` is SHA-256 over the deterministic CBOR of that state under `permguard.notp.ref-state.v1\n`; a ref written before reads as a state without a previous digest, and its next write names it.
   A push names the state it replaces, `expected_ref {counter, digest}`, instead of the old head; the old head's label is retired and refused, and a state that is not the current one is a conflict before anything is checked.

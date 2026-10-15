@@ -105,6 +105,9 @@ pub struct ControlPlaneModule {
     decisions: Composed<crate::decisions::http::DecisionFacade>,
     decision_state:
         std::sync::Arc<std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>>,
+    /// The NOTP facade, composed once: REST, gRPC and the `policy.mirror` task share its stores,
+    /// so one gate serializes a ledger's compare-and-swap and its transfer sessions (WP-7.12).
+    notp: Composed<crate::notp::NotpFacade>,
 }
 
 pub fn module() -> Box<dyn PlaneModule> {
@@ -148,6 +151,32 @@ impl ControlPlaneModule {
 
         composed(&self.events, directory.clone(), || {
             build_event_facade(context, &directory, &self.event_store, &self.event_trust)
+        })
+    }
+
+    /// The NOTP facade, composed once; its first composition serves the `policy.mirror` task.
+    fn notp_facade(&self, context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
+        let directory = context.config().zones_directory();
+        composed(&self.notp, directory, || {
+            let facade = notp_facade(context)?;
+            if let Some(registration) = crate::handles::registration(context) {
+                let mirror = std::sync::Arc::new(crate::notp::mirror::Mirror {
+                    facade: std::sync::Arc::new(facade.clone()),
+                });
+                if let Err(error) = registration.serve_task(
+                    permguard_host::membership::record::TaskType::PolicyMirror,
+                    crate::notp::mirror::VERSION,
+                    mirror,
+                ) {
+                    tracing::error!(
+                        event.name = "notp.mirror_unserved",
+                        component = COMPONENT,
+                        error = %error,
+                        "the policy.mirror task is not served by this plane"
+                    );
+                }
+            }
+            Some(facade)
         })
     }
 
@@ -305,7 +334,7 @@ impl PlaneModule for ControlPlaneModule {
         // NOTP needs both the catalog (to resolve ledgers) and the git-like
         // signing ring (every served head is attested). Fail-closed: a build
         // missing either simply has no ledger-content routes.
-        let routes = match notp_facade(context) {
+        let routes = match self.notp_facade(context) {
             Some(facade) => routes.merge(crate::notp::http::routes(facade)),
             None => routes,
         };
@@ -368,7 +397,7 @@ impl PlaneModule for ControlPlaneModule {
         // to the same line, so the three layers agree instead of the lowest
         // one silently winning.
         let message_ceiling = grpc_message_ceiling(context.config());
-        if let Some(facade) = notp_facade(context) {
+        if let Some(facade) = self.notp_facade(context) {
             grpc.add_service(
                 crate::v1::git_like_store_server::GitLikeStoreServer::new(facade)
                     .max_decoding_message_size(message_ceiling),
@@ -1046,6 +1075,29 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
         return None;
     };
     let config = context.config();
+    // Every ref update runs in the Host's mutation transaction (WP-3.6): without one the store is
+    // not served, and the operations a crash left open are resolved before it is.
+    let Some(mutations) = crate::handles::ref_mutations(context) else {
+        tracing::warn!(
+            event.name = "notp.disabled",
+            component = COMPONENT,
+            "the git-like store is not served: the Host composes no mutation transaction"
+        );
+        return None;
+    };
+    let domain = crate::store::RefDomain {
+        zones_root: config.zones_directory(),
+    };
+    if let Err(error) = mutations.recover(&domain) {
+        tracing::error!(
+            event.name = "notp.disabled",
+            component = COMPONENT,
+            error = %error,
+            "the git-like store is not served: the ref updates a crash left open could not be \
+             resolved"
+        );
+        return None;
+    }
 
     Some(crate::notp::NotpFacade::new(
         std::sync::Arc::clone(catalog),
@@ -1059,6 +1111,12 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
             max_push_bytes: config.notp_max_push_bytes(),
             ledger_quota_bytes: config.notp_ledger_quota_bytes(),
         },
+        crate::engine::TransferPolicy {
+            ttl: config.notp_transfer_ttl(),
+            grace: config.gc_grace(),
+        },
+        mutations,
+        crate::handles::registration(context).and_then(|registration| registration.hints()),
         // The ingest gate reads the deployment's opt-ins, not the build's: a plane that has not
         // enabled a provisional runtime refuses the push rather than storing a ledger it would
         // then refuse to serve.

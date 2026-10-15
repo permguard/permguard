@@ -35,7 +35,10 @@ fn every_task_type_has_one_v1_contract_with_its_roles_and_server() {
                 task.as_str()
             ),
         }
-        assert_eq!(contract.served, task == TaskType::ZoneSecrets);
+        assert_eq!(
+            contract.served,
+            matches!(task, TaskType::ZoneSecrets | TaskType::PolicyMirror)
+        );
     }
     let host: Vec<Capability> = Capabilities::host().list();
     let mut expected: Vec<Capability> = [TaskType::AuditCheckpoints, TaskType::ZoneSecrets]
