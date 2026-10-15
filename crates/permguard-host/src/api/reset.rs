@@ -9,11 +9,13 @@
 //! | `POST /host/v1/identity/reset/plan`     | the plan: every live membership and what the reset does to it  |
 //! | `POST /host/v1/identity/reset/run`      | the receipt, the revocations, `orphaned[]` and the new identity |
 //!
-//! The run follows the blueprint's order: each coordinator asked to revoke the memberships this
-//! Host is a member of, their revoked manifests kept as receipts; a normal reset that does not
-//! reach them all is refused (`identity_reset_incomplete`) and changes no identity, an emergency
-//! one marks them `orphaned` and names their coordinators; the memberships this Host coordinates
-//! ended here; then the identity retired, its public evidence kept and the next provisioned.
+//! The run follows the blueprint's order: new task sessions stopped by the store's fence (WP-4.9);
+//! each coordinator asked to revoke the memberships this Host is a member of, their revoked
+//! manifests kept as receipts; a normal reset that does not reach them all is refused
+//! (`identity_reset_incomplete`), its fence lifted, and changes no identity, an emergency one
+//! marks them `orphaned` and names their coordinators; the memberships this Host coordinates
+//! ended here; the audit trails checkpointed while their signing ring is active (WP-4.9); then
+//! the identity retired, its public evidence kept and the next provisioned.
 //! The process signs nothing more and serves the new identity after a restart.
 
 use base64::Engine as _;
@@ -322,6 +324,12 @@ impl HostApi {
             return Err(unprovisioned());
         }
         let memberships = self.memberships()?;
+        // The checkpoint the reset requires must be possible before anything is taken or changed.
+        self.sealing_audit()?;
+        // From here nothing new is taken under this identity, a task session included, before the
+        // memberships are enumerated (WP-4.9): what the plan bound is all there is. The fence is
+        // lifted when the run ends before anything irreversible, held once it revokes or ends.
+        let mut fence = Fence::take(&memberships.store);
         let now = self.time.now_secs();
         let plan = self.presented_plan(&admitted.principal, &run.receipt, now)?;
         if plan.operation != RESET {
@@ -348,6 +356,7 @@ impl HostApi {
         // Nothing irreversible before every local step is known to be possible.
         let coordinator = self.coordinator()?;
         settle::preflight(&memberships.store, &coordinator, now).map_err(refusal_of)?;
+        let mutations = self.mutations()?;
 
         // Each coordinator asked to revoke; its revoked manifest is the receipt.
         let mut ended = Vec::new();
@@ -406,9 +415,8 @@ impl HostApi {
                 ),
             ));
         }
-        let mutations = self.mutations()?;
-        // From here nothing new is taken under this identity; what was offered goes first.
-        memberships.store.fence();
+        // From here the run is irreversible: the fence stays; what was offered goes first.
+        fence.hold();
         settle::revoke_invites(&memberships.store, mutations, &initiator, now)
             .map_err(refusal_of)?;
         for held in
@@ -428,6 +436,9 @@ impl HostApi {
                 address: held.request.coordinator_address.clone(),
             })
             .collect();
+
+        // The local evidence sealed while the rings that sign it are still active (WP-4.9).
+        self.checkpoint_evidence()?;
 
         // The identity itself, last: retired here, its evidence kept, the next provisioned.
         let old = identity.host_id_text();
@@ -505,6 +516,81 @@ impl HostApi {
             "the Host identity was reset; the process signs nothing more and needs a restart"
         );
         Ok(done)
+    }
+}
+
+impl HostApi {
+    /// The audit engine that checkpoints the trails before a reset: a reset requires a recovery
+    /// audit checkpoint (`2-architecture-server-host-identity.md`), so a process composing no
+    /// engine or no signer is refused before anything changes (WP-4.9).
+    fn sealing_audit(&self) -> Result<&crate::audit::Engine, Refusal> {
+        match self.audit.as_deref() {
+            Some(audit) if audit.seals() => Ok(audit),
+            _ => Err(Refusal::new(
+                ErrorClass::Unavailable,
+                codes::host::AUDIT_UNAVAILABLE,
+                "this process seals no audit trail, and a reset requires a recovery audit \
+                 checkpoint: nothing changed",
+            )),
+        }
+    }
+
+    /// Checkpoints every audit trail before an identity reset retires the `host.operations` ring
+    /// that signs the checkpoints (WP-4.9, owner decision of 2026-10-15): refused, the identity
+    /// unchanged, when one fails.
+    fn checkpoint_evidence(&self) -> Result<(), Refusal> {
+        let sealed = self.sealing_audit()?.checkpoint_all().map_err(|error| {
+            tracing::error!(
+                event.name = "host.identity_reset_unsealed",
+                component = super::COMPONENT,
+                error = %error,
+                "an identity reset was refused: the audit trails could not be checkpointed"
+            );
+            Refusal::Api(
+                permguard_core::ApiError::new(
+                    ErrorClass::Unavailable,
+                    codes::host::AUDIT_UNAVAILABLE,
+                    "the audit trails could not be checkpointed before the reset, and the \
+                     identity is unchanged: plan again once they can",
+                )
+                .with_internal(error.to_string()),
+            )
+        })?;
+        tracing::info!(
+            event.name = "host.identity_reset_sealed",
+            component = super::COMPONENT,
+            checkpoints = sealed.len(),
+            "the audit trails were checkpointed before the identity reset"
+        );
+        Ok(())
+    }
+}
+
+/// The fence a reset run takes before it asks its coordinators: lifted when the run ends before
+/// anything irreversible, held once it revokes or ends anything here.
+struct Fence<'a> {
+    store: &'a crate::membership::Store,
+    held: bool,
+}
+
+impl<'a> Fence<'a> {
+    /// Fences `store`; a fence an earlier run left held stays held whatever this run does.
+    fn take(store: &'a crate::membership::Store) -> Self {
+        let held = store.is_fenced();
+        store.fence();
+        Self { store, held }
+    }
+
+    fn hold(&mut self) {
+        self.held = true;
+    }
+}
+
+impl Drop for Fence<'_> {
+    fn drop(&mut self) {
+        if !self.held {
+            self.store.unfence();
+        }
     }
 }
 

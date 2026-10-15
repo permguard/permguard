@@ -165,18 +165,24 @@ struct Host {
     time: Arc<TimeGuard>,
 }
 
+/// The Host of `root`: its identity provisioned on the first open, opened again on a restart.
 fn host(root: &Path) -> Host {
     let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
-    let identity = Identity::provision(
-        &volume,
-        Arc::new(FileKeyProvider::new(
-            directories(&volume).expect("the identity directory").1,
-        )),
-        Suite::Ed25519Sha256V1,
-        permguard_host::authz::store::now(),
-        permguard_host::authz::store::now() * 1000,
-    )
-    .expect("provisioned");
+    let provider: Arc<dyn permguard_host::keys::KeyProvider> = Arc::new(FileKeyProvider::new(
+        directories(&volume).expect("the identity directory").1,
+    ));
+    let identity = if permguard_host::identity::is_provisioned(&volume).expect("read") {
+        Identity::open(&volume, provider).expect("opened")
+    } else {
+        Identity::provision(
+            &volume,
+            provider,
+            Suite::Ed25519Sha256V1,
+            permguard_host::authz::store::now(),
+            permguard_host::authz::store::now() * 1000,
+        )
+        .expect("provisioned")
+    };
     // A reset provisions the next identity in the same `keys/`.
     let keys = directories(&volume)
         .expect("the identity directory")
@@ -603,9 +609,28 @@ async fn side_with(
 
     let host = host(root);
     let (store, _) = GrantStore::open(&host.volume).expect("the grant store opens");
+    // One audit engine for the mutations and the checkpoints, as the server composes it.
+    let audit = Arc::new(
+        permguard_host::audit::Engine::open(
+            &host.volume,
+            permguard_host::audit::Stamp {
+                host_id: host.identity.host_id(),
+                boot_id: host.identity.boot_id(),
+                build: "test".to_owned(),
+                config_revision: permguard_host::audit::config_revision(std::iter::empty()),
+            },
+            Arc::clone(&host.time),
+            None,
+        )
+        .expect("the audit engine opens"),
+    );
     let mutations = Arc::new(
-        permguard_host::operations::mutation::Mutations::open_offline(&host.volume, "test")
-            .expect("the mutation journal opens"),
+        permguard_host::operations::mutation::Mutations::open(
+            &host.volume,
+            Arc::clone(&audit) as Arc<dyn permguard_host::operations::mutation::Projection>,
+            Arc::clone(&host.time),
+        )
+        .expect("the mutation journal opens"),
     );
     permguard_host::operations::grants::issue(
         &mutations,
@@ -648,9 +673,17 @@ async fn side_with(
         ring
     };
     let mut rings = vec![open_ring(ring)];
-    // `host.operations` signs the plan receipts of either side (WP-3.9).
+    // `host.operations` signs the plan receipts of either side (WP-3.9) and seals the trails.
     if ring != permguard_host::keys::ring::HOST_OPERATIONS {
         rings.push(open_ring(permguard_host::keys::ring::HOST_OPERATIONS));
+    }
+    if let Some(operations) = rings
+        .iter()
+        .find(|held| held.id() == permguard_host::keys::ring::HOST_OPERATIONS)
+    {
+        audit
+            .seal_with(Arc::clone(operations)
+                as Arc<dyn permguard_host::audit::checkpoint::CheckpointSigner>);
     }
     let keys = Arc::new(permguard_host::keys::registry::Registry::new(
         Some(Arc::clone(&host.identity)),
@@ -729,7 +762,7 @@ async fn side_with(
             context: Some(context),
         },
         listeners: Vec::new(),
-        audit: None,
+        audit: Some(Arc::clone(&audit)),
         memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
             store: Arc::clone(&members),
             capabilities,
@@ -1070,6 +1103,28 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         .await
         .expect("approved");
 
+    member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            permguard_host::api::members::SyncMembership {
+                request_id: "sync".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+    // A session the member holds open across the reset (WP-4.9).
+    let membership_id = only_membership(&coordinator);
+    let mut live = acting(&member)
+        .open(&membership_id)
+        .await
+        .expect("a lease before the reset");
+    assert_eq!(
+        live.send("before", b"x".to_vec()).await.expect("answered"),
+        b"echo:x"
+    );
+
     let old = member.host.identity.host_id_text();
     let planned = member
         .api
@@ -1114,6 +1169,104 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         root.join(format!("member/host/keys/retired/{old}/data.attest/public"))
             .is_dir()
     );
+    // Recorded on both sides (WP-4.9): the coordinator's revocation, the member's reset.
+    assert!(security_actions(&coordinator).contains(&"host.membership.revoked".to_owned()));
+    assert!(security_actions(&member).contains(&"host.identity.reset".to_owned()));
+    // The session open across the reset ends at its next frame: the membership is revoked.
+    assert!(
+        live.send("after", b"x".to_vec()).await.is_err(),
+        "a live session outlived the revocation"
+    );
+    drop(live);
+    let mut waited = 0;
+    while !coordinator.tasks.live.of(&membership_id).is_empty() {
+        assert!(waited < 100, "the coordinator kept the old session");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        waited += 1;
+    }
+    // The old membership is usable nowhere: the coordinator holds its revocation and takes no
+    // task session for it (WP-4.9).
+    assert!(
+        acting(&member).open_task_now(&membership_id).await.is_err(),
+        "no task session on a revoked membership"
+    );
+    assert!(coordinator.tasks.live.of(&membership_id).is_empty());
+
+    // Restarted, the member serves its new identity and carries nothing of the old one over.
+    let Side {
+        host,
+        api,
+        listener,
+        members,
+        mutations,
+        keys,
+        connector,
+        tasks,
+    } = member;
+    listener.stop(Duration::from_secs(5)).await.expect("stops");
+    // Everything of the old process goes, the volume's lock with it.
+    drop((host, api, members, mutations, keys, connector, tasks));
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    assert_eq!(member.host.identity.host_id_text(), done.host_id);
+    assert_eq!(member.host.identity.first_fingerprint(), done.fingerprint);
+    let held = member.api.members(&admin(), None).expect("listed").members;
+    assert_eq!(held.len(), 1, "the old membership, kept as evidence");
+    assert_eq!(
+        (held[0].membership_id.as_str(), held[0].status.as_str()),
+        (id.as_str(), "revoked")
+    );
+    assert_eq!(held[0].member.host_id, old, "it names the old identity");
+    assert!(
+        member.tasks.live.of(&membership_id).is_empty() && held[0].last_session_at.is_none(),
+        "no session under it"
+    );
+    // The used invitation does not admit the new identity; a new one enrolls it from zero, pending.
+    let replayed = member
+        .api
+        .join_membership(&admin(), join_of(&coordinator, &invited, "join-again"))
+        .await
+        .expect_err("an invitation is used once");
+    assert_eq!(
+        code(&replayed),
+        codes::host::ENROLLMENT_REFUSED,
+        "{replayed:?}"
+    );
+    let again = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite-again".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    let rejoined = member
+        .api
+        .join_membership(&admin(), join_of(&coordinator, &again, "rejoin"))
+        .await
+        .expect("joined");
+    assert_ne!(rejoined.membership_id, id);
+    let enrolled = coordinator
+        .api
+        .member(&admin(), &rejoined.membership_id)
+        .expect("read");
+    assert_eq!(enrolled.status, "pending");
+    assert_eq!(enrolled.member.host_id, done.host_id);
+    assert!(enrolled.manifest.is_none(), "no authority before approval");
 
     for side in [coordinator, member] {
         side.listener
@@ -1121,6 +1274,330 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
             .await
             .expect("stops");
     }
+}
+
+/// The actions of `side`'s security trail on the Host, as its volume holds them.
+fn security_actions(side: &Side) -> Vec<String> {
+    use permguard_host::audit::{Class, Engine, HOST, Stamp, query::Query};
+    let engine = Engine::open(
+        &side.host.volume,
+        Stamp {
+            host_id: side.host.identity.host_id(),
+            boot_id: side.host.identity.boot_id(),
+            build: "test".to_owned(),
+            config_revision: permguard_host::audit::config_revision(std::iter::empty()),
+        },
+        Arc::clone(&side.host.time),
+        None,
+    )
+    .expect("the audit engine opens");
+    engine
+        .read(
+            Class::Security,
+            HOST,
+            &Query {
+                limit: Some(permguard_host::audit::query::MAX_LIMIT),
+                ..Query::default()
+            },
+        )
+        .expect("read")
+        .records
+        .into_iter()
+        .map(|record| record.action)
+        .collect()
+}
+
+/// The one membership `side` holds.
+fn only_membership(side: &Side) -> [u8; 16] {
+    let held = side.members.memberships();
+    assert_eq!(held.len(), 1, "one membership");
+    held[0].0
+}
+
+/// The member side of `side`, acting with its own store, identity, rings and peer client.
+struct Acting<'a> {
+    side: &'a Side,
+    capabilities: permguard_host::membership::Capabilities,
+}
+
+fn acting(side: &Side) -> Acting<'_> {
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+    Acting {
+        side,
+        capabilities: Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    }
+}
+
+impl Acting<'_> {
+    async fn open_task_now(
+        &self,
+        membership_id: &[u8; 16],
+    ) -> Result<(), permguard_host::membership::MembershipError> {
+        self.open(membership_id).await.map(drop)
+    }
+
+    async fn open(
+        &self,
+        membership_id: &[u8; 16],
+    ) -> Result<
+        permguard_host::membership::member::MemberTask,
+        permguard_host::membership::MembershipError,
+    > {
+        let member = permguard_host::membership::member::Member {
+            store: &self.side.members,
+            mutations: &self.side.mutations,
+            identity: &self.side.host.identity,
+            rings: self.side.keys.rings(),
+            capabilities: &self.capabilities,
+            connector: self.side.connector.as_deref().expect("a peer client"),
+            declared_assurance: AssuranceProfile::Production,
+            time: &self.side.host.time,
+            streams: None,
+            shipping: None,
+        };
+        member
+            .open_task(
+                permguard_host::operations::journal::Initiator::System("test".to_owned()),
+                membership_id,
+                "decisions",
+                "plane/data/zone/z1",
+                Vec::new(),
+            )
+            .await
+    }
+}
+
+/// A coordinator and a member joined, approved and synced over mutual TLS: the membership id.
+async fn approved_pair(coordinator: &Side, member: &Side) -> String {
+    use permguard_host::api::members::{ApproveMember, CreateInvite, SyncMembership};
+
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    let id = member
+        .api
+        .join_membership(&admin(), join_of(coordinator, &invited, "join"))
+        .await
+        .expect("joined")
+        .membership_id;
+    let pending = coordinator.api.member(&admin(), &id).expect("enrolled");
+    coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &id,
+            ApproveMember {
+                request_id: "approve".to_owned(),
+                expected_revision: pending.revision,
+                narrow: None,
+                lease_policy: None,
+                assurance: None,
+            },
+        )
+        .await
+        .expect("approved");
+    member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: "sync".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+    id
+}
+
+/// WP-4.9: while a reset is under way, the member opens no task session and the coordinator
+/// accepts none, each with its own refusal; lifted, both serve again.
+#[tokio::test]
+async fn a_reset_under_way_neither_opens_nor_accepts_a_task_session() {
+    use permguard_host::membership::record::{Role, TaskType};
+    use permguard_host::membership::{Capabilities, MembershipError};
+
+    let root = scratch("reset-fence");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    approved_pair(&coordinator, &member).await;
+    let membership_id = only_membership(&coordinator);
+    let acting = acting(&member);
+    acting
+        .open_task_now(&membership_id)
+        .await
+        .expect("a lease before any reset");
+
+    coordinator.members.fence();
+    match acting.open_task_now(&membership_id).await {
+        // The member is told the code; the coordinator's reason stays in its own log.
+        Err(MembershipError::Remote { code, reason }) => {
+            assert_eq!(code, codes::common::UNAVAILABLE, "{reason}");
+        }
+        other => panic!("the coordinator under a reset accepted a session: {other:?}"),
+    }
+    assert!(coordinator.tasks.live.of(&membership_id).is_empty());
+    coordinator.members.unfence();
+    acting
+        .open_task_now(&membership_id)
+        .await
+        .expect("a lease once the coordinator's fence is lifted");
+
+    member.members.fence();
+    match acting.open_task_now(&membership_id).await {
+        Err(MembershipError::Invalid(reason)) => {
+            assert!(reason.contains("identity reset"), "{reason}");
+        }
+        other => panic!("the member under a reset opened a session: {other:?}"),
+    }
+    member.members.unfence();
+    acting
+        .open_task_now(&membership_id)
+        .await
+        .expect("a lease once the member's fence is lifted");
+
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// WP-4.9: a coordinator nobody reaches refuses a normal reset, the fence lifted and the identity
+/// unchanged; an emergency reset orphans the membership and names that coordinator, which still
+/// holds it active until it is revoked out of band.
+#[tokio::test]
+async fn an_unreachable_coordinator_refuses_a_normal_reset_and_is_named_by_an_emergency_one() {
+    use permguard_host::api::reset::{PlanIdentityReset, RunIdentityReset};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("reset-orphan");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let id = approved_pair(&coordinator, &member).await;
+    let address = format!(
+        "https://127.0.0.1:{}",
+        coordinator.listener.address().port()
+    );
+    coordinator
+        .listener
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("stops");
+
+    let plan = |request_id: &str, mode: &str| PlanIdentityReset {
+        request_id: request_id.to_owned(),
+        mode: mode.to_owned(),
+        reason: "a drill".to_owned(),
+    };
+    let planned = member
+        .api
+        .plan_identity_reset(&admin(), plan("plan-1", "normal"))
+        .await
+        .expect("planned");
+    let refused = member
+        .api
+        .run_identity_reset(
+            &admin(),
+            RunIdentityReset {
+                request_id: "run-1".to_owned(),
+                receipt: planned.receipt,
+            },
+        )
+        .await
+        .expect_err("the coordinator is unreachable");
+    assert_eq!(
+        code(&refused),
+        codes::host::IDENTITY_RESET_INCOMPLETE,
+        "{refused:?}"
+    );
+    assert!(!member.host.identity.is_retired(), "the identity unchanged");
+    assert!(!member.members.is_fenced(), "the fence lifted");
+
+    let planned = member
+        .api
+        .plan_identity_reset(&admin(), plan("plan-2", "emergency"))
+        .await
+        .expect("planned");
+    let done = member
+        .api
+        .run_identity_reset(
+            &admin(),
+            RunIdentityReset {
+                request_id: "run-2".to_owned(),
+                receipt: planned.receipt,
+            },
+        )
+        .await
+        .expect("reset");
+    assert!(done.ended.is_empty(), "nothing acknowledged");
+    assert_eq!(done.orphaned.len(), 1);
+    assert_eq!(done.orphaned[0].membership_id, id);
+    assert_eq!(
+        done.orphaned[0].coordinator.host_id,
+        coordinator.host.identity.host_id_text()
+    );
+    assert_eq!(done.orphaned[0].address.as_deref(), Some(address.as_str()));
+    assert_eq!(
+        member.api.member(&admin(), &id).expect("read").status,
+        "orphaned"
+    );
+    // The coordinator never heard of it: revoked out of band, by the operator the report names.
+    assert_eq!(
+        coordinator.api.member(&admin(), &id).expect("read").status,
+        "active"
+    );
+    member
+        .listener
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("stops");
 }
 
 /// WP-4.3: over mutual TLS the member opens a task session to its coordinator, verifies the lease

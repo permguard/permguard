@@ -335,8 +335,14 @@ fn the_offline_reset_writes_a_receipt_readable_by_its_owner_only_and_runs_it() {
     ]));
     assert_eq!(replanned["epoch"], 2);
 
+    let sealed = checkpoint_files(&volume);
     let reset = json(&host(&["reset", "run", "--confirm-file", plan_arg]));
     assert_eq!(reset["old_host_id"], provisioned["host_id"]);
+    // The trails were checkpointed under the operations ring before it retired (WP-4.9).
+    assert!(
+        checkpoint_files(&volume) > sealed,
+        "the reset sealed its evidence"
+    );
     assert_ne!(reset["host_id"], provisioned["host_id"]);
     assert_ne!(reset["witness"], provisioned["witness"]);
     let shown = json(&host(&["show"]));
@@ -356,6 +362,27 @@ fn the_offline_reset_writes_a_receipt_readable_by_its_owner_only_and_runs_it() {
     let stale = host(&["reset", "run", "--confirm-file", plan_arg]);
     assert!(!stale.status.success());
     assert!(stderr(&stale).contains("already run"), "{}", stderr(&stale));
+}
+
+/// How many checkpoint files the audit trails of `volume` hold.
+fn checkpoint_files(volume: &std::path::Path) -> usize {
+    fn walk(dir: &std::path::Path, under_checkpoints: bool) -> usize {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return 0;
+        };
+        entries
+            .flatten()
+            .map(|entry| {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, entry.file_name() == "checkpoints")
+                } else {
+                    usize::from(under_checkpoints)
+                }
+            })
+            .sum()
+    }
+    walk(&volume.join("host/audit/trails"), false)
 }
 
 /// Under `operations.dual_control` the offline reset's receipt requires an approval the Host API

@@ -291,6 +291,15 @@ impl Service for Coordinating {
                 "this Host's identity was reset",
             ));
         }
+        // A reset under way takes no task session before it asks its coordinators (WP-4.9). A
+        // session that passed this check as the fence landed is one opened just before the run:
+        // the revocation ends it at its next frame.
+        if self.store.is_fenced() {
+            return Err(refusal(
+                codes::common::UNAVAILABLE,
+                "an identity reset is under way on this Host",
+            ));
+        }
         self.open_lease(session, peer, exporter, request)
     }
 }

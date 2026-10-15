@@ -502,7 +502,7 @@ fn identity(
                 identity::IdentityError::Provisioned => Failure::usage(error),
                 other => Failure::unavailable(other),
             })?;
-            let audit = audit_offline(&held, &opened)?;
+            let audit = audit_offline(&held, &opened, None)?;
             audit
                 .append(
                     &permguard_core::AuditEvent::new(
@@ -949,11 +949,17 @@ fn reset(
             let opened = std::sync::Arc::new(
                 open_identity(&held, server_config)?.with_provisioner(provisioner),
             );
-            let mutations =
-                Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(opened.as_ref()))
-                    .map_err(|error| {
-                        Failure::unavailable(format!("opening the mutation journal: {error}"))
-                    })?;
+            // One audit engine for the mutations and the checkpoints the reset seals (WP-4.9).
+            let audit = std::sync::Arc::new(audit_offline(&held, &opened, Some(&time))?);
+            let mutations = Mutations::open(
+                &held,
+                std::sync::Arc::clone(&audit)
+                    as std::sync::Arc<dyn permguard_host::operations::mutation::Projection>,
+                std::sync::Arc::clone(&time),
+            )
+            .map_err(|error| {
+                Failure::unavailable(format!("opening the mutation journal: {error}"))
+            })?;
             let store = open_members(&held)?;
             mutations
                 .recover(&identity::Identities(&opened))
@@ -1014,6 +1020,27 @@ fn reset(
                 time,
             )
             .map_err(|error| Failure::unavailable(format!("the key rings: {error:#}")))?;
+            // The trails sealed under `host.operations` before it retires with the identity: a
+            // reset requires that recovery checkpoint, so a volume without the ring is refused
+            // before the identity or a membership changes (WP-4.9).
+            let signer = rings
+                .iter()
+                .find(|ring| ring.id() == permguard_host::keys::ring::HOST_OPERATIONS)
+                .ok_or_else(|| {
+                    Failure::unavailable(
+                        "no host.operations ring: a reset requires a recovery audit checkpoint; \
+                         the identity and its memberships are unchanged, plan again",
+                    )
+                })?;
+            audit.seal_with(std::sync::Arc::clone(signer)
+                as std::sync::Arc<
+                    dyn permguard_host::audit::checkpoint::CheckpointSigner,
+                >);
+            let evidence = || -> Result<(), String> {
+                let sealed = audit.checkpoint_all().map_err(|error| error.to_string())?;
+                trace.say(format!("{} audit checkpoint(s) sealed", sealed.len()));
+                Ok(())
+            };
             let done = permguard_host::membership::reset::emergency(
                 &store,
                 &mutations,
@@ -1021,6 +1048,7 @@ fn reset(
                 &rings,
                 &Initiator::System(INITIATOR.to_owned()),
                 now,
+                &evidence,
             )
             .map_err(|error| match error {
                 permguard_host::membership::reset::EmergencyError::Identity(
@@ -1095,10 +1123,17 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
 fn audit_offline(
     held: &Volume,
     identity: &permguard_host::identity::Identity,
+    time: Option<&std::sync::Arc<permguard_host::time::TimeGuard>>,
 ) -> Result<permguard_host::audit::Engine, Failure> {
-    let time = std::sync::Arc::new(permguard_host::time::TimeGuard::system(
-        std::time::Duration::from_secs(30),
-    ));
+    // The guard the command's other engines share, when it has one.
+    let time = time.map_or_else(
+        || {
+            std::sync::Arc::new(permguard_host::time::TimeGuard::system(
+                std::time::Duration::from_secs(30),
+            ))
+        },
+        std::sync::Arc::clone,
+    );
     permguard_host::audit::Engine::open(
         held,
         permguard_host::audit::Stamp {

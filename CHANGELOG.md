@@ -19,6 +19,15 @@ is cut.
 
 ### Added
 
+- **An identity reset stops task sessions first and seals the audit trails before its rings retire.**
+  From the start of `identity/reset/run`, before the memberships are enumerated, the Host neither opens a task session as a member nor accepts one as a coordinator (`unavailable`).
+  It takes no invitation, enrollment, approval or join either, until a normal reset refused as `identity_reset_incomplete` lifts that again, the identity unchanged.
+  Before the identity and its key rings retire, every audit trail is checkpointed under the `host.operations` ring still active.
+  A trail that cannot be checkpointed refuses the reset with `audit_unavailable`, the identity unchanged, to be planned again.
+  The offline emergency reset, `permguard host identity reset run`, seals the trails the same way.
+  A reset requires that recovery checkpoint: a process that composes no checkpoint signer refuses the run with `audit_unavailable` before anything changes.
+  After a reset, joining with an invitation the old identity used reaches the coordinator, which refuses it, instead of answering the old identity's membership.
+
 - **NOTP transfers are durable sessions, and a push is a security mutation.**
   A negotiation opens a transfer session, one record under `transfers/` beside the ledger, bound to the caller, the ledger, the ref, the request id and the request; the same request resumes it, the same request id with other parameters is refused `transfer_mismatch`.
   A push reserves the bytes it declares against `notp.ledger_quota_bytes` before anything lands, uploads only the objects its closure declared and no byte past the reservation, and pins its closure, so garbage collection keeps an upload however long the push takes, and for `storage.gc.grace` after it ends.

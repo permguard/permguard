@@ -317,11 +317,13 @@ impl Member<'_> {
     /// Joins a coordinator: enrolls on a session to it, then records the membership `pending`.
     pub async fn join(&self, initiator: Initiator, join: Join) -> Result<Held, MembershipError> {
         // A join retried after it was recorded answers what it recorded: the token is spent, and
-        // the coordinator would refuse it.
+        // the coordinator would refuse it. Only this identity's: after a reset the membership an
+        // old identity joined is never the new one's (WP-4.9).
         if let Some((_, held)) = self.store.memberships().into_iter().find(|(_, held)| {
             held.role == Role::Member
                 && held.request.invite_id == join.invite_id
                 && held.request.coordinator.host_id == join.coordinator.host_id
+                && held.request.member.host_id == self.identity.host_id()
         }) {
             let same = held.request.coordinator.fingerprint == join.coordinator.fingerprint
                 && held.request.coordinator_address.as_deref()
@@ -1097,6 +1099,8 @@ impl Member<'_> {
         resource: &str,
         evidence: Vec<(String, Vec<u8>)>,
     ) -> Result<MemberTask, MembershipError> {
+        // A reset under way opens no task session under the identity it retires (WP-4.9).
+        self.store.unfenced()?;
         let held = self.store.membership(id).ok_or_else(|| {
             MembershipError::Unknown(format!("no membership `{}`", uuid_text(id)))
         })?;

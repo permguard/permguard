@@ -3,6 +3,8 @@
 
 #![allow(clippy::expect_used)]
 
+use std::sync::Arc;
+
 use super::*;
 use crate::api::members::tests::{enrolled, task_view};
 use crate::api::members::{ApproveMember, TaskView};
@@ -73,7 +75,8 @@ fn joined(api: &HostApi, coordinator: &Host) -> [u8; 16] {
 #[tokio::test]
 async fn a_normal_reset_refuses_while_a_coordinator_is_unreached_and_an_emergency_one_completes() {
     let root = scratch("reset");
-    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let (mut api, _, volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    sealing(&mut api, &volume);
     let old = api.identity.as_deref().expect("an identity").host_id_text();
 
     // What this Host coordinates: one active membership, one pending; and one it is a member of.
@@ -121,6 +124,14 @@ async fn a_normal_reset_refuses_while_a_coordinator_is_unreached_and_an_emergenc
         .await
         .expect_err("a coordinator did not acknowledge");
     assert_eq!(code(&refused), codes::host::IDENTITY_RESET_INCOMPLETE);
+    assert!(
+        !api.memberships
+            .as_deref()
+            .expect("memberships")
+            .store
+            .is_fenced(),
+        "a reset refused before anything irreversible lifts its fence"
+    );
     let message = refused.error().expect("an error").to_string();
     assert!(
         message.contains(&coordinator.identity.host_id_text()),
@@ -211,7 +222,8 @@ async fn a_normal_reset_refuses_while_a_coordinator_is_unreached_and_an_emergenc
 #[tokio::test]
 async fn a_reset_plan_is_refused_without_its_grant_or_with_an_unknown_mode() {
     let root = scratch("reset-gates");
-    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let (mut api, _, volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    sealing(&mut api, &volume);
     assert!(matches!(
         api.plan_identity_reset(
             &crate::api::testing::actor("spiffe://acme/stranger"),
@@ -250,7 +262,8 @@ async fn under_dual_control_a_reset_runs_once_another_operator_approved_it() {
 
     const SECOND: &str = "spiffe://acme/operators/second";
     let root = scratch("reset-dual");
-    let (mut api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let (mut api, _, volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    sealing(&mut api, &volume);
     api.assurance.profile = "regulated".to_owned();
     let old = api.identity.as_deref().expect("an identity").host_id_text();
 
@@ -301,4 +314,192 @@ async fn under_dual_control_a_reset_runs_once_another_operator_approved_it() {
         .expect("reset once approved");
     assert_eq!(done.old_host_id, old);
     assert_ne!(done.host_id, old);
+}
+
+/// An audit engine on `volume` sealing under the facade's `host.operations` ring, holding one
+/// operations record: what a composed server hands the facade.
+fn sealing(
+    api: &mut HostApi,
+    volume: &crate::storage::volume::Volume,
+) -> Arc<crate::audit::Engine> {
+    let identity = api.identity.as_deref().expect("an identity");
+    let engine = Arc::new(
+        crate::audit::Engine::open(
+            volume,
+            crate::audit::Stamp {
+                host_id: identity.host_id(),
+                boot_id: identity.boot_id(),
+                build: "test".to_owned(),
+                config_revision: crate::audit::config_revision(std::iter::empty()),
+            },
+            Arc::clone(&api.time),
+            None,
+        )
+        .expect("the audit engine opens"),
+    );
+    let ring = api
+        .keys
+        .rings()
+        .iter()
+        .find(|ring| ring.id() == HOST_OPERATIONS)
+        .cloned()
+        .expect("the operations ring");
+    engine.seal_with(ring);
+    engine
+        .append(
+            &permguard_core::AuditEvent::new(
+                "server.start",
+                permguard_core::Subject::System("host"),
+            ),
+            None,
+        )
+        .expect("an operations record");
+    api.audit = Some(Arc::clone(&engine));
+    engine
+}
+
+fn checkpoints(engine: &crate::audit::Engine) -> usize {
+    engine
+        .checkpoints(crate::audit::Class::Operations, crate::audit::HOST, None)
+        .expect("listed")
+        .files
+        .len()
+}
+
+/// WP-4.9: the reset checkpoints every audit trail before the ring that signs the checkpoints
+/// retires with the identity.
+#[tokio::test]
+async fn a_reset_checkpoints_the_audit_trails_before_its_rings_retire() {
+    let root = scratch("reset-sealed");
+    let (mut api, _, volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let engine = sealing(&mut api, &volume);
+    assert_eq!(checkpoints(&engine), 0);
+    let planned = api
+        .plan_identity_reset(&admin(), plan("plan-1", "emergency"))
+        .await
+        .expect("planned");
+    api.run_identity_reset(&admin(), run("run-1", &planned))
+        .await
+        .expect("reset");
+    assert!(api.identity.as_deref().expect("an identity").is_retired());
+    assert_eq!(
+        checkpoints(&engine),
+        1,
+        "sealed while the operations ring was active"
+    );
+}
+
+/// WP-4.9: a trail that cannot be checkpointed refuses the reset, the identity unchanged; once it
+/// can, the reset planned again runs.
+#[tokio::test]
+async fn a_checkpoint_that_fails_refuses_the_reset_and_leaves_the_identity() {
+    let root = scratch("reset-unsealed");
+    let (mut api, _, volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let engine = sealing(&mut api, &volume);
+    let broken = root
+        .join("host")
+        .join(crate::audit::DIRECTORY)
+        .join(crate::audit::TRAILS)
+        .join("security")
+        .join("0".repeat(64));
+    std::fs::create_dir_all(&broken).expect("a trail directory");
+    std::fs::write(broken.join("META.cbor"), b"not cbor").expect("written");
+    let planned = api
+        .plan_identity_reset(&admin(), plan("plan-1", "emergency"))
+        .await
+        .expect("planned");
+    let refused = api
+        .run_identity_reset(&admin(), run("run-1", &planned))
+        .await
+        .expect_err("a trail cannot be checkpointed");
+    assert_eq!(code(&refused), codes::host::AUDIT_UNAVAILABLE);
+    assert!(!api.identity.as_deref().expect("an identity").is_retired());
+    assert!(
+        api.memberships
+            .as_deref()
+            .expect("memberships")
+            .store
+            .is_fenced(),
+        "past its first irreversible step the fence holds"
+    );
+    // A later run refused early never lifts a fence it did not take.
+    let early = api
+        .run_identity_reset(
+            &admin(),
+            RunIdentityReset {
+                request_id: "run-early".to_owned(),
+                receipt: "AAAA".to_owned(),
+            },
+        )
+        .await
+        .expect_err("no such receipt");
+    assert_ne!(code(&early), codes::host::AUDIT_UNAVAILABLE);
+    assert!(
+        api.memberships
+            .as_deref()
+            .expect("memberships")
+            .store
+            .is_fenced(),
+        "the fence an earlier run held is still held"
+    );
+
+    std::fs::remove_dir_all(&broken).expect("removed");
+    let planned = api
+        .plan_identity_reset(&admin(), plan("plan-2", "emergency"))
+        .await
+        .expect("planned again");
+    api.run_identity_reset(&admin(), run("run-2", &planned))
+        .await
+        .expect("reset");
+    assert!(api.identity.as_deref().expect("an identity").is_retired());
+    assert!(checkpoints(&engine) >= 1);
+}
+
+/// WP-4.9: a reset requires a recovery audit checkpoint, so a process that seals no trail is
+/// refused before it fences or changes anything.
+#[tokio::test]
+async fn a_process_that_seals_no_trail_refuses_the_reset_before_anything_changes() {
+    let root = scratch("reset-no-signer");
+    let (mut api, _, volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let planned = api
+        .plan_identity_reset(&admin(), plan("plan-1", "emergency"))
+        .await
+        .expect("planned");
+    // No audit engine, then an engine composed without a signer: each refused alike.
+    for (case, request_id) in [("no engine", "run-1"), ("no signer", "run-2")] {
+        if case == "no signer" {
+            let identity = api.identity.as_deref().expect("an identity");
+            api.audit = Some(Arc::new(
+                crate::audit::Engine::open(
+                    &volume,
+                    crate::audit::Stamp {
+                        host_id: identity.host_id(),
+                        boot_id: identity.boot_id(),
+                        build: "test".to_owned(),
+                        config_revision: crate::audit::config_revision(std::iter::empty()),
+                    },
+                    Arc::clone(&api.time),
+                    None,
+                )
+                .expect("the audit engine opens"),
+            ));
+        }
+        let refused = api
+            .run_identity_reset(&admin(), run(request_id, &planned))
+            .await
+            .expect_err(case);
+        assert_eq!(code(&refused), codes::host::AUDIT_UNAVAILABLE, "{case}");
+        assert!(
+            !api.identity.as_deref().expect("an identity").is_retired(),
+            "{case}"
+        );
+        assert!(
+            !api.memberships
+                .as_deref()
+                .expect("memberships")
+                .store
+                .is_fenced(),
+            "{case}: refused before the fence"
+        );
+    }
 }

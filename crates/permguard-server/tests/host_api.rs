@@ -210,7 +210,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
     permguard_core::KeyManager::maintain(ring.as_ref()).expect("the ring is maintained");
     let keys = Arc::new(permguard_host::keys::registry::Registry::new(
         Some(Arc::clone(&identity)),
-        vec![ring],
+        vec![Arc::clone(&ring)],
     ));
     let members = permguard_host::membership::Store::open(&volume).expect("the memberships open");
     // Two `operations` records of the Host in the trail the audit routes read (WP-3.7): the
@@ -231,6 +231,8 @@ fn facade(tag: &str) -> Arc<HostApi> {
         )
         .expect("the audit engine opens"),
     );
+    // Sealed under the operations ring, as the server seals them: what a reset checkpoints.
+    audit.seal_with(ring as Arc<dyn permguard_host::audit::checkpoint::CheckpointSigner>);
     for _ in 0..2 {
         audit
             .append(

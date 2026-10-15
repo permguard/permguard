@@ -265,6 +265,9 @@ pub struct Emergency {
 pub enum EmergencyError {
     /// A membership step: the identity is unchanged.
     Membership(MembershipError),
+    /// The local evidence could not be checkpointed: the memberships settled, the identity
+    /// unchanged (WP-4.9).
+    Evidence(String),
     /// The identity step, the memberships settled.
     Identity(MutationError<crate::identity::IdentityError>),
 }
@@ -278,6 +281,11 @@ impl std::fmt::Display for EmergencyError {
                     "settling the memberships, the identity unchanged: {error}"
                 )
             }
+            Self::Evidence(error) => write!(
+                f,
+                "checkpointing the audit trails, the memberships settled and the identity \
+                 unchanged: {error}"
+            ),
             Self::Identity(error) => write!(f, "resetting the identity: {error}"),
         }
     }
@@ -288,6 +296,7 @@ impl std::error::Error for EmergencyError {}
 /// The emergency reset with no coordinator reached (owner decision of 2026-10-09): every live
 /// membership this Host is a member of `orphaned`, every one it coordinates ended here, then the
 /// identity reset. `rings` holds `host.operations` when a coordinated membership is live.
+/// `evidence` checkpoints the local evidence before the identity and its rings retire (WP-4.9).
 pub fn emergency(
     store: &Store,
     mutations: &Mutations,
@@ -295,6 +304,7 @@ pub fn emergency(
     rings: &[std::sync::Arc<crate::keys::ring::Ring>],
     initiator: &Initiator,
     now: u64,
+    evidence: &dyn Fn() -> Result<(), String>,
 ) -> Result<Emergency, EmergencyError> {
     let members: Vec<[u8; 16]> = plan(store)
         .into_iter()
@@ -311,6 +321,7 @@ pub fn emergency(
         .map_err(EmergencyError::Membership)?;
     let orphaned =
         orphan(store, mutations, &members, initiator, now).map_err(EmergencyError::Membership)?;
+    evidence().map_err(EmergencyError::Evidence)?;
     let reset = crate::identity::reset::run(mutations, identity, rings, initiator.clone(), now)
         .map_err(EmergencyError::Identity)?;
     Ok(Emergency {

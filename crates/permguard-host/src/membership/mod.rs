@@ -1062,10 +1062,23 @@ impl Store {
     }
 
     /// Fences the store for an identity reset: what would create authority under the identity
-    /// being retired is refused from now on in this process.
+    /// being retired, a task session included, is refused from now on in this process.
     pub fn fence(&self) {
         let _writing = self.begin();
         self.fenced.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Lifts the fence of a reset refused before anything irreversible (WP-4.9): the identity is
+    /// unchanged, and serves as before.
+    pub fn unfence(&self) {
+        let _writing = self.begin();
+        self.fenced
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Whether an identity reset fenced the store.
+    pub fn is_fenced(&self) -> bool {
+        self.fenced.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn unfenced(&self) -> Result<(), MembershipError> {

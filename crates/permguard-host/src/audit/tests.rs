@@ -1679,3 +1679,46 @@ fn a_prefix_rewritten_below_the_held_head_is_detected() {
     assert!(refused.contains("rewritten"), "{refused}");
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn every_trail_is_checkpointed_at_once_and_one_that_cannot_be_read_refuses_it() {
+    let root = scratch("checkpoint-all");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_wall, time) = guard();
+    assert!(
+        !open_engine(&volume, Arc::clone(&time)).seals(),
+        "no signer: nothing sealed"
+    );
+    let (engine, _ring) = sealing(&volume, time);
+    assert!(engine.seals());
+    assert_eq!(
+        engine.checkpoint_all().expect("nothing to seal"),
+        Vec::<String>::new()
+    );
+    zone(&engine, "a");
+    start(&engine);
+    let sealed = engine.checkpoint_all().expect("checkpointed");
+    assert_eq!(sealed.len(), 2, "one per trail: {sealed:?}");
+    let keys = keys_of(&volume);
+    for (class, resource) in [(Class::Security, CONTROL), (Class::Operations, HOST)] {
+        let dir = engine.trail_dir(class, resource).expect("trail");
+        let names = checkpoint_names(&dir);
+        assert_eq!(names.len(), 1, "{names:?}");
+        assert!(names[0].starts_with(&period(0)), "today's: {names:?}");
+        assert!(sealed.contains(&names[0]), "{sealed:?} {names:?}");
+        let found = report(&dir, class, resource, &keys);
+        assert!(found.problems.is_empty(), "{:?}", found.problems);
+    }
+
+    // A trail whose META.cbor does not read is never skipped: the sweep logs it, this refuses.
+    let broken = trails_of(&volume)
+        .path()
+        .join("security")
+        .join("0".repeat(64));
+    std::fs::create_dir_all(&broken).expect("a trail directory");
+    std::fs::write(broken.join(trail::META), b"not cbor").expect("written");
+    assert!(engine.sweep().is_ok(), "the sweep goes on");
+    let refused = engine.checkpoint_all().expect_err("an unreadable trail");
+    assert!(refused.to_string().contains(&"0".repeat(64)), "{refused}");
+    let _ = std::fs::remove_dir_all(root);
+}

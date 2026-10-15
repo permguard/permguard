@@ -563,6 +563,10 @@ struct Inner {
     unwitnessed: Mutex<std::collections::BTreeSet<(Class, String)>>,
 }
 
+/// One trail a listing found: its class, its digest, and the resource its `META.cbor` names or
+/// why it names none.
+type Listed = (Class, String, Result<String, String>);
+
 /// The audit engine of one process.
 pub struct Engine {
     inner: Arc<Inner>,
@@ -698,14 +702,11 @@ impl Engine {
             .map_err(|error| Refused::Storage(error.to_string()))
     }
 
-    /// Seals every ended day of every trail on the volume that no seal closed yet, deletes what
-    /// retention allows, and asks the witness for the co-signatures still missing; answers the
-    /// checkpoints written. A trail that fails is logged and the others go on.
-    pub fn sweep(&self) -> Result<Vec<String>, Refused> {
+    /// Every trail on the volume, by class and digest, with the resource its `META.cbor` names or
+    /// why it names none.
+    fn trails(&self) -> Result<Vec<Listed>, Refused> {
         let storage = |error: crate::storage::StorageError| Refused::Storage(error.to_string());
-        let today = trail::day_name(self.inner.time.now_secs());
-        let mut written = Vec::new();
-        let mut visited = Vec::new();
+        let mut trails = Vec::new();
         for class_name in self.inner.trails.subdirs().map_err(storage)? {
             let Some(class) = Class::parse(&class_name) else {
                 continue;
@@ -733,42 +734,79 @@ impl Engine {
                                 .to_owned())
                         }
                     });
-                let resource = match resource {
-                    Ok(resource) => resource,
-                    Err(error) => {
-                        tracing::error!(
-                            event.name = "audit.sweep_failed",
-                            component = "host",
-                            class = class.as_str(),
-                            trail = %digest,
-                            error = %error,
-                            "an audit trail could not be swept"
-                        );
-                        continue;
-                    }
-                };
-                let mut open = self
-                    .inner
-                    .open
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner);
-                match self.inner.trail(&mut open, class, &resource) {
-                    Ok(trail) => {
-                        written.extend(self.inner.maintain(trail, class, &resource, &today));
-                    }
-                    Err(error) => tracing::error!(
+                trails.push((class, digest, resource));
+            }
+        }
+        Ok(trails)
+    }
+
+    /// Seals every ended day of every trail on the volume that no seal closed yet, deletes what
+    /// retention allows, and asks the witness for the co-signatures still missing; answers the
+    /// checkpoints written. A trail that fails is logged and the others go on.
+    pub fn sweep(&self) -> Result<Vec<String>, Refused> {
+        let today = trail::day_name(self.inner.time.now_secs());
+        let mut written = Vec::new();
+        let mut visited = Vec::new();
+        for (class, digest, resource) in self.trails()? {
+            let resource = match resource {
+                Ok(resource) => resource,
+                Err(error) => {
+                    tracing::error!(
                         event.name = "audit.sweep_failed",
                         component = "host",
                         class = class.as_str(),
+                        trail = %digest,
                         error = %error,
                         "an audit trail could not be swept"
-                    ),
+                    );
+                    continue;
                 }
-                drop(open);
-                visited.push((class, resource));
+            };
+            let mut open = self
+                .inner
+                .open
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            match self.inner.trail(&mut open, class, &resource) {
+                Ok(trail) => {
+                    written.extend(self.inner.maintain(trail, class, &resource, &today));
+                }
+                Err(error) => tracing::error!(
+                    event.name = "audit.sweep_failed",
+                    component = "host",
+                    class = class.as_str(),
+                    error = %error,
+                    "an audit trail could not be swept"
+                ),
             }
+            drop(open);
+            visited.push((class, resource));
         }
         self.inner.ask_witness(&visited);
+        Ok(written)
+    }
+
+    /// Whether a checkpoint signer is registered: without one this process seals nothing.
+    pub fn seals(&self) -> bool {
+        self.inner.signer.get().is_some()
+    }
+
+    /// Checkpoints every trail on the volume now, as [`Engine::checkpoint`] does one (WP-4.9: the
+    /// evidence an identity reset seals before its rings retire); answers the newest checkpoint
+    /// of each trail holding records. Refused at the first trail that cannot be checkpointed, a
+    /// trail whose `META.cbor` cannot be read included: nothing is skipped. The trails sealed
+    /// before it keep their checkpoints, which only add to what a trail proves.
+    pub fn checkpoint_all(&self) -> Result<Vec<String>, Refused> {
+        let mut written = Vec::new();
+        for (class, digest, resource) in self.trails()? {
+            let resource = resource.map_err(|error| {
+                Refused::Storage(format!(
+                    "the {} trail {digest} cannot be checkpointed: {error}",
+                    class.as_str()
+                ))
+            })?;
+            written.extend(self.checkpoint(class, &resource)?);
+        }
         Ok(written)
     }
 
