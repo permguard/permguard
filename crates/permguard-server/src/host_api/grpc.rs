@@ -189,6 +189,35 @@ impl IdentityService for Served {
                 .collect::<Result<_, _>>()?,
             first_public_key: raw(&view.first_public_key)?,
             protocol_versions: view.protocol_versions,
+            host_id: view.host_id,
+            epoch: view.epoch,
+            fingerprint: view.fingerprint,
+        }))
+    }
+
+    async fn verify_identity(
+        &self,
+        request: Request<v1::VerifyIdentityRequest>,
+    ) -> Answer<v1::VerifyIdentityResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let proved = self
+            .api
+            .verify_identity(
+                &actor,
+                api::identity::VerifyIdentity {
+                    address: asked.address,
+                    host_id: asked.host_id,
+                    fingerprint: asked.fingerprint,
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::VerifyIdentityResponse {
+            host_id: proved.host_id,
+            epoch: proved.epoch,
+            fingerprint: proved.fingerprint,
+            verified: proved.verified,
         }))
     }
 

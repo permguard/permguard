@@ -48,6 +48,7 @@ pub mod events;
 pub mod events_grpc;
 pub mod grpc;
 pub mod host;
+mod host_proto;
 /// The generated `permguard.host.v1` stubs (TC-1).
 pub mod host_v1;
 pub mod http;

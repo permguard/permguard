@@ -781,8 +781,8 @@ fn the_token_travels_as_a_bearer_on_both_transports_and_never_in_a_report() {
     );
 }
 
-/// The Host facade of the client, against the real Host API on its own listener: the status and
-/// the identity read the same over `https` and `grpcs`, the token deciding who asks.
+/// The Host facade of the client, against the real Host API on its own listener: status, identity
+/// and grants read the same over `https` and `grpcs`; an absent membership service refuses alike.
 #[test]
 fn the_host_facade_reads_the_same_over_https_and_grpcs() {
     use permguard_control_client::host;
@@ -792,6 +792,14 @@ fn the_host_facade_reads_the_same_over_https_and_grpcs() {
     let dir = scratch("host");
     let pki = pki(&dir);
     let address = host_listener(&dir, &pki);
+    let admin_token = dir.join("admin-token");
+    std::fs::write(&admin_token, ADMIN).expect("the administrator token writes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&admin_token, std::fs::Permissions::from_mode(0o600))
+            .expect("the token is private");
+    }
     let tls = |token: Option<&str>| TlsOptions {
         ca_file: Some(pki.authority.clone()),
         token: token.map(|token| Credential::new(token.as_bytes().to_vec())),
@@ -799,18 +807,79 @@ fn the_host_facade_reads_the_same_over_https_and_grpcs() {
     };
     let mut statuses = Vec::new();
     let mut identities = Vec::new();
+    let mut grants = Vec::new();
+    let mut members_refused = Vec::new();
+    let mut verify_refused = Vec::new();
+    let mut cli_identities = Vec::new();
+    let mut cli_grants = Vec::new();
     for scheme in ["https", "grpcs"] {
         let url = format!("{scheme}://localhost:{}", address.port());
         let client = host::client(&url, &tls(Some(ADMIN)), Box::new(Silent)).expect("a client");
         statuses.push(client.status().expect("the status"));
         identities.push(client.identity().expect("the identity"));
+        grants.push(client.grants(None, None).expect("the grants"));
+        members_refused.push(
+            client
+                .members(None)
+                .expect_err("this fixture composes no membership service"),
+        );
+        verify_refused.push(
+            client
+                .verify_member(
+                    "0198f2aa-0000-7000-8000-000000000002",
+                    &permguard_host::api::members::VerifyMember {
+                        request_id: "transport-verify".to_owned(),
+                    },
+                )
+                .expect_err("this fixture composes no membership service"),
+        );
         // Nobody: refused the same way on both.
         let anonymous = host::client(&url, &tls(None), Box::new(Silent)).expect("a client");
         let refused = anonymous.status().expect_err("nobody reads the status");
         assert_eq!(refused.reason, "unauthenticated", "{scheme}: {refused:?}");
+
+        for (command, answers) in [
+            (["host", "identity", "show"].as_slice(), &mut cli_identities),
+            (["host", "grants", "list"].as_slice(), &mut cli_grants),
+        ] {
+            let output = cli(
+                &dir,
+                &[
+                    "-o",
+                    "json",
+                    "--host-endpoint",
+                    &url,
+                    "--tls-ca-file",
+                    pki.authority.to_str().expect("a UTF-8 path"),
+                    "--token-file",
+                    admin_token.to_str().expect("a UTF-8 path"),
+                    command[0],
+                    command[1],
+                    command[2],
+                ],
+            );
+            assert!(output.status.success(), "{scheme}: {output:?}");
+            answers.push(
+                serde_json::from_slice::<Value>(&output.stdout).expect("the CLI answers JSON"),
+            );
+        }
     }
     assert_eq!(statuses[0], statuses[1]);
     assert_eq!(identities[0], identities[1]);
+    assert_eq!(grants[0], grants[1]);
+    assert_eq!(members_refused[0].reason, members_refused[1].reason);
+    assert_eq!(verify_refused[0].reason, verify_refused[1].reason);
+    assert_eq!(cli_identities[0], cli_identities[1]);
+    for shown in &cli_identities {
+        assert!(shown["host_id"].as_str().is_some_and(|id| !id.is_empty()));
+        assert_eq!(shown["epoch"], 1);
+        assert!(
+            shown["fingerprint"]
+                .as_str()
+                .is_some_and(|fingerprint| fingerprint.starts_with("sha256:"))
+        );
+    }
+    assert_eq!(cli_grants[0], cli_grants[1]);
     assert!(!identities[0].document.is_empty());
 }
 

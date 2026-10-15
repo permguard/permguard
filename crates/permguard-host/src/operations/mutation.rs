@@ -713,6 +713,31 @@ impl Mutations {
         self.run_checked(begin, || Ok(()), apply)
     }
 
+    /// Looks up and validates a completed request without starting a new mutation. Callers whose
+    /// domain work needs external I/O use this before that I/O, so a retry or a reused request id
+    /// never contacts the external system again.
+    pub fn replayed<T, E>(&self, begin: &Begin) -> Result<Option<Outcome<T>>, MutationError<E>>
+    where
+        T: DeserializeOwned,
+    {
+        let key = match (&begin.initiator, &begin.request) {
+            (Initiator::Principal(principal), Some(request)) => {
+                Some((principal.clone(), request.request_id.clone()))
+            }
+            _ => None,
+        };
+        let _in_flight = self.take(key.clone())?;
+        let Some(key) = &key else {
+            return Ok(None);
+        };
+        let Some(answer) = self.lookup(key, begin)? else {
+            return Ok(None);
+        };
+        self.settle()
+            .map_err(|halt| MutationError::Unrecorded(halt.detail()))?;
+        Ok(Some(answer))
+    }
+
     /// [`Mutations::run`], with `check` the caller's validation (step 1): run after a retry is
     /// answered from the window and before the intent, so a request the domain would refuse
     /// leaves no intent and no audit record, and a retry of an applied one still learns it.

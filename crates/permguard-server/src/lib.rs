@@ -24,6 +24,7 @@ pub mod logging;
 pub mod offline;
 pub mod plane;
 pub mod repin;
+pub mod shipping;
 pub mod signal;
 pub mod time;
 pub mod witness;

@@ -252,6 +252,24 @@ impl Coordinating {
 }
 
 impl Service for Coordinating {
+    fn established(&self, session: &Session) -> Result<(), Refusal> {
+        let Some(named) = session.membership_id.as_deref() else {
+            return Ok(());
+        };
+        let Some((id, _)) = self
+            .store
+            .memberships()
+            .into_iter()
+            .find(|(id, _)| uuid_text(id) == named)
+        else {
+            return Ok(());
+        };
+        self.store
+            .satisfy_verification(&id, &session.peer)
+            .map(|_| ())
+            .map_err(of)
+    }
+
     fn serve(
         &self,
         session: &Session,

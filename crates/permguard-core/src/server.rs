@@ -543,8 +543,9 @@ pub trait Service: Send + Sync {
 
     /// Finishes the work in flight before `deadline`, the drain deadline: in-flight requests
     /// complete, and work cut at the deadline is reported [`Drained::Incomplete`]. Called after
-    /// every service's intake stopped, in reverse order. `TODO(WP-5.8)`: stream producers ship to
-    /// their required subscriptions here and report `unshipped` when they cannot.
+    /// every service's intake stopped, in reverse order. The Host listener's service ships the
+    /// stream producers to their required subscriptions here and reports `unshipped` when they
+    /// cannot (WP-5.8).
     fn drain<'a>(
         &'a self,
         context: &'a ServerContext<'a>,

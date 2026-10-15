@@ -24,7 +24,7 @@ use std::sync::PoisonError;
 
 use permguard_core::authz::Resource;
 use permguard_core::codes;
-use permguard_host::composition::{Shipment, StreamShipping, Subscribed};
+use permguard_host::composition::{self, Shipment, StreamShipping, Subscribed};
 use permguard_host::storage::Dir;
 use permguard_host::storage::format;
 use permguard_host::storage::write::{read_view, replace_view};
@@ -33,6 +33,7 @@ use permguard_objects::cbor::Value;
 use super::super::batch::SealedBatch;
 use super::super::codec::{Map, encode, uint};
 use super::super::ingest::{Answer, Outcome, Ship};
+use super::super::state::Unshipped;
 use super::super::{RecordCodec, StreamError, hex};
 use super::seal::{PRUNED, batches_of, pruned_of};
 use super::{Physical, Producer, RECORDS, decode_group};
@@ -513,7 +514,125 @@ impl<C: RecordCodec> Producer<C> {
     }
 }
 
+impl<C: RecordCodec> Producer<C> {
+    /// `<plane>/<type>`: the stream as its Plane declares it.
+    fn stream_name(&self) -> String {
+        format!("{}/{}", self.descriptor.plane, self.descriptor.stream_type)
+    }
+
+    /// The mark `physical` would take now: its newest run that a required subscription is
+    /// behind on (interpretation of 2026-10-15), `None` when none is.
+    fn behind_of(&self, physical: &Physical) -> Result<Option<Unshipped>, StreamError> {
+        let signer = self.signer_ring()?;
+        let runs = physical.runs(signer, &self.descriptor)?;
+        let writer = physical.writer();
+        let subscriptions = subscriptions_of(&writer.dir)?;
+        Ok(runs
+            .iter()
+            .filter_map(|(run, fence, last, _)| {
+                truncate_safe_of(&subscriptions, run, *fence)
+                    .filter(|safe| safe < last)
+                    .map(|safe| Unshipped {
+                        tail: *last,
+                        truncate_safe: safe,
+                    })
+            })
+            .last())
+    }
+
+    /// Whether `mark` still holds on `physical`: some run is behind at or below its tail. A
+    /// mark names no run, so every run is held to `min(its last, tail)`: it never goes early,
+    /// and goes once the drain's tail is shipped whatever runs opened since.
+    fn still_behind(&self, physical: &Physical, mark: Unshipped) -> Result<bool, StreamError> {
+        let signer = self.signer_ring()?;
+        let runs = physical.runs(signer, &self.descriptor)?;
+        let writer = physical.writer();
+        let subscriptions = subscriptions_of(&writer.dir)?;
+        Ok(runs.iter().any(|(run, fence, last, _)| {
+            truncate_safe_of(&subscriptions, run, *fence)
+                .is_some_and(|safe| safe < (*last).min(mark.tail))
+        }))
+    }
+
+    /// The mark `physical` holds, removed when nothing is behind at or below its tail; the one
+    /// that remains carries what is acknowledged now.
+    fn settle(&self, physical: &Physical) -> Result<Option<composition::Unshipped>, StreamError> {
+        let held = physical
+            .writer()
+            .state
+            .as_ref()
+            .and_then(|state| state.unshipped);
+        let Some(held) = held else {
+            return Ok(None);
+        };
+        if !self.still_behind(physical, held)? {
+            physical.writer().keep_unshipped(None)?;
+            return Ok(None);
+        }
+        let now = self.behind_of(physical)?.map_or(held, |behind| Unshipped {
+            tail: held.tail,
+            truncate_safe: behind.truncate_safe.min(held.tail),
+        });
+        Ok(Some(self.unshipped_of(physical, now)))
+    }
+
+    fn unshipped_of(&self, physical: &Physical, mark: Unshipped) -> composition::Unshipped {
+        composition::Unshipped {
+            stream: self.stream_name(),
+            resource: physical.key.resource.clone(),
+            tail: mark.tail,
+            truncate_safe: mark.truncate_safe,
+        }
+    }
+}
+
 impl<C: RecordCodec> StreamShipping for Producer<C> {
+    fn behind(&self) -> Result<Vec<composition::Unshipped>, String> {
+        let wrap = |error: StreamError| error.to_string();
+        let mut found = Vec::new();
+        for physical in self.every().map_err(wrap)? {
+            if let Some(mark) = self.behind_of(&physical).map_err(wrap)? {
+                found.push(self.unshipped_of(&physical, mark));
+            }
+        }
+        Ok(found)
+    }
+
+    fn mark_unshipped(&self) -> Result<Vec<composition::Unshipped>, String> {
+        let wrap = |error: StreamError| error.to_string();
+        let mut marked = Vec::new();
+        for physical in self.every().map_err(wrap)? {
+            let Some(mark) = self.behind_of(&physical).map_err(wrap)? else {
+                continue;
+            };
+            physical.writer().keep_unshipped(Some(mark)).map_err(wrap)?;
+            marked.push(self.unshipped_of(&physical, mark));
+        }
+        Ok(marked)
+    }
+
+    fn unshipped_on(
+        &self,
+        subscribed: &Subscribed<'_>,
+        resource: &str,
+    ) -> Result<Option<composition::Unshipped>, String> {
+        let wrap = |error: StreamError| error.to_string();
+        if !self.ships(subscribed) {
+            return Ok(None);
+        }
+        let physical = self.stream_of(resource).map_err(wrap)?;
+        self.settle(&physical).map_err(wrap)
+    }
+
+    fn settle_unshipped(&self) -> Result<Vec<composition::Unshipped>, String> {
+        let wrap = |error: StreamError| error.to_string();
+        let mut remaining = Vec::new();
+        for physical in self.every().map_err(wrap)? {
+            remaining.extend(self.settle(&physical).map_err(wrap)?);
+        }
+        Ok(remaining)
+    }
+
     fn due(&self, subscribed: &Subscribed<'_>) -> Result<Vec<String>, String> {
         let wrap = |error: StreamError| error.to_string();
         if !self.ships(subscribed) {

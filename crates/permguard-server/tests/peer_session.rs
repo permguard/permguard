@@ -561,7 +561,12 @@ struct Side {
     keys: Arc<permguard_host::keys::registry::Registry>,
     connector: Option<Arc<dyn permguard_host::membership::member::Connector>>,
     tasks: Arc<permguard_host::membership::task::Tasks>,
+    /// The decision log's producer on the Host's stream engine, when the side runs one (WP-5.8).
+    producer: Option<Arc<DecisionProducer>>,
 }
+
+/// The decision log's producer, as the server registers it.
+type DecisionProducer = permguard_stream::engine::Producer<permguard_decisions::stream::Codec>;
 
 /// A task handler that answers each body with `echo:` before it.
 struct Echo;
@@ -593,7 +598,20 @@ async fn side(
     ring: &'static str,
     capabilities: permguard_host::membership::Capabilities,
 ) -> Side {
-    side_with(root, pki, stem, ring, capabilities, None).await
+    side_with(root, pki, stem, ring, capabilities, None, false).await
+}
+
+/// A side running the Host's stream engine as the server composes it: the decision log's
+/// producer, signed under `ring`, shipped by the member side, and its consumer behind the
+/// `decisions.ship` ingest (WP-5.8).
+async fn streaming_side(
+    root: &Path,
+    pki: &Pki,
+    stem: &str,
+    ring: &'static str,
+    capabilities: permguard_host::membership::Capabilities,
+) -> Side {
+    side_with(root, pki, stem, ring, capabilities, None, true).await
 }
 
 /// A side whose listener, and peer client, check `crl` (WP-2.11).
@@ -604,6 +622,7 @@ async fn side_with(
     ring: &'static str,
     capabilities: permguard_host::membership::Capabilities,
     crl: Option<PathBuf>,
+    streaming: bool,
 ) -> Side {
     use permguard_core::authz::{Principal, Resource, Selector, operations};
 
@@ -672,11 +691,42 @@ async fn side_with(
         permguard_core::KeyManager::maintain(ring.as_ref()).expect("the ring is maintained");
         ring
     };
-    let mut rings = vec![open_ring(ring)];
+    let signing = open_ring(ring);
+    let mut rings = vec![Arc::clone(&signing)];
     // `host.operations` signs the plan receipts of either side (WP-3.9) and seals the trails.
     if ring != permguard_host::keys::ring::HOST_OPERATIONS {
         rings.push(open_ring(permguard_host::keys::ring::HOST_OPERATIONS));
     }
+    let operations = rings
+        .iter()
+        .find(|held| held.id() == permguard_host::keys::ring::HOST_OPERATIONS)
+        .cloned()
+        .expect("the operations ring");
+    // The decision log on the Host's stream engine, as the server registers it (WP-5.8).
+    let engine = streaming.then(|| {
+        let engine = permguard_stream::engine::Streams::open(
+            &host.volume,
+            &host.identity,
+            Arc::clone(&operations),
+            Arc::clone(&host.time),
+        )
+        .expect("the stream engine opens");
+        let producer = engine
+            .register_producer(
+                permguard_decisions::stream::descriptor(),
+                permguard_decisions::stream::Codec,
+            )
+            .expect("the producer")
+            .with_signer(Arc::clone(&signing))
+            .expect("its signer");
+        let consumer = engine
+            .register_consumer(
+                permguard_decisions::stream::descriptor(),
+                permguard_decisions::stream::Codec,
+            )
+            .expect("the consumer");
+        (Arc::new(producer), Arc::new(consumer))
+    });
     if let Some(operations) = rings
         .iter()
         .find(|held| held.id() == permguard_host::keys::ring::HOST_OPERATIONS)
@@ -690,17 +740,30 @@ async fn side_with(
         rings,
     ));
     let members = permguard_host::membership::Store::open(&host.volume).expect("the memberships");
+    let ship: Arc<dyn permguard_host::membership::task::TaskHandler> = match &engine {
+        Some((_, consumer)) => Arc::new(permguard_stream::engine::ingest::Ingest {
+            consumer: Arc::clone(consumer),
+            pins: Arc::clone(&members) as Arc<dyn permguard_stream::engine::ingest::StreamPins>,
+        }),
+        None => Arc::new(Echo),
+    };
     let tasks = Arc::new(permguard_host::membership::task::Tasks {
         handlers: permguard_host::membership::task::TaskHandlers::default()
             .register(
                 permguard_host::membership::record::TaskType::DecisionsShip,
                 1,
-                Arc::new(Echo),
+                ship,
             )
             .expect("one handler"),
         // A quiet watch heartbeats soon, so a test sees one.
         watch_heartbeat: Duration::from_millis(300),
         ..permguard_host::membership::task::Tasks::default()
+    });
+    let served = engine.as_ref().map(|(producer, _)| {
+        Arc::new(
+            permguard_stream::engine::Served::default()
+                .with(permguard_decisions::stream::STREAM, Arc::clone(producer)),
+        )
     });
     let peers = Arc::new(Peers::open(&host.volume, &[]).expect("the peers"));
     peers.with_source(Arc::clone(&members) as Arc<dyn permguard_host::session::peers::PinSource>);
@@ -769,8 +832,12 @@ async fn side_with(
             connector: connector.clone(),
             appraisal: permguard_host::membership::appraisal::Appraisal::default(),
             live: Arc::clone(&tasks.live),
-            streams: None,
-            shipping: None,
+            streams: served
+                .clone()
+                .map(|served| served as Arc<dyn permguard_host::composition::StreamCutovers>),
+            shipping: served
+                .clone()
+                .map(|served| served as Arc<dyn permguard_host::composition::StreamShipping>),
         })),
     }));
     let listener = Surface::listener(
@@ -792,6 +859,7 @@ async fn side_with(
         keys,
         connector,
         tasks,
+        producer: engine.map(|(producer, _)| producer),
     }
 }
 
@@ -1202,10 +1270,13 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         keys,
         connector,
         tasks,
+        producer,
     } = member;
     listener.stop(Duration::from_secs(5)).await.expect("stops");
     // Everything of the old process goes, the volume's lock with it.
-    drop((host, api, members, mutations, keys, connector, tasks));
+    drop((
+        host, api, members, mutations, keys, connector, tasks, producer,
+    ));
     let member = side(
         &root.join("member"),
         &pki,
@@ -1878,6 +1949,7 @@ async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
         "host.operations",
         Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
         Some(crl),
+        false,
     )
     .await;
     let member = side(
@@ -2008,4 +2080,189 @@ async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
     pki.issue_serial("member", "127.0.0.1", 9003, false);
     drop(open().await.expect("valid again, a lease"));
     let _ = (&coordinator.listener, &member.listener);
+}
+
+/// One decision record of the log, the marker of its stream: what the producer appends.
+fn decision_record(seq: u64) -> serde_json::Value {
+    serde_json::json!({
+        "v": 1,
+        "kind": "marker",
+        "stream": { "id": "plane", "instance": "drain-f28" },
+        "seq": seq,
+        "prev": format!("sha256:{}", "0".repeat(64)),
+        "at": "2026-10-15T10:00:00Z",
+        "pdp": { "version": "0.1.0", "engines": { "cedar": "4.4.0" } },
+        "commitments": { "alg": "HMAC-SHA256", "key_version": "v1" },
+        "sampling": { "permits": "1.0" }
+    })
+}
+
+/// Whether `side`'s Host is `degraded: evidence`.
+fn evidence_degraded(side: &Side) -> bool {
+    side.api
+        .status(&admin())
+        .expect("the status")
+        .degraded
+        .iter()
+        .any(|degraded| degraded.capability == "evidence")
+}
+
+/// WP-5.8, F-28: a drain with 1 000 records the coordinator has not acknowledged ships them all
+/// while it answers, and is complete; while it does not, the drain is incomplete, the stream is
+/// marked `unshipped`, nothing past the acknowledgement is truncated and the Host stays
+/// `degraded: evidence`; a restart on the same volume resumes in Load and, the coordinator back,
+/// ships every record, clears the mark and reports the stream `shipped` to the coordinator. The
+/// coordinator stops answering through the fence an identity reset takes (WP-4.9), which refuses
+/// every task session with `unavailable` as an unreachable Host would leave the drain.
+#[tokio::test]
+async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
+    use permguard_core::Drained;
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("drain-f28");
+    let pki = Pki::new(&root);
+    let coordinator = streaming_side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = streaming_side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let id = approved_pair(&coordinator, &member).await;
+    let membership_id = only_membership(&coordinator);
+    let epoch = member.api.member(&admin(), &id).expect("read").epoch;
+    let resource = permguard_core::authz::Resource::ledger("data", "zone-a", "ledger-1");
+    let producer = member.producer.clone().expect("a producer");
+    let run = producer
+        .open_run(
+            &resource,
+            Some(permguard_stream::engine::Fence {
+                membership_id,
+                task_id: "decisions".to_owned(),
+                epoch,
+            }),
+        )
+        .expect("the run opens")
+        .run_id;
+    let append = |producer: &DecisionProducer, from: u64| {
+        for seq in from..from + 1_000 {
+            producer
+                .append(&resource, &decision_record(seq))
+                .expect("appended");
+        }
+    };
+    let budget = || std::time::Instant::now() + Duration::from_secs(60);
+
+    // The coordinator answers: every record is shipped, and the drain is complete.
+    append(&producer, 1);
+    assert_eq!(
+        permguard_server::shipping::drain(&member.api, budget())
+            .await
+            .expect("drained"),
+        Drained::Complete
+    );
+    assert_eq!(
+        producer.truncate_safe(&resource, &run).expect("safe"),
+        Some(1_000)
+    );
+    assert!(!evidence_degraded(&member));
+
+    // It does not: the drain is incomplete, the stream marked, nothing past 1 000 truncated.
+    append(&producer, 1_001);
+    coordinator.members.fence();
+    let drained = permguard_server::shipping::drain(
+        &member.api,
+        std::time::Instant::now() + Duration::from_secs(2),
+    )
+    .await
+    .expect("drained");
+    assert!(matches!(drained, Drained::Incomplete(_)), "{drained:?}");
+    let marked = permguard_host::composition::Unshipped {
+        stream: permguard_decisions::stream::STREAM.to_owned(),
+        resource: resource.to_string(),
+        tail: 2_000,
+        truncate_safe: 1_000,
+    };
+    assert_eq!(
+        member.api.settle_unshipped().expect("settled"),
+        vec![marked.clone()]
+    );
+    assert_eq!(
+        producer.truncate_safe(&resource, &run).expect("safe"),
+        Some(1_000)
+    );
+    assert!(evidence_degraded(&member));
+
+    // Restarted on the same volume: the mark is the volume's, and the Load pass, the coordinator
+    // still silent, leaves it and the degradation.
+    let Side {
+        host,
+        api,
+        listener,
+        members,
+        mutations,
+        keys,
+        connector,
+        tasks,
+        producer: _,
+    } = member;
+    drop(producer);
+    listener.stop(Duration::from_secs(5)).await.expect("stops");
+    drop((host, api, members, mutations, keys, connector, tasks));
+    let member = streaming_side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    permguard_server::shipping::resume(&member.api, Duration::from_secs(2)).await;
+    assert_eq!(
+        member.api.settle_unshipped().expect("settled"),
+        vec![marked]
+    );
+    assert!(evidence_degraded(&member));
+
+    // The coordinator back: the next pass ships every record, the mark goes, the Host is no
+    // longer degraded, and the coordinator holds the member's report that the stream is shipped.
+    coordinator.members.unfence();
+    permguard_server::shipping::resume(&member.api, Duration::from_secs(30)).await;
+    assert!(member.api.settle_unshipped().expect("settled").is_empty());
+    assert!(!evidence_degraded(&member));
+    let producer = member.producer.clone().expect("a producer");
+    assert_eq!(
+        producer.truncate_safe(&resource, &run).expect("safe"),
+        Some(2_000)
+    );
+    let reported = coordinator
+        .api
+        .member(&admin(), &id)
+        .expect("read")
+        .task_progress
+        .into_iter()
+        .find(|task| task.task_id == "decisions")
+        .and_then(|task| task.member_reported)
+        .expect("a report");
+    assert_eq!(reported.resources.len(), 1);
+    assert_eq!(reported.resources[0].resource, resource.to_string());
+    assert_eq!(reported.resources[0].state, "shipped");
+    assert_eq!(reported.resources[0].frontier.as_deref(), Some("2000"));
+
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
 }

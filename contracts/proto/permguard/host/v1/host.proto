@@ -35,6 +35,8 @@ service IdentityService {
   rpc PeerChannel(stream PeerFrame) returns (stream PeerFrame);
   // `GET /host/v1/identity`.
   rpc GetIdentity(GetIdentityRequest) returns (GetIdentityResponse);
+  // `POST /host/v1/identity/verify`: prove a pinned peer on a live PeerChannel.
+  rpc VerifyIdentity(VerifyIdentityRequest) returns (VerifyIdentityResponse);
   // `POST /host/v1/identity/rotate`.
   rpc RotateIdentity(RotateIdentityRequest) returns (RotateIdentityResponse);
   // `POST /host/v1/identity/reset/plan`.
@@ -57,6 +59,8 @@ service MembershipService {
   rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
   // `GET /host/v1/members/{id}`.
   rpc GetMember(GetMemberRequest) returns (GetMemberResponse);
+  // `POST /host/v1/members/{id}/verify`: immediate on a member, scheduled on a coordinator.
+  rpc VerifyMember(VerifyMemberRequest) returns (VerifyMemberResponse);
   // `POST /host/v1/members/{id}/approve`.
   rpc ApproveMember(ApproveMemberRequest) returns (ApproveMemberResponse);
   // `POST /host/v1/members/{id}/reject`.
@@ -207,6 +211,20 @@ message GetIdentityResponse {
   repeated bytes successions = 2;
   bytes first_public_key = 3;
   repeated string protocol_versions = 4;
+  string host_id = 5;
+  uint64 epoch = 6;
+  string fingerprint = 7;
+}
+message VerifyIdentityRequest {
+  string address = 1;
+  string host_id = 2;
+  string fingerprint = 3;
+}
+message VerifyIdentityResponse {
+  string host_id = 1;
+  uint64 epoch = 2;
+  string fingerprint = 3;
+  bool verified = 4;
 }
 // `POST /host/v1/identity/rotate` (WP-2.2), under `identity.admin`.
 message RotateIdentityRequest {
@@ -704,6 +722,19 @@ message SyncMembershipRequest {
 }
 message SyncMembershipResponse {
   Member member = 1;
+}
+// `POST /host/v1/members/{id}/verify` (WP-4.8), under `membership.admin`.
+message VerifyMemberRequest {
+  string membership_id = 1;
+  string request_id = 2;
+}
+message VerifyMemberResponse {
+  string membership_id = 1;
+  // `proved` or `scheduled`.
+  string status = 2;
+  optional string scheduled_at = 3;
+  Member member = 4;
+  Receipt receipt = 5;
 }
 // `GET /host/v1/grants?principal&selector`: both filters optional, exact matches.
 message ListGrantsRequest {

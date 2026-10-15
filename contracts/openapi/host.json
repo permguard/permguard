@@ -64,6 +64,76 @@
         "x-grpc-rpc": "permguard.host.v1.IdentityService/GetIdentity"
       }
     },
+    "/host/v1/identity/verify": {
+      "post": {
+        "operationId": "verifyHostIdentity",
+        "summary": "Prove a peer Host identity on a live channel",
+        "description": "Under `identity.read` on the local Host. The local Host opens the peer's `PeerChannel`, verifies the pinned identity chain and both fresh proofs bound to that TLS 1.3 connection, and sends no membership or task request.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyIdentityBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The peer completed the connection-bound proof.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityVerified"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body, endpoint, Host id or fingerprint is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable operator credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The principal lacks `identity.read`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The local peer client is unconfigured, the peer cannot be reached, or its live proof is refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/VerifyIdentity"
+      }
+    },
     "/host/v1/identity/rotate": {
       "post": {
         "operationId": "rotateHostIdentity",
@@ -1971,6 +2041,66 @@
           }
         },
         "x-grpc-rpc": "permguard.host.v1.MembershipService/GetMember"
+      }
+    },
+    "/host/v1/members/{id}/verify": {
+      "post": {
+        "operationId": "verifyMember",
+        "summary": "Prove or schedule proof of a membership",
+        "description": "Under `membership.admin`. A member opens a live proven session immediately; a coordinator durably schedules the exact member's next inbound proof. The mutation receipt and exact answer replay by request id.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/VerifyMemberBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Proved immediately or scheduled durably, with its receipt.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemberVerification" }
+              }
+            }
+          },
+          "400": {
+            "description": "The body or membership id is invalid.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+          },
+          "401": {
+            "description": "No usable operator credential.",
+            "content": { "application/json": { "schema": { "$ref": "common.json#/components/schemas/WireDenial" } } }
+          },
+          "403": {
+            "description": "The principal lacks `membership.admin`.",
+            "content": { "application/json": { "schema": { "$ref": "common.json#/components/schemas/WireDenial" } } }
+          },
+          "404": {
+            "description": "No membership of that id.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+          },
+          "409": {
+            "description": "The request id was reused for another request.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+          },
+          "503": {
+            "description": "The peer client, mutation journal, audit trail, or membership store is unavailable.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/VerifyMember"
       }
     },
     "/host/v1/members/{id}/approve": {
@@ -5121,6 +5251,23 @@
       "HostIdentity": {
         "type": "object",
         "properties": {
+          "host_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The stable Host identity id.",
+            "x-grpc-field": "host_id"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The current identity epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The current identity key's fingerprint.",
+            "x-grpc-field": "fingerprint"
+          },
           "document": {
             "type": "string",
             "description": "The signed identity document of the current epoch: COSE_Sign1 `permguard.host.identity.v1`, base64url without padding.",
@@ -5149,6 +5296,9 @@
           }
         },
         "required": [
+          "host_id",
+          "epoch",
+          "fingerprint",
           "document",
           "successions",
           "first_public_key",
@@ -5157,6 +5307,68 @@
         "additionalProperties": false,
         "description": "The public Host identity (WP-2.2).",
         "x-grpc-message": "permguard.host.v1.GetIdentityResponse"
+      },
+      "VerifyIdentityBody": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "The canonical HTTPS peer-session endpoint.",
+            "x-grpc-field": "address"
+          },
+          "host_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The Host identity expected on the peer channel.",
+            "x-grpc-field": "host_id"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The pinned epoch-1 identity fingerprint.",
+            "x-grpc-field": "fingerprint"
+          }
+        },
+        "required": [
+          "address",
+          "host_id",
+          "fingerprint"
+        ],
+        "additionalProperties": false,
+        "description": "A pinned peer to prove on a fresh PeerChannel.",
+        "x-grpc-message": "permguard.host.v1.VerifyIdentityRequest"
+      },
+      "IdentityVerified": {
+        "type": "object",
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "format": "uuid",
+            "x-grpc-field": "host_id"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "x-grpc-field": "epoch"
+          },
+          "fingerprint": {
+            "type": "string",
+            "x-grpc-field": "fingerprint"
+          },
+          "verified": {
+            "type": "boolean",
+            "const": true,
+            "x-grpc-field": "verified"
+          }
+        },
+        "required": [
+          "host_id",
+          "epoch",
+          "fingerprint",
+          "verified"
+        ],
+        "additionalProperties": false,
+        "description": "A peer identity proved on the connection that answered.",
+        "x-grpc-message": "permguard.host.v1.VerifyIdentityResponse"
       },
       "RotateIdentityBody": {
         "type": "object",
@@ -6278,6 +6490,55 @@
         "additionalProperties": false,
         "description": "The memberships.",
         "x-grpc-message": "permguard.host.v1.ListMembersResponse"
+      },
+      "VerifyMemberBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's idempotency key.",
+            "x-grpc-field": "request_id"
+          }
+        },
+        "required": ["request_id"],
+        "additionalProperties": false,
+        "description": "A request to prove one membership.",
+        "x-grpc-message": "permguard.host.v1.VerifyMemberRequest",
+        "x-grpc-only": ["membership_id"],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "MemberVerification": {
+        "type": "object",
+        "properties": {
+          "membership_id": {
+            "type": "string",
+            "x-grpc-field": "membership_id"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["proved", "scheduled"],
+            "x-grpc-field": "status"
+          },
+          "scheduled_at": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "x-grpc-field": "scheduled_at"
+          },
+          "member": {
+            "$ref": "#/components/schemas/Member",
+            "x-grpc-field": "member"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": ["membership_id", "status", "scheduled_at", "member", "receipt"],
+        "additionalProperties": false,
+        "description": "An immediate live proof or a durable proof schedule and its receipt.",
+        "x-grpc-message": "permguard.host.v1.VerifyMemberResponse"
       },
       "ApproveMemberBody": {
         "type": "object",

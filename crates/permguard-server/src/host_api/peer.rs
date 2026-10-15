@@ -26,7 +26,7 @@ use tonic::transport::Endpoint;
 use permguard_core::{ChannelBinding, codes};
 use permguard_host::identity::Verified;
 use permguard_host::membership::member::{
-    Connector, Exchange, Exchanged, Target, TaskChannel, TaskOpen, TaskOpened,
+    Connector, Exchange, Exchanged, ProvedPeer, Target, TaskChannel, TaskOpen, TaskOpened,
 };
 use permguard_host::session::record::Operation;
 use permguard_host::session::{
@@ -617,6 +617,36 @@ impl PeerConnector {
             Err(_) => Err(unreachable_peer("the coordinator did not answer in time")),
         }
     }
+
+    async fn prove_once(&self, target: Target) -> Result<ProvedPeer, Refusal> {
+        let connection = tokio::time::timeout(HANDSHAKE, async {
+            let (address, name) = endpoint(&target.address).await?;
+            let tls = self.tls.connection_config().await?;
+            Connection::open(address, name, &tls)
+                .await
+                .map_err(refusal_of)
+        })
+        .await
+        .map_err(|_| unreachable_peer("the peer could not be reached in time"))??;
+        let request = Request {
+            peer: target.host_id,
+            operation: Operation::Enroll,
+            membership_id: None,
+            task: None,
+            // `enroll` is the pre-membership proof scope. The digest names an empty request
+            // because identity verification deliberately sends no enrollment Task frame.
+            request_digest: Some(permguard_host::membership::record::request_digest(b"")),
+            pin: Some((target.host_id, target.fingerprint)),
+        };
+        let Established { peer, .. } = initiate(connection, self.context.clone(), request)
+            .await
+            .map_err(refusal_of)?;
+        Ok(ProvedPeer {
+            host_id: peer.host_id,
+            epoch: peer.epoch,
+            fingerprint: peer.first_fingerprint().to_owned(),
+        })
+    }
 }
 
 /// The refusal a coordinator answered, its code kept when registered.
@@ -728,6 +758,14 @@ impl PeerConnector {
 }
 
 impl Connector for PeerConnector {
+    fn prove(&self, target: Target) -> permguard_core::BoxFuture<'_, Result<ProvedPeer, Refusal>> {
+        Box::pin(async move {
+            tokio::time::timeout(3 * HANDSHAKE, self.prove_once(target))
+                .await
+                .map_err(|_| unreachable_peer("the peer did not prove in time"))?
+        })
+    }
+
     fn open_task(
         &self,
         target: Target,

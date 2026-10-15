@@ -14,6 +14,7 @@
 //! | 7 oldest_retained_seq  | the first sequence still kept (WP-5.6)                               |
 //! | 8? pending_successor   | the signed statement of a rollover begun and not yet written         |
 //! | 9? forked_at_seq       | the sequence a consumer reported a fork at: no run opens unapproved  |
+//! | 10? unshipped          | {1 tail, 2 truncate_safe}: what an incomplete drain left (WP-5.8)    |
 //!
 //! The segments are the authority: recovery re-derives the head from them, and STATE only names
 //! which of their runs it is the state of.
@@ -37,6 +38,40 @@ pub struct State {
     pub oldest_retained_seq: u64,
     pub pending_successor: Option<Vec<u8>>,
     pub forked_at_seq: Option<u64>,
+    pub unshipped: Option<Unshipped>,
+}
+
+/// What an incomplete drain left on a stream (WP-5.8, owner decision of 2026-10-15): the last
+/// sequence of its newest run still behind, and that run's `truncate_safe`. Kept until no run of
+/// the stream is behind, so the volume is never taken for scratch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unshipped {
+    pub tail: u64,
+    pub truncate_safe: u64,
+}
+
+impl Unshipped {
+    fn value(&self) -> Result<Value, StreamError> {
+        Ok(Value::Map(vec![
+            (Value::Int(1), uint(self.tail)?),
+            (Value::Int(2), uint(self.truncate_safe)?),
+        ]))
+    }
+
+    fn read(value: Value) -> Result<Self, StreamError> {
+        let mut map = Map::of(value, "an unshipped mark")?;
+        let mark = Self {
+            tail: map.uint(1)?,
+            truncate_safe: map.uint(2)?,
+        };
+        map.finish()?;
+        if mark.truncate_safe >= mark.tail {
+            return Err(StreamError::Invalid(
+                "an unshipped mark whose tail is shipped".to_owned(),
+            ));
+        }
+        Ok(mark)
+    }
 }
 
 impl State {
@@ -55,6 +90,9 @@ impl State {
         }
         if let Some(forked) = self.forked_at_seq {
             pairs.push((9, uint(forked)?));
+        }
+        if let Some(unshipped) = &self.unshipped {
+            pairs.push((10, unshipped.value()?));
         }
         encode(pairs)
     }
@@ -76,6 +114,7 @@ impl State {
             oldest_retained_seq: map.uint(7)?,
             pending_successor: map.optional_bytes(8)?,
             forked_at_seq: map.optional_uint(9)?,
+            unshipped: map.optional(10).map(Unshipped::read).transpose()?,
         };
         map.finish()?;
         if state.next_seq == 0

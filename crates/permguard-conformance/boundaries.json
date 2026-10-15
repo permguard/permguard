@@ -1119,6 +1119,16 @@
       "limit": "`engine::MAX_SUBSCRIPTION_BYTES`, checked by the decoder before it parses: a producer stream's subscription (WP-5.4)",
       "enforced_at_decoder": true,
       "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/api/mod.rs",
+      "item": "decode_external_json",
+      "entry": "permguard_host::api::decode_external_json",
+      "max_input_bytes": 1048576,
+      "limit": "the Host CLI's `read_json` reads through `confirm::read_bytes` with a one-MiB ceiling before decoding invitation handoffs, pin stores, task lists, narrowing and assurance results",
+      "enforced_at_decoder": false,
+      "fuzz": "host_cli_json"
     }
   ],
   "trusted": [

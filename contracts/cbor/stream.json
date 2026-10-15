@@ -1,5 +1,5 @@
 {
-  "artifact": "The Host stream engine's records (WP-5.1): a run statement, the payload of a COSE_Sign1 permguard.stream.run.v1 under the producer's host.operations key, its fence and the end of a run, the group of records a RECORDS frame holds, a producer stream's STATE, its signer spans and pending cutover (WP-5.2), the ingest's message, answer, consumer STATE and fork mark (WP-5.3), and a producer's subscription and pruned mark (WP-5.4)",
+  "artifact": "The Host stream engine's records (WP-5.1): a run statement, the payload of a COSE_Sign1 permguard.stream.run.v1 under the producer's host.operations key, its fence and the end of a run, the group of records a RECORDS frame holds, a producer stream's STATE, its signer spans and pending cutover (WP-5.2), the ingest's message, answer, consumer STATE and fork mark (WP-5.3), and a producer's subscription and pruned mark (WP-5.4), and STATE's unshipped mark (WP-5.8)",
   "authority": "1-architecture/6-architecture-server-host-streams.md#run-lifecycle-and-fencing and #crash-safety, owner decisions of 2026-10-13 (labels, the key, the layout); crates/permguard-stream/src/engine/run.rs, state.rs, producer.rs, producer/seal.rs, consumer.rs, ingest.rs and producer/ship.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
@@ -53,7 +53,8 @@
         { "label": 6, "name": "acknowledged_seq", "type": "uint", "occurs": "required", "note": "at most signed_seq (WP-5.4)" },
         { "label": 7, "name": "oldest_retained_seq", "type": "uint", "occurs": "required", "note": "WP-5.6" },
         { "label": 8, "name": "pending_successor", "type": "bytes", "occurs": "optional", "note": "the signed statement of a rollover begun and not yet written" },
-        { "label": 9, "name": "forked_at_seq", "type": "uint", "occurs": "optional", "note": "the sequence a consumer reported a fork at" }
+        { "label": 9, "name": "forked_at_seq", "type": "uint", "occurs": "optional", "note": "the sequence a consumer reported a fork at" },
+        { "label": 10, "name": "unshipped", "type": "map", "occurs": "optional", "note": "WP-5.8, owner decision of 2026-10-15: {1 tail (uint), 2 truncate_safe (uint), below tail}, what an incomplete drain left; removed once no run's truncate_safe is below min(its last, tail)" }
       ]
     },
     "stream_signers": {

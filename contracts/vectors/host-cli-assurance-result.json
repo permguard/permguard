@@ -1,0 +1,15 @@
+{
+  "approvals": [
+    {
+      "control": "operations.dual_control",
+      "reason": "independent golden approval",
+      "expires_at": "2099-01-01T00:00:00Z"
+    }
+  ],
+  "evidence": [
+    {
+      "verifier": "golden-verifier",
+      "evidence": "Z29sZGVuLWF0dGVzdGF0aW9u"
+    }
+  ]
+}

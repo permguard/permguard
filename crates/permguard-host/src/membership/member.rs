@@ -40,6 +40,14 @@ use crate::session::Refusal;
 use crate::session::record::Operation;
 use crate::time::TimeGuard;
 
+/// The progress state of a stream an incomplete drain left behind (WP-5.8).
+pub const UNSHIPPED: &str = "unshipped";
+/// The progress state of a stream whose drain mark went: its tail is shipped (WP-5.8).
+pub const SHIPPED: &str = "shipped";
+
+/// The progress reports this process sent: the coordinator numbers them per incarnation.
+static REPORT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// The coordinator a member reaches: where, and the pin it is accepted by.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
@@ -85,6 +93,14 @@ pub struct TaskOpened {
     pub channel: Box<dyn TaskChannel>,
 }
 
+/// A peer whose identity and connection-bound proof were verified on one live PeerChannel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProvedPeer {
+    pub host_id: [u8; 16],
+    pub epoch: u64,
+    pub fingerprint: String,
+}
+
 /// The connection of an open task session: one message, one answer, in order; closed when
 /// dropped.
 pub trait TaskChannel: Send {
@@ -97,6 +113,16 @@ pub trait TaskChannel: Send {
 
 /// Opens one session to a coordinator, sends one request, reads one answer.
 pub trait Connector: Send + Sync {
+    /// Opens a PeerChannel, completes both connection-bound proofs, then closes it without
+    /// sending a membership or task request.
+    fn prove(&self, target: Target) -> BoxFuture<'_, Result<ProvedPeer, Refusal>> {
+        let _ = target;
+        Box::pin(std::future::ready(Err(Refusal {
+            code: permguard_core::codes::host::PEER_CLIENT_UNCONFIGURED,
+            reason: "this connector proves no peer session".to_owned(),
+        })))
+    }
+
     fn exchange(
         &self,
         target: Target,
@@ -961,6 +987,10 @@ impl Member<'_> {
             epoch: session.lease.epoch,
             ..*subscription
         };
+        // A stream an incomplete drain left behind is reported to the coordinator (WP-5.8).
+        let marked = engine
+            .unshipped_on(subscription, resource)
+            .map_err(storage)?;
         let mut count = 0;
         while let Some(shipment) = engine
             .next(subscription, resource, max_bytes)
@@ -988,7 +1018,63 @@ impl Member<'_> {
                 Err(error) => return Err(error),
             }
         }
+        if let Some(marked) = marked {
+            let remaining = engine
+                .unshipped_on(subscription, resource)
+                .map_err(storage)?;
+            self.report_unshipped(&mut session, subscription, &marked, remaining.as_ref())
+                .await;
+        }
         Ok(count)
+    }
+
+    /// Reports a marked stream on its ship task's session (WP-5.8, interpretation of
+    /// 2026-10-15): `unshipped` with its tail and what is acknowledged, or `shipped` once the
+    /// mark went. A report that fails is logged: the next pass reports again.
+    async fn report_unshipped(
+        &self,
+        session: &mut MemberTask,
+        subscription: &crate::composition::Subscribed<'_>,
+        marked: &crate::composition::Unshipped,
+        remaining: Option<&crate::composition::Unshipped>,
+    ) {
+        let resource = match remaining {
+            Some(remaining) => super::record::ProgressResource {
+                resource: remaining.resource.clone(),
+                state: UNSHIPPED.to_owned(),
+                frontier: Some(remaining.tail.to_string()),
+                checkpoint_digest: None,
+                verified_at: None,
+                reason: Some(format!("acknowledged through {}", remaining.truncate_safe)),
+            },
+            None => super::record::ProgressResource {
+                resource: marked.resource.clone(),
+                state: SHIPPED.to_owned(),
+                frontier: Some(marked.tail.to_string()),
+                checkpoint_digest: None,
+                verified_at: None,
+                reason: None,
+            },
+        };
+        let progress = TaskProgress {
+            membership_id: subscription.membership_id,
+            task_id: subscription.task_id.to_owned(),
+            manifest_epoch: session.lease.epoch,
+            member_boot_id: self.identity.boot_id(),
+            report_seq: REPORT_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1,
+            reported_at: self.time.now_secs(),
+            resources: vec![resource],
+        };
+        if let Err(error) = session.report(&progress).await {
+            tracing::warn!(
+                event.name = "host.membership.progress_failed",
+                component = "host",
+                membership_id = %uuid_text(&subscription.membership_id),
+                task = %subscription.task_id,
+                error = %error,
+                "an unshipped stream could not be reported: the next pass reports it again"
+            );
+        }
     }
 
     /// The active key of `ring` and the streams of membership `id` it cuts over, in order.

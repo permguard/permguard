@@ -1434,6 +1434,48 @@ pub trait StreamShipping: Send + Sync {
     /// The ship tasks `membership_id`'s manifest still holds: every other subscription of it
     /// is dropped, which only a signed manifest revision does.
     fn retain(&self, membership_id: &[u8; 16], task_ids: &[String]) -> Result<(), String>;
+
+    /// The streams a required subscription is behind on now, with the mark each would take
+    /// (WP-5.8): what a drain still has to ship.
+    fn behind(&self) -> Result<Vec<Unshipped>, String> {
+        Ok(Vec::new())
+    }
+
+    /// Marks every stream behind in its STATE, as an incomplete drain leaves it, and answers the
+    /// marks (WP-5.8).
+    fn mark_unshipped(&self) -> Result<Vec<Unshipped>, String> {
+        Ok(Vec::new())
+    }
+
+    /// Removes the mark of every stream no longer behind, and answers the marks that remain
+    /// (WP-5.8).
+    fn settle_unshipped(&self) -> Result<Vec<Unshipped>, String> {
+        Ok(Vec::new())
+    }
+
+    /// The mark of `resource`'s stream that `subscription`'s task ships, settled first: `None`
+    /// when it holds none, or no longer needs one (WP-5.8).
+    fn unshipped_on(
+        &self,
+        subscription: &Subscribed<'_>,
+        resource: &str,
+    ) -> Result<Option<Unshipped>, String> {
+        let _ = (subscription, resource);
+        Ok(None)
+    }
+}
+
+/// A stream an incomplete drain left behind its required subscriptions (WP-5.8, owner decision
+/// of 2026-10-15): the last sequence of its newest run still behind, and that run's
+/// `truncate_safe`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unshipped {
+    /// `<plane>/<type>`, as the Plane declared the stream.
+    pub stream: String,
+    /// The resource the stream is of.
+    pub resource: String,
+    pub tail: u64,
+    pub truncate_safe: u64,
 }
 
 /// The Host's stream engine as composition reaches it (WP-5.1, interpretation): the engine lives

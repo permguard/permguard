@@ -906,6 +906,20 @@ impl Physical {
 }
 
 impl Writer {
+    /// Keeps `mark` as STATE's `unshipped`, or removes it (WP-5.8).
+    fn keep_unshipped(&mut self, mark: Option<super::state::Unshipped>) -> Result<(), StreamError> {
+        let Some(mut state) = self.state.clone() else {
+            return Ok(());
+        };
+        if state.unshipped == mark {
+            return Ok(());
+        }
+        state.unshipped = mark;
+        replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
+        self.state = Some(state);
+        Ok(())
+    }
+
     /// Moves STATE's `acknowledged_seq` to `acknowledged`, the current run's `truncate_safe`,
     /// never past `signed_seq` (WP-5.4).
     fn keep_acknowledged(&mut self, acknowledged: u64) -> Result<(), StreamError> {
@@ -967,6 +981,8 @@ impl Writer {
             oldest_retained_seq: held.map_or(1, |state| state.oldest_retained_seq),
             pending_successor: pending,
             forked_at_seq: forked,
+            // A drain's mark outlives a rollover: it goes only when nothing is behind.
+            unshipped: self.state.as_ref().and_then(|state| state.unshipped),
         };
         replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
         self.state = Some(state);

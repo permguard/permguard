@@ -172,6 +172,7 @@ tasks:
       - python3 contracts/vectors/plan.py | diff - contracts/vectors/plan.json
       - python3 contracts/vectors/stream.py | diff - contracts/vectors/stream.json
       - python3 contracts/vectors/notp.py | diff - contracts/vectors/notp.json
+      - python3 contracts/vectors/host_cli.py | diff - contracts/vectors/host-cli.json
 
   check:systems:
     desc: Check that the Makefile and the Taskfile offer the same commands.

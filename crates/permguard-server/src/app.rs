@@ -2119,6 +2119,11 @@ impl App {
         let _receiving = serving
             .as_ref()
             .map(|api| crate::zone::drive(Arc::clone(api), Arc::clone(&zone_keys)));
+        // Streams an incomplete drain left are shipped again before the Host leaves Load
+        // (WP-5.8, owner decision): one pass within the drain budget.
+        if let Some(api) = serving.as_ref() {
+            crate::shipping::resume(api, config.shutdown_drain_timeout()).await;
+        }
         let _repinning = match (repinning_coordinator, serving.as_ref()) {
             (Some(coordinating), Some(api)) => {
                 Some(crate::repin::drive(coordinating, Arc::clone(api)))

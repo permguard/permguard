@@ -63,6 +63,16 @@ pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>) -> Repinning {
             }
             let repinned = api.repin_due().await + api.cutover_due().await;
             let shipped = api.ship_due().await;
+            // A drain's marks go once their streams are shipped, and the Host's readiness with
+            // them (WP-5.8).
+            if let Err(error) = api.settle_unshipped() {
+                tracing::warn!(
+                    event.name = "host.stream_settle_failed",
+                    component = "host",
+                    error = %error,
+                    "the unshipped marks could not be settled; the next pass tries again"
+                );
+            }
             if shipped > 0 {
                 tracing::debug!(
                     event.name = "host.membership.shipped",

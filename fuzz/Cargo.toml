@@ -26,6 +26,13 @@ permguard-stream = { path = "../crates/permguard-stream" }
 serde_json = "1"
 
 [[bin]]
+name = "host_cli_json"
+path = "fuzz_targets/host_cli_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "cbor_decode"
 path = "fuzz_targets/cbor_decode.rs"
 test = false

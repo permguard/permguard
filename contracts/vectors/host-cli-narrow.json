@@ -1,0 +1,28 @@
+{
+  "selector": "plane/data/*",
+  "tasks": [
+    {
+      "version": 1,
+      "task_id": "decisions",
+      "type": "decisions.ship",
+      "provider_role": "member",
+      "consumer_role": "coordinator",
+      "selector": "plane/data/*",
+      "resource_types": [
+        "decision"
+      ],
+      "required": true,
+      "limits": {
+        "max_body_bytes": 1048576,
+        "max_concurrency": 4,
+        "max_rate_per_minute": 600,
+        "max_batch_records": 1000,
+        "retention_seconds": 86400
+      },
+      "assurance_requirements": [
+        "operations.dual_control",
+        "custody.hsm"
+      ]
+    }
+  ]
+}

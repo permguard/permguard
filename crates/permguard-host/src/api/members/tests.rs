@@ -58,6 +58,189 @@ pub(crate) async fn enrolled(api: &HostApi, member: &Host, request_id: &str) -> 
     enrolled_requiring(api, member, request_id, &[]).await
 }
 
+#[derive(Default)]
+struct DownConnector {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl Connector for DownConnector {
+    fn exchange(
+        &self,
+        _target: crate::membership::member::Target,
+        _exchange: crate::membership::member::Exchange,
+    ) -> permguard_core::BoxFuture<
+        '_,
+        Result<crate::membership::member::Exchanged, crate::session::Refusal>,
+    > {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(std::future::ready(Err(crate::session::Refusal {
+            code: codes::common::UNAVAILABLE,
+            reason: "the coordinator is down".to_owned(),
+        })))
+    }
+}
+
+#[tokio::test]
+async fn member_verification_replays_and_validates_the_request_before_contacting_the_coordinator() {
+    let root = scratch("member-verify-preflight");
+    let (mut api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let member = Host::new("member-verify-preflight-member");
+    let (id, pending) = enrolled(&api, &member, "member-verify-enroll").await;
+    let (other_id, other_pending) = enrolled(&api, &member, "member-verify-enroll-other").await;
+    member
+        .store
+        .join(
+            &Applying::for_tests(80),
+            &Pending {
+                coordinator_address: Some("https://coordinator:7443".to_owned()),
+                ..pending
+            },
+            now(),
+        )
+        .expect("joined");
+    member
+        .store
+        .join(
+            &Applying::for_tests(81),
+            &Pending {
+                coordinator_address: Some("https://coordinator:7443".to_owned()),
+                ..other_pending
+            },
+            now(),
+        )
+        .expect("joined twice");
+    let down = Arc::new(DownConnector::default());
+    {
+        let service = Arc::get_mut(api.memberships.as_mut().expect("memberships"))
+            .expect("the test owns the membership service");
+        service.store = Arc::clone(&member.store);
+        service.connector = Some(down.clone());
+    }
+    let memberships = Arc::clone(api.memberships.as_ref().expect("memberships"));
+
+    let verify = VerifyMember {
+        request_id: "member-verify-1".to_owned(),
+    };
+    let membership_id = id_of(&id).expect("an id");
+    let held = member.store.membership(&membership_id).expect("held");
+    let principal = permguard_core::authz::Principal::new("spiffe://acme/operators/root")
+        .expect("an administrator principal");
+    let first = api
+        .transact(
+            DOMAIN,
+            &principal,
+            VERIFY,
+            AUDIT_VERIFIED,
+            &Mutation {
+                request_id: verify.request_id.clone(),
+                expected_revision: None,
+            },
+            &(&id, &verify),
+            Some(id.clone()),
+            || Ok(()),
+            |applying| {
+                let value = MemberVerification {
+                    receipt: api.receipt(applying.operation_id(), held.revision),
+                    membership_id: id.clone(),
+                    status: "proved".to_owned(),
+                    scheduled_at: None,
+                    member: MemberView::of(&held, &api.viewing(&memberships)),
+                };
+                member
+                    .store
+                    .record_verification_result(applying, &membership_id, held.revision, &value)
+                    .map_err(failure)?;
+                Ok(Applied {
+                    revision: held.revision,
+                    target: Some(id.clone()),
+                    value,
+                })
+            },
+            |_, _, _| unreachable!("the seeded operation is new"),
+        )
+        .expect("the first proof is recorded");
+
+    let replayed = api
+        .verify_member(&admin(), &id, verify.clone())
+        .await
+        .expect("a retry answers while its coordinator is down");
+    assert_eq!(replayed, first);
+    let reused = api
+        .verify_member(&admin(), &other_id, verify)
+        .await
+        .expect_err("the same request id cannot name another member");
+    assert_eq!(code(&reused), codes::host::REQUEST_ID_REUSED);
+    assert_eq!(down.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn coordinator_verification_is_durable_across_restart_and_replay() {
+    let root = scratch("members-verify");
+    let member = Host::new("members-verify-member");
+    let (api, _, volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let (id, _) = enrolled(&api, &member, "verify-enroll").await;
+    let other = Host::new("members-verify-other");
+    let (other_id, _) = enrolled(&api, &other, "verify-enroll-other").await;
+    let first = api
+        .verify_member(
+            &admin(),
+            &id,
+            VerifyMember {
+                request_id: "verify-1".to_owned(),
+            },
+        )
+        .await
+        .expect("scheduled");
+    assert_eq!(first.status, "scheduled");
+    assert!(first.scheduled_at.is_some());
+    assert_eq!(first.receipt.revision, first.member.revision);
+    assert!(
+        api.memberships
+            .as_ref()
+            .expect("memberships")
+            .store
+            .satisfy_verification(&id_of(&id).expect("an id"), &member.identity.host_id(),)
+            .expect("consumed")
+    );
+    let consumed_replay = api
+        .verify_member(
+            &admin(),
+            &id,
+            VerifyMember {
+                request_id: "verify-1".to_owned(),
+            },
+        )
+        .await
+        .expect("the consumed schedule still replays its receipt");
+    assert_eq!(consumed_replay, first);
+    drop(api);
+    drop(volume);
+
+    let (reopened, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let replayed = reopened
+        .verify_member(
+            &admin(),
+            &id,
+            VerifyMember {
+                request_id: "verify-1".to_owned(),
+            },
+        )
+        .await
+        .expect("the consumed schedule and receipt replay after restart");
+    assert_eq!(replayed, first);
+    let reused = reopened
+        .verify_member(
+            &admin(),
+            &other_id,
+            VerifyMember {
+                request_id: "verify-1".to_owned(),
+            },
+        )
+        .await
+        .expect_err("one request id cannot verify another target");
+    assert_eq!(code(&reused), codes::host::REQUEST_ID_REUSED);
+}
+
 /// [`enrolled`], the task requiring `controls` (WP-4.2).
 pub(crate) async fn enrolled_requiring(
     api: &HostApi,
@@ -984,6 +1167,17 @@ async fn every_admin_route_is_denied_without_membership_admin() {
                 &who,
                 &id,
                 SyncMembership {
+                    request_id: "x".to_owned(),
+                },
+            )
+            .await
+            .map(|_| ()),
+        );
+        denied(
+            api.verify_member(
+                &who,
+                &id,
+                VerifyMember {
                     request_id: "x".to_owned(),
                 },
             )

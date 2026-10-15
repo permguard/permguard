@@ -1702,53 +1702,60 @@ fn a_command_names_one_target_class_and_never_falls_back() {
     assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
 }
 
-/// TC-1: the offline host commands take the global `--volume`, wherever it is written, and refuse
-/// without one.
+/// WP-4.8: every normative Host command is present before a request is sent.
+#[test]
+fn the_host_identity_members_and_grants_command_families_are_complete() {
+    let dir = scratch("host-command-families");
+    for path in [
+        &["host", "identity", "verify", "--help"][..],
+        &["host", "identity", "pin", "add", "--help"],
+        &["host", "members", "invite", "create", "--help"],
+        &["host", "members", "join", "--help"],
+        &["host", "members", "pending", "--help"],
+        &["host", "members", "approve", "--help"],
+        &["host", "members", "sessions", "--help"],
+        &["host", "members", "verify", "--help"],
+        &["host", "grants", "revoke", "plan", "--help"],
+        &["host", "grants", "revoke", "run", "--help"],
+    ] {
+        let output = run(&dir, path);
+        assert!(output.status.success(), "{path:?}: {}", stderr(&output));
+    }
+}
+
+/// WP-4.8/TC-1: provisioning remains offline and takes the global `--volume` wherever written.
 #[test]
 fn the_offline_host_commands_take_the_global_volume() {
     let dir = scratch("global-volume");
-    let volume = dir.join("volume");
-    let volume_text = volume.display().to_string();
-    let provision = run(
+    let before_volume = dir.join("before-volume").display().to_string();
+    let before = run(
+        &dir,
+        &[
+            "--volume",
+            &before_volume,
+            "host",
+            "identity",
+            "provision",
+            "-o",
+            "json",
+        ],
+    );
+    assert!(before.status.success(), "{}", stderr(&before));
+    let after_volume = dir.join("after-volume").display().to_string();
+    let after = run(
         &dir,
         &[
             "host",
             "identity",
             "provision",
             "--volume",
-            &volume_text,
+            &after_volume,
             "-o",
             "json",
         ],
     );
-    assert!(provision.status.success(), "{}", stderr(&provision));
-    let before = run(
-        &dir,
-        &[
-            "--volume",
-            &volume_text,
-            "host",
-            "identity",
-            "show",
-            "-o",
-            "json",
-        ],
-    );
-    assert!(before.status.success(), "{}", stderr(&before));
-    let after = run(
-        &dir,
-        &[
-            "host",
-            "identity",
-            "show",
-            "--volume",
-            &volume_text,
-            "-o",
-            "json",
-        ],
-    );
-    assert_eq!(stdout(&before), stdout(&after));
-    let missing = run(&dir, &["host", "identity", "show"]);
+    assert!(after.status.success(), "{}", stderr(&after));
+    let missing = run(&dir, &["host", "identity", "provision"]);
     assert_eq!(missing.status.code(), Some(64), "{}", stderr(&missing));
     assert!(
         stderr(&missing).contains("--volume"),
@@ -1876,6 +1883,180 @@ fn the_token_file_is_refused_when_others_can_read_it_or_it_is_empty() {
     }
 }
 
+/// WP-4.8: an invitation is a secret, so an insecure join target is rejected before the
+/// invitation path is inspected, let alone opened.
+#[test]
+fn host_members_join_rejects_insecure_transports_before_reading_the_invitation() {
+    let dir = scratch("join-insecure-before-token");
+    let missing = dir.join("secret-invitation-that-must-not-be-read.json");
+
+    for scheme in ["http", "grpc"] {
+        let endpoint = format!("{scheme}://127.0.0.1:1");
+        let output = run(
+            &dir,
+            &[
+                "--host-endpoint",
+                &endpoint,
+                "--token-file",
+                missing.to_str().expect("utf-8"),
+                "host",
+                "members",
+                "join",
+                &endpoint,
+                "--pin-fingerprint",
+                "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            ],
+        );
+        let why = stderr(&output);
+        assert_eq!(output.status.code(), Some(64), "{scheme}: {why}");
+        assert!(why.contains("only over verified TLS"), "{scheme}: {why}");
+        assert!(!why.contains("secret-invitation"), "{scheme}: {why}");
+    }
+}
+
+#[test]
+fn host_members_join_uses_only_an_explicit_fingerprint_or_an_exact_local_pin() {
+    const URL: &str = "https://127.0.0.1:1";
+    const OTHER_URL: &str = "https://127.0.0.1:2";
+    const HOST: &str = "0198f2aa-0000-7000-8000-000000000001";
+    const OTHER_HOST: &str = "0198f2aa-0000-7000-8000-000000000002";
+    const FINGERPRINT: &str =
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const OTHER_FINGERPRINT: &str =
+        "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+    let handoff = |dir: &Path| {
+        let path = dir.join("invitation.json");
+        std::fs::write(
+            &path,
+            format!(
+                "{{\"version\":1,\"coordinator\":{{\"address\":\"{URL}\",\"host_id\":\"{HOST}\",\"fingerprint\":\"{FINGERPRINT}\"}},\"invite_id\":\"0198f2aa-0000-7000-8000-000000000003\",\"token\":\"private-token\",\"requested\":{{\"selector\":\"plane/data/*\",\"tasks\":[]}},\"expires\":\"2030-01-01T00:00:00Z\"}}"
+            ),
+        )
+        .expect("the handoff writes");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .expect("the handoff is private");
+        }
+    };
+    let add = |dir: &Path, url: &str, host: &str, fingerprint: &str| {
+        let output = run(
+            dir,
+            &[
+                "host",
+                "identity",
+                "pin",
+                "add",
+                url,
+                "--host-id",
+                host,
+                "--fingerprint",
+                fingerprint,
+            ],
+        );
+        assert!(output.status.success(), "{}", stderr(&output));
+    };
+    let join = |dir: &Path, explicit: Option<&str>| {
+        let mut args = vec![
+            "--host-endpoint",
+            URL,
+            "--token-file",
+            "invitation.json",
+            "host",
+            "members",
+            "join",
+            URL,
+        ];
+        if let Some(fingerprint) = explicit {
+            args.extend(["--pin-fingerprint", fingerprint]);
+        }
+        run(dir, &args)
+    };
+
+    for (tag, pin) in [
+        ("absent", None),
+        ("url-mismatch", Some((OTHER_URL, HOST, FINGERPRINT))),
+        ("host-mismatch", Some((URL, OTHER_HOST, FINGERPRINT))),
+    ] {
+        let dir = scratch(&format!("join-pin-{tag}"));
+        handoff(&dir);
+        if let Some((url, host, fingerprint)) = pin {
+            add(&dir, url, host, fingerprint);
+        }
+        let output = join(&dir, None);
+        assert_eq!(output.status.code(), Some(64), "{tag}: {}", stderr(&output));
+        assert!(
+            stderr(&output).contains("exact local pin"),
+            "{tag}: {}",
+            stderr(&output)
+        );
+    }
+
+    let mismatch = scratch("join-pin-fingerprint-mismatch");
+    handoff(&mismatch);
+    add(&mismatch, URL, HOST, OTHER_FINGERPRINT);
+    let output = join(&mismatch, None);
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    assert!(stderr(&output).contains("differs from the invitation"));
+
+    let exact = scratch("join-pin-exact");
+    handoff(&exact);
+    add(&exact, URL, HOST, FINGERPRINT);
+    let output = join(&exact, None);
+    assert_eq!(output.status.code(), Some(69), "{}", stderr(&output));
+
+    // Choice 3A is an OR: an explicitly supplied out-of-band fingerprint is authoritative for
+    // this invocation. It neither changes nor implicitly replaces a conflicting local pin.
+    let explicit = scratch("join-pin-explicit");
+    handoff(&explicit);
+    add(&explicit, URL, HOST, OTHER_FINGERPRINT);
+    let before = std::fs::read(explicit.join("host-pins.json")).expect("the pin store reads");
+    let output = join(&explicit, Some(FINGERPRINT));
+    assert_eq!(output.status.code(), Some(69), "{}", stderr(&output));
+    assert_eq!(
+        std::fs::read(explicit.join("host-pins.json")).expect("the pin store reads"),
+        before,
+        "join records no pin implicitly"
+    );
+}
+
+#[test]
+fn secret_bearing_json_errors_never_repeat_the_secret() {
+    let dir = scratch("secret-json-error");
+    let handoff = dir.join("invitation.json");
+    let secret = "secret-field-op-token-never-print-this";
+    std::fs::write(&handoff, format!("{{\"{secret}\":true}}"))
+        .expect("the malformed handoff writes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&handoff, std::fs::Permissions::from_mode(0o600))
+            .expect("the handoff is private");
+    }
+    let output = run(
+        &dir,
+        &[
+            "--host-endpoint",
+            "https://127.0.0.1:1",
+            "--token-file",
+            "invitation.json",
+            "host",
+            "members",
+            "join",
+            "https://127.0.0.1:1",
+            "--pin-fingerprint",
+            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        ],
+    );
+    let why = stderr(&output);
+    assert_eq!(output.status.code(), Some(64), "{why}");
+    assert!(!why.contains(secret), "{why}");
+    assert!(why.contains("invalid invitation handoff JSON"), "{why}");
+    assert!(why.contains("line") && why.contains("column"), "{why}");
+}
+
 /// TC-1: the client key may be a reference in the configuration, `env:NAME` or `file:PATH`, never
 /// both a reference and a file, and never anything else.
 #[test]
@@ -1985,4 +2166,80 @@ fn a_failed_verification_exits_two() {
         "{}",
         stderr(&output)
     );
+}
+
+#[test]
+fn host_identity_pins_are_canonical_private_idempotent_and_conflict_safe() {
+    const HOST: &str = "0198f2aa-0000-7000-8000-000000000001";
+    const FIRST: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    const OTHER: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+    let dir = scratch("host-pins");
+    let add = |fingerprint: &str| {
+        run(
+            &dir,
+            &[
+                "-o",
+                "json",
+                "host",
+                "identity",
+                "pin",
+                "add",
+                "https://COORDINATOR.EXAMPLE:9443",
+                "--host-id",
+                HOST,
+                "--fingerprint",
+                fingerprint,
+            ],
+        )
+    };
+
+    let added = add(FIRST);
+    assert!(added.status.success(), "{}", stderr(&added));
+    let path = dir.join("host-pins.json");
+    let first = std::fs::read(&path).expect("the store was published");
+    let parsed: serde_json::Value = serde_json::from_slice(&first).expect("the store is JSON");
+    assert_eq!(parsed["version"], 1);
+    assert_eq!(parsed["pins"][0]["url"], "https://coordinator.example:9443");
+    assert_eq!(parsed["pins"][0]["host_id"], HOST);
+    assert_eq!(parsed["pins"][0]["fingerprint"], FIRST);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        assert_eq!(
+            std::fs::metadata(&path)
+                .expect("the store metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    let replay = add(FIRST);
+    assert!(replay.status.success(), "{}", stderr(&replay));
+    assert_eq!(std::fs::read(&path).expect("the store reads"), first);
+
+    let conflict = add(OTHER);
+    assert_eq!(conflict.status.code(), Some(64), "{}", stderr(&conflict));
+    assert!(stderr(&conflict).contains("different fingerprint"));
+    assert_eq!(std::fs::read(&path).expect("the store reads"), first);
+
+    let removed = run(
+        &dir,
+        &[
+            "-o",
+            "json",
+            "host",
+            "identity",
+            "pin",
+            "remove",
+            "https://coordinator.example:9443",
+            "--host-id",
+            HOST,
+        ],
+    );
+    assert!(removed.status.success(), "{}", stderr(&removed));
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout(&removed)).expect("the answer is JSON");
+    assert_eq!(parsed["pins"].as_array().expect("pins").len(), 0);
 }

@@ -13,7 +13,7 @@ use permguard_host::api::members::{
     AppraiseMember, ApprovalView, ApproveMember, AssuranceOffer, AssuranceView, ChangeMember,
     CoordinatorView, CreateInvite, EvidenceView, JoinMembership, LeasePolicyView, LimitsView,
     MemberChanged, MemberView, NarrowView, PlanMemberRevoke, RevokeBinding, RunMemberRevoke,
-    SyncMembership, TaskView,
+    SyncMembership, TaskView, VerifyMember,
 };
 
 use super::super::v1;
@@ -708,6 +708,32 @@ impl MembershipService for Served {
             .map_err(|refusal| self.refuse(refusal))?;
         Ok(Response::new(v1::SyncMembershipResponse {
             member: Some(member_out(view)?),
+        }))
+    }
+
+    async fn verify_member(
+        &self,
+        request: Request<v1::VerifyMemberRequest>,
+    ) -> Answer<v1::VerifyMemberResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let verified = self
+            .api
+            .verify_member(
+                &actor,
+                &asked.membership_id,
+                VerifyMember {
+                    request_id: asked.request_id,
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::VerifyMemberResponse {
+            membership_id: verified.membership_id,
+            status: verified.status,
+            scheduled_at: verified.scheduled_at,
+            member: Some(member_out(verified.member)?),
+            receipt: Some(receipt(verified.receipt)),
         }))
     }
 }

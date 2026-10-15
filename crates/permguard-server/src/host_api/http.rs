@@ -17,12 +17,12 @@ use permguard_core::{ApiError, Disclosure, ErrorClass, codes};
 use permguard_host::api::audit::{AuditCheckpointQuery, AuditExportQuery, AuditQuery};
 use permguard_host::api::members::{
     AppraiseMember, ApproveMember, ChangeMember, CreateInvite, JoinMembership, PlanMemberRevoke,
-    RunMemberRevoke, SyncMembership,
+    RunMemberRevoke, SyncMembership, VerifyMember,
 };
 use permguard_host::api::reset::{PlanIdentityReset, RunIdentityReset};
 use permguard_host::api::{
     CreateGrant, HostApi, KeyBundleQuery, PlanKeyRevoke, PlanRevoke, Refusal, RotateIdentity,
-    RotateRing, RunKeyRevoke, RunRevoke,
+    RotateRing, RunKeyRevoke, RunRevoke, VerifyIdentity,
 };
 use permguard_transport::ActorOf;
 
@@ -45,6 +45,7 @@ impl Served {
 pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
     Router::new()
         .route("/host/v1/identity", get(identity))
+        .route("/host/v1/identity/verify", post(verify_identity))
         .route("/host/v1/identity/rotate", post(rotate_identity))
         .route("/host/v1/identity/reset/plan", post(plan_identity_reset))
         .route("/host/v1/identity/reset/run", post(run_identity_reset))
@@ -68,6 +69,7 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/members/invites/{id}", delete(delete_invite))
         .route("/host/v1/members/enroll", post(enroll_over_rest))
         .route("/host/v1/members/{id}", get(get_member))
+        .route("/host/v1/members/{id}/verify", post(verify_member))
         .route("/host/v1/members/{id}/approve", post(approve_member))
         .route("/host/v1/members/{id}/reject", post(reject_member))
         .route("/host/v1/members/{id}/suspend", post(suspend_member))
@@ -156,6 +158,18 @@ async fn session_over_rest(State(served): State<Served>) -> Response {
 
 async fn identity(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
     answer(&served, StatusCode::OK, served.api.identity(&actor))
+}
+
+async fn verify_identity(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(verify): Closed<VerifyIdentity>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.verify_identity(&actor, verify).await,
+    )
 }
 
 async fn rotate_identity(
@@ -659,6 +673,19 @@ async fn sync_membership(
         &served,
         StatusCode::OK,
         served.api.sync_membership(&actor, &id, sync).await,
+    )
+}
+
+async fn verify_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(verify): Closed<VerifyMember>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.verify_member(&actor, &id, verify).await,
     )
 }
 

@@ -654,6 +654,43 @@ impl permguard_host::composition::StreamShipping for Served {
         }
         Ok(())
     }
+
+    fn behind(&self) -> Result<Vec<permguard_host::composition::Unshipped>, String> {
+        let mut found = Vec::new();
+        for producer in &self.shipping {
+            found.extend(producer.behind()?);
+        }
+        Ok(found)
+    }
+
+    fn mark_unshipped(&self) -> Result<Vec<permguard_host::composition::Unshipped>, String> {
+        let mut marked = Vec::new();
+        for producer in &self.shipping {
+            marked.extend(producer.mark_unshipped()?);
+        }
+        Ok(marked)
+    }
+
+    fn unshipped_on(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+        resource: &str,
+    ) -> Result<Option<permguard_host::composition::Unshipped>, String> {
+        for producer in &self.shipping {
+            if let Some(mark) = producer.unshipped_on(subscription, resource)? {
+                return Ok(Some(mark));
+            }
+        }
+        Ok(None)
+    }
+
+    fn settle_unshipped(&self) -> Result<Vec<permguard_host::composition::Unshipped>, String> {
+        let mut remaining = Vec::new();
+        for producer in &self.shipping {
+            remaining.extend(producer.settle_unshipped()?);
+        }
+        Ok(remaining)
+    }
 }
 
 /// A lowercase name of letters, digits and inner hyphens.

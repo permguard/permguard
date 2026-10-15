@@ -58,7 +58,7 @@ mod workspace_out;
 
 use std::process::ExitCode;
 
-use crate::args::{Cli, Command};
+use crate::args::{Cli, Command, GrantsAction, HostAction, IdentityAction};
 use crate::commands::catalog::{CatalogAction, catalog_command};
 use crate::commands::config::config_command;
 use crate::commands::inspect::inspect_command;
@@ -321,6 +321,22 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Apply { .. } => ("apply", Class::Control),
         Command::Verify => ("verify", Class::Control),
         Command::Inspect { .. } => ("inspect", Class::Planes),
-        Command::Host { .. } => ("host", Class::Volume),
+        Command::Host { action, .. } => {
+            let class = match action {
+                HostAction::Identity {
+                    action: IdentityAction::Provision { .. } | IdentityAction::Reset { .. },
+                }
+                | HostAction::Grants {
+                    action: GrantsAction::Bootstrap { .. },
+                } => Class::Volume,
+                HostAction::Identity {
+                    action: IdentityAction::Pin { .. },
+                } => Class::Local,
+                HostAction::Identity { .. }
+                | HostAction::Members { .. }
+                | HostAction::Grants { .. } => Class::Host,
+            };
+            ("host", class)
+        }
     }
 }

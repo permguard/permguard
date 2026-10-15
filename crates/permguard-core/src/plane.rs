@@ -181,8 +181,9 @@ pub trait PlaneTask: Send + Sync {
         ready(Ok(()))
     }
 
-    /// Finishes this task's work in flight before `deadline` (WP-2.7). `TODO(WP-5.8)`: a stream
-    /// producer ships to its required subscriptions here and reports what stays `unshipped`.
+    /// Finishes this task's work in flight before `deadline` (WP-2.7). The records a Plane
+    /// appended to the Host's streams are shipped by the Host's own drain, after every Plane
+    /// drained, which reports what stays `unshipped` (WP-5.8).
     fn drain<'a>(
         &'a self,
         context: &'a PlaneContext<'a>,

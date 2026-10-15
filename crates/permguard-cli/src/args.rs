@@ -223,7 +223,7 @@ pub struct Cli {
 /// The endpoints and the TLS material are here rather than on `inspect` because they describe *which
 /// Permguard* is being talked to, which every command that talks to one needs, and because an
 /// operator should not have to learn where a flag lives per command.
-#[derive(Debug, Args)]
+#[derive(Debug, Clone, Args)]
 #[command(next_help_heading = GLOBAL_HEADING)]
 pub struct Globals {
     /// Output format.
@@ -1437,19 +1437,24 @@ mod tests {
 /// What `permguard host` works on.
 #[derive(Debug, Subcommand)]
 pub enum HostAction {
-    /// The grants of the Host's authorization store, on the volume, with the server stopped.
+    /// The grants of the Host authorization store; only recovery bootstrap is offline.
     Grants {
         #[command(subcommand)]
         action: GrantsAction,
     },
-    /// The Host identity on the volume, with the server stopped (WP-2.2).
+    /// The Host identity; provisioning and emergency reset remain offline.
     Identity {
         #[command(subcommand)]
         action: IdentityAction,
     },
+    /// Membership enrollment, approval and lifecycle operations on the Host listener.
+    Members {
+        #[command(subcommand)]
+        action: MembersAction,
+    },
 }
 
-/// `permguard host identity …`: the Host identity, offline.
+/// `permguard host identity …`: the Host identity locally and through the Host listener.
 #[derive(Debug, Subcommand)]
 pub enum IdentityAction {
     /// Provision the Host identity: required before the first start from the `production`
@@ -1466,12 +1471,28 @@ pub enum IdentityAction {
     /// Print the Host identity: its id, subject, epoch and fingerprints. The witness is printed
     /// at provisioning only, never read back from the volume it is meant to check.
     #[command(
-        after_help = "Examples:\n  permguard host identity show --volume /var/lib/permguard\n  permguard host identity show --volume ./volume -o json"
+        after_help = "Examples:\n  permguard host identity show\n  permguard --host-endpoint grpcs://host.example:9443 host identity show -o json"
     )]
     Show,
+    /// Prove a peer Host identity and compare its first fingerprint.
+    #[command(
+        after_help = "Examples:\n  permguard host identity verify https://peer.example:9443 --fingerprint sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  permguard host identity verify grpcs://peer.example:9443 --fingerprint sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -o json"
+    )]
+    Verify {
+        /// The peer Host listener.
+        url: String,
+        /// The SHA-256 fingerprint expected out of band.
+        #[arg(long)]
+        fingerprint: String,
+    },
+    /// Maintain the local pre-enrollment pin store.
+    Pin {
+        #[command(subcommand)]
+        action: PinAction,
+    },
     /// Rotate the identity key to the next epoch: the current key signs the succession.
     #[command(
-        after_help = "Examples:\n  permguard host identity rotate --volume /var/lib/permguard --expected-epoch 1\n  permguard host identity rotate --volume ./volume --expected-epoch 3 -o json"
+        after_help = "Examples:\n  permguard host identity rotate --expected-epoch 1\n  permguard --host-endpoint grpcs://host.example:9443 host identity rotate --expected-epoch 3 -o json"
     )]
     Rotate {
         /// The epoch `show` printed: a rotation from another is refused.
@@ -1485,6 +1506,224 @@ pub enum IdentityAction {
     Reset {
         #[command(subcommand)]
         action: ResetAction,
+    },
+}
+
+/// `permguard host identity pin …`: local trust established before enrollment.
+#[derive(Debug, Subcommand)]
+pub enum PinAction {
+    /// Add or exactly replay one endpoint and Host identity pin.
+    #[command(
+        after_help = "Examples:\n  permguard host identity pin add https://peer.example:9443 --host-id 0198f2aa-0000-7000-8000-000000000001 --fingerprint sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  permguard host identity pin add grpcs://peer.example:9443 --host-id 0198f2aa-0000-7000-8000-000000000001 --fingerprint sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -o json"
+    )]
+    Add {
+        /// The peer Host listener URL.
+        url: String,
+        /// The peer Host identity UUID.
+        #[arg(long)]
+        host_id: String,
+        /// The pinned epoch-1 identity fingerprint.
+        #[arg(long)]
+        fingerprint: String,
+    },
+    /// List the local pins.
+    #[command(
+        after_help = "Examples:\n  permguard host identity pin list\n  permguard host identity pin list -o json"
+    )]
+    List,
+    /// Remove one exact endpoint and Host identity pin.
+    #[command(
+        after_help = "Examples:\n  permguard host identity pin remove https://peer.example:9443 --host-id 0198f2aa-0000-7000-8000-000000000001\n  permguard host identity pin remove grpcs://peer.example:9443 --host-id 0198f2aa-0000-7000-8000-000000000001 -o json"
+    )]
+    Remove {
+        /// The peer Host listener URL.
+        url: String,
+        /// The peer Host identity UUID.
+        #[arg(long)]
+        host_id: String,
+    },
+}
+
+/// `permguard host members …`: enrollment and membership lifecycle operations.
+#[derive(Debug, Subcommand)]
+pub enum MembersAction {
+    /// Manage one-time invitations.
+    Invite {
+        #[command(subcommand)]
+        action: InviteAction,
+    },
+    /// Join a coordinator using the private invitation handoff file.
+    #[command(
+        after_help = "Examples:\n  permguard --token-file invitation.json host members join https://coordinator.example:9443 --pin-fingerprint sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  permguard --token-file invitation.json host members join grpcs://coordinator.example:9443 --pin-fingerprint sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -o json"
+    )]
+    Join {
+        /// The coordinator Host listener URL.
+        coordinator_url: String,
+        /// The coordinator epoch-1 fingerprint received out of band; without it an exact local
+        /// pin for the canonical URL and Host id is required.
+        #[arg(long)]
+        pin_fingerprint: Option<String>,
+    },
+    /// List pending enrollment requests.
+    #[command(
+        after_help = "Examples:\n  permguard host members pending\n  permguard host members pending -o json"
+    )]
+    Pending,
+    /// Approve and optionally narrow a pending membership.
+    #[command(
+        after_help = "Examples:\n  permguard host members approve 0198f2aa-0000-7000-8000-000000000002 --expected-revision 1\n  permguard host members approve 0198f2aa-0000-7000-8000-000000000002 --expected-revision 1 --narrow narrow.json -o json"
+    )]
+    Approve {
+        /// The membership UUID.
+        id: String,
+        /// The membership revision read by the operator.
+        #[arg(long)]
+        expected_revision: u64,
+        /// A closed JSON `NarrowView` file.
+        #[arg(long, value_name = "FILE")]
+        narrow: Option<PathBuf>,
+        /// A closed JSON `AssuranceOffer` file.
+        #[arg(long, value_name = "FILE")]
+        assurance_result: Option<PathBuf>,
+    },
+    /// Reject a pending membership.
+    #[command(
+        after_help = "Examples:\n  permguard host members reject 0198f2aa-0000-7000-8000-000000000002 --expected-revision 1 --reason declined\n  permguard host members reject 0198f2aa-0000-7000-8000-000000000002 --expected-revision 1 --reason declined -o json"
+    )]
+    Reject(MemberChangeArgs),
+    /// List memberships.
+    #[command(
+        after_help = "Examples:\n  permguard host members list\n  permguard host members list -o json"
+    )]
+    List,
+    /// Get one membership.
+    #[command(
+        after_help = "Examples:\n  permguard host members get 0198f2aa-0000-7000-8000-000000000002\n  permguard host members get 0198f2aa-0000-7000-8000-000000000002 -o json"
+    )]
+    Get {
+        /// The membership UUID.
+        id: String,
+    },
+    /// Suspend a membership.
+    #[command(
+        after_help = "Examples:\n  permguard host members suspend 0198f2aa-0000-7000-8000-000000000002 --expected-revision 2 --reason maintenance\n  permguard host members suspend 0198f2aa-0000-7000-8000-000000000002 --expected-revision 2 --reason maintenance -o json"
+    )]
+    Suspend(MemberChangeArgs),
+    /// Resume a membership.
+    #[command(
+        after_help = "Examples:\n  permguard host members resume 0198f2aa-0000-7000-8000-000000000002 --expected-revision 3 --reason restored\n  permguard host members resume 0198f2aa-0000-7000-8000-000000000002 --expected-revision 3 --reason restored -o json"
+    )]
+    Resume(MemberChangeArgs),
+    /// Fence a membership and all its sessions.
+    #[command(
+        after_help = "Examples:\n  permguard host members fence 0198f2aa-0000-7000-8000-000000000002 --expected-revision 4 --reason compromised\n  permguard host members fence 0198f2aa-0000-7000-8000-000000000002 --expected-revision 4 --reason compromised -o json"
+    )]
+    Fence(MemberChangeArgs),
+    /// Revoke a membership through plan/run.
+    Revoke {
+        #[command(subcommand)]
+        action: MemberRevokeAction,
+    },
+    /// List live task sessions for one member, or for all members.
+    #[command(
+        after_help = "Examples:\n  permguard host members sessions\n  permguard host members sessions 0198f2aa-0000-7000-8000-000000000002"
+    )]
+    Sessions {
+        /// An optional membership UUID; absent means every membership.
+        id: Option<String>,
+    },
+    /// Prove a member now or schedule its next inbound proof.
+    #[command(
+        after_help = "Examples:\n  permguard host members verify 0198f2aa-0000-7000-8000-000000000002\n  permguard host members verify 0198f2aa-0000-7000-8000-000000000002 -o json"
+    )]
+    Verify {
+        /// The membership UUID.
+        id: String,
+    },
+}
+
+/// Arguments shared by reject, suspend, resume and fence.
+#[derive(Debug, Args)]
+pub struct MemberChangeArgs {
+    /// The membership UUID.
+    pub id: String,
+    /// The membership revision read by the operator.
+    #[arg(long)]
+    pub expected_revision: u64,
+    /// The accountable reason for the transition.
+    #[arg(long)]
+    pub reason: String,
+}
+
+/// One-time invitation operations.
+#[derive(Debug, Subcommand)]
+pub enum InviteAction {
+    /// Create a one-time invitation and print its private versioned handoff once.
+    #[command(
+        after_help = "Examples:\n  permguard host members invite create --selector zone/acme/ledger/main --tasks tasks.json\n  permguard host members invite create --selector zone/acme/ledger/main --tasks tasks.json -o json"
+    )]
+    Create {
+        /// The maximum resource selector the member may receive.
+        #[arg(long)]
+        selector: String,
+        /// A closed JSON array of membership tasks.
+        #[arg(long, value_name = "FILE")]
+        tasks: PathBuf,
+        /// The invitation expiry as an RFC 3339 instant.
+        #[arg(long)]
+        expires: Option<String>,
+        /// The member epoch-1 fingerprint expected out of band.
+        #[arg(long)]
+        expect_fingerprint: Option<String>,
+        /// The minimum assurance profile the member must prove.
+        #[arg(long)]
+        min_assurance: Option<String>,
+    },
+    /// List invitations without revealing their tokens.
+    #[command(
+        after_help = "Examples:\n  permguard host members invite list\n  permguard host members invite list -o json"
+    )]
+    List,
+    /// Revoke one unused invitation.
+    #[command(
+        after_help = "Examples:\n  permguard host members invite revoke 0198f2aa-0000-7000-8000-000000000003\n  permguard host members invite revoke 0198f2aa-0000-7000-8000-000000000003 -o json"
+    )]
+    Revoke {
+        /// The invitation UUID.
+        id: String,
+    },
+}
+
+/// Two-step membership revocation.
+#[derive(Debug, Subcommand)]
+pub enum MemberRevokeAction {
+    /// Plan a membership revocation and write its private confirmation file.
+    #[command(
+        after_help = "Examples:\n  permguard host members revoke plan 0198f2aa-0000-7000-8000-000000000002 --reason retired --out revoke.json\n  permguard host members revoke plan 0198f2aa-0000-7000-8000-000000000002 --reason retired --out revoke.json -o json"
+    )]
+    Plan {
+        /// The membership UUID.
+        id: String,
+        /// The accountable reason for revocation.
+        #[arg(long)]
+        reason: String,
+        /// The membership revision read by the operator.
+        #[arg(long)]
+        expected_revision: Option<u64>,
+        /// A new owner-only file that receives the plan.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+    /// Run a planned membership revocation.
+    #[command(
+        after_help = "Examples:\n  permguard host members revoke run 0198f2aa-0000-7000-8000-000000000002 --confirm-file revoke.json\n  permguard host members revoke run 0198f2aa-0000-7000-8000-000000000002 --confirm-file revoke.json -o json"
+    )]
+    Run {
+        /// The membership UUID.
+        id: String,
+        /// The private plan file written by `revoke plan`.
+        #[arg(long, value_name = "FILE")]
+        confirm_file: PathBuf,
     },
 }
 
@@ -1515,8 +1754,7 @@ pub enum ResetAction {
     },
 }
 
-/// `permguard host grants …`: the offline grant administration of WP-2.4. The Host API takes
-/// over with the dedicated Host listener.
+/// `permguard host grants …`: online administration, plus offline recovery bootstrap.
 #[derive(Debug, Subcommand)]
 pub enum GrantsAction {
     /// Commit the one recovery administrator, by the SHA-256 fingerprint of its certificate, and
@@ -1532,10 +1770,9 @@ pub enum GrantsAction {
         #[arg(long)]
         fingerprint: String,
     },
-    /// Issue a grant: an operation of the Host's security-mutation transaction, recorded in the
-    /// volume's audit trail.
+    /// Issue a grant through the Host listener.
     #[command(
-        after_help = "Examples:\n  permguard host grants issue --volume /var/lib/permguard --principal spiffe://acme/billing --operations catalog.read,policy.push --selector plane/control/zone/0198f3bb-0000-7000-8000-000000000002/*\n  permguard host grants issue --volume ./volume --principal spki:sha256:ab12 --operations decision.evaluate --selector plane/data/* --expires 2027-01-01T00:00:00Z"
+        after_help = "Examples:\n  permguard host grants issue --principal spiffe://acme/billing --operations catalog.read,policy.push --selector plane/control/zone/0198f3bb-0000-7000-8000-000000000002/*\n  permguard --host-endpoint grpcs://host.example:9443 host grants issue --principal spki:sha256:ab12 --operations decision.evaluate --selector plane/data/* --expires 2027-01-01T00:00:00Z"
     )]
     Issue {
         /// The exact authorization principal, as the credential mapper produces it.
@@ -1553,25 +1790,18 @@ pub enum GrantsAction {
         /// When the grant expires, RFC 3339; never when left out.
         #[arg(long, value_name = "INSTANT")]
         expires: Option<String>,
-        /// Who issues it, recorded with the grant.
-        #[arg(long, default_value = "operator")]
-        issued_by: String,
+        /// The grant-store revision expected by this mutation.
+        #[arg(long)]
+        expected_revision: Option<u64>,
     },
     /// Revoke a grant: a terminal transition.
-    #[command(
-        after_help = "Examples:\n  permguard host grants revoke --volume /var/lib/permguard --grant-id 0123456789abcdef0123456789abcdef\n  permguard host grants revoke --volume ./volume --grant-id 0123456789abcdef0123456789abcdef --by alice -o json"
-    )]
     Revoke {
-        /// The grant, as `list` prints it.
-        #[arg(long)]
-        grant_id: String,
-        /// Who revokes it, recorded with the transition.
-        #[arg(long, default_value = "operator")]
-        by: String,
+        #[command(subcommand)]
+        action: GrantRevokeAction,
     },
     /// List the grants the store holds, active and terminal, with the store revision.
     #[command(
-        after_help = "Examples:\n  permguard host grants list --volume /var/lib/permguard\n  permguard host grants list --volume /var/lib/permguard --principal spiffe://acme/billing -o json"
+        after_help = "Examples:\n  permguard host grants list\n  permguard --host-endpoint grpcs://host.example:9443 host grants list --principal spiffe://acme/billing -o json"
     )]
     List {
         /// Only this principal's grants.
@@ -1580,5 +1810,35 @@ pub enum GrantsAction {
         /// Only grants with exactly this selector.
         #[arg(long)]
         selector: Option<String>,
+    },
+}
+
+/// Two-step grant revocation.
+#[derive(Debug, Subcommand)]
+pub enum GrantRevokeAction {
+    /// Plan grant revocation and write its private confirmation file.
+    #[command(
+        after_help = "Examples:\n  permguard host grants revoke plan 0123456789abcdef0123456789abcdef --out revoke.json\n  permguard host grants revoke plan 0123456789abcdef0123456789abcdef --out revoke.json -o json"
+    )]
+    Plan {
+        /// The grant identifier.
+        grant_id: String,
+        /// The grant-store revision read by the operator.
+        #[arg(long)]
+        expected_revision: Option<u64>,
+        /// A new owner-only file that receives the plan.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+    /// Run a planned grant revocation.
+    #[command(
+        after_help = "Examples:\n  permguard host grants revoke run 0123456789abcdef0123456789abcdef --confirm-file revoke.json\n  permguard host grants revoke run 0123456789abcdef0123456789abcdef --confirm-file revoke.json -o json"
+    )]
+    Run {
+        /// The grant identifier.
+        grant_id: String,
+        /// The private plan file written by `revoke plan`.
+        #[arg(long, value_name = "FILE")]
+        confirm_file: PathBuf,
     },
 }

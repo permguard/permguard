@@ -211,6 +211,7 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.membership.revoked", HOST),
     mutation("host.membership.joined", HOST),
     mutation("host.membership.synced", HOST),
+    mutation("host.membership.verified", HOST),
     mutation("host.membership.orphaned", HOST),
     // Task sessions (WP-4.3): every lease issued, every epoch refused, every clone alarm, each
     // a security record of the coordinator; a hold for review a mutation.

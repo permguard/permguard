@@ -3917,3 +3917,150 @@ fn the_bounds_of_what_is_due_and_deleted_are_exact() {
     ));
     assert!(producer.due(&first).expect("due").is_empty());
 }
+
+/// WP-5.8: STATE's `unshipped` mark round-trips under label 10, and a mark whose tail is
+/// acknowledged is refused.
+#[test]
+fn a_state_carries_its_unshipped_mark_and_refuses_a_shipped_one() {
+    let state = |unshipped| state::State {
+        run_id: [1; 16],
+        run_statement_digest: [2; 32],
+        next_seq: 9,
+        durable_seq: 8,
+        signed_seq: 8,
+        acknowledged_seq: 3,
+        oldest_retained_seq: 1,
+        pending_successor: None,
+        forked_at_seq: None,
+        unshipped,
+    };
+    let marked = state(Some(state::Unshipped {
+        tail: 8,
+        truncate_safe: 3,
+    }));
+    let bytes = marked.encode().expect("encodes");
+    assert_eq!(state::State::decode(&bytes).expect("decodes"), marked);
+    let unmarked = state(None).encode().expect("encodes");
+    assert_eq!(
+        state::State::decode(&unmarked).expect("decodes").unshipped,
+        None,
+        "a STATE written before the mark existed reads without one"
+    );
+    let shipped = state(Some(state::Unshipped {
+        tail: 3,
+        truncate_safe: 3,
+    }))
+    .encode()
+    .expect("encodes");
+    assert!(matches!(
+        state::State::decode(&shipped),
+        Err(StreamError::Invalid(_))
+    ));
+}
+
+/// WP-5.8: a stream behind its required subscription is marked `unshipped` as an incomplete
+/// drain leaves it; the mark survives a reopen and a rollover, stays while the drain's tail is
+/// not acknowledged, reports what is, and goes once the tail is shipped. An optional
+/// subscription marks nothing.
+#[test]
+fn an_incomplete_drain_marks_the_streams_behind_and_shipping_settles_them() {
+    let host = Host::new("unshipped");
+    let consumer = consumer_on(&host);
+    let (producer, run) = streaming(&host, 3);
+    let resource = ledger(1).to_string();
+    let optional = subscribed("decisions-optional", false, 1);
+    producer.due(&optional).expect("due");
+    assert!(
+        producer.behind().expect("behind").is_empty(),
+        "an optional subscription owes nothing"
+    );
+    let shipping = subscribed("decisions", true, 1);
+    producer.due(&shipping).expect("due");
+    let behind = producer.behind().expect("behind");
+    let expected = permguard_host::composition::Unshipped {
+        stream: "data/decisions".to_owned(),
+        resource: resource.clone(),
+        tail: 3,
+        truncate_safe: 0,
+    };
+    assert_eq!(behind, vec![expected.clone()]);
+    assert!(
+        producer.settle_unshipped().expect("settled").is_empty(),
+        "behind but not marked: no drain left it"
+    );
+    assert_eq!(
+        producer.mark_unshipped().expect("marked"),
+        vec![expected.clone()]
+    );
+
+    // Reopened: the mark is STATE's, and records appended since do not move its tail.
+    drop(producer);
+    let producer = host.sealer();
+    producer
+        .append(&ledger(1), &"r3".to_owned())
+        .expect("appended");
+    assert_eq!(
+        producer.unshipped_on(&shipping, &resource).expect("read"),
+        Some(expected.clone())
+    );
+    assert_eq!(
+        producer.unshipped_on(&optional, &resource).expect("read"),
+        Some(expected.clone()),
+        "the mark is the stream's, whichever task asks"
+    );
+
+    // Acknowledged short of the tail: the mark stays and reports what is acknowledged.
+    producer.due(&shipping).expect("due");
+    let shipment = producer
+        .next(&shipping, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let short = Answer {
+        outcome: Outcome::Ok,
+        acked: 2,
+        expected_seq: None,
+    }
+    .encode()
+    .expect("encodes");
+    producer
+        .answered(&shipping, &resource, &shipment, &short)
+        .expect("answered");
+    assert_eq!(
+        producer.settle_unshipped().expect("settled"),
+        vec![permguard_host::composition::Unshipped {
+            truncate_safe: 2,
+            ..expected.clone()
+        }]
+    );
+
+    // A rollover keeps it: the old run is still behind.
+    producer
+        .rollover(&ledger(1), Some(fence(1)))
+        .expect("rolled over");
+    assert_eq!(producer.settle_unshipped().expect("settled").len(), 1);
+    assert_eq!(
+        producer.truncate_safe(&ledger(1), &run).expect("safe"),
+        Some(2)
+    );
+
+    // Shipped through the tail: the mark goes, and STATE no longer holds it.
+    let outcomes = pump(
+        &producer,
+        &consumer,
+        &host,
+        &shipping,
+        vec![pin_of(&host)],
+        1,
+    );
+    assert!(
+        outcomes.iter().all(|outcome| *outcome == Outcome::Ok),
+        "{outcomes:?}"
+    );
+    assert!(producer.settle_unshipped().expect("settled").is_empty());
+    drop(producer);
+    let producer = host.sealer();
+    assert_eq!(
+        producer.unshipped_on(&shipping, &resource).expect("read"),
+        None
+    );
+}

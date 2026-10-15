@@ -13,6 +13,7 @@
 //! | `POST …/{id}/suspend`, `resume`, `fence`       | `membership.admin` | a receipt and the manifest, a new epoch  |
 //! | `POST …/{id}/appraise`                         | `membership.admin` | a receipt and the manifest, a new epoch  |
 //! | `GET …/{id}/sessions`                          | `membership.read`  | the open task sessions, with boot ids    |
+//! | `POST …/{id}/verify`                           | `membership.admin` | proof now, or a durable scheduled proof  |
 //! | `POST …/{id}/revoke/plan`, `…/revoke/run`      | `membership.admin` | a plan; a receipt and the manifest       |
 //! | `POST /host/v1/memberships/join`, `…/{id}/sync`| `membership.admin` | the member's view of the membership      |
 //!
@@ -48,9 +49,9 @@ use crate::membership::service::code_of;
 use crate::membership::{
     APPRAISE, APPROVE, AUDIT_APPRAISED, AUDIT_APPROVED, AUDIT_ASSURANCE_APPROVED,
     AUDIT_ASSURANCE_REVOKED, AUDIT_FENCED, AUDIT_INVITE_REVOKED, AUDIT_INVITED, AUDIT_REJECTED,
-    AUDIT_RESUMED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED, AUDIT_SUSPENDED, Capabilities, Coordinator,
-    DOMAIN, FENCE, Held, INVITE, INVITE_REVOKE, MembershipError, Narrow, NewInvite, Offered,
-    REJECT, RESUME, REVOKE_PLAN, REVOKE_RUN, SUSPEND, Store,
+    AUDIT_RESUMED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED, AUDIT_SUSPENDED, AUDIT_VERIFIED,
+    Capabilities, Coordinator, DOMAIN, FENCE, Held, INVITE, INVITE_REVOKE, MembershipError, Narrow,
+    NewInvite, Offered, REJECT, RESUME, REVOKE_PLAN, REVOKE_RUN, SUSPEND, Store, VERIFY,
 };
 use crate::operations::journal::Initiator;
 use crate::operations::mutation::{Applied, Applying, Failure};
@@ -984,6 +985,26 @@ pub struct CoordinatorView {
 #[serde(deny_unknown_fields)]
 pub struct SyncMembership {
     pub request_id: String,
+}
+
+/// `POST /host/v1/members/{id}/verify` on either side of a membership.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VerifyMember {
+    pub request_id: String,
+}
+
+/// One verification operation: immediate proof by a member, or a durable challenge scheduled by
+/// its coordinator for the next inbound proven peer session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberVerification {
+    pub receipt: Receipt,
+    pub membership_id: String,
+    /// `proved` or `scheduled`.
+    pub status: String,
+    /// RFC 3339, present for a durable coordinator schedule.
+    pub scheduled_at: Option<String>,
+    pub member: MemberView,
 }
 
 /// A membership refusal, as the Host API answers it.
@@ -2068,6 +2089,78 @@ impl HostApi {
             .await
     }
 
+    /// The engine the member side ships with, when one is composed.
+    fn shipping(&self) -> Option<&Arc<dyn crate::composition::StreamShipping>> {
+        self.memberships
+            .as_deref()
+            .and_then(|memberships| memberships.shipping.as_ref())
+    }
+
+    /// Whether a stream is behind its required subscriptions now (WP-5.8): what a drain still has
+    /// to ship.
+    pub fn shipping_behind(&self) -> Result<bool, String> {
+        match self.shipping() {
+            Some(engine) => Ok(!engine.behind()?.is_empty()),
+            None => Ok(false),
+        }
+    }
+
+    /// Marks every stream still behind `unshipped` in its STATE, as an incomplete drain leaves
+    /// it, and reports them (WP-5.8): answers the marks.
+    pub fn mark_unshipped(&self) -> Result<Vec<crate::composition::Unshipped>, String> {
+        let Some(engine) = self.shipping() else {
+            return Ok(Vec::new());
+        };
+        let marked = engine.mark_unshipped()?;
+        self.report_unshipped(&marked);
+        Ok(marked)
+    }
+
+    /// Removes the marks of the streams shipped since, and reports those that remain: the Host
+    /// is `degraded: evidence` while one does (WP-5.8).
+    pub fn settle_unshipped(&self) -> Result<Vec<crate::composition::Unshipped>, String> {
+        let Some(engine) = self.shipping() else {
+            return Ok(Vec::new());
+        };
+        let remaining = engine.settle_unshipped()?;
+        self.report_unshipped(&remaining);
+        Ok(remaining)
+    }
+
+    /// Names the unshipped streams on the Host's readiness, for a controller that must not take
+    /// the volume for scratch; restored once none remains.
+    fn report_unshipped(&self, remaining: &[crate::composition::Unshipped]) {
+        let lifecycle = self.health.lifecycle();
+        if remaining.is_empty() {
+            lifecycle.restore(permguard_core::lifecycle::HOST, EVIDENCE);
+            return;
+        }
+        let named: Vec<String> = remaining
+            .iter()
+            .take(UNSHIPPED_NAMED)
+            .map(|mark| {
+                format!(
+                    "{} {} through {} (acknowledged through {})",
+                    mark.stream, mark.resource, mark.tail, mark.truncate_safe
+                )
+            })
+            .collect();
+        let more = remaining.len().saturating_sub(UNSHIPPED_NAMED);
+        lifecycle.degrade(
+            permguard_core::lifecycle::HOST,
+            EVIDENCE,
+            format!(
+                "unshipped evidence: {}{}",
+                named.join("; "),
+                if more > 0 {
+                    format!("; and {more} more")
+                } else {
+                    String::new()
+                }
+            ),
+        );
+    }
+
     pub(super) fn acting_member<'a>(
         &'a self,
         memberships: &'a MembershipService,
@@ -2177,7 +2270,141 @@ impl HostApi {
             .map_err(refusal_of)?;
         Ok(MemberView::of(&held, &self.viewing(memberships)))
     }
+
+    /// `POST /host/v1/members/{id}/verify`: a member proves immediately by running the normal
+    /// proven sync; a coordinator durably schedules the next inbound proof and an exact replay
+    /// returns that first schedule.
+    pub async fn verify_member(
+        &self,
+        actor: &Actor,
+        id: &str,
+        verify: VerifyMember,
+    ) -> Result<MemberVerification, Refusal> {
+        let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
+        let mutation = Mutation {
+            request_id: verify.request_id.clone(),
+            expected_revision: None,
+        };
+        mutation.validated()?;
+        let membership_id = id_of(id)?;
+        let memberships = self.memberships()?;
+        let held = memberships
+            .store
+            .membership(&membership_id)
+            .ok_or_else(|| refusal_of(MembershipError::Unknown(format!("no membership `{id}`"))))?;
+        if held.role == Role::Member {
+            if let Some(replayed) = self.replayed(
+                DOMAIN,
+                &admitted.principal,
+                VERIFY,
+                AUDIT_VERIFIED,
+                &mutation,
+                &(id, &verify),
+                Some(id.to_owned()),
+                |operation_id, _, _| {
+                    memberships
+                        .store
+                        .verification_result(&operation_id)
+                        .map_err(refusal_of)
+                },
+            )? {
+                return Ok(replayed);
+            }
+            let connector = memberships.connector.as_deref().ok_or_else(|| {
+                Refusal::new(
+                    ErrorClass::Unavailable,
+                    codes::host::PEER_CLIENT_UNCONFIGURED,
+                    "this Host cannot reach a coordinator: its Host listener has no TLS certificate or no client CA",
+                )
+            })?;
+            let held = self
+                .acting_member(memberships, connector)?
+                .sync(
+                    Initiator::Principal(admitted.principal.as_str().to_owned()),
+                    &membership_id,
+                )
+                .await
+                .map_err(refusal_of)?;
+            return self.transact(
+                DOMAIN,
+                &admitted.principal,
+                VERIFY,
+                AUDIT_VERIFIED,
+                &mutation,
+                &(id, &verify),
+                Some(id.to_owned()),
+                || Ok(()),
+                |applying| {
+                    let value = MemberVerification {
+                        receipt: self.receipt(applying.operation_id(), held.revision),
+                        membership_id: id.to_owned(),
+                        status: "proved".to_owned(),
+                        scheduled_at: None,
+                        member: MemberView::of(&held, &self.viewing(memberships)),
+                    };
+                    memberships
+                        .store
+                        .record_verification_result(applying, &membership_id, held.revision, &value)
+                        .map_err(failure)?;
+                    Ok(Applied {
+                        revision: held.revision,
+                        target: Some(id.to_owned()),
+                        value,
+                    })
+                },
+                |operation_id, _, _| {
+                    memberships
+                        .store
+                        .verification_result(&operation_id)
+                        .map_err(refusal_of)
+                },
+            );
+        }
+        let now = self.time.now_secs();
+        self.transact(
+            DOMAIN,
+            &admitted.principal,
+            VERIFY,
+            AUDIT_VERIFIED,
+            &mutation,
+            &(id, &verify),
+            Some(id.to_owned()),
+            || Ok(()),
+            |applying| {
+                let scheduled = memberships
+                    .store
+                    .schedule_verification_mutation(applying, &membership_id, now)
+                    .map_err(failure)?;
+                let value = MemberVerification {
+                    receipt: self.receipt(applying.operation_id(), held.revision),
+                    membership_id: id.to_owned(),
+                    status: "scheduled".to_owned(),
+                    scheduled_at: Some(rfc3339(scheduled)),
+                    member: MemberView::of(&held, &self.viewing(memberships)),
+                };
+                memberships
+                    .store
+                    .record_verification_result(applying, &membership_id, held.revision, &value)
+                    .map_err(failure)?;
+                Ok(Applied {
+                    revision: held.revision,
+                    target: Some(id.to_owned()),
+                    value,
+                })
+            },
+            |operation_id, _, _| {
+                memberships
+                    .store
+                    .verification_result(&operation_id)
+                    .map_err(refusal_of)
+            },
+        )
+    }
 }
 
 #[cfg(test)]
 pub(crate) mod tests;
+/// The capability an unshipped stream degrades (WP-5.8).
+const EVIDENCE: &str = "evidence";
+/// How many unshipped streams the readiness names; the rest are counted.
+const UNSHIPPED_NAMED: usize = 8;

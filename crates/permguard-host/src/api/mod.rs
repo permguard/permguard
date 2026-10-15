@@ -25,6 +25,7 @@ pub mod audit;
 pub mod bounds;
 pub mod config;
 pub mod grants;
+pub mod host_input;
 pub mod identity;
 pub mod keys;
 pub mod members;
@@ -50,7 +51,9 @@ use crate::operations::mutation::{
 pub use bounds::Bounds;
 pub use config::{Effective, Setting};
 pub use grants::{CreateGrant, GrantView, Grants, PlanRevoke, Planned, Revoked, RunRevoke};
-pub use identity::{IdentityRotated, IdentityView, RotateIdentity};
+pub use identity::{
+    IdentityRotated, IdentityVerified, IdentityView, RotateIdentity, VerifyIdentity,
+};
 pub use keys::{
     KeyBundlePage, KeyBundleQuery, KeyRevoked, PlanKeyRevoke, RingBinding, RingBindings,
     RingRotated, RingSummary, RingView, Rings, RotateRing, RunKeyRevoke,
@@ -63,6 +66,16 @@ pub const COMPONENT: &str = "host-api";
 
 /// The longest request id a mutation may carry, in bytes.
 pub const MAX_REQUEST_ID_BYTES: usize = 128;
+
+/// Decodes a closed operator JSON document after its caller has enforced the carrier's byte
+/// ceiling. The CLI is its current caller; keeping this entry point public lets the untrusted
+/// boundary be fuzzed with each concrete document type.
+// conformance: boundary
+pub fn decode_external_json<T: serde::de::DeserializeOwned>(
+    bytes: &[u8],
+) -> Result<T, serde_json::Error> {
+    serde_json::from_slice(bytes)
+}
 
 /// What the facade refuses with: a domain refusal, a conflict naming the current revision, or a
 /// denial of access. The transports render each the one way every Permguard surface does.
@@ -391,6 +404,59 @@ impl HostApi {
                 revision,
                 target,
             }) => reconciled(operation_id, revision, target),
+            Err(error) => Err(refusal_of_mutation(operation, error)),
+        }
+    }
+
+    /// Returns or rejects an existing mutation before a caller performs external I/O. `None`
+    /// means no completed request exists and the caller may do its preparatory work before
+    /// entering [`Self::transact`].
+    #[allow(clippy::too_many_arguments)]
+    fn replayed<T, R>(
+        &self,
+        domain: &'static str,
+        principal: &Principal,
+        operation: &'static str,
+        action: &'static str,
+        mutation: &Mutation,
+        request: &R,
+        target: Option<String>,
+        reconciled: impl FnOnce(OperationId, u64, Option<String>) -> Result<T, Refusal>,
+    ) -> Result<Option<T>, Refusal>
+    where
+        T: Serialize + serde::de::DeserializeOwned,
+        R: Serialize,
+    {
+        let mutations = self.mutations()?;
+        let request_id = mutation.validated()?;
+        let digest = replay::digest_of(request)?;
+        let _in_flight = self.replay.begin(principal, request_id)?;
+        if let Some(stored) = self
+            .replay
+            .lookup::<T>(principal, request_id, operation, &digest)?
+        {
+            return Ok(Some(stored));
+        }
+        let begin = Begin {
+            domain,
+            operation,
+            action,
+            initiator: Initiator::Principal(principal.as_str().to_owned()),
+            request: Some(RequestKey {
+                request_id: request_id.to_owned(),
+                digest,
+            }),
+            target,
+        };
+        match mutations.replayed::<T, Refusal>(&begin) {
+            Ok(Some(Outcome::Replayed(value))) => Ok(Some(value)),
+            Ok(Some(Outcome::Reconciled {
+                operation_id,
+                revision,
+                target,
+            })) => reconciled(operation_id, revision, target).map(Some),
+            Ok(Some(Outcome::Applied(_))) => unreachable!("a lookup cannot apply a mutation"),
+            Ok(None) => Ok(None),
             Err(error) => Err(refusal_of_mutation(operation, error)),
         }
     }

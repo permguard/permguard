@@ -213,6 +213,7 @@ check-vectors: ## Check that the golden vectors are what their independent gener
 	python3 contracts/vectors/secrets.py | diff - contracts/vectors/secrets.json
 	python3 contracts/vectors/keys.py | diff - contracts/vectors/keys.json
 	python3 contracts/vectors/membership.py | diff - contracts/vectors/membership.json
+	python3 contracts/vectors/host_cli.py | diff - contracts/vectors/host-cli.json
 	python3 contracts/vectors/audit.py | diff - contracts/vectors/audit.json
 	python3 contracts/vectors/plan.py | diff - contracts/vectors/plan.json
 	python3 contracts/vectors/stream.py | diff - contracts/vectors/stream.json
