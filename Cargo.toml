@@ -88,7 +88,7 @@ bytes = "1"
 # The PKCS#11 custody (WP-3.2), behind the server's `pkcs11` feature: loads the token's module at
 # runtime.
 cryptoki = "0.12"
-opentelemetry = "0.32"
+opentelemetry = "0.33"
 opentelemetry-otlp = { version = "0.32", default-features = false, features = ["grpc-tonic", "trace"] }
 opentelemetry_sdk = "0.32"
 prost = "0.14"
