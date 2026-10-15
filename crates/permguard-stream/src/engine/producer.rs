@@ -908,8 +908,15 @@ impl Physical {
 impl Writer {
     /// Keeps `mark` as STATE's `unshipped`, or removes it (WP-5.8).
     fn keep_unshipped(&mut self, mark: Option<super::state::Unshipped>) -> Result<(), StreamError> {
+        // A stream behind holds a run, and so a STATE: a mark with nowhere to go is never lost
+        // quietly (after the review).
         let Some(mut state) = self.state.clone() else {
-            return Ok(());
+            return match mark {
+                Some(_) => Err(StreamError::Corruption(
+                    "a stream behind holds no STATE to mark".to_owned(),
+                )),
+                None => Ok(()),
+            };
         };
         if state.unshipped == mark {
             return Ok(());

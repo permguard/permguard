@@ -3937,6 +3937,7 @@ fn a_state_carries_its_unshipped_mark_and_refuses_a_shipped_one() {
     let marked = state(Some(state::Unshipped {
         tail: 8,
         truncate_safe: 3,
+        run: [1; 16],
     }));
     let bytes = marked.encode().expect("encodes");
     assert_eq!(state::State::decode(&bytes).expect("decodes"), marked);
@@ -3949,6 +3950,7 @@ fn a_state_carries_its_unshipped_mark_and_refuses_a_shipped_one() {
     let shipped = state(Some(state::Unshipped {
         tail: 3,
         truncate_safe: 3,
+        run: [1; 16],
     }))
     .encode()
     .expect("encodes");
@@ -4057,10 +4059,185 @@ fn an_incomplete_drain_marks_the_streams_behind_and_shipping_settles_them() {
         "{outcomes:?}"
     );
     assert!(producer.settle_unshipped().expect("settled").is_empty());
+    assert!(
+        producer.behind().expect("behind").is_empty(),
+        "a stream acknowledged through its end is behind nothing"
+    );
+    assert_eq!(
+        producer_state(&host).unshipped,
+        None,
+        "the settle removed the mark from STATE itself"
+    );
     drop(producer);
     let producer = host.sealer();
     assert_eq!(
         producer.unshipped_on(&shipping, &resource).expect("read"),
         None
     );
+}
+
+/// The producer STATE of `ledger(1)`, as the volume holds it.
+fn producer_state(host: &Host) -> state::State {
+    state::State::decode(
+        &permguard_host::storage::write::read_view(
+            &permguard_host::storage::Dir::open(&host.producer_dir(&ledger(1)))
+                .expect("the stream"),
+            "STATE",
+            format::VIEW,
+        )
+        .expect("read")
+        .expect("a STATE"),
+    )
+    .expect("decodes")
+}
+
+/// WP-5.8, after the review: the marked run owes only the drain's tail, never the records
+/// appended to it since.
+#[test]
+fn a_mark_goes_once_its_tail_is_acknowledged_whatever_was_appended_since() {
+    let host = Host::new("unshipped-tail");
+    let (producer, _run) = streaming(&host, 3);
+    let resource = ledger(1).to_string();
+    let shipping = subscribed("decisions", true, 1);
+    producer.due(&shipping).expect("due");
+    producer.mark_unshipped().expect("marked");
+    producer
+        .append(&ledger(1), &"r3".to_owned())
+        .expect("appended");
+    producer.due(&shipping).expect("due");
+    let shipment = producer
+        .next(&shipping, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let through_tail = Answer {
+        outcome: Outcome::Ok,
+        acked: 3,
+        expected_seq: None,
+    }
+    .encode()
+    .expect("encodes");
+    producer
+        .answered(&shipping, &resource, &shipment, &through_tail)
+        .expect("answered");
+    assert_eq!(
+        producer.behind().expect("behind").len(),
+        1,
+        "record 4 is owed"
+    );
+    assert!(
+        producer.settle_unshipped().expect("settled").is_empty(),
+        "the drain's tail is shipped"
+    );
+}
+
+/// WP-5.8, after the review: a mark holds every run before its own to that run's end, whatever
+/// membership fences it: the newest run shipped does not clear it while an older one, fenced to
+/// another membership, is behind; runs opened after the drain owe it nothing.
+#[test]
+fn a_mark_waits_for_every_older_run_whichever_membership_fences_it() {
+    let host = Host::new("unshipped-runs");
+    let consumer = consumer_on(&host);
+    let (producer, first_run) = streaming(&host, 3);
+    let resource = ledger(1).to_string();
+    let first = subscribed("decisions", true, 1);
+    producer.due(&first).expect("due");
+    // The stream moves to another membership before the first is shipped.
+    let other_membership = [6; 16];
+    producer
+        .rollover(
+            &ledger(1),
+            Some(Fence {
+                membership_id: other_membership,
+                ..fence(1)
+            }),
+        )
+        .expect("rolled over");
+    producer
+        .append(&ledger(1), &"s0".to_owned())
+        .expect("appended");
+    let other = Subscribed {
+        membership_id: other_membership,
+        ..subscribed("decisions", true, 1)
+    };
+    producer.due(&other).expect("due");
+    let marked = producer.mark_unshipped().expect("marked");
+    assert_eq!(marked.len(), 1);
+    assert_eq!(marked[0].tail, 1, "the newest run behind: one record");
+
+    // The newest run is shipped to its membership: the older run still owes the first.
+    let shipment = producer
+        .next(&other, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let all = Answer {
+        outcome: Outcome::Ok,
+        acked: shipment.last_seq,
+        expected_seq: None,
+    }
+    .encode()
+    .expect("encodes");
+    producer
+        .answered(&other, &resource, &shipment, &all)
+        .expect("answered");
+    assert_eq!(
+        producer.settle_unshipped().expect("settled").len(),
+        1,
+        "the first membership's run is still behind"
+    );
+
+    // The older run acknowledged past the mark's tail but short of its own end still holds it.
+    let shipment = producer
+        .next(&first, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let partly = Answer {
+        outcome: Outcome::Ok,
+        acked: 2,
+        expected_seq: None,
+    }
+    .encode()
+    .expect("encodes");
+    producer
+        .answered(&first, &resource, &shipment, &partly)
+        .expect("answered");
+    assert_eq!(
+        producer.settle_unshipped().expect("settled").len(),
+        1,
+        "two of the first run's three records are acknowledged"
+    );
+
+    // A run opened after the drain, behind its own membership, owes the drain nothing.
+    let third_membership = [7; 16];
+    producer
+        .rollover(
+            &ledger(1),
+            Some(Fence {
+                membership_id: third_membership,
+                ..fence(1)
+            }),
+        )
+        .expect("rolled over");
+    producer
+        .append(&ledger(1), &"t0".to_owned())
+        .expect("appended");
+    producer
+        .due(&Subscribed {
+            membership_id: third_membership,
+            ..subscribed("decisions", true, 1)
+        })
+        .expect("due");
+
+    // The first run shipped too: the mark goes, the later run still behind notwithstanding.
+    let outcomes = pump(&producer, &consumer, &host, &first, vec![pin_of(&host)], 1);
+    assert!(
+        outcomes.iter().all(|outcome| *outcome == Outcome::Ok),
+        "{outcomes:?}"
+    );
+    assert_eq!(
+        producer
+            .truncate_safe(&ledger(1), &first_run)
+            .expect("safe"),
+        Some(3)
+    );
+    assert!(producer.settle_unshipped().expect("settled").is_empty());
 }

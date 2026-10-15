@@ -60,6 +60,10 @@ use permguard_objects::cose::Sign1;
 
 /// The revocation a plan names.
 const REVOKE: &str = "members.revoke";
+/// The capability an unshipped stream degrades (WP-5.8).
+const EVIDENCE: &str = "evidence";
+/// How many unshipped streams the readiness names; the rest are counted.
+const UNSHIPPED_NAMED: usize = 8;
 
 /// What the composition hands the facade for the memberships.
 pub struct MembershipService {
@@ -2096,6 +2100,23 @@ impl HostApi {
             .and_then(|memberships| memberships.shipping.as_ref())
     }
 
+    /// Whether this Host ships streams at all: a stream engine composed on its member side
+    /// (WP-5.8).
+    pub fn ships_streams(&self) -> bool {
+        self.shipping().is_some()
+    }
+
+    /// Keeps a subscription for every ship task of every live membership, shipping nothing
+    /// (WP-5.8): a drain calls it before it judges. Nothing without a peer client.
+    pub fn register_subscriptions(&self) -> Result<(), String> {
+        let Ok((memberships, connector)) = self.member_side() else {
+            return Ok(());
+        };
+        self.acting_member(memberships, connector)
+            .map_err(|refusal| format!("{refusal:?}"))?
+            .register_subscriptions()
+    }
+
     /// Whether a stream is behind its required subscriptions now (WP-5.8): what a drain still has
     /// to ship.
     pub fn shipping_behind(&self) -> Result<bool, String> {
@@ -2404,7 +2425,3 @@ impl HostApi {
 
 #[cfg(test)]
 pub(crate) mod tests;
-/// The capability an unshipped stream degrades (WP-5.8).
-const EVIDENCE: &str = "evidence";
-/// How many unshipped streams the readiness names; the rest are counted.
-const UNSHIPPED_NAMED: usize = 8;

@@ -14,7 +14,7 @@
 //! | 7 oldest_retained_seq  | the first sequence still kept (WP-5.6)                               |
 //! | 8? pending_successor   | the signed statement of a rollover begun and not yet written         |
 //! | 9? forked_at_seq       | the sequence a consumer reported a fork at: no run opens unapproved  |
-//! | 10? unshipped          | {1 tail, 2 truncate_safe}: what an incomplete drain left (WP-5.8)    |
+//! | 10? unshipped          | {1 tail, 2 truncate_safe, 3 run}: what an incomplete drain left      |
 //!
 //! The segments are the authority: recovery re-derives the head from them, and STATE only names
 //! which of their runs it is the state of.
@@ -41,13 +41,15 @@ pub struct State {
     pub unshipped: Option<Unshipped>,
 }
 
-/// What an incomplete drain left on a stream (WP-5.8, owner decision of 2026-10-15): the last
-/// sequence of its newest run still behind, and that run's `truncate_safe`. Kept until no run of
-/// the stream is behind, so the volume is never taken for scratch.
+/// What an incomplete drain left on a stream (WP-5.8, owner decisions of 2026-10-15): the newest
+/// run still behind, its last sequence and its `truncate_safe`. Kept until that run is shipped
+/// through `tail` and every run before it through its end, so the volume is never taken for
+/// scratch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unshipped {
     pub tail: u64,
     pub truncate_safe: u64,
+    pub run: [u8; 16],
 }
 
 impl Unshipped {
@@ -55,6 +57,7 @@ impl Unshipped {
         Ok(Value::Map(vec![
             (Value::Int(1), uint(self.tail)?),
             (Value::Int(2), uint(self.truncate_safe)?),
+            (Value::Int(3), Value::Bytes(self.run.to_vec())),
         ]))
     }
 
@@ -63,6 +66,7 @@ impl Unshipped {
         let mark = Self {
             tail: map.uint(1)?,
             truncate_safe: map.uint(2)?,
+            run: map.fixed(3)?,
         };
         map.finish()?;
         if mark.truncate_safe >= mark.tail {

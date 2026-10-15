@@ -716,9 +716,15 @@ async fn side_with(
                 permguard_decisions::stream::descriptor(),
                 permguard_decisions::stream::Codec,
             )
-            .expect("the producer")
-            .with_signer(Arc::clone(&signing))
-            .expect("its signer");
+            .expect("the producer");
+        // The member seals under its `data.attest`; a coordinator produces nothing here.
+        let producer = if signing.id() == permguard_host::composition::DATA_ATTEST.as_str() {
+            producer
+                .with_signer(Arc::clone(&signing))
+                .expect("its signer")
+        } else {
+            producer
+        };
         let consumer = engine
             .register_consumer(
                 permguard_decisions::stream::descriptor(),
@@ -2163,8 +2169,24 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
     };
     let budget = || std::time::Instant::now() + Duration::from_secs(60);
 
-    // The coordinator answers: every record is shipped, and the drain is complete.
+    // Before any pass the stream owes nobody it knows of; kept subscriptions make it owed.
     append(&producer, 1);
+    assert!(!member.api.shipping_behind().expect("read"));
+    member
+        .api
+        .register_subscriptions()
+        .expect("the subscriptions are kept");
+    assert!(member.api.shipping_behind().expect("read"));
+
+    // A deadline already passed ships nothing and is never complete: no pass judged anything.
+    assert!(matches!(
+        permguard_server::shipping::drain(&member.api, std::time::Instant::now())
+            .await
+            .expect("drained"),
+        Drained::Incomplete(_)
+    ));
+
+    // The coordinator answers: every record is shipped, and the drain is complete.
     assert_eq!(
         permguard_server::shipping::drain(&member.api, budget())
             .await
@@ -2265,4 +2287,33 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
             .await
             .expect("stops");
     }
+}
+
+/// WP-5.8: a Host that ships no stream drains complete at once, whatever its deadline.
+#[tokio::test]
+async fn a_host_shipping_no_stream_drains_complete() {
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("drain-no-stream");
+    let pki = Pki::new(&root);
+    let alone = side(
+        &root.join("alone"),
+        &pki,
+        "alone",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    assert_eq!(
+        permguard_server::shipping::drain(&alone.api, std::time::Instant::now())
+            .await
+            .expect("drained"),
+        permguard_core::Drained::Complete
+    );
+    alone
+        .listener
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("stops");
 }

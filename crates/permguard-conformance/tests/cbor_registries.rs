@@ -1825,6 +1825,7 @@ fn stream_samples() -> Vec<Sample> {
         oldest_retained_seq: 1,
         pending_successor: None,
         forked_at_seq: None,
+        unshipped: None,
     };
     // WP-5.2: a stream's signer spans, two runs, the second with two keys, and its cutover.
     let span = |from_seq: u64, kid: &str| Span {
@@ -1909,6 +1910,12 @@ fn stream_samples() -> Vec<Sample> {
             State {
                 pending_successor: Some(vec![9; 40]),
                 forked_at_seq: Some(2),
+                // WP-5.8: what an incomplete drain left.
+                unshipped: Some(permguard_stream::engine::state::Unshipped {
+                    tail: 2,
+                    truncate_safe: 1,
+                    run: [3; 16],
+                }),
                 ..state
             }
             .encode()
@@ -1916,6 +1923,7 @@ fn stream_samples() -> Vec<Sample> {
             &[
                 "stream_state.pending_successor",
                 "stream_state.forked_at_seq",
+                "stream_state.unshipped",
             ],
             state_decoder(),
         ),

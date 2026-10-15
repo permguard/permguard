@@ -54,7 +54,15 @@
         { "label": 7, "name": "oldest_retained_seq", "type": "uint", "occurs": "required", "note": "WP-5.6" },
         { "label": 8, "name": "pending_successor", "type": "bytes", "occurs": "optional", "note": "the signed statement of a rollover begun and not yet written" },
         { "label": 9, "name": "forked_at_seq", "type": "uint", "occurs": "optional", "note": "the sequence a consumer reported a fork at" },
-        { "label": 10, "name": "unshipped", "type": "map", "occurs": "optional", "note": "WP-5.8, owner decision of 2026-10-15: {1 tail (uint), 2 truncate_safe (uint), below tail}, what an incomplete drain left; removed once no run's truncate_safe is below min(its last, tail)" }
+        { "label": 10, "name": "unshipped", "type": "map:unshipped_mark", "occurs": "optional", "note": "WP-5.8: what an incomplete drain left" }
+      ]
+    },
+    "unshipped_mark": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "tail", "type": "uint", "occurs": "required", "note": "the last sequence of the newest run left behind (WP-5.8, owner decisions of 2026-10-15)" },
+        { "label": 2, "name": "truncate_safe", "type": "uint", "occurs": "required", "note": "that run's least required acknowledgement when marked; below tail" },
+        { "label": 3, "name": "run", "type": "bytes", "occurs": "required", "note": "16 bytes: that run; the mark goes once it is acknowledged through tail and every run before it through its end" }
       ]
     },
     "stream_signers": {

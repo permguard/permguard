@@ -31,11 +31,19 @@ const COMPONENT: &str = "host";
 /// behind is marked `unshipped` and the drain is incomplete. A drain that cannot read or mark its
 /// streams fails: it is never reported complete.
 pub async fn drain(api: &HostApi, deadline: Instant) -> Result<Drained> {
+    if !api.ships_streams() {
+        return Ok(Drained::Complete);
+    }
+    // A subscription is kept by the first pass that ships to it: every live membership's are
+    // kept now, and one pass runs, before a stream is judged shipped (after the review).
+    api.register_subscriptions()
+        .map_err(|error| anyhow!("keeping the subscriptions to ship: {error}"))?;
+    let mut passed = false;
     loop {
         let behind = api
             .shipping_behind()
             .map_err(|error| anyhow!("reading the streams to ship: {error}"))?;
-        if !behind {
+        if passed && !behind {
             api.settle_unshipped()
                 .map_err(|error| anyhow!("settling the unshipped marks: {error}"))?;
             return Ok(Drained::Complete);
@@ -44,12 +52,19 @@ pub async fn drain(api: &HostApi, deadline: Instant) -> Result<Drained> {
         if left.is_zero() {
             break;
         }
+        let first = !passed;
+        passed = true;
         match tokio::time::timeout(left, api.ship_due()).await {
             // A coordinator deferring or unreachable is asked again shortly.
-            Ok(0) => tokio::time::sleep(left.min(RETRY)).await,
+            Ok(0) if behind || !first => tokio::time::sleep(left.min(RETRY)).await,
             Ok(_) => {}
             Err(_) => break,
         }
+    }
+    if !passed {
+        return Ok(Drained::Incomplete(
+            "the drain deadline passed before any stream was shipped".to_owned(),
+        ));
     }
     let marked = api
         .mark_unshipped()

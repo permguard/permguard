@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **A drain ships the evidence, and a volume left with unshipped records says so.**
+  On shutdown the Host ships its streams to every required subscription until they reach the durable tail or `shutdown.drain_timeout` ends.
+  A stream still behind is marked `unshipped` in its STATE, nothing past the coordinator's acknowledgement is deleted, and the drain is incomplete: the process exits 75.
+  A start that finds a mark ships those streams once while the Host is in Load, then serves `degraded: evidence` until they are shipped.
+  The member reports such a stream to its coordinator as `unshipped`, with its tail, and as `shipped` once it is, so the coordinator's member view shows the producer gap.
+
 - **An identity reset stops task sessions first and seals the audit trails before its rings retire.**
   From the start of `identity/reset/run`, before the memberships are enumerated, the Host neither opens a task session as a member nor accepts one as a coordinator (`unavailable`).
   It takes no invitation, enrollment, approval or join either, until a normal reset refused as `identity_reset_incomplete` lifts that again, the identity unchanged.

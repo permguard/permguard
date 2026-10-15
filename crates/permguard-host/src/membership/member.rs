@@ -866,6 +866,43 @@ impl Member<'_> {
     /// decision): per stream, a session on its resource, batches until the engine has none or an
     /// answer stops it. A store the coordinator cannot reach now backs the subscription off.
     /// Answers how many batches were answered.
+    /// Keeps a subscription for every ship task of every membership this Host is a member of
+    /// and that has not ended, without shipping (WP-5.8, after the review): what a drain judges
+    /// against, so a membership no pass reached yet is never taken as owed nothing.
+    pub fn register_subscriptions(&self) -> Result<(), String> {
+        let Some(engine) = self.shipping else {
+            return Ok(());
+        };
+        for (id, held) in self.store.memberships() {
+            if held.role != Role::Member
+                || matches!(
+                    held.status,
+                    Status::Revoked | Status::Rejected | Status::Expired | Status::Orphaned
+                )
+            {
+                continue;
+            }
+            let Some((manifest, ..)) = &held.manifest else {
+                continue;
+            };
+            for task in manifest.tasks.iter().filter(|task| {
+                matches!(
+                    task.task_type,
+                    super::record::TaskType::DecisionsShip | super::record::TaskType::EventsShip
+                )
+            }) {
+                engine.due(&crate::composition::Subscribed {
+                    membership_id: id,
+                    task_type: task.task_type,
+                    task_id: &task.task_id,
+                    required: task.required,
+                    epoch: manifest.epoch,
+                })?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn ship_due(&self, initiator: Initiator) -> usize {
         let Some(engine) = self.shipping else {
             return 0;
@@ -992,32 +1029,38 @@ impl Member<'_> {
             .unshipped_on(subscription, resource)
             .map_err(storage)?;
         let mut count = 0;
-        while let Some(shipment) = engine
-            .next(subscription, resource, max_bytes)
-            .map_err(storage)?
-        {
-            match session
-                .send(&shipment.request_id, shipment.body.clone())
-                .await
+        let shipped = async {
+            while let Some(shipment) = engine
+                .next(subscription, resource, max_bytes)
+                .map_err(storage)?
             {
-                Ok(answer) => {
-                    count += 1;
-                    if !engine
-                        .answered(subscription, resource, &shipment, &answer)
-                        .map_err(storage)?
+                match session
+                    .send(&shipment.request_id, shipment.body.clone())
+                    .await
+                {
+                    Ok(answer) => {
+                        count += 1;
+                        if !engine
+                            .answered(subscription, resource, &shipment, &answer)
+                            .map_err(storage)?
+                        {
+                            break;
+                        }
+                    }
+                    Err(MembershipError::Remote { code, .. })
+                        if code == permguard_core::codes::stream::STORE_UNAVAILABLE =>
                     {
+                        engine.deferred(subscription, resource).map_err(storage)?;
                         break;
                     }
+                    Err(error) => return Err(error),
                 }
-                Err(MembershipError::Remote { code, .. })
-                    if code == permguard_core::codes::stream::STORE_UNAVAILABLE =>
-                {
-                    engine.deferred(subscription, resource).map_err(storage)?;
-                    break;
-                }
-                Err(error) => return Err(error),
             }
+            Ok(())
         }
+        .await;
+        // Reported whatever ended the loop: a pass that shipped the tail and then lost its
+        // session still tries to say so before the mark goes (after the review).
         if let Some(marked) = marked {
             let remaining = engine
                 .unshipped_on(subscription, resource)
@@ -1025,7 +1068,7 @@ impl Member<'_> {
             self.report_unshipped(&mut session, subscription, &marked, remaining.as_ref())
                 .await;
         }
-        Ok(count)
+        shipped.map(|()| count)
     }
 
     /// Reports a marked stream on its ship task's session (WP-5.8, interpretation of

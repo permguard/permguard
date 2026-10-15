@@ -527,30 +527,37 @@ impl<C: RecordCodec> Producer<C> {
         let runs = physical.runs(signer, &self.descriptor)?;
         let writer = physical.writer();
         let subscriptions = subscriptions_of(&writer.dir)?;
-        Ok(runs
-            .iter()
-            .filter_map(|(run, fence, last, _)| {
-                truncate_safe_of(&subscriptions, run, *fence)
-                    .filter(|safe| safe < last)
-                    .map(|safe| Unshipped {
-                        tail: *last,
-                        truncate_safe: safe,
-                    })
-            })
-            .last())
+        Ok(runs.iter().rev().find_map(|(run, fence, last, _)| {
+            truncate_safe_of(&subscriptions, run, *fence)
+                .filter(|safe| safe < last)
+                .map(|safe| Unshipped {
+                    tail: *last,
+                    truncate_safe: safe,
+                    run: *run,
+                })
+        }))
     }
 
-    /// Whether `mark` still holds on `physical`: some run is behind at or below its tail. A
-    /// mark names no run, so every run is held to `min(its last, tail)`: it never goes early,
-    /// and goes once the drain's tail is shipped whatever runs opened since.
+    /// Whether `mark` still holds on `physical` (owner decision of 2026-10-15, after the
+    /// review): its run is behind its tail, or a run before it is behind its own end, whatever
+    /// membership fences it. Runs opened after the drain owe the drain nothing.
     fn still_behind(&self, physical: &Physical, mark: Unshipped) -> Result<bool, StreamError> {
         let signer = self.signer_ring()?;
         let runs = physical.runs(signer, &self.descriptor)?;
         let writer = physical.writer();
         let subscriptions = subscriptions_of(&writer.dir)?;
-        Ok(runs.iter().any(|(run, fence, last, _)| {
-            truncate_safe_of(&subscriptions, run, *fence)
-                .is_some_and(|safe| safe < (*last).min(mark.tail))
+        // A mark whose run is no longer listed holds every run listed to its end.
+        let through = runs
+            .iter()
+            .position(|(run, ..)| *run == mark.run)
+            .map_or(runs.len(), |at| at + 1);
+        Ok(runs[..through].iter().any(|(run, fence, last, _)| {
+            let owed = if *run == mark.run {
+                (*last).min(mark.tail)
+            } else {
+                *last
+            };
+            truncate_safe_of(&subscriptions, run, *fence).is_some_and(|safe| safe < owed)
         }))
     }
 
@@ -569,11 +576,31 @@ impl<C: RecordCodec> Producer<C> {
             physical.writer().keep_unshipped(None)?;
             return Ok(None);
         }
-        let now = self.behind_of(physical)?.map_or(held, |behind| Unshipped {
-            tail: held.tail,
-            truncate_safe: behind.truncate_safe.min(held.tail),
-        });
+        // What the marked run's required subscriptions acknowledge now.
+        let now = Unshipped {
+            truncate_safe: self
+                .run_safe(physical, &held.run)?
+                .unwrap_or(held.truncate_safe)
+                .min(held.tail),
+            ..held
+        };
         Ok(Some(self.unshipped_of(physical, now)))
+    }
+
+    /// `truncate_safe` of `physical`'s run `run`, `None` when no required subscription holds it.
+    fn run_safe(&self, physical: &Physical, run: &[u8; 16]) -> Result<Option<u64>, StreamError> {
+        let signer = self.signer_ring()?;
+        let fence = physical
+            .runs(signer, &self.descriptor)?
+            .into_iter()
+            .find(|(held, ..)| held == run)
+            .and_then(|(_, fence, ..)| fence);
+        let writer = physical.writer();
+        Ok(truncate_safe_of(
+            &subscriptions_of(&writer.dir)?,
+            run,
+            fence,
+        ))
     }
 
     fn unshipped_of(&self, physical: &Physical, mark: Unshipped) -> composition::Unshipped {
