@@ -325,6 +325,12 @@ is cut.
 
 ### Changed
 
+- **Read cursors expire, and a read refuses what it does not take.**
+  The decision and event reads now issue version 2 cursors (`v2.` tokens): bound to the read's API, resource and filters, to the key that issued them, and to an expiry set by the new `operations.streams.cursor_ttl` (`PERMGUARD_STREAM_CURSOR_TTL`, one day by default, at most 365 days).
+  An earlier version 1 cursor is still accepted until the key that sealed it rotates out.
+  A cursor of another read, resource or filter set, or one past its expiry, is refused as `forged`, now a validation refusal; a malformed one as `offset_invalid`.
+  The REST reads refuse a query parameter they do not name, one given twice, `limit` together with `limit_records`, and a number, flag or `until` that does not parse, as `invalid_argument`, where they used to ignore it.
+
 - **The daily JSON-lines audit sink is gone; its chains move into the volume and stay verifiable.**
   The file sink that wrote `audit-YYYY-MM-DD.jsonl` and its `.seal` files is deleted.
   Since the Host trails it wrote nothing in a server, and now no code writes those files.

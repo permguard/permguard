@@ -370,7 +370,7 @@ async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> 
 #[derive(Debug, Default)]
 struct Asked {
     from: Option<String>,
-    until: Option<String>,
+    until: Option<permguard_stream::Frontier>,
     limit_records: Option<usize>,
     limit_bytes: Option<u64>,
     proof: bool,
@@ -378,18 +378,10 @@ struct Asked {
 
 impl Asked {
     /// The read this asks for, in the shared contract's terms.
-    ///
-    /// An `until` this build did not issue is dropped rather than refused, and the read becomes a
-    /// tail: the cursor carries the export bound inside its own signature, so a caller that
-    /// garbled the parameter is caught there, by the binding, with a message about the offset
-    /// rather than about a query string.
     fn window(&self) -> Window {
         Window {
             from: self.from.clone(),
-            until: self
-                .until
-                .as_deref()
-                .and_then(permguard_stream::Frontier::decode),
+            until: self.until.clone(),
             limit_records: self.limit_records.unwrap_or_default(),
             limit_bytes: self.limit_bytes.unwrap_or_default(),
             proof: self.proof,
@@ -397,66 +389,32 @@ impl Asked {
     }
 }
 
-/// Reads the query string this API defines, and nothing else.
-///
-/// Hand-parsed rather than deserialised, for two reasons that both matter
-/// here: an offset is opaque and must survive percent-encoding untouched, and
-/// a parameter nobody declared should be ignored rather than become a
-/// deserialisation failure a caller cannot act on.
-fn window_of(query: Option<&str>) -> (Asked, Vec<(String, String)>) {
-    let mut window = Asked::default();
-    let mut pairs = Vec::new();
-    for pair in query.unwrap_or_default().split('&') {
-        let Some((name, value)) = pair.split_once('=') else {
-            continue;
-        };
-        let value = percent_decode(value);
-        match name {
-            "from" => window.from = Some(value.clone()),
-            "until" => window.until = Some(value.clone()),
-            // `limit` is the name this API shipped with and still answers to. `limit_records` is
-            // the shared contract's name, and it wins where both are given: a caller writing to
-            // the current contract should not be quietly overridden by a compatibility alias.
-            "limit" => window.limit_records = window.limit_records.or_else(|| value.parse().ok()),
-            "limit_records" => window.limit_records = value.parse().ok(),
-            "limit_bytes" => window.limit_bytes = value.parse().ok(),
-            "proof" => window.proof = matches!(value.as_str(), "true" | "1" | "yes"),
-            _ => {}
-        }
-        pairs.push((name.to_owned(), value));
-    }
-
-    (window, pairs)
-}
-
-fn percent_decode(value: &str) -> String {
-    let bytes = value.replace('+', " ").into_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            let pair = std::str::from_utf8(&bytes[index + 1..index + 3]).unwrap_or_default();
-            if let Ok(byte) = u8::from_str_radix(pair, 16) {
-                out.push(byte);
-                index += 3;
-                continue;
-            }
-        }
-        out.push(bytes[index]);
-        index += 1;
-    }
-
-    String::from_utf8_lossy(&out).into_owned()
+/// Reads the query string of a bounded read taking `names` beside the window, strictly
+/// (WP-5.5): a parameter it does not name, one given twice, or a value that does not parse is
+/// refused, an `until` this build did not issue included.
+fn window_of(
+    query: Option<&str>,
+    names: &[&str],
+) -> Result<(Asked, crate::query::Query), ApiError> {
+    let mut allowed: Vec<&str> = crate::query::WINDOW.to_vec();
+    allowed.extend_from_slice(names);
+    let query = crate::query::parse(query, &allowed, &[])?;
+    let asked = Asked {
+        from: query.value("from"),
+        until: query.frontier("until")?,
+        limit_records: query.limit_records()?,
+        limit_bytes: query.number("limit_bytes")?,
+        proof: query.flag("proof")?,
+    };
+    Ok((asked, query))
 }
 
 async fn records(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery) -> Response {
-    let (window, pairs) = window_of(query.as_deref());
-    let named = |wanted: &str| {
-        pairs
-            .iter()
-            .find(|(name, _)| name == wanted)
-            .map(|(_, value)| value.clone())
+    let (window, query) = match window_of(query.as_deref(), &["pdp", "instance"]) {
+        Ok(parsed) => parsed,
+        Err(error) => return refuse(&facade, error),
     };
+    let named = |wanted: &str| query.value(wanted);
     let (Some(pdp_id), Some(instance)) = (named("pdp"), named("instance")) else {
         return refuse(
             &facade,
@@ -474,13 +432,15 @@ async fn records(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery
 
 /// Which key signed which stretch of one producer stream, public keys included.
 async fn signers(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery) -> Response {
-    let (_, pairs) = window_of(query.as_deref());
-    let named = |wanted: &str| {
-        pairs
-            .iter()
-            .find(|(name, _)| name == wanted)
-            .map(|(_, value)| value.clone())
+    let query = match crate::query::parse(
+        query.as_deref(),
+        &["pdp", "instance", "from_seq", "until_seq"],
+        &[],
+    ) {
+        Ok(query) => query,
+        Err(error) => return refuse(&facade, error),
     };
+    let named = |wanted: &str| query.value(wanted);
     let (Some(pdp_id), Some(instance)) = (named("pdp"), named("instance")) else {
         return refuse(
             &facade,
@@ -537,7 +497,10 @@ async fn tenant_records(
     RawQuery(query): RawQuery,
 ) -> Response {
     let scope = Scope::Tenant { zone, ledger };
-    let (window, _) = window_of(query.as_deref());
+    let (window, _) = match window_of(query.as_deref(), &[]) {
+        Ok(parsed) => parsed,
+        Err(error) => return refuse(&facade, error),
+    };
 
     serve(facade, scope, window, "tenant").await
 }
@@ -603,7 +566,7 @@ async fn serve(facade: DecisionFacade, scope: Scope, asked: Asked, kind: &'stati
                 &facade,
                 ApiError::new(
                     ErrorClass::Validation,
-                    permguard_core::codes::stream::OFFSET_INVALID,
+                    crate::decisions::read::refusal_code(&error),
                     error.to_string(),
                 ),
             )
@@ -1153,5 +1116,113 @@ mod openapi {
         assert!(!doc.accepts_json("OffsetExpired", &wrong));
 
         doc.assert_covered();
+    }
+}
+
+#[cfg(test)]
+mod strict {
+    //! WP-5.5 over the REST binding: the strict query and the cursor refusals.
+
+    #![allow(clippy::expect_used)]
+
+    use std::sync::Arc;
+
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt as _;
+    use tower::ServiceExt as _;
+
+    use super::*;
+
+    const ROOT: &[u8] = b"a-test-cursor-key-of-32-bytes!!!!";
+
+    fn facade(tag: &str) -> DecisionFacade {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-decisions-strict-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        DecisionFacade {
+            store: Arc::new(DecisionStore::open(root).expect("it opens")),
+            local: None,
+            local_pdp: String::new(),
+            cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
+                ROOT,
+                [1; 16],
+                "decisions",
+            )
+            .expect("a cursor key"),
+            producers: Arc::new(std::sync::RwLock::new(Vec::new())),
+            producer_files: Vec::new(),
+            disclosure: permguard_core::Disclosure::Full,
+            metrics: permguard_core::Metrics::none(),
+        }
+    }
+
+    async fn get(router: &Router, uri: &str) -> (StatusCode, serde_json::Value) {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(uri)
+                    .body(axum::body::Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        let status = response.status();
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("the body reads")
+            .to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+        )
+    }
+
+    /// WP-5.5: a read refuses a parameter it does not name, one given twice, a number or a flag
+    /// that does not parse and an `until` it did not issue, as validation; a cursor of another
+    /// API, resource or filter set is `forged`; a malformed one `offset_invalid`.
+    #[tokio::test]
+    async fn a_read_takes_only_its_parameters_and_only_its_own_cursors() {
+        let facade = facade("query");
+        let keys = facade.cursor_key.clone();
+        let router = routes(facade);
+        let path = "/zones/acme/ledgers/main/decisions/v1/records";
+        for query in [
+            "color=red",
+            "from=a&from=b",
+            "limit=1&limit_records=2",
+            "limit=many",
+            "limit_bytes=-1",
+            "proof=yes",
+            "until=nothing",
+            "proof",
+        ] {
+            let (status, body) = get(&router, &format!("{path}?{query}")).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{query}: {body}");
+            assert_eq!(body["code"], "invalid_argument", "{query}: {body}");
+        }
+        let (status, body) = get(&router, &format!("{path}?pdp=a")).await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "a stream's name on a tenant read: {body}"
+        );
+        assert_eq!(body["code"], "invalid_argument", "{body}");
+
+        // A cursor this server issued for another read.
+        let key = keys.for_resource("tenant:acme/main").expect("a key");
+        let foreign = permguard_stream::Cursor::beginning("events", "tenant:acme/main", "f", None)
+            .seal_v2(&key, keys.now(), keys.lifetime())
+            .expect("sealed");
+        let (status, body) = get(&router, &format!("{path}?from={foreign}")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(body["code"], "forged", "{body}");
+        let (status, body) = get(&router, &format!("{path}?from=v2.abc")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(body["code"], "offset_invalid", "{body}");
     }
 }

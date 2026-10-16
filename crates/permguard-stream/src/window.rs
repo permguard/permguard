@@ -26,7 +26,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::cursor::Cursor;
 use crate::frontier::Frontier;
 
 /// The most records one block may carry, whatever a caller asks for.
@@ -195,14 +194,6 @@ pub fn more(window: &Window, reached: &Frontier, stream_end: &Frontier) -> bool 
         // A tail: more when the stream has moved past what this read observed.
         None => !reached.reached(stream_end),
     }
-}
-
-/// Seals a cursor into the token a block carries.
-pub fn seal(
-    cursor: &Cursor,
-    key: &crate::cursor::CursorKey,
-) -> Result<String, crate::cursor::CursorError> {
-    cursor.seal(key)
 }
 
 #[cfg(test)]

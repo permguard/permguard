@@ -300,14 +300,7 @@ impl DecisionLog for DecisionFacade {
                     &[(labels::SCOPE, kind), (labels::OUTCOME, "refused")],
                 );
 
-                Err(api_status(
-                    &ApiError::new(
-                        ErrorClass::Validation,
-                        codes::stream::OFFSET_INVALID,
-                        error.to_string(),
-                    ),
-                    self.disclosure,
-                ))
+                Err(refused_read(&error, self.disclosure))
             }
         }
     }
@@ -369,6 +362,54 @@ fn api_error_of(refused: &Refused) -> ApiError {
     }
 }
 
+/// A read refused before it began: an offset of another read is `forged`, any other one
+/// `offset_invalid`, both validation (WP-5.5).
+fn refused_read(
+    error: &crate::decisions::read::ReadError,
+    disclosure: permguard_core::Disclosure,
+) -> Status {
+    api_status(
+        &ApiError::new(
+            ErrorClass::Validation,
+            crate::decisions::read::refusal_code(error),
+            error.to_string(),
+        ),
+        disclosure,
+    )
+}
+
 fn api_status(failed: &ApiError, disclosure: permguard_core::Disclosure) -> Status {
     crate::wire::grpc_error(failed, disclosure)
+}
+
+#[cfg(test)]
+mod tests {
+    use permguard_stream::cursor::CursorError;
+
+    use super::*;
+    use crate::decisions::read::ReadError;
+
+    /// WP-5.5: over gRPC, an offset of another read is `forged` and a malformed one
+    /// `offset_invalid`, both `INVALID_ARGUMENT`, as over REST.
+    #[test]
+    fn an_offset_of_another_read_is_forged_over_grpc() {
+        for (error, code) in [
+            (CursorError::Forged, codes::common::FORGED),
+            (CursorError::WrongScope, codes::common::FORGED),
+            (CursorError::Malformed, codes::stream::OFFSET_INVALID),
+        ] {
+            let status = refused_read(
+                &ReadError::Offset(error),
+                permguard_core::Disclosure::Minimal,
+            );
+            assert_eq!(status.code(), tonic::Code::InvalidArgument, "{code}");
+            assert_eq!(
+                status
+                    .metadata()
+                    .get(permguard_core::GRPC_ERROR_CODE)
+                    .and_then(|value| value.to_str().ok()),
+                Some(code)
+            );
+        }
+    }
 }

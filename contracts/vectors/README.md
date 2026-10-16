@@ -14,6 +14,7 @@
 | `event_batch`     | today's event batch: compact JWS, protected `{alg, typ, kid}`       | `permguard-events`                 |
 | `merkle`          | RFC 6962 batch roots                                                | `permguard-decisions`, `-stream`   |
 | `cursor_v1`       | today's cursor and its filter digest                                | `permguard-stream`                 |
+| `cursor_v2`       | the version 2 cursor: prefix, payload, MAC, key id and expiry       | `permguard-stream`                 |
 | `pseudonym`       | today's audit pseudonym                                             | `permguard-std`                    |
 | `key_set_digest`  | a pointer to the WP-0.4 vectors in `permguard-objects`              | `permguard-objects`                |
 

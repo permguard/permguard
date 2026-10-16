@@ -187,6 +187,23 @@ out["cursor_v1"] = {"name": "today's cursor: HMAC over the encoded body, no pref
                     "key": cur_key.hex(), "filters": filters, "filter_digest": filter_digest,
                     "cursor": cursor, "body": cursor_json.decode(), "token": b64(sealed)}
 
+# ---- cursor v2 (WP-5.5, owner exception of 2026-10-16) ---------------------------------------------
+CURSOR_V2 = "permguard.stream.cursor.v2\n"
+def cursor_key_id(key):
+    return hmac.new(key, CURSOR_V2.encode(), hashlib.sha256).digest()[:8].hex()
+issued_at = 1800000000
+payload_v2 = {"version": 2, "api": "events", "concrete_resource": "zone-a/ledger-1",
+              "filter_digest": filter_digest,
+              "positions": {"data-plane-7f3a": {"segment": 1, "offset": 2}},
+              "frontier": {"v": 1, "covered": {"data-plane-7f3a": 3}},
+              "issued_key_id": cursor_key_id(cur_key), "expires_at": issued_at + 24 * 3600}
+p2 = jcs(payload_v2)
+mac2 = hmac.new(cur_key, CURSOR_V2.encode() + p2, hashlib.sha256).digest()
+out["cursor_v2"] = {"name": "the version 2 cursor: the payload's RFC 8785 form, HMAC under the v2 domain, `v2.` prefixed",
+                    "key": cur_key.hex(), "issued_at": issued_at, "lifetime_secs": 24 * 3600,
+                    "payload": payload_v2, "canonical": p2.decode(),
+                    "token": "v2." + b64(p2) + "." + b64(mac2)}
+
 # ---- head statement -------------------------------------------------------------------------------
 # The target statement and its vectors are notp.py's (WP-7.1); today's six-field statement is retired.
 

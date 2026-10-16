@@ -2019,6 +2019,40 @@ fn test_a_checkpoint_waits_two_hours_for_its_acknowledgement_unless_told() {
     )));
 }
 
+/// WP-5.5: a read cursor is valid 24 hours after it is issued unless the deployment says
+/// otherwise, from the environment or `operations.streams.cursor_ttl`.
+#[test]
+fn test_a_read_cursor_is_valid_a_day_unless_told() {
+    assert_eq!(
+        config(&[], &[], &[]).stream_cursor_ttl(),
+        Duration::from_secs(24 * 3600)
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_STREAM_CURSOR_TTL, "2h")], &[]).stream_cursor_ttl(),
+        Duration::from_secs(2 * 3600)
+    );
+    let file = permguard_core::ConfigFile::parse("operations:\n  streams:\n    cursor_ttl: 6h\n")
+        .expect("parses");
+    assert!(
+        file.settings()
+            .contains(&(SETTING_STREAM_CURSOR_TTL.to_owned(), "6h".to_owned()))
+    );
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_environment(pairs(&[(SETTING_STREAM_CURSOR_TTL, "366d")])),
+    )
+    .expect_err("past a year");
+    assert!(
+        format!("{refused:#}").contains("longest a read cursor"),
+        "{refused:#}"
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_STREAM_CURSOR_TTL, "365d")], &[]).stream_cursor_ttl(),
+        Duration::from_secs(365 * 24 * 3600)
+    );
+}
+
 /// WP-7.12: a transfer session stays open fifteen minutes by default, and at most an hour.
 #[test]
 fn test_a_transfer_session_is_open_at_most_an_hour() {

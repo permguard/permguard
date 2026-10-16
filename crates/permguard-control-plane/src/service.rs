@@ -795,6 +795,7 @@ fn build_event_facade(
             anyhow::anyhow!("no Host identity is composed: read offsets are keyed per Host")
         })
         .and_then(|host_id| crate::decisions::cursorkey::load(directory, host_id, "events"))
+        .map(|keys| keys.with_lifetime(context.config().stream_cursor_ttl()))
     {
         Ok(key) => key,
         Err(error) => {
@@ -927,6 +928,7 @@ fn build_decision_facade(
             anyhow::anyhow!("no Host identity is composed: read offsets are keyed per Host")
         })
         .and_then(|host_id| crate::decisions::cursorkey::load(directory, host_id, "decisions"))
+        .map(|keys| keys.with_lifetime(context.config().stream_cursor_ttl()))
     {
         Ok(key) => key,
         Err(error) => {

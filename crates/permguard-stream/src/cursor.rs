@@ -35,7 +35,8 @@ use sha2::Sha256;
 
 use crate::frontier::Frontier;
 
-/// The cursor format this build writes.
+/// The version 1 cursor format: still read, through `open` and `open_any`; reads issue version 2
+/// (`seal_v2`, WP-5.5).
 pub const VERSION: u32 = 1;
 
 /// The shortest key this will authenticate with.
@@ -192,7 +193,8 @@ impl Cursor {
         Ok(B64.encode(bytes))
     }
 
-    /// Reads a token, and refuses one this server did not issue for exactly this read.
+    /// Reads a version 1 token, and refuses one this server did not issue for exactly this read;
+    /// a read takes either version through `open_any`.
     ///
     /// The MAC is checked **before** the body is trusted for anything, and the four bindings are
     /// checked after — so a token that was tampered with is `Forged`, and one that was issued for
@@ -235,6 +237,161 @@ impl Cursor {
         }
 
         Ok(cursor)
+    }
+}
+
+/// The prefix of a version 2 token (WP-5.5): what tells it from a version 1 one, which is opened
+/// by the version 1 codec alone.
+pub const V2_PREFIX: &str = "v2.";
+
+/// How long a version 2 cursor is valid, unless the deployment says otherwise (WP-5.5).
+pub const DEFAULT_LIFETIME: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
+/// The payload a version 2 token carries, its members as the blueprint names them (WP-5.5, owner
+/// decision of 2026-10-16): authenticated with the key `issued_key_id` names, and bounded by
+/// `expires_at`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PayloadV2 {
+    version: u32,
+    api: String,
+    concrete_resource: String,
+    filter_digest: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    snapshot_frontier: Option<Frontier>,
+    positions: std::collections::BTreeMap<String, Position>,
+    frontier: Frontier,
+    issued_key_id: String,
+    expires_at: u64,
+}
+
+impl CursorKey {
+    /// What names `key` in a version 2 token: the first sixteen hex characters of HMAC-SHA256
+    /// under it over the domain alone, one-way, so a rotation's keys are told apart and none is
+    /// shown.
+    fn key_id(key: &[u8]) -> String {
+        let tag = Self::tag(
+            key,
+            permguard_core::domains::digest::STREAM_CURSOR_V2.as_bytes(),
+        );
+        hex(&tag[..8.min(tag.len())])
+    }
+
+    /// The MAC of a version 2 payload under `key`.
+    fn tag_v2(key: &[u8], payload: &[u8]) -> Vec<u8> {
+        let mut message = Vec::with_capacity(
+            permguard_core::domains::digest::STREAM_CURSOR_V2.len() + payload.len(),
+        );
+        message.extend_from_slice(permguard_core::domains::digest::STREAM_CURSOR_V2.as_bytes());
+        message.extend_from_slice(payload);
+        Self::tag(key, &message)
+    }
+}
+
+impl Cursor {
+    /// The version 2 token a consumer keeps (WP-5.5): issued under the first key, valid until
+    /// `now` plus `lifetime`, in seconds.
+    pub fn seal_v2(
+        &self,
+        key: &CursorKey,
+        now: u64,
+        lifetime: std::time::Duration,
+    ) -> Result<String, CursorError> {
+        let payload = PayloadV2 {
+            version: 2,
+            api: self.api.clone(),
+            concrete_resource: self.scope.clone(),
+            filter_digest: self.filters.clone(),
+            snapshot_frontier: self.until.clone(),
+            positions: self.positions.clone(),
+            frontier: self.frontier.clone(),
+            issued_key_id: CursorKey::key_id(key.issuing()),
+            expires_at: now.saturating_add(lifetime.as_secs()),
+        };
+        let value = serde_json::to_value(&payload).map_err(|_| CursorError::Malformed)?;
+        let canonical = crate::jcs::canonicalize(&value).map_err(|_| CursorError::Malformed)?;
+        let tag = CursorKey::tag_v2(key.issuing(), &canonical);
+
+        Ok(format!(
+            "{V2_PREFIX}{}.{}",
+            B64.encode(&canonical),
+            B64.encode(tag)
+        ))
+    }
+
+    /// Reads a token of either version: a version 2 one by its own rules, anything else by the
+    /// version 1 codec, unchanged (WP-5.5).
+    // conformance: boundary
+    pub fn open_any(
+        token: &str,
+        key: &CursorKey,
+        api: &str,
+        scope: &str,
+        filters: &str,
+        now: u64,
+    ) -> Result<Self, CursorError> {
+        match token.strip_prefix(V2_PREFIX) {
+            Some(rest) => Self::open_v2(rest, key, api, scope, filters, now),
+            None => Self::open(token, key, api, scope, filters),
+        }
+    }
+
+    /// A version 2 token, after its prefix. The key it names, its MAC, its canonical form and its
+    /// expiry are checked before any member is trusted; a token of another API, resource or
+    /// filter set, an expired one, or one under a key outside the accepted set is `Forged`.
+    fn open_v2(
+        rest: &str,
+        key: &CursorKey,
+        api: &str,
+        scope: &str,
+        filters: &str,
+        now: u64,
+    ) -> Result<Self, CursorError> {
+        let (payload, mac) = rest.split_once('.').ok_or(CursorError::Malformed)?;
+        if mac.contains('.') {
+            return Err(CursorError::Malformed);
+        }
+        let payload = B64.decode(payload).map_err(|_| CursorError::Malformed)?;
+        let presented = B64.decode(mac).map_err(|_| CursorError::Malformed)?;
+        let parsed: PayloadV2 =
+            serde_json::from_slice(&payload).map_err(|_| CursorError::Malformed)?;
+        // The key the token names, then its MAC under that key alone.
+        let held = key
+            .keys
+            .iter()
+            .find(|held| CursorKey::key_id(held) == parsed.issued_key_id)
+            .ok_or(CursorError::Forged)?;
+        if !constant_time_eq(&CursorKey::tag_v2(held, &payload), &presented) {
+            return Err(CursorError::Forged);
+        }
+        // Authentic: the canonical form the issuer wrote, nothing else.
+        let canonical = serde_json::to_value(&parsed)
+            .ok()
+            .and_then(|value| crate::jcs::canonicalize(&value).ok());
+        if canonical.as_deref() != Some(payload.as_slice()) {
+            return Err(CursorError::Malformed);
+        }
+        if parsed.version != 2 {
+            return Err(CursorError::WrongVersion {
+                found: parsed.version,
+            });
+        }
+        if now >= parsed.expires_at
+            || parsed.api != api
+            || parsed.concrete_resource != scope
+            || parsed.filter_digest != filters
+        {
+            return Err(CursorError::Forged);
+        }
+        Ok(Self {
+            v: 2,
+            api: parsed.api,
+            scope: parsed.concrete_resource,
+            filters: parsed.filter_digest,
+            until: parsed.snapshot_frontier,
+            positions: parsed.positions,
+            frontier: parsed.frontier,
+        })
     }
 }
 
@@ -325,8 +482,8 @@ impl std::fmt::Display for CursorError {
             ),
             Self::WrongVersion { found } => write!(
                 formatter,
-                "this offset is version {found}, and this build reads version {VERSION}: start \
-                 from the beginning, or from the oldest available position"
+                "this offset is version {found}, and this build reads versions {VERSION} and 2: \
+                 start from the beginning, or from the oldest available position"
             ),
             Self::WrongApi => write!(
                 formatter,
@@ -347,6 +504,22 @@ impl std::fmt::Display for CursorError {
                 formatter,
                 "an offset signing key is at least {MIN_KEY_BYTES} bytes"
             ),
+        }
+    }
+}
+
+impl CursorError {
+    /// The stable code a read answers this refusal with (WP-5.5): `forged` for a token this
+    /// server did not issue for exactly this read, `offset_invalid` for one that is not a token
+    /// of a version it reads.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Forged | Self::WrongApi | Self::WrongScope | Self::WrongFilters => {
+                permguard_core::codes::common::FORGED
+            }
+            Self::Malformed | Self::WrongVersion { .. } | Self::KeyTooShort => {
+                permguard_core::codes::stream::OFFSET_INVALID
+            }
         }
     }
 }
@@ -540,5 +713,188 @@ mod tests {
             Cursor::open("not-a-token!!", &key(), API, "acme/main", &filters()),
             Err(CursorError::Malformed)
         );
+    }
+
+    fn sealed_v2(key: &CursorKey, now: u64) -> String {
+        let mut cursor = Cursor::beginning(API, "acme/main", &filters(), None);
+        cursor.advance(
+            "p1",
+            Position {
+                segment: 3,
+                offset: 7,
+            },
+        );
+        cursor
+            .seal_v2(key, now, DEFAULT_LIFETIME)
+            .expect("it seals")
+    }
+
+    /// WP-5.5: a version 2 token opens for exactly the read it was issued for, until it expires;
+    /// one of another API, resource or filter set, an expired one, an edited one, or one under a
+    /// key no longer accepted is `Forged`; a version 1 token still opens through its own codec.
+    /// WP-5.5: a cursor of another read is `forged`; one that is not a cursor here is
+    /// `offset_invalid`.
+    #[test]
+    fn a_refused_cursor_names_its_code() {
+        for (error, code) in [
+            (CursorError::Forged, permguard_core::codes::common::FORGED),
+            (CursorError::WrongApi, permguard_core::codes::common::FORGED),
+            (
+                CursorError::WrongScope,
+                permguard_core::codes::common::FORGED,
+            ),
+            (
+                CursorError::WrongFilters,
+                permguard_core::codes::common::FORGED,
+            ),
+            (
+                CursorError::Malformed,
+                permguard_core::codes::stream::OFFSET_INVALID,
+            ),
+            (
+                CursorError::WrongVersion { found: 3 },
+                permguard_core::codes::stream::OFFSET_INVALID,
+            ),
+            (
+                CursorError::KeyTooShort,
+                permguard_core::codes::stream::OFFSET_INVALID,
+            ),
+        ] {
+            assert_eq!(error.code(), code, "{error:?}");
+        }
+    }
+
+    /// WP-5.5: a version 2 token whose MAC is authentic is still refused when its payload is not
+    /// the canonical form the issuer writes, when it is not version 2, or when it carries a third
+    /// part.
+    #[test]
+    fn an_authentic_version_2_token_is_read_only_in_its_own_form() {
+        let now = 1_800_000_000;
+        let token = sealed_v2(&key(), now);
+        let body = token
+            .strip_prefix(V2_PREFIX)
+            .and_then(|rest| rest.split('.').next())
+            .expect("a payload");
+        let payload = B64.decode(body).expect("base64url");
+        let signed = |payload: &[u8]| {
+            let tag = CursorKey::tag_v2(key().issuing(), payload);
+            format!("{V2_PREFIX}{}.{}", B64.encode(payload), B64.encode(tag))
+        };
+        // Re-signed unchanged: it opens, so the refusals below are the form's.
+        assert!(
+            Cursor::open_any(&signed(&payload), &key(), API, "acme/main", &filters(), now).is_ok()
+        );
+
+        let mut spaced = b" ".to_vec();
+        spaced.extend_from_slice(&payload);
+        let text = String::from_utf8(payload.clone()).expect("JSON text");
+        let version_3 = text.replacen("\"version\":2", "\"version\":3", 1);
+        assert_ne!(version_3, text);
+        for (case, token, refused) in [
+            ("not canonical", signed(&spaced), CursorError::Malformed),
+            (
+                "version 3",
+                signed(version_3.as_bytes()),
+                CursorError::WrongVersion { found: 3 },
+            ),
+            (
+                "a third part",
+                format!("{}.{}", signed(&payload), B64.encode(b"x")),
+                CursorError::Malformed,
+            ),
+        ] {
+            assert_eq!(
+                Cursor::open_any(&token, &key(), API, "acme/main", &filters(), now),
+                Err(refused),
+                "{case}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_version_2_cursor_binds_its_read_its_key_and_its_lifetime() {
+        let now = 1_800_000_000;
+        let token = sealed_v2(&key(), now);
+        assert!(token.starts_with(V2_PREFIX));
+        let opened =
+            Cursor::open_any(&token, &key(), API, "acme/main", &filters(), now).expect("it opens");
+        assert_eq!(opened.v, 2);
+        assert_eq!(opened.position("p1").segment, 3);
+        assert_eq!(opened.position("p1").offset, 7);
+
+        let other_filters = filter_digest(&json!({"event_type": ["other"]}));
+        for (case, api, scope, filters, at) in [
+            (
+                "another API",
+                "permguard.api.decisions.native.v1",
+                "acme/main",
+                filters(),
+                now,
+            ),
+            ("another resource", API, "globex/main", filters(), now),
+            ("another filter set", API, "acme/main", other_filters, now),
+            (
+                "expired",
+                API,
+                "acme/main",
+                filters(),
+                now + DEFAULT_LIFETIME.as_secs(),
+            ),
+        ] {
+            assert_eq!(
+                Cursor::open_any(&token, &key(), api, scope, &filters, at),
+                Err(CursorError::Forged),
+                "{case}"
+            );
+        }
+
+        // An edited payload, its MAC kept: forged.
+        let rest = token.strip_prefix(V2_PREFIX).expect("v2");
+        let (payload, mac) = rest.split_once('.').expect("two parts");
+        let mut bytes = B64.decode(payload).expect("decodes");
+        let needle = b"\"segment\":3";
+        let at = bytes
+            .windows(needle.len())
+            .position(|window| window == needle)
+            .expect("the segment");
+        bytes[at + needle.len() - 1] = b'9';
+        let edited = format!("{V2_PREFIX}{}.{mac}", B64.encode(&bytes));
+        assert_eq!(
+            Cursor::open_any(&edited, &key(), API, "acme/main", &filters(), now),
+            Err(CursorError::Forged)
+        );
+
+        // A rotation keeps the previous key accepted; once it is gone, its tokens are forged.
+        let rotated = CursorKey::new(OTHER, &[KEY]).expect("rotated");
+        assert!(Cursor::open_any(&token, &rotated, API, "acme/main", &filters(), now).is_ok());
+        let fresh = CursorKey::new(OTHER, &[]).expect("fresh");
+        assert_eq!(
+            Cursor::open_any(&token, &fresh, API, "acme/main", &filters(), now),
+            Err(CursorError::Forged)
+        );
+        assert!(
+            Cursor::open_any(
+                &sealed_v2(&rotated, now),
+                &rotated,
+                API,
+                "acme/main",
+                &filters(),
+                now
+            )
+            .is_ok(),
+            "issued under the new key"
+        );
+
+        // Version 1, by its own codec, never expiring.
+        assert!(
+            Cursor::open_any(&sealed(), &key(), API, "acme/main", &filters(), u64::MAX).is_ok()
+        );
+        for malformed in ["v2.", "v2.abc", "v2.a.b.c", "v2.!!.!!"] {
+            assert_eq!(
+                Cursor::open_any(malformed, &key(), API, "acme/main", &filters(), now),
+                Err(CursorError::Malformed),
+                "{malformed}"
+            );
+        }
     }
 }

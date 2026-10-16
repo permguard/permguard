@@ -275,11 +275,12 @@ pub fn read(
         cursor
     };
     let oldest_available = beginning(window.until.clone())
-        .seal(key)
+        .seal_v2(key, keys.now(), keys.lifetime())
         .map_err(ReadError::Offset)?;
 
     let mut cursor = match &window.from {
-        Some(token) => Cursor::open(token, key, API, &stream, &bound).map_err(ReadError::Offset)?,
+        Some(token) => Cursor::open_any(token, key, API, &stream, &bound, keys.now())
+            .map_err(ReadError::Offset)?,
         None => beginning(window.until.clone()),
     };
     // An export declares its bound on its second page — the first could not have, because the
@@ -352,7 +353,9 @@ pub fn read(
 
     Ok(Page {
         records: walked.records,
-        next: cursor.seal(key).map_err(ReadError::Offset)?,
+        next: cursor
+            .seal_v2(key, keys.now(), keys.lifetime())
+            .map_err(ReadError::Offset)?,
         oldest_available,
         // A finite export keeps echoing the snapshot it is bounded by. Returning the moving
         // current end on later pages invites a client to replace its bound and create an export

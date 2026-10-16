@@ -212,6 +212,16 @@
     },
     {
       "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/cursor.rs",
+      "item": "Cursor::open_any",
+      "entry": "permguard_stream::cursor::Cursor::open_any",
+      "max_input_bytes": 8388608,
+      "limit": "no length check at the decoder: as `Cursor::open`, which reads a token without the `v2.` prefix; a version 2 token is checked for its key, MAC and canonical form before any member is trusted (WP-5.5)",
+      "enforced_at_decoder": false,
+      "fuzz": "cursor_open"
+    },
+    {
+      "crate": "permguard-stream",
       "source": "crates/permguard-stream/src/frontier.rs",
       "item": "Frontier::decode",
       "entry": "permguard_stream::frontier::Frontier::decode",

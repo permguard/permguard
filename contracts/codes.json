@@ -270,7 +270,8 @@
     "common.FORGED": {
       "code": "forged",
       "contract": "6-contracts/5-contract-stream-common.md",
-      "kind": "unused"
+      "kind": "refusal",
+      "class": "validation"
     },
     "common.INTERFACE_RETIRED": {
       "code": "interface_retired",

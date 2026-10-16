@@ -474,7 +474,22 @@ async fn signers(
     Path((zone, ledger)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let asked = asked_of(query.as_deref());
+    let asked = match asked_of(
+        query.as_deref(),
+        &[
+            "from_seq",
+            "until_seq",
+            "after_class",
+            "after_producer",
+            "after_instance",
+            "producer_class",
+            "producer",
+            "instance",
+        ],
+    ) {
+        Ok(asked) => asked,
+        Err(error) => return refuse(&facade, error),
+    };
     let bound = |name: &str| -> Result<u64, String> {
         match asked.value(name) {
             None => Ok(0),
@@ -632,22 +647,19 @@ fn api_error(refused: &Refused) -> ApiError {
 #[derive(Debug, Default)]
 struct Asked {
     from: Option<String>,
-    until: Option<String>,
+    until: Option<permguard_stream::Frontier>,
     limit_records: Option<usize>,
     limit_bytes: Option<u64>,
     proof: bool,
     filters: Filters,
-    named: Vec<(String, String)>,
+    query: crate::query::Query,
 }
 
 impl Asked {
     fn window(&self) -> Window {
         Window {
             from: self.from.clone(),
-            until: self
-                .until
-                .as_deref()
-                .and_then(permguard_stream::Frontier::decode),
+            until: self.until.clone(),
             limit_records: self.limit_records.unwrap_or_default(),
             limit_bytes: self.limit_bytes.unwrap_or_default(),
             proof: self.proof,
@@ -655,73 +667,67 @@ impl Asked {
     }
 
     fn value(&self, wanted: &str) -> Option<String> {
-        self.named
-            .iter()
-            .find(|(name, _)| name == wanted)
-            .map(|(_, value)| value.clone())
+        self.query.value(wanted)
     }
 }
 
-/// Reads the query string this API defines, and nothing else.
-///
-/// Hand-parsed rather than deserialised, for two reasons that both matter: an offset is opaque and
-/// must survive percent-encoding untouched, and a parameter nobody declared should be ignored
-/// rather than become a deserialisation failure a caller cannot act on.
-fn asked_of(query: Option<&str>) -> Asked {
+/// The filters a read of events narrows by.
+const FILTERS: [&str; 10] = [
+    "event_type",
+    "producer",
+    "instance",
+    "profile",
+    "policy_partition",
+    "kind",
+    "event_id",
+    "since",
+    "until_time",
+    "history",
+];
+
+/// Reads the query string of a read taking `names`, strictly (WP-5.5): a parameter it does not
+/// name, one given twice (but `event_type`, which a reader repeats to ask for several), or a value
+/// that does not parse is refused.
+fn asked_of(query: Option<&str>, names: &[&str]) -> Result<Asked, ApiError> {
+    let query = crate::query::parse(query, names, &["event_type"])?;
     let mut asked = Asked::default();
-    for pair in query.unwrap_or_default().split('&') {
-        let Some((name, value)) = pair.split_once('=') else {
-            continue;
-        };
-        let value = percent_decode(value);
-        match name {
-            "from" => asked.from = Some(value.clone()),
-            "until" => asked.until = Some(value.clone()),
-            "limit_records" | "limit" => asked.limit_records = value.parse().ok(),
-            "limit_bytes" => asked.limit_bytes = value.parse().ok(),
-            "proof" => asked.proof = matches!(value.as_str(), "true" | "1" | "yes"),
-            // Repeated, because a reader asking for two types is asking for both rather than
-            // whichever the query string happened to mention last.
-            "event_type" => asked.filters.event_types.push(value.clone()),
-            "producer" => asked.filters.producer = Some(value.clone()),
-            "instance" => asked.filters.instance = Some(value.clone()),
-            "profile" => asked.filters.profile = Some(value.clone()),
-            "policy_partition" => asked.filters.policy_partition = Some(value.clone()),
-            "kind" => asked.filters.kind = Some(value.clone()),
-            "event_id" => asked.filters.event_id = Some(value.clone()),
-            "since" => asked.filters.since = Some(value.clone()),
-            "until_time" => asked.filters.until_time = Some(value.clone()),
-            "history" => asked.filters.history = Some(value.clone()),
-            _ => {}
-        }
-        asked.named.push((name.to_owned(), value));
+    if names.contains(&"from") {
+        asked.from = query.value("from");
+        asked.until = query.frontier("until")?;
+        asked.limit_records = query.limit_records()?;
+        asked.limit_bytes = query.number("limit_bytes")?;
+        asked.proof = query.flag("proof")?;
     }
-
-    asked
+    asked.filters.event_types = query.values("event_type");
+    asked.filters.producer = query.value("producer");
+    asked.filters.instance = query.value("instance");
+    asked.filters.profile = query.value("profile");
+    asked.filters.policy_partition = query.value("policy_partition");
+    asked.filters.kind = query.value("kind");
+    asked.filters.event_id = query.value("event_id");
+    asked.filters.since = query.value("since");
+    asked.filters.until_time = query.value("until_time");
+    asked.filters.history = query.value("history");
+    asked.query = query;
+    Ok(asked)
 }
 
-fn percent_decode(value: &str) -> String {
-    let bytes = value.replace('+', " ").into_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            let pair = std::str::from_utf8(&bytes[index + 1..index + 3]).unwrap_or_default();
-            if let Ok(byte) = u8::from_str_radix(pair, 16) {
-                out.push(byte);
-                index += 3;
-                continue;
-            }
-        }
-        out.push(bytes[index]);
-        index += 1;
-    }
-
-    String::from_utf8_lossy(&out).into_owned()
+/// The names a bounded read of events takes: the window, the filters and `extra`.
+fn reading(extra: &[&'static str]) -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = crate::query::WINDOW.to_vec();
+    names.extend_from_slice(&FILTERS);
+    names.extend_from_slice(extra);
+    names
 }
 
 async fn records(State(facade): State<EventFacade>, RawQuery(query): RawQuery) -> Response {
-    let asked = asked_of(query.as_deref());
+    let asked = match asked_of(
+        query.as_deref(),
+        &reading(&["zone", "ledger", "producer_class"]),
+    ) {
+        Ok(asked) => asked,
+        Err(error) => return refuse(&facade, error),
+    };
     let named = |wanted: &str| asked.value(wanted);
     let (Some(zone), Some(ledger), Some(class), Some(producer), Some(instance)) = (
         named("zone"),
@@ -761,7 +767,10 @@ async fn tenant_records(
     Path((zone, ledger)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let asked = asked_of(query.as_deref());
+    let asked = match asked_of(query.as_deref(), &reading(&[])) {
+        Ok(asked) => asked,
+        Err(error) => return refuse(&facade, error),
+    };
 
     serve(facade, Scope::Tenant { zone, ledger }, asked, "tenant").await
 }
@@ -771,7 +780,10 @@ async fn record(
     Path(event_id): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let asked = asked_of(query.as_deref());
+    let asked = match asked_of(query.as_deref(), &["zone", "ledger"]) {
+        Ok(asked) => asked,
+        Err(error) => return refuse(&facade, error),
+    };
     let (Some(zone), Some(ledger)) = (asked.value("zone"), asked.value("ledger")) else {
         return refuse(
             &facade,
@@ -853,11 +865,7 @@ fn read_refusal(facade: &EventFacade, error: read::ReadError) -> Response {
             .into_response(),
         read::ReadError::Offset(refused) => refuse(
             facade,
-            ApiError::new(
-                ErrorClass::Validation,
-                permguard_core::codes::stream::OFFSET_INVALID,
-                refused.to_string(),
-            ),
+            ApiError::new(ErrorClass::Validation, refused.code(), refused.to_string()),
         ),
         // A scope nobody holds is a 404, never an empty page: the two are the same shape to a
         // script, and only one of them means the ledger is empty.
@@ -1170,5 +1178,85 @@ mod openapi {
         doc.check("Offsets", &configuration.offsets);
 
         doc.assert_covered();
+    }
+
+    /// WP-5.5: a read of events takes its window, its filters and its own names, each once but
+    /// `event_type`, with values that parse; anything else is a validation refusal.
+    #[test]
+    fn a_read_of_events_takes_only_its_parameters() {
+        let names = reading(&["zone"]);
+        let asked = asked_of(
+            Some("zone=acme&event_type=a&event_type=b&limit_records=3&proof=true&history=all"),
+            &names,
+        )
+        .expect("it parses");
+        assert_eq!(asked.filters.event_types, vec!["a", "b"]);
+        assert_eq!(asked.limit_records, Some(3));
+        assert!(asked.proof);
+        assert_eq!(asked.filters.history.as_deref(), Some("all"));
+        assert_eq!(asked.value("zone").as_deref(), Some("acme"));
+
+        for query in [
+            "color=red",
+            "producer=a&producer=b",
+            "limit=1&limit_records=2",
+            "limit_bytes=many",
+            "proof=yes",
+            "until=nothing",
+            "kind",
+        ] {
+            let error = asked_of(Some(query), &names).expect_err(query);
+            assert_eq!(
+                error.code(),
+                permguard_core::codes::common::INVALID_ARGUMENT,
+                "{query}"
+            );
+        }
+        // A read without a window refuses one.
+        assert!(asked_of(Some("from=a"), &FILTERS).is_err());
+    }
+
+    /// WP-5.5: over REST, an offset of another read is `forged` and a malformed one
+    /// `offset_invalid`, both `400`.
+    #[tokio::test]
+    async fn an_offset_of_another_read_is_forged_over_rest() {
+        use http_body_util::BodyExt as _;
+        use permguard_stream::cursor::CursorError;
+
+        let root =
+            std::env::temp_dir().join(format!("permguard-events-refusal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let facade = EventFacade {
+            catalog: None,
+            store: std::sync::Arc::new(crate::events::EventStore::open(&root).expect("it opens")),
+            producers: std::sync::Arc::new(std::sync::RwLock::new(Vec::new())),
+            producer_files: Vec::new(),
+            cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
+                b"a-test-cursor-key-of-32-bytes!!!!",
+                [1; 16],
+                "events",
+            )
+            .expect("a cursor key"),
+            disclosure: permguard_core::Disclosure::default(),
+            metrics: permguard_core::metrics::Metrics::default(),
+            base_url: String::new(),
+        };
+        for (error, code) in [
+            (CursorError::Forged, "forged"),
+            (CursorError::WrongApi, "forged"),
+            (CursorError::Malformed, "offset_invalid"),
+        ] {
+            let response = read_refusal(&facade, read::ReadError::Offset(error));
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{code}");
+            let bytes = response
+                .into_body()
+                .collect()
+                .await
+                .expect("the body reads")
+                .to_bytes();
+            let body: serde_json::Value = serde_json::from_slice(&bytes).expect("a JSON body");
+            assert_eq!(body["code"], code, "{body}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -332,6 +332,9 @@ pub const SETTING_AUDIT_RETENTION_SECURITY: &str = "PERMGUARD_AUDIT_RETENTION_SE
 /// before the Host is `degraded: audit_egress` from `production` up (WP-5.9, owner decision of
 /// 2026-10-16).
 pub const SETTING_AUDIT_CHECKPOINTS_MAX_LAG: &str = "PERMGUARD_AUDIT_CHECKPOINTS_MAX_LAG";
+/// Runtime setting key for how long a read cursor is valid after it is issued (WP-5.5, owner
+/// decision of 2026-10-16).
+pub const SETTING_STREAM_CURSOR_TTL: &str = "PERMGUARD_STREAM_CURSOR_TTL";
 /// Whether refused operations are recorded in the audit trail as well as the log.
 ///
 /// Off by default: the trail records what changed the world, and a caller's mistakes change
@@ -865,6 +868,11 @@ const DEFAULT_KEYS_RETAIN: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 const DEFAULT_AUDIT_RETENTION: Duration = Duration::from_secs(90 * 24 * 60 * 60);
 /// How long a checkpoint may wait for its acknowledgement: two sweeps (WP-5.9).
 const DEFAULT_AUDIT_CHECKPOINTS_MAX_LAG: Duration = Duration::from_secs(2 * 60 * 60);
+/// How long a read cursor is valid after it is issued (WP-5.5).
+const DEFAULT_STREAM_CURSOR_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+/// The longest a read cursor may be valid: a year, so its expiry stays an interoperable JSON
+/// integer (WP-5.5).
+const MAXIMUM_STREAM_CURSOR_TTL: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 
 /// NOTP transfer bounds: a batch comfortably above the 5 MB object ceiling, deltas sized for
 /// policy ledgers (hundreds of small objects), and a ledger quota an order above that.
@@ -1333,6 +1341,7 @@ pub struct Config {
     audit_retention: Duration,
     audit_retention_security: Option<Duration>,
     audit_checkpoints_max_lag: Duration,
+    stream_cursor_ttl: Duration,
     audit_pseudonym_enabled: bool,
     audit_pseudonym_key_ref: Option<SecretRef>,
     audit_pseudonym_key_version: String,
@@ -1515,6 +1524,7 @@ impl Default for Config {
             audit_retention: DEFAULT_AUDIT_RETENTION,
             audit_retention_security: None,
             audit_checkpoints_max_lag: DEFAULT_AUDIT_CHECKPOINTS_MAX_LAG,
+            stream_cursor_ttl: DEFAULT_STREAM_CURSOR_TTL,
             audit_pseudonym_enabled: false,
             audit_pseudonym_key_ref: None,
             audit_pseudonym_key_version: DEFAULT_KEY_VERSION.to_owned(),
@@ -3240,6 +3250,11 @@ produce: use `EdDSA` or `ES256`"
         self.audit_checkpoints_max_lag
     }
 
+    /// Returns how long a read cursor is valid after it is issued (WP-5.5).
+    pub fn stream_cursor_ttl(&self) -> Duration {
+        self.stream_cursor_ttl
+    }
+
     /// Returns the largest NOTP transfer batch, in bytes.
     pub fn notp_max_batch_bytes(&self) -> u64 {
         self.notp_max_batch_bytes
@@ -4147,6 +4162,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_AUDIT_RETENTION => d(self.audit_retention),
             SETTING_AUDIT_RETENTION_SECURITY => self.audit_retention_security.and_then(d),
             SETTING_AUDIT_CHECKPOINTS_MAX_LAG => d(self.audit_checkpoints_max_lag),
+            SETTING_STREAM_CURSOR_TTL => d(self.stream_cursor_ttl),
             SETTING_AUDIT_REFUSALS => b(self.audit_refusals),
             SETTING_NOTP_MAX_BATCH_BYTES => n(self.notp_max_batch_bytes),
             SETTING_NOTP_MAX_BATCH_OBJECTS => n(self.notp_max_batch_objects),
@@ -5275,6 +5291,18 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
+        if let Some(value) = settings.get(SETTING_STREAM_CURSOR_TTL) {
+            self.stream_cursor_ttl = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_STREAM_CURSOR_TTL}"))?;
+            if self.stream_cursor_ttl > MAXIMUM_STREAM_CURSOR_TTL {
+                bail!(
+                    "reading {SETTING_STREAM_CURSOR_TTL}: `{value}` is longer than {}s, the \
+                     longest a read cursor may stay valid",
+                    MAXIMUM_STREAM_CURSOR_TTL.as_secs()
+                );
+            }
+        }
+
         if let Some(value) = settings.get(SETTING_AUDIT_CHECKPOINTS_MAX_LAG) {
             self.audit_checkpoints_max_lag = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_AUDIT_CHECKPOINTS_MAX_LAG}"))?;
@@ -5685,6 +5713,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_AUDIT_RETENTION,
     SETTING_AUDIT_RETENTION_SECURITY,
     SETTING_AUDIT_CHECKPOINTS_MAX_LAG,
+    SETTING_STREAM_CURSOR_TTL,
     SETTING_AUDIT_SINK,
     SETTING_AUTHZ_CACHE_BYTES,
     SETTING_AUTHZ_CACHE_PARTITIONS,

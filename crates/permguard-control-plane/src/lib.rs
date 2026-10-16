@@ -16,6 +16,7 @@ pub mod events;
 pub mod gc;
 mod handles;
 pub mod inventory;
+mod query;
 mod service;
 pub mod store;
 pub mod transfer;

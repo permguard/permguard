@@ -416,11 +416,7 @@ fn read_status(error: read::ReadError, disclosure: Disclosure) -> Status {
             status
         }
         read::ReadError::Offset(refused) => status_of(
-            &ApiError::new(
-                ErrorClass::Validation,
-                permguard_core::codes::stream::OFFSET_INVALID,
-                refused.to_string(),
-            ),
+            &ApiError::new(ErrorClass::Validation, refused.code(), refused.to_string()),
             disclosure,
         ),
         read::ReadError::Unknown(detail) => status_of(
@@ -492,6 +488,35 @@ mod tests {
 
             let status = status_of(&refused, Disclosure::Minimal);
             assert_eq!(status.code(), tonic::Code::InvalidArgument);
+            assert_eq!(
+                status
+                    .metadata()
+                    .get(permguard_core::GRPC_ERROR_CODE)
+                    .and_then(|value| value.to_str().ok()),
+                Some(code)
+            );
+        }
+    }
+
+    /// WP-5.5: an offset of another read is `forged` and a malformed one `offset_invalid`, both
+    /// `INVALID_ARGUMENT`, as over REST.
+    #[test]
+    fn an_offset_of_another_read_is_forged_over_grpc() {
+        use permguard_stream::cursor::CursorError;
+
+        for (error, code) in [
+            (CursorError::Forged, permguard_core::codes::common::FORGED),
+            (
+                CursorError::WrongFilters,
+                permguard_core::codes::common::FORGED,
+            ),
+            (
+                CursorError::Malformed,
+                permguard_core::codes::stream::OFFSET_INVALID,
+            ),
+        ] {
+            let status = read_status(read::ReadError::Offset(error), Disclosure::Minimal);
+            assert_eq!(status.code(), tonic::Code::InvalidArgument, "{code}");
             assert_eq!(
                 status
                     .metadata()

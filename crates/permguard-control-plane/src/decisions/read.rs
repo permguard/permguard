@@ -108,6 +108,15 @@ impl std::fmt::Display for ReadError {
     }
 }
 
+/// The code a read refused with this error answers (WP-5.5): a cursor's own, `offset_invalid`
+/// otherwise as before.
+pub fn refusal_code(error: &ReadError) -> &'static str {
+    match error {
+        ReadError::Offset(error) => error.code(),
+        _ => permguard_core::codes::stream::OFFSET_INVALID,
+    }
+}
+
 /// Reads one bounded block of `scope`.
 ///
 /// # What changed, and why it had to
@@ -144,13 +153,14 @@ pub fn read(
             },
         );
 
-        beginning.seal(key).map_err(ReadError::Offset)?
+        beginning
+            .seal_v2(key, keys.now(), keys.lifetime())
+            .map_err(ReadError::Offset)?
     };
 
     let mut cursor = match &window.from {
-        Some(token) => {
-            Cursor::open(token, key, API, &stream, &filters).map_err(ReadError::Offset)?
-        }
+        Some(token) => Cursor::open_any(token, key, API, &stream, &filters, keys.now())
+            .map_err(ReadError::Offset)?,
         None => {
             let mut beginning = Cursor::beginning(API, &stream, &filters, window.until.clone());
             beginning.advance(
@@ -305,7 +315,9 @@ pub fn read(
 
     Ok(Page {
         records,
-        next: cursor.seal(key).map_err(ReadError::Offset)?,
+        next: cursor
+            .seal_v2(key, keys.now(), keys.lifetime())
+            .map_err(ReadError::Offset)?,
         oldest_available,
         high_watermark: observed_frontier.encode(),
         more,

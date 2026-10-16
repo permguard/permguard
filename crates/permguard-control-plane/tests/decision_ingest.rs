@@ -1040,14 +1040,26 @@ fn an_offset_a_consumer_edited_is_refused_by_the_signature() {
     let key = cursor_key();
     let page = read::read(&store, &acme, &key, &window(2)).expect("it reads");
 
-    // The edit: flip a byte of the signed body, which is what an editable cursor would allow.
-    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(&page.next)
-        .expect("the token decodes");
-    let mut sealed: Value = serde_json::from_slice(&raw).expect("it parses");
-    sealed["c"] = json!("eyJ2IjoxfQ");
-    let forged = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(serde_json::to_vec(&sealed).expect("it serializes"));
+    // The edit: move the signed position of a version 2 token (WP-5.5), its MAC kept, which is
+    // what an editable cursor would allow.
+    let (payload, mac) = page
+        .next
+        .strip_prefix(permguard_stream::cursor::V2_PREFIX)
+        .and_then(|rest| rest.split_once('.'))
+        .expect("a version 2 token");
+    let mut body: Value = serde_json::from_slice(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(payload)
+            .expect("the payload decodes"),
+    )
+    .expect("it parses");
+    body["expires_at"] = json!(4_000_000_000_u64);
+    let forged = format!(
+        "{}{}.{mac}",
+        permguard_stream::cursor::V2_PREFIX,
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(permguard_stream::jcs::canonicalize(&body).expect("canonical"))
+    );
 
     let refused = read::read(
         &store,
@@ -1060,7 +1072,13 @@ fn an_offset_a_consumer_edited_is_refused_by_the_signature() {
     )
     .expect_err("an edited offset is not a position this server issued");
 
-    assert!(matches!(refused, read::ReadError::Offset(_)), "{refused:?}");
+    assert!(
+        matches!(
+            refused,
+            read::ReadError::Offset(permguard_stream::cursor::CursorError::Forged)
+        ),
+        "{refused:?}"
+    );
 }
 
 /// An export declares its bound once, and cannot quietly change or drop it afterwards.
