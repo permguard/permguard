@@ -563,10 +563,31 @@ struct Side {
     tasks: Arc<permguard_host::membership::task::Tasks>,
     /// The decision log's producer on the Host's stream engine, when the side runs one (WP-5.8).
     producer: Option<Arc<DecisionProducer>>,
+    /// The Host's audit engine, sealing under its operations ring (WP-5.9).
+    audit: Arc<permguard_host::audit::Engine>,
 }
 
 /// The decision log's producer, as the server registers it.
 type DecisionProducer = permguard_stream::engine::Producer<permguard_decisions::stream::Codec>;
+
+/// A coordinator's `audit.checkpoints` handler acknowledging a checkpoint it was not sent.
+struct Liar;
+
+impl permguard_host::membership::task::TaskHandler for Liar {
+    fn handle(
+        &self,
+        context: &permguard_host::membership::task::TaskContext,
+        _body: &[u8],
+    ) -> Result<Vec<u8>, permguard_host::session::Refusal> {
+        Ok(permguard_host::membership::egress::Ack {
+            trail: format!("security:{}", context.resource),
+            checkpoint: [0; 32],
+            received_at: 1,
+        }
+        .encode()
+        .expect("encodes"))
+    }
+}
 
 /// A task handler that answers each body with `echo:` before it.
 struct Echo;
@@ -760,7 +781,23 @@ async fn side_with(
                 1,
                 ship,
             )
-            .expect("one handler"),
+            .and_then(|handlers| {
+                // The checkpoints its members export (WP-5.9).
+                handlers.register(
+                    permguard_host::membership::record::TaskType::AuditCheckpoints,
+                    permguard_host::membership::egress::VERSION,
+                    // A coordinator named `liar` acknowledges what it was not sent.
+                    if stem == "liar" {
+                        Arc::new(Liar) as Arc<dyn permguard_host::membership::task::TaskHandler>
+                    } else {
+                        Arc::new(permguard_host::membership::egress::AuditCheckpoints {
+                            store: Arc::clone(&members),
+                            time: Arc::clone(&host.time),
+                        })
+                    },
+                )
+            })
+            .expect("the handlers"),
         // A quiet watch heartbeats soon, so a test sees one.
         watch_heartbeat: Duration::from_millis(300),
         ..permguard_host::membership::task::Tasks::default()
@@ -866,6 +903,7 @@ async fn side_with(
         connector,
         tasks,
         producer: engine.map(|(producer, _)| producer),
+        audit,
     }
 }
 
@@ -1277,11 +1315,12 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         connector,
         tasks,
         producer,
+        audit,
     } = member;
     listener.stop(Duration::from_secs(5)).await.expect("stops");
     // Everything of the old process goes, the volume's lock with it.
     drop((
-        host, api, members, mutations, keys, connector, tasks, producer,
+        host, api, members, mutations, keys, connector, tasks, producer, audit,
     ));
     let member = side(
         &root.join("member"),
@@ -2237,10 +2276,11 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
         connector,
         tasks,
         producer: _,
+        audit,
     } = member;
     drop(producer);
     listener.stop(Duration::from_secs(5)).await.expect("stops");
-    drop((host, api, members, mutations, keys, connector, tasks));
+    drop((host, api, members, mutations, keys, connector, tasks, audit));
     let member = streaming_side(
         &root.join("member"),
         &pki,
@@ -2316,4 +2356,560 @@ async fn a_host_shipping_no_stream_drains_complete() {
         .stop(Duration::from_secs(5))
         .await
         .expect("stops");
+}
+
+/// The `audit.checkpoints` task: every checkpoint of the Host's own trails, required.
+fn audit_task() -> permguard_host::api::members::TaskView {
+    permguard_host::api::members::TaskView {
+        task_id: "checkpoints".to_owned(),
+        task_type: "audit.checkpoints".to_owned(),
+        selector: "host/*".to_owned(),
+        resource_types: vec!["*".to_owned()],
+        ..decisions()
+    }
+}
+
+/// A member joined to `coordinator` for `audit_task`, approved and synced: the membership id.
+async fn exporting_pair(coordinator: &Side, member: &Side) -> String {
+    exporting_pair_as(coordinator, member, "audit").await
+}
+
+/// [`exporting_pair`], its request ids tagged `tag`: a member joining two coordinators.
+async fn exporting_pair_as(coordinator: &Side, member: &Side, tag: &str) -> String {
+    use permguard_host::api::members::{ApproveMember, CreateInvite, NarrowView, SyncMembership};
+
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: format!("invite-{tag}"),
+                selector: "host/*".to_owned(),
+                tasks: vec![audit_task()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    let join = permguard_host::api::members::JoinMembership {
+        requested: NarrowView {
+            selector: "host/*".to_owned(),
+            tasks: vec![audit_task()],
+        },
+        ..join_of(coordinator, &invited, &format!("join-{tag}"))
+    };
+    let id = member
+        .api
+        .join_membership(&admin(), join)
+        .await
+        .expect("joined")
+        .membership_id;
+    let pending = coordinator.api.member(&admin(), &id).expect("enrolled");
+    coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &id,
+            ApproveMember {
+                request_id: format!("approve-{tag}"),
+                expected_revision: pending.revision,
+                narrow: None,
+                lease_policy: None,
+                assurance: None,
+            },
+        )
+        .await
+        .expect("approved");
+    member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: format!("sync-{tag}"),
+            },
+        )
+        .await
+        .expect("synced");
+    id
+}
+
+/// The checkpoint envelopes `side` holds of `(class, resource)`, in the trail's order.
+fn sealed_checkpoints(
+    side: &Side,
+    class: permguard_host::audit::Class,
+    resource: &str,
+) -> Vec<Vec<u8>> {
+    side.audit
+        .checkpoints(class, resource, None)
+        .expect("listed")
+        .files
+        .into_iter()
+        .map(|file| file.envelope)
+        .collect()
+}
+
+/// Whether `side`'s Host is `degraded: audit_egress`.
+fn egress_degraded(side: &Side) -> bool {
+    side.api
+        .status(&admin())
+        .expect("the status")
+        .degraded
+        .iter()
+        .any(|degraded| degraded.capability == "audit_egress")
+}
+
+/// WP-5.9: a member's checkpoints leave its volume for its coordinator over `audit.checkpoints`,
+/// verified and kept there in the trail's order; while they wait past the lag, or the
+/// coordinator does not answer, the member is `degraded: audit_egress`, and once acknowledged it
+/// is not; below the profile that requires the egress nothing degrades.
+#[tokio::test]
+async fn a_members_checkpoints_leave_its_volume_for_its_coordinator() {
+    use permguard_host::audit::{Class, HOST};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("audit-egress");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Member),
+    )
+    .await;
+    exporting_pair(&coordinator, &member).await;
+    let membership_id = only_membership(&coordinator);
+
+    // The member's security trail holds its joining: checkpointed, not yet acknowledged.
+    member.audit.checkpoint_all().expect("checkpointed");
+    let sealed = sealed_checkpoints(&member, Class::Security, HOST);
+    assert!(!sealed.is_empty());
+    assert!(
+        member
+            .api
+            .check_audit_egress(true, Duration::from_secs(3600))
+            .expect("checked")
+            .is_empty(),
+        "within the lag nothing is late"
+    );
+    assert!(
+        !member
+            .api
+            .check_audit_egress(true, Duration::ZERO)
+            .expect("checked")
+            .is_empty()
+    );
+    assert!(egress_degraded(&member));
+    assert!(
+        member
+            .api
+            .check_audit_egress(false, Duration::ZERO)
+            .expect("checked")
+            .is_empty(),
+        "below the profile that requires it nothing degrades"
+    );
+    assert!(!egress_degraded(&member));
+
+    // Retention waits: a required task exports the trail and acknowledged nothing yet.
+    use permguard_host::audit::EgressFloor as _;
+    let floor = permguard_host::membership::egress::ExportFloor {
+        store: Arc::clone(&member.members),
+    };
+    assert_eq!(floor.acknowledged(Class::Security, HOST), Some(None));
+    let not_exported = permguard_host::membership::egress::ExportFloor {
+        store: Arc::clone(&coordinator.members),
+    };
+    assert_eq!(not_exported.acknowledged(Class::Security, HOST), None);
+
+    // Exported: kept by the coordinator in the trail's order, and acknowledged.
+    assert!(member.api.export_checkpoints_due().await >= sealed.len());
+    assert!(
+        floor
+            .acknowledged(Class::Security, HOST)
+            .is_some_and(|acked| acked.is_some()),
+        "retention may now go up to the acknowledged seal"
+    );
+    let trail = format!("security:{HOST}");
+    assert_eq!(
+        coordinator
+            .members
+            .kept_checkpoints(&membership_id, &trail)
+            .expect("kept"),
+        sealed
+    );
+    assert!(
+        member
+            .api
+            .check_audit_egress(true, Duration::ZERO)
+            .expect("checked")
+            .is_empty()
+    );
+    assert!(!egress_degraded(&member));
+    assert_eq!(
+        member.api.export_checkpoints_due().await,
+        0,
+        "nothing pending"
+    );
+    // The coordinator's own trails: no task exports them, which the profile does not allow.
+    coordinator.audit.checkpoint_all().expect("checkpointed");
+    assert!(
+        coordinator
+            .api
+            .check_audit_egress(true, Duration::from_secs(3600))
+            .expect("checked")
+            .iter()
+            .any(|late| late.contains("no required audit.checkpoints task exports it"))
+    );
+
+    // A checkpoint the coordinator cannot take now waits, and the member says so.
+    member
+        .api
+        .create_grant(
+            &admin(),
+            permguard_host::api::CreateGrant {
+                request_id: "grant-after".to_owned(),
+                expected_revision: None,
+                principal: "spiffe://acme/operators/reader".to_owned(),
+                operations: vec!["audit.read".to_owned()],
+                selector: "host/*".to_owned(),
+                resource_types: Vec::new(),
+                constraints: Default::default(),
+                expires_at: None,
+            },
+        )
+        .await
+        .expect("a grant, a security record more");
+    member.audit.checkpoint_all().expect("checkpointed");
+    coordinator.members.fence();
+    assert_eq!(member.api.export_checkpoints_due().await, 0);
+    assert!(
+        !member
+            .api
+            .check_audit_egress(true, Duration::ZERO)
+            .expect("checked")
+            .is_empty()
+    );
+    assert!(egress_degraded(&member));
+    coordinator.members.unfence();
+    assert!(member.api.export_checkpoints_due().await >= 1);
+    assert_eq!(
+        coordinator
+            .members
+            .kept_checkpoints(&membership_id, &trail)
+            .expect("kept"),
+        sealed_checkpoints(&member, Class::Security, HOST)
+    );
+    assert!(
+        member
+            .api
+            .check_audit_egress(true, Duration::ZERO)
+            .expect("checked")
+            .is_empty()
+    );
+
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// WP-5.9, after the review: the coordinator keeps only a checkpoint the member's pinned
+/// `host.operations` statement verifies, sealed by that member, of the trail the session and the
+/// class name, with an anchor of that trail: everything else is refused and nothing kept.
+#[tokio::test]
+async fn the_coordinator_refuses_a_checkpoint_it_cannot_verify() {
+    use permguard_host::audit::{Class, HOST};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::egress::{AuditCheckpoints, Ship};
+    use permguard_host::membership::record::{Limits, Role, TaskType};
+    use permguard_host::membership::task::{TaskContext, TaskHandler};
+
+    let root = scratch("audit-egress-refused");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Member),
+    )
+    .await;
+    let id = exporting_pair(&coordinator, &member).await;
+    let membership_id = only_membership(&coordinator);
+    member.audit.checkpoint_all().expect("checkpointed");
+    let envelope = sealed_checkpoints(&member, Class::Security, HOST)
+        .into_iter()
+        .next()
+        .expect("a checkpoint");
+    let statement_of = |ring: &str| {
+        let ring = member
+            .keys
+            .rings()
+            .iter()
+            .find(|held| held.id() == ring)
+            .cloned()
+            .expect("the ring");
+        permguard_host::membership::statement_of(&ring)
+            .expect("a statement")
+            .encode()
+            .expect("encodes")
+    };
+    let operations = statement_of(permguard_host::keys::ring::HOST_OPERATIONS);
+    // The very keys, under a statement of another epoch: not the set the membership pins.
+    let unpinned = {
+        let mut statement = permguard_host::membership::record::RingStatement::decode(&operations)
+            .expect("decodes");
+        statement.epoch += 1;
+        statement.encode().expect("encodes")
+    };
+    let handler = AuditCheckpoints {
+        store: Arc::clone(&coordinator.members),
+        time: Arc::clone(&coordinator.host.time),
+    };
+    let context = |member_host: [u8; 16]| TaskContext {
+        membership_id,
+        task_id: "checkpoints".to_owned(),
+        task_type: TaskType::AuditCheckpoints,
+        version: 1,
+        epoch: coordinator.api.member(&admin(), &id).expect("read").epoch,
+        resource: HOST.to_owned(),
+        member: member_host,
+        request_id: "checkpoint".to_owned(),
+        limits: Limits {
+            max_body_bytes: 1 << 20,
+            max_concurrency: 4,
+            max_rate_per_minute: 600,
+            max_batch_records: 1000,
+            retention_seconds: 86_400,
+        },
+        channel_binding: [0; 32],
+    };
+    let ship = |class: &str, checkpoint: Vec<u8>, statement: Vec<u8>, anchor: Option<Vec<u8>>| {
+        Ship {
+            class: class.to_owned(),
+            checkpoint,
+            statement,
+            anchor,
+        }
+        .encode()
+        .expect("encodes")
+    };
+    let mine = member.host.identity.host_id();
+    let mut tampered = envelope.clone();
+    let last = tampered.len() - 1;
+    tampered[last] ^= 0x01;
+    let other_anchor = permguard_host::audit::checkpoint::Anchor {
+        trail: format!("operations:{HOST}"),
+        low_watermark: 1,
+        through: "2026-10-15".to_owned(),
+        checkpoint: permguard_host::audit::record::genesis(),
+    }
+    .encode()
+    .expect("encodes");
+    for (case, member_host, body) in [
+        (
+            "a signature that does not verify",
+            mine,
+            ship("security", tampered, operations.clone(), None),
+        ),
+        (
+            "a statement of another ring",
+            mine,
+            ship(
+                "security",
+                envelope.clone(),
+                statement_of(permguard_host::keys::ring::DATA_ATTEST),
+                None,
+            ),
+        ),
+        (
+            "the operations keys under a statement that is not the pinned one",
+            mine,
+            ship("security", envelope.clone(), unpinned.clone(), None),
+        ),
+        (
+            "a checkpoint another Host sealed",
+            [7; 16],
+            ship("security", envelope.clone(), operations.clone(), None),
+        ),
+        (
+            "a class the checkpoint is not of",
+            mine,
+            ship("operations", envelope.clone(), operations.clone(), None),
+        ),
+        (
+            "an anchor of another trail",
+            mine,
+            ship(
+                "security",
+                envelope.clone(),
+                operations.clone(),
+                Some(other_anchor.clone()),
+            ),
+        ),
+    ] {
+        let refused = handler
+            .handle(&context(member_host), &body)
+            .expect_err(case);
+        assert_eq!(refused.code, codes::common::INVALID_ARGUMENT, "{case}");
+    }
+    let trail = format!("security:{HOST}");
+    assert!(
+        coordinator
+            .members
+            .kept_checkpoints(&membership_id, &trail)
+            .expect("kept")
+            .is_empty(),
+        "nothing kept"
+    );
+    handler
+        .handle(
+            &context(mine),
+            &ship("security", envelope.clone(), operations, None),
+        )
+        .expect("the member's own checkpoint, under its pinned statement");
+    assert_eq!(
+        coordinator
+            .members
+            .kept_checkpoints(&membership_id, &trail)
+            .expect("kept"),
+        vec![envelope]
+    );
+
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// WP-5.9: an acknowledgement of a checkpoint the member did not send is no acknowledgement: the
+/// member keeps none, and the checkpoint stays late.
+#[tokio::test]
+async fn a_member_keeps_no_acknowledgement_of_another_checkpoint() {
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("audit-egress-liar");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("liar"),
+        &pki,
+        "liar",
+        "host.operations",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Member),
+    )
+    .await;
+    exporting_pair(&coordinator, &member).await;
+    member.audit.checkpoint_all().expect("checkpointed");
+    assert_eq!(member.api.export_checkpoints_due().await, 0);
+    assert!(
+        !member
+            .api
+            .check_audit_egress(true, Duration::ZERO)
+            .expect("checked")
+            .is_empty()
+    );
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// WP-5.9: with two required tasks exporting a trail, retention waits for the one that
+/// acknowledged nothing.
+#[tokio::test]
+async fn retention_waits_for_every_required_task_exporting_a_trail() {
+    use permguard_host::audit::{Class, EgressFloor as _, HOST};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("audit-egress-two");
+    let pki = Pki::new(&root);
+    let honest = side(
+        &root.join("honest"),
+        &pki,
+        "honest",
+        "host.operations",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Coordinator),
+    )
+    .await;
+    let liar = side(
+        &root.join("liar"),
+        &pki,
+        "liar",
+        "host.operations",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Member),
+    )
+    .await;
+    exporting_pair_as(&honest, &member, "honest").await;
+    exporting_pair_as(&liar, &member, "liar").await;
+    member.audit.checkpoint_all().expect("checkpointed");
+    member.api.export_checkpoints_due().await;
+    let trail = format!("security:{HOST}");
+    let membership = only_membership(&honest);
+    assert!(
+        !honest
+            .members
+            .kept_checkpoints(&membership, &trail)
+            .expect("kept")
+            .is_empty(),
+        "one coordinator acknowledged"
+    );
+    let floor = permguard_host::membership::egress::ExportFloor {
+        store: Arc::clone(&member.members),
+    };
+    assert_eq!(
+        floor.acknowledged(Class::Security, HOST),
+        Some(None),
+        "the other acknowledged nothing: nothing goes"
+    );
+    for side in [honest, liar, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
 }

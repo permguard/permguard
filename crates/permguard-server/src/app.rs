@@ -1823,6 +1823,13 @@ impl App {
         mutations
             .recover(&permguard_host::membership::Memberships(&members))
             .context("recovering the membership mutations a crash left open")?;
+        // Retention deletes a day of an exported trail only once its seal is acknowledged
+        // (WP-5.9, owner decision).
+        audit_engine.gate_retention_with(Arc::new(
+            permguard_host::membership::egress::ExportFloor {
+                store: Arc::clone(&members),
+            },
+        ));
         let keys: Option<Arc<dyn KeyManager>> = keys.map(|ring| ring as Arc<dyn KeyManager>);
 
         // Every issuer this deployment hosts, each with its own keys and trail, built once here. A
@@ -1970,6 +1977,17 @@ impl App {
                     .map_err(|error| anyhow::anyhow!("{error}"))?,
                 None => permguard_host::membership::task::TaskHandlers::default(),
             };
+            // The Host keeps the checkpoints its members export (WP-5.9).
+            let handlers = handlers
+                .register(
+                    permguard_host::membership::record::TaskType::AuditCheckpoints,
+                    permguard_host::membership::egress::VERSION,
+                    Arc::new(permguard_host::membership::egress::AuditCheckpoints {
+                        store: Arc::clone(&members),
+                        time: Arc::clone(&time),
+                    }),
+                )
+                .map_err(|error| anyhow::anyhow!("{error}"))?;
             // The ship tasks' ingest, on the stream engine's consumers (WP-5.3).
             let handlers = match ingests.clone() {
                 Some((decisions, events)) => handlers
@@ -2125,11 +2143,32 @@ impl App {
             crate::shipping::resume(api, config.shutdown_drain_timeout()).await;
         }
         let _repinning = match (repinning_coordinator, serving.as_ref()) {
-            (Some(coordinating), Some(api)) => {
-                Some(crate::repin::drive(coordinating, Arc::clone(api)))
-            }
+            (Some(coordinating), Some(api)) => Some(crate::repin::drive(
+                coordinating,
+                Arc::clone(api),
+                crate::repin::Egress {
+                    enforce: config
+                        .assurance()
+                        .requires(permguard_core::assurance::Control::AuditExternalCheckpoints),
+                    max_lag: config.audit_checkpoints_max_lag(),
+                },
+            )),
             _ => None,
         };
+        // Where the profile requires the checkpoints to leave the volume and nothing here can
+        // send them, the Host says so from the start (WP-5.9, after the review).
+        if _repinning.is_none()
+            && config
+                .assurance()
+                .requires(permguard_core::assurance::Control::AuditExternalCheckpoints)
+        {
+            context.health().lifecycle().degrade(
+                permguard_core::lifecycle::HOST,
+                "audit_egress",
+                "no Host listener composes a membership side: the audit checkpoints cannot leave \
+                 the volume",
+            );
+        }
         let mut host = permguard_host::composition::Host::builder()
             .audit(recorder)
             .authorization(authorization)

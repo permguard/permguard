@@ -25,8 +25,8 @@ use crate::config::{
     DEFAULT_TELEMETRY_ADDR, SETTING_ADMIN_ADDR, SETTING_ADMIN_ADVERTISED_URL, SETTING_ADMIN_ALLOW,
     SETTING_ADMIN_PEER_SESSIONS, SETTING_ADMIN_TLS_CERT, SETTING_ADMIN_TLS_CLIENT_CA,
     SETTING_ADMIN_TLS_CRL, SETTING_ADMIN_TLS_KEY, SETTING_ADMIN_TLS_MIN_VERSION,
-    SETTING_ASSURANCE_ADDED_CONTROLS, SETTING_ASSURANCE_PROFILE, SETTING_AUDIT_DIRECTORY,
-    SETTING_AUDIT_PSEUDONYM_ENABLED, SETTING_AUDIT_PSEUDONYM_KEY_REF,
+    SETTING_ASSURANCE_ADDED_CONTROLS, SETTING_ASSURANCE_PROFILE, SETTING_AUDIT_CHECKPOINTS_MAX_LAG,
+    SETTING_AUDIT_DIRECTORY, SETTING_AUDIT_PSEUDONYM_ENABLED, SETTING_AUDIT_PSEUDONYM_KEY_REF,
     SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS, SETTING_AUDIT_RETENTION,
     SETTING_AUDIT_RETENTION_SECURITY, SETTING_AUDIT_SINK, SETTING_AUTOGENERATE,
     SETTING_DEVELOPMENT_MODE, SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS,
@@ -1040,6 +1040,9 @@ struct AuditSection {
     /// How long sealed `security` days are kept; unset, for ever.
     #[serde(default)]
     retention_security: Option<String>,
+    /// How the checkpoints leave the volume (WP-5.9).
+    #[serde(default)]
+    checkpoints: AuditCheckpointsSection,
     /// Whether refused operations are recorded in the trail as well as the log.
     #[serde(default)]
     refusals: Option<String>,
@@ -1050,6 +1053,15 @@ struct AuditSection {
 /// Which secret the pseudonymisation key is, and the version every token names.
 ///
 /// The key itself is not here and never will be: this names it, and the secret store resolves it.
+/// How the audit checkpoints leave the volume (WP-5.9).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuditCheckpointsSection {
+    /// How long a checkpoint may wait for a coordinator's acknowledgement.
+    #[serde(default)]
+    max_lag: Option<String>,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PseudonymSection {
@@ -1352,6 +1364,10 @@ impl ConfigFile {
             (
                 SETTING_AUDIT_RETENTION_SECURITY,
                 self.operations.audit.retention_security.as_ref(),
+            ),
+            (
+                SETTING_AUDIT_CHECKPOINTS_MAX_LAG,
+                self.operations.audit.checkpoints.max_lag.as_ref(),
             ),
             (SETTING_KEYS_ENABLED, self.operations.keys.enabled.as_ref()),
             (

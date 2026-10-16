@@ -328,6 +328,10 @@ pub const SETTING_AUDIT_RETENTION: &str = "PERMGUARD_AUDIT_RETENTION";
 /// Runtime setting key for how long a sealed day of `security` audit records is kept; unset, for
 /// ever (WP-3.7, owner decision of 2026-10-11).
 pub const SETTING_AUDIT_RETENTION_SECURITY: &str = "PERMGUARD_AUDIT_RETENTION_SECURITY";
+/// Runtime setting key for how long a checkpoint may wait for a coordinator's acknowledgement
+/// before the Host is `degraded: audit_egress` from `production` up (WP-5.9, owner decision of
+/// 2026-10-16).
+pub const SETTING_AUDIT_CHECKPOINTS_MAX_LAG: &str = "PERMGUARD_AUDIT_CHECKPOINTS_MAX_LAG";
 /// Whether refused operations are recorded in the audit trail as well as the log.
 ///
 /// Off by default: the trail records what changed the world, and a caller's mistakes change
@@ -859,6 +863,8 @@ const DEFAULT_KEYS_RETAIN: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 
 /// How long a day of audit records is kept when nothing says otherwise.
 const DEFAULT_AUDIT_RETENTION: Duration = Duration::from_secs(90 * 24 * 60 * 60);
+/// How long a checkpoint may wait for its acknowledgement: two sweeps (WP-5.9).
+const DEFAULT_AUDIT_CHECKPOINTS_MAX_LAG: Duration = Duration::from_secs(2 * 60 * 60);
 
 /// NOTP transfer bounds: a batch comfortably above the 5 MB object ceiling, deltas sized for
 /// policy ledgers (hundreds of small objects), and a ledger quota an order above that.
@@ -1326,6 +1332,7 @@ pub struct Config {
     audit_directory: Option<String>,
     audit_retention: Duration,
     audit_retention_security: Option<Duration>,
+    audit_checkpoints_max_lag: Duration,
     audit_pseudonym_enabled: bool,
     audit_pseudonym_key_ref: Option<SecretRef>,
     audit_pseudonym_key_version: String,
@@ -1507,6 +1514,7 @@ impl Default for Config {
             audit_directory: None,
             audit_retention: DEFAULT_AUDIT_RETENTION,
             audit_retention_security: None,
+            audit_checkpoints_max_lag: DEFAULT_AUDIT_CHECKPOINTS_MAX_LAG,
             audit_pseudonym_enabled: false,
             audit_pseudonym_key_ref: None,
             audit_pseudonym_key_version: DEFAULT_KEY_VERSION.to_owned(),
@@ -3226,6 +3234,12 @@ produce: use `EdDSA` or `ES256`"
         self.audit_retention_security
     }
 
+    /// Returns how long a checkpoint may wait for a coordinator's acknowledgement before the Host
+    /// is `degraded: audit_egress`, from `production` up (WP-5.9).
+    pub fn audit_checkpoints_max_lag(&self) -> Duration {
+        self.audit_checkpoints_max_lag
+    }
+
     /// Returns the largest NOTP transfer batch, in bytes.
     pub fn notp_max_batch_bytes(&self) -> u64 {
         self.notp_max_batch_bytes
@@ -4132,6 +4146,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_AUDIT_DIRECTORY => Some(self.audit_directory().display().to_string()),
             SETTING_AUDIT_RETENTION => d(self.audit_retention),
             SETTING_AUDIT_RETENTION_SECURITY => self.audit_retention_security.and_then(d),
+            SETTING_AUDIT_CHECKPOINTS_MAX_LAG => d(self.audit_checkpoints_max_lag),
             SETTING_AUDIT_REFUSALS => b(self.audit_refusals),
             SETTING_NOTP_MAX_BATCH_BYTES => n(self.notp_max_batch_bytes),
             SETTING_NOTP_MAX_BATCH_OBJECTS => n(self.notp_max_batch_objects),
@@ -5260,6 +5275,11 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
+        if let Some(value) = settings.get(SETTING_AUDIT_CHECKPOINTS_MAX_LAG) {
+            self.audit_checkpoints_max_lag = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_AUDIT_CHECKPOINTS_MAX_LAG}"))?;
+        }
+
         if let Some(value) = settings.get(SETTING_CONTROL_KEYS_ENABLED) {
             self.control_keys_enabled = Some(
                 parse_bool(value)
@@ -5664,6 +5684,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_AUDIT_REFUSALS,
     SETTING_AUDIT_RETENTION,
     SETTING_AUDIT_RETENTION_SECURITY,
+    SETTING_AUDIT_CHECKPOINTS_MAX_LAG,
     SETTING_AUDIT_SINK,
     SETTING_AUTHZ_CACHE_BYTES,
     SETTING_AUTHZ_CACHE_PARTITIONS,

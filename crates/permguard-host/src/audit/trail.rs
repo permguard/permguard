@@ -37,7 +37,7 @@ use crate::storage::{Dir, Result as StorageResult, StorageError, tombstone};
 use super::Class;
 use super::checkpoint::{
     ANCHOR, Anchor, Checkpoint, CheckpointSigner, envelope_digest, file_name, no_checkpoint,
-    ordered, parse_name, read_unverified,
+    order_of, ordered, parse_name, read_unverified,
 };
 use super::record::{AuditRecord, MAX_RECORD_BYTES, TrailMeta, digest_of, genesis, hex};
 
@@ -392,17 +392,38 @@ impl Trail {
     /// Deletes the sealed day files older than the retention, counted back from the day file
     /// `today`, writing `ANCHOR.cbor` before the first goes; answers the anchor written. The
     /// newest such day with a seal bounds the deletion, so the anchor always names a seal.
-    pub fn prune(&self, today: &str) -> StorageResult<Option<Anchor>> {
+    ///
+    /// `egress` is what an export of the trail allows (WP-5.9): `None` when no required task
+    /// exports it; otherwise only the days whose seal is at or before the acknowledged checkpoint
+    /// it names go, and none while nothing is acknowledged.
+    pub fn prune(
+        &self,
+        today: &str,
+        egress: Option<Option<&str>>,
+    ) -> StorageResult<Option<Anchor>> {
         let (Some(retention), Some(sealed)) = (self.retention, &self.sealed) else {
             return Ok(None);
         };
         let Some(cutoff) = cutoff(today, retention) else {
             return Ok(None);
         };
+        let acknowledged = match egress {
+            None => None,
+            Some(None) => return Ok(None),
+            Some(Some(name)) => Some(order_of(name).ok_or_else(|| {
+                StorageError::Corruption(format!("`{name}` names no checkpoint"))
+            })?),
+        };
         let sealed_day = format!("{sealed}{DAY_SUFFIX}");
         let doomed: Vec<String> = days(&self.dir)?
             .into_iter()
             .filter(|day| *day < cutoff && day.as_str() != today && *day <= sealed_day)
+            // A day goes only once the seal that closes it left the volume.
+            .filter(|day| {
+                acknowledged
+                    .as_ref()
+                    .is_none_or(|acknowledged| (period_of(day), u64::MAX) <= *acknowledged)
+            })
             .collect();
         let checkpoints = self.dir.subdir(CHECKPOINTS, true)?;
         let Some((through, envelope)) = doomed

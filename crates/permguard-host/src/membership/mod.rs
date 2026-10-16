@@ -36,6 +36,7 @@
 pub mod appraisal;
 pub mod contracts;
 pub mod dormancy;
+pub mod egress;
 pub mod member;
 pub mod progress;
 pub mod record;

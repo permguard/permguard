@@ -553,6 +553,8 @@ struct Inner {
     pending_drops: Mutex<BTreeMap<String, u64>>,
     /// How long `access` and `operations` day files are kept.
     retention: OnceLock<std::time::Duration>,
+    /// What the export of each trail allows retention to delete (WP-5.9).
+    egress: OnceLock<Arc<dyn EgressFloor>>,
     /// How long `security` day files are kept; for ever unless set.
     retention_security: OnceLock<std::time::Duration>,
     signer: OnceLock<Arc<dyn CheckpointSigner>>,
@@ -567,6 +569,14 @@ struct Inner {
 /// One trail a listing found: its class, its digest, and the resource its `META.cbor` names or
 /// why it names none.
 type Listed = (Class, String, Result<String, String>);
+
+/// What the export of a trail allows retention to delete (WP-5.9, owner decision of 2026-10-16).
+pub trait EgressFloor: Send + Sync {
+    /// `None` when no required task exports the trail of `(class, resource)`: retention as
+    /// configured. Otherwise the last checkpoint a coordinator acknowledged, by its file name, and
+    /// `Some(None)` while none is.
+    fn acknowledged(&self, class: Class, resource: &str) -> Option<Option<String>>;
+}
 
 /// The audit engine of one process.
 pub struct Engine {
@@ -604,6 +614,12 @@ impl Engine {
     /// from now on; without it a `security` trail keeps every day (owner decision of 2026-10-11).
     pub fn retain_security_for(&self, retention: std::time::Duration) {
         let _ = self.inner.retention_security.set(retention);
+    }
+
+    /// Bounds retention by the export of each trail from now on (WP-5.9): a day goes only once
+    /// the seal that closes it was acknowledged, while a required task exports its trail.
+    pub fn gate_retention_with(&self, egress: Arc<dyn EgressFloor>) {
+        let _ = self.inner.egress.set(egress);
     }
 
     /// Seals every ended day of every trail with `signer` from now on.
@@ -653,6 +669,7 @@ impl Engine {
             dropped: AtomicU64::new(0),
             pending_drops: Mutex::new(BTreeMap::new()),
             retention: OnceLock::new(),
+            egress: OnceLock::new(),
             retention_security: OnceLock::new(),
             signer: OnceLock::new(),
             witness: OnceLock::new(),
@@ -785,6 +802,33 @@ impl Engine {
         }
         self.inner.ask_witness(&visited);
         Ok(written)
+    }
+
+    /// Every trail on the volume, by class and resource (WP-5.9: what an export ships); a trail
+    /// whose `META.cbor` cannot be read refuses the listing rather than being skipped.
+    pub fn trails_held(&self) -> Result<Vec<(Class, String)>, Refused> {
+        self.trails()?
+            .into_iter()
+            .map(|(class, digest, resource)| {
+                resource.map(|resource| (class, resource)).map_err(|error| {
+                    Refused::Storage(format!(
+                        "the {} trail {digest} cannot be read: {error}",
+                        class.as_str()
+                    ))
+                })
+            })
+            .collect()
+    }
+
+    /// The bytes of the `ANCHOR.cbor` of `(class, resource)`, when retention deleted a prefix.
+    pub fn anchor_bytes(&self, class: Class, resource: &str) -> Result<Option<Vec<u8>>, Refused> {
+        match trail::directory(&self.inner.trails, class, resource, false) {
+            Ok(dir) => dir
+                .read(checkpoint::ANCHOR)
+                .map_err(|error| Refused::Storage(error.to_string())),
+            Err(error) if not_found(&error) => Ok(None),
+            Err(error) => Err(Refused::Storage(error.to_string())),
+        }
     }
 
     /// Whether a checkpoint signer is registered: without one this process seals nothing.
@@ -1201,7 +1245,11 @@ impl Inner {
                 Err(error) => self.seal_failed(class, resource, &error),
             }
         }
-        if let Err(error) = trail.prune(today) {
+        let egress = self
+            .egress
+            .get()
+            .and_then(|floor| floor.acknowledged(class, resource));
+        if let Err(error) = trail.prune(today, egress.as_ref().map(|held| held.as_deref())) {
             tracing::error!(
                 event.name = "audit.retention_failed",
                 component = "host",

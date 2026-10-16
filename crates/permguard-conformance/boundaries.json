@@ -912,6 +912,46 @@
     },
     {
       "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/egress.rs",
+      "item": "Ship::decode",
+      "entry": "permguard_host::membership::egress::Ship::decode",
+      "max_input_bytes": 65536,
+      "limit": "`membership::egress::MAX_RECORD_BYTES` (64 KiB), checked by the decoder before it parses: the body of a member's `audit.checkpoints` task message (WP-5.9)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/egress.rs",
+      "item": "Ack::decode",
+      "entry": "permguard_host::membership::egress::Ack::decode",
+      "max_input_bytes": 65536,
+      "limit": "`membership::egress::MAX_RECORD_BYTES` (64 KiB), checked by the decoder before it parses: the coordinator's acknowledgement of a checkpoint (WP-5.9)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/egress.rs",
+      "item": "Acks::decode",
+      "entry": "permguard_host::membership::egress::Acks::decode",
+      "max_input_bytes": 1048576,
+      "limit": "`membership::egress::MAX_ACKS_BYTES` (1 MiB), checked by the decoder before it parses, and at most 4096 trails in order: the member's acknowledgements, read back from its volume (WP-5.9)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/egress.rs",
+      "item": "Kept::decode",
+      "entry": "permguard_host::membership::egress::Kept::decode",
+      "max_input_bytes": 128,
+      "limit": "`membership::egress::MAX_KEPT_BYTES` (128 bytes), checked by the decoder before it parses: the coordinator's last checkpoint kept of a trail, read back from its volume (WP-5.9)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
       "source": "crates/permguard-host/src/membership/record.rs",
       "item": "Acknowledgement::decode",
       "entry": "permguard_host::membership::record::Acknowledgement::decode",

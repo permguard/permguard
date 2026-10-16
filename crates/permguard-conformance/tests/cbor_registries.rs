@@ -2781,6 +2781,7 @@ fn samples(file: &str) -> Vec<Sample> {
 fn audit_samples() -> Vec<Sample> {
     use permguard_host::audit::checkpoint::{Anchor, Checkpoint};
     use permguard_host::audit::record::{AuditRecord, FactValue, TrailMeta, genesis};
+    use permguard_host::membership::egress::{Ack, Acked, Acks, Kept, Ship};
     use permguard_objects::digest::Digest;
 
     let full = AuditRecord {
@@ -2875,6 +2876,68 @@ fn audit_samples() -> Vec<Sample> {
             .expect("encodes"),
             &[],
             Some(Box::new(|bytes: &[u8]| verdict(Anchor::decode(bytes)))),
+        ),
+        // WP-5.9: the `audit.checkpoints` task's records.
+        sample(
+            "checkpoint_ship",
+            Ship {
+                class: "security".to_owned(),
+                checkpoint: vec![0x84, 1],
+                statement: vec![0xa1, 2],
+                anchor: Some(vec![0xa4, 3]),
+            }
+            .encode()
+            .expect("encodes"),
+            &["checkpoint_ship.anchor"],
+            Some(Box::new(|bytes: &[u8]| verdict(Ship::decode(bytes)))),
+        ),
+        sample(
+            "checkpoint_ship",
+            Ship {
+                class: "operations".to_owned(),
+                checkpoint: vec![0x84, 1],
+                statement: vec![0xa1, 2],
+                anchor: None,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Ship::decode(bytes)))),
+        ),
+        sample(
+            "checkpoint_ack",
+            Ack {
+                trail: "security:host".to_owned(),
+                checkpoint: [4; 32],
+                received_at: 1_800_086_400,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Ack::decode(bytes)))),
+        ),
+        sample(
+            "egress_acks",
+            Acks(vec![Acked {
+                trail: "security:host".to_owned(),
+                name: "2027-01-15.cose".to_owned(),
+                digest: [5; 32],
+            }])
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Acks::decode(bytes)))),
+        ),
+        sample(
+            "kept_checkpoint",
+            Kept {
+                count: 2,
+                digest: [6; 32],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Kept::decode(bytes)))),
         ),
     ]
 }

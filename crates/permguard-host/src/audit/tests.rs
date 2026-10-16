@@ -1210,7 +1210,7 @@ fn an_anchor_is_written_before_a_prefix_goes_and_verifies() {
     {
         let _failing =
             permguard_core::fault::inject(dir.path(), permguard_core::fault::Fault::WriteFails);
-        assert!(opened.prune(&today).is_err());
+        assert!(opened.prune(&today, None).is_err());
     }
     assert_eq!(trail::days(&dir).expect("listed").len(), 3);
     assert_eq!(trail::anchor(&dir).expect("read"), None);
@@ -1218,10 +1218,13 @@ fn an_anchor_is_written_before_a_prefix_goes_and_verifies() {
     // before the anchor stands.
     let blocked = dir.child_path(checkpoint::ANCHOR);
     std::fs::create_dir(&blocked).expect("a directory where the anchor goes");
-    assert!(opened.prune(&today).is_err());
+    assert!(opened.prune(&today, None).is_err());
     assert_eq!(trail::days(&dir).expect("listed").len(), 3);
     std::fs::remove_dir(&blocked).expect("removed");
-    let anchor = opened.prune(&today).expect("pruned").expect("an anchor");
+    let anchor = opened
+        .prune(&today, None)
+        .expect("pruned")
+        .expect("an anchor");
     assert_eq!(trail::anchor(&dir).expect("read"), Some(anchor.clone()));
     assert_eq!(trail::days(&dir).expect("listed"), vec![today]);
     let seal = envelope(&dir, &format!("{}.cose", period(DAY)));
@@ -1720,5 +1723,63 @@ fn every_trail_is_checkpointed_at_once_and_one_that_cannot_be_read_refuses_it() 
     assert!(engine.sweep().is_ok(), "the sweep goes on");
     let refused = engine.checkpoint_all().expect_err("an unreadable trail");
     assert!(refused.to_string().contains(&"0".repeat(64)), "{refused}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// An export floor a test sets: what the coordinator acknowledged of `operations:host`.
+#[derive(Default)]
+struct Floor(std::sync::Mutex<Option<Option<String>>>);
+
+impl EgressFloor for Floor {
+    fn acknowledged(&self, class: Class, resource: &str) -> Option<Option<String>> {
+        if (class, resource) != (Class::Operations, HOST) {
+            return None;
+        }
+        self.0.lock().expect("the floor").clone()
+    }
+}
+
+/// WP-5.9: while a required task exports a trail, retention deletes a day only once the seal
+/// that closes it is acknowledged; with nothing acknowledged nothing goes, and a trail no task
+/// exports follows its retention alone.
+#[test]
+fn retention_waits_for_the_acknowledged_seal_of_an_exported_trail() {
+    let root = scratch("retention-egress");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, _ring) = sealing(&volume, time);
+    let floor = Arc::new(Floor::default());
+    *floor.0.lock().expect("the floor") = Some(None);
+    engine.gate_retention_with(Arc::clone(&floor) as Arc<dyn EgressFloor>);
+    engine.retain_for(Duration::from_secs(2 * 86_400));
+    for jump in [0, DAY, 4 * DAY] {
+        wall.jump(jump);
+        start(&engine);
+    }
+    let operations = engine.trail_dir(Class::Operations, HOST).expect("trail");
+    assert_eq!(
+        trail::days(&operations).expect("listed").len(),
+        3,
+        "nothing acknowledged: nothing goes, past its retention or not"
+    );
+
+    // The first day's seal acknowledged: that day goes, the next waits.
+    *floor.0.lock().expect("the floor") = Some(Some(format!("{}.cose", period(0))));
+    engine.sweep().expect("swept");
+    assert_eq!(
+        trail::days(&operations).expect("listed"),
+        vec![
+            trail::day_name((START + DAY) as u64),
+            trail::day_name((START + 5 * DAY) as u64)
+        ]
+    );
+
+    // Exported by no required task: the retention alone.
+    *floor.0.lock().expect("the floor") = None;
+    engine.sweep().expect("swept");
+    assert_eq!(
+        trail::days(&operations).expect("listed"),
+        vec![trail::day_name((START + 5 * DAY) as u64)]
+    );
     let _ = std::fs::remove_dir_all(root);
 }

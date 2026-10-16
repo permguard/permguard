@@ -62,8 +62,10 @@ use permguard_objects::cose::Sign1;
 const REVOKE: &str = "members.revoke";
 /// The capability an unshipped stream degrades (WP-5.8).
 const EVIDENCE: &str = "evidence";
-/// How many unshipped streams the readiness names; the rest are counted.
+/// How many unshipped streams, or late trails, the readiness names; the rest are counted.
 const UNSHIPPED_NAMED: usize = 8;
+/// The capability a checkpoint that did not leave the volume in time degrades (WP-5.9).
+const AUDIT_EGRESS: &str = "audit_egress";
 
 /// What the composition hands the facade for the memberships.
 pub struct MembershipService {
@@ -2076,6 +2078,140 @@ impl HostApi {
                 "host".to_owned(),
             ))
             .await
+    }
+
+    /// Exports the audit checkpoints this Host's `audit.checkpoints` tasks have not had
+    /// acknowledged (WP-5.9): the server's periodic pass, after the streams.
+    pub async fn export_checkpoints_due(&self) -> usize {
+        let Some(engine) = self.audit.as_deref() else {
+            return 0;
+        };
+        let Ok((memberships, connector)) = self.member_side() else {
+            return 0;
+        };
+        let Ok(member) = self.acting_member(memberships, connector) else {
+            return 0;
+        };
+        member
+            .export_checkpoints(
+                crate::operations::journal::Initiator::System("host".to_owned()),
+                engine,
+            )
+            .await
+    }
+
+    /// Checks that every trail's checkpoints left the volume within `max_lag` (WP-5.9, owner
+    /// decision of 2026-10-16): a trail whose oldest checkpoint not acknowledged by a required
+    /// `audit.checkpoints` task is older, or that no required task exports, degrades
+    /// `audit_egress`, named; restored once none is. `enforce` is whether the profile asks it,
+    /// `production` upward. Answers the trails named.
+    pub fn check_audit_egress(
+        &self,
+        enforce: bool,
+        max_lag: std::time::Duration,
+    ) -> Result<Vec<String>, String> {
+        let lifecycle = self.health.lifecycle();
+        if !enforce {
+            lifecycle.restore(permguard_core::lifecycle::HOST, AUDIT_EGRESS);
+            return Ok(Vec::new());
+        }
+        // A check that cannot be made is never a healthy one (after the review).
+        let late = self.late_trails(max_lag).unwrap_or_else(|error| {
+            vec![format!(
+                "the checkpoints' egress could not be checked: {error}"
+            )]
+        });
+        if late.is_empty() {
+            lifecycle.restore(permguard_core::lifecycle::HOST, AUDIT_EGRESS);
+        } else {
+            let more = late.len().saturating_sub(UNSHIPPED_NAMED);
+            lifecycle.degrade(
+                permguard_core::lifecycle::HOST,
+                AUDIT_EGRESS,
+                format!(
+                    "audit checkpoints have not left the volume: {}{}",
+                    late.iter()
+                        .take(UNSHIPPED_NAMED)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                    if more > 0 {
+                        format!("; and {more} more")
+                    } else {
+                        String::new()
+                    }
+                ),
+            );
+        }
+        Ok(late)
+    }
+
+    /// The trails whose checkpoints did not leave the volume within `max_lag`, each named with
+    /// why.
+    fn late_trails(&self, max_lag: std::time::Duration) -> Result<Vec<String>, String> {
+        let Some(engine) = self.audit.as_deref() else {
+            return Ok(vec![
+                "no audit engine is composed: nothing seals or exports the trails".to_owned(),
+            ]);
+        };
+        let store = self
+            .memberships
+            .as_deref()
+            .map(|memberships| &memberships.store);
+        let now = self.time.now_secs();
+        let mut late = Vec::new();
+        for (class, resource) in engine.trails_held().map_err(|error| error.to_string())? {
+            let trail = format!("{}:{resource}", class.as_str());
+            let listing = engine
+                .checkpoints(class, &resource, None)
+                .map_err(|error| format!("{error:?}"))?;
+            if listing.files.is_empty() {
+                continue;
+            }
+            let exporters: Vec<_> = store
+                .map(|store| store.exporting(&resource))
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|(.., required)| *required)
+                .collect();
+            if exporters.is_empty() {
+                late.push(format!(
+                    "{trail}: no required audit.checkpoints task exports it"
+                ));
+                continue;
+            }
+            for (id, task_id, _) in exporters {
+                let acks = store
+                    .map(|store| store.egress_acks(&id, &task_id))
+                    .transpose()
+                    .map_err(|error| error.to_string())?
+                    .unwrap_or_default();
+                let from = match crate::membership::egress::pending_from(&listing, acks.of(&trail))
+                {
+                    Ok(from) => from,
+                    Err(error) => {
+                        late.push(format!("{trail}: {error}"));
+                        break;
+                    }
+                };
+                let Some(oldest) = listing.files.get(from) else {
+                    continue;
+                };
+                let created = crate::audit::checkpoint::read_unverified(&oldest.envelope)
+                    .map_err(|error| error.to_string())?
+                    .created_at;
+                if now.saturating_sub(created) >= max_lag.as_secs() {
+                    late.push(format!(
+                        "{trail}: not acknowledged since {}",
+                        permguard_core::time::to_rfc3339(
+                            i64::try_from(created).unwrap_or(i64::MAX)
+                        )
+                    ));
+                    break;
+                }
+            }
+        }
+        Ok(late)
     }
 
     /// Ships what this Host's ship tasks have due (WP-5.4): the server's periodic pass.

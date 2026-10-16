@@ -92,8 +92,8 @@ pub const CONTRACTS: [Contract; 6] = [
         consumer: Role::Coordinator,
         provided_by: Server::Host,
         consumed_by: Server::Host,
-        messages: "1-architecture/5-architecture-server-host-audit.md: audit checkpoints",
-        served: false,
+        messages: "permguard_host::membership::egress: checkpoint shipment and acknowledgement; a fork of the trail refused as `fork`",
+        served: true,
     },
     Contract {
         task_type: TaskType::ZoneSecrets,

@@ -19,6 +19,13 @@ is cut.
 
 ### Added
 
+- **Audit checkpoints leave the volume they attest.**
+  A Host that is the member of an `audit.checkpoints` task ships each checkpoint it seals, in its trail's order, to the coordinator, which verifies it under the member's pinned `host.operations` keys and keeps it.
+  A checkpoint that does not continue the trail the coordinator holds is refused as `fork`.
+  While a required task exports a trail, retention deletes a sealed day only once the coordinator acknowledged the seal that closes it.
+  From `production` up, a checkpoint not acknowledged within the new `audit.checkpoints.max_lag` (two hours by default) makes the Host `degraded: audit_egress`, naming the trail.
+  So does a trail no required task exports, a Host with no membership side to send them, or an egress that cannot be checked.
+
 - **A drain ships the evidence, and a volume left with unshipped records says so.**
   On shutdown the Host ships its streams to every required subscription until they reach the durable tail or `shutdown.drain_timeout` ends.
   A stream still behind is marked `unshipped` in its STATE, nothing past the coordinator's acknowledgement is deleted, and the drain is incomplete: the process exits 75.

@@ -1987,6 +1987,38 @@ fn test_security_audit_days_are_kept_for_ever_unless_their_retention_is_set() {
     assert_eq!(set.audit_retention(), Duration::from_secs(90 * 86_400));
 }
 
+/// WP-5.9: a checkpoint may wait two hours for its acknowledgement unless the deployment says
+/// otherwise, from the environment or `operations.audit.checkpoints.max_lag`; never zero.
+#[test]
+fn test_a_checkpoint_waits_two_hours_for_its_acknowledgement_unless_told() {
+    assert_eq!(
+        config(&[], &[], &[]).audit_checkpoints_max_lag(),
+        Duration::from_secs(2 * 3600)
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_AUDIT_CHECKPOINTS_MAX_LAG, "30m")], &[]).audit_checkpoints_max_lag(),
+        Duration::from_secs(30 * 60)
+    );
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_environment(pairs(&[(SETTING_AUDIT_CHECKPOINTS_MAX_LAG, "0s")])),
+    )
+    .expect_err("zero");
+    assert!(
+        format!("{refused:#}").contains(SETTING_AUDIT_CHECKPOINTS_MAX_LAG),
+        "{refused:#}"
+    );
+    let file = permguard_core::ConfigFile::parse(
+        "operations:\n  audit:\n    checkpoints:\n      max_lag: 45m\n",
+    )
+    .expect("parses");
+    assert!(file.settings().contains(&(
+        SETTING_AUDIT_CHECKPOINTS_MAX_LAG.to_owned(),
+        "45m".to_owned()
+    )));
+}
+
 /// WP-7.12: a transfer session stays open fifteen minutes by default, and at most an hour.
 #[test]
 fn test_a_transfer_session_is_open_at_most_an_hour() {

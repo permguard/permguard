@@ -37,7 +37,10 @@ fn every_task_type_has_one_v1_contract_with_its_roles_and_server() {
         }
         assert_eq!(
             contract.served,
-            matches!(task, TaskType::ZoneSecrets | TaskType::PolicyMirror)
+            matches!(
+                task,
+                TaskType::ZoneSecrets | TaskType::PolicyMirror | TaskType::AuditCheckpoints
+            )
         );
     }
     let host: Vec<Capability> = Capabilities::host().list();

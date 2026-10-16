@@ -26,8 +26,17 @@ impl Drop for Repinning {
     }
 }
 
+/// What the pass checks of the audit checkpoints' egress (WP-5.9).
+#[derive(Debug, Clone, Copy)]
+pub struct Egress {
+    /// Whether the assurance profile requires the checkpoints to leave the volume.
+    pub enforce: bool,
+    /// How long a checkpoint may wait for its acknowledgement.
+    pub max_lag: Duration,
+}
+
 /// Runs the pass now and every [`PASS`] until the handle is dropped.
-pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>) -> Repinning {
+pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>, egress: Egress) -> Repinning {
     Repinning(tokio::spawn(async move {
         let mut interval = tokio::time::interval(PASS);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -63,6 +72,24 @@ pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>) -> Repinning {
             }
             let repinned = api.repin_due().await + api.cutover_due().await;
             let shipped = api.ship_due().await;
+            // The audit checkpoints after the streams, then whether they left in time (WP-5.9).
+            let exported = api.export_checkpoints_due().await;
+            if exported > 0 {
+                tracing::debug!(
+                    event.name = "host.audit_exported",
+                    component = "host",
+                    checkpoints = exported,
+                    "audit checkpoints were acknowledged by their coordinators"
+                );
+            }
+            if let Err(error) = api.check_audit_egress(egress.enforce, egress.max_lag) {
+                tracing::warn!(
+                    event.name = "host.audit_egress_check_failed",
+                    component = "host",
+                    error = %error,
+                    "the audit checkpoints' egress could not be checked; the next pass tries again"
+                );
+            }
             // A drain's marks go once their streams are shipped, and the Host's readiness with
             // them (WP-5.8).
             if let Err(error) = api.settle_unshipped() {
