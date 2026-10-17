@@ -357,18 +357,41 @@ impl<C: RecordCodec> Producer<C> {
         Ok(writer.state.clone())
     }
 
-    /// The records of the current run from `from_seq`, at most `limit`.
+    /// The records of the current run from `from_seq`, at most `limit`; a read starting at or
+    /// below what the run deleted answers from the sequence after it, with the gap and the run's
+    /// anchor (WP-5.6c), never as complete.
     pub fn read(
         &self,
         resource: &Resource,
         from_seq: u64,
         limit: usize,
-    ) -> Result<Vec<(u64, C::Record)>, StreamError> {
+    ) -> Result<super::anchor::Page<C::Record>, StreamError> {
         let physical = self.physical(resource)?;
         let writer = physical.writer();
         let Some(run) = &writer.run else {
-            return Ok(Vec::new());
+            return Ok(super::anchor::Page {
+                records: Vec::new(),
+                gap: None,
+            });
         };
+        // Read without creating: a stream that never sealed has no batches directory.
+        let mut anchor = None;
+        if writer.dir.subdirs()?.iter().any(|name| name == "batches") {
+            let batches = writer.dir.subdir("batches", false)?;
+            let run_dir = hex(&run.statement.run_id);
+            if batches.subdirs()?.contains(&run_dir) {
+                anchor = super::anchor::anchor_in(&batches.subdir(&run_dir, false)?)?;
+            }
+        }
+        let low_watermark = anchor.as_ref().map_or(1, |anchor| anchor.low_watermark);
+        let gap = match anchor {
+            Some(anchor) if from_seq < anchor.low_watermark => Some(super::anchor::Gap {
+                low_watermark: anchor.low_watermark,
+                anchor,
+            }),
+            _ => None,
+        };
+        let from_seq = from_seq.max(low_watermark).max(1);
         let mut found = Vec::new();
         // Below the journal's first frame the run may have opened earlier (WP-5.6).
         let mut in_run = writer
@@ -392,7 +415,10 @@ impl<C: RecordCodec> Producer<C> {
                 _ => {}
             }
         }
-        Ok(found)
+        Ok(super::anchor::Page {
+            records: found,
+            gap,
+        })
     }
 }
 

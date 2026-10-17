@@ -20,9 +20,8 @@
 
 use permguard_host::storage::format;
 use permguard_host::storage::write::{allocate, read_view, release, replace_view};
-use sha2::{Digest as _, Sha256};
 
-use super::super::anchor::{ANCHOR, Anchor};
+use super::super::anchor::{ANCHOR, Anchor, envelope_digest};
 use super::super::batch::SealedBatch;
 use super::super::codec::{encode, uint};
 use super::super::retention::{Audit, MAX_PRUNE_BATCHES, Pruned};
@@ -203,10 +202,7 @@ impl<C: RecordCodec> Producer<C> {
                     StreamError::Corruption(format!("the batch `{name}` went before its anchor"))
                 })?;
                 let envelope = SealedBatch::decode(&bytes)?.envelope_unverified()?;
-                covering.push(format!(
-                    "sha256:{}",
-                    hex(&Sha256::digest(envelope.signed_bytes()?))
-                ));
+                covering.push(envelope_digest(&envelope)?);
                 last = Some((envelope, bytes));
             }
             let Some((envelope, checkpoint)) = last else {

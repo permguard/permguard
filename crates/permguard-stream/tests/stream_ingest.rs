@@ -169,6 +169,7 @@ fn two_producers_interleave_for_an_hour_and_no_record_disappears() {
                 let records = consumer
                     .read(&ledger(1), host.identity.host_id(), *run, 1, usize::MAX)
                     .expect("read")
+                    .records
                     .into_iter()
                     .map(|(_, text)| text)
                     .collect::<Vec<_>>();

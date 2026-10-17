@@ -32,6 +32,40 @@ pub const MAX_ANCHOR_BYTES: usize = 32 * 1024 * 1024;
 /// The file a run's anchor is kept in.
 pub const ANCHOR: &str = "ANCHOR";
 
+/// The digest an anchor covers a batch by: the SHA-256 of its signed envelope, which binds the
+/// stream, the run and the range.
+pub fn envelope_digest(envelope: &super::batch::Envelope) -> Result<String, StreamError> {
+    use sha2::Digest as _;
+    Ok(format!(
+        "sha256:{}",
+        super::hex(&sha2::Sha256::digest(envelope.signed_bytes()?))
+    ))
+}
+
+/// The anchor kept in `dir`, when a prefix went.
+pub(crate) fn anchor_in(dir: &permguard_host::storage::Dir) -> Result<Option<Anchor>, StreamError> {
+    permguard_host::storage::write::read_view(dir, ANCHOR, permguard_host::storage::format::VIEW)?
+        .map(|bytes| Anchor::decode(&bytes))
+        .transpose()
+}
+
+/// What a read answers (WP-5.6c): the records from the first sequence still held, and the gap
+/// below it when the read started there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Page<R> {
+    pub records: Vec<(u64, R)>,
+    pub gap: Option<Gap>,
+}
+
+/// A deleted prefix a read reached: never answered as complete.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Gap {
+    /// The first sequence still held.
+    pub low_watermark: u64,
+    /// What the run keeps of what went.
+    pub anchor: Anchor,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Anchor {
     pub resource: String,

@@ -27,6 +27,7 @@ is cut.
   Then a `host.stream.pruned` security record names what is about to go; a record the trail refuses deletes nothing.
   Every stream gets a `host.stream.pruned` record at every pass, with nothing removed when there is nothing to remove.
   One pass deletes at most 1024 batch files of a stream, and the journal segments that held only deleted records go with them.
+  A member shipping again a batch the coordinator already deleted is answered `ok` when the run's anchor proves it is the batch that went, and `gone` otherwise.
 
 - **Audit checkpoints leave the volume they attest.**
   A Host that is the member of an `audit.checkpoints` task ships each checkpoint it seals, in its trail's order, to the coordinator, which verifies it under the member's pinned `host.operations` keys and keeps it.

@@ -361,7 +361,7 @@ fn a_genesis_run_is_signed_under_host_operations_and_starts_at_one() {
     // The run statement on disk verifies under the ring and names the stream key.
     let reopened = host.producer();
     assert_eq!(
-        reopened.read(&ledger(1), 1, 10).expect("read"),
+        reopened.read(&ledger(1), 1, 10).expect("read").records,
         vec![(1, "one".to_owned()), (2, "two".to_owned())]
     );
     assert_eq!(
@@ -503,7 +503,10 @@ fn concurrent_appenders_never_share_a_sequence() {
         "each once, none skipped"
     );
     assert_eq!(
-        host.producer().read(&ledger(1), 1, 1000).expect("read"),
+        host.producer()
+            .read(&ledger(1), 1, 1000)
+            .expect("read")
+            .records,
         answered,
         "each record at the sequence it was answered"
     );
@@ -543,7 +546,7 @@ fn no_append_is_answered_before_the_flush_that_covers_it() {
     drop(producer);
     let reopened = host.producer();
     assert_eq!(
-        reopened.read(&ledger(1), 1, 10).expect("read"),
+        reopened.read(&ledger(1), 1, 10).expect("read").records,
         vec![(1, "a".to_owned())]
     );
     assert_eq!(
@@ -574,7 +577,14 @@ fn recovery_rederives_the_head_and_truncates_a_torn_tail() {
     torn.extend_from_slice(&[0, 0, 0, 40, 0, 2, 1, 2, 3]);
     std::fs::write(&segment, torn).expect("written");
     let reopened = host.producer();
-    assert_eq!(reopened.read(&ledger(1), 1, 10).expect("read").len(), 3);
+    assert_eq!(
+        reopened
+            .read(&ledger(1), 1, 10)
+            .expect("read")
+            .records
+            .len(),
+        3
+    );
     assert_eq!(
         reopened.append(&ledger(1), &"d".to_owned()).expect("d").seq,
         4
@@ -738,7 +748,8 @@ fn a_producer_appends_and_a_consumer_reads_back_through_typed_handles() {
     assert_eq!(
         consumer
             .read(&ledger(1), remote, receipt.run_id, 2, 10)
-            .expect("read"),
+            .expect("read")
+            .records,
         vec![(2, "b".to_owned())]
     );
 }
@@ -872,7 +883,7 @@ fn a_rollover_whose_reserve_fails_after_the_successor_opened_writes_in_the_succe
     std::fs::remove_dir(&reserve).expect("the directory removed");
     let reopened = host.producer();
     assert_eq!(
-        reopened.read(&ledger(1), 1, 10).expect("read"),
+        reopened.read(&ledger(1), 1, 10).expect("read").records,
         vec![(1, "b".to_owned())]
     );
 }
@@ -978,6 +989,7 @@ fn a_failed_group_flush_answers_every_waiting_appender_with_an_error() {
         host.producer()
             .read(&ledger(1), 1, 10)
             .expect("read")
+            .records
             .is_empty()
     );
 }
@@ -2300,6 +2312,7 @@ fn an_acknowledgement_follows_every_durable_write() {
     let records: Vec<String> = consumer
         .read(&ledger(1), host.identity.host_id(), run, 1, 10)
         .expect("read")
+        .records
         .into_iter()
         .map(|(_, text)| text)
         .collect();
@@ -2439,7 +2452,8 @@ fn an_overlap_appends_only_its_suffix() {
     );
     let records: Vec<(u64, String)> = consumer
         .read(&ledger(1), host.identity.host_id(), run, 1, 10)
-        .expect("read");
+        .expect("read")
+        .records;
     assert_eq!(
         records,
         vec![
@@ -4400,15 +4414,18 @@ fn a_pass_anchors_audits_then_deletes_what_was_acknowledged() {
         ),
         vec![Outcome::Ok]
     );
+    // A read from the start answers from the low watermark, with the gap and the anchor.
+    let page = producer.read(&ledger(1), 1, 100).expect("read");
     assert_eq!(
-        producer
-            .read(&ledger(1), 1, 100)
-            .expect("read")
-            .first()
-            .map(|(seq, _)| *seq),
-        Some(base.last_seq + 1),
-        "below the base nothing is read"
+        page.records.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
+        vec![13]
     );
+    let gap = page.gap.expect("a gap");
+    assert_eq!((gap.low_watermark, gap.anchor.through), (13, 12));
+    assert!(base.last_seq <= 12);
+    assert_eq!(producer.read(&ledger(1), 13, 100).expect("read").gap, None);
+    let limited = producer.read(&ledger(1), 1, 1).expect("read");
+    assert_eq!((limited.records.len(), limited.gap.is_some()), (1, true));
 
     // Nothing left to delete: audited all the same.
     let again = gc(&producer);
@@ -4571,18 +4588,60 @@ fn a_consumer_deletes_what_its_retention_passed() {
         .join("records");
     assert!(!records.join("seg-00000000000000000000.pgj").exists());
     assert!(records.join("BASE").exists());
-    // Below what is kept a batch is `gone`; what is kept reads.
+    // Below what is kept (WP-5.6c): the batch that went is proved equal by the anchor and
+    // answered `ok`, nothing written; another batch of that range, or one straddling the low
+    // watermark, is `gone`.
+    let state_before = std::fs::read(run_dir_of(&host, run).join("STATE")).expect("STATE");
     let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("answered");
-    assert_eq!(answer.outcome, Outcome::Gone);
+    assert_eq!((answer.outcome, answer.acked), (Outcome::Ok, 8));
+    assert!(
+        !run_dir_of(&host, run)
+            .join("batches")
+            .join("1-2.jws")
+            .exists(),
+        "nothing written"
+    );
     assert_eq!(
-        consumer
-            .read(&ledger(1), host.identity.host_id(), run, 5, 10)
-            .expect("read")
-            .iter()
-            .map(|(seq, _)| *seq)
-            .collect::<Vec<_>>(),
+        std::fs::read(run_dir_of(&host, run).join("STATE")).expect("STATE"),
+        state_before
+    );
+    let other = forge(
+        &host,
+        run,
+        1,
+        batch::GENESIS_HEAD.to_owned(),
+        &["x", "y"],
+        1,
+    );
+    let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &other)).expect("answered");
+    assert_eq!(answer.outcome, Outcome::Gone);
+    let straddling = forge(
+        &host,
+        run,
+        3,
+        batch::GENESIS_HEAD.to_owned(),
+        &["r2", "r3", "r4"],
+        1,
+    );
+    let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &straddling)).expect("answered");
+    assert_eq!(answer.outcome, Outcome::Gone);
+    // A read below what is kept answers from the low watermark, with the gap and the anchor.
+    let page = consumer
+        .read(&ledger(1), host.identity.host_id(), run, 1, 10)
+        .expect("read");
+    assert_eq!(
+        page.records.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
         vec![5, 6, 7, 8]
     );
+    let gap = page.gap.expect("a gap");
+    assert_eq!(
+        (gap.low_watermark, gap.anchor.through, gap.anchor.run),
+        (5, 4, run)
+    );
+    let page = consumer
+        .read(&ledger(1), host.identity.host_id(), run, 5, 2)
+        .expect("read");
+    assert_eq!((page.records.len(), page.gap), (2, None));
     drop(consumer);
     let reopened = small(Some(60));
     assert_eq!(
@@ -4758,9 +4817,9 @@ fn a_consumer_pass_stopped_after_its_anchor_is_finished() {
             .expect("acked"),
         8
     );
-    // The last batch again is `gone`: below what is retained.
+    // The last batch again is proved equal by the anchor: `ok`, nothing written.
     let (answer, _) = ingest(&reopened, &host, &ship_of(&host, &batches[3])).expect("answered");
-    assert_eq!(answer.outcome, Outcome::Gone);
+    assert_eq!((answer.outcome, answer.acked), (Outcome::Ok, 8));
     // The next continues from the anchor's head.
     let (answer, _) = ingest(&reopened, &host, &ship_of(&host, &batches[4])).expect("answered");
     assert_eq!((answer.outcome, answer.acked), (Outcome::Ok, 10));
@@ -4998,4 +5057,95 @@ fn an_undated_admission_is_written_by_the_pass_and_a_straddle_is_refused() {
         .expect("a pass")
         .expect("free");
     assert!(pruned.is_empty(), "{pruned:?}");
+}
+
+/// The directory of `run` on the test consumer, as `host`'s member.
+fn run_dir_of(host: &Host, run: [u8; 16]) -> PathBuf {
+    host.root
+        .join("host")
+        .join(STREAMS)
+        .join("data")
+        .join("decisions")
+        .join("1")
+        .join("consumer")
+        .join(
+            descriptor()
+                .key(&ledger(1), host.identity.host_id())
+                .expect("a key")
+                .resource_component(),
+        )
+        .join(hex(&host.identity.host_id()))
+        .join(hex(&run))
+}
+
+/// WP-5.6c, after the review: a run never pruned reads from the start with no gap, sequence 0
+/// included.
+#[test]
+fn a_run_never_pruned_reads_without_a_gap() {
+    let host = Host::new("read-no-gap");
+    let consumer = consumer_on(&host);
+    let (producer, run, batches) = shipped(&host, 4, 2);
+    for body in &batches {
+        ingest(&consumer, &host, &ship_of(&host, body)).expect("ingested");
+    }
+    for from in [0, 1] {
+        let page = consumer
+            .read(&ledger(1), host.identity.host_id(), run, from, 10)
+            .expect("read");
+        assert_eq!((page.records.len(), page.gap), (4, None), "from {from}");
+        let page = producer.read(&ledger(1), from, 10).expect("read");
+        assert_eq!((page.records.len(), page.gap), (4, None), "from {from}");
+    }
+}
+
+/// WP-5.6c, after the review: a replay below the low watermark is equal only under the key the
+/// anchor names for its range: the same envelope signed by another key of the ring is `gone`.
+#[test]
+fn a_replay_signed_by_another_key_is_gone() {
+    struct Source;
+    impl super::retention::RetentionSource for Source {
+        fn retention_seconds(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(1)
+        }
+    }
+    let (host, wall, mono) = manual_host("replay-key");
+    let consumer = host
+        .streams()
+        .register_consumer(descriptor(), Text)
+        .expect("registered")
+        .with_retention_source(Arc::new(Source));
+    let (producer, run, batches) = shipped(&host, 4, 2);
+    drop(producer);
+    for body in &batches {
+        ingest(&consumer, &host, &ship_of(&host, body)).expect("ingested");
+    }
+    let later = host.time.now_secs() + 10;
+    assert_eq!(gc_at(&consumer, later)[0].through, 4);
+    let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("answered");
+    assert_eq!(answer.outcome, Outcome::Ok, "under its own key, equal");
+    rotate_attest(&host, &wall, &mono);
+    let original = batch::SealedBatch::decode(&batches[0])
+        .expect("decoded")
+        .envelope_unverified()
+        .expect("an envelope");
+    let resigned = forge_with(
+        host.attest.as_ref(),
+        &host,
+        run,
+        1,
+        original.previous_head.clone(),
+        vec![b"r0".to_vec(), b"r1".to_vec()],
+        1,
+        |envelope| *envelope = original.clone(),
+    );
+    let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &resigned)).expect("answered");
+    assert_eq!(answer.outcome, Outcome::Gone);
+}
+
+/// One garbage collection pass over `prunable` at `now`, every record accepted.
+fn gc_at(prunable: &dyn super::retention::Prunable, now: u64) -> Vec<super::retention::Pruned> {
+    prunable
+        .run(now, &|_| Ok(()))
+        .expect("a pass")
+        .expect("no pass running")
 }

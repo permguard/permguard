@@ -620,7 +620,24 @@ impl<C: RecordCodec> Consumer<C> {
     ) -> Result<(Answer, Option<Forked>), StreamError> {
         let (first, last) = (envelope.first_seq, envelope.last_seq);
         if first < held.oldest_retained {
-            return Ok((Answer::of(Outcome::Gone, held.acked), None));
+            // Below the low watermark (WP-5.6c): a batch wholly there that the anchor covers is
+            // the one that went, proved equal, and nothing is written; any other is `gone`.
+            // The key too: the span the anchor keeps for the batch's first sequence names the key
+            // it was signed under, as a live range signed by another key is a fork (after the
+            // review).
+            let equal = last < held.oldest_retained
+                && super::anchor::anchor_in(&held.dir)?.is_some_and(|anchor| {
+                    anchor
+                        .signers
+                        .iter()
+                        .rev()
+                        .find(|span| span.from_seq <= first)
+                        .is_some_and(|span| span.kid == jwk.kid)
+                        && super::anchor::envelope_digest(envelope)
+                            .is_ok_and(|digest| anchor.covering.contains(&digest))
+                });
+            let outcome = if equal { Outcome::Ok } else { Outcome::Gone };
+            return Ok((Answer::of(outcome, held.acked), None));
         }
         if first > held.acked + 1 {
             return Ok((
@@ -810,7 +827,8 @@ impl<C: RecordCodec> Consumer<C> {
     }
 
     /// The records kept of `producer`'s run `run_id` over `resource` from `from_seq`, at most
-    /// `limit`.
+    /// `limit`; a read starting below the first sequence still held answers from there, with the
+    /// gap and the run's anchor (WP-5.6c), never as complete.
     pub fn read(
         &self,
         resource: &Resource,
@@ -818,23 +836,44 @@ impl<C: RecordCodec> Consumer<C> {
         run_id: [u8; 16],
         from_seq: u64,
         limit: usize,
-    ) -> Result<Vec<(u64, C::Record)>, StreamError> {
+    ) -> Result<super::anchor::Page<C::Record>, StreamError> {
         let key = self.descriptor.key(resource, producer)?;
+        // Sequence 0 is none: a read from it reads from the start (after the review).
+        let from_seq = from_seq.max(1);
         let held = self.with_held(&key, run_id, false, |held| {
+            let gap = if from_seq < held.oldest_retained {
+                let anchor = super::anchor::anchor_in(&held.dir)?.ok_or_else(|| {
+                    StreamError::Corruption(format!(
+                        "run {} lost a prefix and keeps no anchor",
+                        hex(&run_id)
+                    ))
+                })?;
+                Some(super::anchor::Gap {
+                    low_watermark: held.oldest_retained,
+                    anchor,
+                })
+            } else {
+                None
+            };
+            let from = from_seq.max(held.oldest_retained).max(1);
             let to = held
                 .acked
-                .min(from_seq.saturating_add(limit as u64).saturating_sub(1));
-            held.records(from_seq.max(1), to)
+                .min(from.saturating_add(limit as u64).saturating_sub(1));
+            Ok((held.records(from, to)?, gap))
         })?;
-        held.unwrap_or_default()
-            .into_iter()
-            .map(|(seq, bytes)| {
-                Ok((
-                    seq,
-                    self.codec.decode(&bytes).map_err(StreamError::Invalid)?,
-                ))
-            })
-            .collect()
+        let (records, gap) = held.unwrap_or_default();
+        Ok(super::anchor::Page {
+            records: records
+                .into_iter()
+                .map(|(seq, bytes)| {
+                    Ok((
+                        seq,
+                        self.codec.decode(&bytes).map_err(StreamError::Invalid)?,
+                    ))
+                })
+                .collect::<Result<_, StreamError>>()?,
+            gap,
+        })
     }
 }
 
