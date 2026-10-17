@@ -36,11 +36,13 @@
 //! consumer stores and indexes the structural check found beside them. No other Plane code keeps
 //! a journal (`permguard-conformance` `stream_engines`).
 
+pub mod anchor;
 pub mod batch;
 pub(crate) mod codec;
 mod consumer;
 pub mod ingest;
 mod producer;
+pub mod retention;
 pub mod run;
 pub mod state;
 
@@ -414,6 +416,8 @@ pub struct Streams {
     operations: Arc<Ring>,
     time: Arc<TimeGuard>,
     registered: Mutex<BTreeSet<(String, String, u32, &'static str)>>,
+    /// The size past which a stream's journal segment rolls: where a prefix deletion can end.
+    segment_bytes: u64,
 }
 
 impl fmt::Debug for Streams {
@@ -447,7 +451,15 @@ impl Streams {
             operations,
             time,
             registered: Mutex::new(BTreeSet::new()),
+            segment_bytes: permguard_host::storage::journal::DEFAULT_SEGMENT_BYTES,
         })
+    }
+
+    /// The engine rolling its streams' journal segments past `bytes`, the granularity a prefix
+    /// deletion frees space at (WP-5.6b): smaller for a constrained volume, and for tests.
+    pub fn with_segment_bytes(mut self, bytes: u64) -> Self {
+        self.segment_bytes = bytes;
+        self
     }
 
     /// The directory of `descriptor` and `role`, after checking the descriptor and pinning its
@@ -507,6 +519,7 @@ impl Streams {
                 claim: self.claim,
                 operations: Arc::clone(&self.operations),
                 time: Arc::clone(&self.time),
+                segment_bytes: self.segment_bytes,
             },
             descriptor,
             codec,
@@ -520,7 +533,10 @@ impl Streams {
         codec: C,
     ) -> Result<Consumer<C>, StreamError> {
         let dir = self.register(&descriptor, "consumer")?;
-        Ok(Consumer::new(dir, self.claim, descriptor, codec))
+        Ok(
+            Consumer::new(dir, self.claim, descriptor, codec, Arc::clone(&self.time))
+                .with_segment_bytes(self.segment_bytes),
+        )
     }
 }
 
@@ -533,6 +549,7 @@ pub struct Served {
         std::collections::BTreeMap<String, Arc<dyn permguard_host::composition::StreamAppender>>,
     cutovers: Vec<Arc<dyn permguard_host::composition::StreamCutovers>>,
     shipping: Vec<Arc<dyn permguard_host::composition::StreamShipping>>,
+    prunables: Vec<Arc<dyn retention::Prunable>>,
 }
 
 impl fmt::Debug for Served {
@@ -542,12 +559,18 @@ impl fmt::Debug for Served {
 }
 
 impl Served {
+    /// The producers the garbage collection runs (WP-5.6b).
+    pub fn prunables(&self) -> Vec<Arc<dyn retention::Prunable>> {
+        self.prunables.clone()
+    }
+
     /// These and `producer`, served as `name` (`<plane>/<type>`).
     pub fn with<P>(mut self, name: &str, producer: Arc<P>) -> Self
     where
         P: permguard_host::composition::StreamAppender
             + permguard_host::composition::StreamCutovers
             + permguard_host::composition::StreamShipping
+            + retention::Prunable
             + 'static,
     {
         self.producers.insert(
@@ -556,6 +579,8 @@ impl Served {
         );
         self.cutovers
             .push(Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamCutovers>);
+        self.prunables
+            .push(Arc::clone(&producer) as Arc<dyn retention::Prunable>);
         self.shipping.push(producer);
         self
     }

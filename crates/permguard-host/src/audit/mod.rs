@@ -266,6 +266,23 @@ pub const REGISTRY: &[ActionSchema] = &[
         max_bytes: 8 * 1024,
         phases: false,
     },
+    // Retention (WP-5.6b, owner decision of 2026-10-17): every pass of the garbage collection
+    // over a stream, written after the run's anchor and before anything is deleted, also when
+    // nothing is.
+    ActionSchema {
+        action: "host.stream.pruned",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("stream", FactType::Text(256)),
+            ("role", FactType::Text(16)),
+            ("run", FactType::Text(32)),
+            ("through", FactType::Uint),
+            ("batches", FactType::Uint),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
     ActionSchema {
         action: "host.stream.forked",
         class: Class::Security,

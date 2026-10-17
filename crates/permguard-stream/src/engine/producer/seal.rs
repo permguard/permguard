@@ -360,7 +360,7 @@ struct Held {
 pub(super) type RunView = ([u8; 16], Option<[u8; 16]>, u64, u64);
 
 /// The name a cutover gives a stream: its plane, type, resource digest and run.
-fn stream_name(physical: &Physical, run: &[u8; 16]) -> String {
+pub(super) fn stream_name(physical: &Physical, run: &[u8; 16]) -> String {
     format!(
         "{}/{}/{}/{}",
         physical.key.plane,
@@ -660,6 +660,23 @@ impl Physical {
     ) -> Result<Next, StreamError> {
         let frames = writer.journal.frames()?;
         let mut runs: Vec<Held> = Vec::new();
+        // Below the journal's first frame the first run opened earlier (WP-5.6): its records
+        // start at the first frame, and its head below them is STATE's base.
+        let base = writer.base().cloned();
+        if let Some(base) = &base {
+            runs.push(Held {
+                statement: RunStatement::decode(
+                    permguard_objects::cose::Sign1::decode(&base.statement)
+                        .map_err(|error| StreamError::Invalid(error.to_string()))?
+                        .payload_unverified(),
+                )?,
+                digest: statement_digest(&base.statement),
+                // The frame before the first kept, which no frame has: the seal reads the run's
+                // records from the first kept frame on (after the review).
+                open_frame: base.first_index - 1,
+                last_seq: base.last_seq,
+            });
+        }
         for frame in &frames {
             match frame.kind {
                 RUN_OPEN => runs.push(Held {
@@ -740,7 +757,23 @@ impl Physical {
         } else {
             run.open_frame
         };
+        // The run STATE's base names has no RUN_OPEN frame left: its records start at the
+        // journal's first frame, and the record at its base's last sequence went with the prefix.
         let mut in_run = false;
+        if let Some(base) = base
+            .as_ref()
+            .filter(|base| statement_digest(&base.statement) == run.digest)
+        {
+            in_run = true;
+            if sealed > 0 && sealed == base.last_seq {
+                head = format!("sha256:{}", hex(&base.last_digest));
+            } else if sealed < base.last_seq {
+                return Err(StreamError::Corruption(format!(
+                    "run {} sealed through {sealed}, below the prefix that went",
+                    hex(&run.statement.run_id)
+                )));
+            }
+        }
         for frame in &frames {
             match frame.kind {
                 RUN_OPEN => in_run = frame.index == run.open_frame,

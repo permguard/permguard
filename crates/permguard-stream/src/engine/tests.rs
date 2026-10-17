@@ -3029,6 +3029,7 @@ fn a_consumer_journal_of_a_later_claim_is_refused() {
             claim,
             descriptor(),
             Text,
+            Arc::clone(&host.time),
         )
     };
     std::fs::create_dir_all(
@@ -3325,6 +3326,7 @@ fn each_subscription_keeps_its_own_ack_and_truncate_safe_is_the_least_required()
         .producer_dir(&ledger(1))
         .join("batches")
         .join(hex(&run));
+    gc(&producer);
     assert!(
         batches.join("1-4.jws").exists(),
         "nothing is deleted beyond truncate_safe"
@@ -3335,6 +3337,7 @@ fn each_subscription_keeps_its_own_ack_and_truncate_safe_is_the_least_required()
         producer.truncate_safe(&ledger(1), &run).expect("safe"),
         Some(4)
     );
+    gc(&producer);
     assert!(
         !batches.join("1-4.jws").exists(),
         "acknowledged by every required one"
@@ -3623,6 +3626,11 @@ fn files_a_crash_left_below_the_pruned_mark_are_skipped_then_deleted() {
         ),
         vec![Outcome::Ok]
     );
+    assert!(
+        batches.join("1-2.jws").exists(),
+        "shipping deletes nothing (WP-5.6b)"
+    );
+    gc(&producer);
     assert!(!batches.join("1-2.jws").exists());
     // The crash: the mark written, the file not yet deleted.
     std::fs::write(batches.join("1-2.jws"), &copy).expect("restored");
@@ -3642,9 +3650,10 @@ fn files_a_crash_left_below_the_pruned_mark_are_skipped_then_deleted() {
         ),
         vec![Outcome::Ok]
     );
+    gc(&producer);
     assert!(
         !batches.join("1-2.jws").exists(),
-        "the next truncation deleted it"
+        "the next pass deleted it"
     );
     // A file straddling the mark is refused.
     drop(producer);
@@ -3864,6 +3873,7 @@ fn the_bounds_of_what_is_due_and_deleted_are_exact() {
         .producer_dir(&ledger(1))
         .join("batches")
         .join(hex(&run));
+    gc(&producer);
     assert!(!batches.join("1-2.jws").exists());
     assert!(
         batches.join("3-3.jws").exists(),
@@ -3933,6 +3943,7 @@ fn a_state_carries_its_unshipped_mark_and_refuses_a_shipped_one() {
         pending_successor: None,
         forked_at_seq: None,
         unshipped,
+        base: None,
     };
     let marked = state(Some(state::Unshipped {
         tail: 8,
@@ -4240,4 +4251,751 @@ fn a_mark_waits_for_every_older_run_whichever_membership_fences_it() {
         Some(3)
     );
     assert!(producer.settle_unshipped().expect("settled").is_empty());
+}
+
+/// One garbage collection pass over `prunable`, every record accepted (WP-5.6b).
+fn gc(prunable: &dyn super::retention::Prunable) -> Vec<super::retention::Pruned> {
+    prunable
+        .run(u64::MAX / 4, &|_| Ok(()))
+        .expect("a pass")
+        .expect("no pass running")
+}
+
+/// A producer on 256-byte journal segments, sealing under `data.attest`: a prefix deletion has
+/// segments to remove (WP-5.6b).
+fn small_sealer(host: &Host, descriptor: Descriptor) -> Producer<Text> {
+    host.streams()
+        .with_segment_bytes(256)
+        .register_producer(descriptor, Text)
+        .expect("registered")
+        .with_signer(Arc::clone(&host.attest))
+        .expect("the descriptor's ring")
+}
+
+/// `n` records on `ledger(1)` under the test fence, sealed two a batch and shipped to `consumer`
+/// by the one required subscription: the producer's run.
+fn acknowledged(
+    producer: &Producer<Text>,
+    consumer: &Consumer<Text>,
+    host: &Host,
+    n: usize,
+) -> [u8; 16] {
+    let run = producer
+        .open_run(&ledger(1), Some(fence(1)))
+        .expect("opened")
+        .run_id;
+    for at in 0..n {
+        producer
+            .append(&ledger(1), &format!("r{at}"))
+            .expect("appended");
+    }
+    while let Sealing::Sealed { .. } = producer.seal(&ledger(1), 2).expect("sealed") {}
+    let shipping = subscribed("decisions", true, 1);
+    producer.due(&shipping).expect("due");
+    assert!(
+        pump(producer, consumer, host, &shipping, vec![pin_of(host)], 1)
+            .iter()
+            .all(|outcome| *outcome == Outcome::Ok)
+    );
+    run
+}
+
+/// WP-5.6b: a pass writes the run's anchor, then the audit record, then deletes the batch files
+/// every required subscription acknowledged and the journal segments that held only them; the
+/// producer reopens from STATE's base and goes on at the next sequence.
+#[test]
+fn a_pass_anchors_audits_then_deletes_what_was_acknowledged() {
+    let host = Host::new("prune-producer");
+    let consumer = consumer_on(&host);
+    let producer = small_sealer(&host, descriptor());
+    let run = acknowledged(&producer, &consumer, &host, 12);
+    let dir = host.producer_dir(&ledger(1));
+    let batches = dir.join("batches").join(hex(&run));
+    let last = std::fs::read(batches.join("11-12.jws")).expect("the last batch");
+    let segments_before = std::fs::read_dir(dir.join("records"))
+        .expect("records")
+        .count();
+    assert!(segments_before > 2, "{segments_before} segments");
+
+    let audited = std::sync::Mutex::new(Vec::new());
+    let pruned = super::retention::Prunable::run(&producer, 0, &|record| {
+        // The anchor first, every batch file still there.
+        assert!(batches.join(super::anchor::ANCHOR).exists());
+        assert!(batches.join("1-2.jws").exists());
+        audited.lock().expect("held").push(record.clone());
+        Ok(())
+    })
+    .expect("a pass")
+    .expect("no pass running");
+    assert_eq!(pruned, audited.into_inner().expect("held"));
+    assert_eq!(pruned.len(), 1);
+    assert_eq!(
+        (pruned[0].run, pruned[0].through, pruned[0].batches),
+        (Some(run), 12, 6)
+    );
+    assert_eq!(pruned[0].role, "producer");
+    for at in (1..=11).step_by(2) {
+        assert!(!batches.join(format!("{at}-{}.jws", at + 1)).exists());
+    }
+    let anchor = super::anchor::Anchor::decode(
+        &permguard_host::storage::write::read_view(
+            &permguard_host::storage::Dir::open(&batches).expect("dir"),
+            super::anchor::ANCHOR,
+            permguard_host::storage::format::VIEW,
+        )
+        .expect("read")
+        .expect("held"),
+    )
+    .expect("decoded");
+    let envelope = batch::SealedBatch::decode(&last)
+        .expect("decoded")
+        .envelope_unverified()
+        .expect("an envelope");
+    assert_eq!(
+        (anchor.through, anchor.low_watermark, anchor.covering.len()),
+        (12, 13, 6)
+    );
+    assert_eq!(anchor.resource, ledger(1).to_string());
+    assert_eq!(anchor.run, run);
+    assert_eq!(anchor.checkpoint, last);
+    assert_eq!(anchor.terminal_head, envelope.head);
+    assert_eq!(
+        anchor.covering.last(),
+        Some(&format!(
+            "sha256:{}",
+            hex(&<sha2::Sha256 as sha2::Digest>::digest(
+                envelope.signed_bytes().expect("signed bytes")
+            ))
+        ))
+    );
+    assert_eq!(anchor.signers.first().map(|span| span.from_seq), Some(1));
+    // The journal lost its prefix, and STATE names what it gave the open.
+    let state = producer.state(&ledger(1)).expect("state").expect("held");
+    let base = state.base.expect("a base");
+    assert!(base.first_index > 0);
+    let segments_after = std::fs::read_dir(dir.join("records"))
+        .expect("records")
+        .count();
+    assert!(segments_after < segments_before, "{segments_after}");
+
+    // Reopened from the base: the run goes on, sealed and shipped.
+    drop(producer);
+    let producer = small_sealer(&host, descriptor());
+    let receipt = producer
+        .append(&ledger(1), &"r12".to_owned())
+        .expect("appended");
+    assert_eq!((receipt.run_id, receipt.seq), (run, 13));
+    assert!(matches!(
+        producer.seal(&ledger(1), 2).expect("sealed"),
+        Sealing::Sealed { .. }
+    ));
+    assert_eq!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &subscribed("decisions", true, 1),
+            vec![pin_of(&host)],
+            1
+        ),
+        vec![Outcome::Ok]
+    );
+    assert_eq!(
+        producer
+            .read(&ledger(1), 1, 100)
+            .expect("read")
+            .first()
+            .map(|(seq, _)| *seq),
+        Some(base.last_seq + 1),
+        "below the base nothing is read"
+    );
+
+    // Nothing left to delete: audited all the same.
+    let again = gc(&producer);
+    assert_eq!(again.len(), 1);
+    assert_eq!(again[0].run, Some(run), "13 was acknowledged");
+    let nothing = gc(&producer);
+    assert_eq!(
+        nothing,
+        vec![super::retention::Pruned::nothing(
+            nothing[0].stream.clone(),
+            "producer"
+        )]
+    );
+}
+
+/// WP-5.6b: a record that cannot be written deletes nothing, and a later pass deletes; a pass
+/// never overlaps another of the same handle; a plan changes nothing.
+#[test]
+fn an_unaudited_pass_deletes_nothing_and_passes_never_overlap() {
+    let host = Host::new("prune-refused");
+    let consumer = consumer_on(&host);
+    let producer = small_sealer(&host, descriptor());
+    let run = acknowledged(&producer, &consumer, &host, 4);
+    let batches = host
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run));
+    let records = host.producer_dir(&ledger(1)).join("records");
+    let before = std::fs::read_dir(&records).expect("records").count();
+
+    let planned = super::retention::Prunable::plan(&producer, 0).expect("planned");
+    assert_eq!((planned[0].through, planned[0].batches), (4, 2));
+    assert!(batches.join("1-2.jws").exists(), "a plan deletes nothing");
+
+    let refused = super::retention::Prunable::run(&producer, 0, &|_| Err("full".to_owned()));
+    assert_eq!(refused.expect("the pass goes on"), Some(Vec::new()));
+    assert!(batches.join("1-2.jws").exists() && batches.join("3-4.jws").exists());
+    assert_eq!(
+        std::fs::read_dir(&records).expect("records").count(),
+        before
+    );
+    assert!(!batches.join("PRUNED").exists(), "no mark moved");
+
+    {
+        let _held = producer.lease.take().expect("free");
+        assert_eq!(
+            super::retention::Prunable::run(&producer, 0, &|_| Ok(())).expect("a pass"),
+            None
+        );
+    }
+    assert_eq!(gc(&producer)[0].through, 4);
+    assert!(!batches.join("1-2.jws").exists());
+}
+
+/// WP-5.6b: a `history` stream is kept above the floor its Plane registered, and without one is
+/// bounded by `truncate_safe` alone.
+#[test]
+fn a_history_stream_is_kept_above_its_floor() {
+    struct Floor(u64);
+    impl super::retention::RetentionFloor for Floor {
+        fn retention_safe(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(self.0)
+        }
+    }
+    let history = Descriptor {
+        retention: Retention::History,
+        ..descriptor()
+    };
+    let host = Host::new("prune-history");
+    let consumer = host
+        .streams()
+        .register_consumer(history.clone(), Text)
+        .expect("registered");
+    let producer = small_sealer(&host, history.clone()).with_retention_floor(Arc::new(Floor(5)));
+    acknowledged(&producer, &consumer, &host, 8);
+    assert_eq!(
+        gc(&producer)[0].through,
+        4,
+        "the last whole batch at or below 5"
+    );
+
+    let host = Host::new("prune-history-unbounded");
+    let consumer = host
+        .streams()
+        .register_consumer(history.clone(), Text)
+        .expect("registered");
+    let producer = small_sealer(&host, history);
+    acknowledged(&producer, &consumer, &host, 8);
+    assert_eq!(gc(&producer)[0].through, 8);
+}
+
+/// WP-5.6b: a consumer deletes the batches admitted at least its task's retention ago, after
+/// its anchor and the record; below them a batch is `gone`; reopened, it holds what it kept.
+#[test]
+fn a_consumer_deletes_what_its_retention_passed() {
+    struct Source(Option<u64>);
+    impl super::retention::RetentionSource for Source {
+        fn retention_seconds(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            self.0
+        }
+    }
+    let (host, wall, mono) = manual_host("prune-consumer");
+    let small = |source: Option<u64>| {
+        host.streams()
+            .with_segment_bytes(256)
+            .register_consumer(descriptor(), Text)
+            .expect("registered")
+            .with_retention_source(Arc::new(Source(source)))
+    };
+    let (producer, run, batches) = shipped(&host, 8, 2);
+    drop(producer);
+    let consumer = small(Some(60));
+    for body in &batches[..2] {
+        ingest(&consumer, &host, &ship_of(&host, body)).expect("ingested");
+    }
+    let now = host.time.now_secs();
+    // Not yet past the retention: nothing, audited.
+    let early = super::retention::Prunable::run(&consumer, now + 59, &|_| Ok(()))
+        .expect("a pass")
+        .expect("free");
+    assert_eq!(early.len(), 1);
+    assert_eq!(early[0].run, None);
+    // Without a task, nothing either.
+    drop(consumer);
+    let unknown = small(None);
+    assert_eq!(gc(&unknown)[0].run, None);
+    drop(unknown);
+
+    wall.jump(61);
+    mono.advance(Duration::from_secs(61));
+    let consumer = small(Some(60));
+    for body in &batches[2..] {
+        ingest(&consumer, &host, &ship_of(&host, body)).expect("ingested");
+    }
+    let pruned = super::retention::Prunable::run(&consumer, now + 61, &|_| Ok(()))
+        .expect("a pass")
+        .expect("free");
+    assert_eq!(
+        (pruned[0].run, pruned[0].through, pruned[0].batches),
+        (Some(run), 4, 2)
+    );
+    assert_eq!(pruned[0].role, "consumer");
+    // The run's journal lost the segments that held only what went.
+    let records = host
+        .root
+        .join("host")
+        .join(STREAMS)
+        .join("data")
+        .join("decisions")
+        .join("1")
+        .join("consumer")
+        .join(
+            descriptor()
+                .key(&ledger(1), host.identity.host_id())
+                .expect("a key")
+                .resource_component(),
+        )
+        .join(hex(&host.identity.host_id()))
+        .join(hex(&run))
+        .join("records");
+    assert!(!records.join("seg-00000000000000000000.pgj").exists());
+    assert!(records.join("BASE").exists());
+    // Below what is kept a batch is `gone`; what is kept reads.
+    let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("answered");
+    assert_eq!(answer.outcome, Outcome::Gone);
+    assert_eq!(
+        consumer
+            .read(&ledger(1), host.identity.host_id(), run, 5, 10)
+            .expect("read")
+            .iter()
+            .map(|(seq, _)| *seq)
+            .collect::<Vec<_>>(),
+        vec![5, 6, 7, 8]
+    );
+    drop(consumer);
+    let reopened = small(Some(60));
+    assert_eq!(
+        reopened
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        8
+    );
+}
+
+/// The anchor of a run's batches directory, decoded.
+fn anchor_in(dir: &Path) -> super::anchor::Anchor {
+    super::anchor::Anchor::decode(
+        &permguard_host::storage::write::read_view(
+            &permguard_host::storage::Dir::open(dir).expect("dir"),
+            super::anchor::ANCHOR,
+            permguard_host::storage::format::VIEW,
+        )
+        .expect("read")
+        .expect("an anchor"),
+    )
+    .expect("decoded")
+}
+
+/// WP-5.6b: a pass a crash stopped after its anchor, before its mark (here: its record
+/// refused), is finished by the next without covering a batch twice; a crash after STATE's base
+/// and before the journal's `BASE` is finished by the open.
+#[test]
+fn a_pass_stopped_after_its_anchor_or_its_base_is_finished() {
+    let host = Host::new("prune-crashed");
+    let consumer = consumer_on(&host);
+    let producer = small_sealer(&host, descriptor());
+    let run = acknowledged(&producer, &consumer, &host, 8);
+    let dir = host.producer_dir(&ledger(1));
+    let batches = dir.join("batches").join(hex(&run));
+    // The stream whose record is refused is skipped, logged, and nothing of it goes.
+    assert_eq!(
+        super::retention::Prunable::run(&producer, 0, &|_| Err("down".to_owned()))
+            .expect("the pass goes on"),
+        Some(Vec::new())
+    );
+    assert_eq!(anchor_in(&batches).through, 8, "the anchor went first");
+    assert!(batches.join("1-2.jws").exists());
+    let pruned = gc(&producer);
+    assert_eq!((pruned[0].through, pruned[0].batches), (8, 4));
+    let anchor = anchor_in(&batches);
+    assert_eq!(
+        (anchor.through, anchor.covering.len()),
+        (8, 4),
+        "no batch covered twice"
+    );
+
+    // STATE's base written, the journal's BASE and segments not yet: the next open finishes.
+    let host = Host::new("prune-crashed-base");
+    let consumer = consumer_on(&host);
+    let producer = small_sealer(&host, descriptor());
+    let run = acknowledged(&producer, &consumer, &host, 8);
+    let records = host.producer_dir(&ledger(1)).join("records");
+    let saved: Vec<(PathBuf, Vec<u8>)> = std::fs::read_dir(&records)
+        .expect("records")
+        .map(|entry| {
+            let path = entry.expect("entry").path();
+            let bytes = std::fs::read(&path).expect("read");
+            (path, bytes)
+        })
+        .collect();
+    gc(&producer);
+    drop(producer);
+    std::fs::remove_file(records.join("BASE")).expect("BASE removed");
+    for (path, bytes) in &saved {
+        std::fs::write(path, bytes).expect("restored");
+    }
+    let producer = small_sealer(&host, descriptor());
+    let receipt = producer
+        .append(&ledger(1), &"r8".to_owned())
+        .expect("the open finished the deletion");
+    assert_eq!((receipt.run_id, receipt.seq), (run, 9));
+    assert!(records.join("BASE").exists());
+    assert!(!records.join("seg-00000000000000000000.pgj").exists());
+
+    // A journal starting after frame 0 where STATE names no base is refused.
+    drop(producer);
+    let state = host.producer_dir(&ledger(1)).join("STATE");
+    let mut held = State::decode(
+        &permguard_host::storage::write::read_view(
+            &permguard_host::storage::Dir::open(&host.producer_dir(&ledger(1))).expect("dir"),
+            "STATE",
+            permguard_host::storage::format::VIEW,
+        )
+        .expect("read")
+        .expect("held"),
+    )
+    .expect("decoded");
+    held.base = None;
+    permguard_host::storage::write::replace_view(
+        &permguard_host::storage::Dir::open(&host.producer_dir(&ledger(1))).expect("dir"),
+        "STATE",
+        permguard_host::storage::format::VIEW,
+        &held.encode().expect("encodes"),
+    )
+    .expect("rewritten");
+    assert!(state.exists());
+    assert!(matches!(
+        small_sealer(&host, descriptor()).append(&ledger(1), &"r9".to_owned()),
+        Err(StreamError::Corruption(_))
+    ));
+}
+
+/// WP-5.6b: a consumer's pass stopped after its anchor (its record refused) is finished by the
+/// next without covering a batch twice; once every record went, the reopened run takes its
+/// head from the anchor.
+#[test]
+fn a_consumer_pass_stopped_after_its_anchor_is_finished() {
+    struct Source;
+    impl super::retention::RetentionSource for Source {
+        fn retention_seconds(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(1)
+        }
+    }
+    let host = Host::new("prune-consumer-crashed");
+    // One frame a segment: once everything held went, no RECORDS frame is left.
+    let small = || {
+        host.streams()
+            .with_segment_bytes(1)
+            .register_consumer(descriptor(), Text)
+            .expect("registered")
+            .with_retention_source(Arc::new(Source))
+    };
+    let (producer, run, batches) = shipped(&host, 10, 2);
+    drop(producer);
+    let consumer = small();
+    for body in &batches[..4] {
+        ingest(&consumer, &host, &ship_of(&host, body)).expect("ingested");
+    }
+    let later = host.time.now_secs() + 10;
+    // The stream whose record is refused is skipped, logged, and nothing of it goes.
+    assert_eq!(
+        super::retention::Prunable::run(&consumer, later, &|_| Err("down".to_owned()))
+            .expect("the pass goes on"),
+        Some(Vec::new())
+    );
+    let pruned = super::retention::Prunable::run(&consumer, later, &|_| Ok(()))
+        .expect("a pass")
+        .expect("free");
+    assert_eq!((pruned[0].through, pruned[0].batches), (8, 4));
+    let run_dir = host
+        .root
+        .join("host")
+        .join(STREAMS)
+        .join("data")
+        .join("decisions")
+        .join("1")
+        .join("consumer")
+        .join(
+            descriptor()
+                .key(&ledger(1), host.identity.host_id())
+                .expect("a key")
+                .resource_component(),
+        )
+        .join(hex(&host.identity.host_id()))
+        .join(hex(&run));
+    let anchor = anchor_in(&run_dir);
+    assert_eq!(
+        (anchor.through, anchor.covering.len()),
+        (8, 4),
+        "no batch covered twice"
+    );
+    drop(consumer);
+    let reopened = small();
+    assert_eq!(
+        reopened
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        8
+    );
+    // The last batch again is `gone`: below what is retained.
+    let (answer, _) = ingest(&reopened, &host, &ship_of(&host, &batches[3])).expect("answered");
+    assert_eq!(answer.outcome, Outcome::Gone);
+    // The next continues from the anchor's head.
+    let (answer, _) = ingest(&reopened, &host, &ship_of(&host, &batches[4])).expect("answered");
+    assert_eq!((answer.outcome, answer.acked), (Outcome::Ok, 10));
+}
+
+/// WP-5.6b, after the review: records not yet sealed that start a kept segment are sealed and
+/// shipped after a reopen from STATE's base; a run ended and succeeded below the base reopens
+/// into its successor.
+#[test]
+fn a_reopened_stream_seals_what_follows_its_base() {
+    let host = Host::new("prune-base-seal");
+    let consumer = consumer_on(&host);
+    let tiny = || {
+        host.streams()
+            .with_segment_bytes(1)
+            .register_producer(descriptor(), Text)
+            .expect("registered")
+            .with_signer(Arc::clone(&host.attest))
+            .expect("the descriptor's ring")
+    };
+    let producer = tiny();
+    let run = acknowledged(&producer, &consumer, &host, 6);
+    for at in 6..8 {
+        producer
+            .append(&ledger(1), &format!("r{at}"))
+            .expect("appended");
+    }
+    assert_eq!(gc(&producer)[0].through, 6);
+    drop(producer);
+    let producer = tiny();
+    assert!(matches!(
+        producer.seal(&ledger(1), 10).expect("sealed"),
+        Sealing::Sealed { first: 7, .. }
+    ));
+    let shipping = subscribed("decisions", true, 1);
+    assert_eq!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &shipping,
+            vec![pin_of(&host)],
+            1
+        ),
+        vec![Outcome::Ok]
+    );
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        8
+    );
+
+    // The run ends and a successor opens; the whole first run goes, its TERMINAL with it.
+    // The successor holds nothing yet: the kept segment is its RUN_OPEN, and the base is the
+    // first run, ended.
+    let successor = producer
+        .rollover(&ledger(1), Some(fence(1)))
+        .expect("rolled over")
+        .run_id;
+    let pruned = gc(&producer);
+    assert_eq!((pruned[0].run, pruned[0].through), (Some(run), 8));
+    let base = producer
+        .state(&ledger(1))
+        .expect("state")
+        .expect("held")
+        .base
+        .expect("a base");
+    assert!(base.ended && base.last_seq == 8, "{base:?}");
+    drop(producer);
+    let producer = tiny();
+    let receipt = producer
+        .append(&ledger(1), &"s0".to_owned())
+        .expect("the successor goes on");
+    assert_eq!((receipt.run_id, receipt.seq), (successor, 1));
+    assert!(matches!(
+        producer.seal(&ledger(1), 10).expect("sealed"),
+        Sealing::Sealed { .. }
+    ));
+}
+
+/// WP-5.6b, after the review: a registered floor answering `None` keeps the run whole.
+#[test]
+fn a_floor_answering_none_keeps_the_run() {
+    struct Keep;
+    impl super::retention::RetentionFloor for Keep {
+        fn retention_safe(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            None
+        }
+    }
+    let history = Descriptor {
+        retention: Retention::History,
+        ..descriptor()
+    };
+    let host = Host::new("prune-floor-none");
+    let consumer = host
+        .streams()
+        .register_consumer(history.clone(), Text)
+        .expect("registered");
+    let producer = small_sealer(&host, history).with_retention_floor(Arc::new(Keep));
+    acknowledged(&producer, &consumer, &host, 4);
+    assert_eq!(gc(&producer)[0].run, None, "nothing goes");
+}
+
+/// WP-5.6b, after the mutants: a run the WP-5.4 shipping loop truncated, its mark written and no
+/// anchor, is anchored from its mark on; a pass with nothing new still catches the journal up.
+#[test]
+fn a_pre_anchor_mark_is_anchored_and_the_journal_is_caught_up() {
+    let host = Host::new("prune-pre-anchor");
+    let consumer = consumer_on(&host);
+    let producer = small_sealer(&host, descriptor());
+    let run = acknowledged(&producer, &consumer, &host, 4);
+    let dir = host.producer_dir(&ledger(1));
+    let batches = dir.join("batches").join(hex(&run));
+    // What WP-5.4 left: the mark through 2, the file below it gone, no anchor.
+    permguard_host::storage::write::replace_view(
+        &permguard_host::storage::Dir::open(&batches).expect("dir"),
+        "PRUNED",
+        permguard_host::storage::format::VIEW,
+        &[0xa1, 0x01, 0x02],
+    )
+    .expect("marked");
+    std::fs::remove_file(batches.join("1-2.jws")).expect("deleted");
+    let pruned = gc(&producer);
+    assert_eq!((pruned[0].through, pruned[0].batches), (4, 1));
+    assert_eq!(
+        anchor_in(&batches).covering.len(),
+        1,
+        "covered from the mark on"
+    );
+
+    // A pass stopped after its marks and files, before STATE's base and the journal.
+    let records = dir.join("records");
+    let host = Host::new("prune-catch-up");
+    let consumer = consumer_on(&host);
+    let producer = small_sealer(&host, descriptor());
+    acknowledged(&producer, &consumer, &host, 8);
+    let dir = host.producer_dir(&ledger(1));
+    let records = {
+        let _ = records;
+        dir.join("records")
+    };
+    let snapshot = |path: &Path| -> Vec<(PathBuf, Vec<u8>)> {
+        std::fs::read_dir(path)
+            .expect("listed")
+            .map(|entry| {
+                let path = entry.expect("entry").path();
+                let bytes = std::fs::read(&path).expect("read");
+                (path, bytes)
+            })
+            .collect()
+    };
+    let saved = snapshot(&records);
+    let state = std::fs::read(dir.join("STATE")).expect("STATE");
+    gc(&producer);
+    drop(producer);
+    std::fs::remove_file(records.join("BASE")).expect("BASE removed");
+    for (path, bytes) in &saved {
+        std::fs::write(path, bytes).expect("restored");
+    }
+    std::fs::write(dir.join("STATE"), &state).expect("STATE restored");
+    let producer = small_sealer(&host, descriptor());
+    assert_eq!(gc(&producer)[0].run, None, "nothing new to delete");
+    assert!(records.join("BASE").exists(), "the journal caught up");
+    assert!(!records.join("seg-00000000000000000000.pgj").exists());
+}
+
+/// WP-5.6b, after the mutants: records a crash left without their admission are dated by the
+/// open and written by the next pass, which may then delete them; a batch file straddling what
+/// a run retains is corruption, and that run's pass fails alone.
+#[test]
+fn an_undated_admission_is_written_by_the_pass_and_a_straddle_is_refused() {
+    struct Source;
+    impl super::retention::RetentionSource for Source {
+        fn retention_seconds(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(1)
+        }
+    }
+    let host = Host::new("prune-undated");
+    let small = || {
+        host.streams()
+            .with_segment_bytes(256)
+            .register_consumer(descriptor(), Text)
+            .expect("registered")
+            .with_retention_source(Arc::new(Source))
+    };
+    let (producer, run, batches) = shipped(&host, 6, 2);
+    drop(producer);
+    let consumer = small();
+    ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("ingested");
+    drop(consumer);
+    let run_dir = host
+        .root
+        .join("host")
+        .join(STREAMS)
+        .join("data")
+        .join("decisions")
+        .join("1")
+        .join("consumer")
+        .join(
+            descriptor()
+                .key(&ledger(1), host.identity.host_id())
+                .expect("a key")
+                .resource_component(),
+        )
+        .join(hex(&host.identity.host_id()))
+        .join(hex(&run));
+    // The second batch's records and file, without its admission: a crash between them.
+    let (mut journal, _) = permguard_host::storage::journal::Journal::open(
+        permguard_host::storage::Dir::open(&run_dir.join("records")).expect("dir"),
+        permguard_host::storage::journal::Options {
+            segment_bytes: 256,
+            ..Default::default()
+        },
+    )
+    .expect("opened");
+    journal
+        .append(
+            super::producer::RECORDS,
+            &encode_group(3, [b"r2".as_slice(), b"r3".as_slice()]).expect("a group"),
+        )
+        .expect("appended");
+    drop(journal);
+    std::fs::write(run_dir.join("batches").join("3-4.jws"), &batches[1]).expect("the file");
+    let consumer = small();
+    let later = host.time.now_secs() + 10;
+    let pruned = super::retention::Prunable::run(&consumer, later, &|_| Ok(()))
+        .expect("a pass")
+        .expect("free");
+    assert_eq!(pruned[0].through, 4, "the undated records went too");
+
+    // A file straddling what the run retains: that run's pass fails, nothing else.
+    std::fs::write(run_dir.join("batches").join("3-6.jws"), &batches[2]).expect("a straddle");
+    let pruned = super::retention::Prunable::run(&consumer, later, &|_| Ok(()))
+        .expect("a pass")
+        .expect("free");
+    assert!(pruned.is_empty(), "{pruned:?}");
 }

@@ -26,6 +26,7 @@ pub mod plane;
 pub mod repin;
 pub mod shipping;
 pub mod signal;
+pub mod stream_gc;
 pub mod time;
 pub mod witness;
 pub mod zone;

@@ -792,6 +792,12 @@ impl Journal {
         Ok(base)
     }
 
+    /// The first frame index of every segment, oldest first: where a prefix deletion can end
+    /// (WP-5.6b).
+    pub fn segment_starts(&self) -> Vec<u64> {
+        self.segments.iter().map(|(first, _)| *first).collect()
+    }
+
     /// The segments, oldest first.
     pub fn segments(&self) -> Vec<String> {
         self.segments.iter().map(|(_, name)| name.clone()).collect()

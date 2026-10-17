@@ -1102,6 +1102,16 @@
     },
     {
       "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/anchor.rs",
+      "item": "Anchor::decode",
+      "entry": "permguard_stream::engine::anchor::Anchor::decode",
+      "max_input_bytes": 33554432,
+      "limit": "`MAX_ANCHOR_BYTES`, checked by the decoder before it parses: a run's `ANCHOR` (WP-5.6b)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
       "source": "crates/permguard-stream/src/engine/producer/seal.rs",
       "item": "Cutover::decode",
       "entry": "permguard_stream::engine::Cutover::decode",

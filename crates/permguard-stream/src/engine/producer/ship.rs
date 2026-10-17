@@ -35,7 +35,7 @@ use super::super::codec::{Map, encode, uint};
 use super::super::ingest::{Answer, Outcome, Ship};
 use super::super::state::Unshipped;
 use super::super::{RecordCodec, StreamError, hex};
-use super::seal::{PRUNED, batches_of, pruned_of};
+use super::seal::{batches_of, pruned_of};
 use super::{Physical, Producer, RECORDS, decode_group};
 
 const SUBSCRIPTIONS: &str = "subscriptions";
@@ -201,7 +201,7 @@ fn file_name(membership_id: &[u8; 16], task_id: &str) -> Result<String, StreamEr
 }
 
 /// Every subscription of the stream in `dir`.
-fn subscriptions_of(dir: &Dir) -> Result<Vec<Subscription>, StreamError> {
+pub(super) fn subscriptions_of(dir: &Dir) -> Result<Vec<Subscription>, StreamError> {
     let subscriptions = subscriptions_dir(dir)?;
     let mut found = Vec::new();
     for name in subscriptions.names()? {
@@ -242,7 +242,7 @@ fn keep_subscription(dir: &Dir, subscription: &Subscription) -> Result<(), Strea
 /// `truncate_safe` of `run`, fenced by `fence`: the least acknowledgement of the required
 /// subscriptions of that membership, the only ones it is ever shipped to (after the review);
 /// `None` when none exists, nothing blocking.
-fn truncate_safe_of(
+pub(super) fn truncate_safe_of(
     subscriptions: &[Subscription],
     run: &[u8; 16],
     fence: Option<[u8; 16]>,
@@ -271,7 +271,7 @@ impl<C: RecordCodec> Producer<C> {
         self.descriptor.task == Some(subscribed.task_type)
     }
 
-    fn signer_ring(&self) -> Result<&permguard_host::keys::ring::Ring, StreamError> {
+    pub(super) fn signer_ring(&self) -> Result<&permguard_host::keys::ring::Ring, StreamError> {
         self.signer.as_deref().ok_or_else(|| {
             StreamError::Sign("the producer was handed no ring to seal under".to_owned())
         })
@@ -354,7 +354,20 @@ impl<C: RecordCodec> Producer<C> {
         }
         // The bytes past each run's floor.
         let mut bytes = 0u64;
-        let mut current = None;
+        // Below the journal's first frame the run may have opened earlier (WP-5.6).
+        let mut current = writer
+            .base()
+            .map(|base| {
+                Ok::<_, StreamError>(
+                    super::super::run::RunStatement::decode(
+                        permguard_objects::cose::Sign1::decode(&base.statement)
+                            .map_err(|error| StreamError::Invalid(error.to_string()))?
+                            .payload_unverified(),
+                    )?
+                    .run_id,
+                )
+            })
+            .transpose()?;
         for frame in writer.journal.frames()? {
             match frame.kind {
                 super::RUN_OPEN => {
@@ -412,51 +425,21 @@ impl<C: RecordCodec> Producer<C> {
         Ok(None)
     }
 
-    /// Moves STATE's `acknowledged_seq` to the current run's `truncate_safe` and deletes every
-    /// batch file at or below each run's, never one beyond (owner decision).
+    /// Moves STATE's `acknowledged_seq` to the current run's `truncate_safe`. Deleting what every
+    /// required subscription acknowledged is the garbage collection's (WP-5.6b, owner decision of
+    /// 2026-10-15), never the shipping loop's.
     fn truncate(&self, physical: &Physical) -> Result<(), StreamError> {
         let signer = self.signer_ring()?;
         let runs = physical.runs(signer, &self.descriptor)?;
         let mut writer = physical.writer();
         let subscriptions = subscriptions_of(&writer.dir)?;
-        let root = writer.dir.subdir(BATCHES, true)?;
+        let current = writer.run.as_ref().map(|current| current.statement.run_id);
         for (run, fence, last_seq, _) in &runs {
-            let dir = root.subdir(&hex(run), true)?;
-            // What a crash left below the mark before deleting it.
-            let stale = super::seal::below_mark(&dir)?;
-            for name in &stale {
-                dir.unlink(name)?;
-            }
-            if !stale.is_empty() {
-                dir.sync()?;
-            }
-            let Some(safe) = truncate_safe_of(&subscriptions, run, *fence) else {
+            if current != Some(*run) {
                 continue;
-            };
-            let safe = safe.min(*last_seq);
-            let deleted: Vec<(u64, String)> = batches_of(&dir)?
-                .into_iter()
-                .filter(|(_, last, _)| *last <= safe)
-                .map(|(_, last, name)| (last, name))
-                .collect();
-            if let Some((through, _)) = deleted.last() {
-                // The mark first: a crash after it leaves files below it, which every reader
-                // skips and the next truncation deletes (after the review).
-                if *through > pruned_of(&dir)? {
-                    replace_view(
-                        &dir,
-                        PRUNED,
-                        format::VIEW,
-                        &encode(vec![(1, uint(*through)?)])?,
-                    )?;
-                }
-                for (_, name) in &deleted {
-                    dir.unlink(name)?;
-                }
-                dir.sync()?;
             }
-            if writer.run.as_ref().map(|current| current.statement.run_id) == Some(*run) {
-                writer.keep_acknowledged(safe)?;
+            if let Some(safe) = truncate_safe_of(&subscriptions, run, *fence) {
+                writer.keep_acknowledged(safe.min(*last_seq))?;
             }
         }
         Ok(())

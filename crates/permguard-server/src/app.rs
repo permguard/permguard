@@ -1213,6 +1213,7 @@ impl App {
         operations: &Arc<permguard_host::keys::ring::Ring>,
         data_attest: Option<&Arc<permguard_host::keys::ring::Ring>>,
         time: &Arc<permguard_host::time::TimeGuard>,
+        members: &Arc<std::sync::OnceLock<Arc<permguard_host::membership::Store>>>,
     ) -> Result<StreamParts, permguard_stream::engine::StreamError> {
         let engine = permguard_stream::engine::Streams::open(
             volume,
@@ -1233,15 +1234,29 @@ impl App {
             events = events.with_signer(Arc::clone(ring))?;
         }
         // Their consumers, what this Host ingests as a coordinator over `decisions.ship` and
-        // `events.ship` (WP-5.3).
-        let decision_consumer = engine.register_consumer(
-            permguard_decisions::stream::descriptor(),
-            permguard_decisions::stream::Codec,
-        )?;
-        let event_consumer = engine.register_consumer(
-            permguard_events::stream::descriptor(),
-            permguard_events::stream::Codec,
-        )?;
+        // `events.ship` (WP-5.3), kept as long as the task shipping them says (WP-5.6b).
+        let retention = |task| {
+            Arc::new(crate::stream_gc::ShipRetention {
+                members: Arc::clone(members),
+                task,
+            })
+        };
+        let decision_consumer = engine
+            .register_consumer(
+                permguard_decisions::stream::descriptor(),
+                permguard_decisions::stream::Codec,
+            )?
+            .with_retention_source(retention(
+                permguard_host::membership::record::TaskType::DecisionsShip,
+            ));
+        let event_consumer = engine
+            .register_consumer(
+                permguard_events::stream::descriptor(),
+                permguard_events::stream::Codec,
+            )?
+            .with_retention_source(retention(
+                permguard_host::membership::record::TaskType::EventsShip,
+            ));
         Ok((
             permguard_stream::engine::Served::default()
                 .with(permguard_decisions::stream::STREAM, Arc::new(decisions))
@@ -1796,6 +1811,9 @@ impl App {
             .context("recovering the key ring mutations a crash left open")?;
         // The Host's stream engine (WP-5.1), its runs signed under `host.operations`: the decision
         // log and the event journal registered on it, their Planes' adoption WP-6.1 and WP-6.2's.
+        // The memberships a consumer's retention reads, bound once they are open below.
+        let retention_members = Arc::new(std::sync::OnceLock::new());
+        let mut prunables: Vec<Arc<dyn permguard_stream::engine::retention::Prunable>> = Vec::new();
         let (streams, ingests) = match keys.as_ref() {
             Some(operations) => {
                 let (served, decisions, events) = self
@@ -1805,9 +1823,14 @@ impl App {
                         operations,
                         data_signing_keys.as_ref(),
                         &time,
+                        &retention_members,
                     )
                     .map_err(|error| anyhow::anyhow!("{error}"))
                     .context("opening the stream engine")?;
+                // What the garbage collection runs (WP-5.6b): every producer and consumer.
+                prunables = served.prunables();
+                prunables.push(Arc::clone(&decisions) as _);
+                prunables.push(Arc::clone(&events) as _);
                 (Some(Arc::new(served)), Some((decisions, events)))
             }
             None => (None, None),
@@ -1823,6 +1846,7 @@ impl App {
         mutations
             .recover(&permguard_host::membership::Memberships(&members))
             .context("recovering the membership mutations a crash left open")?;
+        let _ = retention_members.set(Arc::clone(&members));
         // Retention deletes a day of an exported trail only once its seal is acknowledged
         // (WP-5.9, owner decision).
         audit_engine.gate_retention_with(Arc::new(
@@ -2125,6 +2149,9 @@ impl App {
         let _ticking = crate::time::tick(Arc::clone(&time));
         // The ended days a stopped process left unsealed, sealed now and every hour after.
         let _sweeping = crate::checkpoints::sweep(Arc::clone(&audit_engine));
+        // The streams' garbage collection, at start and every hour, off the request path (WP-5.6b).
+        let _pruning =
+            crate::stream_gc::drive(prunables, Arc::clone(&audit_engine), Arc::clone(&time));
         // Members silent past their thresholds suspended, then revoked (WP-4.6).
         let _dormancy = repinning_coordinator
             .as_ref()

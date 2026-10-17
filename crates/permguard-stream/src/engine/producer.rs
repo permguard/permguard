@@ -28,9 +28,10 @@ use permguard_objects::cbor::Value;
 
 use super::codec::{Map, encode, uint};
 use super::run::{Fence, RunEnd, RunStatement, statement_digest};
-use super::state::State;
+use super::state::{Base, State};
 use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex, record_digest};
 
+mod prune;
 mod seal;
 mod ship;
 
@@ -64,6 +65,8 @@ pub(crate) struct Context {
     pub(crate) claim: u64,
     pub(crate) operations: Arc<Ring>,
     pub(crate) time: Arc<TimeGuard>,
+    /// The size past which the stream's journal segment rolls (WP-5.6b).
+    pub(crate) segment_bytes: u64,
 }
 
 /// What an append answers once its record is durable.
@@ -84,6 +87,10 @@ pub struct Producer<C> {
     signer: Option<Arc<Ring>>,
     /// Each subscription backing off: its attempts and the second it waits until (WP-5.4).
     backoff: Mutex<BTreeMap<String, (u32, u64)>>,
+    /// The `history` floor the Plane registered (WP-5.6b).
+    floor: Option<Arc<dyn super::retention::RetentionFloor>>,
+    /// Keeps the garbage collection's passes from overlapping (WP-5.6b).
+    pub(crate) lease: super::retention::Lease,
 }
 
 impl<C> std::fmt::Debug for Producer<C> {
@@ -105,7 +112,19 @@ impl<C: RecordCodec> Producer<C> {
             streams: Mutex::new(BTreeMap::new()),
             signer: None,
             backoff: Mutex::new(BTreeMap::new()),
+            floor: None,
+            lease: super::retention::Lease::default(),
         }
+    }
+
+    /// This producer's `history` streams kept above `floor`, the oldest position a loaded
+    /// temporal contract reads (WP-5.6b).
+    pub fn with_retention_floor(
+        mut self,
+        floor: Arc<dyn super::retention::RetentionFloor>,
+    ) -> Self {
+        self.floor = Some(floor);
+        self
     }
 
     /// This producer sealing its batches under `signer`, the ring its descriptor names.
@@ -351,7 +370,10 @@ impl<C: RecordCodec> Producer<C> {
             return Ok(Vec::new());
         };
         let mut found = Vec::new();
-        let mut in_run = false;
+        // Below the journal's first frame the run may have opened earlier (WP-5.6).
+        let mut in_run = writer
+            .base()
+            .is_some_and(|base| statement_digest(&base.statement) == run.digest);
         for frame in writer.journal.frames()? {
             match frame.kind {
                 RUN_OPEN => in_run = statement_digest(&frame.payload) == run.digest,
@@ -505,6 +527,34 @@ fn confirm(streams: &[Arc<Physical>], stream: &str, kid: &str) -> Result<(), Str
     }
 }
 
+/// The base the journal starts at (WP-5.6): `None` while it holds every frame from 0. A STATE
+/// base above the journal's first frame is a deletion a crash stopped after STATE and before
+/// `BASE`, finished here; a journal starting after frame 0 where STATE names no base at that
+/// frame lost what its open needs, and is corruption.
+fn base_of(journal: &mut Journal, state: Option<&State>) -> Result<Option<Base>, StreamError> {
+    let base = state.and_then(|state| state.base.clone());
+    let first = journal.first_index();
+    match &base {
+        Some(held) if held.first_index > first => {
+            let reached = journal.drop_prefix(held.first_index, None)?;
+            if reached != held.first_index {
+                return Err(StreamError::Corruption(format!(
+                    "STATE's base is at frame {}, and no segment starts there",
+                    held.first_index
+                )));
+            }
+        }
+        Some(held) if held.first_index == first => {}
+        _ if first == 0 => return Ok(None),
+        _ => {
+            return Err(StreamError::Corruption(format!(
+                "the journal starts at frame {first}, and STATE names no base there"
+            )));
+        }
+    }
+    Ok(base)
+}
+
 fn random_id() -> Result<[u8; 16], StreamError> {
     use ring::rand::SecureRandom as _;
     let mut bytes = [0u8; 16];
@@ -532,15 +582,39 @@ impl Physical {
             .subdir(&key.resource_component(), true)?
             .subdir(&hex(&key.producer_host_id), true)?;
         let reserved = allocate(&dir, RESERVE_FILE, RESERVE_BYTES)?;
-        let (journal, _) = Journal::open(
+        let (mut journal, _) = Journal::open(
             dir.subdir(RECORDS_DIR, true)?,
             Options {
                 claim: context.claim,
+                segment_bytes: context.segment_bytes,
                 ..Options::default()
             },
         )?;
+        let state = read_view(&dir, STATE_FILE, format::VIEW)?
+            .map(|bytes| State::decode(&bytes))
+            .transpose()?;
         let mut runs: Vec<Run> = Vec::new();
         let mut keys: Option<Vec<permguard_core::keys::Jwk>> = None;
+        // Once a prefix went (WP-5.6), the run open at the journal's first frame comes from
+        // STATE's base, written before `BASE`: a deletion a crash stopped between the two is
+        // finished here, and a journal starting where STATE names no base is corruption.
+        if let Some(base) = base_of(&mut journal, state.as_ref())? {
+            keys = Some(super::run::own_keys(&context.operations)?);
+            let statement =
+                RunStatement::verify_among(&base.statement, keys.as_deref().unwrap_or(&[]))?;
+            if statement.key != key {
+                return Err(StreamError::Corruption(
+                    "STATE's base opens a run of another stream".to_owned(),
+                ));
+            }
+            runs.push(Run {
+                digest: statement_digest(&base.statement),
+                statement,
+                last_seq: base.last_seq,
+                last_digest: base.last_digest,
+                ended: base.ended,
+            });
+        }
         for frame in journal.frames()? {
             match frame.kind {
                 RUN_OPEN => {
@@ -612,9 +686,6 @@ impl Physical {
                 }
             }
         }
-        let state = read_view(&dir, STATE_FILE, format::VIEW)?
-            .map(|bytes| State::decode(&bytes))
-            .transpose()?;
         let mut writer = Writer {
             journal,
             run: runs.last().cloned(),
@@ -649,9 +720,25 @@ impl Physical {
             dir.subdir(RECORDS_DIR, false)?,
             Options {
                 claim: context.claim,
+                segment_bytes: context.segment_bytes,
                 ..Options::default()
             },
         )?;
+        // Once a prefix went, the first run is the one STATE's base names (WP-5.6).
+        if journal.first_index() > 0 {
+            let state = read_view(dir, STATE_FILE, format::VIEW)?
+                .map(|bytes| State::decode(&bytes))
+                .transpose()?;
+            let Some(base) = state.and_then(|state| state.base) else {
+                return Err(StreamError::Corruption(format!(
+                    "the journal starts at frame {}, and STATE names no base",
+                    journal.first_index()
+                )));
+            };
+            return Ok(Some(
+                RunStatement::verify_own(&base.statement, &context.operations)?.key,
+            ));
+        }
         for frame in journal.frames()? {
             if frame.kind == RUN_OPEN {
                 return Ok(Some(
@@ -906,6 +993,39 @@ impl Physical {
 }
 
 impl Writer {
+    /// STATE's base, once the journal no longer starts at frame 0 (WP-5.6).
+    fn base(&self) -> Option<&Base> {
+        let first = self.journal.first_index();
+        self.state
+            .as_ref()
+            .and_then(|state| state.base.as_ref())
+            .filter(|base| first > 0 && base.first_index == first)
+    }
+
+    /// Keeps `base` as STATE's, before the journal's prefix goes (WP-5.6b).
+    fn keep_base(&mut self, base: Base) -> Result<(), StreamError> {
+        let Some(mut state) = self.state.clone() else {
+            return Err(StreamError::Corruption(
+                "a stream whose prefix goes holds no STATE".to_owned(),
+            ));
+        };
+        state.base = Some(base);
+        replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
+        self.state = Some(state);
+        Ok(())
+    }
+
+    /// Puts STATE's base back to `base`, after a prefix deletion that did not reach the journal.
+    fn restore_base(&mut self, base: Option<Base>) -> Result<(), StreamError> {
+        let Some(mut state) = self.state.clone() else {
+            return Ok(());
+        };
+        state.base = base;
+        replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
+        self.state = Some(state);
+        Ok(())
+    }
+
     /// Keeps `mark` as STATE's `unshipped`, or removes it (WP-5.8).
     fn keep_unshipped(&mut self, mark: Option<super::state::Unshipped>) -> Result<(), StreamError> {
         // A stream behind holds a run, and so a STATE: a mark with nowhere to go is never lost
@@ -990,6 +1110,8 @@ impl Writer {
             forked_at_seq: forked,
             // A drain's mark outlives a rollover: it goes only when nothing is behind.
             unshipped: self.state.as_ref().and_then(|state| state.unshipped),
+            // What the journal's deleted prefix gave its open belongs to the journal, not the run.
+            base: self.state.as_ref().and_then(|state| state.base.clone()),
         };
         replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
         self.state = Some(state);
@@ -1142,5 +1264,47 @@ impl<C: RecordCodec> permguard_host::composition::StreamCutovers for Producer<C>
             confirm(&every, stream, kid).map_err(|error| error.to_string())?;
         }
         Ok(())
+    }
+}
+
+impl<C: RecordCodec> super::retention::Prunable for Producer<C> {
+    fn name(&self) -> String {
+        format!(
+            "producer {}/{} version {}",
+            self.descriptor.plane, self.descriptor.stream_type, self.descriptor.version
+        )
+    }
+
+    fn plan(&self, _now: u64) -> Result<Vec<super::retention::Pruned>, StreamError> {
+        let mut planned = Vec::new();
+        for physical in self.every()? {
+            planned.extend(self.prune_stream(&physical, None)?);
+        }
+        Ok(planned)
+    }
+
+    fn run(
+        &self,
+        _now: u64,
+        audit: super::retention::Audit<'_>,
+    ) -> Result<Option<Vec<super::retention::Pruned>>, StreamError> {
+        let Some(_held) = self.lease.take() else {
+            return Ok(None);
+        };
+        // One stream that fails does not stop the others, nor their records (after the review).
+        let mut pruned = Vec::new();
+        for physical in self.every()? {
+            match self.prune_stream(&physical, Some(audit)) {
+                Ok(done) => pruned.extend(done),
+                Err(error) => tracing::error!(
+                    event.name = "host.stream.prune_failed",
+                    component = "host",
+                    stream = %Self::pruned_name(&physical),
+                    error = %error,
+                    "a stream's garbage collection pass failed; the others go on"
+                ),
+            }
+        }
+        Ok(Some(pruned))
     }
 }

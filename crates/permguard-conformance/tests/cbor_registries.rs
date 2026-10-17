@@ -1827,6 +1827,7 @@ fn stream_samples() -> Vec<Sample> {
         pending_successor: None,
         forked_at_seq: None,
         unshipped: None,
+        base: None,
     };
     // WP-5.2: a stream's signer spans, two runs, the second with two keys, and its cutover.
     let span = |from_seq: u64, kid: &str| Span {
@@ -1917,7 +1918,7 @@ fn stream_samples() -> Vec<Sample> {
                     truncate_safe: 1,
                     run: [3; 16],
                 }),
-                ..state
+                ..state.clone()
             }
             .encode()
             .expect("encodes"),
@@ -2046,6 +2047,60 @@ fn stream_samples() -> Vec<Sample> {
             })),
         ),
         sample("pruned_mark", vec![0xa1, 0x01, 0x04], &[], None),
+        // WP-5.6b: STATE's base once a prefix went, a run's anchor and a consumer's admission.
+        sample(
+            "stream_state",
+            State {
+                base: Some(permguard_stream::engine::state::Base {
+                    first_index: 7,
+                    statement: vec![8; 64],
+                    last_seq: 2,
+                    last_digest: [4; 32],
+                    ended: false,
+                }),
+                ..state.clone()
+            }
+            .encode()
+            .expect("encodes"),
+            &["stream_state.base"],
+            state_decoder(),
+        ),
+        sample(
+            "stream_anchor",
+            permguard_stream::engine::anchor::Anchor {
+                resource: "plane/data/zone/z/ledger/l".to_owned(),
+                run: [3; 16],
+                low_watermark: 5,
+                through: 4,
+                terminal_head: format!("sha256:{}", "a".repeat(64)),
+                covering: vec![
+                    format!("sha256:{}", "b".repeat(64)),
+                    format!("sha256:{}", "c".repeat(64)),
+                ],
+                signers: vec![Span {
+                    from_seq: 1,
+                    kid: "kid-1".to_owned(),
+                    jwk: "{\"kty\":\"OKP\"}".to_owned(),
+                }],
+                checkpoint: vec![9; 32],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(permguard_stream::engine::anchor::Anchor::decode(bytes))
+            })),
+        ),
+        sample(
+            "admitted",
+            cbor::encode(&cbor::Value::Map(vec![
+                (cbor::Value::Int(1), cbor::Value::Int(4)),
+                (cbor::Value::Int(2), cbor::Value::Int(1_800_000_000)),
+            ]))
+            .expect("encodes"),
+            &[],
+            None,
+        ),
     ]
 }
 

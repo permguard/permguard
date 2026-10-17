@@ -12,8 +12,15 @@
 //!     ├── records/                   the records verbatim, the authority on `acked`
 //!     ├── batches/<first>-<last>.jws the batch files verbatim
 //!     ├── signers.cbor               the spans of the keys the batches were verified under
-//!     └── STATE                      {1 acked, 2 oldest_retained}
+//!     ├── STATE                      {1 acked, 2 oldest_retained}
+//!     └── ANCHOR                     what the run keeps of a deleted prefix (WP-5.6b)
 //! ```
+//!
+//! The records journal holds, after each admitted batch's RECORDS frame, an `ADMITTED` frame
+//! {1 through, 2 at}: the consumer's own time the batch was admitted at, which its retention
+//! counts from (owner decision of 2026-10-17). Records a crash left without one are dated by the
+//! open that finds them, so they are kept longer, never shorter. Once a prefix went, the first
+//! RECORDS frame left says where the records held start; with none left, the run's `ANCHOR` does.
 //!
 //! Ingest checks in the blueprint's order: the message's bounds, the producer's fork mark, the
 //! ring pin and the key, the signature and the batch's own commitments, the task the batch names,
@@ -37,6 +44,10 @@ use super::ingest::{Answer, Forked, Outcome, Ship, Shipping};
 use super::producer::{RECORDS, Span, Spans, canonical_jwk, decode_group};
 use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex};
 
+mod prune;
+
+/// The frame kind of a batch's admission time (WP-5.6b).
+const ADMITTED: u16 = 4;
 const FORKED: &str = "FORKED";
 const STATE: &str = "STATE";
 const SIGNERS: &str = "signers.cbor";
@@ -128,6 +139,23 @@ struct Held {
     /// Each RECORDS frame's first sequence and journal index, in order: where a read of a range
     /// starts, so a replay never reads the whole run (after the review).
     groups: Vec<(u64, u64)>,
+    /// Each admission still held, `(through, at)`, in order (WP-5.6b).
+    admitted: Vec<(u64, u64)>,
+    /// Records a crash left before their admission was written: dated by the open that found
+    /// them, in memory, and written by the next garbage collection pass, never by a read.
+    undated: Option<(u64, u64)>,
+}
+
+/// The payload of an `ADMITTED` frame.
+fn encode_admitted(through: u64, at: u64) -> Result<Vec<u8>, StreamError> {
+    encode(vec![(1, uint(through)?), (2, uint(at)?)])
+}
+
+fn decode_admitted(bytes: &[u8]) -> Result<(u64, u64), StreamError> {
+    let mut map = Map::read(bytes, "an admission")?;
+    let read = (map.uint(1)?, map.uint(2)?);
+    map.finish()?;
+    Ok(read)
 }
 
 impl Held {
@@ -166,6 +194,15 @@ pub struct Consumer<C> {
     claim: u64,
     descriptor: Descriptor,
     codec: C,
+    /// The clock an admission is dated by (WP-5.6b).
+    time: std::sync::Arc<permguard_host::time::TimeGuard>,
+    /// The `history` floor the Plane registered, and where each stream's retention comes from.
+    floor: Option<std::sync::Arc<dyn super::retention::RetentionFloor>>,
+    source: Option<std::sync::Arc<dyn super::retention::RetentionSource>>,
+    /// Keeps the garbage collection's passes from overlapping.
+    lease: super::retention::Lease,
+    /// The size past which a run's journal segment rolls (WP-5.6b).
+    segment_bytes: u64,
     /// The runs held open, by `(resource component, producer, run)`; the lock serializes
     /// admissions, one writer per consumer stream.
     held: Mutex<BTreeMap<RunAt, Held>>,
@@ -204,14 +241,50 @@ fn child(dir: &Dir, name: &str, create: bool) -> Result<Option<Dir>, StreamError
 }
 
 impl<C: RecordCodec> Consumer<C> {
-    pub(crate) fn new(dir: Dir, claim: u64, descriptor: Descriptor, codec: C) -> Self {
+    pub(crate) fn new(
+        dir: Dir,
+        claim: u64,
+        descriptor: Descriptor,
+        codec: C,
+        time: std::sync::Arc<permguard_host::time::TimeGuard>,
+    ) -> Self {
         Self {
             dir,
             claim,
             descriptor,
             codec,
+            time,
+            floor: None,
+            source: None,
+            lease: super::retention::Lease::default(),
+            segment_bytes: permguard_host::storage::journal::DEFAULT_SEGMENT_BYTES,
             held: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    /// This consumer's run journals rolling their segments past `bytes` (WP-5.6b).
+    pub(crate) fn with_segment_bytes(mut self, bytes: u64) -> Self {
+        self.segment_bytes = bytes;
+        self
+    }
+
+    /// This consumer's `history` streams kept above `floor` (WP-5.6b).
+    pub fn with_retention_floor(
+        mut self,
+        floor: std::sync::Arc<dyn super::retention::RetentionFloor>,
+    ) -> Self {
+        self.floor = Some(floor);
+        self
+    }
+
+    /// This consumer's streams deleted past the retention `source` answers (WP-5.6b): without
+    /// one, nothing is deleted.
+    pub fn with_retention_source(
+        mut self,
+        source: std::sync::Arc<dyn super::retention::RetentionSource>,
+    ) -> Self {
+        self.source = Some(source);
+        self
     }
 
     /// The ring the descriptor's batches are signed under.
@@ -238,6 +311,15 @@ impl<C: RecordCodec> Consumer<C> {
         let Some(producer) = self.producer_dir(key, create)? else {
             return Ok(None);
         };
+        if create && !producer.exists(prune::RESERVE_FILE)? {
+            // The reserve a deletion's writes take (WP-5.6b); where the filesystem cannot
+            // allocate it, the consumer goes on without.
+            let _ = permguard_host::storage::write::allocate(
+                &producer,
+                prune::RESERVE_FILE,
+                prune::RESERVE_BYTES,
+            );
+        }
         let Some(dir) = child(&producer, &hex(&run_id), create)? else {
             return Ok(None);
         };
@@ -245,13 +327,40 @@ impl<C: RecordCodec> Consumer<C> {
             dir.subdir(RECORDS_DIR, true)?,
             Options {
                 claim: self.claim,
+                segment_bytes: self.segment_bytes,
                 ..Options::default()
             },
         )?;
         let mut acked = 0;
         let mut last = GENESIS_HEAD.to_owned();
         let mut groups = Vec::new();
-        for frame in journal.frames()? {
+        let mut admitted = Vec::new();
+        let frames = journal.frames()?;
+        // Once a prefix went (WP-5.6b): the first RECORDS frame left says where the records held
+        // start; with none left, every record went, through the anchor's `through`.
+        if journal.first_index() > 0 {
+            match frames.iter().find(|frame| frame.kind == RECORDS) {
+                Some(frame) => acked = decode_group(&frame.payload)?.0 - 1,
+                None => {
+                    let anchor = read_view(&dir, super::anchor::ANCHOR, format::VIEW)?
+                        .map(|bytes| super::anchor::Anchor::decode(&bytes))
+                        .transpose()?
+                        .ok_or_else(|| {
+                            StreamError::Corruption(format!(
+                                "run {} lost a prefix and keeps no anchor",
+                                hex(&run_id)
+                            ))
+                        })?;
+                    acked = anchor.through;
+                    last = anchor.terminal_head;
+                }
+            }
+        }
+        for frame in frames {
+            if frame.kind == ADMITTED {
+                admitted.push(decode_admitted(&frame.payload)?);
+                continue;
+            }
             if frame.kind != RECORDS {
                 continue;
             }
@@ -272,6 +381,10 @@ impl<C: RecordCodec> Consumer<C> {
             .map(|bytes| ConsumerState::decode(&bytes))
             .transpose()?
             .map_or(1, |state| state.oldest_retained);
+        // Records a crash left before their admission was written: dated now, kept longer;
+        // written by the next pass, not by this open, which may serve a read (after the review).
+        let undated = (acked > admitted.last().map_or(0, |(through, _)| *through))
+            .then(|| (acked, self.time.now_secs()));
         Ok(Some(Held {
             dir,
             journal,
@@ -279,6 +392,8 @@ impl<C: RecordCodec> Consumer<C> {
             last,
             oldest_retained,
             groups,
+            admitted,
+            undated,
         }))
     }
 
@@ -369,6 +484,12 @@ impl<C: RecordCodec> Consumer<C> {
         if let Some(record) = records.last() {
             held.last = digest_string(self.descriptor.record_domain, record);
         }
+        // The consumer's own time, which its retention counts from (WP-5.6b).
+        let at = self.time.now_secs();
+        held.journal
+            .append(ADMITTED, &encode_admitted(held.acked, at)?)?;
+        held.admitted.push((held.acked, at));
+        held.undated = None;
         replace_view(
             &held.dir,
             STATE,
@@ -726,4 +847,45 @@ fn unhex16(text: &str) -> Option<[u8; 16]> {
         .map(|at| u8::from_str_radix(text.get(at..at + 2)?, 16).ok())
         .collect();
     bytes?.try_into().ok()
+}
+
+impl<C: RecordCodec> super::retention::Prunable for Consumer<C> {
+    fn name(&self) -> String {
+        format!(
+            "consumer {}/{} version {}",
+            self.descriptor.plane, self.descriptor.stream_type, self.descriptor.version
+        )
+    }
+
+    fn plan(&self, now: u64) -> Result<Vec<super::retention::Pruned>, StreamError> {
+        self.runs()?
+            .into_iter()
+            .map(|(key, run)| self.prune_run(&key, run, now, None))
+            .collect()
+    }
+
+    fn run(
+        &self,
+        now: u64,
+        audit: super::retention::Audit<'_>,
+    ) -> Result<Option<Vec<super::retention::Pruned>>, StreamError> {
+        let Some(_held) = self.lease.take() else {
+            return Ok(None);
+        };
+        // One run that fails does not stop the others, nor their records (after the review).
+        let mut pruned = Vec::new();
+        for (key, run) in self.runs()? {
+            match self.prune_run(&key, run, now, Some(audit)) {
+                Ok(done) => pruned.push(done),
+                Err(error) => tracing::error!(
+                    event.name = "host.stream.prune_failed",
+                    component = "host",
+                    stream = %prune::pruned_name(&key, &run),
+                    error = %error,
+                    "a stream's garbage collection pass failed; the others go on"
+                ),
+            }
+        }
+        Ok(Some(pruned))
+    }
 }

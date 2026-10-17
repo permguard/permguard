@@ -19,6 +19,15 @@ is cut.
 
 ### Added
 
+- **Stream evidence is deleted by an hourly job, and what goes leaves an anchor.**
+  At start and every hour the Host deletes, of each stream it produces, the batches every required subscription acknowledged, for `history` streams only below the floor a Plane registers.
+  Of each stream it ingests as a coordinator, it deletes the batches admitted longer ago than the `retention_seconds` of the task that ships them, for `history` streams again only below the Plane's floor.
+  The deletion no longer happens in the shipping loop.
+  Before anything goes, the run's `ANCHOR` keeps the deleted range, its last record digest, the digest of every deleted batch, the signer keys and the last deleted batch whole.
+  Then a `host.stream.pruned` security record names what is about to go; a record the trail refuses deletes nothing.
+  Every stream gets a `host.stream.pruned` record at every pass, with nothing removed when there is nothing to remove.
+  One pass deletes at most 1024 batch files of a stream, and the journal segments that held only deleted records go with them.
+
 - **Audit checkpoints leave the volume they attest.**
   A Host that is the member of an `audit.checkpoints` task ships each checkpoint it seals, in its trail's order, to the coordinator, which verifies it under the member's pinned `host.operations` keys and keeps it.
   A checkpoint that does not continue the trail the coordinator holds is refused as `fork`.

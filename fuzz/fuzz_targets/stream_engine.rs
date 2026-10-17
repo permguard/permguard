@@ -5,6 +5,7 @@
 
 use libfuzzer_sys::fuzz_target;
 
+use permguard_stream::engine::anchor::Anchor;
 use permguard_stream::engine::batch::SealedBatch;
 use permguard_stream::engine::ingest::{Answer, Ship};
 use permguard_stream::engine::{
@@ -53,5 +54,9 @@ fuzz_target!(|data: &[u8]| {
     // A producer stream's subscription (WP-5.4).
     if let Ok(subscription) = Subscription::decode(data) {
         assert_eq!(subscription.encode().ok().as_deref(), Some(data));
+    }
+    // A run's prefix anchor (WP-5.6b).
+    if let Ok(anchor) = Anchor::decode(data) {
+        assert_eq!(anchor.encode().ok().as_deref(), Some(data));
     }
 });
