@@ -38,11 +38,12 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 18] = [
+const REGISTRIES: [&str; 19] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
     "identity.json",
+    "journal.json",
     "kdf.json",
     "key-set.json",
     "keys.json",
@@ -2765,6 +2766,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "sealed-key.json" => sealed_key_samples(),
         "grant.json" => grant_samples(),
         "layout.json" => layout_samples(),
+        "journal.json" => journal_samples(),
         "audit.json" => audit_samples(),
         "operation-plan.json" => operation_plan_samples(),
         "mutation.json" => mutation_samples(),
@@ -2990,6 +2992,17 @@ fn operation_plan_samples() -> Vec<Sample> {
             None,
         ),
     ]
+}
+
+fn journal_samples() -> Vec<Sample> {
+    use permguard_host::storage::journal::{decode_base, encode_base};
+
+    vec![sample(
+        "base",
+        encode_base(4, 2).expect("BASE encodes"),
+        &[],
+        Some(Box::new(|bytes: &[u8]| verdict(decode_base(bytes)))),
+    )]
 }
 
 fn layout_samples() -> Vec<Sample> {
@@ -3498,6 +3511,16 @@ fn test_operation_plan_records_match_their_registry() {
 #[test]
 fn test_operation_plan_records_refuse_unknown_labels() {
     assert_unknown_labels_refused("operation-plan.json");
+}
+
+#[test]
+fn test_journal_base_matches_its_registry() {
+    assert_samples_match("journal.json");
+}
+
+#[test]
+fn test_journal_base_refuses_unknown_labels() {
+    assert_unknown_labels_refused("journal.json");
 }
 
 #[test]

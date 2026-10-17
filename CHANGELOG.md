@@ -325,6 +325,11 @@ is cut.
 
 ### Changed
 
+- **A journal can drop its oldest segments, and one missing its first segment no longer opens.**
+  The storage library's journals can now delete whole segments below a frame, recording the first frame they still hold in a `BASE` file beside the segments; the stream retention that uses it follows.
+  Opening a journal whose first segment is missing, without `BASE` or with one no segment starts at, is now refused as corruption rather than read from the segments that remain.
+  `volume verify` counts a journal's frames from `BASE` and reports a `BASE` that names no segment.
+
 - **Read cursors expire, and a read refuses what it does not take.**
   The decision and event reads now issue version 2 cursors (`v2.` tokens): bound to the read's API, resource and filters, to the key that issued them, and to an expiry set by the new `operations.streams.cursor_ttl` (`PERMGUARD_STREAM_CURSOR_TTL`, one day by default, at most 365 days).
   An earlier version 1 cursor is still accepted until the key that sealed it rotates out.

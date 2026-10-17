@@ -140,9 +140,11 @@ impl Report {
 /// Checks a journal of the storage library in `dir`, every frame of the segments `mode` selects.
 ///
 /// Each selected segment must have a whole header and only whole frames, but for a torn tail of
-/// the last; in [`Mode::Full`], every segment must start where the one before it ended, and claim
-/// generations must never decrease across the whole journal. With the volume's `claim`, no frame
-/// may carry a generation above it. A failure record the next open would apply is not read here.
+/// the last; in [`Mode::Full`], every segment must start where the one before it ended, the first
+/// at the frame `BASE` names (0 without one), and claim generations must never decrease across the
+/// whole journal. With the volume's `claim`, no frame may carry a generation above it. A failure
+/// record the next open would apply is not read here, and segments below `BASE` are a deletion the
+/// next open finishes, not a finding (WP-5.6a).
 pub fn journal(
     dir: &Dir,
     claim: Option<u64>,
@@ -150,9 +152,27 @@ pub fn journal(
     budget: &mut Budget,
     report: &mut Report,
 ) -> Result<()> {
-    let segments = super::journal::segment_names(dir)?;
+    let (base, mut expected) = match super::journal::base_of(dir) {
+        Ok(base) => {
+            let base = base.map_or(0, |(first, _)| first);
+            (base, Some(base))
+        }
+        Err(error) => {
+            report.found(dir.child_path(super::journal::BASE), error.to_string());
+            (0, None)
+        }
+    };
+    let segments: Vec<(u64, String)> = super::journal::segment_names(dir)?
+        .into_iter()
+        .filter(|(first, _)| *first >= base)
+        .collect();
+    if base > 0 && segments.first().map(|(first, _)| *first) != Some(base) {
+        report.found(
+            dir.child_path(super::journal::BASE),
+            format!("no segment starts at frame {base}, the first the journal holds"),
+        );
+    }
     let count = segments.len();
-    let mut expected: Option<u64> = Some(0);
     let mut highest = super::volume::UNCLAIMED;
     for (position, (first, name)) in segments.into_iter().enumerate() {
         let path = dir.child_path(&name);
@@ -684,5 +704,53 @@ mod tests {
         runner.stop();
         let seeds = passes.lock().expect("lock").clone();
         assert_eq!(&seeds[..3], &[0, 1, 2], "a new seed each pass");
+    }
+
+    /// WP-5.6a: verification counts continuity from `BASE`, ignores segments a crash left below
+    /// it, and reports a `BASE` that does not decode.
+    #[test]
+    fn verification_starts_at_base() {
+        let path = scratch("base");
+        let (mut journal, _) =
+            Journal::open(Dir::open(&path).expect("dir"), small()).expect("opens");
+        for index in 0..10u8 {
+            journal.append(1, &[index; 60]).expect("appended");
+        }
+        // Two frames per segment: [4, 5] holds frame 5, and stays.
+        assert_eq!(journal.drop_prefix(5, None).expect("dropped"), 4);
+        drop(journal);
+        let run = || {
+            let mut report = Report::new();
+            super::journal(
+                &Dir::open(&path).expect("dir"),
+                None,
+                Mode::Full,
+                &mut Budget::unbounded(),
+                &mut report,
+            )
+            .expect("verified");
+            report
+        };
+        assert!(run().findings.is_empty(), "{:?}", run().findings);
+
+        // A segment below `BASE`, as a crash leaves it: a deletion in progress, not a finding.
+        let below = path.join("seg-00000000000000000000.pgj");
+        std::fs::write(&below, b"whatever a crash left").expect("written");
+        assert!(run().findings.is_empty(), "{:?}", run().findings);
+        std::fs::remove_file(&below).expect("removed");
+
+        // A `BASE` past every segment: the frames from it are missing (after the review).
+        let base = Dir::open(&path).expect("dir");
+        crate::storage::write::replace_view(
+            &base,
+            crate::storage::journal::BASE,
+            crate::storage::format::VIEW,
+            &crate::storage::journal::encode_base(100, 0).expect("encoded"),
+        )
+        .expect("written");
+        assert_eq!(run().findings.len(), 1, "{:?}", run().findings);
+
+        std::fs::write(path.join(crate::storage::journal::BASE), b"not a view").expect("damaged");
+        assert_eq!(run().findings.len(), 1, "{:?}", run().findings);
     }
 }

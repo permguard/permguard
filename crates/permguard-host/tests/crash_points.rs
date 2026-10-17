@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use permguard_host::storage::crash::{CRASH_AT, POINTS};
+use permguard_host::storage::crash::{CRASH_AT, CRASH_HIT, POINTS};
 use permguard_host::storage::journal::{Journal, Options};
 use permguard_host::storage::write::{Published, publish_immutable, read_view, replace_view};
 use permguard_host::storage::{Dir, format, tombstone, volume};
@@ -32,6 +32,11 @@ fn scratch(tag: &str) -> PathBuf {
 /// Runs the child test `child` in a process told to abort at `point`; answers whether it died of
 /// that abort — a panic or an early exit is not a crash at the point.
 fn crash(child: &str, point: &str, directory: &Path) -> bool {
+    crash_at_hit(child, point, 1, directory)
+}
+
+/// [`crash`] at the `hit`-th pass through `point`.
+fn crash_at_hit(child: &str, point: &str, hit: u64, directory: &Path) -> bool {
     let status = Command::new(std::env::current_exe().expect("this binary names itself"))
         .args([
             "--ignored",
@@ -42,6 +47,7 @@ fn crash(child: &str, point: &str, directory: &Path) -> bool {
             "--nocapture",
         ])
         .env(CRASH_AT, point)
+        .env(CRASH_HIT, hit.to_string())
         .env(DIRECTORY, directory)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -146,6 +152,21 @@ fn child_unrecorded_failure() {
 #[ignore = "started by its parent, with a crash point"]
 fn child_recovery() {
     drop(Journal::open(directory(), failure_options()).expect("opened"));
+}
+
+/// A prefix deletion (WP-5.6a) of a journal its parent filled: seven frames, one per segment.
+#[test]
+#[ignore = "started by its parent, with a crash point"]
+fn child_prefix() {
+    let (mut journal, _) = Journal::open(directory(), journal_options()).expect("opened");
+    journal.drop_prefix(5, None).expect("dropped");
+}
+
+/// An open that finishes a prefix deletion its parent left: `BASE` written, nothing removed.
+#[test]
+#[ignore = "started by its parent, with a crash point"]
+fn child_open() {
+    drop(Journal::open(directory(), journal_options()).expect("opened"));
 }
 
 #[test]
@@ -397,6 +418,117 @@ fn every_crash_point_of_a_deletion_recovers() {
     }
 }
 
+/// Prefix deletion (WP-5.6a): after a crash at any step — writing `BASE`, any of the segment
+/// deletions, or after them — the journal opens holding exactly the frames the step decides: every
+/// frame while `BASE` is not yet in place, the frames from 5 once it is, each at its index, with no
+/// segment below `BASE` and no tombstone left, and appends continue at the next index.
+#[test]
+fn every_crash_point_of_a_prefix_deletion_recovers() {
+    // The frame the journal starts at after a crash at each step: `BASE`'s temporary is not yet
+    // the view until its rename.
+    let mut rounds: Vec<(&str, u64, u64)> = Vec::new();
+    for point in points("view.") {
+        let first = if matches!(point, "view.temp_written" | "view.temp_flushed") {
+            0
+        } else {
+            5
+        };
+        rounds.push((point, 1, first));
+    }
+    rounds.push(("prefix.base_written", 1, 5));
+    rounds.push(("prefix.segments_removed", 1, 5));
+    // One frame per segment, so five segments go: each tombstone step is crashed at the first
+    // deletion and the last.
+    for point in points("tombstone.") {
+        rounds.extend([(point, 1, 5), (point, 5, 5)]);
+    }
+    for (point, hit, expected) in rounds {
+        let path = scratch(&format!("prefix-{point}-{hit}"));
+        let (mut journal, _) =
+            Journal::open(Dir::open(&path).expect("opened"), journal_options()).expect("created");
+        for index in 0..7u8 {
+            journal.append(1, &[index; 40]).expect("appended");
+        }
+        drop(journal);
+        assert!(
+            crash_at_hit("child_prefix", point, hit, &path),
+            "the child aborted at {point} ({hit})"
+        );
+        assert_recovered(&path, expected, &format!("{point} ({hit})"));
+    }
+
+    // The open that finishes the deletion, crashed after its removals.
+    let path = scratch("prefix-recovered");
+    let (mut journal, _) =
+        Journal::open(Dir::open(&path).expect("opened"), journal_options()).expect("created");
+    for index in 0..7u8 {
+        journal.append(1, &[index; 40]).expect("appended");
+    }
+    drop(journal);
+    replace_view(
+        &Dir::open(&path).expect("opened"),
+        permguard_host::storage::journal::BASE,
+        format::VIEW,
+        &permguard_host::storage::journal::encode_base(5, 0).expect("encoded"),
+    )
+    .expect("BASE written");
+    assert!(
+        crash("child_open", "prefix.recovered", &path),
+        "the child aborted at prefix.recovered"
+    );
+    assert_recovered(&path, 5, "prefix.recovered");
+}
+
+/// The journal at `path` holds the frames from `first` through 6, each its index repeated, starts
+/// with the segment at `first`, keeps no tombstone, `BASE` says `first` (absent when 0), and the
+/// next append is frame 7.
+fn assert_recovered(path: &Path, first: u64, case: &str) {
+    let (mut journal, _) = Journal::open(Dir::open(path).expect("opened"), journal_options())
+        .expect("the journal opens after the crash");
+    assert_eq!(journal.first_index(), first, "{case}");
+    let frames = journal.frames().expect("read");
+    assert_eq!(frames.len() as u64, 7 - first, "{case}");
+    for frame in &frames {
+        assert_eq!(frame.payload, [frame.index as u8; 40], "{case}");
+    }
+    let names: Vec<String> = std::fs::read_dir(path)
+        .expect("listed")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert!(
+        !names.iter().any(|name| name.ends_with(".tomb")),
+        "{case}: {names:?}"
+    );
+    assert_eq!(
+        journal.segments().first().map(String::as_str),
+        Some(format!("seg-{first:020}.pgj").as_str()),
+        "{case}"
+    );
+    let base = read_view(
+        &Dir::open(path).expect("opened"),
+        permguard_host::storage::journal::BASE,
+        format::VIEW,
+    )
+    .expect("read")
+    .map(|body| {
+        permguard_host::storage::journal::decode_base(&body)
+            .expect("decoded")
+            .0
+    });
+    assert_eq!(base, (first > 0).then_some(first), "{case}");
+    assert_eq!(
+        journal.append(2, b"after").expect("appends continue"),
+        7,
+        "{case}"
+    );
+}
+
 /// Volume creation: after a crash at any step, the next claim completes the volume, keeping a
 /// `VOLUME_ID` already written, and every later claim reads the same identity.
 #[test]
@@ -446,6 +578,7 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "journal.",
         "tombstone.",
         "failure.",
+        "prefix.",
         "volume.",
         "migrate.",
         "mutation.",
