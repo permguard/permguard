@@ -1452,6 +1452,65 @@ pub enum HostAction {
         #[command(subcommand)]
         action: MembersAction,
     },
+    /// The streams the Host produces and consumes, read through the Host listener.
+    Streams {
+        #[command(subcommand)]
+        action: StreamsAction,
+    },
+}
+
+/// One stream of one resource: `<plane> <type> --resource <resource>`.
+#[derive(Debug, clap::Args)]
+pub struct StreamArgs {
+    /// The plane that declares the stream, as `host streams list` names it.
+    pub plane: String,
+    /// The stream's type, as `host streams list` names it.
+    pub stream_type: String,
+    /// The stream's resource, in the Host API's grammar, such as
+    /// `plane/data/zone/<zone>/ledger/<ledger>`.
+    #[arg(long)]
+    pub resource: String,
+}
+
+/// `permguard host streams …`: what the Host's stream engine holds, under `streams.read`.
+#[derive(Debug, Subcommand)]
+pub enum StreamsAction {
+    /// List the declared streams, each resource's state and the retention class.
+    #[command(
+        after_help = "Examples:\n  permguard host streams list\n  permguard host streams list -o json"
+    )]
+    List,
+    /// Print the producer's and the consumers' frontiers of one stream.
+    #[command(
+        after_help = "Examples:\n  permguard host streams frontier data decisions --resource plane/data/zone/z1/ledger/l1\n  permguard --host-endpoint grpcs://host.example:9443 host streams frontier data events --resource plane/data/zone/z1/ledger/l1 -o json"
+    )]
+    Frontier(StreamArgs),
+    /// Print the key spans each run of one stream is signed under.
+    #[command(
+        after_help = "Examples:\n  permguard host streams signers data decisions --resource plane/data/zone/z1/ledger/l1\n  permguard --host-endpoint grpcs://host.example:9443 host streams signers data events --resource plane/data/zone/z1/ledger/l1 -o json"
+    )]
+    Signers(StreamArgs),
+    /// Print the run history of one stream: each run, open or ended, how far it was sealed and
+    /// acknowledged, and what it still holds.
+    #[command(
+        after_help = "Examples:\n  permguard host streams runs data decisions --resource plane/data/zone/z1/ledger/l1\n  permguard --host-endpoint grpcs://host.example:9443 host streams runs data events --resource plane/data/zone/z1/ledger/l1 -o json"
+    )]
+    Runs(StreamArgs),
+    /// Print who one stream is shipped to and how far each subscription acknowledged.
+    #[command(
+        after_help = "Examples:\n  permguard host streams subscriptions data decisions --resource plane/data/zone/z1/ledger/l1\n  permguard --host-endpoint grpcs://host.example:9443 host streams subscriptions data events --resource plane/data/zone/z1/ledger/l1 -o json"
+    )]
+    Subscriptions(StreamArgs),
+    /// Print the durable gaps of one stream: each run whose prefix retention deleted.
+    #[command(
+        after_help = "Examples:\n  permguard host streams gaps data decisions --resource plane/data/zone/z1/ledger/l1\n  permguard --host-endpoint grpcs://host.example:9443 host streams gaps data events --resource plane/data/zone/z1/ledger/l1 -o json"
+    )]
+    Gaps(StreamArgs),
+    /// Print the retained prefix anchors of one stream.
+    #[command(
+        after_help = "Examples:\n  permguard host streams anchors data decisions --resource plane/data/zone/z1/ledger/l1\n  permguard --host-endpoint grpcs://host.example:9443 host streams anchors data events --resource plane/data/zone/z1/ledger/l1 -o json"
+    )]
+    Anchors(StreamArgs),
 }
 
 /// `permguard host identity …`: the Host identity locally and through the Host listener.

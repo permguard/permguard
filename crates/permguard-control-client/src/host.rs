@@ -28,6 +28,11 @@ use permguard_host::api::sessions::PeerSessionsView;
 use permguard_host::api::status::{
     Assurance, ComponentView, DegradedView, ListenerView, StatusView,
 };
+use permguard_host::api::streams::{
+    AnchorList, AnchorView, ConsumerRun, Frontier, GapEntry, GapList, ProducerRun, ResourceState,
+    RunAck, RunSigners, SignerList, SpanView, StreamList, StreamView, SubscriptionList,
+    SubscriptionView,
+};
 use permguard_host::api::{CreateGrant, Grants, PlanRevoke, Planned, Revoked, RunRevoke};
 
 use crate::catalog::Failure;
@@ -37,6 +42,14 @@ use crate::host_proto as map;
 use crate::host_v1 as proto;
 use crate::http::Client;
 use crate::tls::TlsOptions;
+
+/// One stream of one resource, as the stream reads name it (WP-5.7b).
+#[derive(Debug, Clone, Copy)]
+pub struct StreamName<'a> {
+    pub plane: &'a str,
+    pub stream_type: &'a str,
+    pub resource: &'a str,
+}
 
 /// A membership transition that names the membership and its expected revision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +75,19 @@ impl Change {
 pub trait Host {
     /// `GET /host/v1/status`, `OperationsService.GetStatus`.
     fn status(&self) -> Result<StatusView, Failure>;
+
+    /// `GET /host/v1/streams`, `EvidenceService.ListStreams` (WP-5.7b).
+    fn streams(&self) -> Result<StreamList, Failure>;
+    /// `GET /host/v1/streams/{plane}/{type}/frontier`, `EvidenceService.GetStreamFrontier`.
+    fn stream_frontier(&self, stream: &StreamName<'_>) -> Result<Frontier, Failure>;
+    /// `GET …/signers`, `EvidenceService.ListStreamSigners`.
+    fn stream_signers(&self, stream: &StreamName<'_>) -> Result<SignerList, Failure>;
+    /// `GET …/subscriptions`, `EvidenceService.ListStreamSubscriptions`.
+    fn stream_subscriptions(&self, stream: &StreamName<'_>) -> Result<SubscriptionList, Failure>;
+    /// `GET …/gaps`, `EvidenceService.ListStreamGaps`.
+    fn stream_gaps(&self, stream: &StreamName<'_>) -> Result<GapList, Failure>;
+    /// `GET …/anchors`, `EvidenceService.ListStreamAnchors`.
+    fn stream_anchors(&self, stream: &StreamName<'_>) -> Result<AnchorList, Failure>;
     /// `GET /host/v1/identity`, `IdentityService.GetIdentity`.
     fn identity(&self) -> Result<IdentityView, Failure>;
     /// `POST /host/v1/identity/verify`, `IdentityService.VerifyIdentity`.
@@ -163,6 +189,24 @@ fn segment(id: &str) -> Result<&str, Failure> {
     Ok(id)
 }
 
+/// `stream`, its plane and type refused as a REST path segment refuses them, on either
+/// transport, so both refuse a malformed name the same way (after the review).
+fn checked<'a>(stream: &StreamName<'a>) -> Result<StreamName<'a>, Failure> {
+    segment(stream.plane)?;
+    segment(stream.stream_type)?;
+    Ok(*stream)
+}
+
+/// The REST path of the stream read `what` of `stream`.
+fn stream_path(stream: &StreamName<'_>, what: &str) -> Result<String, Failure> {
+    Ok(format!(
+        "/host/v1/streams/{}/{}/{what}?resource={}",
+        segment(stream.plane)?,
+        segment(stream.stream_type)?,
+        query_value(stream.resource)
+    ))
+}
+
 fn json(body: &impl serde::Serialize) -> Result<String, Failure> {
     serde_json::to_string(body).map_err(|error| usage(error.to_string()))
 }
@@ -197,6 +241,30 @@ struct RestHost {
 impl Host for RestHost {
     fn status(&self) -> Result<StatusView, Failure> {
         crate::catalog::call(&self.client, &self.endpoint, "GET", "/host/v1/status", None)
+    }
+
+    fn streams(&self) -> Result<StreamList, Failure> {
+        self.get("/host/v1/streams")
+    }
+
+    fn stream_frontier(&self, stream: &StreamName<'_>) -> Result<Frontier, Failure> {
+        self.get(&stream_path(stream, "frontier")?)
+    }
+
+    fn stream_signers(&self, stream: &StreamName<'_>) -> Result<SignerList, Failure> {
+        self.get(&stream_path(stream, "signers")?)
+    }
+
+    fn stream_subscriptions(&self, stream: &StreamName<'_>) -> Result<SubscriptionList, Failure> {
+        self.get(&stream_path(stream, "subscriptions")?)
+    }
+
+    fn stream_gaps(&self, stream: &StreamName<'_>) -> Result<GapList, Failure> {
+        self.get(&stream_path(stream, "gaps")?)
+    }
+
+    fn stream_anchors(&self, stream: &StreamName<'_>) -> Result<AnchorList, Failure> {
+        self.get(&stream_path(stream, "anchors")?)
     }
 
     fn identity(&self) -> Result<IdentityView, Failure> {
@@ -380,6 +448,215 @@ impl RestHost {
 struct GrpcHost(GrpcChannel);
 
 impl Host for GrpcHost {
+    fn streams(&self) -> Result<StreamList, Failure> {
+        let answer = self
+            .0
+            .run(
+                "ListStreams",
+                self.evidence_client()
+                    .list_streams(proto::ListStreamsRequest {}),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(StreamList {
+            streams: answer
+                .streams
+                .into_iter()
+                .map(|stream| StreamView {
+                    plane: stream.plane,
+                    stream_type: stream.stream_type,
+                    version: stream.version,
+                    role: stream.role,
+                    retention: stream.retention,
+                    ring: stream.ring,
+                    task: stream.task,
+                    resources: stream
+                        .resources
+                        .into_iter()
+                        .map(|resource| ResourceState {
+                            resource: resource.resource,
+                            state: resource.state,
+                        })
+                        .collect(),
+                })
+                .collect(),
+        })
+    }
+
+    fn stream_frontier(&self, stream: &StreamName<'_>) -> Result<Frontier, Failure> {
+        let stream = &checked(stream)?;
+        let answer = self
+            .0
+            .run(
+                "GetStreamFrontier",
+                self.evidence_client()
+                    .get_stream_frontier(proto::GetStreamFrontierRequest {
+                        plane: stream.plane.to_owned(),
+                        stream_type: stream.stream_type.to_owned(),
+                        resource: stream.resource.to_owned(),
+                    }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(Frontier {
+            resource: answer.resource,
+            producer: answer
+                .producer
+                .into_iter()
+                .map(|run| ProducerRun {
+                    run: run.run,
+                    ended: run.ended,
+                    last_seq: run.last_seq,
+                    sealed: run.sealed,
+                    acknowledged: run.acknowledged,
+                    low_watermark: run.low_watermark,
+                })
+                .collect(),
+            consumer: answer
+                .consumer
+                .into_iter()
+                .map(|run| ConsumerRun {
+                    producer: run.producer,
+                    run: run.run,
+                    acked: run.acked,
+                    oldest_retained: run.oldest_retained,
+                })
+                .collect(),
+        })
+    }
+
+    fn stream_signers(&self, stream: &StreamName<'_>) -> Result<SignerList, Failure> {
+        let stream = &checked(stream)?;
+        let answer = self
+            .0
+            .run(
+                "ListStreamSigners",
+                self.evidence_client()
+                    .list_stream_signers(proto::ListStreamSignersRequest {
+                        plane: stream.plane.to_owned(),
+                        stream_type: stream.stream_type.to_owned(),
+                        resource: stream.resource.to_owned(),
+                    }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(SignerList {
+            runs: answer
+                .runs
+                .into_iter()
+                .map(|run| RunSigners {
+                    role: run.role,
+                    producer: run.producer,
+                    run: run.run,
+                    spans: run
+                        .spans
+                        .into_iter()
+                        .map(|span| SpanView {
+                            from_seq: span.from_seq,
+                            kid: span.kid,
+                            jwk: span.jwk,
+                        })
+                        .collect(),
+                })
+                .collect(),
+        })
+    }
+
+    fn stream_subscriptions(&self, stream: &StreamName<'_>) -> Result<SubscriptionList, Failure> {
+        let stream = &checked(stream)?;
+        let answer = self
+            .0
+            .run(
+                "ListStreamSubscriptions",
+                self.evidence_client().list_stream_subscriptions(
+                    proto::ListStreamSubscriptionsRequest {
+                        plane: stream.plane.to_owned(),
+                        stream_type: stream.stream_type.to_owned(),
+                        resource: stream.resource.to_owned(),
+                    },
+                ),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(SubscriptionList {
+            subscriptions: answer
+                .subscriptions
+                .into_iter()
+                .map(|subscription| SubscriptionView {
+                    membership: subscription.membership,
+                    task: subscription.task,
+                    required: subscription.required,
+                    state: subscription.state,
+                    reason: subscription.reason,
+                    acked: subscription
+                        .acked
+                        .into_iter()
+                        .map(|ack| RunAck {
+                            run: ack.run,
+                            acked: ack.acked,
+                        })
+                        .collect(),
+                })
+                .collect(),
+        })
+    }
+
+    fn stream_gaps(&self, stream: &StreamName<'_>) -> Result<GapList, Failure> {
+        let stream = &checked(stream)?;
+        let answer = self
+            .0
+            .run(
+                "ListStreamGaps",
+                self.evidence_client()
+                    .list_stream_gaps(proto::ListStreamGapsRequest {
+                        plane: stream.plane.to_owned(),
+                        stream_type: stream.stream_type.to_owned(),
+                        resource: stream.resource.to_owned(),
+                    }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(GapList {
+            gaps: answer
+                .gaps
+                .into_iter()
+                .map(|gap| GapEntry {
+                    role: gap.role,
+                    producer: gap.producer,
+                    run: gap.run,
+                    low_watermark: gap.low_watermark,
+                })
+                .collect(),
+        })
+    }
+
+    fn stream_anchors(&self, stream: &StreamName<'_>) -> Result<AnchorList, Failure> {
+        let stream = &checked(stream)?;
+        let answer = self
+            .0
+            .run(
+                "ListStreamAnchors",
+                self.evidence_client()
+                    .list_stream_anchors(proto::ListStreamAnchorsRequest {
+                        plane: stream.plane.to_owned(),
+                        stream_type: stream.stream_type.to_owned(),
+                        resource: stream.resource.to_owned(),
+                    }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(AnchorList {
+            anchors: answer
+                .anchors
+                .into_iter()
+                .map(|anchor| AnchorView {
+                    role: anchor.role,
+                    producer: anchor.producer,
+                    run: anchor.run,
+                    through: anchor.through,
+                    low_watermark: anchor.low_watermark,
+                    terminal_head: anchor.terminal_head,
+                    covering: anchor.covering,
+                    anchor: URL_SAFE_NO_PAD.encode(anchor.anchor),
+                })
+                .collect(),
+        })
+    }
+
     fn status(&self) -> Result<StatusView, Failure> {
         let mut client =
             proto::operations_service_client::OperationsServiceClient::new(self.0.channel());
@@ -895,6 +1172,12 @@ impl GrpcHost {
         proto::membership_service_client::MembershipServiceClient::new(self.0.channel())
     }
 
+    fn evidence_client(
+        &self,
+    ) -> proto::evidence_service_client::EvidenceServiceClient<crate::grpc::AuthChannel> {
+        proto::evidence_service_client::EvidenceServiceClient::new(self.0.channel())
+    }
+
     fn grants_client(
         &self,
     ) -> proto::grant_service_client::GrantServiceClient<crate::grpc::AuthChannel> {
@@ -953,5 +1236,39 @@ fn status_of(answer: proto::GetStatusResponse) -> StatusView {
                 tls_min_version: listener.tls_min_version,
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// WP-5.7b: a stream read's path keeps the resource inside its query value whatever it
+    /// holds, and refuses a plane or type that is not one path segment.
+    #[test]
+    fn a_stream_path_escapes_the_resource_and_refuses_a_bad_name() {
+        let stream = StreamName {
+            plane: "data",
+            stream_type: "decisions",
+            resource: "plane/data/zone/z%1/ledger/l#1?x=&y",
+        };
+        assert_eq!(
+            stream_path(&stream, "frontier").expect("a path"),
+            "/host/v1/streams/data/decisions/frontier?resource=plane%2Fdata%2Fzone%2Fz%251%2Fledger%2Fl%231%3Fx%3D%26y"
+        );
+        for plane in ["a/b", "..", "", "a%2Fb", "a?b"] {
+            let bad = StreamName { plane, ..stream };
+            assert!(stream_path(&bad, "frontier").is_err(), "{plane}");
+            assert!(checked(&bad).is_err(), "{plane}");
+        }
+        assert!(
+            checked(&StreamName {
+                stream_type: "x#y",
+                ..stream
+            })
+            .is_err()
+        );
     }
 }

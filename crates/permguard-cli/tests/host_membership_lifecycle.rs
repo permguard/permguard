@@ -241,6 +241,24 @@ fn launch_host(
                 permguard_host::authz::store::now(),
             )
             .expect("the administrator is issued");
+            // The stream reads (WP-5.7b), on the Data Plane's resources; the list is on `host`,
+            // which the administrator's grant above already covers.
+            permguard_host::operations::grants::issue(
+                &mutations,
+                &grants,
+                permguard_host::operations::journal::Initiator::System("test".to_owned()),
+                Issue {
+                    principal: Principal::new(ADMIN).expect("the administrator"),
+                    operations: vec![operations::STREAMS_READ.to_owned()],
+                    selector: Selector::under(Resource::parse("plane/data").expect("a resource")),
+                    resource_types: vec!["*".to_owned()],
+                    constraints: Default::default(),
+                    issued_by: "test".to_owned(),
+                    expires_at: None,
+                },
+                permguard_host::authz::store::now(),
+            )
+            .expect("the stream reader is issued");
             let (replay, _) = Replay::open(&volume, permguard_host::authz::store::now())
                 .expect("the replay opens");
             let open_ring = |id: &'static str| {
@@ -309,40 +327,46 @@ fn launch_host(
                         tls,
                     )) as Arc<dyn permguard_host::membership::member::Connector>
                 });
-            let api = Arc::new(HostApi::new(Composition {
-                authorization: Arc::new(Authorization::new(Arc::clone(&grants), &[])),
-                store: Some(grants),
-                replay,
-                keys,
-                health: Health::new(),
-                assurance: Assurance::of(
-                    &permguard_core::assurance::Assurance::new(AssuranceProfile::Production, [])
+            let api = Arc::new(
+                HostApi::new(Composition {
+                    authorization: Arc::new(Authorization::new(Arc::clone(&grants), &[])),
+                    store: Some(grants),
+                    replay,
+                    keys,
+                    health: Health::new(),
+                    assurance: Assurance::of(
+                        &permguard_core::assurance::Assurance::new(
+                            AssuranceProfile::Production,
+                            [],
+                        )
                         .report(&[]),
-                ),
-                effective: Effective {
-                    revision: 0,
-                    settings: Vec::new(),
-                },
-                trail: "test".to_owned(),
-                mutations: Some(mutations),
-                identity: Some(Arc::clone(&identity)),
-                time,
-                peer_sessions: PeerSessions {
-                    report: SERVED,
-                    context: Some(context),
-                },
-                listeners: Vec::new(),
-                audit: Some(audit),
-                memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
-                    store: members,
-                    capabilities,
-                    connector,
-                    appraisal: golden_appraisal(),
-                    live: Arc::clone(&tasks.live),
-                    streams: None,
-                    shipping: None,
-                })),
-            }));
+                    ),
+                    effective: Effective {
+                        revision: 0,
+                        settings: Vec::new(),
+                    },
+                    trail: "test".to_owned(),
+                    mutations: Some(mutations),
+                    identity: Some(Arc::clone(&identity)),
+                    time,
+                    peer_sessions: PeerSessions {
+                        report: SERVED,
+                        context: Some(context),
+                    },
+                    listeners: Vec::new(),
+                    audit: Some(audit),
+                    memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
+                        store: members,
+                        capabilities,
+                        connector,
+                        appraisal: golden_appraisal(),
+                        live: Arc::clone(&tasks.live),
+                        streams: None,
+                        shipping: None,
+                    })),
+                })
+                .with_streams(Arc::new(FixedStreams)),
+            );
             let surface = Surface::listener(
                 "host-api",
                 "127.0.0.1:0",
@@ -779,4 +803,227 @@ fn the_cli_drives_a_two_host_membership_lifecycle_over_rest() {
 #[test]
 fn the_cli_drives_a_two_host_membership_lifecycle_over_grpc() {
     lifecycle("grpcs");
+}
+
+/// One decision stream on `plane/data/zone/z1/ledger/l1`, its prefix through 4 deleted
+/// (WP-5.7b).
+struct FixedStreams;
+
+const RUN: &str = "0123456789abcdef0123456789abcdef";
+
+fn fixed_anchor() -> permguard_host::api::streams::AnchorView {
+    permguard_host::api::streams::AnchorView {
+        role: "producer".to_owned(),
+        producer: RUN.to_owned(),
+        run: RUN.to_owned(),
+        through: 4,
+        low_watermark: 5,
+        terminal_head: format!("sha256:{}", "a".repeat(64)),
+        covering: 2,
+        anchor: "oQEC".to_owned(),
+    }
+}
+
+impl permguard_host::api::streams::StreamReads for FixedStreams {
+    fn list(&self) -> Result<Vec<permguard_host::api::streams::StreamView>, String> {
+        Ok(vec![permguard_host::api::streams::StreamView {
+            plane: "data".to_owned(),
+            stream_type: "decisions".to_owned(),
+            version: 1,
+            role: "producer".to_owned(),
+            retention: "evidence".to_owned(),
+            ring: "data.attest".to_owned(),
+            task: Some("decisions.ship".to_owned()),
+            resources: vec![permguard_host::api::streams::ResourceState {
+                resource: "plane/data/zone/z1/ledger/l1".to_owned(),
+                state: "open".to_owned(),
+            }],
+        }])
+    }
+    fn frontier(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        resource: &str,
+    ) -> Result<Option<permguard_host::api::streams::Frontier>, String> {
+        Ok(((plane, stream_type) == ("data", "decisions")).then(|| {
+            permguard_host::api::streams::Frontier {
+                resource: resource.to_owned(),
+                producer: vec![permguard_host::api::streams::ProducerRun {
+                    run: RUN.to_owned(),
+                    ended: false,
+                    last_seq: 8,
+                    sealed: 8,
+                    acknowledged: Some(6),
+                    low_watermark: 5,
+                }],
+                consumer: Vec::new(),
+            }
+        }))
+    }
+    fn records(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: Option<(&[u8; 16], &[u8; 16])>,
+        _: u64,
+        _: usize,
+    ) -> Result<Option<permguard_host::api::streams::RecordPage>, String> {
+        Ok(None)
+    }
+    fn signers(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::RunSigners>>, String> {
+        Ok(Some(vec![permguard_host::api::streams::RunSigners {
+            role: "producer".to_owned(),
+            producer: RUN.to_owned(),
+            run: RUN.to_owned(),
+            spans: vec![permguard_host::api::streams::SpanView {
+                from_seq: 1,
+                kid: "kid-1".to_owned(),
+                jwk: "{}".to_owned(),
+            }],
+        }]))
+    }
+    fn subscriptions(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::SubscriptionView>>, String> {
+        Ok(Some(vec![permguard_host::api::streams::SubscriptionView {
+            membership: "0198f2aa-0000-7000-8000-000000000001".to_owned(),
+            task: "decisions".to_owned(),
+            required: true,
+            state: "stopped".to_owned(),
+            reason: Some("gone".to_owned()),
+            acked: vec![permguard_host::api::streams::RunAck {
+                run: RUN.to_owned(),
+                acked: 6,
+            }],
+        }]))
+    }
+    fn gaps(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::GapEntry>>, String> {
+        Ok(Some(vec![permguard_host::api::streams::GapEntry {
+            role: "producer".to_owned(),
+            producer: RUN.to_owned(),
+            run: RUN.to_owned(),
+            low_watermark: 5,
+        }]))
+    }
+    fn anchors(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::AnchorView>>, String> {
+        Ok(Some(vec![fixed_anchor()]))
+    }
+}
+
+/// WP-5.7b: `host streams` reads the Host's streams over both transports and prints the same
+/// answer; a stream the Host does not serve is refused with its code.
+#[test]
+fn the_stream_commands_answer_the_same_over_both_transports() {
+    let root = scratch("streams");
+    let pki = Pki::new(&root);
+    let authority = pki.authority();
+    let (operator_certificate, operator_key) = pki.issue("operator", "operator");
+    let tls = OperatorTls {
+        authority: authority.clone(),
+        certificate: operator_certificate,
+        key: operator_key,
+    };
+    let (certificate, key) = pki.issue("host", "127.0.0.1");
+    let host = launch_host(
+        root.join("host"),
+        certificate,
+        key,
+        authority,
+        Role::Coordinator,
+    );
+    let resource = "plane/data/zone/z1/ledger/l1";
+    let mut answers: Vec<Vec<Value>> = Vec::new();
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://127.0.0.1:{}", host.address.port());
+        let mut seen = vec![call(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&["host", "streams", "list"]),
+        )];
+        for what in [
+            "frontier",
+            "runs",
+            "signers",
+            "subscriptions",
+            "gaps",
+            "anchors",
+        ] {
+            seen.push(call(
+                &root,
+                &endpoint,
+                &tls,
+                &words(&[
+                    "host",
+                    "streams",
+                    what,
+                    "data",
+                    "decisions",
+                    "--resource",
+                    resource,
+                ]),
+            ));
+        }
+        let unknown = cli(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&[
+                "host",
+                "streams",
+                "frontier",
+                "data",
+                "nothing",
+                "--resource",
+                resource,
+            ]),
+        );
+        // Refused with its code on stderr, nothing on stdout, the usage exit status.
+        assert_eq!(unknown.status.code(), Some(64), "{scheme}");
+        assert!(unknown.stdout.is_empty(), "{scheme}");
+        let refusal: Value = serde_json::from_slice(&unknown.stderr).expect("a JSON refusal");
+        assert_eq!(
+            (refusal["class"].as_str(), refusal["code"].as_str()),
+            (Some("not_found"), Some("stream_unknown")),
+            "{scheme}"
+        );
+        answers.push(seen);
+    }
+    assert_eq!(answers[0], answers[1], "the same answer over REST and gRPC");
+    let rest = &answers[0];
+    assert_eq!(rest[0]["streams"][0]["retention"], "evidence");
+    assert_eq!(rest[1]["producer"][0]["acknowledged"], 6);
+    assert_eq!(
+        rest[1]["resource"], resource,
+        "the resource the Host decoded"
+    );
+    assert_eq!(
+        rest[2]["runs"][0]["role"], "producer",
+        "runs from the frontier"
+    );
+    assert_eq!(rest[2]["runs"][0]["oldest_retained"], 5);
+    assert_eq!(rest[3]["runs"][0]["spans"][0]["kid"], "kid-1");
+    assert_eq!(rest[4]["subscriptions"][0]["reason"], "gone");
+    assert_eq!(rest[5]["gaps"][0]["low_watermark"], 5);
+    assert_eq!(rest[6]["anchors"][0]["anchor"], "oQEC");
 }

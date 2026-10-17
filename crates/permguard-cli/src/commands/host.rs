@@ -64,6 +64,7 @@ pub fn host_command(
         HostAction::Grants { action } => grants(globals, server_config, action, trace),
         HostAction::Identity { action } => identity(globals, server_config, action, trace),
         HostAction::Members { action } => members(globals, action, trace),
+        HostAction::Streams { action } => streams(globals, action, trace),
     }
 }
 
@@ -573,6 +574,107 @@ impl Report for JsonReport {
             serde_json::to_string_pretty(&self.0).unwrap_or_else(|_| "null".to_owned())
         )
     }
+}
+
+/// `permguard host streams …` (WP-5.7b): the Host API's stream reads, printed as it answers
+/// them; `runs` lists the frontier's runs, the producer's and each consumer's, as one history.
+fn streams(
+    globals: &Globals,
+    action: crate::args::StreamsAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    use crate::args::StreamsAction;
+    use permguard_control_client::host::StreamName;
+
+    let host = online_host(globals, trace, false)?;
+    let failed =
+        |failure: permguard_control_client::catalog::Failure| Failure::from_client(&failure);
+    let args = match &action {
+        StreamsAction::List => {
+            render_json(&host.streams().map_err(failed)?, globals, trace)?;
+            return Ok(ExitCode::SUCCESS);
+        }
+        StreamsAction::Frontier(args)
+        | StreamsAction::Signers(args)
+        | StreamsAction::Runs(args)
+        | StreamsAction::Subscriptions(args)
+        | StreamsAction::Gaps(args)
+        | StreamsAction::Anchors(args) => args,
+    };
+    let stream = StreamName {
+        plane: &args.plane,
+        stream_type: &args.stream_type,
+        resource: &args.resource,
+    };
+    match action {
+        StreamsAction::List => {}
+        StreamsAction::Frontier(_) => {
+            render_json(
+                &host.stream_frontier(&stream).map_err(failed)?,
+                globals,
+                trace,
+            )?;
+        }
+        StreamsAction::Runs(_) => {
+            let frontier = host.stream_frontier(&stream).map_err(failed)?;
+            render_json(&runs_of(frontier), globals, trace)?;
+        }
+        StreamsAction::Signers(_) => {
+            render_json(
+                &host.stream_signers(&stream).map_err(failed)?,
+                globals,
+                trace,
+            )?;
+        }
+        StreamsAction::Subscriptions(_) => {
+            render_json(
+                &host.stream_subscriptions(&stream).map_err(failed)?,
+                globals,
+                trace,
+            )?;
+        }
+        StreamsAction::Gaps(_) => {
+            render_json(&host.stream_gaps(&stream).map_err(failed)?, globals, trace)?;
+        }
+        StreamsAction::Anchors(_) => {
+            render_json(
+                &host.stream_anchors(&stream).map_err(failed)?,
+                globals,
+                trace,
+            )?;
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// The run history `host streams runs` prints: every run of the frontier, the producer's then
+/// each consumer's, with its role and what it holds (owner decision of 2026-10-17).
+fn runs_of(frontier: permguard_host::api::streams::Frontier) -> serde_json::Value {
+    let mut runs: Vec<serde_json::Value> = frontier
+        .producer
+        .into_iter()
+        .map(|run| {
+            serde_json::json!({
+                "role": "producer",
+                "run": run.run,
+                "ended": run.ended,
+                "last_seq": run.last_seq,
+                "sealed": run.sealed,
+                "acknowledged": run.acknowledged,
+                "oldest_retained": run.low_watermark,
+            })
+        })
+        .collect();
+    runs.extend(frontier.consumer.into_iter().map(|run| {
+        serde_json::json!({
+            "role": "consumer",
+            "producer": run.producer,
+            "run": run.run,
+            "acked": run.acked,
+            "oldest_retained": run.oldest_retained,
+        })
+    }));
+    serde_json::json!({ "resource": frontier.resource, "runs": runs })
 }
 
 fn render_json(value: &impl Serialize, globals: &Globals, trace: &Trace) -> Result<(), Failure> {

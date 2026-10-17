@@ -334,6 +334,7 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
                 } => Class::Local,
                 HostAction::Identity { .. }
                 | HostAction::Members { .. }
+                | HostAction::Streams { .. }
                 | HostAction::Grants { .. } => Class::Host,
             };
             ("host", class)

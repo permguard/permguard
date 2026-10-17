@@ -25,6 +25,7 @@ is cut.
   They take the new grant operation `streams.read`, on `host` for the list and on the stream's resource for the rest.
   A `records` page starting below what a run still holds answers from there with the gap and the run's anchor.
   Batches are still shipped on the membership's task transport: `ShipStreamBatch` answers `UNIMPLEMENTED`.
+  `permguard host streams list`, and `frontier`, `signers`, `subscriptions`, `gaps` and `anchors` with `<plane> <type> --resource <resource>`, print these reads over the Host endpoint's REST or gRPC; `runs` prints the frontier's runs as one history.
 
 - **Stream evidence is deleted by an hourly job, and what goes leaves an anchor.**
   At start and every hour the Host deletes, of each stream it produces, the batches every required subscription acknowledged, for `history` streams only below the floor a Plane registers.
