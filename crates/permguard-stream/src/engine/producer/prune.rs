@@ -371,7 +371,7 @@ impl<C: RecordCodec> Producer<C> {
 
 /// The run a signed statement opens, read without verifying it: the frames were verified when
 /// the stream opened.
-fn run_id(envelope: &[u8]) -> Result<[u8; 16], StreamError> {
+pub(super) fn run_id(envelope: &[u8]) -> Result<[u8; 16], StreamError> {
     Ok(RunStatement::decode(
         permguard_objects::cose::Sign1::decode(envelope)
             .map_err(|error| StreamError::Invalid(error.to_string()))?

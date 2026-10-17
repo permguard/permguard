@@ -42,6 +42,7 @@ pub(crate) mod codec;
 mod consumer;
 pub mod ingest;
 mod producer;
+pub mod reads;
 pub mod retention;
 pub mod run;
 pub mod state;
@@ -550,6 +551,7 @@ pub struct Served {
     cutovers: Vec<Arc<dyn permguard_host::composition::StreamCutovers>>,
     shipping: Vec<Arc<dyn permguard_host::composition::StreamShipping>>,
     prunables: Vec<Arc<dyn retention::Prunable>>,
+    inspected: Vec<Arc<dyn reads::Inspect>>,
 }
 
 impl fmt::Debug for Served {
@@ -559,6 +561,15 @@ impl fmt::Debug for Served {
 }
 
 impl Served {
+    /// The Host API's reads of these producers (WP-5.7a), with what else the server serves.
+    pub fn reads(&self) -> reads::Reads {
+        self.inspected
+            .iter()
+            .fold(reads::Reads::default(), |reads, handle| {
+                reads.with(Arc::clone(handle))
+            })
+    }
+
     /// The producers the garbage collection runs (WP-5.6b).
     pub fn prunables(&self) -> Vec<Arc<dyn retention::Prunable>> {
         self.prunables.clone()
@@ -571,6 +582,7 @@ impl Served {
             + permguard_host::composition::StreamCutovers
             + permguard_host::composition::StreamShipping
             + retention::Prunable
+            + reads::Inspect
             + 'static,
     {
         self.producers.insert(
@@ -581,6 +593,8 @@ impl Served {
             .push(Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamCutovers>);
         self.prunables
             .push(Arc::clone(&producer) as Arc<dyn retention::Prunable>);
+        self.inspected
+            .push(Arc::clone(&producer) as Arc<dyn reads::Inspect>);
         self.shipping.push(producer);
         self
     }

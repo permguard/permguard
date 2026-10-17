@@ -200,6 +200,15 @@ fn file_name(membership_id: &[u8; 16], task_id: &str) -> Result<String, StreamEr
     Ok(format!("{}-{task_id}.cbor", hex(membership_id)))
 }
 
+/// Every subscription of the stream in `dir`, creating nothing: none when it never had one
+/// (WP-5.7a, a read path).
+pub(super) fn subscriptions_held(dir: &Dir) -> Result<Vec<Subscription>, StreamError> {
+    if !dir.subdirs()?.iter().any(|name| name == SUBSCRIPTIONS) {
+        return Ok(Vec::new());
+    }
+    subscriptions_of(dir)
+}
+
 /// Every subscription of the stream in `dir`.
 pub(super) fn subscriptions_of(dir: &Dir) -> Result<Vec<Subscription>, StreamError> {
     let subscriptions = subscriptions_dir(dir)?;

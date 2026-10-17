@@ -44,6 +44,7 @@ use super::ingest::{Answer, Forked, Outcome, Ship, Shipping};
 use super::producer::{RECORDS, Span, Spans, canonical_jwk, decode_group};
 use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex};
 
+mod inspect;
 mod prune;
 
 /// The frame kind of a batch's admission time (WP-5.6b).
@@ -837,6 +838,31 @@ impl<C: RecordCodec> Consumer<C> {
         from_seq: u64,
         limit: usize,
     ) -> Result<super::anchor::Page<C::Record>, StreamError> {
+        let page = self.read_raw(resource, producer, run_id, from_seq, limit)?;
+        Ok(super::anchor::Page {
+            records: page
+                .records
+                .into_iter()
+                .map(|(seq, bytes)| {
+                    Ok((
+                        seq,
+                        self.codec.decode(&bytes).map_err(StreamError::Invalid)?,
+                    ))
+                })
+                .collect::<Result<_, StreamError>>()?,
+            gap: page.gap,
+        })
+    }
+
+    /// [`Self::read`], the records as their bytes.
+    pub(super) fn read_raw(
+        &self,
+        resource: &Resource,
+        producer: [u8; 16],
+        run_id: [u8; 16],
+        from_seq: u64,
+        limit: usize,
+    ) -> Result<super::anchor::Page<Vec<u8>>, StreamError> {
         let key = self.descriptor.key(resource, producer)?;
         // Sequence 0 is none: a read from it reads from the start (after the review).
         let from_seq = from_seq.max(1);
@@ -862,18 +888,7 @@ impl<C: RecordCodec> Consumer<C> {
             Ok((held.records(from, to)?, gap))
         })?;
         let (records, gap) = held.unwrap_or_default();
-        Ok(super::anchor::Page {
-            records: records
-                .into_iter()
-                .map(|(seq, bytes)| {
-                    Ok((
-                        seq,
-                        self.codec.decode(&bytes).map_err(StreamError::Invalid)?,
-                    ))
-                })
-                .collect::<Result<_, StreamError>>()?,
-            gap,
-        })
+        Ok(super::anchor::Page { records, gap })
     }
 }
 

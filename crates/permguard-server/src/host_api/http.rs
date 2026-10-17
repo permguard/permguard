@@ -20,6 +20,7 @@ use permguard_host::api::members::{
     RunMemberRevoke, SyncMembership, VerifyMember,
 };
 use permguard_host::api::reset::{PlanIdentityReset, RunIdentityReset};
+use permguard_host::api::streams::StreamQuery;
 use permguard_host::api::{
     CreateGrant, HostApi, KeyBundleQuery, PlanKeyRevoke, PlanRevoke, Refusal, RotateIdentity,
     RotateRing, RunKeyRevoke, RunRevoke, VerifyIdentity,
@@ -91,6 +92,32 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/audit/{class}/records", get(audit_records))
         .route("/host/v1/audit/{class}/checkpoints", get(audit_checkpoints))
         .route("/host/v1/audit/{class}/export", get(audit_export))
+        // The stream reads (WP-5.7a); batches travel on the task transport (owner decision).
+        .route("/host/v1/streams", get(streams_list))
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/frontier",
+            get(stream_frontier),
+        )
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/records",
+            get(stream_records),
+        )
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/signers",
+            get(stream_signers),
+        )
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/subscriptions",
+            get(stream_subscriptions),
+        )
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/gaps",
+            get(stream_gaps),
+        )
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/anchors",
+            get(stream_anchors),
+        )
         .route("/host/v1/plans", get(list_plans))
         .route("/host/v1/plans/{id}/approve", post(approve_plan))
         .route("/host/v1/status", get(status))
@@ -314,6 +341,125 @@ fn numbers<const N: usize>(
         }
     }
     read
+}
+
+async fn streams_list(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    answer(&served, StatusCode::OK, served.api.streams_list(&actor))
+}
+
+/// The query of a stream read: `resource`, and for `records` `producer`, `run`, `from` and
+/// `limit`.
+fn stream_query(query: Option<&str>) -> StreamQuery {
+    let [resource, producer, run, from, limit] = <[Option<String>; 5]>::try_from(query_members(
+        query,
+        &["resource", "producer", "run", "from", "limit"],
+    ))
+    .unwrap_or_default();
+    let mut malformed = None;
+    let [from, limit] = numbers(["from", "limit"], [from, limit], &mut malformed);
+    StreamQuery {
+        resource: resource.unwrap_or_default(),
+        producer,
+        run,
+        from,
+        // A limit beyond 32 bits is out of range, and refused as one.
+        limit: limit.map(|limit| u32::try_from(limit).unwrap_or(0)),
+        malformed,
+    }
+}
+
+async fn stream_frontier(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .stream_frontier(&actor, &plane, &stream_type, &query),
+    )
+}
+
+async fn stream_records(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .stream_records(&actor, &plane, &stream_type, &query),
+    )
+}
+
+async fn stream_signers(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .stream_signers(&actor, &plane, &stream_type, &query),
+    )
+}
+
+async fn stream_subscriptions(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .stream_subscriptions(&actor, &plane, &stream_type, &query),
+    )
+}
+
+async fn stream_gaps(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.stream_gaps(&actor, &plane, &stream_type, &query),
+    )
+}
+
+async fn stream_anchors(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .stream_anchors(&actor, &plane, &stream_type, &query),
+    )
 }
 
 async fn audit_records(

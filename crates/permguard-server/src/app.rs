@@ -1814,6 +1814,8 @@ impl App {
         // The memberships a consumer's retention reads, bound once they are open below.
         let retention_members = Arc::new(std::sync::OnceLock::new());
         let mut prunables: Vec<Arc<dyn permguard_stream::engine::retention::Prunable>> = Vec::new();
+        // What the Host API reads of the streams (WP-5.7a).
+        let mut stream_reads: Option<Arc<dyn permguard_host::api::streams::StreamReads>> = None;
         let (streams, ingests) = match keys.as_ref() {
             Some(operations) => {
                 let (served, decisions, events) = self
@@ -1831,6 +1833,12 @@ impl App {
                 prunables = served.prunables();
                 prunables.push(Arc::clone(&decisions) as _);
                 prunables.push(Arc::clone(&events) as _);
+                stream_reads = Some(Arc::new(
+                    served
+                        .reads()
+                        .with(Arc::clone(&decisions) as _)
+                        .with(Arc::clone(&events) as _),
+                ));
                 (Some(Arc::new(served)), Some((decisions, events)))
             }
             None => (None, None),
@@ -2132,6 +2140,10 @@ impl App {
                     }),
                 })),
             });
+            let api = match stream_reads.clone() {
+                Some(reads) => api.with_streams(reads),
+                None => api,
+            };
             let api = Arc::new(api);
             serving = Some(Arc::clone(&api));
             context = context.with_host_handles(api);

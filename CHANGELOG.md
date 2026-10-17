@@ -19,6 +19,13 @@ is cut.
 
 ### Added
 
+- **The Host API reads the streams.**
+  `GET /host/v1/streams` lists what the Host's stream engine produces and consumes, with each resource's state and retention class.
+  Under `/host/v1/streams/{plane}/{type}/` the `frontier`, `records`, `signers`, `subscriptions`, `gaps` and `anchors` reads answer for one resource, over REST and over `permguard.host.v1.EvidenceService`.
+  They take the new grant operation `streams.read`, on `host` for the list and on the stream's resource for the rest.
+  A `records` page starting below what a run still holds answers from there with the gap and the run's anchor.
+  Batches are still shipped on the membership's task transport: `ShipStreamBatch` answers `UNIMPLEMENTED`.
+
 - **Stream evidence is deleted by an hourly job, and what goes leaves an anchor.**
   At start and every hour the Host deletes, of each stream it produces, the batches every required subscription acknowledged, for `history` streams only below the floor a Plane registers.
   Of each stream it ingests as a coordinator, it deletes the batches admitted longer ago than the `retention_seconds` of the task that ships them, for `history` streams again only below the Plane's floor.

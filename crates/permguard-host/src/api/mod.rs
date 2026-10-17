@@ -34,6 +34,7 @@ pub mod replay;
 pub mod reset;
 pub mod sessions;
 pub mod status;
+pub mod streams;
 
 use std::sync::Arc;
 
@@ -259,6 +260,8 @@ pub struct HostApi {
     listeners: Vec<permguard_core::ListenerReport>,
     memberships: Option<Arc<members::MembershipService>>,
     audit: Option<Arc<crate::audit::Engine>>,
+    /// The stream engine's reads (WP-5.7a), given once the server composed the engine.
+    streams: Option<Arc<dyn streams::StreamReads>>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -290,7 +293,14 @@ impl HostApi {
             listeners: composition.listeners,
             memberships: composition.memberships,
             audit: composition.audit,
+            streams: None,
         }
+    }
+
+    /// This facade reading the Host's streams through `streams` (WP-5.7a).
+    pub fn with_streams(mut self, streams: Arc<dyn streams::StreamReads>) -> Self {
+        self.streams = Some(streams);
+        self
     }
 
     /// Whether `actor` may do `operation` on the Host itself, with the principal it acts as.

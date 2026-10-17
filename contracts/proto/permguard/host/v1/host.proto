@@ -1052,22 +1052,178 @@ message ExportAuditResponse {
   // On the first page, the `keys export` document of `host.operations`; absent after it.
   optional string verification_keys = 11;
 }
+// `GET /host/v1/streams` (WP-5.7a), under `streams.read` on `host`.
 message ListStreamsRequest {}
-message ListStreamsResponse {}
+message ListStreamsResponse {
+  repeated StreamDescriptor streams = 1;
+}
+// One descriptor and role the Host's stream engine serves.
+message StreamDescriptor {
+  string plane = 1;
+  string stream_type = 2;
+  uint32 version = 3;
+  // `producer` or `consumer`.
+  string role = 4;
+  // `evidence` or `history`.
+  string retention = 5;
+  string ring = 6;
+  // The membership task that ships the stream, when one does.
+  optional string task = 7;
+  repeated StreamResource resources = 8;
+}
+// One resource of a stream: `open`, `forked`, `behind` (a drain left records unshipped) or
+// `held` (a consumer).
+message StreamResource {
+  string resource = 1;
+  string state = 2;
+}
+// Batches travel on the membership's task transport; this binding is not served (WP-5.7, owner
+// decision of 2026-10-17).
 message ShipStreamBatchRequest {}
 message ShipStreamBatchResponse {}
-message GetStreamFrontierRequest {}
-message GetStreamFrontierResponse {}
-message ListStreamRecordsRequest {}
-message ListStreamRecordsResponse {}
-message ListStreamSignersRequest {}
-message ListStreamSignersResponse {}
-message ListStreamSubscriptionsRequest {}
-message ListStreamSubscriptionsResponse {}
-message ListStreamGapsRequest {}
-message ListStreamGapsResponse {}
-message ListStreamAnchorsRequest {}
-message ListStreamAnchorsResponse {}
+// The query of a stream read (WP-5.7a), under `streams.read` on `resource`, which is authorized
+// before anything else is read.
+message GetStreamFrontierRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+}
+message GetStreamFrontierResponse {
+  string resource = 1;
+  repeated StreamProducerRun producer = 2;
+  repeated StreamConsumerRun consumer = 3;
+}
+// One run as the producer holds it.
+message StreamProducerRun {
+  // Hex.
+  string run = 1;
+  bool ended = 2;
+  uint64 last_seq = 3;
+  uint64 sealed = 4;
+  // The least acknowledgement of the required subscriptions, when one holds the run.
+  optional uint64 acknowledged = 5;
+  // The first sequence still held: 1 unless a prefix went.
+  uint64 low_watermark = 6;
+}
+// One run as a consumer holds it.
+message StreamConsumerRun {
+  // Hex: the producer Host and its run.
+  string producer = 1;
+  string run = 2;
+  uint64 acked = 3;
+  uint64 oldest_retained = 4;
+}
+message ListStreamRecordsRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+  // A consumer run: its producer Host and run, hex; both empty for the producer's current run.
+  string producer = 4;
+  string run = 5;
+  // The first sequence, 1 when absent.
+  optional uint64 from = 6;
+  // 1 to 1000, 100 when absent.
+  optional uint32 limit = 7;
+}
+message ListStreamRecordsResponse {
+  string resource = 1;
+  string run = 2;
+  repeated StreamRecord records = 3;
+  // Where the next page starts, when the run holds more.
+  optional uint64 next = 4;
+  // The deleted prefix the read started in, never answered as complete.
+  optional StreamGap gap = 5;
+}
+// One record: its bytes and their digest under the stream's record domain.
+message StreamRecord {
+  uint64 seq = 1;
+  bytes record = 2;
+  string digest = 3;
+}
+// What a read below the first sequence still held reaches.
+message StreamGap {
+  uint64 low_watermark = 1;
+  StreamAnchor anchor = 2;
+}
+message ListStreamSignersRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+}
+message ListStreamSignersResponse {
+  repeated StreamRunSigners runs = 1;
+}
+// One run's signer spans, for a role.
+message StreamRunSigners {
+  string role = 1;
+  string producer = 2;
+  string run = 3;
+  repeated StreamSpan spans = 4;
+}
+message StreamSpan {
+  uint64 from_seq = 1;
+  string kid = 2;
+  // The public key as JSON.
+  string jwk = 3;
+}
+message ListStreamSubscriptionsRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+}
+message ListStreamSubscriptionsResponse {
+  repeated StreamSubscription subscriptions = 1;
+}
+// One subscription of the producer and its acknowledgement per run.
+message StreamSubscription {
+  string membership = 1;
+  string task = 2;
+  bool required = 3;
+  // `active`, `paused` or `stopped`.
+  string state = 4;
+  optional string reason = 5;
+  repeated StreamRunAck acked = 6;
+}
+message StreamRunAck {
+  string run = 1;
+  uint64 acked = 2;
+}
+message ListStreamGapsRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+}
+message ListStreamGapsResponse {
+  repeated StreamGapEntry gaps = 1;
+}
+// One run whose prefix went.
+message StreamGapEntry {
+  string role = 1;
+  string producer = 2;
+  string run = 3;
+  uint64 low_watermark = 4;
+}
+message ListStreamAnchorsRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+}
+message ListStreamAnchorsResponse {
+  repeated StreamAnchor anchors = 1;
+}
+// One run's prefix anchor (`contracts/cbor/stream.json`, `stream_anchor`).
+message StreamAnchor {
+  string role = 1;
+  string producer = 2;
+  string run = 3;
+  uint64 through = 4;
+  uint64 low_watermark = 5;
+  string terminal_head = 6;
+  // How many deleted batches it covers.
+  uint64 covering = 7;
+  // The anchor's deterministic CBOR.
+  bytes anchor = 8;
+}
 message GetStatusRequest {}
 message GetStatusResponse {
   bool live = 1;

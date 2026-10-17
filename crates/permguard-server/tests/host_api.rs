@@ -246,68 +246,239 @@ fn facade(tag: &str) -> Arc<HostApi> {
     }
     // The volume stays claimed for the life of the test process: the store holds its directory.
     std::mem::forget(volume);
-    Arc::new(HostApi::new(Composition {
-        authorization: Arc::new(Authorization::new(
-            Arc::clone(&store),
-            &[PublicGrant::new(
-                &[operations::KEYS_READ],
-                Selector::exactly(Resource::host()),
-            )],
-        )),
-        store: Some(store),
-        replay,
-        keys,
-        health: Health::new(),
-        assurance: Assurance::of(
-            &permguard_core::assurance::Assurance::new(
-                AssuranceProfile::Development,
-                [permguard_core::assurance::Control::Tls13Only],
-            )
-            .report(&[permguard_core::assurance::Relaxation::CustodyPlaintext]),
-        ),
-        effective: Effective {
-            revision: 0,
-            settings: Vec::new(),
-        },
-        trail: "recording".to_owned(),
-        mutations: Some(mutations),
-        identity: Some(identity),
-        time: Arc::new(permguard_host::time::TimeGuard::system(
-            std::time::Duration::from_secs(30),
-        )),
-        peer_sessions: permguard_host::api::sessions::PeerSessions::none(),
-        // A listener of each authentication shape, with and without a TLS minimum (WP-2.11).
-        listeners: vec![
-            permguard_core::ListenerReport::of(
-                "data-http",
-                permguard_core::ListenerClass::PlanePublic,
-                None,
-                true,
-                false,
+    Arc::new(
+        HostApi::new(Composition {
+            authorization: Arc::new(Authorization::new(
+                Arc::clone(&store),
+                &[PublicGrant::new(
+                    &[operations::KEYS_READ],
+                    Selector::exactly(Resource::host()),
+                )],
+            )),
+            store: Some(store),
+            replay,
+            keys,
+            health: Health::new(),
+            assurance: Assurance::of(
+                &permguard_core::assurance::Assurance::new(
+                    AssuranceProfile::Development,
+                    [permguard_core::assurance::Control::Tls13Only],
+                )
+                .report(&[permguard_core::assurance::Relaxation::CustodyPlaintext]),
             ),
-            permguard_core::ListenerReport::of(
-                "host-api",
-                permguard_core::ListenerClass::Host,
-                Some(
-                    &permguard_core::TlsSettings::new("c", "k")
-                        .with_client_ca("ca")
-                        .with_min_version(permguard_core::TlsVersion::V1_2),
+            effective: Effective {
+                revision: 0,
+                settings: Vec::new(),
+            },
+            trail: "recording".to_owned(),
+            mutations: Some(mutations),
+            identity: Some(identity),
+            time: Arc::new(permguard_host::time::TimeGuard::system(
+                std::time::Duration::from_secs(30),
+            )),
+            peer_sessions: permguard_host::api::sessions::PeerSessions::none(),
+            // A listener of each authentication shape, with and without a TLS minimum (WP-2.11).
+            listeners: vec![
+                permguard_core::ListenerReport::of(
+                    "data-http",
+                    permguard_core::ListenerClass::PlanePublic,
+                    None,
+                    true,
+                    false,
                 ),
-                false,
-                true,
-            ),
-        ],
-        audit: Some(audit),
-        memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
-            store: members,
-            capabilities: permguard_host::membership::Capabilities::default(),
-            connector: None,
-            appraisal: permguard_host::membership::appraisal::Appraisal::default(),
-            live: Arc::default(),
-            streams: None,
-            shipping: None,
-        })),
-    }))
+                permguard_core::ListenerReport::of(
+                    "host-api",
+                    permguard_core::ListenerClass::Host,
+                    Some(
+                        &permguard_core::TlsSettings::new("c", "k")
+                            .with_client_ca("ca")
+                            .with_min_version(permguard_core::TlsVersion::V1_2),
+                    ),
+                    false,
+                    true,
+                ),
+            ],
+            audit: Some(audit),
+            memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
+                store: members,
+                capabilities: permguard_host::membership::Capabilities::default(),
+                connector: None,
+                appraisal: permguard_host::membership::appraisal::Appraisal::default(),
+                live: Arc::default(),
+                streams: None,
+                shipping: None,
+            })),
+        })
+        .with_streams(Arc::new(FixedStreams)),
+    )
+}
+
+/// A stream engine answering one decision stream on `plane/data/zone/z/ledger/l`, its producer's
+/// prefix through 4 deleted (WP-5.7a).
+struct FixedStreams;
+
+const RUN: &str = "0123456789abcdef0123456789abcdef";
+const PRODUCER: &str = "fedcba9876543210fedcba9876543210";
+
+fn fixed_anchor() -> permguard_host::api::streams::AnchorView {
+    permguard_host::api::streams::AnchorView {
+        role: "producer".to_owned(),
+        producer: PRODUCER.to_owned(),
+        run: RUN.to_owned(),
+        through: 4,
+        low_watermark: 5,
+        terminal_head: format!("sha256:{}", "a".repeat(64)),
+        covering: 2,
+        anchor: "oQEC".to_owned(),
+    }
+}
+
+impl permguard_host::api::streams::StreamReads for FixedStreams {
+    fn list(&self) -> Result<Vec<permguard_host::api::streams::StreamView>, String> {
+        Ok(vec![permguard_host::api::streams::StreamView {
+            plane: "data".to_owned(),
+            stream_type: "decisions".to_owned(),
+            version: 1,
+            role: "producer".to_owned(),
+            retention: "evidence".to_owned(),
+            ring: "data.attest".to_owned(),
+            task: Some("decisions.ship".to_owned()),
+            resources: vec![permguard_host::api::streams::ResourceState {
+                resource: "plane/data/zone/z/ledger/l".to_owned(),
+                state: "open".to_owned(),
+            }],
+        }])
+    }
+
+    fn frontier(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        resource: &str,
+    ) -> Result<Option<permguard_host::api::streams::Frontier>, String> {
+        if (plane, stream_type) != ("data", "decisions") {
+            return Ok(None);
+        }
+        Ok(Some(permguard_host::api::streams::Frontier {
+            resource: resource.to_owned(),
+            producer: vec![permguard_host::api::streams::ProducerRun {
+                run: RUN.to_owned(),
+                ended: false,
+                last_seq: 8,
+                sealed: 8,
+                acknowledged: Some(6),
+                low_watermark: 5,
+            }],
+            consumer: vec![permguard_host::api::streams::ConsumerRun {
+                producer: PRODUCER.to_owned(),
+                run: RUN.to_owned(),
+                acked: 8,
+                oldest_retained: 1,
+            }],
+        }))
+    }
+
+    fn records(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        resource: &str,
+        _run: Option<(&[u8; 16], &[u8; 16])>,
+        from: u64,
+        limit: usize,
+    ) -> Result<Option<permguard_host::api::streams::RecordPage>, String> {
+        if (plane, stream_type) != ("data", "decisions") {
+            return Ok(None);
+        }
+        let first = from.max(5);
+        let records: Vec<_> = (first..=8)
+            .take(limit)
+            .map(|seq| permguard_host::api::streams::RecordView {
+                seq,
+                record: "cjE".to_owned(),
+                digest: format!("sha256:{}", "b".repeat(64)),
+            })
+            .collect();
+        Ok(Some(permguard_host::api::streams::RecordPage {
+            resource: resource.to_owned(),
+            run: RUN.to_owned(),
+            next: records
+                .last()
+                .map(|record| record.seq + 1)
+                .filter(|next| *next <= 8),
+            records,
+            gap: (from < 5).then(|| permguard_host::api::streams::GapView {
+                low_watermark: 5,
+                anchor: fixed_anchor(),
+            }),
+        }))
+    }
+
+    fn signers(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::RunSigners>>, String> {
+        Ok(((plane, stream_type) == ("data", "decisions")).then(|| {
+            vec![permguard_host::api::streams::RunSigners {
+                role: "producer".to_owned(),
+                producer: PRODUCER.to_owned(),
+                run: RUN.to_owned(),
+                spans: vec![permguard_host::api::streams::SpanView {
+                    from_seq: 1,
+                    kid: "kid-1".to_owned(),
+                    jwk: "{}".to_owned(),
+                }],
+            }]
+        }))
+    }
+
+    fn subscriptions(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::SubscriptionView>>, String> {
+        Ok(((plane, stream_type) == ("data", "decisions")).then(|| {
+            vec![permguard_host::api::streams::SubscriptionView {
+                membership: "0198f2aa-0000-7000-8000-000000000001".to_owned(),
+                task: "decisions".to_owned(),
+                required: true,
+                state: "active".to_owned(),
+                reason: None,
+                acked: vec![permguard_host::api::streams::RunAck {
+                    run: RUN.to_owned(),
+                    acked: 6,
+                }],
+            }]
+        }))
+    }
+
+    fn gaps(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::GapEntry>>, String> {
+        Ok(((plane, stream_type) == ("data", "decisions")).then(|| {
+            vec![permguard_host::api::streams::GapEntry {
+                role: "producer".to_owned(),
+                producer: PRODUCER.to_owned(),
+                run: RUN.to_owned(),
+                low_watermark: 5,
+            }]
+        }))
+    }
+
+    fn anchors(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::AnchorView>>, String> {
+        Ok(((plane, stream_type) == ("data", "decisions")).then(|| vec![fixed_anchor()]))
+    }
 }
 
 /// The receipt a plan answered, base64url: REST answers it so, gRPC as bytes.
@@ -462,6 +633,129 @@ impl Transport {
         ))
         .await
         .expect("the gRPC endpoint answers")
+    }
+
+    /// A stream read `what` of `plane/stream_type` on `resource`; `query` adds the REST query
+    /// members of `records` (WP-5.7a).
+    async fn stream_read(
+        &self,
+        who: Option<&str>,
+        what: &str,
+        stream: &str,
+        resource: &str,
+        from: Option<u64>,
+        limit: Option<u32>,
+    ) -> Outcome {
+        let (plane, stream_type) = stream.split_once('/').unwrap_or((stream, ""));
+        match self {
+            Self::Rest(_) => {
+                let path = if what == "list" {
+                    "/host/v1/streams".to_owned()
+                } else {
+                    let mut path = format!(
+                        "/host/v1/streams/{plane}/{stream_type}/{what}?resource={resource}"
+                    );
+                    if let Some(from) = from {
+                        path.push_str(&format!("&from={from}"));
+                    }
+                    if let Some(limit) = limit {
+                        path.push_str(&format!("&limit={limit}"));
+                    }
+                    path
+                };
+                self.rest("GET", &path, who, None).await
+            }
+            Self::Grpc(_) => {
+                let mut client = self.evidence().await;
+                let (plane, stream_type, resource) = (
+                    plane.to_owned(),
+                    stream_type.to_owned(),
+                    resource.to_owned(),
+                );
+                match what {
+                    "list" => reduced_grpc(
+                        client
+                            .list_streams(Self::grpc_request(who, host_v1::ListStreamsRequest {}))
+                            .await,
+                    ),
+                    "frontier" => reduced_grpc(
+                        client
+                            .get_stream_frontier(Self::grpc_request(
+                                who,
+                                host_v1::GetStreamFrontierRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                },
+                            ))
+                            .await,
+                    ),
+                    "records" => reduced_grpc(
+                        client
+                            .list_stream_records(Self::grpc_request(
+                                who,
+                                host_v1::ListStreamRecordsRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                    from,
+                                    limit,
+                                    ..Default::default()
+                                },
+                            ))
+                            .await,
+                    ),
+                    "signers" => reduced_grpc(
+                        client
+                            .list_stream_signers(Self::grpc_request(
+                                who,
+                                host_v1::ListStreamSignersRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                },
+                            ))
+                            .await,
+                    ),
+                    "subscriptions" => reduced_grpc(
+                        client
+                            .list_stream_subscriptions(Self::grpc_request(
+                                who,
+                                host_v1::ListStreamSubscriptionsRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                },
+                            ))
+                            .await,
+                    ),
+                    "gaps" => reduced_grpc(
+                        client
+                            .list_stream_gaps(Self::grpc_request(
+                                who,
+                                host_v1::ListStreamGapsRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                },
+                            ))
+                            .await,
+                    ),
+                    _ => reduced_grpc(
+                        client
+                            .list_stream_anchors(Self::grpc_request(
+                                who,
+                                host_v1::ListStreamAnchorsRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                },
+                            ))
+                            .await,
+                    ),
+                }
+            }
+        }
     }
 
     async fn audit_records(&self, who: Option<&str>, class: &str, resource: &str) -> Outcome {
@@ -1786,6 +2080,79 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         "export the audit trail",
         transport.audit_export(admin, "operations").await,
     ));
+    // The stream reads (WP-5.7a), over a fixed engine.
+    let ledger = "plane/data/zone/z/ledger/l";
+    for (case, what) in [
+        ("list the streams", "list"),
+        ("read a stream's frontier", "frontier"),
+        ("read a stream's signers", "signers"),
+        ("read a stream's subscriptions", "subscriptions"),
+        ("read a stream's gaps", "gaps"),
+        ("read a stream's anchors", "anchors"),
+    ] {
+        steps.push((
+            case,
+            transport
+                .stream_read(admin, what, "data/decisions", ledger, None, None)
+                .await,
+        ));
+    }
+    steps.push((
+        "read a stream's records",
+        transport
+            .stream_read(admin, "records", "data/decisions", ledger, Some(5), Some(2))
+            .await,
+    ));
+    steps.push((
+        "read a stream's records below its low watermark",
+        transport
+            .stream_read(admin, "records", "data/decisions", ledger, Some(1), None)
+            .await,
+    ));
+    steps.push((
+        "read a stream's records with a limit out of range",
+        transport
+            .stream_read(admin, "records", "data/decisions", ledger, None, Some(1001))
+            .await,
+    ));
+    steps.push((
+        "read an unknown stream's frontier",
+        transport
+            .stream_read(admin, "frontier", "data/nothing", ledger, None, None)
+            .await,
+    ));
+    steps.push((
+        "read a stream's frontier as a stranger",
+        transport
+            .stream_read(
+                Some(STRANGER),
+                "frontier",
+                "data/decisions",
+                ledger,
+                None,
+                None,
+            )
+            .await,
+    ));
+    steps.push((
+        "read an unknown stream's frontier as a stranger",
+        transport
+            .stream_read(
+                Some(STRANGER),
+                "frontier",
+                "data/nothing",
+                ledger,
+                None,
+                None,
+            )
+            .await,
+    ));
+    steps.push((
+        "read a stream's frontier out of the grammar",
+        transport
+            .stream_read(admin, "frontier", "data/decisions", "zone:x", None, None)
+            .await,
+    ));
     steps.push(("read the status", transport.status(admin).await));
     steps.push((
         "read the status as a stranger",
@@ -2092,6 +2459,15 @@ fn schema_of(case: &str) -> &'static str {
         "read the audit records" => "AuditRecordPage",
         "read the audit checkpoints" => "AuditCheckpoints",
         "export the audit trail" => "AuditExportPage",
+        "list the streams" => "StreamList",
+        "read a stream's frontier" => "StreamFrontier",
+        "read a stream's records" | "read a stream's records below its low watermark" => {
+            "StreamRecordPage"
+        }
+        "read a stream's signers" => "StreamSignerList",
+        "read a stream's subscriptions" => "StreamSubscriptionList",
+        "read a stream's gaps" => "StreamGapList",
+        "read a stream's anchors" => "StreamAnchorList",
         "read the status" => "HostStatus",
         "read the effective configuration" => "EffectiveConfig",
         "read the configuration revisions" => "ConfigRevisions",

@@ -5149,3 +5149,350 @@ fn gc_at(prunable: &dyn super::retention::Prunable, now: u64) -> Vec<super::rete
         .expect("a pass")
         .expect("no pass running")
 }
+
+/// WP-5.7a: the Host API's reads over a real producer and consumer: the list, the frontier of
+/// both roles, a page with its gap and anchor after a prefix went, the signers, subscriptions,
+/// gaps and anchors; a resource the engine does not hold is read without creating anything.
+#[test]
+fn the_host_api_reads_what_the_engine_holds() {
+    use permguard_host::api::streams::StreamReads as _;
+    struct Source;
+    impl super::retention::RetentionSource for Source {
+        fn retention_seconds(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(1)
+        }
+    }
+    let host = Host::new("reads");
+    let consumer = Arc::new(
+        host.streams()
+            .register_consumer(descriptor(), Text)
+            .expect("registered")
+            .with_retention_source(Arc::new(Source)),
+    );
+    let producer = Arc::new(small_sealer(&host, descriptor()));
+    let run = acknowledged(&producer, &consumer, &host, 6);
+    gc(producer.as_ref());
+    gc_at(consumer.as_ref(), host.time.now_secs() + 10);
+    let reads = super::reads::Reads::default()
+        .with(Arc::clone(&producer) as Arc<dyn super::reads::Inspect>)
+        .with(Arc::clone(&consumer) as Arc<dyn super::reads::Inspect>);
+    let resource = ledger(1).to_string();
+    let me = hex(&host.identity.host_id());
+
+    let list = reads.list().expect("listed");
+    assert_eq!(
+        list.iter()
+            .map(|stream| (stream.role.as_str(), stream.resources.len()))
+            .collect::<Vec<_>>(),
+        vec![("producer", 1), ("consumer", 1)]
+    );
+    assert_eq!(list[0].retention, "evidence");
+    assert_eq!(list[0].task.as_deref(), Some("decisions.ship"));
+    assert_eq!(list[0].resources[0].state, "open");
+    assert_eq!(list[1].resources[0].state, "held");
+
+    let frontier = reads
+        .frontier("data", "decisions", &resource)
+        .expect("read")
+        .expect("served");
+    assert_eq!(frontier.producer.len(), 1);
+    let produced = &frontier.producer[0];
+    assert_eq!(
+        (
+            produced.run.as_str(),
+            produced.ended,
+            produced.last_seq,
+            produced.sealed
+        ),
+        (hex(&run).as_str(), false, 6, 6)
+    );
+    assert_eq!(
+        (produced.acknowledged, produced.low_watermark),
+        (Some(6), 7)
+    );
+    assert_eq!(frontier.consumer.len(), 1);
+    let consumed = &frontier.consumer[0];
+    assert_eq!(
+        (
+            consumed.producer.as_str(),
+            consumed.acked,
+            consumed.oldest_retained
+        ),
+        (me.as_str(), 6, 7)
+    );
+
+    // Everything went: a page from the start is empty and states the gap and its anchor.
+    let page = reads
+        .records("data", "decisions", &resource, None, 1, 10)
+        .expect("read")
+        .expect("served");
+    assert!(page.records.is_empty());
+    let gap = page.gap.expect("a gap");
+    assert_eq!(
+        (
+            gap.low_watermark,
+            gap.anchor.through,
+            gap.anchor.role.as_str()
+        ),
+        (7, 6, "producer")
+    );
+    // The producer goes on: a page of what follows, its digests, and the next sequence.
+    for at in 6..9 {
+        producer
+            .append(&ledger(1), &format!("r{at}"))
+            .expect("appended");
+    }
+    let page = reads
+        .records("data", "decisions", &resource, None, 7, 2)
+        .expect("read")
+        .expect("served");
+    assert_eq!(
+        page.records
+            .iter()
+            .map(|record| record.seq)
+            .collect::<Vec<_>>(),
+        vec![7, 8]
+    );
+    assert_eq!(page.next, Some(9));
+    // A full last page names no next one.
+    let last = reads
+        .records("data", "decisions", &resource, None, 8, 2)
+        .expect("read")
+        .expect("served");
+    assert_eq!(
+        (last.records.len(), last.next),
+        (2, None),
+        "8 and 9, and nothing after"
+    );
+    // Sealed from the batch files still held.
+    assert!(matches!(
+        producer.seal(&ledger(1), 10).expect("sealed"),
+        Sealing::Sealed { .. }
+    ));
+    let sealed = reads
+        .frontier("data", "decisions", &resource)
+        .expect("read")
+        .expect("served");
+    assert_eq!(sealed.producer[0].sealed, 9);
+    // A consumer run asked under another producer is not this one.
+    let other = reads
+        .records(
+            "data",
+            "decisions",
+            &resource,
+            Some((&[9; 16], &run)),
+            1,
+            10,
+        )
+        .expect("read")
+        .expect("served");
+    assert!(other.records.is_empty() && other.gap.is_none());
+    assert_eq!(
+        page.records[0].digest,
+        batch::digest_string(digest::DECISION_RECORD, b"r6")
+    );
+    let consumer_page = reads
+        .records(
+            "data",
+            "decisions",
+            &resource,
+            Some((&host.identity.host_id(), &run)),
+            1,
+            10,
+        )
+        .expect("read")
+        .expect("served");
+    assert_eq!(consumer_page.gap.expect("a gap").anchor.role, "consumer");
+
+    let signers = reads
+        .signers("data", "decisions", &resource)
+        .expect("read")
+        .expect("served");
+    assert_eq!(
+        signers
+            .iter()
+            .map(|run| run.role.as_str())
+            .collect::<Vec<_>>(),
+        vec!["producer", "consumer"]
+    );
+    assert!(
+        signers
+            .iter()
+            .all(|run| run.spans.first().map(|span| span.from_seq) == Some(1))
+    );
+    let subscriptions = reads
+        .subscriptions("data", "decisions", &resource)
+        .expect("read")
+        .expect("served");
+    assert_eq!(subscriptions.len(), 1);
+    assert_eq!(
+        (
+            subscriptions[0].task.as_str(),
+            subscriptions[0].required,
+            subscriptions[0].state.as_str()
+        ),
+        ("decisions", true, "active")
+    );
+    assert_eq!(subscriptions[0].acked[0].acked, 6);
+    let gaps = reads
+        .gaps("data", "decisions", &resource)
+        .expect("read")
+        .expect("served");
+    assert_eq!(
+        gaps.iter()
+            .map(|gap| (gap.role.as_str(), gap.low_watermark))
+            .collect::<Vec<_>>(),
+        vec![("producer", 7), ("consumer", 7)]
+    );
+    let anchors = reads
+        .anchors("data", "decisions", &resource)
+        .expect("read")
+        .expect("served");
+    assert_eq!(anchors.len(), 2);
+    assert_eq!((anchors[0].through, anchors[0].covering), (6, 3));
+    use base64::Engine as _;
+    let decoded = super::anchor::Anchor::decode(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(&anchors[0].anchor)
+            .expect("base64url"),
+    )
+    .expect("the anchor's CBOR");
+    assert_eq!(decoded.through, 6);
+
+    // Not served, and not held: nothing answered, nothing created.
+    assert!(
+        reads
+            .frontier("data", "nothing", &resource)
+            .expect("read")
+            .is_none()
+    );
+    let before = std::fs::read_dir(
+        host.producer_dir(&ledger(1))
+            .parent()
+            .expect("a parent")
+            .parent()
+            .expect("the producer root"),
+    )
+    .expect("listed")
+    .count();
+    let other = ledger(2).to_string();
+    let empty = reads
+        .frontier("data", "decisions", &other)
+        .expect("read")
+        .expect("served");
+    assert!(empty.producer.is_empty() && empty.consumer.is_empty());
+    assert!(
+        reads
+            .records("data", "decisions", &other, None, 1, 10)
+            .expect("read")
+            .expect("served")
+            .records
+            .is_empty()
+    );
+    let after = std::fs::read_dir(
+        host.producer_dir(&ledger(1))
+            .parent()
+            .expect("a parent")
+            .parent()
+            .expect("the producer root"),
+    )
+    .expect("listed")
+    .count();
+    assert_eq!(before, after, "a read creates no stream");
+}
+
+/// WP-5.7a, after the review: the frontier of a stream that never sealed creates nothing and
+/// answers its run, and a forked stream's frontier still answers its runs.
+#[test]
+fn a_frontier_read_writes_nothing_and_answers_a_forked_stream() {
+    use permguard_host::api::streams::StreamReads as _;
+    let host = Host::new("reads-unsealed");
+    let producer = Arc::new(host.sealer());
+    let run = producer
+        .open_run(&ledger(1), Some(fence(1)))
+        .expect("opened")
+        .run_id;
+    producer
+        .append(&ledger(1), &"r0".to_owned())
+        .expect("appended");
+    let reads = super::reads::Reads::default()
+        .with(Arc::clone(&producer) as Arc<dyn super::reads::Inspect>);
+    let dir = host.producer_dir(&ledger(1));
+    let listing = || {
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .expect("listed")
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        names.sort();
+        names
+    };
+    let before = listing();
+    let state = std::fs::read(dir.join("STATE")).expect("STATE");
+    let frontier = reads
+        .frontier("data", "decisions", &ledger(1).to_string())
+        .expect("read")
+        .expect("served");
+    assert_eq!(frontier.producer.len(), 1);
+    assert_eq!(
+        (
+            frontier.producer[0].last_seq,
+            frontier.producer[0].sealed,
+            frontier.producer[0].ended
+        ),
+        (1, 0, false)
+    );
+    for what in ["signers", "anchors", "subscriptions"] {
+        let resource = ledger(1).to_string();
+        match what {
+            "signers" => drop(reads.signers("data", "decisions", &resource).expect("read")),
+            "anchors" => drop(reads.anchors("data", "decisions", &resource).expect("read")),
+            _ => drop(
+                reads
+                    .subscriptions("data", "decisions", &resource)
+                    .expect("read"),
+            ),
+        }
+    }
+    assert_eq!(listing(), before, "no batches directory, nothing else");
+    assert!(!dir.join("batches").exists());
+    assert_eq!(
+        std::fs::read(dir.join("STATE")).expect("STATE"),
+        state,
+        "STATE untouched"
+    );
+
+    // A rollover ends the first run.
+    let successor = producer
+        .rollover(&ledger(1), Some(fence(1)))
+        .expect("rolled over")
+        .run_id;
+    let frontier = reads
+        .frontier("data", "decisions", &ledger(1).to_string())
+        .expect("read")
+        .expect("served");
+    assert_eq!(
+        frontier
+            .producer
+            .iter()
+            .map(|run| (run.run.clone(), run.ended))
+            .collect::<Vec<_>>(),
+        vec![(hex(&run), true), (hex(&successor), false)]
+    );
+    // Forked: the runs are still answered.
+    producer.report_fork(&ledger(1), 1).expect("reported");
+    let frontier = reads
+        .frontier("data", "decisions", &ledger(1).to_string())
+        .expect("a forked stream answers")
+        .expect("served");
+    assert_eq!(frontier.producer[0].run, hex(&run));
+    assert_eq!(
+        reads.list().expect("listed")[0].resources[0].state,
+        "forked"
+    );
+}

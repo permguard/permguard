@@ -31,6 +31,7 @@ use super::run::{Fence, RunEnd, RunStatement, statement_digest};
 use super::state::{Base, State};
 use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex, record_digest};
 
+mod inspect;
 mod prune;
 mod seal;
 mod ship;
@@ -367,6 +368,28 @@ impl<C: RecordCodec> Producer<C> {
         limit: usize,
     ) -> Result<super::anchor::Page<C::Record>, StreamError> {
         let physical = self.physical(resource)?;
+        let page = Self::page_of(&physical, from_seq, limit)?;
+        Ok(super::anchor::Page {
+            records: page
+                .records
+                .into_iter()
+                .map(|(seq, bytes)| {
+                    Ok((
+                        seq,
+                        self.codec.decode(&bytes).map_err(StreamError::Invalid)?,
+                    ))
+                })
+                .collect::<Result<_, StreamError>>()?,
+            gap: page.gap,
+        })
+    }
+
+    /// [`Self::read`] of `physical`, the records as their bytes.
+    fn page_of(
+        physical: &Physical,
+        from_seq: u64,
+        limit: usize,
+    ) -> Result<super::anchor::Page<Vec<u8>>, StreamError> {
         let writer = physical.writer();
         let Some(run) = &writer.run else {
             return Ok(super::anchor::Page {
@@ -405,10 +428,7 @@ impl<C: RecordCodec> Producer<C> {
                     for (offset, bytes) in records.into_iter().enumerate() {
                         let seq = first + offset as u64;
                         if seq >= from_seq && found.len() < limit {
-                            found.push((
-                                seq,
-                                self.codec.decode(&bytes).map_err(StreamError::Invalid)?,
-                            ));
+                            found.push((seq, bytes));
                         }
                     }
                 }

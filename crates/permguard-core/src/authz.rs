@@ -75,6 +75,9 @@ pub mod operations {
     /// Read the audit trails of a resource: their records, checkpoints and exports (WP-3.7,
     /// owner decision of 2026-10-11).
     pub const AUDIT_READ: &str = "audit.read";
+    /// Read the Host's streams: their descriptors, frontiers, records, signers, subscriptions,
+    /// gaps and anchors (WP-5.7).
+    pub const STREAMS_READ: &str = "streams.read";
 
     /// Every registered operation.
     pub const ALL: &[&str] = &[
@@ -93,6 +96,7 @@ pub mod operations {
         MEMBERSHIP_READ,
         MEMBERSHIP_ADMIN,
         AUDIT_READ,
+        STREAMS_READ,
     ];
 
     /// Whether `operation` is registered.
