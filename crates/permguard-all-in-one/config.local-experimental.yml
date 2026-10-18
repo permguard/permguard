@@ -181,9 +181,7 @@ dataPlane:
   # because the journal is also the history the policies read.
   events:
     enabled: "true"
-    # A producer id owns a hash chain. Two planes sharing one would each append to a stream the
-    # other also claims, and neither history could then be verified.
-    producer_id: all-in-one-local
+    # Recorded on the Host's stream, named by its `host_id` and run: no producer id is configured.
     directory: data/events
 
     stream:

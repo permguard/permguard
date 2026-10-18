@@ -165,6 +165,11 @@ impl Index {
         }
     }
 
+    /// Every entry, in key order: what a caller deriving something per position walks.
+    pub fn entries(&self) -> impl Iterator<Item = (&Key, &Located)> {
+        self.entries.iter()
+    }
+
     /// How many records are indexed.
     pub fn len(&self) -> usize {
         self.entries.len()

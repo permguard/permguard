@@ -546,13 +546,8 @@ pub const SETTING_LOG_SPOOL_BYTES: &str = "PERMGUARD_DECISIONS_LOG_SPOOL_BYTES";
 /// somebody chose to run.
 pub const SETTING_EVENTS_ENABLED: &str = "PERMGUARD_EVENTS_ENABLED";
 
-/// This plane's name as an event producer, stable across restarts.
-///
-/// Required when the interface is on. Falling back to a hostname is convenient
-/// and wrong the first time two replicas share a host — and here it is worse
-/// than for the decision log, because a producer id names a hash chain: two
-/// planes sharing one would each be appending to a stream the other also
-/// claims.
+/// Retired (WP-6.2a): the event stream is named by the Host's `host_id` and run, so a
+/// configuration that still names the plane is refused.
 pub const SETTING_EVENTS_PRODUCER_ID: &str = "PERMGUARD_EVENTS_PRODUCER_ID";
 
 /// Where the journals live, under the volume.
@@ -1303,7 +1298,6 @@ pub struct Config {
     log_spool_directory: String,
     log_spool_bytes: u64,
     events_enabled: bool,
-    events_producer_id: String,
     events_directory: String,
     events_max_bytes: u64,
     events_segment_bytes: u64,
@@ -1498,7 +1492,6 @@ impl Default for Config {
             log_spool_directory: DEFAULT_LOG_SPOOL_DIRECTORY.to_owned(),
             log_spool_bytes: DEFAULT_LOG_SPOOL_BYTES,
             events_enabled: false,
-            events_producer_id: String::new(),
             events_directory: DEFAULT_EVENTS_DIRECTORY.to_owned(),
             events_max_bytes: DEFAULT_EVENTS_MAX_BYTES,
             events_segment_bytes: DEFAULT_EVENTS_SEGMENT_BYTES,
@@ -3352,11 +3345,6 @@ produce: use `EdDSA` or `ES256`"
         self.event_store_retention
     }
 
-    /// This plane's name as an event producer — the identity its hash chains are owned by.
-    pub fn events_producer_id(&self) -> &str {
-        &self.events_producer_id
-    }
-
     /// Where this plane keeps its event journals: `<volume>/data/events` unless told otherwise.
     pub fn events_directory(&self) -> PathBuf {
         self.working_dir().join(&self.events_directory)
@@ -4219,7 +4207,6 @@ produce: use `EdDSA` or `ES256`"
             SETTING_LOG_ON_FULL => Some("closed".to_owned()),
             SETTING_LOG_SAMPLE_PERMITS => n(self.log_sample_permits),
             SETTING_EVENTS_ENABLED => b(self.events_enabled),
-            SETTING_EVENTS_PRODUCER_ID => Some(self.events_producer_id.clone()),
             SETTING_EVENTS_DIRECTORY => Some(self.events_directory().display().to_string()),
             SETTING_EVENTS_MAX_BYTES => n(self.events_max_bytes),
             SETTING_EVENTS_SEGMENT_BYTES => n(self.events_segment_bytes),
@@ -4888,9 +4875,6 @@ produce: use `EdDSA` or `ES256`"
             self.events_enabled =
                 parse_bool(value).with_context(|| format!("reading {SETTING_EVENTS_ENABLED}"))?;
         }
-        if let Some(value) = settings.get(SETTING_EVENTS_PRODUCER_ID) {
-            self.events_producer_id = value.trim().to_owned();
-        }
         if let Some(value) = settings.get(SETTING_EVENTS_DIRECTORY) {
             self.events_directory = value.trim().to_owned();
             if self.events_directory.is_empty() {
@@ -5100,6 +5084,13 @@ produce: use `EdDSA` or `ES256`"
         if settings.contains_key(SETTING_LOG_PDP_ID) {
             anyhow::bail!(
                 "{SETTING_LOG_PDP_ID} (`decisions.log.pdp_id`) is retired: decision records are \
+                 named by this Host's `host_id` and the run of its stream"
+            );
+        }
+        // Retired (WP-6.2a) the same way: the event stream is the Host's too.
+        if settings.contains_key(SETTING_EVENTS_PRODUCER_ID) {
+            anyhow::bail!(
+                "{SETTING_EVENTS_PRODUCER_ID} (`events.producer_id`) is retired: event records are \
                  named by this Host's `host_id` and the run of its stream"
             );
         }
@@ -5783,7 +5774,6 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_EVENTS_GROUP_COMMIT_DELAY,
     SETTING_EVENTS_MAX_BYTES,
     SETTING_EVENTS_MAX_RECORD_BYTES,
-    SETTING_EVENTS_PRODUCER_ID,
     SETTING_EVENTS_PULL_INTERVAL,
     SETTING_EVENTS_PULL_MAX_STALENESS,
     SETTING_EVENTS_PULL_MODE,
@@ -5942,7 +5932,6 @@ const STARTUP_SETTINGS: &[&str] = &[
     SETTING_KEYS_KMS_CA,
     SETTING_KEYS_PKCS11_MODULE,
     SETTING_KEYS_PKCS11_PIN_REF,
-    SETTING_EVENTS_PRODUCER_ID,
     SETTING_PUBLIC_TLS_CERT,
     SETTING_PUBLIC_TLS_KEY,
     SETTING_PUBLIC_TLS_CLIENT_CA,

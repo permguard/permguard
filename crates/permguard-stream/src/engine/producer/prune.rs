@@ -95,7 +95,7 @@ impl<C: RecordCodec> Producer<C> {
             };
             let mut bound = safe.min(*last_seq);
             if self.descriptor.retention == Retention::History
-                && let Some(floor) = &self.floor
+                && let Some(floor) = self.floor()
             {
                 bound = bound.min(
                     floor

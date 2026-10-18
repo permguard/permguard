@@ -41,6 +41,8 @@ pub struct TemporalPdpApi {
     pub disclosure: Disclosure,
     pub base_url: String,
     pub pdp: String,
+    /// The Host's authorization: `event.submit` on the exact ledger (WP-6.2a).
+    pub authorization: std::sync::Arc<permguard_host::composition::Authorization>,
 }
 
 #[tonic::async_trait]
@@ -49,6 +51,7 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
         &self,
         request: Request<SubmitEventRequest>,
     ) -> Result<Response<SubmitEventResponse>, Status> {
+        let actor = permguard_transport::actor_of(request.extensions());
         let wire = from_proto(request.into_inner()).map_err(|malformed| {
             status_of(
                 &ApiError::new(ErrorClass::Validation, malformed.code, malformed.message),
@@ -56,7 +59,15 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
             )
         })?;
 
-        match self.submitter.submit(&wire).await {
+        // Authorization before anything is read or written, as over HTTP (WP-6.2a).
+        let (source, authorized) =
+            super::gate(&self.authorization, &actor, self.submitter.root(), &wire)
+                .map_err(|denial| crate::authz::gate::grpc_denial(&denial))?;
+        match self
+            .submitter
+            .submit(&wire, &source, authorized.as_ref())
+            .await
+        {
             Ok(answered) => Ok(Response::new(to_proto(super::submit::disclosed(
                 answered,
                 self.disclosure,

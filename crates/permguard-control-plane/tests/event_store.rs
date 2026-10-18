@@ -147,6 +147,7 @@ fn records(instance: &str, count: u64, event_type: &str) -> Vec<Value> {
             prev: prev.clone(),
             event_type: event_type.to_owned(),
             event_id: format!("{instance}-{seq}"),
+            source: None,
             occurrence_digest: permguard_events::occurrence_digest_of(&event)
                 .expect("the occurrence digests"),
             kind: kind.to_owned(),

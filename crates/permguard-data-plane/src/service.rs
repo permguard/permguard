@@ -183,6 +183,7 @@ fn temporal_routes(context: &PlaneContext<'_>) -> Router {
         disclosure: context.config().error_detail(),
         pdp: base_url.clone(),
         base_url,
+        authorization: crate::handles::authorization(context),
     })
 }
 
@@ -324,6 +325,7 @@ impl PlaneModule for DataPlaneModule {
                     disclosure: context.config().error_detail(),
                     base_url: authz::base_url(context),
                     pdp: authz::base_url(context),
+                    authorization: crate::handles::authorization(context),
                 },
             ));
         }

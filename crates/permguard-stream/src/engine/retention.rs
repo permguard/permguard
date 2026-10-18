@@ -60,6 +60,28 @@ pub trait RetentionFloor: Send + Sync {
     fn retention_safe(&self, resource: &str, run: &[u8; 16]) -> Option<u64>;
 }
 
+/// The floor a `history` stream is kept above until its Plane registers its own (WP-6.2a): the
+/// whole of every run, so nothing a loaded contract may still read goes before the Plane says.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct KeepWhole;
+
+impl RetentionFloor for KeepWhole {
+    fn retention_safe(&self, _resource: &str, _run: &[u8; 16]) -> Option<u64> {
+        None
+    }
+}
+
+/// The floor a Plane registered through the composition (WP-6.2a).
+pub(crate) struct PlaneFloor(
+    pub(crate) std::sync::Arc<dyn permguard_host::composition::StreamFloor>,
+);
+
+impl RetentionFloor for PlaneFloor {
+    fn retention_safe(&self, resource: &str, run: &[u8; 16]) -> Option<u64> {
+        self.0.retention_safe(resource, run)
+    }
+}
+
 /// A consumer's retention at the job (WP-5.6b): the `retention_seconds` of the task that ships
 /// `resource` from `producer`; `None` when no task does, which keeps everything.
 pub trait RetentionSource: Send + Sync {

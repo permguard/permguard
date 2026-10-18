@@ -87,10 +87,7 @@ dataPlane:
   # history the policies read. A journal that cannot accept fails the submission closed.
   events:
     enabled: "true"
-    # A producer id owns a hash chain. Two planes sharing one would each append to a stream the
-    # other also claims, and neither history could then be verified — so a second plane on this
-    # laptop gets a second name here, never a copy of this file.
-    producer_id: data-plane-local
+    # Recorded on the Host's stream, named by its `host_id` and run: no producer id is configured.
     directory: data/events
 
     stream:

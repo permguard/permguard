@@ -65,24 +65,10 @@ spec:
           image: {{ include "permguard.image" (dict "root" $ "repository" $plane.repository) }}
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           args: ["/etc/permguard/config.yml"]
+          # The decision and event streams are named by the Host's `host_id` and run (WP-6.1,
+          # WP-6.2): no producer name comes from the pod any more.
+          {{- with $plane.extraEnv }}
           env:
-            # `pdp_id` names the producer of every decision record this pod writes, and two
-            # producers sharing one name write two records at a single (stream, seq) — which closes
-            # the stream at the far end and ends the audit trail. It cannot come from a values file
-            # for a component with replicas, so it comes from the pod.
-            - name: PERMGUARD_DECISIONS_LOG_PDP_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            # The same rule, and a sharper consequence. An event producer id owns a hash chain
-            # *and* the history the plane's own policies read: two pods sharing one would each
-            # append to a stream the other also claims, and neither history could be verified
-            # afterwards. From the pod, for the same reason and with less room for error.
-            - name: PERMGUARD_EVENTS_PRODUCER_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            {{- with $plane.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           securityContext:
@@ -240,19 +226,6 @@ spec:
           env:
             - name: PERMGUARD_RUNTIME_PLANES
               value: "control,data"
-            # See the note on the standalone planes: the producer of a decision record is the pod.
-            - name: PERMGUARD_DECISIONS_LOG_PDP_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            # The same rule, and a sharper consequence. An event producer id owns a hash chain
-            # *and* the history the plane's own policies read: two pods sharing one would each
-            # append to a stream the other also claims, and neither history could be verified
-            # afterwards. From the pod, for the same reason and with less room for error.
-            - name: PERMGUARD_EVENTS_PRODUCER_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
             {{- with .Values.allInOne.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

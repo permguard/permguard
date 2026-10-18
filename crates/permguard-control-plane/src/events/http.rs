@@ -980,6 +980,7 @@ mod openapi {
                 prev: prev.clone(),
                 event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
                 event_id: format!("evt-{seq}"),
+                source: None,
                 occurrence_digest: occurrence_digest_of(&event).expect("the occurrence digests"),
                 kind: "request".to_owned(),
                 profile: "temporal".to_owned(),

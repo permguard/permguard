@@ -129,9 +129,7 @@ dataPlane:
   # submission closed, and there is nothing for a deployment to choose.
   # events:
   #   enabled: "true"
-  #   producer_id: data-plane-eu-1   # required when the interface is on. A producer id owns a hash
-  #                                  # chain: two planes sharing one would each append to a stream
-  #                                  # the other also claims, and neither history could be verified.
+  #   # the stream is named by the Host's `host_id` and run: no producer id is configured
   #   directory: data/events         # under the working directory
   #
   #   stream:

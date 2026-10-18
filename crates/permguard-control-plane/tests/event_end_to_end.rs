@@ -272,17 +272,60 @@ fn control(tag: &str, keys: &DirectoryKeyManager) -> Arc<Wire> {
     })
 }
 
-/// A data plane's journals, on a real disk.
-fn journals(tag: &str, producer: &str) -> Arc<Streams> {
-    Arc::new(Streams::new(
-        scratch(&format!("{tag}-events")),
-        producer.to_owned(),
-        Bounds::default(),
-    ))
+/// A data plane upgraded beside the legacy journal `producer` wrote of `count` occurrences, on a
+/// real disk: what its old shipper still sends until it is empty (WP-6.2a).
+fn journals(tag: &str, producer: &str, count: u64) -> Arc<Streams> {
+    let root = scratch(&format!("{tag}-events"));
+    write_legacy(&root, producer, &occurrences(count, 1));
+    streams_over(&root)
 }
 
-/// Records `count` occurrences into a ledger's journal.
-fn record(streams: &Streams, count: u64, from: u64) {
+/// A plane's streams over `root`, on the Host's producer a test keeps in memory.
+fn streams_over(root: &std::path::Path) -> Arc<Streams> {
+    Arc::new(
+        Streams::new(
+            root.to_path_buf(),
+            root.join("planes"),
+            permguard_data_plane::temporal::testing::host_side(root),
+            Bounds::default(),
+        )
+        .expect("the floor is registered"),
+    )
+}
+
+/// Writes `records` as the legacy journal `producer` kept of the ledger below `root`, each
+/// placed in that journal's own chain: what an earlier release recorded.
+fn write_legacy(root: &std::path::Path, producer: &str, records: &[Record]) {
+    let stream = Stream {
+        producer: permguard_events::Producer {
+            class: PRODUCER_CLASS_DATA_PLANE.to_owned(),
+            id: producer.to_owned(),
+            instance: "01931f2c".to_owned(),
+        },
+        zone: ZONE_ID.to_owned(),
+        ledger: LEDGER_ID.to_owned(),
+    };
+    let mut journal = permguard_events::journal::Journal::open(
+        root.join(ZONE_ID).join(LEDGER_ID),
+        stream.clone(),
+        Bounds::default(),
+    )
+    .expect("the legacy journal opens");
+    for held in records {
+        let (seq, prev) = journal.next_position();
+        let mut held = held.clone();
+        held.stream = stream.clone();
+        held.seq = seq;
+        held.prev = prev;
+        journal
+            .append(&held.to_value().expect("the record renders"))
+            .expect("the record is durable");
+    }
+}
+
+/// `count` occurrences from `from`, as a plane proposes them.
+fn occurrences(count: u64, from: u64) -> Vec<Record> {
+    let mut proposed = Vec::new();
     for index in 0..count {
         let seq = from + index;
         let occurred = permguard_events::index::render_epoch_seconds(1_700_000_000 + seq as i64)
@@ -313,6 +356,7 @@ fn record(streams: &Streams, count: u64, from: u64) {
             prev: String::new(),
             event_type: DOGWOOD.to_owned(),
             event_id: format!("e-{seq}"),
+            source: None,
             occurrence_digest: permguard_events::occurrence_digest_of(&event)
                 .expect("the occurrence digests"),
             kind: "response".to_owned(),
@@ -324,18 +368,16 @@ fn record(streams: &Streams, count: u64, from: u64) {
             observed_at: occurred,
             event,
         };
-        streams
-            .append(ZONE_ID, LEDGER_ID, held)
-            .expect("the record is durable");
+        proposed.push(held);
     }
+    proposed
 }
 
 #[test]
 fn what_one_plane_recorded_is_what_the_other_holds_byte_for_byte() {
     let keys = ring("happy");
     let wire = control("happy", &keys);
-    let streams = journals("happy", "plane-a");
-    record(&streams, 12, 1);
+    let streams = journals("happy", "plane-a", 12);
 
     let shipper = Shipper::new(
         Arc::clone(&streams),
@@ -400,8 +442,7 @@ fn what_one_plane_recorded_is_what_the_other_holds_byte_for_byte() {
 fn a_control_plane_that_is_down_defers_and_the_history_stays() {
     let keys = ring("outage");
     let wire = control("outage", &keys);
-    let streams = journals("outage", "plane-a");
-    record(&streams, 5, 1);
+    let streams = journals("outage", "plane-a", 5);
     wire.down.store(true, std::sync::atomic::Ordering::Relaxed);
 
     let shipper = Shipper::new(
@@ -448,8 +489,7 @@ fn a_control_plane_that_is_down_defers_and_the_history_stays() {
 fn the_signed_checkpoint_is_written_before_the_batch_is_shipped() {
     let keys = ring("checkpoint");
     let wire = control("checkpoint", &keys);
-    let streams = journals("checkpoint", "plane-a");
-    record(&streams, 4, 1);
+    let streams = journals("checkpoint", "plane-a", 4);
     // The receiver is unreachable, so nothing this test sees can have come from an acknowledgement.
     wire.down.store(true, std::sync::atomic::Ordering::Relaxed);
 
@@ -500,8 +540,7 @@ fn the_signed_checkpoint_is_written_before_the_batch_is_shipped() {
 fn an_imported_record_is_verified_before_it_is_applied_and_never_re_signed() {
     let keys = ring("import");
     let wire = control("import", &keys);
-    let streams = journals("import", "plane-a");
-    record(&streams, 6, 1);
+    let streams = journals("import", "plane-a", 6);
     Shipper::new(
         Arc::clone(&streams),
         Box::new(Handed(Arc::clone(&wire))),
@@ -798,11 +837,17 @@ mod two_planes {
         std::fs::create_dir_all(&mirrors).expect("the mirrors root is created");
         mirror(&mirrors);
 
-        let streams = Arc::new(Streams::new(
-            root.join("events"),
-            producer.to_owned(),
-            bounds(),
-        ));
+        let _ = producer;
+        let events = root.join("events");
+        let streams = Arc::new(
+            Streams::new(
+                events.clone(),
+                root.join("planes"),
+                permguard_data_plane::temporal::testing::host_side(&events),
+                bounds(),
+            )
+            .expect("the floor is registered"),
+        );
         let decider = Arc::new(Decider::new(
             mirrors,
             Arc::new(Cache::new(64, 32 * 1024 * 1024)),
@@ -834,7 +879,7 @@ mod two_planes {
 
         serde_json::to_value(
             submitter
-                .submit(&request)
+                .submit(&request, "anonymous", None)
                 .await
                 .unwrap_or_else(|error| panic!("{fixture}: {error:?}")),
         )
@@ -846,10 +891,22 @@ mod two_planes {
         let keys = ring("two-planes");
         let wire = control("two-planes", &keys);
 
-        // Plane A records alice's login and ships it.
-        let (frankfurt, journals_a) = plane("plane-a", "plane-a");
+        // Plane A records alice's login, on the Host's stream. Until the Control Plane reads the
+        // Host's consumer (WP-6.2b) the store learns it as a legacy journal ships it: the same
+        // occurrences, in the chain `plane-a` keeps, sent by the old shipper.
+        let (frankfurt, recorded_a) = plane("plane-a", "plane-a");
         submit(&frankfurt, "events/1-login-request.json").await;
         submit(&frankfurt, "events/2-login-response.json").await;
+        let legacy_a = scratch("plane-a-legacy");
+        let held_a: Vec<Record> = recorded_a
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+            .expect("plane A's stream reads back")
+            .into_iter()
+            .map(|value| permguard_events::record::validate(&value).expect("an event record"))
+            .collect();
+        assert_eq!(held_a.len(), 2);
+        write_legacy(&legacy_a, "plane-a", &held_a);
+        let journals_a = streams_over(&legacy_a);
         assert!(matches!(
             Shipper::new(
                 Arc::clone(&journals_a),
@@ -896,7 +953,7 @@ mod two_planes {
             let request: permguard_languages::temporal::SubmitRequest =
                 serde_json::from_value(body).unwrap_or_else(|error| panic!("{file}: {error}"));
             dublin
-                .submit(&request)
+                .submit(&request, "anonymous", None)
                 .await
                 .unwrap_or_else(|error| panic!("{file}: {error:?}"));
         }
@@ -927,9 +984,13 @@ mod two_planes {
         body["event"]["data"]["event_id"] = json!("01J8Z9-read-after-import");
         let request: permguard_languages::temporal::SubmitRequest =
             serde_json::from_value(body).expect("the request parses");
-        let permitted =
-            serde_json::to_value(dublin.submit(&request).await.expect("the ledger is served"))
-                .expect("the answer renders");
+        let permitted = serde_json::to_value(
+            dublin
+                .submit(&request, "anonymous", None)
+                .await
+                .expect("the ledger is served"),
+        )
+        .expect("the answer renders");
 
         assert_eq!(
             permitted["decision"],
@@ -957,9 +1018,13 @@ mod two_planes {
         body["event"]["data"]["event_id"] = json!("01J8Z9-bob-read-after-import");
         let request: permguard_languages::temporal::SubmitRequest =
             serde_json::from_value(body).expect("the request parses");
-        let bob =
-            serde_json::to_value(dublin.submit(&request).await.expect("the ledger is served"))
-                .expect("the answer renders");
+        let bob = serde_json::to_value(
+            dublin
+                .submit(&request, "anonymous", None)
+                .await
+                .expect("the ledger is served"),
+        )
+        .expect("the answer renders");
         assert_eq!(
             bob["decision"],
             json!(true),
@@ -976,10 +1041,14 @@ mod two_planes {
             5,
             "one denied read, bob's two login events, and two reads after the import"
         );
+        let host = permguard_data_plane::temporal::testing::HOST_ID
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
         for record in &held {
             assert_eq!(
                 record["stream"]["producer"]["id"],
-                json!("plane-b"),
+                json!(host),
                 "an imported record must never be written into the importing plane's own chain"
             );
         }
@@ -1004,8 +1073,7 @@ mod two_planes {
 fn the_signer_manifest_travels_with_the_stream_on_both_sides() {
     let keys = ring("signers");
     let wire = control("signers", &keys);
-    let streams = journals("signers", "plane-a");
-    record(&streams, 12, 1);
+    let streams = journals("signers", "plane-a", 12);
 
     let shipper = Shipper::new(
         Arc::clone(&streams),

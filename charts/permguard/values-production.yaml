@@ -107,9 +107,9 @@ dataPlane:
         # which is what a deployment that does not trust its own network should do.
       # The decision log is left off here for the reasons spelled out under `controlPlane`: it
       # needs a signing ring, a commitment secret, a pseudonymisation key, producer keys on the
-      # control plane, and storage that survives a restart. When an overlay turns it on, `pdp_id`
-      # still comes from the pod name — the chart sets it, and `templates/checks.yaml` refuses a
-      # values file or an `extraEnv` that pins it.
+      # control plane, and storage that survives a restart. When an overlay turns it on, its stream
+      # is named by the Host's `host_id` and run; `templates/checks.yaml` refuses a values file or
+      # an `extraEnv` that still sets the retired `pdp_id`.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

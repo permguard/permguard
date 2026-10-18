@@ -55,6 +55,7 @@
 
 pub mod configuration;
 pub mod grpc;
+pub mod host;
 pub mod http;
 pub mod imports;
 pub mod measure;
@@ -64,6 +65,8 @@ pub mod service;
 pub mod shipper;
 pub mod streams;
 pub mod submit;
+#[doc(hidden)]
+pub mod testing;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -74,6 +77,10 @@ use permguard_events::journal::Bounds;
 
 use streams::Streams;
 use submit::Submitter;
+
+/// Where the plane keeps what it remembers of each ledger on the Host's event stream, below the
+/// working directory (WP-6.2a).
+pub const PLANE_DIRECTORY: &str = "planes/data/temporal";
 
 /// The one submitter this process has.
 ///
@@ -102,13 +109,23 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
             if !served(config) {
                 return None;
             }
-            let producer_id = config.events_producer_id().trim().to_owned();
-            if producer_id.is_empty() {
-                // Refused rather than defaulted. The startup check below says so before the
-                // process gets this far; this is the second line of the same rule, so a build that
-                // reached here without it does not invent a producer identity.
+            let unavailable = |why: &str| {
+                tracing::error!(
+                    event.name = "temporal.log_unavailable",
+                    component = "temporal",
+                    "the temporal interface cannot record its events: {why}"
+                );
+            };
+            // The producer is the Host's (WP-6.2a, owner decisions of 2026-10-18): its stream
+            // engine, its id and its run; no configured producer id is read.
+            let Some(producer) = crate::handles::event_producer(context) else {
+                unavailable("the Host composes no stream engine producing `data/events`");
                 return None;
-            }
+            };
+            let Some(host_id) = crate::handles::host_id(context) else {
+                unavailable("the Host composes no identity to name the event stream with");
+                return None;
+            };
             let directory: PathBuf = config.events_directory();
             let bounds = Bounds {
                 max_bytes: config.events_max_bytes(),
@@ -122,13 +139,19 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
             let submitter = Submitter::new(
                 crate::authz::decider(context),
                 Arc::new(
-                    Streams::with_group_commit(
+                    match Streams::with_group_commit(
                         directory.clone(),
-                        producer_id,
+                        config.working_dir().join(PLANE_DIRECTORY),
+                        streams::HostSide { producer, host_id },
                         bounds,
                         config.events_group_commit_delay(),
-                    )
-                    .with_metrics(context.metrics().clone()),
+                    ) {
+                        Ok(streams) => streams.with_metrics(context.metrics().clone()),
+                        Err(error) => {
+                            unavailable(&error.to_string());
+                            return None;
+                        }
+                    },
                 ),
                 crate::blocking::shared(context),
                 context.metrics().clone(),
@@ -304,13 +327,6 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
             }
         }
     }
-    if config.events_producer_id().trim().is_empty() {
-        anyhow::bail!(
-            "the temporal interface is enabled and `dataPlane.events.producer_id` is not set. A \
-             producer id owns a hash chain: two planes sharing one would each append to a stream \
-             the other also claims, and neither history could then be verified. Name this plane"
-        );
-    }
     // The retention floor has to cover Dogwood's own default look-back plus what a journal must
     // allow for lateness and skew, or the first ledger loaded would be refused at its first
     // submission — which is a configuration mistake found at the worst possible moment.
@@ -334,4 +350,26 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Authorizes `event.submit` on the store `request` names, before anything is read or written,
+/// and answers the source the occurrence is recorded under with the ids authorized (WP-6.2a,
+/// owner decision of 2026-10-18): the principal the gate authorized, never a value the caller
+/// writes.
+pub(crate) fn gate(
+    authorization: &permguard_host::composition::Authorization,
+    actor: &permguard_core::authz::Actor,
+    root: &std::path::Path,
+    request: &permguard_languages::temporal::SubmitRequest,
+) -> Result<(String, Option<(String, String)>), permguard_core::AccessDenial> {
+    let store = request.store.as_ref();
+    let authorized = crate::authz::gate::submission(
+        authorization,
+        actor,
+        root,
+        store.and_then(|store| store.zone.as_deref()),
+        store.and_then(|store| store.ledger.as_deref()),
+    )?;
+    let source = actor.principal()?.to_string();
+    Ok((source, authorized))
 }

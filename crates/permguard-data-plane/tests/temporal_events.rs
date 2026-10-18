@@ -38,9 +38,9 @@ use permguard_data_plane::authz::cache::Cache;
 use permguard_data_plane::authz::decide::Decider;
 use permguard_data_plane::authz::store::{Identity, Mirror};
 use permguard_data_plane::blocking::Blocking;
+use permguard_data_plane::temporal::configuration;
 use permguard_data_plane::temporal::streams::Streams;
 use permguard_data_plane::temporal::submit::Submitter;
-use permguard_data_plane::temporal::{configuration, http};
 use permguard_events::journal::Bounds;
 use permguard_languages::dogwood_artifacts;
 use permguard_languages::registry;
@@ -413,7 +413,14 @@ fn plane_built(
         ..Bounds::default()
     };
     let streams = Arc::new(
-        Streams::new(events.clone(), "test-plane".to_owned(), bounds).with_metrics(metrics.clone()),
+        Streams::new(
+            events.clone(),
+            root.join("planes"),
+            permguard_data_plane::temporal::testing::host_side(&events),
+            bounds,
+        )
+        .expect("the floor is registered")
+        .with_metrics(metrics.clone()),
     );
 
     Plane {
@@ -471,6 +478,7 @@ fn surface(plane: &Plane) -> axum::Router {
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
         pdp: "test-plane".to_owned(),
+        authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
     })
 }
 
@@ -585,14 +593,26 @@ async fn the_event_is_durable_before_the_answer_leaves_and_the_watermark_says_wh
         "{body}"
     );
 
-    // And it is on disk, in the ledger's own directory, before any of that was said.
-    let segment = plane
-        .events
-        .join(ZONE_ID)
-        .join(LEDGER_ID)
-        .join("seg-00000000000000000001.events");
-    let held = std::fs::read_to_string(&segment).expect("the segment exists");
-    assert!(held.contains("Drupe::Action::Login"), "{held}");
+    // And it is on the Host's stream before any of that was said, naming the Host and the run
+    // the receipt names (WP-6.2a).
+    let held = plane
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+        .expect("the stream reads back");
+    assert_eq!(held.len(), 1);
+    assert_eq!(
+        held[0]["event"]["action"], "Drupe::Action::Login",
+        "{}",
+        held[0]
+    );
+    assert_eq!(
+        held[0]["stream"]["producer"]["instance"], body["watermark"]["instance"],
+        "{body}"
+    );
+    assert!(
+        !plane.events.join(ZONE_ID).join(LEDGER_ID).exists(),
+        "and no legacy journal was created"
+    );
 }
 
 /// Concurrent submissions reach the histories in the order the journal made them durable.
@@ -700,11 +720,15 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
         clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
         ..Bounds::default()
     };
-    let streams = Arc::new(Streams::new(
-        root.join("events"),
-        "test-plane".to_owned(),
-        bounds,
-    ));
+    let streams = Arc::new(
+        Streams::new(
+            root.join("events"),
+            root.join("events").join("planes"),
+            permguard_data_plane::temporal::testing::host_side(&root.join("events")),
+            bounds,
+        )
+        .expect("the floor is registered"),
+    );
     let imports = Arc::new(permguard_data_plane::temporal::imports::Imports::new(
         root.join("pull"),
     ));
@@ -909,6 +933,7 @@ async fn an_event_id_conflict_is_409_over_http_and_aborted_over_grpc() {
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
         pdp: "test-plane".to_owned(),
+        authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
     };
     let occurrence = |server: &str| {
         submission(
@@ -942,7 +967,7 @@ async fn an_event_id_conflict_is_409_over_http_and_aborted_over_grpc() {
         }),
     };
     let over_grpc = api
-        .submit_event(tonic::Request::new(proto))
+        .submit_event(anonymous(proto))
         .await
         .expect_err("a conflicting occurrence is refused");
     assert_eq!(over_grpc.code(), tonic::Code::Aborted, "{over_grpc:?}");
@@ -1105,6 +1130,7 @@ async fn grpc_and_http_answer_the_same_submission_identically() {
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
         pdp: "test-plane".to_owned(),
+        authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
     };
 
     for (at, action, kind, user) in TRACE {
@@ -1126,7 +1152,7 @@ async fn grpc_and_http_answer_the_same_submission_identically() {
             }),
         };
         let over_the_wire = api
-            .submit_event(tonic::Request::new(proto))
+            .submit_event(anonymous(proto))
             .await
             .expect("the gRPC surface answers")
             .into_inner();
@@ -1322,11 +1348,15 @@ mod shipped_example {
             ..Bounds::default()
         };
 
-        let streams = Arc::new(Streams::new(
-            events.to_path_buf(),
-            "example-plane".to_owned(),
-            bounds,
-        ));
+        let streams = Arc::new(
+            Streams::new(
+                events.to_path_buf(),
+                events.join("planes"),
+                permguard_data_plane::temporal::testing::host_side(events),
+                bounds,
+            )
+            .expect("the floor is registered"),
+        );
 
         Plane {
             submitter: Arc::new(Submitter::new(
@@ -1366,11 +1396,15 @@ mod shipped_example {
             ..Bounds::default()
         };
 
-        let streams = Arc::new(Streams::new(
-            events.clone(),
-            "example-plane".to_owned(),
-            bounds,
-        ));
+        let streams = Arc::new(
+            Streams::new(
+                events.clone(),
+                events.join("planes"),
+                permguard_data_plane::temporal::testing::host_side(&events.clone()),
+                bounds,
+            )
+            .expect("the floor is registered"),
+        );
 
         Plane {
             submitter: Arc::new(Submitter::new(
@@ -1560,6 +1594,7 @@ mod shipped_example {
             .record_outcome(
                 ZONE_ID,
                 LEDGER_ID,
+                "anonymous",
                 event_id,
                 permguard_data_plane::temporal::streams::Routed {
                     profile: "default",
@@ -1621,6 +1656,7 @@ mod shipped_example {
             .record_outcome(
                 ZONE_ID,
                 LEDGER_ID,
+                "anonymous",
                 event_id,
                 permguard_data_plane::temporal::streams::Routed {
                     profile: "default",
@@ -2650,6 +2686,7 @@ when { Boom::Fail(context.input.document).ok == true };
             disclosure: Disclosure::Minimal,
             base_url: "http://plane.test".to_owned(),
             pdp: "test-plane".to_owned(),
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         });
 
         let (status, answered) = post(&router, read(100)).await;
@@ -2674,6 +2711,7 @@ when { Boom::Fail(context.input.document).ok == true };
             disclosure: Disclosure::Minimal,
             base_url: "http://plane.test".to_owned(),
             pdp: "test-plane".to_owned(),
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         };
         let body = read(200);
         let proto = permguard_data_plane::v1::SubmitEventRequest {
@@ -2690,7 +2728,7 @@ when { Boom::Fail(context.input.document).ok == true };
             }),
         };
         let answered = api
-            .submit_event(tonic::Request::new(proto))
+            .submit_event(anonymous(proto))
             .await
             .expect("the gRPC surface answers")
             .into_inner();
@@ -2775,6 +2813,7 @@ when { Boom::Fail(context.input.document).ok == true };
             disclosure: Disclosure::Full,
             base_url: "http://plane.test".to_owned(),
             pdp: "test-plane".to_owned(),
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         };
         let body = read(200);
         let proto = permguard_data_plane::v1::SubmitEventRequest {
@@ -2792,7 +2831,7 @@ when { Boom::Fail(context.input.document).ok == true };
         };
 
         let answered = api
-            .submit_event(tonic::Request::new(proto))
+            .submit_event(anonymous(proto))
             .await
             .expect("the gRPC surface answers: the occurrence is durable")
             .into_inner();
@@ -2814,4 +2853,200 @@ when { Boom::Fail(context.input.document).ok == true };
             Some(permguard_core::codes::pdp_native::EVALUATION_FAILED)
         );
     }
+}
+
+/// The temporal routes behind the authentication boundary every served surface has (WP-6.2a):
+/// nobody presents a credential here, so every request is anonymous and the permissive
+/// authorization admits it.
+mod http {
+    pub use permguard_data_plane::temporal::http::Surface;
+
+    pub fn routes(surface: Surface) -> axum::Router {
+        permguard_data_plane::temporal::http::routes(surface).layer(
+            permguard_transport::ActorLayer::new(std::sync::Arc::new(permguard_core::NoRules)),
+        )
+    }
+}
+
+/// A gRPC request as the boundary would hand it on: anonymous.
+fn anonymous<T>(inner: T) -> tonic::Request<T> {
+    let mut request = tonic::Request::new(inner);
+    request
+        .extensions_mut()
+        .insert(Arc::new(permguard_core::authz::Actor::Anonymous));
+    request
+}
+
+/// WP-6.2a (owner decision of 2026-10-18): a submission takes `event.submit` on the exact ledger,
+/// over both transports, before anything is recorded; one admitted is recorded under the
+/// principal the gate authorized.
+#[tokio::test]
+async fn a_submission_without_event_submit_is_refused_before_anything_is_recorded() {
+    use permguard_data_plane::temporal::grpc;
+    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+
+    let plane = plane("ungranted");
+    let closed = Arc::new(permguard_host::composition::Authorization::closed());
+    let router = http::routes(http::Surface {
+        submitter: Arc::clone(&plane.submitter),
+        disclosure: Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        pdp: "test-plane".to_owned(),
+        authorization: Arc::clone(&closed),
+    });
+    let body = submission(
+        0,
+        "Drupe::Action::Login",
+        "response",
+        "alice",
+        json!({"user": "alice", "server": "s1"}),
+    );
+    let (status, answered) = post(&router, body.clone()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{answered}");
+
+    let api = grpc::TemporalPdpApi {
+        submitter: Arc::clone(&plane.submitter),
+        disclosure: Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        pdp: "test-plane".to_owned(),
+        authorization: closed,
+    };
+    let proto = permguard_data_plane::v1::SubmitEventRequest {
+        store: Some(permguard_data_plane::v1::EventStore {
+            zone: ZONE.to_owned(),
+            ledger: LEDGER.to_owned(),
+            profile: PROFILE.to_owned(),
+        }),
+        event: Some(permguard_data_plane::v1::TypedEvent {
+            r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
+            data: Some(permguard_data_plane::authz::translate::struct_from_map(
+                body["event"]["data"].as_object().expect("an object"),
+            )),
+        }),
+    };
+    let refused = api
+        .submit_event(anonymous(proto))
+        .await
+        .expect_err("no grant");
+    assert_eq!(refused.code(), tonic::Code::Unauthenticated, "{refused:?}");
+    assert!(
+        plane
+            .submitter
+            .streams()
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+            .map(|records| records.is_empty())
+            .unwrap_or(true),
+        "nothing recorded"
+    );
+
+    // Admitted, the record names its source: the anonymous principal here.
+    let (status, answered) = post(&surface(&plane), body).await;
+    assert_eq!(status, StatusCode::OK, "{answered}");
+    let records = plane
+        .submitter
+        .streams()
+        .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+        .expect("the journal reads");
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["source"], "anonymous");
+}
+
+/// WP-6.2a, after the review: the receipt names the record's own place on the stream it names,
+/// its run and its sequence there, past the first run too.
+#[tokio::test]
+async fn the_receipt_names_the_records_place_on_its_run_after_a_rollover() {
+    let plane = plane("receipt-run");
+    let router = surface(&plane);
+    let (status, first) = post(
+        &router,
+        submission(
+            0,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    permguard_data_plane::temporal::testing::producer_at(&plane.events).rollover(
+        &permguard_core::authz::Resource::ledger("data", ZONE_ID, LEDGER_ID),
+    );
+    let (status, second) = post(
+        &router,
+        submission(
+            1,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s2"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    let held = plane
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+        .expect("the stream reads back");
+    assert_eq!(held.len(), 2);
+    assert_eq!(second["watermark"]["sequence"], held[1]["seq"], "{second}");
+    assert_eq!(
+        second["watermark"]["sequence"], 1,
+        "the new run starts at one: {second}"
+    );
+    assert_eq!(
+        second["watermark"]["instance"], held[1]["stream"]["producer"]["instance"],
+        "{second}"
+    );
+    assert_ne!(
+        second["watermark"]["instance"], first["watermark"]["instance"],
+        "another run"
+    );
+}
+
+/// WP-6.2a: a store the names resolve to that is not the one the gate authorized is refused,
+/// and nothing is recorded.
+#[tokio::test]
+async fn a_store_changed_since_it_was_authorized_is_refused() {
+    let plane = plane("store-changed");
+    let request: permguard_languages::temporal::SubmitRequest = serde_json::from_value(submission(
+        0,
+        "Drupe::Action::Login",
+        "response",
+        "alice",
+        json!({"user": "alice", "server": "s1"}),
+    ))
+    .expect("a submission");
+    let refused = plane
+        .submitter
+        .submit(
+            &request,
+            "anonymous",
+            Some(&("another-zone".to_owned(), "another-ledger".to_owned())),
+        )
+        .await
+        .expect_err("not the store authorized");
+    assert_eq!(
+        refused.class(),
+        permguard_core::ErrorClass::Unavailable,
+        "{refused:?}"
+    );
+    assert!(
+        plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+            .map(|records| records.is_empty())
+            .unwrap_or(true),
+        "nothing recorded"
+    );
+    // The ids authorized, it is recorded.
+    plane
+        .submitter
+        .submit(
+            &request,
+            "anonymous",
+            Some(&(ZONE_ID.to_owned(), LEDGER_ID.to_owned())),
+        )
+        .await
+        .expect("the store authorized");
 }

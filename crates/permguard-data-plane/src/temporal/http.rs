@@ -55,6 +55,9 @@ pub struct Surface {
     pub base_url: String,
     /// This PDP's identifier, as the document publishes it.
     pub pdp: String,
+    /// The Host's authorization: `event.submit` on the exact ledger, before anything is read or
+    /// written (WP-6.2a).
+    pub authorization: std::sync::Arc<permguard_host::composition::Authorization>,
 }
 
 /// The routes the temporal interface answers.
@@ -70,6 +73,7 @@ pub fn routes(surface: Surface) -> Router {
 
 async fn submit(
     State(surface): State<Surface>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     headers: HeaderMap,
     body: Result<Json<SubmitRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
@@ -97,7 +101,28 @@ async fn submit(
         }
     };
 
-    let response = match surface.submitter.submit(&request).await {
+    // Authorization before anything is read or written, and the source the occurrence is
+    // recorded under: the principal the gate authorized (WP-6.2a).
+    let caller = super::gate(
+        &surface.authorization,
+        &actor,
+        surface.submitter.root(),
+        &request,
+    );
+    let (source, authorized) = match caller {
+        Ok(caller) => caller,
+        Err(denial) => {
+            return with_request_id(
+                crate::authz::gate::http_denial(&denial),
+                request_id.as_deref(),
+            );
+        }
+    };
+    let response = match surface
+        .submitter
+        .submit(&request, &source, authorized.as_ref())
+        .await
+    {
         Ok(answered) => (
             StatusCode::OK,
             Json(super::submit::disclosed(answered, surface.disclosure)),

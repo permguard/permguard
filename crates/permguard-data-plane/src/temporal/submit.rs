@@ -156,13 +156,22 @@ impl Submitter {
         &self.streams
     }
 
-    /// Submits one occurrence.
+    /// Where the mirrors this plane decides against are, for the gate's resolution of names.
+    pub fn root(&self) -> &std::path::Path {
+        self.decider.root()
+    }
+
+    /// Submits one occurrence as `source`, the principal the request authenticated as, once the
+    /// gate authorized `event.submit` on the `authorized` ids (WP-6.2a): the mirror recorded under
+    /// must be that one.
     pub async fn submit(
         self: &Arc<Self>,
         request: &SubmitRequest,
+        source: &str,
+        authorized: Option<&(String, String)>,
     ) -> Result<SubmitResponse, ApiError> {
         let started = Instant::now();
-        let answered = self.answer(request).await;
+        let answered = self.answer(request, source, authorized).await;
         self.metrics.observe(
             &measure::SUBMISSION_SECONDS,
             &[],
@@ -172,7 +181,12 @@ impl Submitter {
         answered
     }
 
-    async fn answer(self: &Arc<Self>, request: &SubmitRequest) -> Result<SubmitResponse, ApiError> {
+    async fn answer(
+        self: &Arc<Self>,
+        request: &SubmitRequest,
+        source: &str,
+        authorized: Option<&(String, String)>,
+    ) -> Result<SubmitResponse, ApiError> {
         // The plane's own clock on this submission, which the decision record carries: how long
         // this plane took, separate from how long the transport took.
         let started_at = Instant::now();
@@ -202,6 +216,21 @@ impl Submitter {
         let (zone_name, ledger_name) = (zone.clone(), ledger.clone());
         let zone = mirror.identity.zone_id.clone();
         let ledger = mirror.identity.ledger_id.clone();
+        // A mirror replaced between the gate and here never widens the grant (WP-6.2a, as the
+        // decision path does since WP-2.4).
+        if let Some((zone_id, ledger_id)) = authorized
+            && (&zone, &ledger) != (zone_id, ledger_id)
+        {
+            self.metrics.count(
+                &measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, "store_changed")],
+            );
+            return Err(ApiError::new(
+                ErrorClass::Unavailable,
+                permguard_core::codes::common::UNAVAILABLE,
+                "the store the request names changed while the request was authorized; retry",
+            ));
+        }
         self.streams
             .adopt((&zone, &ledger), (&zone_name, &ledger_name))
             .map_err(|error| {
@@ -227,6 +256,7 @@ impl Submitter {
         if let Some(settled) = self.settled(
             &zone,
             &ledger,
+            source,
             &event,
             &occurrence.event_id,
             &profile,
@@ -277,14 +307,24 @@ impl Submitter {
                 occurrence.clone(),
                 occurrence_kind.clone(),
                 event,
+                source.to_owned(),
             );
             self.blocking
                 .run(&[], move || {
-                    let (loaded, event_type, zone, ledger, profile, occurrence, kind, event) =
-                        staging;
+                    let (
+                        loaded,
+                        event_type,
+                        zone,
+                        ledger,
+                        profile,
+                        occurrence,
+                        kind,
+                        event,
+                        source,
+                    ) = staging;
 
                     this.stage(
-                        loaded, event_type, zone, ledger, profile, occurrence, kind, event,
+                        loaded, event_type, zone, ledger, profile, occurrence, kind, event, source,
                     )
                 })
                 .await
@@ -403,6 +443,7 @@ impl Submitter {
         self.keep_outcome(
             &zone,
             &ledger,
+            source,
             &response.event_id,
             crate::temporal::streams::Routed {
                 profile: &profile,
@@ -430,6 +471,7 @@ impl Submitter {
         occurrence: Occurrence,
         occurrence_kind: String,
         event: serde_json::Value,
+        source: String,
     ) -> Result<Staged, ApiError> {
         let addressed = self.addressed(&loaded, &profile)?;
 
@@ -526,6 +568,7 @@ impl Submitter {
             prev: String::new(),
             event_type: event_type.clone(),
             event_id: occurrence.event_id.clone(),
+            source: Some(source.clone()),
             occurrence_digest: occurrence_digest_of(&event).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Validation,
@@ -688,7 +731,10 @@ impl Submitter {
                         ),
                     ));
                 }
-                match self.streams.outcome(&zone, &ledger, &occurrence.event_id) {
+                match self
+                    .streams
+                    .outcome(&zone, &ledger, &source, &occurrence.event_id)
+                {
                     Ok(Some(held)) => match serde_json::from_value::<SubmitResponse>(held) {
                         Ok(response) => {
                             info!(
@@ -764,9 +810,13 @@ impl Submitter {
             }
         };
 
+        // The receipt names the record's own place on the stream it names: its run and its
+        // sequence there. `sequence` is the plane's local ordinal across the legacy journal and
+        // the Host's runs, what turns and replays are ordered by; the two differ past the first
+        // run, or beside a legacy journal (WP-6.2a, after the review).
         let watermark = Watermark {
             instance,
-            sequence,
+            sequence: record.seq,
             history: history.as_ref().map(|key| key.digest.clone()),
         };
 
@@ -824,7 +874,10 @@ impl Submitter {
         // so the follower returns the response the leader just committed instead of rebuilding
         // and observing the same occurrence again.
         if recovering {
-            match self.streams.outcome(&zone, &ledger, &occurrence.event_id) {
+            match self
+                .streams
+                .outcome(&zone, &ledger, &source, &occurrence.event_id)
+            {
                 Ok(Some(held)) => {
                     let response =
                         serde_json::from_value::<SubmitResponse>(held).map_err(|error| {
@@ -966,6 +1019,7 @@ impl Submitter {
             self.keep_outcome(
                 &zone,
                 &ledger,
+                &source,
                 &response.event_id,
                 crate::temporal::streams::Routed {
                     profile: &profile,
@@ -1002,7 +1056,7 @@ impl Submitter {
         );
         let decision_id = self
             .streams
-            .decision_id(&zone, &ledger, &occurrence.event_id)
+            .decision_id(&zone, &ledger, &source, &occurrence.event_id)
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
@@ -1042,6 +1096,7 @@ impl Submitter {
         &self,
         zone: &str,
         ledger: &str,
+        source: &str,
         event_id: &str,
         routed: crate::temporal::streams::Routed<'_>,
         response: &SubmitResponse,
@@ -1054,7 +1109,7 @@ impl Submitter {
             )
         })?;
         self.streams
-            .record_outcome(zone, ledger, event_id, routed, &held)
+            .record_outcome(zone, ledger, source, event_id, routed, &held)
             .map_err(|error| {
                 warn!(
                     event.name = "temporal.outcome_unwritable",
@@ -1261,13 +1316,10 @@ impl Submitter {
         // "Already observed" is everything below this sequence: this record and whatever the
         // journal placed after it have not been fed to the engine yet, and are not evidence of
         // where the history stands.
-        newer.retain(|candidate| {
-            candidate
-                .get("seq")
-                .and_then(serde_json::Value::as_u64)
-                .is_some_and(|sequence| sequence < before_local_sequence)
-                && behind(candidate)
-        });
+        newer
+            .retain(|(position, candidate)| *position < before_local_sequence && behind(candidate));
+        let mut newer: Vec<serde_json::Value> =
+            newer.into_iter().map(|(_, candidate)| candidate).collect();
         // The imported half feeds the same engine in a shared mode, so it settles the same question.
         if let Some(imports) = &self.imports
             && self.consistency.is_shared()
@@ -1356,10 +1408,12 @@ impl Submitter {
     /// favour of the request: an identifier reused over different bytes, or routed differently, is
     /// a conflict, because answering it from the first occurrence's outcome would answer a
     /// question nobody asked.
+    #[allow(clippy::too_many_arguments)]
     fn settled(
         &self,
         zone: &str,
         ledger: &str,
+        source: &str,
         event: &serde_json::Value,
         event_id: &str,
         profile: &str,
@@ -1367,7 +1421,7 @@ impl Submitter {
     ) -> Result<Option<SubmitResponse>, ApiError> {
         let known = self
             .streams
-            .known(zone, ledger, event_id)
+            .known(zone, ledger, source, event_id)
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
@@ -1850,12 +1904,9 @@ impl Submitter {
             .streams
             .scan(zone, ledger, &query)
             .map_err(|error| unreadable("this plane's own journal", error.to_string()))?;
-        records.retain(|record| {
-            record
-                .get("seq")
-                .and_then(serde_json::Value::as_u64)
-                .is_some_and(|sequence| sequence < before_local_sequence)
-        });
+        records.retain(|(position, _)| *position < before_local_sequence);
+        let mut records: Vec<serde_json::Value> =
+            records.into_iter().map(|(_, record)| record).collect();
         if let Some(imports) = &self.imports
             && self.consistency.is_shared()
         {

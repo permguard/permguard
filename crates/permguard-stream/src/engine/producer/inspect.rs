@@ -19,12 +19,12 @@ use super::ship::{subscriptions_held, truncate_safe_of};
 use super::{Physical, Producer, SubscriptionState};
 
 /// One run as the journal holds it: `(run, fence, last_seq, ended)`.
-type JournalRun = ([u8; 16], Option<[u8; 16]>, u64, bool);
+pub(super) type JournalRun = ([u8; 16], Option<[u8; 16]>, u64, bool);
 
 impl<C: RecordCodec> Producer<C> {
     /// The stream of `resource` this producer holds, never one it would open anew: the open one,
     /// or the one whose directory exists; no other stream is opened (after the review).
-    fn held(&self, resource: &str) -> Result<Option<Arc<Physical>>, StreamError> {
+    pub(super) fn held(&self, resource: &str) -> Result<Option<Arc<Physical>>, StreamError> {
         let Ok(parsed) = permguard_core::authz::Resource::parse(resource) else {
             return Ok(None);
         };
@@ -60,7 +60,7 @@ impl<C: RecordCodec> Producer<C> {
 
     /// Each run `physical`'s journal holds, from STATE's base on, `(run, fence, last_seq,
     /// ended)`, read under one guard and writing nothing (after the review).
-    fn journal_runs(physical: &Physical) -> Result<Vec<JournalRun>, StreamError> {
+    pub(super) fn journal_runs(physical: &Physical) -> Result<Vec<JournalRun>, StreamError> {
         let writer = physical.writer();
         let statement = |envelope: &[u8]| {
             super::super::run::RunStatement::decode(

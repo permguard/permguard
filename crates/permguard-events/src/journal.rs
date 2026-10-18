@@ -126,6 +126,10 @@ impl State {
 pub struct KnownOccurrence {
     /// The id a client retries with.
     pub event_id: String,
+    /// The source the occurrence was recorded under, with `event_id` what identifies it (WP-6.2a);
+    /// absent in a legacy journal's entries, which identify it by `event_id` alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     /// Where the occurrence sits in this stream.
     pub seq: u64,
     /// The canonical digest of what was recorded under that id.
@@ -254,6 +258,16 @@ impl Journal {
     /// Recovery happens here and nowhere else: a torn trailing record is truncated, the chain head
     /// and next sequence are re-derived from the segments rather than trusted from `STATE`, and a
     /// `STATE` naming a different stream is refused instead of appended to.
+    /// The stream an existing journal's `STATE` names, read without opening it (WP-6.2a): what a
+    /// legacy journal is reopened as.
+    pub fn stream_of(directory: impl AsRef<Path>) -> Result<Stream, JournalError> {
+        let bytes = fs::read(directory.as_ref().join(STATE_FILE))
+            .map_err(|error| JournalError::Io(error.to_string()))?;
+        let held: State = serde_json::from_slice(&bytes)
+            .map_err(|error| JournalError::Corrupt(error.to_string()))?;
+        Ok(held.stream)
+    }
+
     pub fn open(
         directory: impl AsRef<Path>,
         stream: Stream,
@@ -699,6 +713,7 @@ impl Journal {
                     }
                     None => self.record_occurrence(&KnownOccurrence {
                         event_id: event_id.to_owned(),
+                        source: None,
                         seq,
                         occurrence_digest: occurrence_digest.to_owned(),
                         decision_id: None,
@@ -1381,6 +1396,7 @@ mod tests {
             prev: prev.to_owned(),
             event_type: "permguard.dogwood.event.v1".to_owned(),
             event_id: format!("e{seq}"),
+            source: None,
             occurrence_digest: GENESIS.to_owned(),
             kind: "request".to_owned(),
             profile: "temporal".to_owned(),
@@ -2174,6 +2190,7 @@ mod tests {
         journal
             .record_occurrence(&KnownOccurrence {
                 event_id: "evt-1".to_owned(),
+                source: None,
                 seq: 1,
                 occurrence_digest: "sha256:aaa".to_owned(),
                 decision_id: None,
@@ -2215,6 +2232,7 @@ mod tests {
         journal
             .record_occurrence(&KnownOccurrence {
                 event_id: "e2".to_owned(),
+                source: None,
                 seq: 2,
                 occurrence_digest: GENESIS.to_owned(),
                 decision_id: None,
@@ -2256,6 +2274,7 @@ mod tests {
         journal
             .record_occurrence(&KnownOccurrence {
                 event_id: hostile.to_owned(),
+                source: None,
                 seq: 1,
                 occurrence_digest: "sha256:bbb".to_owned(),
                 decision_id: None,
@@ -2290,6 +2309,7 @@ mod tests {
             journal
                 .record_occurrence(&KnownOccurrence {
                     event_id: format!("evt-{seq}"),
+                    source: None,
                     seq,
                     occurrence_digest: format!("sha256:{seq}"),
                     decision_id: None,

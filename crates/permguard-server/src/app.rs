@@ -1228,10 +1228,14 @@ impl App {
             permguard_decisions::stream::descriptor(),
             permguard_decisions::stream::Codec,
         )?;
-        let mut events = engine.register_producer(
-            permguard_events::stream::descriptor(),
-            permguard_events::stream::Codec,
-        )?;
+        // The event log is a `history` stream: kept whole until the Data Plane registers the
+        // floor its loaded contracts read from (WP-6.2a).
+        let mut events = engine
+            .register_producer(
+                permguard_events::stream::descriptor(),
+                permguard_events::stream::Codec,
+            )?
+            .with_retention_floor(Arc::new(permguard_stream::engine::retention::KeepWhole));
         if let Some(ring) = data_attest {
             decisions = decisions.with_signer(Arc::clone(ring))?;
             events = events.with_signer(Arc::clone(ring))?;

@@ -109,6 +109,9 @@ impl PlaneTask for EventService {
                      journals: refusing to start rather than fail every submission closed"
                 ));
             };
+            // The stream is sealed under the plane's `data.attest` ring, and nothing unsealed is
+            // ever shipped: a log without it would grow until its bounds refused every
+            // submission and reach no coordinator.
             let Some(keys) = crate::handles::event_signer(context) else {
                 return Err(anyhow!(
                     "the temporal interface is enabled and no signing ring is composed \
@@ -117,37 +120,58 @@ impl PlaneTask for EventService {
                 ));
             };
 
-            // An event-specific destination wins. Only its absence falls back to the decision
-            // log's endpoint, so a value written under `events.destination` can never be accepted
-            // by configuration and then ignored by the running service.
-            let (url, tls) = destination(context)?;
-            let sink = event_sink(&url, &tls)?;
-
             let interval = self.tick.unwrap_or(DEFAULT_INTERVAL);
             let pull_interval = self.tick.unwrap_or(config.events_pull_interval());
-            let shipper = Arc::new(Shipper::new(
-                Arc::clone(submitter.streams()),
-                sink,
-                keys,
-                DEFAULT_BATCH_BYTES,
-                context.metrics().clone(),
-            ));
             let streams = Arc::clone(submitter.streams());
             let retention = streams.bounds().retention_minimum;
             let imported_retention = streams.bounds().required_retention(retention);
+            // Recorded on the Host's producer and shipped by it over `events.ship` (WP-6.2a); this
+            // loop keeps the floor the producer deletes above current. The old shipper runs only
+            // while a legacy journal holds anything unshipped, which it sends until it is empty.
+            let legacy_pending = legacy_unshipped(&streams);
+            let pull = config.events_pull_mode().is_shared();
+            // An event-specific destination wins. Only its absence falls back to the decision
+            // log's endpoint, so a value written under `events.destination` can never be accepted
+            // by configuration and then ignored by the running service.
+            let remote = if legacy_pending || pull {
+                Some(destination(context)?)
+            } else {
+                None
+            };
+            let shipper = match (&remote, legacy_pending) {
+                (Some((url, tls)), true) => {
+                    info!(
+                        event.name = "events.legacy_shipping",
+                        component = COMPONENT,
+                        server = url.as_str(),
+                        "a legacy event journal is shipped until it is empty; new events are \
+                         recorded on the Host's stream"
+                    );
+                    Some(Arc::new(Shipper::new(
+                        Arc::clone(&streams),
+                        event_sink(url, tls)?,
+                        keys,
+                        DEFAULT_BATCH_BYTES,
+                        context.metrics().clone(),
+                    )))
+                }
+                _ => None,
+            };
             info!(
-                event.name = "events.shipping",
+                event.name = "events.recording",
                 component = COMPONENT,
-                server = url.as_str(),
                 interval.seconds = interval.as_secs(),
                 retention.seconds = retention.as_secs(),
-                "events are recorded here and shipped from here"
+                "events are recorded on the Host's stream and shipped over events.ship"
             );
 
             // The pull worker, when this deployment reads history other planes recorded. Built
             // here so it shares the loop's cadence and its shutdown: a second loop would be a
             // second thing to stop, and one of the two would be the one that is not stopped.
-            let puller = puller(context, &url, &tls)?;
+            let puller = match &remote {
+                Some((url, tls)) => puller(context, url, tls)?,
+                None => None,
+            };
             let (stop, mut stopped) = watch::channel(false);
             let backoff = Backoff::default();
             let task = tokio::spawn(async move {
@@ -167,10 +191,13 @@ impl PlaneTask for EventService {
                             let now = tokio::time::Instant::now();
                             if now >= next_ship {
                                 // Blocking: a round reads and flushes files. Off the runtime's threads.
-                                let shipper = Arc::clone(&shipper);
+                                let shipper = shipper.clone();
                                 let streams = Arc::clone(&streams);
                                 let outcome = tokio::task::spawn_blocking(move || {
-                                    let rounds = shipper.round();
+                                    keep_floors(&streams, retention);
+                                    let rounds = shipper
+                                        .map(|shipper| shipper.round())
+                                        .unwrap_or_default();
                                     evict(&streams, retention);
                                     rounds
                                 }).await;
@@ -525,7 +552,7 @@ fn evict(streams: &Arc<super::streams::Streams>, retention: Duration) {
         // Only what has been acknowledged is a candidate at all; among those, only what is older
         // than the horizon. The stricter of the two, always.
         let mut safe = state.oldest_retained.saturating_sub(1);
-        let Ok(records) = streams.read_from(&zone, &ledger, safe, 100_000) else {
+        let Ok(records) = streams.legacy_read_from(&zone, &ledger, safe, 100_000) else {
             continue;
         };
         for record in records {
@@ -563,6 +590,35 @@ fn evict(streams: &Arc<super::streams::Streams>, retention: Duration) {
                  direction"
             ),
         }
+    }
+}
+
+/// Whether a legacy journal holds anything its shipper has still to send.
+fn legacy_unshipped(streams: &super::streams::Streams) -> bool {
+    streams.ledgers().iter().any(|(zone, ledger)| {
+        streams
+            .state(zone, ledger)
+            .map_or(true, |state| state.acked_through < state.durable_through)
+    })
+}
+
+/// Keeps the floor the Host's producer deletes above current: what no loaded window reads, plus
+/// what lateness and skew may add (WP-6.2a).
+fn keep_floors(streams: &super::streams::Streams, retention: Duration) {
+    let required = streams.bounds().required_retention(retention);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs() as i64)
+        .unwrap_or_default();
+    if let Err(error) = streams.refresh_floors(now.saturating_sub(required.as_secs() as i64)) {
+        // The floor last measured stays, and a run never measured is kept whole: the safe
+        // direction.
+        warn!(
+            event.name = "events.floor_unmeasured",
+            component = COMPONENT,
+            error = %error,
+            "the event stream's retention floor could not be measured"
+        );
     }
 }
 

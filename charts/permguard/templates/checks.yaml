@@ -145,35 +145,25 @@ who set it was asking for.
 {{- end }}
 
 {{- /*
-A decision log's producer name, and the two ways to take it back.
+The producer names a deployment can no longer set.
 
-`pdp_id` names the producer of every record a pod writes. Two producers under one name write two
-records at a single (stream, seq), which closes the stream at the far end and ends the audit trail —
-so the chart takes it from `metadata.name` through the downward API, and neither a values file nor
-an extra environment variable may pin it. The env check matters most: the chart sets the variable
-first and merges `extraEnv` after it, so a second entry with the same name simply wins.
-
-Replicas are replicas however they arrive, so an autoscaler that can reach more than one counts.
+The decision and event streams are named by the Host's `host_id` and the run of its stream (WP-6.1,
+WP-6.2), and the server refuses to start where `decisions.log.pdp_id` or `events.producer_id` is
+still set, in a file or in the environment. Refused here too, so a values file naming one fails at
+install rather than at the pod's first start.
 */ -}}
 {{- range $component, $plane := dict "controlPlane" .Values.controlPlane "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
 {{- if $plane.enabled }}
-{{- $many := or (gt (int $plane.replicaCount) 1) (and $plane.autoscaling $plane.autoscaling.enabled (gt (int $plane.autoscaling.maxReplicas) 1)) }}
-{{- if $many }}
-{{- $pinned := dig "dataPlane" "decisions" "log" "pdp_id" (dig "decisions" "log" "pdp_id" "" ($plane.extraConfig | default dict)) ($plane.extraConfig | default dict) }}
-{{- if $pinned }}
-{{- fail (printf "%s.extraConfig pins the decision log's pdp_id to %q while this component can run more than one replica: two producers under one name write two records at one sequence number and close the stream. Leave it unset — the chart takes it from the pod name." $component $pinned) }}
+{{- $config := $plane.extraConfig | default dict }}
+{{- if or (dig "dataPlane" "decisions" "log" "pdp_id" "" $config) (dig "decisions" "log" "pdp_id" "" $config) }}
+{{- fail (printf "%s.extraConfig sets the decision log's pdp_id, which is retired: decision records are named by the Host's host_id and the run of its stream. Remove it." $component) }}
 {{- end }}
-{{- $pinnedProducer := dig "dataPlane" "events" "producer_id" (dig "events" "producer_id" "" ($plane.extraConfig | default dict)) ($plane.extraConfig | default dict) }}
-{{- if $pinnedProducer }}
-{{- fail (printf "%s.extraConfig pins the event producer_id to %q while this component can run more than one replica: an event producer id owns a hash chain and the history the plane's own policies read, so two pods under one name would each append to a stream the other also claims. Leave it unset — the chart takes it from the pod name." $component $pinnedProducer) }}
+{{- if or (dig "dataPlane" "events" "producer_id" "" $config) (dig "events" "producer_id" "" $config) }}
+{{- fail (printf "%s.extraConfig sets the event producer_id, which is retired: event records are named by the Host's host_id and the run of its stream. Remove it." $component) }}
 {{- end }}
 {{- range $env := ($plane.extraEnv | default list) }}
-{{- if eq $env.name "PERMGUARD_DECISIONS_LOG_PDP_ID" }}
-{{- fail (printf "%s.extraEnv redefines PERMGUARD_DECISIONS_LOG_PDP_ID while this component can run more than one replica. The chart sets it from the pod name and merges extraEnv after it, so this would win — and every replica would produce records under one name." $component) }}
-{{- end }}
-{{- if eq $env.name "PERMGUARD_EVENTS_PRODUCER_ID" }}
-{{- fail (printf "%s.extraEnv redefines PERMGUARD_EVENTS_PRODUCER_ID while this component can run more than one replica. The chart sets it from the pod name and merges extraEnv after it, so this would win — and every replica would append to one event stream under one name." $component) }}
-{{- end }}
+{{- if has $env.name (list "PERMGUARD_DECISIONS_LOG_PDP_ID" "PERMGUARD_EVENTS_PRODUCER_ID") }}
+{{- fail (printf "%s.extraEnv sets %s, which is retired: the streams are named by the Host's host_id and run. Remove it." $component $env.name) }}
 {{- end }}
 {{- end }}
 {{- end }}

@@ -33,6 +33,7 @@ use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex, record_digest}
 
 mod inspect;
 mod prune;
+mod runs;
 mod seal;
 mod ship;
 
@@ -98,8 +99,9 @@ pub struct Producer<C> {
     signer: Option<Arc<Ring>>,
     /// Each subscription backing off: its attempts and the second it waits until (WP-5.4).
     backoff: Mutex<BTreeMap<String, (u32, u64)>>,
-    /// The `history` floor the Plane registered (WP-5.6b).
-    floor: Option<Arc<dyn super::retention::RetentionFloor>>,
+    /// The `history` floor the Plane registered (WP-5.6b), replaced when the Plane registers its
+    /// own through the composition (WP-6.2a).
+    floor: std::sync::RwLock<Option<Arc<dyn super::retention::RetentionFloor>>>,
     /// Keeps the garbage collection's passes from overlapping (WP-5.6b).
     pub(crate) lease: super::retention::Lease,
     /// The fence of each subscription seen shipping, with its task's selector: what a stream it
@@ -126,7 +128,7 @@ impl<C: RecordCodec> Producer<C> {
             streams: Mutex::new(BTreeMap::new()),
             signer: None,
             backoff: Mutex::new(BTreeMap::new()),
-            floor: None,
+            floor: std::sync::RwLock::new(None),
             lease: super::retention::Lease::default(),
             fences: Mutex::new(Vec::new()),
         }
@@ -138,8 +140,19 @@ impl<C: RecordCodec> Producer<C> {
         mut self,
         floor: Arc<dyn super::retention::RetentionFloor>,
     ) -> Self {
-        self.floor = Some(floor);
+        *self
+            .floor
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(floor);
         self
+    }
+
+    /// The `history` floor in force.
+    pub(crate) fn floor(&self) -> Option<Arc<dyn super::retention::RetentionFloor>> {
+        self.floor
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     /// This producer sealing its batches under `signer`, the ring its descriptor names.
@@ -578,6 +591,8 @@ struct Physical {
     writer: Mutex<Writer>,
     queue: Mutex<Queue>,
     moved: Condvar,
+    /// Where each run's record groups sit in the journal, as far as a read has looked (WP-6.2a).
+    groups: Mutex<runs::Groups>,
 }
 
 /// A RECORDS frame's payload: the records from `first`, one flush's group.
@@ -835,6 +850,7 @@ impl Physical {
             writer: Mutex::new(writer),
             queue: Mutex::new(queue),
             moved: Condvar::new(),
+            groups: Mutex::new(runs::Groups::default()),
         })
     }
 
@@ -1414,6 +1430,42 @@ impl<C: RecordCodec> permguard_host::composition::StreamAppender for Producer<C>
             },
         )
         .map_err(|error| error.to_string())
+    }
+
+    fn runs(
+        &self,
+        resource: &Resource,
+    ) -> Result<Vec<permguard_host::composition::ProducedRun>, String> {
+        self.produced_runs(resource)
+            .map_err(|error| error.to_string())
+    }
+
+    fn records(
+        &self,
+        resource: &Resource,
+        run: &[u8; 16],
+        from: u64,
+        limit: usize,
+    ) -> Result<permguard_host::composition::ConsumedPage, String> {
+        let page = self
+            .produced_records(resource, run, from, limit)
+            .map_err(|error| error.to_string())?;
+        Ok(permguard_host::composition::ConsumedPage {
+            records: page.records,
+            low_watermark: page.gap.map(|gap| gap.low_watermark),
+        })
+    }
+
+    fn retain_above(
+        &self,
+        floor: Arc<dyn permguard_host::composition::StreamFloor>,
+    ) -> Result<(), String> {
+        *self
+            .floor
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(Arc::new(super::retention::PlaneFloor(floor)));
+        Ok(())
     }
 }
 

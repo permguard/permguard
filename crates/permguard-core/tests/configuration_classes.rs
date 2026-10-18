@@ -144,7 +144,6 @@ fn binds_volume_paths_tls_bootstrap_references_and_instance_ids_are_startup_sett
         SETTING_AUDIT_DIRECTORY,
         SETTING_ADMIN_TLS_CERT,
         SETTING_AUDIT_PSEUDONYM_KEY_REF,
-        SETTING_EVENTS_PRODUCER_ID,
         "PERMGUARD_CONTROL_HTTP_ADDR",
         "PERMGUARD_DATA_GRPC_TLS_KEY",
     ] {

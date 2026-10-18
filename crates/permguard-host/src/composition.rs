@@ -1430,6 +1430,50 @@ pub trait StreamAppender: Send + Sync {
         max_bytes: u64,
         max_age_secs: u64,
     ) -> Result<Option<&'static str>, String>;
+
+    /// The runs of `resource`'s stream, in the order the producer opened them; none for a stream
+    /// it never opened (WP-6.2a).
+    fn runs(&self, resource: &Resource) -> Result<Vec<ProducedRun>, String> {
+        let _ = resource;
+        Err("this producer reads nothing back".to_owned())
+    }
+
+    /// The records of `run` from sequence `from`, at most `limit`, as their bytes; a read below
+    /// what the run deleted answers from its low watermark, which the page names (WP-6.2a).
+    fn records(
+        &self,
+        resource: &Resource,
+        run: &[u8; 16],
+        from: u64,
+        limit: usize,
+    ) -> Result<ConsumedPage, String> {
+        let _ = (resource, run, from, limit);
+        Err("this producer reads nothing back".to_owned())
+    }
+
+    /// Keeps the `history` streams of this producer above `floor` from now on (WP-6.2a).
+    fn retain_above(&self, floor: Arc<dyn StreamFloor>) -> Result<(), String> {
+        let _ = floor;
+        Err("this producer keeps no floor".to_owned())
+    }
+}
+
+/// One run of a stream its producer holds (WP-6.2a).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProducedRun {
+    pub run: [u8; 16],
+    /// The last sequence it holds; zero before its first record.
+    pub last_seq: u64,
+    /// The first sequence still held: past a deleted prefix, 1 otherwise.
+    pub low_watermark: u64,
+    pub ended: bool,
+}
+
+/// The `history` floor a Plane registers on a stream it produces (WP-6.2a, after WP-5.6b): per
+/// resource and run, the last sequence no loaded contract reads any more; `None` keeps the run
+/// whole.
+pub trait StreamFloor: Send + Sync {
+    fn retention_safe(&self, resource: &str, run: &[u8; 16]) -> Option<u64>;
 }
 
 /// The streams this Host signs under a member ring, as a re-pin cuts them over to the ring's new
@@ -1574,7 +1618,7 @@ pub struct ConsumedRun {
     pub oldest_retained: u64,
 }
 
-/// A page of a consumed run's records, as their bytes.
+/// A page of a run's records, as their bytes: read from a consumer, or from a producer (WP-6.2a).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConsumedPage {
     pub records: Vec<(u64, Vec<u8>)>,
@@ -1673,6 +1717,12 @@ impl std::fmt::Debug for StreamProducer {
 }
 
 impl StreamProducer {
+    /// A handle over `appender`, for a test composing no Host.
+    #[doc(hidden)]
+    pub fn over(appender: Arc<dyn StreamAppender>) -> Self {
+        Self { appender }
+    }
+
     /// Appends `record` to the stream of `resource`; answers once it is durable.
     pub fn append(&self, resource: &Resource, record: &[u8]) -> Result<StreamReceipt, String> {
         self.appender.append(resource, record)
@@ -1696,6 +1746,27 @@ impl StreamProducer {
         max_age_secs: u64,
     ) -> Result<Option<&'static str>, String> {
         self.appender.pressure(resource, max_bytes, max_age_secs)
+    }
+
+    /// The runs of `resource`'s stream, oldest first (WP-6.2a).
+    pub fn runs(&self, resource: &Resource) -> Result<Vec<ProducedRun>, String> {
+        self.appender.runs(resource)
+    }
+
+    /// The records of `run` from `from`, at most `limit` (WP-6.2a).
+    pub fn records(
+        &self,
+        resource: &Resource,
+        run: &[u8; 16],
+        from: u64,
+        limit: usize,
+    ) -> Result<ConsumedPage, String> {
+        self.appender.records(resource, run, from, limit)
+    }
+
+    /// Keeps this producer's `history` streams above `floor` (WP-6.2a).
+    pub fn retain_above(&self, floor: Arc<dyn StreamFloor>) -> Result<(), String> {
+        self.appender.retain_above(floor)
     }
 }
 

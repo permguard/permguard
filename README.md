@@ -100,8 +100,7 @@ experimental:
 
 dataPlane:
   events:
-    enabled: "true"        # this plane keeps a durable event history
-    producer_id: data-plane-eu-1
+    enabled: "true"        # this plane keeps a durable event history, on the Host's stream
 ```
 
 Saying one and not the other refuses to start, by name. `v1alpha1` is honest: the wire and

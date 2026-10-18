@@ -125,8 +125,7 @@ controlPlane:
   #     experimental:
   #       dogwood: { enabled: "true" }        # required alongside it, and refused if missing
   extraConfig: {}
-  # Extra environment for the container, as a list of EnvVar. `PERMGUARD_DECISIONS_LOG_PDP_ID` is
-  # already set from the pod name; anything here is merged after it.
+  # Extra environment for the container, as a list of EnvVar.
   extraEnv: []
 
 dataPlane:
@@ -149,8 +148,8 @@ dataPlane:
   #     dataPlane:
   #       events:
   #         enabled: "true"
-  #         # `producer_id` is NOT set here: it owns a hash chain, and the chart takes it from the
-  #         # pod name for the same reason it takes the decision log's. Pinning it is refused.
+  #         # no `producer_id`: the stream is named by the Host's `host_id` and run, and setting
+  #         # one is refused.
   #         retention: { minimum: "48h" }
   #         pull:
   #           mode: shared-eventual       # replication/audit convergence, not request-time HA
@@ -233,12 +232,9 @@ dataPlane:
   #         partitions: "64"   # compiled partitions held in memory at once
   #         bytes: "256M"      # what they may weigh, against this pod's memory limit
   #       max_evaluations: "256"
-  #       # Every decision, recorded. `pdp_id` must differ per replica: two producers sharing one
-  #       # write two records at a single (stream, seq), which closes a stream at the far end. With
-  #       # replicaCount > 1 take it from the pod name rather than from this file.
+  #       # Every decision, recorded on the Host's stream, named by its `host_id` and run.
   #       log:
   #         enabled: "true"
-  #         pdp_id: permguard-data-plane-0
   #         server:
   #           url: "grpcs://permguard-control-plane:6443"
   #           tls:

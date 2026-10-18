@@ -355,6 +355,20 @@ is cut.
 
 ### Changed
 
+- **Temporal events are recorded on the Host's stream, and a submission takes `event.submit`.**
+  A Data Plane serving the temporal interface now appends each occurrence to the Host's stream engine, one stream per zone and ledger, as `data/events`; the Host's producer owns the run, the sequence, the flush and the seal, and ships them over the membership's `events.ship` task.
+  A record's `stream.producer.id` is the Host's `host_id` and `stream.producer.instance` the run, each as 32 lowercase hex digits; `seq` and `prev` are the engine's.
+  Every record names its `source`: the principal the submitting request authenticated as, `anonymous` under a public grant.
+  An occurrence is identified by its ledger, its source and its `event_id`: the same id from another source is another occurrence.
+  A submission is authorized like an evaluation, under the operation `event.submit`: under the plane before the store is looked for, then on the exact ledger its names resolve to, over HTTP and gRPC; a deployment that granted only `decision.evaluate` must grant `event.submit` to keep submitting.
+  The plane keeps beside the stream, under `planes/data/temporal`, only the positions it indexes and the answers it gave; it reads the records back from the Host's producer.
+  The Host's producer keeps every run whole until the plane registers the floor its loaded windows read from, and deletes nothing that floor or a required subscription still holds.
+  Configuration: `events.producer_id` (`PERMGUARD_EVENTS_PRODUCER_ID`) is retired and refused at start.
+  A plane serving the temporal interface refuses to start unless the Host composes a stream engine producing `data/events`, its `host_id` and the plane's `data.attest` ring.
+  An event journal left by an earlier release stays the first part of the ledger's history: it is read first, never appended to, shipped by the old shipper to its configured server until it is empty, and evicted as before.
+  The plane's `/events/v1alpha1/signers` read answers such a journal only; the Host's stream signers are the Host API's.
+  The Helm chart no longer sets `PERMGUARD_DECISIONS_LOG_PDP_ID` nor `PERMGUARD_EVENTS_PRODUCER_ID` from the pod name, which the server refuses, and refuses a values file or an `extraEnv` setting either.
+
 - **The decision reads answer from the Host's stream too, and every proof entry names its format.**
   A Control Plane composed with the Host's stream engine reads, besides its own store, what the Host's consumer of `data/decisions` holds, in process.
   A tenant read (`/zones/{zone}/ledgers/{ledger}/decisions/v1/records`) answers what the store holds first, then each producer's runs of that ledger by `host_id` and the order they opened, each record naming its `host_id` and run; the zone and ledger are resolved by name or id in the catalog.

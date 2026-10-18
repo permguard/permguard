@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Authorization before evaluation (WP-2.4): `decision.evaluate` on the exact ledger, decided
-//! before the request reaches a policy, on both transports the same way.
+//! before the request reaches a policy, on both transports the same way. A temporal submission is
+//! gated the same way under `event.submit` (WP-6.2a, owner decision of 2026-10-18).
 //!
 //! The request names its store by zone and ledger, by name or by id (the native contract); the
 //! grant names the ledger by id. So the check runs in two stages (owner decision, 2026-10-06):
@@ -36,8 +37,47 @@ pub(crate) fn evaluation(
     zone: Option<&str>,
     ledger: Option<&str>,
 ) -> Result<Option<(String, String)>, AccessDenial> {
+    gated(
+        authorization,
+        operations::DECISION_EVALUATE,
+        actor,
+        root,
+        zone,
+        ledger,
+    )
+}
+
+/// Whether `actor` may submit an occurrence to the store `zone`/`ledger` names: [`evaluation`]'s
+/// two stages under `event.submit` (WP-6.2a).
+pub(crate) fn submission(
+    authorization: &Authorization,
+    actor: &Actor,
+    root: &Path,
+    zone: Option<&str>,
+    ledger: Option<&str>,
+) -> Result<Option<(String, String)>, AccessDenial> {
+    gated(
+        authorization,
+        operations::EVENT_SUBMIT,
+        actor,
+        root,
+        zone,
+        ledger,
+    )
+}
+
+/// The two stages under `operation`: anything under the plane, then the exact ledger the names
+/// resolve to.
+fn gated(
+    authorization: &Authorization,
+    operation: &str,
+    actor: &Actor,
+    root: &Path,
+    zone: Option<&str>,
+    ledger: Option<&str>,
+) -> Result<Option<(String, String)>, AccessDenial> {
     let plane = Resource::plane(PLANE);
-    authorization.may_act_under(actor, operations::DECISION_EVALUATE, &plane)?;
+    authorization.may_act_under(actor, operation, &plane)?;
     let (Some(zone), Some(ledger)) = (zone, ledger) else {
         // Nothing to resolve: the decision path refuses the missing store as a validation error,
         // which is not a lookup and discloses nothing.
@@ -47,13 +87,13 @@ pub(crate) fn evaluation(
         Some((zone_id, ledger_id)) => {
             authorization.authorize(
                 actor,
-                operations::DECISION_EVALUATE,
+                operation,
                 &Resource::ledger(PLANE, &zone_id, &ledger_id),
             )?;
             Ok(Some((zone_id, ledger_id)))
         }
         None => authorization
-            .not_found_or_forbidden(actor, operations::DECISION_EVALUATE, &plane)
+            .not_found_or_forbidden(actor, operation, &plane)
             .map(|()| None),
     }
 }
@@ -241,6 +281,105 @@ mod tests {
             )
             .is_ok(),
             "by id as well as by name"
+        );
+    }
+
+    #[test]
+    fn a_submission_takes_event_submit_on_the_exact_ledger_and_nothing_else_admits_it() {
+        let root = scratch("submission");
+        mirror(&root, "acme", "main");
+        mirror(&root, "acme", "other");
+        let grant = |operation: &str, selector: &str| {
+            Authorization::public_only(&[PublicGrant::new(
+                &[operation],
+                Selector::parse(selector).expect("a selector"),
+            )])
+        };
+        let deciding = grant(
+            operations::DECISION_EVALUATE,
+            "plane/data/zone/acme-id/ledger/main-id",
+        );
+        let denied = submission(
+            &deciding,
+            &Actor::Anonymous,
+            &root,
+            Some("acme"),
+            Some("main"),
+        )
+        .expect_err("deciding is not submitting");
+        assert_eq!(denied.http_status(), 401);
+        let submitting = grant(
+            operations::EVENT_SUBMIT,
+            "plane/data/zone/acme-id/ledger/main-id",
+        );
+        assert_eq!(
+            submission(
+                &submitting,
+                &Actor::Anonymous,
+                &root,
+                Some("acme"),
+                Some("main")
+            )
+            .expect("admitted"),
+            Some(("acme-id".to_owned(), "main-id".to_owned()))
+        );
+        assert!(
+            evaluation(
+                &submitting,
+                &Actor::Anonymous,
+                &root,
+                Some("acme"),
+                Some("main")
+            )
+            .is_err(),
+            "submitting is not deciding"
+        );
+        assert!(
+            submission(
+                &submitting,
+                &Actor::Anonymous,
+                &root,
+                Some("acme"),
+                Some("other")
+            )
+            .is_err(),
+            "another ledger of the zone"
+        );
+        let request = permguard_languages::temporal::SubmitRequest {
+            store: Some(permguard_languages::temporal::StoreBody {
+                zone: Some("acme".to_owned()),
+                ledger: Some("main".to_owned()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let (source, authorized) =
+            crate::temporal::gate(&submitting, &Actor::Anonymous, &root, &request)
+                .expect("admitted");
+        assert_eq!(source, "anonymous");
+        assert_eq!(
+            authorized,
+            Some(("acme-id".to_owned(), "main-id".to_owned()))
+        );
+        let permissive = Authorization::permissive();
+        let (source, _) =
+            crate::temporal::gate(&permissive, &actor("spiffe://acme/sensor"), &root, &request)
+                .expect("admitted");
+        assert_eq!(
+            source, "spiffe://acme/sensor",
+            "the principal, never the caller's word"
+        );
+        assert!(
+            crate::temporal::gate(
+                &permissive,
+                &Actor::Unmapped {
+                    reason: "test".to_owned()
+                },
+                &root,
+                &request,
+            )
+            .is_err(),
+            "a credential nobody maps has no source"
         );
     }
 

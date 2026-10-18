@@ -40,7 +40,8 @@ pub type Audit = AuditHandle<DataPlaneAudit>;
 
 /// What this plane declares to the Host under `config`: the zone keys of input tags and of the
 /// subjects' pseudonyms, and the decision stream it produces, only when the decision log is on, so
-/// a plane that keeps no log MACs under nothing (WP-3.3) and appends to no stream (WP-6.1).
+/// a plane that keeps no log MACs under nothing (WP-3.3) and appends to no stream (WP-6.1); the
+/// event stream only when it serves the temporal interface (WP-6.2a).
 pub(crate) fn declaration(config: &Config) -> Declaration {
     use permguard_host::membership::record::TaskType;
 
@@ -53,6 +54,11 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
         .uses_task(TaskType::EventsImport, 1)
         .handles_task(TaskType::DecisionsShip, 1)
         .handles_task(TaskType::EventsShip, 1);
+    let declaration = if crate::temporal::served(config) {
+        declaration.produces_stream(permguard_events::stream::STREAM)
+    } else {
+        declaration
+    };
     if config.log_enabled() {
         declaration
             .uses_zone_key(ZonePurpose::DecisionCommitment)
@@ -136,6 +142,17 @@ pub(crate) fn decision_producer(
 ) -> Option<permguard_host::composition::StreamProducer> {
     registration(context)?
         .stream_producer(permguard_decisions::stream::STREAM)
+        .ok()
+        .flatten()
+}
+
+/// The Host's producer of the event stream, when this plane serves the temporal interface and an
+/// engine is composed (WP-6.2a).
+pub(crate) fn event_producer(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::StreamProducer> {
+    registration(context)?
+        .stream_producer(permguard_events::stream::STREAM)
         .ok()
         .flatten()
 }

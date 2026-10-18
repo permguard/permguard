@@ -6236,3 +6236,108 @@ fn the_offline_check_refuses_well_signed_lies() {
         report.render()
     );
 }
+
+/// WP-6.2a: a Plane reads back the runs of a stream it produces, in the order they opened, and a
+/// run's records from any sequence, on small segments and across a rollover.
+#[test]
+fn a_producer_reads_back_its_runs_and_their_records() {
+    use permguard_host::composition::StreamAppender;
+    let host = Host::new("read-back");
+    let producer = host
+        .streams()
+        .with_segment_bytes(256)
+        .register_producer(descriptor(), Text)
+        .expect("registered");
+    assert!(
+        producer.produced_runs(&ledger(1)).expect("runs").is_empty(),
+        "a stream never opened holds no run"
+    );
+    for at in 0..20 {
+        producer
+            .append(&ledger(1), &format!("first-{at}"))
+            .expect("appended");
+    }
+    let first = producer
+        .state(&ledger(1))
+        .expect("state")
+        .expect("a run")
+        .run_id;
+    producer.rollover(&ledger(1), None).expect("rolled over");
+    for at in 0..7 {
+        producer
+            .append(&ledger(1), &format!("second-{at}"))
+            .expect("appended");
+    }
+    let runs = StreamAppender::runs(&producer, &ledger(1)).expect("runs");
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].run, first);
+    assert_eq!((runs[0].last_seq, runs[0].ended), (20, true));
+    assert_eq!((runs[1].last_seq, runs[1].ended), (7, false));
+    assert_eq!(runs[1].low_watermark, 1);
+    let second = runs[1].run;
+
+    let page = StreamAppender::records(&producer, &ledger(1), &first, 14, 4).expect("read");
+    let seqs: Vec<u64> = page.records.iter().map(|(seq, _)| *seq).collect();
+    assert_eq!(seqs, [14, 15, 16, 17]);
+    assert_eq!(page.records[0].1, b"first-13".to_vec());
+    assert_eq!(page.low_watermark, None);
+    let page = StreamAppender::records(&producer, &ledger(1), &second, 1, 100).expect("read");
+    assert_eq!(page.records.len(), 7, "only the run asked for");
+    assert_eq!(page.records[6].1, b"second-6".to_vec());
+    // Written since the last read: seen by the next.
+    producer
+        .append(&ledger(1), &"second-7".to_owned())
+        .expect("appended");
+    let page = StreamAppender::records(&producer, &ledger(1), &second, 8, 10).expect("read");
+    assert_eq!(page.records, vec![(8, b"second-7".to_vec())]);
+    assert!(
+        StreamAppender::records(&producer, &ledger(1), &[9; 16], 1, 10)
+            .expect("read")
+            .records
+            .is_empty(),
+        "a run the stream never held"
+    );
+    // Reopened, nothing remembered: read from the journal again.
+    drop(producer);
+    let reopened = host.producer();
+    let page = StreamAppender::records(&reopened, &ledger(1), &first, 20, 10).expect("read");
+    assert_eq!(page.records, vec![(20, b"first-19".to_vec())]);
+}
+
+/// WP-6.2a: a floor a Plane registers through the composition replaces the one the producer was
+/// built with, and `KeepWhole` keeps every run until it does.
+#[test]
+fn a_floor_registered_through_the_composition_bounds_a_history_stream() {
+    use permguard_host::composition::StreamAppender as _;
+    struct Floor(u64);
+    impl permguard_host::composition::StreamFloor for Floor {
+        fn retention_safe(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(self.0)
+        }
+    }
+    let history = Descriptor {
+        retention: Retention::History,
+        ..descriptor()
+    };
+    let host = Host::new("plane-floor");
+    let consumer = host
+        .streams()
+        .register_consumer(history.clone(), Text)
+        .expect("registered");
+    let producer =
+        small_sealer(&host, history).with_retention_floor(Arc::new(super::retention::KeepWhole));
+    acknowledged(&producer, &consumer, &host, 8);
+    assert_eq!(
+        gc(&producer)[0].run,
+        None,
+        "kept whole until the Plane says"
+    );
+    producer
+        .retain_above(Arc::new(Floor(5)))
+        .expect("registered");
+    assert_eq!(
+        gc(&producer)[0].through,
+        4,
+        "the last whole batch at or below 5"
+    );
+}

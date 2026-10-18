@@ -162,8 +162,14 @@ pub struct Record {
     /// registered types; each record is validated against its own type's contract, and the store
     /// builds a secondary index so reading one type does not scan the others.
     pub event_type: String,
-    /// The caller's identifier for this occurrence, unique within the ledger.
+    /// The caller's identifier for this occurrence, unique within the ledger for one source.
     pub event_id: String,
+    /// The principal the submitting request authenticated as, `anonymous` under a public grant:
+    /// with `event_id`, what identifies an occurrence (WP-6.2a, owner decision of 2026-10-18).
+    /// Never a value the caller writes; absent from the records written before it existed, which
+    /// identify an occurrence by `event_id` alone.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub source: Option<String>,
     /// The digest of the occurrence exactly as the caller sent it, before this plane added
     /// anything. What makes the same client retry reaching two data planes recognisable as one
     /// logical occurrence rather than two.
@@ -276,6 +282,7 @@ pub fn validate(value: &Value) -> Result<Record, RecordError> {
         ("stream.ledger", record.stream.ledger.as_str()),
         ("event_type", record.event_type.as_str()),
         ("event_id", record.event_id.as_str()),
+        ("source", record.source.as_deref().unwrap_or("-")),
         ("kind", record.kind.as_str()),
         ("profile", record.profile.as_str()),
         ("commit", record.commit.as_str()),
@@ -479,6 +486,7 @@ mod tests {
             prev: prev.to_owned(),
             event_type: "permguard.dogwood.event.v1".to_owned(),
             event_id: "01J8Z9".to_owned(),
+            source: None,
             occurrence_digest: occurrence_digest_of(&event).expect("the occurrence digests"),
             kind: "request".to_owned(),
             profile: "temporal".to_owned(),

@@ -2075,6 +2075,7 @@ fn the_decision_log_mode_is_required_or_disabled_and_the_plane_names_no_stream()
         (vec![(SETTING_LOG_ON_FULL, "open")], SETTING_LOG_MODE),
         (vec![(SETTING_LOG_ON_FULL, "sometimes")], "closed"),
         (vec![(SETTING_LOG_PDP_ID, "pdp-1")], "host_id"),
+        (vec![(SETTING_EVENTS_PRODUCER_ID, "plane-1")], "host_id"),
     ] {
         let error = format!("{:#}", built(&refused).expect_err("refused"));
         assert!(error.contains(names), "{refused:?}: {error}");
