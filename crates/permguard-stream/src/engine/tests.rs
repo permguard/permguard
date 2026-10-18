@@ -5496,3 +5496,425 @@ fn a_frontier_read_writes_nothing_and_answers_a_forked_stream() {
         "forked"
     );
 }
+
+/// WP-5.7c: a stream directory copied off the volume verifies offline under its ring's keys,
+/// before and after a prefix went; an altered record, in a batch file or in the journal, is a
+/// finding; keys of another ring are refused.
+#[test]
+fn an_altered_record_fails_the_offline_check() {
+    struct Source;
+    impl super::retention::RetentionSource for Source {
+        fn retention_seconds(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(1)
+        }
+    }
+    let host = Host::new("verify-offline");
+    let consumer = host
+        .streams()
+        .with_segment_bytes(256)
+        .register_consumer(descriptor(), Text)
+        .expect("registered")
+        .with_retention_source(Arc::new(Source));
+    let producer = small_sealer(&host, descriptor());
+    let run = acknowledged(&producer, &consumer, &host, 6);
+    for at in 6..8 {
+        producer
+            .append(&ledger(1), &format!("r{at}"))
+            .expect("appended");
+    }
+    let keys = super::verify::Keys::from_document(
+        &host.attest.export_document().expect("the ring exports"),
+        DATA_ATTEST,
+    )
+    .expect("the keys");
+    let descriptors = [descriptor()];
+    let copy = |from: &Path, tag: &str| -> PathBuf {
+        let to = scratch(tag);
+        let _ = std::fs::remove_dir_all(&to);
+        copy_tree(from, &to);
+        to
+    };
+    let producer_dir = host.producer_dir(&ledger(1));
+    let report =
+        super::verify::verify_directory(&copy(&producer_dir, "verify-copy"), &keys, &descriptors)
+            .expect("checked");
+    assert!(report.sound(), "{}", report.render());
+    assert_eq!(
+        (report.role.as_str(), report.batches, report.records),
+        ("producer", 3, 6)
+    );
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|note| note.contains("2 record(s) past the last batch"))
+    );
+
+    // A record altered in a batch file: its batch no longer verifies.
+    let altered = copy(&producer_dir, "verify-batch");
+    let file = altered.join("batches").join(hex(&run)).join("3-4.jws");
+    let text = std::fs::read_to_string(&file).expect("the batch");
+    let records_at = text.find("\"records\"").expect("records");
+    let mut bytes = text.into_bytes();
+    let at = records_at + 15;
+    bytes[at] = if bytes[at] == b'A' { b'B' } else { b'A' };
+    std::fs::write(&file, bytes).expect("altered");
+    let report = super::verify::verify_directory(&altered, &keys, &descriptors).expect("checked");
+    assert!(!report.sound(), "{}", report.render());
+
+    // A record altered in the journal: not the one the batch signed.
+    let altered = copy(&producer_dir, "verify-journal");
+    let mut changed = false;
+    for entry in std::fs::read_dir(altered.join("records")).expect("records") {
+        let path = entry.expect("entry").path();
+        let mut bytes = std::fs::read(&path).expect("a segment");
+        if let Some(at) = bytes.windows(2).position(|pair| pair == b"r3") {
+            bytes[at + 1] = b'9';
+            std::fs::write(&path, &bytes).expect("altered");
+            changed = true;
+        }
+    }
+    assert!(changed);
+    let report = super::verify::verify_directory(&altered, &keys, &descriptors)
+        .expect("a damaged journal is a finding, not an error");
+    assert!(!report.sound(), "{}", report.render());
+
+    // After a prefix went, the anchor carries the chain; the consumer's run verifies too.
+    gc(&producer);
+    gc_at(&consumer, host.time.now_secs() + 10);
+    let report =
+        super::verify::verify_directory(&copy(&producer_dir, "verify-pruned"), &keys, &descriptors)
+            .expect("checked");
+    assert!(report.sound(), "{}", report.render());
+    let consumer_run = run_dir_of(&host, run);
+    let consumer_copy = scratch("verify-consumer").join(hex(&run));
+    copy_tree(&consumer_run, &consumer_copy);
+    let report =
+        super::verify::verify_directory(&consumer_copy, &keys, &descriptors).expect("checked");
+    assert!(report.sound(), "{}", report.render());
+    assert_eq!(report.role, "consumer");
+
+    assert!(
+        super::verify::Keys::from_document(
+            &host.operations.export_document().expect("the ring exports"),
+            DATA_ATTEST
+        )
+        .is_err()
+    );
+}
+
+/// A copy of the directory tree at `from` into `to`.
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("a directory");
+    for entry in std::fs::read_dir(from).expect("listed") {
+        let entry = entry.expect("entry");
+        let target = to.join(entry.file_name());
+        if entry.file_type().expect("a type").is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).expect("copied");
+        }
+    }
+}
+
+/// WP-5.7c, after the review: what an attacker holding the copy can do and the check finds — a
+/// journal record altered with its frame's checksum recomputed, a run's batches deleted, a batch
+/// in the middle deleted, the journal's tail cut, another run's batches dropped in, a consumer's
+/// anchor deleted.
+#[test]
+fn the_offline_check_finds_each_alteration() {
+    struct Source;
+    impl super::retention::RetentionSource for Source {
+        fn retention_seconds(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(1)
+        }
+    }
+    let host = Host::new("verify-tamper");
+    let consumer = host
+        .streams()
+        .with_segment_bytes(1)
+        .register_consumer(descriptor(), Text)
+        .expect("registered")
+        .with_retention_source(Arc::new(Source));
+    // One frame a segment: each journal frame is its own file.
+    let producer = host
+        .streams()
+        .with_segment_bytes(1)
+        .register_producer(descriptor(), Text)
+        .expect("registered")
+        .with_signer(Arc::clone(&host.attest))
+        .expect("the descriptor's ring");
+    let run = acknowledged(&producer, &consumer, &host, 6);
+    let keys = super::verify::Keys::from_document(
+        &host.attest.export_document().expect("the ring exports"),
+        DATA_ATTEST,
+    )
+    .expect("the keys");
+    let descriptors = [descriptor()];
+    let producer_dir = host.producer_dir(&ledger(1));
+    let check =
+        |dir: &Path| super::verify::verify_directory(dir, &keys, &descriptors).expect("checked");
+    let copy = |from: &Path, tag: &str| -> PathBuf {
+        let to = scratch(tag).join(from.file_name().expect("a name"));
+        copy_tree(from, &to);
+        to
+    };
+    assert!(check(&copy(&producer_dir, "tamper-sound")).sound());
+
+    // A journal record altered, its frame's checksum recomputed: only the batch says otherwise.
+    let altered = copy(&producer_dir, "tamper-journal");
+    let mut rewritten = false;
+    for entry in std::fs::read_dir(altered.join("records")).expect("records") {
+        let path = entry.expect("entry").path();
+        let bytes = std::fs::read(&path).expect("a segment");
+        let Some(at) = bytes.windows(2).position(|pair| pair == b"r3") else {
+            continue;
+        };
+        // header (48) | length u32 | kind u16 | claim u64 | payload | checksum (32)
+        let kind = u16::from_be_bytes([bytes[52], bytes[53]]);
+        let claim = u64::from_be_bytes(bytes[54..62].try_into().expect("eight bytes"));
+        let mut payload = bytes[62..bytes.len() - 32].to_vec();
+        payload[at - 62 + 1] = b'9';
+        let mut segment = bytes[..48].to_vec();
+        segment.extend(
+            permguard_host::storage::journal::encode_frame(kind, claim, &payload).expect("a frame"),
+        );
+        std::fs::write(&path, segment).expect("rewritten");
+        rewritten = true;
+    }
+    assert!(rewritten);
+    let report = check(&altered);
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.contains("record 4 is not the one")),
+        "{}",
+        report.render()
+    );
+
+    // A run's batches deleted: STATE says they were sealed.
+    let altered = copy(&producer_dir, "tamper-run");
+    std::fs::remove_dir_all(altered.join("batches").join(hex(&run))).expect("deleted");
+    let report = check(&altered);
+    assert_eq!(report.role, "producer");
+    assert!(!report.sound(), "{}", report.render());
+
+    // A batch in the middle deleted: a gap.
+    let altered = copy(&producer_dir, "tamper-gap");
+    std::fs::remove_file(altered.join("batches").join(hex(&run)).join("3-4.jws")).expect("deleted");
+    let report = check(&altered);
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.contains("starts at 5, and 3 was next")),
+        "{}",
+        report.render()
+    );
+
+    // The journal's tail cut: the sealed records it held are missing.
+    let altered = copy(&producer_dir, "tamper-tail");
+    let mut segments: Vec<PathBuf> = std::fs::read_dir(altered.join("records"))
+        .expect("records")
+        .map(|entry| entry.expect("entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "pgj"))
+        .collect();
+    segments.sort();
+    let last = segments.last().expect("a segment");
+    let bytes = std::fs::read(last).expect("the last segment");
+    std::fs::write(last, &bytes[..bytes.len() - 5]).expect("cut");
+    let report = check(&altered);
+    assert!(
+        report.notes.iter().any(|note| note.contains("torn")),
+        "{}",
+        report.render()
+    );
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.contains("lacks record 6")),
+        "{}",
+        report.render()
+    );
+
+    // Another run's batches dropped in.
+    let altered = copy(&producer_dir, "tamper-foreign");
+    copy_tree(
+        &altered.join("batches").join(hex(&run)),
+        &altered.join("batches").join("ab".repeat(16)),
+    );
+    let report = check(&altered);
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.contains("a run the journal does not hold")),
+        "{}",
+        report.render()
+    );
+
+    // A consumer's anchor deleted after its prefix went: its batches no longer start at 1.
+    gc_at(&consumer, host.time.now_secs() + 10);
+    let consumer_copy = copy(&run_dir_of(&host, run), "tamper-consumer");
+    assert!(consumer_copy.join("ANCHOR").exists());
+    assert!(
+        check(&consumer_copy).sound(),
+        "{}",
+        check(&consumer_copy).render()
+    );
+    std::fs::remove_file(consumer_copy.join("ANCHOR")).expect("deleted");
+    let report = check(&consumer_copy);
+    assert!(!report.sound(), "{}", report.render());
+}
+
+/// WP-5.7c, after the mutants: batches signed by the ring's own key and still refused — one that
+/// breaks the chain, one of another stream; an anchor whose checkpoint is another batch; a
+/// consumer's records no batch signed.
+#[test]
+fn the_offline_check_refuses_well_signed_lies() {
+    struct Source;
+    impl super::retention::RetentionSource for Source {
+        fn retention_seconds(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(1)
+        }
+    }
+    let host = Host::new("verify-lies");
+    let consumer = host
+        .streams()
+        .register_consumer(descriptor(), Text)
+        .expect("registered")
+        .with_retention_source(Arc::new(Source));
+    let producer = small_sealer(&host, descriptor());
+    let run = acknowledged(&producer, &consumer, &host, 6);
+    let keys = super::verify::Keys::from_document(
+        &host.attest.export_document().expect("the ring exports"),
+        DATA_ATTEST,
+    )
+    .expect("the keys");
+    let descriptors = [descriptor()];
+    let check =
+        |dir: &Path| super::verify::verify_directory(dir, &keys, &descriptors).expect("checked");
+    let copy = |from: &Path, tag: &str| -> PathBuf {
+        let to = scratch(tag).join(from.file_name().expect("a name"));
+        copy_tree(from, &to);
+        to
+    };
+    let producer_dir = host.producer_dir(&ledger(1));
+    let batches = producer_dir.join("batches").join(hex(&run));
+    let envelope_of = |bytes: &[u8]| {
+        batch::SealedBatch::decode(bytes)
+            .expect("decoded")
+            .envelope_unverified()
+            .expect("an envelope")
+    };
+    let first = std::fs::read(batches.join("1-2.jws")).expect("the first batch");
+    let second = envelope_of(&std::fs::read(batches.join("3-4.jws")).expect("the second"));
+
+    // Signed by the ring, the right records, a chain that does not continue.
+    let altered = copy(&producer_dir, "lies-chain");
+    let broken = forge(
+        &host,
+        run,
+        3,
+        format!("sha256:{}", "0".repeat(64)),
+        &["r2", "r3"],
+        1,
+    );
+    std::fs::write(
+        altered.join("batches").join(hex(&run)).join("3-4.jws"),
+        broken,
+    )
+    .expect("replaced");
+    let report = check(&altered);
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.contains("does not continue the chain")),
+        "{}",
+        report.render()
+    );
+
+    // Signed by the ring, continuing the chain, of another resource.
+    let altered = copy(&producer_dir, "lies-stream");
+    let foreign = forge_with(
+        host.attest.as_ref(),
+        &host,
+        run,
+        5,
+        second.head.clone(),
+        vec![b"r4".to_vec(), b"r5".to_vec()],
+        1,
+        |envelope| envelope.stream_key.resource = ledger(2).to_string(),
+    );
+    std::fs::write(
+        altered.join("batches").join(hex(&run)).join("5-6.jws"),
+        foreign,
+    )
+    .expect("replaced");
+    let report = check(&altered);
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.contains("is of another stream")),
+        "{}",
+        report.render()
+    );
+
+    // A consumer's records no batch signed, its STATE gone with the batch.
+    let consumer_run = run_dir_of(&host, run);
+    let altered = copy(&consumer_run, "lies-unsigned");
+    std::fs::remove_file(altered.join("batches").join("5-6.jws")).expect("deleted");
+    std::fs::remove_file(altered.join("STATE")).expect("deleted");
+    let report = check(&altered);
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.contains("no batch signed")),
+        "{}",
+        report.render()
+    );
+
+    // An anchor whose checkpoint is another batch, its covering made to match.
+    gc_at(&consumer, host.time.now_secs() + 10);
+    let altered = copy(&consumer_run, "lies-anchor");
+    let held = super::anchor::Anchor::decode(
+        &permguard_host::storage::write::read_view(
+            &permguard_host::storage::Dir::open(&altered).expect("dir"),
+            super::anchor::ANCHOR,
+            permguard_host::storage::format::VIEW,
+        )
+        .expect("read")
+        .expect("an anchor"),
+    )
+    .expect("decoded");
+    let mut covering = held.covering.clone();
+    if let Some(last) = covering.last_mut() {
+        *last = super::anchor::envelope_digest(&envelope_of(&first)).expect("a digest");
+    }
+    let lying = super::anchor::Anchor {
+        checkpoint: first.clone(),
+        covering,
+        ..held
+    };
+    permguard_host::storage::write::replace_view(
+        &permguard_host::storage::Dir::open(&altered).expect("dir"),
+        super::anchor::ANCHOR,
+        permguard_host::storage::format::VIEW,
+        &lying.encode().expect("encodes"),
+    )
+    .expect("replaced");
+    let report = check(&altered);
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.contains("checkpoint ends at 2")),
+        "{}",
+        report.render()
+    );
+}

@@ -998,6 +998,72 @@ fn failure_record(dir: &Dir) -> Result<Option<(u64, u64)>> {
     }
 }
 
+/// Every frame the journal in `dir` holds, from `BASE` on, read without opening it (WP-5.7c):
+/// nothing is repaired, swept or removed. A torn or headerless tail of the last segment ends the
+/// read, as it is an append under way; anything torn before it, or a first segment not at `BASE`,
+/// is corruption.
+pub fn read_frames(dir: &Dir) -> Result<Vec<Frame>> {
+    read_frames_and_tail(dir).map(|(frames, _)| frames)
+}
+
+/// [`read_frames`], and whether the last segment ended in a torn or headerless tail: what an
+/// append under way leaves, or damage to the last frame, which a reader comparing the frames with
+/// a commitment must not take for absence (after the review).
+pub fn read_frames_and_tail(dir: &Dir) -> Result<(Vec<Frame>, bool)> {
+    let base = base_of(dir)?.map_or(0, |(first, _)| first);
+    let segments: Vec<(u64, String)> = segment_names(dir)?
+        .into_iter()
+        .filter(|(first, _)| *first >= base)
+        .collect();
+    if let Some((first, name)) = segments.first()
+        && *first != base
+    {
+        return Err(StorageError::Corruption(format!(
+            "the first segment of {}, `{name}`, starts at frame {first}, and the journal holds \
+             every frame from {base}",
+            dir.path().display()
+        )));
+    }
+    let count = segments.len();
+    let mut all = Vec::new();
+    let mut torn = false;
+    let mut expected = base;
+    for (at, (first, name)) in segments.iter().enumerate() {
+        let last = at + 1 == count;
+        if *first != expected {
+            return Err(StorageError::Corruption(format!(
+                "segment `{name}` starts at frame {first}, after frame {expected}"
+            )));
+        }
+        let bytes = dir.read(name)?.unwrap_or_default();
+        if !head_is_whole(&bytes)? {
+            if last && bytes.len() <= SEGMENT_HEAD {
+                torn = !bytes.is_empty();
+                break;
+            }
+            return Err(StorageError::Corruption(format!(
+                "segment `{name}` has a damaged header"
+            )));
+        }
+        match scan(&bytes, *first, name)? {
+            Scan::Whole { frames, .. } => {
+                expected = first + frames.len() as u64;
+                all.extend(frames);
+            }
+            Scan::Torn { frames, .. } if last => {
+                torn = true;
+                all.extend(frames);
+            }
+            Scan::Torn { .. } => {
+                return Err(StorageError::Corruption(format!(
+                    "segment `{name}` holds a torn frame, and segments follow it"
+                )));
+            }
+        }
+    }
+    Ok((all, torn))
+}
+
 /// Every segment in `dir`, `(first frame index, name)`, in order.
 pub(crate) fn segment_names(dir: &Dir) -> Result<Vec<(u64, String)>> {
     let mut segments: Vec<(u64, String)> = dir
@@ -2727,5 +2793,29 @@ mod tests {
         assert_eq!(journal.first_index(), 4);
         assert_eq!(journal.segments(), vec![segment_name(4)]);
         assert_eq!(journal.append(1, &[9; 40]).expect("appended"), 4);
+    }
+
+    /// WP-5.7c: the frames read without opening the journal are the frames it holds, from `BASE`
+    /// on, and reading them changes nothing, a torn tail included.
+    #[test]
+    fn frames_are_read_without_opening_the_journal() {
+        let path = scratch("read-frames");
+        let mut journal = filled(&path, 7);
+        assert_eq!(journal.drop_prefix(4, None).expect("dropped"), 4);
+        let held = journal.frames().expect("read");
+        drop(journal);
+        let dir = Dir::open(&path).expect("opened");
+        assert_eq!(read_frames(&dir).expect("read"), held);
+        // A torn tail ends the read, and stays as it is.
+        append_behind(&path, &[0x00, 0x00, 0x01]);
+        let before = contents(&path);
+        assert_eq!(read_frames(&dir).expect("read"), held);
+        assert_eq!(contents(&path), before, "nothing repaired");
+        // A segment missing at `BASE` is corruption.
+        std::fs::remove_file(path.join(segment_name(4))).expect("removed");
+        assert!(matches!(
+            read_frames(&dir),
+            Err(StorageError::Corruption(_))
+        ));
     }
 }

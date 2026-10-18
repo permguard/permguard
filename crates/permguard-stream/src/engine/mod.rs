@@ -46,6 +46,7 @@ pub mod reads;
 pub mod retention;
 pub mod run;
 pub mod state;
+pub mod verify;
 
 use std::collections::BTreeSet;
 use std::fmt;

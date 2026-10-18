@@ -117,6 +117,12 @@ pub enum Command {
         #[command(subcommand)]
         what: AuditCommand,
     },
+    /// Work with the Host's streams offline.
+    Streams {
+        /// What to do with them.
+        #[command(subcommand)]
+        what: StreamsCommand,
+    },
     /// Work with a key ring.
     Keys {
         /// What to do with it.
@@ -304,6 +310,46 @@ pub enum AuditCommand {
         checkpoint: Option<PathBuf>,
     },
 }
+
+/// What can be asked of a stream's directory from the command line (WP-5.7c).
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum StreamsCommand {
+    /// Check that nothing in a stream's directory has been altered, offline.
+    ///
+    /// The directory is a producer's `<resource>/<host>` or a consumer's run, copied off the
+    /// volume: every batch file's signature, envelope and Merkle root, each run's chain from
+    /// genesis or from its anchor, the anchor's checkpoint, and every record the journal holds
+    /// against the batch that signed it. Nothing is repaired. Exits `0` when every check holds,
+    /// `2` when one found an alteration, `1` when the directory or the keys cannot be read.
+    ///
+    /// What a copy alone cannot show: a tail deleted together with the STATE that names it, an
+    /// older consistent copy put back whole, or whether a head below the first batch was ever
+    /// anchored. Those need a commitment held elsewhere: what a consumer acknowledged, the audit
+    /// trail's `host.stream.pruned` records.
+    Verify {
+        /// The stream's directory.
+        #[arg(value_name = "DIRECTORY")]
+        directory: PathBuf,
+
+        /// The public keys of the ring the batches are signed under (`data.attest`), as
+        /// `keys export` prints them or as a JWKS document, kept apart from the volume.
+        #[arg(long, value_name = "JWKS")]
+        keys: PathBuf,
+    },
+}
+
+/// A check that ran to its end and found what it was looking for not to hold: exit `2`, the
+/// command line's status for every completed negative check.
+#[derive(Debug)]
+pub struct NegativeCheck(pub String);
+
+impl std::fmt::Display for NegativeCheck {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for NegativeCheck {}
 
 /// What an invocation resolved to.
 #[derive(Debug, Clone, PartialEq, Eq)]

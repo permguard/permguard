@@ -24,7 +24,7 @@ use permguard_core::{
 
 use crate::banner::Banner;
 use crate::command::{
-    Action, AuditCommand, Cli, Command, KeysCommand, MigrateCommand, VolumeCommand,
+    Action, AuditCommand, Cli, Command, KeysCommand, MigrateCommand, StreamsCommand, VolumeCommand,
 };
 use crate::signal::ReloadHandler;
 use crate::{logging, signal, witness};
@@ -851,6 +851,9 @@ impl App {
             Action::Named(Command::Keys {
                 what: KeysCommand::Export { directory },
             }) => self.export_keys(directory, out),
+            Action::Named(Command::Streams {
+                what: StreamsCommand::Verify { directory, keys },
+            }) => verify_streams(directory, keys, out),
             Action::Named(Command::Volume {
                 what: VolumeCommand::Claim { volume, generation },
             }) => claim_volume(volume, *generation, out),
@@ -2494,9 +2497,49 @@ fn keks_for(
     Ok(Keks { current, previous })
 }
 
+/// `streams verify <dir> --keys <file>` (WP-5.7c): the report, and a [`NegativeCheck`] when a
+/// check found an alteration.
+fn verify_streams(directory: &Path, keys: &Path, out: &mut dyn Write) -> Result<()> {
+    let descriptors = [
+        permguard_decisions::stream::descriptor(),
+        permguard_events::stream::descriptor(),
+    ];
+    let text = std::fs::read_to_string(keys)
+        .with_context(|| format!("reading the keys in {}", keys.display()))?;
+    // Both streams are signed under one ring, `data.attest`.
+    debug_assert!(
+        descriptors
+            .iter()
+            .all(|descriptor| descriptor.ring == descriptors[0].ring)
+    );
+    let keys = permguard_stream::engine::verify::Keys::from_document(&text, descriptors[0].ring)
+        .map_err(anyhow::Error::msg)
+        .with_context(|| format!("reading the keys in {}", keys.display()))?;
+    let report = permguard_stream::engine::verify::verify_directory(directory, &keys, &descriptors)
+        .map_err(|error| anyhow::anyhow!("{error}"))
+        .with_context(|| format!("checking the stream in {}", directory.display()))?;
+    writeln!(out, "{}", report.render()).context("writing the result")?;
+    if !report.sound() {
+        return Err(anyhow::Error::new(crate::command::NegativeCheck(format!(
+            "the stream in {} does not verify: {} finding(s)",
+            directory.display(),
+            report.findings.len()
+        ))));
+    }
+    Ok(())
+}
+
 /// The exit status of a failed run: an incomplete drain is its own status, `75`, so an
-/// orchestrator never reads it as clean and never as an ordinary failure; anything else is `1`.
+/// orchestrator never reads it as clean and never as an ordinary failure; a completed negative
+/// check is `2`; anything else is `1`.
 pub fn exit_code_of(error: &anyhow::Error) -> ExitCode {
+    if error.chain().any(|cause| {
+        cause
+            .downcast_ref::<crate::command::NegativeCheck>()
+            .is_some()
+    }) {
+        return ExitCode::from(2);
+    }
     if error.chain().any(|cause| {
         cause
             .downcast_ref::<permguard_core::IncompleteDrain>()

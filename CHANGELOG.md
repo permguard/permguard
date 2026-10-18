@@ -19,6 +19,11 @@ is cut.
 
 ### Added
 
+- **`streams verify` checks a stream's directory offline.**
+  Every server binary gains `streams verify <dir> --keys <file>`, for a producer's or a consumer run's directory copied off a volume and the `keys export` of `data.attest`.
+  It verifies every batch's signature, envelope and Merkle root, each run's chain from genesis or from its anchor, the anchor's checkpoint, and every record the journal holds against the batch that signed it, without repairing anything.
+  It exits `0` when everything holds, `2` when a check found an alteration, and `1` when the directory or the keys cannot be read.
+
 - **The Host API reads the streams.**
   `GET /host/v1/streams` lists what the Host's stream engine produces and consumes, with each resource's state and retention class.
   Under `/host/v1/streams/{plane}/{type}/` the `frontier`, `records`, `signers`, `subscriptions`, `gaps` and `anchors` reads answer for one resource, over REST and over `permguard.host.v1.EvidenceService`.
