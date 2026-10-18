@@ -135,7 +135,7 @@ fn a_waiting_terminal_record_is_not_drained() {
     written(&spool, 2, 2);
     {
         let mut open = Spool::open(&spool, Bounds::default()).expect("opened");
-        open.discontinue("spool_full", |terminal| {
+        open.discontinue(permguard_core::codes::stream::SPOOL_FULL, |terminal| {
             Ok(json!({
                 "v": 1,
                 "seq": terminal.seq,
