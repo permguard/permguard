@@ -520,6 +520,8 @@ fn asking_for_the_signers_of_a_stream_nobody_holds_is_not_found() {
         producer_files: Vec::new(),
         disclosure: permguard_core::Disclosure::Full,
         metrics: Metrics::none(),
+        host: None,
+        catalog: None,
     };
 
     let refused = facade

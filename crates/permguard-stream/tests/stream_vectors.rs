@@ -300,9 +300,11 @@ fn the_ingest_records_are_the_bytes_the_independent_generator_computed() {
         Answer::decode(&hex(&i["answer_out_of_order"])).expect("decodes"),
         ahead
     );
+    // A STATE written before WP-6.1b, with no opening time: the same bytes as before.
     let state = ConsumerState {
         acked: 2,
         oldest_retained: 1,
+        opened: None,
     };
     assert_eq!(state.encode().expect("encodes"), hex(&i["consumer_state"]));
     let mark = ForkMark {

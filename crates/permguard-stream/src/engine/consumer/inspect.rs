@@ -178,3 +178,114 @@ impl<C: RecordCodec> Inspect for Consumer<C> {
         Ok(found)
     }
 }
+
+/// The batch files in `dir`, `(first, last, name)` by first sequence.
+fn batch_files(dir: &permguard_host::storage::Dir) -> Result<Vec<(u64, u64, String)>, StreamError> {
+    let mut found: Vec<(u64, u64, String)> = dir
+        .names()?
+        .into_iter()
+        .filter_map(|name| {
+            let (first, last) = name.strip_suffix(".jws")?.split_once('-')?;
+            Some((first.parse().ok()?, last.parse().ok()?, name))
+        })
+        .collect();
+    found.sort();
+    Ok(found)
+}
+
+fn wrap(error: StreamError) -> String {
+    error.to_string()
+}
+
+impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consumer<C> {
+    fn runs(
+        &self,
+        resource: &Resource,
+    ) -> Result<Vec<permguard_host::composition::ConsumedRun>, String> {
+        let mut found = Vec::new();
+        for (key, run) in self.runs_of(resource).map_err(wrap)? {
+            let Some(dir) = self.run_dir(&key, &run).map_err(wrap)? else {
+                continue;
+            };
+            let state = permguard_host::storage::write::read_view(
+                &dir,
+                super::STATE,
+                permguard_host::storage::format::VIEW,
+            )
+            .map_err(|error| error.to_string())?
+            .map(|bytes| super::ConsumerState::decode(&bytes))
+            .transpose()
+            .map_err(wrap)?;
+            found.push((
+                hex(&key.producer_host_id),
+                state.and_then(|state| state.opened).unwrap_or_default(),
+                hex(&run),
+                permguard_host::composition::ConsumedRun {
+                    producer: key.producer_host_id,
+                    run,
+                    acked: state.map_or(0, |state| state.acked),
+                    oldest_retained: state.map_or(1, |state| state.oldest_retained),
+                },
+            ));
+        }
+        // By producer, then the order the consumer first admitted the runs, kept in each STATE;
+        // the run id breaks a tie (owner decision of 2026-10-18, after the review).
+        found.sort_by(|left, right| (&left.0, left.1, &left.2).cmp(&(&right.0, right.1, &right.2)));
+        Ok(found.into_iter().map(|(.., run)| run).collect())
+    }
+
+    fn locate(&self, producer: &[u8; 16], run: &[u8; 16]) -> Result<Option<Resource>, String> {
+        let Some((key, _)) = self
+            .runs()
+            .map_err(wrap)?
+            .into_iter()
+            .find(|(key, held)| key.producer_host_id == *producer && held == run)
+        else {
+            return Ok(None);
+        };
+        Resource::parse(&key.resource)
+            .map(Some)
+            .map_err(|error| error.to_string())
+    }
+
+    fn records(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        from: u64,
+        limit: usize,
+    ) -> Result<permguard_host::composition::ConsumedPage, String> {
+        let page = self
+            .read_raw(resource, *producer, *run, from, limit)
+            .map_err(wrap)?;
+        Ok(permguard_host::composition::ConsumedPage {
+            records: page.records,
+            low_watermark: page.gap.map(|gap| gap.low_watermark),
+        })
+    }
+
+    fn batch(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        seq: u64,
+    ) -> Result<Option<Vec<u8>>, String> {
+        let key = self.descriptor.key(resource, *producer).map_err(wrap)?;
+        let Some(dir) = self.run_dir(&key, run).map_err(wrap)? else {
+            return Ok(None);
+        };
+        let Some(batches) = super::child(&dir, super::BATCHES, false).map_err(wrap)? else {
+            return Ok(None);
+        };
+        let Some((_, _, name)) = batch_files(&batches)
+            .map_err(wrap)?
+            .into_iter()
+            .find(|(first, last, _)| (*first..=*last).contains(&seq))
+        else {
+            return Ok(None);
+        };
+        batches.read(&name).map_err(|error| error.to_string())
+    }
+}

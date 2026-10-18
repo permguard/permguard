@@ -12,7 +12,7 @@
 //!     ├── records/                   the records verbatim, the authority on `acked`
 //!     ├── batches/<first>-<last>.jws the batch files verbatim
 //!     ├── signers.cbor               the spans of the keys the batches were verified under
-//!     ├── STATE                      {1 acked, 2 oldest_retained}
+//!     ├── STATE                      {1 acked, 2 oldest_retained, 3 opened?}
 //!     └── ANCHOR                     what the run keeps of a deleted prefix (WP-5.6b)
 //! ```
 //!
@@ -64,14 +64,18 @@ pub struct ConsumerState {
     pub acked: u64,
     /// The oldest sequence whose bytes are held; below it a range is `gone` (WP-5.6 moves it).
     pub oldest_retained: u64,
+    /// When the consumer first admitted the run, microseconds since the epoch: the order the runs
+    /// of one producer opened, which the public reads follow (WP-6.1b, after the review).
+    pub opened: Option<u64>,
 }
 
 impl ConsumerState {
     pub fn encode(&self) -> Result<Vec<u8>, StreamError> {
-        encode(vec![
-            (1, uint(self.acked)?),
-            (2, uint(self.oldest_retained)?),
-        ])
+        let mut pairs = vec![(1, uint(self.acked)?), (2, uint(self.oldest_retained)?)];
+        if let Some(opened) = self.opened {
+            pairs.push((3, uint(opened)?));
+        }
+        encode(pairs)
     }
 
     // conformance: boundary
@@ -85,6 +89,7 @@ impl ConsumerState {
         let state = Self {
             acked: map.uint(1)?,
             oldest_retained: map.uint(2)?,
+            opened: map.optional_uint(3)?,
         };
         map.finish()?;
         if state.oldest_retained == 0 {
@@ -137,6 +142,8 @@ struct Held {
     /// The digest of the record at `acked`, as the envelope spells it; genesis before any.
     last: String,
     oldest_retained: u64,
+    /// When the run was first admitted (WP-6.1b).
+    opened: Option<u64>,
     /// Each RECORDS frame's first sequence and journal index, in order: where a read of a range
     /// starts, so a replay never reads the whole run (after the review).
     groups: Vec<(u64, u64)>,
@@ -145,6 +152,15 @@ struct Held {
     /// Records a crash left before their admission was written: dated by the open that found
     /// them, in memory, and written by the next garbage collection pass, never by a read.
     undated: Option<(u64, u64)>,
+}
+
+/// Now, in microseconds since the epoch: when a run was first admitted, fine enough that two runs
+/// of one producer admitted in one second keep their order.
+fn opened_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| u64::try_from(since.as_micros()).unwrap_or(u64::MAX))
+        .unwrap_or_default()
 }
 
 /// The payload of an `ADMITTED` frame.
@@ -378,10 +394,11 @@ impl<C: RecordCodec> Consumer<C> {
                 last = digest_string(self.descriptor.record_domain, record);
             }
         }
-        let oldest_retained = read_view(&dir, STATE, format::VIEW)?
+        let state = read_view(&dir, STATE, format::VIEW)?
             .map(|bytes| ConsumerState::decode(&bytes))
-            .transpose()?
-            .map_or(1, |state| state.oldest_retained);
+            .transpose()?;
+        let oldest_retained = state.map_or(1, |state| state.oldest_retained);
+        let opened = state.and_then(|state| state.opened);
         // Records a crash left before their admission was written: dated now, kept longer;
         // written by the next pass, not by this open, which may serve a read (after the review).
         let undated = (acked > admitted.last().map_or(0, |(through, _)| *through))
@@ -392,6 +409,7 @@ impl<C: RecordCodec> Consumer<C> {
             acked,
             last,
             oldest_retained,
+            opened,
             groups,
             admitted,
             undated,
@@ -491,6 +509,9 @@ impl<C: RecordCodec> Consumer<C> {
             .append(ADMITTED, &encode_admitted(held.acked, at)?)?;
         held.admitted.push((held.acked, at));
         held.undated = None;
+        if held.opened.is_none() {
+            held.opened = Some(opened_now());
+        }
         replace_view(
             &held.dir,
             STATE,
@@ -498,6 +519,7 @@ impl<C: RecordCodec> Consumer<C> {
             &ConsumerState {
                 acked: held.acked,
                 oldest_retained: held.oldest_retained,
+                opened: held.opened,
             }
             .encode()?,
         )?;

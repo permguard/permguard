@@ -90,8 +90,24 @@ fn resource_of(dir: &Dir) -> Result<Option<String>, StreamError> {
 impl<C: RecordCodec> Consumer<C> {
     /// Every run this consumer holds: `(key, run)`.
     pub(super) fn runs(&self) -> Result<Vec<(StreamKey, [u8; 16])>, StreamError> {
+        self.runs_under(None)
+    }
+
+    /// The runs this consumer holds of `resource`, reading its directory alone (WP-6.1b).
+    pub(super) fn runs_of(
+        &self,
+        resource: &Resource,
+    ) -> Result<Vec<(StreamKey, [u8; 16])>, StreamError> {
+        let component = self.descriptor.key(resource, [0; 16])?.resource_component();
+        self.runs_under(Some(&component))
+    }
+
+    fn runs_under(&self, only: Option<&str>) -> Result<Vec<(StreamKey, [u8; 16])>, StreamError> {
         let mut found = Vec::new();
         for component in self.dir.subdirs()? {
+            if only.is_some_and(|only| only != component) {
+                continue;
+            }
             let resource_dir = self.dir.subdir(&component, false)?;
             for producer in resource_dir.subdirs()? {
                 let Some(producer_id) = unhex16(&producer) else {
@@ -336,6 +352,7 @@ impl<C: RecordCodec> Consumer<C> {
             &ConsumerState {
                 acked: held.acked,
                 oldest_retained: pruned.through + 1,
+                opened: held.opened,
             }
             .encode()?,
         )?;

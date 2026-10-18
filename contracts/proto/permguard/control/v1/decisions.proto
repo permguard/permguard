@@ -111,7 +111,8 @@ message ReadResponse {
   string next = 2;
   // Whether the scope holds more right now.
   bool more = 3;
-  // The envelopes attesting these records, when asked for.
+  // The envelopes attesting these records, when asked for, as JSON, each
+  // naming its `format`: `legacy-jws-v1` or `host-batch-v1`.
   repeated bytes proof = 4;
   // One inclusion path per record, as JSON, when asked for. What a
   // tenant-scoped reader verifies with: its page is a subsequence of a

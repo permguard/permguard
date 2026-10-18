@@ -1976,10 +1976,11 @@ fn stream_samples() -> Vec<Sample> {
             ConsumerState {
                 acked: 4,
                 oldest_retained: 1,
+                opened: Some(1_792_000_000_000_000),
             }
             .encode()
             .expect("encodes"),
-            &[],
+            &["consumer_state.opened"],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(ConsumerState::decode(bytes))
             })),

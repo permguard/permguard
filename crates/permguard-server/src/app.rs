@@ -1260,11 +1260,17 @@ impl App {
             .with_retention_source(retention(
                 permguard_host::membership::record::TaskType::EventsShip,
             ));
+        let decision_consumer = Arc::new(decision_consumer);
         Ok((
             permguard_stream::engine::Served::default()
                 .with(permguard_decisions::stream::STREAM, Arc::new(decisions))
-                .with(permguard_events::stream::STREAM, Arc::new(events)),
-            Arc::new(decision_consumer),
+                .with(permguard_events::stream::STREAM, Arc::new(events))
+                // What the Control Plane's public decision reads answer from (WP-6.1b).
+                .with_consumer(
+                    permguard_decisions::stream::STREAM,
+                    Arc::clone(&decision_consumer),
+                ),
+            decision_consumer,
             Arc::new(event_consumer),
         ))
     }

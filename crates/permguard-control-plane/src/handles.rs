@@ -65,6 +65,8 @@ pub(crate) fn declaration() -> Declaration {
         .handles_task(TaskType::EventsImport, 1)
         .uses_task(TaskType::DecisionsShip, 1)
         .uses_task(TaskType::EventsShip, 1)
+        // The public decision reads answer from the Host's consumer (WP-6.1b).
+        .reads_stream(permguard_decisions::stream::STREAM)
 }
 
 pub(crate) fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
@@ -75,6 +77,27 @@ pub(crate) fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registratio
 /// (WP-3.3); `None` when no Host registered the plane.
 pub(crate) fn host_id(context: &PlaneContext<'_>) -> Option<[u8; 16]> {
     registration(context)?.host_id()
+}
+
+/// The Host's consumer of the decision stream, which the public decision reads answer from
+/// (WP-6.1b); `None` when the Host composes no stream engine consuming it.
+pub(crate) fn decision_consumer(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::StreamConsumer> {
+    match registration(context)?.stream_consumer(permguard_decisions::stream::STREAM) {
+        Ok(consumer) => consumer,
+        Err(error) => {
+            // The declaration and this lookup name the same stream: a mismatch turns the Host
+            // reads off, and is said rather than swallowed.
+            tracing::error!(
+                event.name = "decisions.consumer_undeclared",
+                component = "control-plane",
+                error = %error,
+                "the decision reads cannot reach the Host's consumer"
+            );
+            None
+        }
+    }
 }
 
 /// The Host's authorization, which every route of this plane decides with (WP-2.4). A plane the

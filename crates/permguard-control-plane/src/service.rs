@@ -988,6 +988,8 @@ fn build_decision_facade(
             .collect(),
         disclosure: config.error_detail(),
         metrics: context.metrics().clone(),
+        host: crate::handles::decision_consumer(context),
+        catalog: context.catalog().map(std::sync::Arc::clone),
     };
     if let Ok(mut held) = shared.lock() {
         *held = Some(facade.clone());

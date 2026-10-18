@@ -1117,7 +1117,75 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": null,
-        "x-grpc-note": "The signed envelope, carried as JSON bytes: the `signature` member of the batch in `batch` of permguard.control.v1.ShipRequest, and an element of `proof` of permguard.control.v1.ReadResponse."
+        "x-grpc-note": "The signed envelope, carried as JSON bytes: the `signature` member of the batch in `batch` of permguard.control.v1.ShipRequest, and inside an element of `proof` of permguard.control.v1.ReadResponse."
+      },
+      "Proof": {
+        "description": "One element of a read's `proof`, switched on `format` (WP-6.1b): a legacy store's batch JWS, or the batch the Host's engine sealed.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/LegacyProof"
+          },
+          {
+            "$ref": "#/components/schemas/HostProof"
+          }
+        ],
+        "x-grpc-message": null,
+        "x-grpc-note": "An element of `proof` of permguard.control.v1.ReadResponse, carried as JSON bytes."
+      },
+      "LegacyProof": {
+        "type": "object",
+        "description": "The legacy store's batch JWS, its members unchanged, naming its format.",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "legacy-jws-v1"
+            ]
+          },
+          "protected": {
+            "type": "string",
+            "description": "The protected header, base64url."
+          },
+          "payload": {
+            "type": "string",
+            "description": "The payload, base64url: the canonical envelope bytes."
+          },
+          "signature": {
+            "type": "string",
+            "description": "The signature over `protected || \".\" || payload`, base64url."
+          }
+        },
+        "required": [
+          "format",
+          "protected",
+          "payload",
+          "signature"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "An element of `proof` of permguard.control.v1.ReadResponse, carried as JSON bytes."
+      },
+      "HostProof": {
+        "type": "object",
+        "description": "The batch the producing Host's stream engine sealed: its flattened JWS over the batch envelope, whose Merkle root the inclusion paths reach.",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "host-batch-v1"
+            ]
+          },
+          "signature": {
+            "$ref": "#/components/schemas/Signed"
+          }
+        },
+        "required": [
+          "format",
+          "signature"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "An element of `proof` of permguard.control.v1.ReadResponse, carried as JSON bytes."
       },
       "Batch": {
         "type": "object",
@@ -1233,9 +1301,9 @@
           "proof": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Signed"
+              "$ref": "#/components/schemas/Proof"
             },
-            "description": "The signed envelopes covering these records, when `proof` was asked.",
+            "description": "The signed envelopes covering these records, when `proof` was asked, each naming its format.",
             "x-grpc-field": "proof"
           },
           "inclusion": {

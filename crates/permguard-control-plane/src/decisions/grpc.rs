@@ -231,8 +231,9 @@ impl DecisionLog for DecisionFacade {
 
         // Off the runtime's threads, exactly as on HTTP.
         let page = {
-            let (store, scope, key) = (self.store.clone(), scope.clone(), self.cursor_key.clone());
-            tokio::task::spawn_blocking(move || read::read(&store, &scope, &key, &window))
+            let facade = self.clone();
+            let scope = scope.clone();
+            tokio::task::spawn_blocking(move || facade.read(&scope, &window))
                 .await
                 .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
         };
@@ -362,20 +363,14 @@ fn api_error_of(refused: &Refused) -> ApiError {
     }
 }
 
-/// A read refused before it began: an offset of another read is `forged`, any other one
-/// `offset_invalid`, both validation (WP-5.5).
+/// A refused read: an offset of another read is `forged`, any other one `offset_invalid`, both
+/// validation (WP-5.5); a store or consumer that could not answer is `unavailable` (WP-6.1b).
 fn refused_read(
     error: &crate::decisions::read::ReadError,
     disclosure: permguard_core::Disclosure,
 ) -> Status {
-    api_status(
-        &ApiError::new(
-            ErrorClass::Validation,
-            crate::decisions::read::refusal_code(error),
-            error.to_string(),
-        ),
-        disclosure,
-    )
+    let (class, code) = crate::decisions::read::refusal(error);
+    api_status(&ApiError::new(class, code, error.to_string()), disclosure)
 }
 
 fn api_status(failed: &ApiError, disclosure: permguard_core::Disclosure) -> Status {

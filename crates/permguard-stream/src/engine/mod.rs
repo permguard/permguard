@@ -554,6 +554,10 @@ pub struct Served {
     shipping: Vec<Arc<dyn permguard_host::composition::StreamShipping>>,
     prunables: Vec<Arc<dyn retention::Prunable>>,
     inspected: Vec<Arc<dyn reads::Inspect>>,
+    consumers: std::collections::BTreeMap<
+        String,
+        Arc<dyn permguard_host::composition::StreamConsumerReads>,
+    >,
 }
 
 impl fmt::Debug for Served {
@@ -601,6 +605,18 @@ impl Served {
         self
     }
 
+    /// These and `consumer`, read as `name` by the Planes that declare they read it (WP-6.1).
+    pub fn with_consumer<P>(mut self, name: &str, consumer: Arc<P>) -> Self
+    where
+        P: permguard_host::composition::StreamConsumerReads + 'static,
+    {
+        self.consumers.insert(
+            name.to_owned(),
+            consumer as Arc<dyn permguard_host::composition::StreamConsumerReads>,
+        );
+        self
+    }
+
     /// The names served, in order.
     pub fn names(&self) -> Vec<&str> {
         self.producers.keys().map(String::as_str).collect()
@@ -613,6 +629,13 @@ impl permguard_host::composition::StreamEngine for Served {
         stream: &str,
     ) -> Option<Arc<dyn permguard_host::composition::StreamAppender>> {
         self.producers.get(stream).map(Arc::clone)
+    }
+
+    fn consumer(
+        &self,
+        stream: &str,
+    ) -> Option<Arc<dyn permguard_host::composition::StreamConsumerReads>> {
+        self.consumers.get(stream).map(Arc::clone)
     }
 }
 

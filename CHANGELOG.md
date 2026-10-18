@@ -348,6 +348,13 @@ is cut.
 
 ### Changed
 
+- **The decision reads answer from the Host's stream too, and every proof entry names its format.**
+  A Control Plane composed with the Host's stream engine reads, besides its own store, what the Host's consumer of `data/decisions` holds, in process.
+  A tenant read (`/zones/{zone}/ledgers/{ledger}/decisions/v1/records`) answers what the store holds first, then each producer's runs of that ledger by `host_id` and the order they opened, each record naming its `host_id` and run; the zone and ledger are resolved by name or id in the catalog.
+  `pdp` and `instance` naming a `host_id` and a run the consumer holds read that run alone; any other pair reads the store as before.
+  Each `proof[]` entry now carries `format`: `host-batch-v1` with the sealed batch's JWS as `signature`, its inclusion paths reaching the root that batch signs, or `legacy-jws-v1` beside the store's JWS members, which are unchanged.
+  A cursor standing in a run behind what the consumer still holds is refused as `offset_expired`.
+
 - **Decisions are recorded on the Host's stream, named by the Host and its run.**
   A Data Plane keeping a decision log now appends each record to the Host's stream engine, one stream per zone and ledger, as `data/decisions`; the Host's producer owns the run, the sequence, the flush and the reserve.
   A record's `stream.id` is the Host's `host_id` and `stream.instance` the run, each as 32 lowercase hex digits; `seq` and `prev` are the engine's.

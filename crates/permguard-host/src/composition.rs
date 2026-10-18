@@ -120,6 +120,7 @@ pub struct Declaration {
     audit: Vec<(&'static str, &'static [&'static str])>,
     zone_keys: Vec<crate::secrets::ZonePurpose>,
     streams: Vec<String>,
+    read_streams: Vec<String>,
     tasks: Vec<crate::membership::record::Capability>,
     scope_schemas: Vec<String>,
     mutations: Vec<&'static str>,
@@ -164,6 +165,13 @@ impl Declaration {
     /// Declares a stream descriptor this Plane produces.
     pub fn produces_stream(mut self, descriptor: impl Into<String>) -> Self {
         self.streams.push(descriptor.into());
+        self
+    }
+
+    /// Declares a stream this Plane reads as the Host consumes it (WP-6.1): its public reads
+    /// answer from the Host's consumer in-process, whichever Plane produces the stream.
+    pub fn reads_stream(mut self, descriptor: impl Into<String>) -> Self {
+        self.read_streams.push(descriptor.into());
         self
     }
 
@@ -548,6 +556,16 @@ impl Host {
                     .map(|producer| (stream.clone(), producer))
             })
             .collect();
+        let consumers = declaration
+            .read_streams
+            .iter()
+            .filter_map(|stream| {
+                self.streams
+                    .as_ref()
+                    .and_then(|engine| engine.consumer(stream))
+                    .map(|consumer| (stream.clone(), consumer))
+            })
+            .collect();
         let provided: Vec<(crate::membership::record::TaskType, u64)> = declaration
             .tasks
             .iter()
@@ -605,6 +623,8 @@ impl Host {
             declared_zone_keys: declaration.zone_keys.clone(),
             producers,
             declared_streams: declaration.streams.clone(),
+            consumers,
+            declared_reads: declaration.read_streams.clone(),
             host_id: self.host_id,
             authorization: self
                 .authorization
@@ -645,6 +665,8 @@ pub struct Registration {
     declared_zone_keys: Vec<crate::secrets::ZonePurpose>,
     producers: BTreeMap<String, Arc<dyn StreamAppender>>,
     declared_streams: Vec<String>,
+    consumers: BTreeMap<String, Arc<dyn StreamConsumerReads>>,
+    declared_reads: Vec<String>,
     host_id: Option<[u8; 16]>,
     authorization: Arc<Authorization>,
     time: Arc<TimeGuard>,
@@ -710,6 +732,24 @@ impl Registration {
         }
         Ok(self.producers.get(stream).map(|appender| StreamProducer {
             appender: Arc::clone(appender),
+        }))
+    }
+
+    /// The Host's consumer of `stream`, which the Plane declared it reads (WP-6.1): `None` when no
+    /// stream engine is composed, or it consumes no such stream.
+    pub fn stream_consumer(
+        &self,
+        stream: &str,
+    ) -> Result<Option<StreamConsumer>, CompositionError> {
+        if !self
+            .declared_reads
+            .iter()
+            .any(|declared| declared == stream)
+        {
+            return Err(self.undeclared(format!("the consumer of stream `{stream}`")));
+        }
+        Ok(self.consumers.get(stream).map(|reads| StreamConsumer {
+            reads: Arc::clone(reads),
         }))
     }
 
@@ -1516,6 +1556,108 @@ pub struct Unshipped {
 pub trait StreamEngine: Send + Sync {
     /// The producer of `stream`, as the Plane declared it.
     fn producer(&self, stream: &str) -> Option<Arc<dyn StreamAppender>>;
+
+    /// The consumer of `stream` (WP-6.1): `None` when the engine consumes no such stream.
+    fn consumer(&self, _stream: &str) -> Option<Arc<dyn StreamConsumerReads>> {
+        None
+    }
+}
+
+/// One producer run the Host's consumer holds (WP-6.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsumedRun {
+    pub producer: [u8; 16],
+    pub run: [u8; 16],
+    /// The highest contiguous sequence held.
+    pub acked: u64,
+    /// The first sequence still held; below it a deleted prefix.
+    pub oldest_retained: u64,
+}
+
+/// A page of a consumed run's records, as their bytes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ConsumedPage {
+    pub records: Vec<(u64, Vec<u8>)>,
+    /// When the read started below what the run still holds: where it holds from.
+    pub low_watermark: Option<u64>,
+}
+
+/// What a Plane reads of a stream the Host consumes (WP-6.1, owner decision of 2026-10-18): the
+/// public reads answer from the consumer in-process, one copy.
+pub trait StreamConsumerReads: Send + Sync {
+    /// The runs held over `resource`, by producer and then the order they opened.
+    fn runs(&self, resource: &Resource) -> Result<Vec<ConsumedRun>, String>;
+
+    /// The resource over which `producer`'s run `run` is held, when it is.
+    fn locate(&self, producer: &[u8; 16], run: &[u8; 16]) -> Result<Option<Resource>, String>;
+
+    /// At most `limit` records of `producer`'s run `run` over `resource` from `from`.
+    fn records(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        from: u64,
+        limit: usize,
+    ) -> Result<ConsumedPage, String>;
+
+    /// The batch file, as admitted, covering `seq` of `producer`'s run `run` over `resource`.
+    fn batch(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        seq: u64,
+    ) -> Result<Option<Vec<u8>>, String>;
+}
+
+/// Reads a stream the Plane declared, as the Host's engine consumes it (WP-6.1).
+#[derive(Clone)]
+pub struct StreamConsumer {
+    reads: Arc<dyn StreamConsumerReads>,
+}
+
+impl std::fmt::Debug for StreamConsumer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamConsumer").finish_non_exhaustive()
+    }
+}
+
+impl StreamConsumer {
+    /// A handle over `reads`, for a test composing no Host.
+    #[doc(hidden)]
+    pub fn over(reads: Arc<dyn StreamConsumerReads>) -> Self {
+        Self { reads }
+    }
+
+    pub fn runs(&self, resource: &Resource) -> Result<Vec<ConsumedRun>, String> {
+        self.reads.runs(resource)
+    }
+
+    pub fn locate(&self, producer: &[u8; 16], run: &[u8; 16]) -> Result<Option<Resource>, String> {
+        self.reads.locate(producer, run)
+    }
+
+    pub fn records(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        from: u64,
+        limit: usize,
+    ) -> Result<ConsumedPage, String> {
+        self.reads.records(resource, producer, run, from, limit)
+    }
+
+    pub fn batch(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        seq: u64,
+    ) -> Result<Option<Vec<u8>>, String> {
+        self.reads.batch(resource, producer, run, seq)
+    }
 }
 
 /// Appends to a stream the Plane declared, through the Host's engine (WP-5.1).
@@ -2396,6 +2538,92 @@ mod tests {
             .expect("registered");
         assert!(
             bare.stream_producer("data/decisions")
+                .expect("declared")
+                .is_none()
+        );
+    }
+
+    /// WP-6.1: a Plane reads the Host's consumer of a stream it declared it reads, whichever
+    /// Plane produces it, and of no other; without an engine consuming it, it gets none.
+    #[test]
+    fn a_plane_reads_only_the_stream_it_declared() {
+        struct Engine;
+        struct Reads;
+        impl StreamConsumerReads for Reads {
+            fn runs(&self, _: &Resource) -> Result<Vec<ConsumedRun>, String> {
+                Ok(vec![ConsumedRun {
+                    producer: [1; 16],
+                    run: [2; 16],
+                    acked: 3,
+                    oldest_retained: 1,
+                }])
+            }
+            fn locate(&self, _: &[u8; 16], _: &[u8; 16]) -> Result<Option<Resource>, String> {
+                Ok(None)
+            }
+            fn records(
+                &self,
+                _: &Resource,
+                _: &[u8; 16],
+                _: &[u8; 16],
+                _: u64,
+                _: usize,
+            ) -> Result<ConsumedPage, String> {
+                Ok(ConsumedPage::default())
+            }
+            fn batch(
+                &self,
+                _: &Resource,
+                _: &[u8; 16],
+                _: &[u8; 16],
+                _: u64,
+            ) -> Result<Option<Vec<u8>>, String> {
+                Ok(None)
+            }
+        }
+        impl StreamEngine for Engine {
+            fn producer(&self, _: &str) -> Option<Arc<dyn StreamAppender>> {
+                None
+            }
+            fn consumer(&self, stream: &str) -> Option<Arc<dyn StreamConsumerReads>> {
+                (stream == "data/decisions")
+                    .then(|| Arc::new(Reads) as Arc<dyn StreamConsumerReads>)
+            }
+        }
+        let registration = Host::builder()
+            .streams(Arc::new(Engine))
+            .build()
+            .register(Declaration::new("control").reads_stream("data/decisions"))
+            .expect("registered");
+        let consumer = registration
+            .stream_consumer("data/decisions")
+            .expect("declared")
+            .expect("composed");
+        assert_eq!(
+            consumer
+                .runs(&Resource::ledger("data", "z", "l"))
+                .expect("runs")[0]
+                .acked,
+            3
+        );
+        assert!(matches!(
+            registration.stream_consumer("data/events"),
+            Err(CompositionError::Undeclared { .. })
+        ));
+        assert!(matches!(
+            Host::builder()
+                .streams(Arc::new(Engine))
+                .build()
+                .register(Declaration::new("control"))
+                .expect("registered")
+                .stream_consumer("data/decisions"),
+            Err(CompositionError::Undeclared { .. })
+        ));
+        let bare = self::host()
+            .register(Declaration::new("control").reads_stream("data/decisions"))
+            .expect("registered");
+        assert!(
+            bare.stream_consumer("data/decisions")
                 .expect("declared")
                 .is_none()
         );

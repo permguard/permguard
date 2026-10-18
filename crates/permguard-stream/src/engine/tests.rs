@@ -2397,13 +2397,8 @@ fn an_acknowledgement_follows_every_durable_write() {
         .expect("a STATE"),
     )
     .expect("decodes");
-    assert_eq!(
-        state,
-        ConsumerState {
-            acked: 3,
-            oldest_retained: 1
-        }
-    );
+    assert_eq!((state.acked, state.oldest_retained), (3, 1));
+    assert!(state.opened.is_some(), "the first admission dates the run");
     let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &batches[1])).expect("ingested");
     assert_eq!(answer, Answer::of(Outcome::Ok, 5));
     let records: Vec<String> = consumer
@@ -2607,6 +2602,7 @@ fn a_range_below_the_oldest_retained_is_gone() {
         &ConsumerState {
             acked: 4,
             oldest_retained: 3,
+            opened: None,
         }
         .encode()
         .expect("encodes"),
@@ -3313,6 +3309,7 @@ fn the_ingest_refuses_what_its_task_does_not_pin() {
         &ConsumerState {
             acked: 4,
             oldest_retained: 3,
+            opened: None,
         }
         .encode()
         .expect("encodes"),
@@ -3780,6 +3777,100 @@ fn a_subscription_fences_the_streams_its_task_covers() {
     assert!(
         permguard_host::composition::StreamAppender::pressure(&unsealed, &ledger(3), 1 << 30, 3600)
             .is_err()
+    );
+}
+
+/// WP-6.1b: what a Plane reads of the consumer: its runs over a resource in the order they
+/// opened, their records, the batch file covering a sequence, and where a run is held.
+#[test]
+fn the_consumer_answers_its_runs_records_and_batches() {
+    use permguard_host::composition::StreamConsumerReads as _;
+
+    let host = Host::new("consumer-reads");
+    let consumer = consumer_on(&host);
+    let (producer, first_run) = streaming(&host, 3);
+    let shipping = subscribed("decisions", true, 1);
+    assert!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &shipping,
+            vec![pin_of(&host)],
+            1
+        )
+        .iter()
+        .all(|outcome| *outcome == Outcome::Ok)
+    );
+    // A second run of the same producer, shipped after the first.
+    let second_run = producer
+        .rollover(&ledger(1), Some(fence(1)))
+        .expect("rolled over")
+        .run_id;
+    for at in 0..2 {
+        producer
+            .append(&ledger(1), &format!("s{at}"))
+            .expect("appended");
+    }
+    assert!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &shipping,
+            vec![pin_of(&host)],
+            1
+        )
+        .iter()
+        .all(|outcome| *outcome == Outcome::Ok)
+    );
+    let runs = consumer.runs(&ledger(1)).expect("runs");
+    assert_eq!(
+        runs.iter()
+            .map(|run| (run.run, run.acked))
+            .collect::<Vec<_>>(),
+        vec![(first_run, 3), (second_run, 2)],
+        "in the order they opened"
+    );
+    assert!(
+        runs.iter()
+            .all(|run| run.producer == host.identity.host_id())
+    );
+    assert!(consumer.runs(&ledger(2)).expect("runs").is_empty());
+    let page = consumer
+        .records(&ledger(1), &host.identity.host_id(), &first_run, 2, 10)
+        .expect("records");
+    assert_eq!(page.records, vec![(2, b"r1".to_vec()), (3, b"r2".to_vec())]);
+    assert_eq!(page.low_watermark, None);
+    let batch = consumer
+        .batch(&ledger(1), &host.identity.host_id(), &second_run, 2)
+        .expect("read")
+        .expect("a batch covers it");
+    let sealed = batch::SealedBatch::decode(&batch).expect("a batch file");
+    let envelope = sealed.envelope_unverified().expect("an envelope");
+    assert!((envelope.first_seq..=envelope.last_seq).contains(&2));
+    assert_eq!(
+        consumer
+            .batch(&ledger(1), &host.identity.host_id(), &second_run, 9)
+            .expect("read"),
+        None
+    );
+    assert_eq!(
+        consumer
+            .locate(&host.identity.host_id(), &second_run)
+            .expect("located"),
+        Some(ledger(1))
+    );
+    assert_eq!(
+        consumer
+            .locate(&host.identity.host_id(), &[9; 16])
+            .expect("read"),
+        None
+    );
+    assert_eq!(
+        consumer.locate(&[7; 16], &second_run).expect("read"),
+        None,
+        "the run of another producer"
     );
 }
 

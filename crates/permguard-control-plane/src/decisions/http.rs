@@ -66,6 +66,12 @@ pub struct DecisionFacade {
     pub disclosure: Disclosure,
     /// What to count.
     pub metrics: Metrics,
+    /// The Host's consumer of the decision stream: what the public reads answer from besides the
+    /// legacy store (WP-6.1b). `None` when the Host composes none.
+    pub host: Option<permguard_host::composition::StreamConsumer>,
+    /// The catalog, turning a tenant route's names into the ids the consumer's streams are keyed
+    /// by (owner decision of 2026-10-18).
+    pub catalog: Option<Arc<dyn permguard_core::catalog::Catalog>>,
 }
 
 /// One producer stream's signer history, with the receiver's durable frontier.
@@ -179,6 +185,25 @@ impl DecisionFacade {
         }
 
         Ok(producers)
+    }
+
+    /// Reads one bounded block of `scope` from the legacy store and the Host's consumer
+    /// (WP-6.1b): what both transports answer.
+    pub(crate) fn read(
+        &self,
+        scope: &Scope,
+        window: &Window,
+    ) -> Result<read::Page, read::ReadError> {
+        read::read_with(
+            &read::Sources {
+                store: &self.store,
+                host: self.host.as_ref(),
+                catalog: self.catalog.as_ref(),
+            },
+            scope,
+            &self.cursor_key,
+            window,
+        )
     }
 
     /// Whether this store waits for batches over its ingest route: a producer key set is
@@ -517,12 +542,8 @@ async fn serve(facade: DecisionFacade, scope: Scope, asked: Asked, kind: &'stati
     // Off the runtime's threads: a page is segment files read back, and a bulk
     // export must not stall the reactor the shippers are landing batches on.
     let page = {
-        let (store, scope, key) = (
-            facade.store.clone(),
-            scope.clone(),
-            facade.cursor_key.clone(),
-        );
-        tokio::task::spawn_blocking(move || read::read(&store, &scope, &key, &window))
+        let (reader, scope) = (facade.clone(), scope.clone());
+        tokio::task::spawn_blocking(move || reader.read(&scope, &window))
             .await
             .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
     };
@@ -569,14 +590,8 @@ async fn serve(facade: DecisionFacade, scope: Scope, asked: Asked, kind: &'stati
                 &[(labels::SCOPE, kind), (labels::OUTCOME, "refused")],
             );
 
-            refuse(
-                &facade,
-                ApiError::new(
-                    ErrorClass::Validation,
-                    crate::decisions::read::refusal_code(&error),
-                    error.to_string(),
-                ),
-            )
+            let (class, code) = crate::decisions::read::refusal(&error);
+            refuse(&facade, ApiError::new(class, code, error.to_string()))
         }
     }
 }
@@ -962,7 +977,18 @@ mod openapi {
             oldest_available: "BBBB".to_owned(),
             high_watermark: "CCCC".to_owned(),
             more: true,
-            proof: vec![serde_json::to_value(&signed).expect("a signature serialises")],
+            // Each entry names its format (WP-6.1b): the legacy JWS, and a Host batch's.
+            proof: vec![
+                {
+                    let mut legacy = serde_json::to_value(&signed).expect("a signature serialises");
+                    legacy["format"] = json!(read::LEGACY_FORMAT);
+                    legacy
+                },
+                json!({
+                    "format": read::HOST_FORMAT,
+                    "signature": serde_json::to_value(&signed).expect("a signature serialises"),
+                }),
+            ],
             inclusion: vec![serde_json::to_value(&inclusion).expect("a path serialises")],
             coverage: Coverage {
                 contiguous: false,
@@ -971,6 +997,16 @@ mod openapi {
             },
         };
         doc.check("DecisionBlock", &page);
+        // A proof entry naming no format, or the other format's members, is not one.
+        let mut unnamed = serde_json::to_value(&page).expect("a page serialises");
+        unnamed["proof"][0]
+            .as_object_mut()
+            .expect("an object")
+            .remove("format");
+        assert!(!doc.accepts_json("DecisionBlock", &unnamed));
+        let mut crossed = serde_json::to_value(&page).expect("a page serialises");
+        crossed["proof"][1]["format"] = json!(read::LEGACY_FORMAT);
+        assert!(!doc.accepts_json("DecisionBlock", &crossed));
         let bare = Block {
             proof: Vec::new(),
             inclusion: Vec::new(),
@@ -1178,6 +1214,8 @@ mod strict {
             producer_files: Vec::new(),
             disclosure: permguard_core::Disclosure::Full,
             metrics: permguard_core::Metrics::none(),
+            host: None,
+            catalog: None,
         }
     }
 
