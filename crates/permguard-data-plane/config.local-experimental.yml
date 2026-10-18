@@ -62,7 +62,7 @@ dataPlane:
 
     log:
       enabled: "true"
-      pdp_id: data-plane-local
+      # only where a version 1 spool left by an earlier release is shipped until empty
       server:
         url: "http://127.0.0.1:6443"
       spool:
@@ -70,7 +70,7 @@ dataPlane:
         bytes: "64M"
         age: "24h"
       batch: { bytes: "256k", interval: "1s" }
-      on_full: "open"
+      mode: "required"           # every answered decision has a durable record; one that cannot be is refused
       sample: { permits: "1.0" }
       commitment:
         key_ref: decision-commitment

@@ -44,9 +44,9 @@ use crate::config::{
     SETTING_AUTHZ_CACHE_BYTES, SETTING_AUTHZ_CACHE_PARTITIONS, SETTING_AUTHZ_CACHE_ZONE_BYTES,
     SETTING_AUTHZ_CACHE_ZONE_PARTITIONS, SETTING_AUTHZ_MAX_EVALUATIONS, SETTING_LOG_BATCH_BYTES,
     SETTING_LOG_BATCH_INTERVAL, SETTING_LOG_COMMITMENT_KEY_REF, SETTING_LOG_COMMITMENT_KEY_VERSION,
-    SETTING_LOG_ENABLED, SETTING_LOG_ON_FULL, SETTING_LOG_PDP_ID, SETTING_LOG_SAMPLE_PERMITS,
-    SETTING_LOG_SPOOL_AGE, SETTING_LOG_SPOOL_BYTES, SETTING_LOG_SPOOL_DIRECTORY,
-    SETTING_MAX_BLOCKING,
+    SETTING_LOG_ENABLED, SETTING_LOG_MODE, SETTING_LOG_ON_FULL, SETTING_LOG_PDP_ID,
+    SETTING_LOG_SAMPLE_PERMITS, SETTING_LOG_SPOOL_AGE, SETTING_LOG_SPOOL_BYTES,
+    SETTING_LOG_SPOOL_DIRECTORY, SETTING_MAX_BLOCKING,
 };
 use crate::config::{
     SETTING_DECISION_STORE_DIRECTORY, SETTING_DECISION_STORE_ENABLED,
@@ -114,9 +114,10 @@ pub struct LogSection {
     /// Whether decisions are recorded at all.
     #[serde(default)]
     enabled: Option<String>,
-    /// This plane's name in the log. Required when the log is on: falling back
-    /// to a hostname is convenient and wrong the first time two replicas share
-    /// a host.
+    /// What the log promises before an answer: `required` or `disabled` (WP-6.1).
+    #[serde(default)]
+    mode: Option<String>,
+    /// Retired (WP-6.1): read so a file still naming the plane is refused, not ignored.
     #[serde(default)]
     pdp_id: Option<String>,
     /// Where records are shipped.
@@ -128,8 +129,7 @@ pub struct LogSection {
     /// Latency against efficiency: whichever comes first.
     #[serde(default)]
     batch: BatchSection,
-    /// What to do when the spool is full — the one decision only a deployment
-    /// can make.
+    /// What a full log means: only `closed` is taken, `open` is refused (WP-6.1).
     #[serde(default)]
     on_full: Option<String>,
     /// What is written. Denies and errors are never sampled, whatever this says.
@@ -333,6 +333,7 @@ impl DecisionsSection {
             (SETTING_AUTHZ_MAX_EVALUATIONS, self.max_evaluations.as_ref()),
             (SETTING_MAX_BLOCKING, self.max_blocking.as_ref()),
             (SETTING_LOG_ENABLED, self.log.enabled.as_ref()),
+            (SETTING_LOG_MODE, self.log.mode.as_ref()),
             (SETTING_LOG_PDP_ID, self.log.pdp_id.as_ref()),
             (
                 SETTING_LOG_SPOOL_DIRECTORY,
@@ -672,7 +673,7 @@ mod tests {
     #[test]
     fn the_log_carries_its_own_client_identity_not_the_mirrors() {
         let section: DecisionsSection = serde_norway::from_str(
-            "log:\n  enabled: \"true\"\n  pdp_id: plane-a\n  server:\n    url: \"grpcs://control:6443\"\n    tls:\n      ca_file: tls/ca.pem\n      cert: tls/decision-log-client.pem\n      key: tls/decision-log-client.key\n",
+            "log:\n  enabled: \"true\"\n  mode: required\n  server:\n    url: \"grpcs://control:6443\"\n    tls:\n      ca_file: tls/ca.pem\n      cert: tls/decision-log-client.pem\n      key: tls/decision-log-client.key\n",
         )
         .expect("the section parses");
 
@@ -686,7 +687,7 @@ mod tests {
         assert!(
             section
                 .settings()
-                .contains(&(SETTING_LOG_PDP_ID.to_owned(), "plane-a".to_owned()))
+                .contains(&(SETTING_LOG_MODE.to_owned(), "required".to_owned()))
         );
     }
 

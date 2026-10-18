@@ -1356,10 +1356,40 @@ pub struct StreamReceipt {
     pub seq: u64,
 }
 
+/// Where the next record of a stream lands (WP-6.1): its run, its sequence and the digest of the
+/// record before it in the run, zeros at sequence 1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StreamPosition {
+    pub run_id: [u8; 16],
+    pub seq: u64,
+    pub prev: [u8; 32],
+}
+
+/// The records a Plane builds from a stream's next position: consecutive sequences from it.
+pub type BuildRecords<'a> = &'a mut dyn FnMut(StreamPosition) -> Result<Vec<Vec<u8>>, String>;
+
 /// One stream's producer as the Host's engine serves it: a record's bytes, checked by the codec
 /// the stream registered, appended durably (WP-5.1).
 pub trait StreamAppender: Send + Sync {
     fn append(&self, resource: &Resource, record: &[u8]) -> Result<StreamReceipt, String>;
+
+    /// Appends the records `build` makes from the stream's next position, called once under the
+    /// lock that gives sequences: what a record naming its own place needs (WP-6.1). Answers the
+    /// last record's receipt once it is durable.
+    fn append_with(
+        &self,
+        resource: &Resource,
+        build: BuildRecords<'_>,
+    ) -> Result<StreamReceipt, String>;
+
+    /// Whether the stream of `resource` holds more than `max_bytes` or older than `max_age_secs`
+    /// that no required subscription acknowledged: the code naming which, or `None` (WP-6.1).
+    fn pressure(
+        &self,
+        resource: &Resource,
+        max_bytes: u64,
+        max_age_secs: u64,
+    ) -> Result<Option<&'static str>, String>;
 }
 
 /// The streams this Host signs under a member ring, as a re-pin cuts them over to the ring's new
@@ -1391,6 +1421,9 @@ pub struct Subscribed<'a> {
     pub required: bool,
     /// The membership's epoch: a subscription paused on `unverifiable` resumes once it moves.
     pub epoch: u64,
+    /// The task's selector: a stream it covers whose run is not fenced by this subscription rolls
+    /// over to one that is (WP-6.1).
+    pub selector: &'a permguard_core::authz::Selector,
 }
 
 /// A message the engine has ready to ship, and what it ships.
@@ -1501,6 +1534,26 @@ impl StreamProducer {
     /// Appends `record` to the stream of `resource`; answers once it is durable.
     pub fn append(&self, resource: &Resource, record: &[u8]) -> Result<StreamReceipt, String> {
         self.appender.append(resource, record)
+    }
+
+    /// Appends the records `build` makes from the stream's next position; answers once the last
+    /// is durable (WP-6.1).
+    pub fn append_with(
+        &self,
+        resource: &Resource,
+        build: BuildRecords<'_>,
+    ) -> Result<StreamReceipt, String> {
+        self.appender.append_with(resource, build)
+    }
+
+    /// Whether the stream of `resource` holds more unacknowledged than the bounds allow (WP-6.1).
+    pub fn pressure(
+        &self,
+        resource: &Resource,
+        max_bytes: u64,
+        max_age_secs: u64,
+    ) -> Result<Option<&'static str>, String> {
+        self.appender.pressure(resource, max_bytes, max_age_secs)
     }
 }
 
@@ -2283,6 +2336,21 @@ mod tests {
                     run_id: [1; 16],
                     seq: record.len() as u64,
                 })
+            }
+            fn append_with(
+                &self,
+                _: &Resource,
+                _: BuildRecords<'_>,
+            ) -> Result<StreamReceipt, String> {
+                Err("not in this test".to_owned())
+            }
+            fn pressure(
+                &self,
+                _: &Resource,
+                _: u64,
+                _: u64,
+            ) -> Result<Option<&'static str>, String> {
+                Ok(None)
             }
         }
         impl StreamEngine for Engine {

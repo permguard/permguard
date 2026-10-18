@@ -3004,3 +3004,635 @@ mod indeterminate {
         );
     }
 }
+
+/// The decision log on the Host's stream producer (WP-6.1): a volume with its identity, its
+/// `host.operations` and `data.attest` rings and the engine's decision producer.
+mod host_log {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use permguard_core::Metrics;
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_core::authz::{Resource, Selector};
+    use permguard_data_plane::decisions::host::Bounds;
+    use permguard_data_plane::decisions::journal::Epoch;
+    use permguard_data_plane::decisions::{Decided, HostLog, Written};
+    use permguard_decisions::record::{GENESIS, digest_of};
+    use permguard_decisions::stream::{Codec, STREAM};
+    use permguard_host::composition::{Declaration, Host, Subscribed};
+    use permguard_host::identity::{Identity, Suite, directories};
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::{DATA_ATTEST, HOST_OPERATIONS, Policy, Ring};
+    use permguard_host::membership::record::TaskType;
+    use permguard_host::storage::volume::Volume;
+    use permguard_host::time::TimeGuard;
+    use permguard_stream::engine::{Producer, Served, Streams};
+    use serde_json::{Value, json};
+
+    pub(super) struct HostStream {
+        volume: Volume,
+        identity: Arc<Identity>,
+        operations: Arc<Ring>,
+        attest: Arc<Ring>,
+        time: Arc<TimeGuard>,
+    }
+
+    impl HostStream {
+        pub(super) fn new(tag: &str) -> Self {
+            let root = super::scratch(tag);
+            std::fs::create_dir_all(&root).expect("a volume directory");
+            let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+            let time = Arc::new(TimeGuard::system(Duration::from_secs(30)));
+            let identity = Arc::new(
+                Identity::provision(
+                    &volume,
+                    Arc::new(FileKeyProvider::new(
+                        directories(&volume).expect("the identity directory").1,
+                    )),
+                    Suite::Ed25519Sha256V1,
+                    permguard_host::authz::store::now(),
+                    permguard_host::authz::store::now() * 1000,
+                )
+                .expect("provisioned"),
+            );
+            let ring = |id: &'static str| {
+                let ring = Arc::new(
+                    Ring::open(
+                        &volume,
+                        id,
+                        Suite::Ed25519Sha256V1,
+                        Policy {
+                            publish_ahead: Duration::from_secs(600),
+                            rotate_every: Duration::from_secs(3600),
+                            retain: Duration::from_secs(7200),
+                        },
+                        Arc::clone(&time),
+                    )
+                    .expect("the ring opens")
+                    .with_binder(identity.clone()),
+                );
+                permguard_core::KeyManager::maintain(ring.as_ref()).expect("the first key");
+                ring
+            };
+            let operations = ring(HOST_OPERATIONS);
+            let attest = ring(DATA_ATTEST);
+            Self {
+                volume,
+                identity,
+                operations,
+                attest,
+                time,
+            }
+        }
+
+        /// The engine's decision producer on this volume, sealing under `data.attest`.
+        pub(super) fn producer(&self) -> Arc<Producer<Codec>> {
+            Arc::new(
+                Streams::open(
+                    &self.volume,
+                    &self.identity,
+                    Arc::clone(&self.operations),
+                    Arc::clone(&self.time),
+                )
+                .expect("the engine opens")
+                .register_producer(permguard_decisions::stream::descriptor(), Codec)
+                .expect("registered")
+                .with_signer(Arc::clone(&self.attest))
+                .expect("the descriptor's ring"),
+            )
+        }
+
+        /// The log a data plane composed on this Host records with, appending to `producer`.
+        pub(super) fn log(&self, producer: &Arc<Producer<Codec>>, bounds: Bounds) -> HostLog {
+            let registration = Host::builder()
+                .streams(Arc::new(
+                    Served::default().with(STREAM, Arc::clone(producer)),
+                ))
+                .host_id(self.identity.host_id())
+                .build()
+                .register(Declaration::new("data").produces_stream(STREAM))
+                .expect("registers");
+            HostLog::new(
+                registration
+                    .stream_producer(STREAM)
+                    .expect("declared")
+                    .expect("composed"),
+                self.identity.host_id(),
+                Epoch {
+                    version: "0.1.0".to_owned(),
+                    build: None,
+                    engines: std::collections::BTreeMap::new(),
+                    sampling: "1.0".to_owned(),
+                },
+                permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+                bounds,
+                Metrics::none(),
+            )
+        }
+
+        pub(super) fn host_hex(&self) -> String {
+            hex(&self.identity.host_id())
+        }
+    }
+
+    pub(super) const LOOSE: Bounds = Bounds {
+        max_bytes: 1 << 30,
+        max_age_secs: 3600,
+    };
+
+    pub(super) fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+
+    pub(super) fn ledger(zone_id: &str, ledger_id: &str) -> Resource {
+        Resource::ledger("data", zone_id, ledger_id)
+    }
+
+    /// Every record of `resource`'s stream, in order, from sequence 1 of the current run.
+    pub(super) fn records(producer: &Producer<Codec>, resource: &Resource) -> Vec<(u64, Value)> {
+        producer
+            .read(resource, 1, 1000)
+            .expect("the stream reads")
+            .records
+    }
+
+    /// A subscription of a coordinator's `decisions.ship` task covering `selector`.
+    pub(super) fn shipping(selector: &Selector) -> Subscribed<'_> {
+        Subscribed {
+            membership_id: [7; 16],
+            task_type: TaskType::DecisionsShip,
+            task_id: "decisions",
+            required: true,
+            epoch: 1,
+            selector,
+        }
+    }
+
+    fn decided(id: &str, permit: bool) -> Decided<'_> {
+        Decided {
+            id,
+            at: "2026-10-18T10:00:00Z".to_owned(),
+            zone: "acme",
+            ledger: "main-ledger",
+            zone_id: "zone-1",
+            ledger_id: "ledger-1",
+            scope: None,
+            commit: "sha256:ec1773bf",
+            counter: 3,
+            profile: "default",
+            subject: ("User".to_owned(), "v1:9f2c".to_owned()),
+            subject_properties: None,
+            resource: ("Document".to_owned(), "budget".to_owned()),
+            resource_properties: None,
+            included_context: None,
+            action: "read".to_owned(),
+            principal: None,
+            context: Some(json!({"ip": "10.0.0.1"})),
+            partition_inputs: None,
+            absent_inputs: Vec::new(),
+            permit,
+            outcome: if permit {
+                permguard_decisions::record::Outcome::Permit
+            } else {
+                permguard_decisions::record::Outcome::Deny
+            },
+            causes: Vec::new(),
+            policies: vec!["read".to_owned()],
+            reason: if permit { "permit" } else { "deny" }.to_owned(),
+            trace: None,
+            request_id: None,
+            latency_us: 12,
+            event: None,
+        }
+    }
+
+    /// WP-6.1, F-06 and F-09: a record names the Host and its run, at the engine's sequence and
+    /// chained by the engine's digests; the first one this process writes to a run is preceded by
+    /// its marker, and the chain verifies as a version 1 stream.
+    #[test]
+    fn a_decision_names_the_host_and_its_run() {
+        let host = HostStream::new("host-log-names");
+        let producer = host.producer();
+        let log = host.log(&producer, LOOSE);
+        assert_eq!(
+            log.record(&decided("d-1", false)).expect("recorded"),
+            Written::Recorded { seq: 2 },
+            "after the marker governing it"
+        );
+        assert_eq!(
+            log.record(&decided("d-2", true)).expect("recorded"),
+            Written::Recorded { seq: 3 },
+            "one marker per run"
+        );
+        let resource = ledger("zone-1", "ledger-1");
+        let run = producer
+            .state(&resource)
+            .expect("state")
+            .expect("a run")
+            .run_id;
+        let records = records(&producer, &resource);
+        let values: Vec<Value> = records.iter().map(|(_, value)| value.clone()).collect();
+        assert_eq!(
+            records.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        for (seq, record) in &records {
+            assert_eq!(record["seq"], json!(seq), "the engine's sequence");
+            assert_eq!(
+                record["stream"]["id"],
+                json!(host.host_hex()),
+                "the host_id"
+            );
+            assert_eq!(record["stream"]["instance"], json!(hex(&run)), "the run");
+        }
+        assert_eq!(values[0]["kind"], json!("marker"));
+        assert_eq!(values[0]["commitments"]["key_version"], json!("v1"));
+        assert_eq!(values[0]["prev"], json!(GENESIS));
+        assert_eq!(values[1]["kind"], json!("decision"));
+        assert_eq!(values[1]["id"], json!("d-1"));
+        assert_eq!(
+            values[1]["store"]["zone"],
+            json!("acme"),
+            "the public names"
+        );
+        assert_eq!(
+            values[1]["prev"],
+            json!(digest_of(&values[0]).expect("a digest"))
+        );
+        assert_eq!(
+            values[2]["prev"],
+            json!(digest_of(&values[1]).expect("a digest"))
+        );
+        assert!(
+            values[1]["inputs"]["context"]
+                .as_str()
+                .is_some_and(|tag| !tag.contains("10.0.0.1")),
+            "the input is tagged, never kept"
+        );
+        let verified = permguard_decisions::chain::verify(&values, None).expect("the chain holds");
+        assert_eq!(verified.last_seq, 3);
+        assert!(
+            values.iter().all(|value| value.get("pdp_id").is_none()),
+            "no producer id"
+        );
+    }
+
+    /// WP-6.1: a run the engine rolls over to starts at sequence 1 with its own marker, and so
+    /// does the first decision a restarted process writes, in the run it resumes.
+    #[test]
+    fn a_marker_heads_every_run() {
+        let host = HostStream::new("host-log-runs");
+        let resource = ledger("zone-1", "ledger-1");
+        let producer = host.producer();
+        let log = host.log(&producer, LOOSE);
+        log.record(&decided("d-1", false)).expect("recorded");
+        let successor = producer.rollover(&resource, None).expect("rolled over");
+        assert_eq!(
+            log.record(&decided("d-2", false)).expect("recorded"),
+            Written::Recorded { seq: 2 }
+        );
+        let records = records(&producer, &resource);
+        assert_eq!(records[0].1["kind"], json!("marker"));
+        assert_eq!(records[0].1["prev"], json!(GENESIS));
+        assert_eq!(
+            records[0].1["stream"]["instance"],
+            json!(hex(&successor.run_id))
+        );
+        assert_eq!(records[1].1["id"], json!("d-2"));
+        // A restart: the same Host resumes the same run, its first record a marker.
+        drop(log);
+        drop(producer);
+        let producer = host.producer();
+        let log = host.log(&producer, LOOSE);
+        assert_eq!(
+            log.record(&decided("d-3", false)).expect("recorded"),
+            Written::Recorded { seq: 4 }
+        );
+        let records = super::host_log::records(&producer, &resource);
+        assert_eq!(records.len(), 4);
+        assert_eq!(records[2].1["kind"], json!("marker"));
+        assert_eq!(
+            records[3].1["stream"]["instance"],
+            json!(hex(&successor.run_id))
+        );
+        assert_eq!(records[3].1["stream"]["id"], json!(host.host_hex()));
+        permguard_decisions::chain::verify(
+            &records
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect::<Vec<_>>(),
+            None,
+        )
+        .expect("one chain across the restart");
+    }
+
+    /// WP-6.1: a stream holding past its bounds what its required subscription has not
+    /// acknowledged refuses its decisions, writing nothing; with no subscription nothing is owed
+    /// and no bound is ever reached; a denial is never sampled out.
+    #[test]
+    fn the_bounds_measure_only_what_a_required_subscription_owes() {
+        let host = HostStream::new("host-log-pressure");
+        let resource = ledger("zone-1", "ledger-1");
+        let producer = host.producer();
+        let tight = Bounds {
+            max_bytes: 1,
+            max_age_secs: 3600,
+        };
+        let log = host.log(&producer, tight);
+        for n in 0..5 {
+            assert!(matches!(
+                log.record(&decided(&format!("free-{n}"), false))
+                    .expect("recorded"),
+                Written::Recorded { .. }
+            ));
+            log.measure();
+        }
+        // A coordinator's required subscription attaches: the run is fenced by it, and what it has
+        // not acknowledged counts.
+        let covering = Selector::under(Resource::plane("data"));
+        permguard_host::composition::StreamShipping::due(producer.as_ref(), &shipping(&covering))
+            .expect("due");
+        assert!(matches!(
+            log.record(&decided("owed", false)).expect("recorded"),
+            Written::Recorded { .. }
+        ));
+        log.measure();
+        let before = producer.state(&resource).expect("state").expect("a run");
+        assert_eq!(
+            log.record(&decided("refused", false)).expect("answered"),
+            Written::Refused(permguard_core::codes::stream::SPOOL_FULL.to_owned())
+        );
+        let after = producer.state(&resource).expect("state").expect("a run");
+        assert_eq!(after.next_seq, before.next_seq, "nothing written");
+    }
+
+    /// An engine whose stream cannot say its pressure, or cannot append: what a damaged volume
+    /// answers.
+    struct Failing {
+        pressure: bool,
+    }
+
+    impl permguard_host::composition::StreamAppender for Failing {
+        fn append(
+            &self,
+            _: &Resource,
+            _: &[u8],
+        ) -> Result<permguard_host::composition::StreamReceipt, String> {
+            Err("the stream stopped".to_owned())
+        }
+
+        fn append_with(
+            &self,
+            _: &Resource,
+            _: permguard_host::composition::BuildRecords<'_>,
+        ) -> Result<permguard_host::composition::StreamReceipt, String> {
+            Err("the stream stopped".to_owned())
+        }
+
+        fn pressure(&self, _: &Resource, _: u64, _: u64) -> Result<Option<&'static str>, String> {
+            if self.pressure {
+                Err("the journal does not read".to_owned())
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    impl permguard_host::composition::StreamEngine for Failing {
+        fn producer(
+            &self,
+            _: &str,
+        ) -> Option<Arc<dyn permguard_host::composition::StreamAppender>> {
+            Some(Arc::new(Failing {
+                pressure: self.pressure,
+            }))
+        }
+    }
+
+    fn failing_log(pressure: bool) -> HostLog {
+        let registration = Host::builder()
+            .streams(Arc::new(Failing { pressure }))
+            .build()
+            .register(Declaration::new("data").produces_stream(STREAM))
+            .expect("registers");
+        HostLog::new(
+            registration
+                .stream_producer(STREAM)
+                .expect("declared")
+                .expect("composed"),
+            [1; 16],
+            Epoch {
+                version: "0.1.0".to_owned(),
+                build: None,
+                engines: std::collections::BTreeMap::new(),
+                sampling: "1.0".to_owned(),
+            },
+            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+            LOOSE,
+            Metrics::none(),
+        )
+    }
+
+    /// WP-6.1: fail closed: a stream whose pressure cannot be measured refuses its decisions, and
+    /// an append the engine refuses is an error, never a decision recorded.
+    #[test]
+    fn a_stream_that_cannot_be_measured_or_written_records_nothing() {
+        assert_eq!(
+            failing_log(true)
+                .record(&decided("unmeasured", false))
+                .expect("answered"),
+            Written::Refused(permguard_core::codes::stream::STORE_UNAVAILABLE.to_owned())
+        );
+        assert!(
+            failing_log(false)
+                .record(&decided("unwritten", false))
+                .is_err()
+        );
+        // A permit sampled out writes nothing and says so; a denial is never sampled.
+        let host = HostStream::new("host-log-sampling");
+        let producer = host.producer();
+        let registration = Host::builder()
+            .streams(Arc::new(
+                Served::default().with(STREAM, Arc::clone(&producer)),
+            ))
+            .build()
+            .register(Declaration::new("data").produces_stream(STREAM))
+            .expect("registers");
+        let never = HostLog::new(
+            registration
+                .stream_producer(STREAM)
+                .expect("declared")
+                .expect("composed"),
+            [1; 16],
+            Epoch {
+                version: "0.1.0".to_owned(),
+                build: None,
+                engines: std::collections::BTreeMap::new(),
+                sampling: "0.0".to_owned(),
+            },
+            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+            LOOSE,
+            Metrics::none(),
+        );
+        assert_eq!(
+            never.record(&decided("p", true)).expect("answered"),
+            Written::SampledOut
+        );
+        assert_eq!(
+            never.record(&decided("d", false)).expect("answered"),
+            Written::Recorded { seq: 2 }
+        );
+    }
+
+    /// WP-6.1, after the review: a record past the stream's bound is refused before it takes a
+    /// sequence, and leaves the run unmarked: the next record still follows its marker.
+    #[test]
+    fn a_refused_record_leaves_the_run_unmarked() {
+        let host = HostStream::new("host-log-oversize");
+        let producer = host.producer();
+        let log = host.log(&producer, LOOSE);
+        let mut oversize = decided("oversize", false);
+        oversize.included_context = Some(serde_json::Map::from_iter([(
+            "blob".to_owned(),
+            json!("x".repeat(300 * 1024)),
+        )]));
+        assert!(log.record(&oversize).is_err(), "past the stream's bound");
+        assert_eq!(
+            log.record(&decided("next", false)).expect("recorded"),
+            Written::Recorded { seq: 2 }
+        );
+        let records = records(&producer, &ledger("zone-1", "ledger-1"));
+        assert_eq!(records[0].1["kind"], json!("marker"));
+        assert_eq!(records[1].1["id"], json!("next"));
+    }
+
+    /// WP-6.1, F-12: under concurrent decisions, every one recorded is answered with its durable
+    /// sequence, each sequence once, and each is on disk after the stream is reopened.
+    #[test]
+    fn every_recorded_decision_is_durable_at_its_sequence() {
+        let host = HostStream::new("host-log-durable");
+        let resource = ledger("zone-1", "ledger-1");
+        let producer = host.producer();
+        let log = Arc::new(host.log(&producer, LOOSE));
+        let threads: Vec<_> = (0..8)
+            .map(|thread| {
+                let log = Arc::clone(&log);
+                std::thread::spawn(move || {
+                    (0..25)
+                        .map(|n| {
+                            let id = format!("{thread}-{n}");
+                            match log.record(&decided(&id, false)).expect("recorded") {
+                                Written::Recorded { seq } => (seq, id),
+                                other => panic!("{other:?}"),
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        let mut answered: Vec<(u64, String)> = threads
+            .into_iter()
+            .flat_map(|thread| thread.join().expect("the thread"))
+            .collect();
+        answered.sort();
+        drop(log);
+        drop(producer);
+        let producer = host.producer();
+        let records = records(&producer, &resource);
+        assert_eq!(records.len(), 201, "the marker and 200 decisions");
+        for (seq, id) in &answered {
+            let (held, record) = &records[(*seq - 1) as usize];
+            assert_eq!(held, seq);
+            assert_eq!(record["id"], json!(id), "answered at the sequence it holds");
+        }
+    }
+}
+
+/// WP-6.1, F-12: saturating a `required` log refuses decisions `unavailable` with
+/// `decision_unrecordable`, and every decision answered has its durable record.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_saturated_required_log_refuses_with_unavailable_and_every_answer_is_recorded() {
+    let root = scratch("host-log-saturated").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let host = host_log::HostStream::new("host-log-saturated-volume");
+    let producer = host.producer();
+    // The coordinator's required subscription fences the stream once it holds a run.
+    let covering =
+        permguard_core::authz::Selector::under(permguard_core::authz::Resource::plane("data"));
+    let log = Arc::new(host.log(
+        &producer,
+        permguard_data_plane::decisions::host::Bounds {
+            max_bytes: 16 * 1024,
+            max_age_secs: 3600,
+        },
+    ));
+    let decider = Arc::new(
+        Decider::new(
+            root.clone(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_journal(
+            Some(Arc::clone(&log) as Arc<dyn permguard_data_plane::decisions::DecisionRecorder>),
+            subjects(),
+            permguard_core::decisions::IncludeSection::default(),
+        ),
+    );
+    let resource = host_log::ledger(&uuid_of("acme"), &uuid_of("main-ledger"));
+    producer.open_run(&resource, None).expect("a genesis run");
+    permguard_host::composition::StreamShipping::due(
+        producer.as_ref(),
+        &host_log::shipping(&covering),
+    )
+    .expect("due");
+    let mut answered = 0usize;
+    let mut refused = 0usize;
+    for _ in 0..40 {
+        let calls: Vec<_> = (0..8)
+            .map(|_| {
+                let decider = Arc::clone(&decider);
+                tokio::spawn(async move {
+                    decider
+                        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+                        .await
+                })
+            })
+            .collect();
+        for call in calls {
+            match call.await.expect("the call") {
+                Ok(_) => answered += 1,
+                Err(error) => {
+                    assert_eq!(error.code(), "decision_unrecordable", "{error}");
+                    assert_eq!(error.class(), permguard_core::ErrorClass::Unavailable);
+                    refused += 1;
+                }
+            }
+        }
+        let measured = Arc::clone(&log);
+        tokio::task::spawn_blocking(move || measured.measure())
+            .await
+            .expect("measured");
+    }
+    assert!(answered > 0, "answered before the bound");
+    assert!(refused > 0, "refused past it");
+    drop(decider);
+    drop(log);
+    drop(producer);
+    let producer = host.producer();
+    let recorded = host_log::records(&producer, &resource)
+        .iter()
+        .filter(|(_, record)| record["kind"] == json!("decision"))
+        .count();
+    assert_eq!(
+        recorded, answered,
+        "every answer has its record, and nothing more"
+    );
+}

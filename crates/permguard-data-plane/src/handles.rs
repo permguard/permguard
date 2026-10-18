@@ -10,6 +10,7 @@
 //! | audit schema [`DataPlaneAudit`]       | `AuditHandle<DataPlaneAudit>`    | decisions, mirrors             |
 //! | zone keys `decision.commitment`       | `ZoneHandle`                     | input tags, per ledger         |
 //! | zone keys `audit.pseudonym`           | `ZoneHandle`                     | decision subjects, per zone    |
+//! | produces `data/decisions` (WP-6.1)    | `StreamProducer`                 | the decision log               |
 //! | task contracts (WP-4.4)               | none                             | approval's task capability     |
 //!
 //! The plane never sees a key manager, the audit recorder, the secret store, a root or a key's
@@ -38,8 +39,8 @@ impl AuditSchema for DataPlaneAudit {
 pub type Audit = AuditHandle<DataPlaneAudit>;
 
 /// What this plane declares to the Host under `config`: the zone keys of input tags and of the
-/// subjects' pseudonyms only when the decision log is on, so a plane that keeps no log MACs under
-/// nothing (WP-3.3).
+/// subjects' pseudonyms, and the decision stream it produces, only when the decision log is on, so
+/// a plane that keeps no log MACs under nothing (WP-3.3) and appends to no stream (WP-6.1).
 pub(crate) fn declaration(config: &Config) -> Declaration {
     use permguard_host::membership::record::TaskType;
 
@@ -56,6 +57,7 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
         declaration
             .uses_zone_key(ZonePurpose::DecisionCommitment)
             .uses_zone_key(ZonePurpose::AuditPseudonym)
+            .produces_stream(permguard_decisions::stream::STREAM)
     } else {
         declaration
     }
@@ -125,6 +127,22 @@ pub(crate) fn audit_for_tests(recorder: permguard_core::AuditRecorder) -> Audit 
         .ok()
         .and_then(|registration| registration.audit::<DataPlaneAudit>().ok().flatten())
         .unwrap_or_else(|| unreachable!("a declared schema with a composed recorder"))
+}
+
+/// The producer of the decision stream, when the Host composes a stream engine and the log is on
+/// (WP-6.1).
+pub(crate) fn decision_producer(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::StreamProducer> {
+    registration(context)?
+        .stream_producer(permguard_decisions::stream::STREAM)
+        .ok()
+        .flatten()
+}
+
+/// This Host's `host_id`, when the composition knows it: what the decision stream is named by.
+pub(crate) fn host_id(context: &PlaneContext<'_>) -> Option<[u8; 16]> {
+    registration(context)?.host_id()
 }
 
 /// The zone keys of `purpose` the Host holds for this plane: `None` without them, never another

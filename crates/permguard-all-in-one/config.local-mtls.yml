@@ -204,10 +204,10 @@ dataPlane:
     # That durability is the dominant cost of a decision — measured at roughly ten times the
     # evaluation itself, which is what `bench/decide.js` reports — and it is the price of an audit
     # trail that survives the process. What the decision path does *not* wait for is the record
-    # reaching the control plane; that is the spool's job, off the critical path.
+    # reaching a coordinator; the Host's stream ships it over `decisions.ship`, off the critical path.
     log:
       enabled: "true"
-      pdp_id: all-in-one-local-mtls          # half of every stream identity: two replicas must never share one
+      # only where a version 1 spool left by an earlier release is shipped until empty
       server:
         url: "grpcs://127.0.0.1:6443"
         tls:
@@ -218,10 +218,10 @@ dataPlane:
           # two authorizations. Here they share the certificate this environment generates.
       spool:
         directory: "data/decisions/spool"
-        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        bytes: "64M"              # unacknowledged by the required subscriptions; past it decisions are refused
         age: "24h"
       batch: { bytes: "256k", interval: "1s" }
-      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      mode: "required"           # every answered decision has a durable record; one that cannot be is refused
       sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
       # The secret input commitments are taken under. A different key from the pseudonymisation
       # one: they protect different things, and rotating one to crypto-shred pseudonyms must not

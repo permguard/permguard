@@ -66,9 +66,9 @@ use sha2::{Digest as _, Sha256};
 
 pub use consumer::{Consumer, ConsumerState, ForkMark, MAX_VIEW_BYTES};
 pub use producer::{
-    Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, MAX_SUBSCRIPTION_BYTES, PressureBounds,
-    Producer, Receipt, Sealing, Span, Spans, Subscription, SubscriptionState, canonical_jwk,
-    decode_group, encode_group,
+    Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, MAX_SUBSCRIPTION_BYTES, Position,
+    PressureBounds, Producer, Receipt, Sealing, Span, Spans, Subscription, SubscriptionState,
+    canonical_jwk, decode_group, encode_group,
 };
 pub use run::{Fence, RunEnd, RunStatement};
 pub use state::State;
@@ -76,7 +76,8 @@ pub use state::State;
 /// The Plane-side stream engines that predate this one, adopted by WP-6.1 and WP-6.2 (owner
 /// decision): the only Plane sources that may keep a journal, a STATE or a reserve of their own.
 pub const LEGACY_ENGINES: [&str; 11] = [
-    // The producers the owner's decision named.
+    // The producers the owner's decision named. The decision spool is only drained since WP-6.1,
+    // until its archive: the plane records on this engine.
     "crates/permguard-decisions/src/spool.rs",
     "crates/permguard-events/src/journal.rs",
     // The consumers and indexes found beside them.

@@ -736,12 +736,12 @@ fn decisions_startup_check(config: &permguard_core::Config) -> anyhow::Result<()
     if !config.decision_store_enabled() {
         return Ok(());
     }
-    if config.decision_producer_keys().is_empty() && !local_producer_composed(config) {
+    if config.decision_producer_keys().is_empty() && !local_plane_logs(config) {
         anyhow::bail!(
             "the decision store is enabled and this process has neither \
              `controlPlane.decisions.producer_keys` nor a data plane in the same process with \
-             its decision log on (`dataPlane.decisions.log.enabled` and `pdp_id`). It would \
-             serve no decision routes because no batch could be verified"
+             its decision log on (`dataPlane.decisions.log.enabled`). It would serve no decision \
+             routes because no batch could be verified"
         );
     }
 
@@ -857,16 +857,38 @@ fn build_event_facade(
     Some(facade)
 }
 
-/// Whether this process actually contains a decision producer of its own: a data plane with the
-/// decision log on and a named identity, plus the ring that signs for it.
+/// Whether this process contains a data plane keeping a decision log, with the ring that signs
+/// for it.
+fn local_plane_logs(config: &permguard_core::Config) -> bool {
+    config.data_signing_keys_enabled() && config.log_enabled()
+}
+
+/// The producer this process contains whose batches arrive here: a data plane with the decision
+/// log on, the ring that signs for it, and a version 1 spool still naming it (WP-6.1).
 ///
-/// The signing ring alone is not it: a control-plane-only process composes a data signing ring
-/// whenever the key lifecycle is on, and trusting that ring would bind keys to an empty
-/// `pdp_id` — a producer nothing can ever legitimately claim, dressed as a working fallback.
-fn local_producer_composed(config: &permguard_core::Config) -> bool {
-    config.data_signing_keys_enabled()
-        && config.log_enabled()
-        && !config.log_pdp_id().trim().is_empty()
+/// Since WP-6.1 a plane records on the Host's stream, and this store receives only what an
+/// upgraded plane's legacy spool still ships, under the name its records carry. The signing ring
+/// alone is not it: a control-plane-only process composes a data signing ring whenever the key
+/// lifecycle is on, and trusting that ring would bind keys to a producer nothing can ever
+/// legitimately claim, dressed as a working fallback.
+fn local_producer(config: &permguard_core::Config) -> Option<String> {
+    if !local_plane_logs(config) {
+        return None;
+    }
+    let spool = config.working_dir().join(config.log_spool_directory());
+    match permguard_decisions::spool::producer_of(&spool) {
+        Ok(producer) => producer.filter(|name| !name.trim().is_empty()),
+        Err(error) => {
+            tracing::warn!(
+                event.name = "decisions.legacy_unreadable",
+                component = COMPONENT,
+                error = %error,
+                "the legacy decision spool beside this store cannot be read: its producer is not \
+                 trusted here"
+            );
+            None
+        }
+    }
 }
 
 fn build_decision_facade(
@@ -879,12 +901,14 @@ fn build_decision_facade(
     // among them: a batch is signed by the plane that decided.
     let producers = load_producer_keys(config);
     // The ring sharing this process is trusted only when a local producer actually exists to
-    // bind it to — see `local_producer_composed`.
-    let local = local_producer_composed(config)
+    // bind it to — see `local_producer`.
+    let local_pdp = local_producer(config);
+    let local = local_pdp
+        .is_some()
         .then(|| crate::handles::data_public_keys(context))
         .flatten();
     if producers.is_empty() && local.is_none() {
-        if config.decision_producer_keys().is_empty() {
+        if config.decision_producer_keys().is_empty() && !local_plane_logs(config) {
             // The startup check reports this before listeners are built. Keep
             // the composition root fail-closed if it was bypassed in a test or
             // an embedding application.
@@ -899,13 +923,16 @@ fn build_decision_facade(
         // Mount the routes with an empty trust set: every batch is refused,
         // `reload_producers` retries the files, and health names the degraded
         // capability. Omitting the routes here would make that recoverable
-        // state permanent until restart.
-        tracing::warn!(
-            event.name = "decisions.no_producers",
-            component = COMPONENT,
-            "the decision store is ready but no configured producer key set has loaded; batches \
-             are refused until one is published"
-        );
+        // state permanent until restart. A plane in this process records on the
+        // Host's stream (WP-6.1), and expects nothing here.
+        if !config.decision_producer_keys().is_empty() {
+            tracing::warn!(
+                event.name = "decisions.no_producers",
+                component = COMPONENT,
+                "the decision store is ready but no configured producer key set has loaded; \
+                 batches are refused until one is published"
+            );
+        }
     }
     let store = match crate::decisions::DecisionStore::open(directory) {
         Ok(store) => std::sync::Arc::new(store),
@@ -948,7 +975,7 @@ fn build_decision_facade(
         local,
         // The ring sharing this process signs as the data plane it belongs to: bound to that
         // plane's own producer identity, never floating free of one.
-        local_pdp: config.log_pdp_id().to_owned(),
+        local_pdp: local_pdp.unwrap_or_default(),
         cursor_key,
         producers: std::sync::Arc::new(std::sync::RwLock::new(producers)),
         producer_files: config
@@ -1228,8 +1255,11 @@ async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
     }
     if let Some(decisions) = &state.decisions {
         let composed = decisions.lock().ok().and_then(|held| {
-            held.as_ref()
-                .map(|facade| facade.accepted_producers().map(|keys| keys.len()))
+            held.as_ref().map(|facade| {
+                facade
+                    .accepted_producers()
+                    .map(|keys| keys.len().max(usize::from(!facade.expects_batches())))
+            })
         });
         match composed {
             None => found.push(degraded(

@@ -978,6 +978,28 @@ impl std::fmt::Display for SpoolError {
 
 impl std::error::Error for SpoolError {}
 
+/// The producer a version 1 spool at `directory` names, `stream.id` of its first record, read
+/// without opening it: `None` when it holds no record (WP-6.1). What a process composing the
+/// receiving store beside an upgraded plane binds that plane's ring to while the spool drains.
+pub fn producer_of(directory: &Path) -> Result<Option<String>, SpoolError> {
+    if !directory.is_dir() {
+        return Ok(None);
+    }
+    for (_, path) in segments_of(directory)? {
+        let text = fs::read_to_string(&path)
+            .map_err(|error| SpoolError::io("reading a segment", error))?;
+        // A torn last line is no record; the first complete one names the producer.
+        if let Some(id) = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find_map(|record| record["stream"]["id"].as_str().map(str::to_owned))
+        {
+            return Ok(Some(id));
+        }
+    }
+    Ok(None)
+}
+
 fn segments_of(directory: &Path) -> Result<Vec<(u64, PathBuf)>, SpoolError> {
     let mut found = Vec::new();
     let entries =

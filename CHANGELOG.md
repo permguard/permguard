@@ -348,6 +348,24 @@ is cut.
 
 ### Changed
 
+- **Decisions are recorded on the Host's stream, named by the Host and its run.**
+  A Data Plane keeping a decision log now appends each record to the Host's stream engine, one stream per zone and ledger, as `data/decisions`; the Host's producer owns the run, the sequence, the flush and the reserve.
+  A record's `stream.id` is the Host's `host_id` and `stream.instance` the run, each as 32 lowercase hex digits; `seq` and `prev` are the engine's.
+  The first record a process writes to a run is the marker governing what follows.
+  Records leave over the membership's `decisions.ship` task: when its subscription is due, a stream its task covers rolls over to a run carrying the subscription's fence, and a run no coordinator's task fences stays on the Host.
+  A forked stream no longer keeps the other streams of its producer from shipping.
+  Configuration: `decisions.log.pdp_id` (`PERMGUARD_DECISIONS_LOG_PDP_ID`) is retired and refused at start.
+  The new `decisions.log.mode` (`PERMGUARD_DECISIONS_LOG_MODE`) is `required` or `disabled`; unset, it follows `decisions.log.enabled`, and an `enabled` that contradicts it is refused.
+  `best-effort` is refused until its loss record is defined.
+  `decisions.log.on_full: open` is refused; `closed` is accepted and changes nothing.
+  In `required` a decision is answered only once its record is durable; when the stream holds more than `spool.bytes`, or older than `spool.age`, that its required subscriptions have not acknowledged, or the engine refuses the append, the decision is refused `unavailable` with `decision_unrecordable`.
+  A plane with the log on refuses to start unless the Host composes a stream engine producing `data/decisions` and the plane's `data.attest` signing ring.
+  A stream a coordinator's `decisions.ship` task covers opens its first run under that task's fence once the subscription has been seen.
+  `decisions.log.mode` and `decisions.log.enabled` saying different things are refused, within one layer or across layers.
+  A version 1 spool left by an earlier release is shipped by the old shipper to its configured server until it is empty, and nothing new is written to it.
+  It is shipped only while the log is on and `decisions.log.server` is configured; with the log off, a start that finds one says so.
+  A control plane receiving batches beside such a plane trusts that plane's ring under the name the spool's records carry.
+
 - **A journal can drop its oldest segments, and one missing its first segment no longer opens.**
   The storage library's journals can now delete whole segments below a frame, recording the first frame they still hold in a `BASE` file beside the segments; the stream retention that uses it follows.
   Opening a journal whose first segment is missing, without `BASE` or with one no segment starts at, is now refused as corruption rather than read from the segments that remain.

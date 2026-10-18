@@ -214,6 +214,8 @@ fn decided<'a>(id: &'a str, zone: &'a str, permit: bool) -> Decided<'a> {
         at: "2026-08-24T10:00:00Z".to_owned(),
         zone,
         ledger: "main-ledger",
+        zone_id: zone,
+        ledger_id: "main-ledger",
         scope: None,
         commit: "sha256:ec1773bf",
         counter: 3,

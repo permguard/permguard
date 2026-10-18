@@ -962,6 +962,103 @@ fn a_record_is_taken_only_in_its_canonical_encoding() {
     );
 }
 
+/// WP-6.1: a record built by `append_with` is handed the position it takes, under concurrent
+/// appenders, across a reopening and across a rollover; a build that fails or a record the codec
+/// refuses takes no sequence.
+#[test]
+fn append_with_builds_each_record_at_the_engines_position() {
+    let host = Host::new("append-with");
+    let producer = Arc::new(host.producer());
+    // Each record names its sequence and the digest it says precedes it; two per append.
+    let named = |position: Position| {
+        Ok(vec![
+            format!("{}|{}", position.seq, hex(&position.prev)).into_bytes(),
+            format!("{}|next", position.seq + 1).into_bytes(),
+        ])
+    };
+    let threads: Vec<_> = (0..4)
+        .map(|_| {
+            let producer = Arc::clone(&producer);
+            std::thread::spawn(move || {
+                for _ in 0..25 {
+                    producer.append_with(&ledger(1), named).expect("appended");
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().expect("the thread");
+    }
+    let records = producer.read(&ledger(1), 1, 1000).expect("read").records;
+    assert_eq!(records.len(), 200);
+    let mut prev = [0u8; 32];
+    for (seq, record) in &records {
+        let (named_seq, named_prev) = record.split_once('|').expect("a named record");
+        assert_eq!(named_seq, seq.to_string(), "the sequence it was handed");
+        if named_prev != "next" {
+            assert_eq!(named_prev, hex(&prev), "the digest of the record before it");
+        }
+        prev = record_digest(digest::DECISION_RECORD, record.as_bytes());
+    }
+    // A failing build and a record the codec refuses take nothing.
+    assert!(
+        producer
+            .append_with(&ledger(1), |_| Err("refused".to_owned()))
+            .is_err()
+    );
+    assert!(
+        producer
+            .append_with(&ledger(1), |_| Ok(Vec::new()))
+            .is_err()
+    );
+    assert!(
+        producer
+            .append_with(&ledger(1), |_| Ok(vec![vec![0xff]]))
+            .is_err(),
+        "not text"
+    );
+    drop(producer);
+    // Reopened, the next record is handed the digest of the last one on disk.
+    let reopened = host.producer();
+    let run = reopened
+        .state(&ledger(1))
+        .expect("state")
+        .expect("a run")
+        .run_id;
+    let mut seen = None;
+    let receipt = reopened
+        .append_with(&ledger(1), |position| {
+            seen = Some(position);
+            Ok(vec![b"after".to_vec()])
+        })
+        .expect("appended");
+    assert_eq!(
+        seen,
+        Some(Position {
+            run_id: run,
+            seq: 201,
+            prev,
+        })
+    );
+    assert_eq!((receipt.run_id, receipt.seq), (run, 201));
+    // A successor run starts from sequence 1 and the zero digest.
+    let successor = reopened.rollover(&ledger(1), None).expect("rolled over");
+    reopened
+        .append_with(&ledger(1), |position| {
+            seen = Some(position);
+            Ok(vec![b"first".to_vec()])
+        })
+        .expect("appended");
+    assert_eq!(
+        seen,
+        Some(Position {
+            run_id: successor.run_id,
+            seq: 1,
+            prev: [0; 32],
+        })
+    );
+}
+
 /// WP-5.1, after the review: when a flush fails with several appenders waiting, none of them is
 /// answered as durable, and none of their records is there after reopening.
 #[test]
@@ -2585,11 +2682,11 @@ fn an_unverifiable_batch_stores_nothing() {
     );
     // A changed signature.
     let mut tampered = batch::SealedBatch::decode(&batches[0]).expect("decodes");
-    tampered.signature.signature = tampered
-        .signature
-        .signature
-        .replacen('A', "B", 1)
-        .replacen('a', "b", 1);
+    // One character in the middle, always changed: a random signature may hold no given letter.
+    let mut chars: Vec<char> = tampered.signature.signature.chars().collect();
+    let middle = chars.len() / 2;
+    chars[middle] = if chars[middle] == 'A' { 'B' } else { 'A' };
+    tampered.signature.signature = chars.into_iter().collect();
     let tampered = ship_of(&host, &tampered.encode().expect("encodes"));
     assert_eq!(
         outcome(ingest(&consumer, &host, &tampered)),
@@ -3235,6 +3332,11 @@ fn the_ingest_refuses_what_its_task_does_not_pin() {
 
 use permguard_host::composition::{StreamShipping, Subscribed};
 
+/// A selector covering no stream: the tests' runs are fenced where they open, and a subscription
+/// rolls none over (WP-6.1).
+static NO_STREAM: std::sync::LazyLock<permguard_core::authz::Selector> =
+    std::sync::LazyLock::new(|| permguard_core::authz::Selector::exactly(Resource::host()));
+
 fn subscribed(task_id: &str, required: bool, epoch: u64) -> Subscribed<'_> {
     Subscribed {
         membership_id: MEMBERSHIP,
@@ -3242,6 +3344,7 @@ fn subscribed(task_id: &str, required: bool, epoch: u64) -> Subscribed<'_> {
         task_id,
         required,
         epoch,
+        selector: &NO_STREAM,
     }
 }
 
@@ -3554,6 +3657,130 @@ fn a_refused_producer_ships_once_approved_without_restart() {
         .expect("a batch");
     assert_eq!(again.first_seq, 1);
     assert_ne!(again.request_id, shipment.request_id, "a fresh request id");
+}
+
+/// WP-6.1 (owner decision of 2026-10-13): a subscription rolls a stream its task covers over to a
+/// run carrying its fence, once per epoch; a stream it does not cover, a run another membership
+/// fences and an older epoch are left alone.
+#[test]
+fn a_subscription_fences_the_streams_its_task_covers() {
+    let host = Host::new("fence-on-ship");
+    let producer = host.sealer();
+    for n in [1, 2] {
+        producer
+            .append(&ledger(n), &"genesis".to_owned())
+            .expect("appended");
+    }
+    let genesis = producer.open_run(&ledger(1), None).expect("a run");
+    assert_eq!(
+        genesis.fence, None,
+        "a standalone Host opens its genesis run unfenced"
+    );
+    let covering = permguard_core::authz::Selector::exactly(ledger(1));
+    let shipping = Subscribed {
+        selector: &covering,
+        ..subscribed("decisions", true, 1)
+    };
+    assert!(
+        producer.due(&shipping).expect("due").is_empty(),
+        "the fenced successor holds nothing yet"
+    );
+    let fenced = producer.open_run(&ledger(1), None).expect("a run");
+    assert_eq!(fenced.fence, Some(fence(1)));
+    assert_eq!(
+        fenced.predecessor.map(|end| end.run_id),
+        Some(genesis.run_id),
+        "a successor of the genesis run"
+    );
+    assert_eq!(
+        producer.open_run(&ledger(2), None).expect("a run").fence,
+        None,
+        "a stream the task does not cover"
+    );
+    producer
+        .append(&ledger(1), &"shipped".to_owned())
+        .expect("appended");
+    assert_eq!(
+        producer.due(&shipping).expect("due"),
+        vec![ledger(1).to_string()]
+    );
+    assert_eq!(
+        producer.open_run(&ledger(1), None).expect("a run").run_id,
+        fenced.run_id,
+        "once per epoch"
+    );
+    // Another membership, and an older epoch of this one, leave the run alone.
+    // Another membership's task of the same name, at a later epoch, still leaves it alone.
+    let foreign = Subscribed {
+        membership_id: [6; 16],
+        epoch: 9,
+        ..shipping
+    };
+    producer.due(&foreign).expect("due");
+    let older = Subscribed {
+        epoch: 0,
+        ..shipping
+    };
+    producer.due(&older).expect("due");
+    assert_eq!(
+        producer.open_run(&ledger(1), None).expect("a run").run_id,
+        fenced.run_id
+    );
+    // A new epoch of the same task: a successor naming it.
+    let renewed = Subscribed {
+        epoch: 2,
+        ..shipping
+    };
+    producer.due(&renewed).expect("due");
+    let successor = producer.open_run(&ledger(1), None).expect("a run");
+    assert_eq!(successor.fence, Some(fence(2)));
+    assert_ne!(successor.run_id, fenced.run_id);
+    // A forked stream the task covers is left to its operator, and the others still ship.
+    producer.report_fork(&ledger(2), 1).expect("reported");
+    let forked = producer.open_run(&ledger(2), None).expect("a run");
+    let everything = permguard_core::authz::Selector::under(Resource::plane("data"));
+    let wide = Subscribed {
+        selector: &everything,
+        epoch: 3,
+        ..shipping
+    };
+    producer
+        .due(&wide)
+        .expect("a forked stream does not stop the others");
+    assert_eq!(
+        producer.open_run(&ledger(1), None).expect("a run").fence,
+        Some(fence(3))
+    );
+    assert_eq!(
+        producer.open_run(&ledger(2), None).expect("a run"),
+        forked,
+        "not rolled over"
+    );
+    // A stream a subscription seen shipping covers opens its genesis run under its fence, so its
+    // first records ship too (after the review).
+    producer
+        .append(&ledger(5), &"first".to_owned())
+        .expect("appended");
+    assert_eq!(
+        producer.open_run(&ledger(5), None).expect("a run").fence,
+        Some(fence(3))
+    );
+    assert!(
+        producer
+            .due(&wide)
+            .expect("due")
+            .contains(&ledger(5).to_string()),
+        "the genesis run's record is due at once"
+    );
+    // A producer handed no ring seals nothing, so its pressure is unknown, never `None`.
+    let unsealed = host.producer();
+    unsealed
+        .append(&ledger(3), &"r".to_owned())
+        .expect("appended");
+    assert!(
+        permguard_host::composition::StreamAppender::pressure(&unsealed, &ledger(3), 1 << 30, 3600)
+            .is_err()
+    );
 }
 
 /// WP-5.4, F-11: pressure counts only what no required subscription acknowledged: a stream

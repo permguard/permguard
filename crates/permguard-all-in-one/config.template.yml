@@ -338,14 +338,10 @@ dataPlane:
   #   # switched on for a deployment that did not ask for it.
   #   log:
   #     enabled: "true"
-  #     pdp_id: data-plane-eu-1        # required when the log is on. Half of every stream identity:
-  #                                    # two replicas sharing one write two records at one (stream,
-  #                                    # seq), and that closes a stream permanently at the far end.
-  #                                    # A hostname fallback is convenient and wrong the first time
-  #                                    # two replicas run on one host, so there is not one.
   #
-  #     # Where the record goes. Described exactly like a mirror source, because it is the same kind
-  #     # of relationship: a server this plane authenticates before it speaks to it.
+  #     # Where a version 1 spool left by an earlier release is shipped until it is empty: since
+  #     # WP-6.1 new records go over the membership's `decisions.ship` task, never here. Described
+  #     # exactly like a mirror source: a server this plane authenticates before it speaks to it.
   #     server:
   #       url: "grpcs://control.acme.com:6443"     # exact: this is who you trust
   #       tls:
@@ -356,23 +352,22 @@ dataPlane:
   #                                                # be able to grant one without the other
   #         server_name: control-plane             # when the address is not the name
   #
-  #     # Durability before the network. Bounded both ways: a spool that grows without limit turns a
-  #     # control-plane outage into a full disk.
+  #     # The bounds of what the Host's stream holds unacknowledged by the required subscriptions:
+  #     # past either, decisions are refused `unavailable`, so a coordinator outage costs disk up
+  #     # to a bound, never an unrecorded answer.
   #     spool:
-  #       directory: "data/decisions/spool"       # under the working directory; holds the instance id too
-  #       bytes: "512M"                # DECISION RECORDS ONLY. The record that ends a stream is
-  #                                    # reserved outside this bound, because a producer that cannot
-  #                                    # write its last record cannot legally discard anything and
-  #                                    # cannot continue at all.
-  #       age: "24h"                   # how old the oldest unshipped record may be
+  #       directory: "data/decisions/spool"       # a legacy version 1 spool, and the zone key witness
+  #       bytes: "512M"                # unacknowledged record bytes
+  #       age: "24h"                   # how old the oldest unacknowledged batch may be
   #
   #     # Latency against efficiency: whichever comes first.
   #     batch: { bytes: "256k", interval: "1s" }
   #
-  #     # What a full spool means — the one decision only a deployment can make.
-  #     #   open   keep answering; the stream ends with a signed discontinuity and a new one begins
-  #     #   closed refuse to decide rather than decide unrecorded
-  #     on_full: "open"
+  #     # What the log promises before an answer (WP-6.1):
+  #     #   required  every answered decision has a durable record; one that cannot be recorded is
+  #     #             refused `unavailable` (the default when the log is on)
+  #     #   disabled  no record is promised
+  #     mode: "required"
   #
   #     # What is written. Denies and errors are never sampled, whatever this says: a log that drops
   #     # refusals is not an audit trail.

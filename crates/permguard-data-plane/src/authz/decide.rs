@@ -445,7 +445,7 @@ pub struct Decider {
     audit: Option<AuditTarget>,
     max_evaluations: usize,
     /// Where decisions are recorded, when this plane keeps a log.
-    journal: Option<Arc<crate::decisions::Journal>>,
+    journal: Option<Arc<dyn crate::decisions::DecisionRecorder>>,
     /// Which caller-supplied attributes this plane may record in clear.
     include: permguard_core::decisions::IncludeSection,
     /// Turns an identifier into the zone's shared token before it ever leaves this plane
@@ -633,11 +633,12 @@ impl Decider {
     /// Records every decision this decider answers.
     ///
     /// Separate from [`Self::new`] because a plane that keeps no log is the
-    /// ordinary case, and because the journal is a singleton the plane opens
-    /// once — a decider that built its own would open a second spool.
+    /// ordinary case, and because the log is a singleton the plane opens
+    /// once — a decider that built its own would mark and measure every
+    /// stream a second time.
     pub fn with_journal(
         mut self,
-        journal: Option<Arc<crate::decisions::Journal>>,
+        journal: Option<Arc<dyn crate::decisions::DecisionRecorder>>,
         subjects: Option<Arc<permguard_host::secrets::ZoneHandle>>,
         include: permguard_core::decisions::IncludeSection,
     ) -> Self {
@@ -1309,6 +1310,8 @@ struct OwnedDecided {
     at: String,
     zone: String,
     ledger: String,
+    zone_id: String,
+    ledger_id: String,
     scope: Option<permguard_decisions::commitment::Scope>,
     commit: String,
     counter: u64,
@@ -1408,6 +1411,8 @@ impl OwnedDecided {
             at: self.at.clone(),
             zone: self.zone.as_str(),
             ledger: self.ledger.as_str(),
+            zone_id: self.zone_id.as_str(),
+            ledger_id: self.ledger_id.as_str(),
             scope: self.scope,
             commit: self.commit.as_str(),
             counter: self.counter,
@@ -1443,14 +1448,10 @@ impl Decider {
     /// after the answer has gone — is a decision the deployment believes was
     /// logged and was not.
     ///
-    /// **`on_full: closed` refuses the decision**, and that is the whole
-    /// difference between the two modes: a deployment that said it would rather
-    /// not decide than decide unrecorded gets exactly that. Answering anyway
-    /// and writing a warning would make the setting a comment.
-    ///
-    /// Other write failures follow the same availability contract: `closed`
-    /// refuses the request before the answer leaves, while `open` reports the
-    /// incident and keeps answering.
+    /// **`required` refuses the decision** it cannot record (WP-6.1): a
+    /// deployment that said it would rather not decide than decide unrecorded
+    /// gets exactly that, `unavailable` before the answer leaves. Answering
+    /// anyway and writing a warning would make the setting a comment.
     async fn journal(
         &self,
         resolved: &Resolved,
@@ -1507,6 +1508,9 @@ impl Decider {
                 // versioned record shape and name-to-id resolution at the read boundary.
                 zone: mirror.identity.zone_name.clone(),
                 ledger: mirror.identity.ledger_name.clone(),
+                // The ids name the Host stream the record lands on (WP-6.1).
+                zone_id: mirror.identity.zone_id.clone(),
+                ledger_id: mirror.identity.ledger_id.clone(),
                 scope,
                 commit: head.commit.clone(),
                 counter: head.counter,
@@ -1598,6 +1602,8 @@ impl Decider {
             at: now_rfc3339(),
             zone: at.mirror.identity.zone_name.clone(),
             ledger: at.mirror.identity.ledger_name.clone(),
+            zone_id: at.mirror.identity.zone_id.clone(),
+            ledger_id: at.mirror.identity.ledger_id.clone(),
             scope,
             commit: at.head.commit.clone(),
             counter: at.head.counter,
@@ -1635,7 +1641,7 @@ impl Decider {
     /// Writes one record, and decides what a failure to write means.
     async fn write(
         &self,
-        journal: Arc<crate::decisions::Journal>,
+        journal: Arc<dyn crate::decisions::DecisionRecorder>,
         decided: OwnedDecided,
     ) -> Result<(), ApiError> {
         let refuses_unrecorded = journal.refuses_unrecorded();

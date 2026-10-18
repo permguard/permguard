@@ -181,6 +181,13 @@ impl DecisionFacade {
         Ok(producers)
     }
 
+    /// Whether this store waits for batches over its ingest route: a producer key set is
+    /// configured, or a legacy spool beside it names its producer. Since WP-6.1 a plane in the
+    /// same process records on the Host's stream, and a store expecting nothing is not degraded.
+    pub(crate) fn expects_batches(&self) -> bool {
+        !self.producer_files.is_empty() || !self.local_pdp.is_empty()
+    }
+
     /// Re-reads the producers' key sets from disk.
     ///
     /// Called when, and only when, a batch could not be attributed: a producer
@@ -1134,6 +1141,22 @@ mod strict {
     use super::*;
 
     const ROOT: &[u8] = b"a-test-cursor-key-of-32-bytes!!!!";
+
+    /// WP-6.1: a store beside a plane recording on the Host's stream expects no batch unless a
+    /// producer key set is configured or a legacy spool names its producer.
+    #[test]
+    fn a_store_expects_batches_only_from_a_named_producer() {
+        let mut held = facade("expects");
+        assert!(!held.expects_batches(), "nothing names a producer");
+        held.local_pdp = "data-plane-local".to_owned();
+        assert!(held.expects_batches(), "a legacy spool names one");
+        held.local_pdp.clear();
+        held.producer_files.push(ProducerFile {
+            path: std::path::PathBuf::from("keys.json"),
+            pdp: "plane-a".to_owned(),
+        });
+        assert!(held.expects_batches(), "a configured key set");
+    }
 
     fn facade(tag: &str) -> DecisionFacade {
         let root = std::env::temp_dir().join(format!(

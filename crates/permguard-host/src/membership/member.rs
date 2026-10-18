@@ -897,6 +897,7 @@ impl Member<'_> {
                     task_id: &task.task_id,
                     required: task.required,
                     epoch: manifest.epoch,
+                    selector: &task.selector,
                 })?;
             }
         }
@@ -963,6 +964,7 @@ impl Member<'_> {
                     task_id: &task.task_id,
                     required: task.required,
                     epoch: manifest.epoch,
+                    selector: &task.selector,
                 };
                 let resources = match engine.due(&subscription) {
                     Ok(resources) => resources,

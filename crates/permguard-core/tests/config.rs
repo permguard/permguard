@@ -1947,7 +1947,6 @@ fn test_key_versions_the_coordinator_root_and_the_retired_commitment_key() {
 
     let logging = [
         (SETTING_LOG_ENABLED, "true"),
-        (SETTING_LOG_PDP_ID, "pdp-1"),
         (SETTING_AUDIT_PSEUDONYM_ENABLED, "true"),
         (SETTING_AUDIT_PSEUDONYM_KEY_REF, "audit-pseudonym"),
     ];
@@ -1970,6 +1969,116 @@ fn test_key_versions_the_coordinator_root_and_the_retired_commitment_key() {
             .map(|reference| reference.name()),
         Some("coordinator-root")
     );
+}
+
+/// WP-6.1: `log.mode` is `required` or `disabled`, following `log.enabled` when unset and
+/// refusing an explicit `log.enabled` that contradicts it; `best-effort`, `on_full: open` and the
+/// plane's own name are refused, each naming what replaces it.
+#[test]
+fn the_decision_log_mode_is_required_or_disabled_and_the_plane_names_no_stream() {
+    let logging = [
+        (SETTING_AUDIT_PSEUDONYM_ENABLED, "true"),
+        (SETTING_AUDIT_PSEUDONYM_KEY_REF, "audit-pseudonym"),
+        (SETTING_SECRETS_COORDINATOR_ROOT_REF, "coordinator-root"),
+    ];
+    let built = |extra: &[(&'static str, &'static str)]| {
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_file(pairs(&[&logging[..], extra].concat())),
+        )
+    };
+
+    assert_eq!(
+        built(&[]).expect("off by default").log_mode(),
+        DecisionLogMode::Disabled
+    );
+    let on = built(&[(SETTING_LOG_ENABLED, "true")]).expect("on");
+    assert_eq!(on.log_mode(), DecisionLogMode::Required, "required when on");
+    assert_eq!(
+        on.effective_settings()
+            .into_iter()
+            .find(|setting| setting.key == SETTING_LOG_MODE)
+            .and_then(|setting| setting.value)
+            .as_deref(),
+        Some("required"),
+        "published as it is in force"
+    );
+    let required = built(&[(SETTING_LOG_MODE, "required")]).expect("required");
+    assert!(required.log_enabled(), "the mode turns the log on");
+    let disabled = built(&[(SETTING_LOG_MODE, "disabled")]).expect("disabled");
+    assert!(!disabled.log_enabled());
+    built(&[
+        (SETTING_LOG_MODE, "required"),
+        (SETTING_LOG_ENABLED, "true"),
+    ])
+    .expect("an agreeing `enabled`");
+    built(&[
+        (SETTING_LOG_ON_FULL, "closed"),
+        (SETTING_LOG_ENABLED, "true"),
+    ])
+    .expect("`closed` changes nothing");
+
+    // Two layers saying the log is on and off are refused like one.
+    for (file, environment) in [
+        (
+            (SETTING_LOG_MODE, "required"),
+            (SETTING_LOG_ENABLED, "false"),
+        ),
+        (
+            (SETTING_LOG_ENABLED, "false"),
+            (SETTING_LOG_MODE, "required"),
+        ),
+    ] {
+        let error = Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new()
+                .with_file(pairs(&[&logging[..], &[file]].concat()))
+                .with_environment(vec![(environment.0.to_owned(), environment.1.to_owned())]),
+        )
+        .expect_err("refused");
+        assert!(
+            format!("{error:#}").contains(SETTING_LOG_ENABLED),
+            "{error:#}"
+        );
+    }
+    let overridden = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new()
+            .with_file(pairs(
+                &[&logging[..], &[(SETTING_LOG_MODE, "disabled")]].concat(),
+            ))
+            .with_environment(vec![(SETTING_LOG_MODE.to_owned(), "required".to_owned())]),
+    )
+    .expect("a later layer's mode wins over an earlier one's");
+    assert_eq!(overridden.log_mode(), DecisionLogMode::Required);
+
+    for (refused, names) in [
+        (vec![(SETTING_LOG_MODE, "best-effort")], "loss"),
+        (vec![(SETTING_LOG_MODE, "open")], "required"),
+        (
+            vec![
+                (SETTING_LOG_MODE, "required"),
+                (SETTING_LOG_ENABLED, "false"),
+            ],
+            SETTING_LOG_ENABLED,
+        ),
+        (
+            vec![
+                (SETTING_LOG_MODE, "disabled"),
+                (SETTING_LOG_ENABLED, "true"),
+            ],
+            SETTING_LOG_ENABLED,
+        ),
+        (vec![(SETTING_LOG_ON_FULL, "open")], SETTING_LOG_MODE),
+        (vec![(SETTING_LOG_ON_FULL, "sometimes")], "closed"),
+        (vec![(SETTING_LOG_PDP_ID, "pdp-1")], "host_id"),
+    ] {
+        let error = format!("{:#}", built(&refused).expect_err("refused"));
+        assert!(error.contains(names), "{refused:?}: {error}");
+    }
 }
 
 /// A sealed `security` audit day is kept for ever unless the deployment sets its own retention,

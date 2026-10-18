@@ -78,6 +78,16 @@ pub struct Receipt {
     pub record_digest: [u8; 32],
 }
 
+/// Where the next record of a stream lands: what a record that names its own position is built
+/// from (WP-6.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    pub run_id: [u8; 16],
+    pub seq: u64,
+    /// The digest of the record before it in the run; zeros at sequence 1.
+    pub prev: [u8; 32],
+}
+
 /// The typed producer handle of one descriptor.
 pub struct Producer<C> {
     context: Context,
@@ -92,6 +102,9 @@ pub struct Producer<C> {
     floor: Option<Arc<dyn super::retention::RetentionFloor>>,
     /// Keeps the garbage collection's passes from overlapping (WP-5.6b).
     pub(crate) lease: super::retention::Lease,
+    /// The fence of each subscription seen shipping, with its task's selector: what a stream it
+    /// covers opens its genesis run under (WP-6.1, after the review).
+    fences: Mutex<Vec<(permguard_core::authz::Selector, Fence)>>,
 }
 
 impl<C> std::fmt::Debug for Producer<C> {
@@ -115,6 +128,7 @@ impl<C: RecordCodec> Producer<C> {
             backoff: Mutex::new(BTreeMap::new()),
             floor: None,
             lease: super::retention::Lease::default(),
+            fences: Mutex::new(Vec::new()),
         }
     }
 
@@ -293,6 +307,74 @@ impl<C: RecordCodec> Producer<C> {
         resource: &Resource,
         bytes: Vec<u8>,
     ) -> Result<Receipt, StreamError> {
+        // The typed validator: what is appended reads back as a record, and is its canonical
+        // encoding (after the review).
+        self.check(&bytes)?;
+        let physical = self.physical(resource)?;
+        let mut bytes = Some(bytes);
+        physical.append(
+            &self.context,
+            self.genesis_fence(resource),
+            self.descriptor.record_domain,
+            &mut |_| Ok(bytes.take().into_iter().collect()),
+        )
+    }
+
+    /// Appends the records `build` makes from the stream's next position, under the lock that
+    /// gives sequences, so a record can name its own place (WP-6.1): the records take consecutive
+    /// sequences from `position.seq`, each checked by the codec as [`Self::append_bytes`] checks
+    /// one. Answers the last record's receipt once the flush covering it completed.
+    pub fn append_with(
+        &self,
+        resource: &Resource,
+        build: impl FnOnce(Position) -> Result<Vec<Vec<u8>>, String>,
+    ) -> Result<Receipt, StreamError> {
+        let physical = self.physical(resource)?;
+        let mut build = Some(build);
+        physical.append(
+            &self.context,
+            self.genesis_fence(resource),
+            self.descriptor.record_domain,
+            &mut |position| {
+                let build = build
+                    .take()
+                    .ok_or_else(|| StreamError::Invalid("a record built twice".to_owned()))?;
+                let records = build(position).map_err(StreamError::Invalid)?;
+                for bytes in &records {
+                    self.check(bytes)?;
+                }
+                Ok(records)
+            },
+        )
+    }
+
+    /// The fence a stream of `resource` opens its genesis run under: the first subscription seen
+    /// shipping whose task covers it, `None` on a standalone Host.
+    fn genesis_fence(&self, resource: &Resource) -> Option<Fence> {
+        self.fences
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .find(|(selector, _)| selector.contains(resource))
+            .map(|(_, fence)| fence.clone())
+    }
+
+    /// Remembers `fence`, with its task's `selector`, for the genesis runs it covers: in place of
+    /// an earlier epoch of the same task.
+    pub(crate) fn remember_fence(&self, selector: &permguard_core::authz::Selector, fence: Fence) {
+        let mut fences = self.fences.lock().unwrap_or_else(PoisonError::into_inner);
+        match fences.iter_mut().find(|(_, held)| {
+            held.membership_id == fence.membership_id && held.task_id == fence.task_id
+        }) {
+            Some(held) if held.1.epoch <= fence.epoch => *held = (selector.clone(), fence),
+            Some(_) => {}
+            None => fences.push((selector.clone(), fence)),
+        }
+    }
+
+    /// Refuses a record's `bytes` the codec does not read back, or not in its canonical
+    /// encoding, or past the descriptor's bound.
+    fn check(&self, bytes: &[u8]) -> Result<(), StreamError> {
         if bytes.len() > self.descriptor.max_record_bytes as usize {
             return Err(StreamError::Invalid(format!(
                 "a record of {} bytes; this stream takes up to {}",
@@ -300,16 +382,13 @@ impl<C: RecordCodec> Producer<C> {
                 self.descriptor.max_record_bytes
             )));
         }
-        // The typed validator: what is appended reads back as a record, and is its canonical
-        // encoding (after the review).
-        let record = self.codec.decode(&bytes).map_err(StreamError::Invalid)?;
+        let record = self.codec.decode(bytes).map_err(StreamError::Invalid)?;
         if self.codec.encode(&record).map_err(StreamError::Invalid)? != bytes {
             return Err(StreamError::Invalid(
                 "a record is appended in its canonical encoding".to_owned(),
             ));
         }
-        let physical = self.physical(resource)?;
-        physical.append(&self.context, bytes, self.descriptor.record_domain)
+        Ok(())
     }
 
     /// The run the stream of `resource` writes under, opening a genesis run carrying `fence`
@@ -480,6 +559,8 @@ struct Writer {
 struct Queue {
     run_id: Option<[u8; 16]>,
     next_seq: u64,
+    /// The digest of the last record given a sequence: the `prev` of the next (WP-6.1).
+    last_digest: [u8; 32],
     durable: u64,
     pending: Vec<(u64, Vec<u8>)>,
     flushing: bool,
@@ -745,6 +826,7 @@ impl Physical {
         if let Some(run) = &writer.run {
             queue.run_id = Some(run.statement.run_id);
             queue.next_seq = run.last_seq + 1;
+            queue.last_digest = run.last_digest;
             queue.durable = run.last_seq;
         }
         queue.forked = writer.state.as_ref().and_then(|state| state.forked_at_seq);
@@ -832,19 +914,23 @@ impl Physical {
         let mut queue = lock(&self.queue);
         queue.run_id = Some(statement.run_id);
         queue.next_seq = 1;
+        queue.last_digest = [0; 32];
         queue.durable = 0;
         Ok(statement)
     }
 
-    /// Gives `bytes` the next sequence and answers once a flush made it durable.
+    /// Gives the records `build` makes from the next position consecutive sequences, opening a
+    /// genesis run carrying `fence` when the stream holds none, and
+    /// answers once a flush made the last durable. `build` runs under the queue's lock, so the
+    /// position it is handed is the one its records take.
     fn append(
         &self,
         context: &Context,
-        bytes: Vec<u8>,
+        fence: Option<Fence>,
         domain: &str,
+        build: &mut dyn FnMut(Position) -> Result<Vec<Vec<u8>>, StreamError>,
     ) -> Result<Receipt, StreamError> {
-        self.ensure_run(context, None)?;
-        let digest = record_digest(domain, &bytes);
+        self.ensure_run(context, fence)?;
         let mut queue = lock(&self.queue);
         loop {
             if let Some(failed) = &queue.failed {
@@ -866,9 +952,23 @@ impl Physical {
         let Some(run_id) = queue.run_id else {
             return Err(StreamError::Invalid("the stream holds no run".to_owned()));
         };
-        let seq = queue.next_seq;
-        queue.next_seq += 1;
-        queue.pending.push((seq, bytes));
+        let records = build(Position {
+            run_id,
+            seq: queue.next_seq,
+            prev: queue.last_digest,
+        })?;
+        if records.is_empty() {
+            return Err(StreamError::Invalid("an append of no record".to_owned()));
+        }
+        let mut seq = 0;
+        let mut digest = queue.last_digest;
+        for bytes in records {
+            seq = queue.next_seq;
+            queue.next_seq += 1;
+            digest = record_digest(domain, &bytes);
+            queue.pending.push((seq, bytes));
+        }
+        queue.last_digest = digest;
         queue.waiting += 1;
         let outcome = loop {
             if queue.durable >= seq && queue.run_id == Some(run_id) {
@@ -1017,6 +1117,7 @@ impl Physical {
         if let Some(current) = &writer.run {
             queue.run_id = Some(current.statement.run_id);
             queue.next_seq = current.last_seq + 1;
+            queue.last_digest = current.last_digest;
             queue.durable = current.last_seq;
             if current.statement.run_id == statement.run_id {
                 queue.forked = None;
@@ -1275,6 +1376,44 @@ impl<C: RecordCodec> permguard_host::composition::StreamAppender for Producer<C>
                 seq: receipt.seq,
             })
             .map_err(|error| error.to_string())
+    }
+
+    fn append_with(
+        &self,
+        resource: &Resource,
+        build: permguard_host::composition::BuildRecords<'_>,
+    ) -> Result<permguard_host::composition::StreamReceipt, String> {
+        Producer::append_with(self, resource, |position| {
+            build(permguard_host::composition::StreamPosition {
+                run_id: position.run_id,
+                seq: position.seq,
+                prev: position.prev,
+            })
+        })
+        .map(|receipt| permguard_host::composition::StreamReceipt {
+            run_id: receipt.run_id,
+            seq: receipt.seq,
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn pressure(
+        &self,
+        resource: &Resource,
+        max_bytes: u64,
+        max_age_secs: u64,
+    ) -> Result<Option<&'static str>, String> {
+        // Without a ring nothing is ever sealed or acknowledged, so the pressure is unknown: an
+        // error, which a Plane refuses its records on, never `None`.
+        Producer::pressure(
+            self,
+            resource,
+            PressureBounds {
+                max_bytes,
+                max_age_secs,
+            },
+        )
+        .map_err(|error| error.to_string())
     }
 }
 

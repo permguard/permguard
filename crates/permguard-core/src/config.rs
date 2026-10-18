@@ -485,12 +485,35 @@ pub const SETTING_MAX_BLOCKING: &str = "PERMGUARD_MAX_BLOCKING";
 /// time, and neither is something to switch on for a deployment that did not ask for it.
 pub const SETTING_LOG_ENABLED: &str = "PERMGUARD_DECISIONS_LOG_ENABLED";
 
-/// This plane's name in the log, and half of every stream identity.
-///
-/// Required when the log is on. A hostname fallback is convenient and wrong the first time two
-/// replicas run on one host: two producers sharing a `pdp.id` produce two records at one
-/// `(stream, seq)`, which closes a stream permanently at the far end.
+/// Retired (WP-6.1): the decision stream is named by the Host's `host_id` and run, so a
+/// configuration that still names the plane is refused.
 pub const SETTING_LOG_PDP_ID: &str = "PERMGUARD_DECISIONS_LOG_PDP_ID";
+
+/// What the decision log promises before an answer (WP-6.1): `required` (every answered decision
+/// has a durable record, and one that cannot be recorded is refused `unavailable`) or `disabled`.
+///
+/// Unset, it follows [`SETTING_LOG_ENABLED`]. `best-effort` is refused until its `loss` record is
+/// defined.
+pub const SETTING_LOG_MODE: &str = "PERMGUARD_DECISIONS_LOG_MODE";
+
+/// The decision log's assurance mode (WP-6.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecisionLogMode {
+    /// Every answered decision has a durable record; one that cannot be recorded is refused.
+    Required,
+    /// No record is promised.
+    Disabled,
+}
+
+impl DecisionLogMode {
+    /// The word configuration spells it with.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Required => "required",
+            Self::Disabled => "disabled",
+        }
+    }
+}
 
 /// Where the durable local record lives, under the working directory.
 ///
@@ -629,10 +652,8 @@ pub const SETTING_LOG_BATCH_BYTES: &str = "PERMGUARD_DECISIONS_LOG_BATCH_BYTES";
 /// How long a batch may wait before it is shipped anyway.
 pub const SETTING_LOG_BATCH_INTERVAL: &str = "PERMGUARD_DECISIONS_LOG_BATCH_INTERVAL";
 
-/// What a full spool means: `open` keeps answering and ends the stream with a signed
-/// discontinuity; `closed` refuses to decide rather than decide unrecorded.
-///
-/// The one decision only a deployment can make, so it is stated rather than defaulted quietly.
+/// What a full spool means. Only `closed` is accepted (WP-6.1): the decision log refuses rather
+/// than decides unrecorded, which is [`SETTING_LOG_MODE`] `required`; `open` is refused.
 pub const SETTING_LOG_ON_FULL: &str = "PERMGUARD_DECISIONS_LOG_ON_FULL";
 
 /// The rate at which permits are recorded, between `0.0` and `1.0`.
@@ -1275,7 +1296,10 @@ pub struct Config {
     authz_max_evaluations: usize,
     max_blocking: usize,
     log_enabled: bool,
-    log_pdp_id: String,
+    /// `log.enabled` and `log.mode` as some layer stated them, so a contradiction between two
+    /// layers is refused like one within a layer (WP-6.1).
+    log_enabled_stated: Option<bool>,
+    log_mode_stated: Option<bool>,
     log_spool_directory: String,
     log_spool_bytes: u64,
     events_enabled: bool,
@@ -1302,7 +1326,6 @@ pub struct Config {
     log_spool_age: Duration,
     log_batch_bytes: u64,
     log_batch_interval: Duration,
-    log_on_full_open: bool,
     log_sample_permits: f64,
     log_destination: Option<crate::decisions::LogDestination>,
     events_destination: Option<crate::decisions::EventDestination>,
@@ -1470,7 +1493,8 @@ impl Default for Config {
             authz_max_evaluations: DEFAULT_AUTHZ_MAX_EVALUATIONS,
             max_blocking: DEFAULT_MAX_BLOCKING,
             log_enabled: false,
-            log_pdp_id: String::new(),
+            log_enabled_stated: None,
+            log_mode_stated: None,
             log_spool_directory: DEFAULT_LOG_SPOOL_DIRECTORY.to_owned(),
             log_spool_bytes: DEFAULT_LOG_SPOOL_BYTES,
             events_enabled: false,
@@ -1492,7 +1516,6 @@ impl Default for Config {
             log_spool_age: DEFAULT_LOG_SPOOL_AGE,
             log_batch_bytes: DEFAULT_LOG_BATCH_BYTES,
             log_batch_interval: DEFAULT_LOG_BATCH_INTERVAL,
-            log_on_full_open: true,
             log_sample_permits: DEFAULT_LOG_SAMPLE_PERMITS,
             log_destination: None,
             events_destination: None,
@@ -3290,9 +3313,13 @@ produce: use `EdDSA` or `ES256`"
         self.log_enabled
     }
 
-    /// This plane's name in the log — half of every stream identity.
-    pub fn log_pdp_id(&self) -> &str {
-        &self.log_pdp_id
+    /// What the decision log promises before an answer (WP-6.1).
+    pub fn log_mode(&self) -> DecisionLogMode {
+        if self.log_enabled {
+            DecisionLogMode::Required
+        } else {
+            DecisionLogMode::Disabled
+        }
     }
 
     /// Where the durable local record lives, under the working directory.
@@ -3458,11 +3485,6 @@ produce: use `EdDSA` or `ES256`"
     /// How long a batch may wait before it ships anyway.
     pub fn log_batch_interval(&self) -> Duration {
         self.log_batch_interval
-    }
-
-    /// Whether a full spool keeps answering (`open`) or refuses (`closed`).
-    pub fn log_on_full_open(&self) -> bool {
-        self.log_on_full_open
     }
 
     /// The rate at which permits are recorded. Denies and errors always are.
@@ -4188,20 +4210,13 @@ produce: use `EdDSA` or `ES256`"
             SETTING_AUTHZ_MAX_EVALUATIONS => n(self.authz_max_evaluations),
             SETTING_MAX_BLOCKING => n(self.max_blocking),
             SETTING_LOG_ENABLED => b(self.log_enabled),
-            SETTING_LOG_PDP_ID => Some(self.log_pdp_id.clone()),
+            SETTING_LOG_MODE => Some(self.log_mode().as_str().to_owned()),
             SETTING_LOG_SPOOL_DIRECTORY => Some(self.log_spool_directory.clone()),
             SETTING_LOG_SPOOL_BYTES => n(self.log_spool_bytes),
             SETTING_LOG_SPOOL_AGE => d(self.log_spool_age),
             SETTING_LOG_BATCH_BYTES => n(self.log_batch_bytes),
             SETTING_LOG_BATCH_INTERVAL => d(self.log_batch_interval),
-            SETTING_LOG_ON_FULL => Some(
-                if self.log_on_full_open {
-                    "open"
-                } else {
-                    "closed"
-                }
-                .to_owned(),
-            ),
+            SETTING_LOG_ON_FULL => Some("closed".to_owned()),
             SETTING_LOG_SAMPLE_PERMITS => n(self.log_sample_permits),
             SETTING_EVENTS_ENABLED => b(self.events_enabled),
             SETTING_EVENTS_PRODUCER_ID => Some(self.events_producer_id.clone()),
@@ -4803,11 +4818,39 @@ produce: use `EdDSA` or `ES256`"
             }
         }
         if let Some(value) = settings.get(SETTING_LOG_ENABLED) {
-            self.log_enabled =
-                parse_bool(value).with_context(|| format!("reading {SETTING_LOG_ENABLED}"))?;
+            self.log_enabled_stated =
+                Some(parse_bool(value).with_context(|| format!("reading {SETTING_LOG_ENABLED}"))?);
         }
-        if let Some(value) = settings.get(SETTING_LOG_PDP_ID) {
-            self.log_pdp_id = value.trim().to_owned();
+        // The mode decides when it is set (WP-6.1); an explicit `enabled` saying otherwise is a
+        // contradiction a deployment resolves, not one guessed here.
+        if let Some(value) = settings.get(SETTING_LOG_MODE) {
+            let required = match value.trim() {
+                "required" => true,
+                "disabled" => false,
+                "best-effort" => anyhow::bail!(
+                    "reading {SETTING_LOG_MODE}: `best-effort` is not available yet: its `loss` \
+                     record is not defined, so the log is `required` or `disabled`"
+                ),
+                other => anyhow::bail!(
+                    "reading {SETTING_LOG_MODE}: `{other}` is neither `required` (every answered \
+                     decision has a durable record) nor `disabled` (no record is promised)"
+                ),
+            };
+            self.log_mode_stated = Some(required);
+        }
+        // Whichever layers stated them: one saying the log is on and another off is refused.
+        if let (Some(enabled), Some(required)) = (self.log_enabled_stated, self.log_mode_stated)
+            && enabled != required
+        {
+            anyhow::bail!(
+                "{SETTING_LOG_MODE} is `{}` and {SETTING_LOG_ENABLED} says the log is {}: set one \
+                 of them",
+                if required { "required" } else { "disabled" },
+                if enabled { "on" } else { "off" }
+            );
+        }
+        if let Some(on) = self.log_mode_stated.or(self.log_enabled_stated) {
+            self.log_enabled = on;
         }
         if let Some(value) = settings.get(SETTING_LOG_SPOOL_DIRECTORY) {
             self.log_spool_directory = value.trim().to_owned();
@@ -4989,15 +5032,18 @@ produce: use `EdDSA` or `ES256`"
             }
         }
         if let Some(value) = settings.get(SETTING_LOG_ON_FULL) {
-            self.log_on_full_open = match value.trim() {
-                "open" => true,
-                "closed" => false,
-                other => anyhow::bail!(
-                    "reading {SETTING_LOG_ON_FULL}: `{other}` is neither `open` (keep answering, \
-                     end the stream with a signed discontinuity) nor `closed` (refuse to decide \
-                     rather than decide unrecorded)"
+            match value.trim() {
+                "closed" => {}
+                "open" => anyhow::bail!(
+                    "reading {SETTING_LOG_ON_FULL}: `open` is retired: a decision that cannot be \
+                     recorded is refused, which is {SETTING_LOG_MODE} `required`; set \
+                     {SETTING_LOG_MODE} `disabled` to keep no log"
                 ),
-            };
+                other => anyhow::bail!(
+                    "reading {SETTING_LOG_ON_FULL}: `{other}` is not `closed`, the only value it \
+                     takes"
+                ),
+            }
         }
         if let Some(value) = settings.get(SETTING_LOG_SAMPLE_PERMITS) {
             self.log_sample_permits = value
@@ -5049,13 +5095,12 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
-        // A stream is `(pdp.id, instance)`. Two replicas sharing a `pdp.id` write two records at
-        // one `(stream, seq)`, and that closes a stream permanently at the far end — so it is
-        // refused here, at startup, rather than discovered there.
-        if self.log_enabled && self.log_pdp_id.is_empty() {
+        // Retired (WP-6.1): the stream is the Host's `host_id` and run. A configuration still
+        // naming the plane is refused, so no deployment believes its records carry that name.
+        if settings.contains_key(SETTING_LOG_PDP_ID) {
             anyhow::bail!(
-                "the decision log is on but no {SETTING_LOG_PDP_ID} is set: a plane with no name \
-                 cannot be told from another replica of itself"
+                "{SETTING_LOG_PDP_ID} (`decisions.log.pdp_id`) is retired: decision records are \
+                 named by this Host's `host_id` and the run of its stream"
             );
         }
 
@@ -5789,8 +5834,8 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_LOG_ENABLED,
     SETTING_LOG_FORMAT,
     SETTING_LOG_LEVEL,
+    SETTING_LOG_MODE,
     SETTING_LOG_ON_FULL,
-    SETTING_LOG_PDP_ID,
     SETTING_LOG_SAMPLE_PERMITS,
     SETTING_LOG_SPOOL_AGE,
     SETTING_LOG_SPOOL_BYTES,
@@ -5897,7 +5942,6 @@ const STARTUP_SETTINGS: &[&str] = &[
     SETTING_KEYS_KMS_CA,
     SETTING_KEYS_PKCS11_MODULE,
     SETTING_KEYS_PKCS11_PIN_REF,
-    SETTING_LOG_PDP_ID,
     SETTING_EVENTS_PRODUCER_ID,
     SETTING_PUBLIC_TLS_CERT,
     SETTING_PUBLIC_TLS_KEY,

@@ -264,6 +264,55 @@ pub(super) fn truncate_safe_of(
         .min()
 }
 
+/// The fence of the runs `subscribed` ships.
+fn fence_of(subscribed: &Subscribed<'_>) -> super::super::run::Fence {
+    super::super::run::Fence {
+        membership_id: subscribed.membership_id,
+        task_id: subscribed.task_id.to_owned(),
+        epoch: subscribed.epoch,
+    }
+}
+
+/// The bytes of the records in `frames` past their run's floor in `floors`; `current` is the run
+/// open before the first frame, when a prefix went (WP-5.6).
+fn unacknowledged_bytes(
+    frames: &[permguard_host::storage::journal::Frame],
+    mut current: Option<[u8; 16]>,
+    floors: &[([u8; 16], u64)],
+) -> Result<u64, StreamError> {
+    let mut bytes = 0u64;
+    for frame in frames {
+        match frame.kind {
+            super::RUN_OPEN => {
+                current = Some(
+                    super::super::run::RunStatement::decode(
+                        permguard_objects::cose::Sign1::decode(&frame.payload)
+                            .map_err(|error| StreamError::Invalid(error.to_string()))?
+                            .payload_unverified(),
+                    )?
+                    .run_id,
+                );
+            }
+            RECORDS => {
+                let floor = current
+                    .and_then(|run| floors.iter().find(|(held, _)| *held == run))
+                    .map(|(_, floor)| *floor);
+                let Some(floor) = floor else {
+                    continue;
+                };
+                let (first, records) = decode_group(&frame.payload)?;
+                for (offset, record) in records.iter().enumerate() {
+                    if first + offset as u64 > floor {
+                        bytes += record.len() as u64;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(bytes)
+}
+
 /// Uniform in `[0, n]`, from the OS random source; 0 when it refuses.
 fn jitter(n: u64) -> u64 {
     use ring::rand::SecureRandom as _;
@@ -278,6 +327,48 @@ impl<C: RecordCodec> Producer<C> {
     /// Whether this producer's descriptor is the one `subscribed`'s task ships.
     fn ships(&self, subscribed: &Subscribed<'_>) -> bool {
         self.descriptor.task == Some(subscribed.task_type)
+    }
+
+    /// Rolls the stream of `physical` over to a successor fenced by `subscribed` when its task
+    /// covers the stream and the current run is unfenced, or fenced by an older epoch of the same
+    /// task (owner decision of 2026-10-13, WP-6.1): the run a subscription ships carries its
+    /// fence. A run fenced by another membership or task is left to it, and a forked stream to
+    /// its operator.
+    fn fence_for(
+        &self,
+        physical: &Physical,
+        subscribed: &Subscribed<'_>,
+    ) -> Result<(), StreamError> {
+        let covered = Resource::parse(&physical.key.resource)
+            .is_ok_and(|resource| subscribed.selector.contains(&resource));
+        if !covered {
+            return Ok(());
+        }
+        let stale = {
+            let writer = physical.writer();
+            if writer
+                .state
+                .as_ref()
+                .is_some_and(|state| state.forked_at_seq.is_some())
+            {
+                return Ok(());
+            }
+            match writer.run.as_ref().filter(|run| !run.ended) {
+                None => false,
+                Some(run) => match &run.statement.fence {
+                    None => true,
+                    Some(fence) => {
+                        fence.membership_id == subscribed.membership_id
+                            && fence.task_id == subscribed.task_id
+                            && fence.epoch < subscribed.epoch
+                    }
+                },
+            }
+        };
+        if stale {
+            physical.rollover(&self.context, Some(fence_of(subscribed)), None)?;
+        }
+        Ok(())
     }
 
     pub(super) fn signer_ring(&self) -> Result<&permguard_host::keys::ring::Ring, StreamError> {
@@ -350,68 +441,63 @@ impl<C: RecordCodec> Producer<C> {
         let signer = self.signer_ring()?;
         let physical = self.physical(resource)?;
         let runs = physical.runs(signer, &self.descriptor)?;
-        let writer = physical.writer();
-        let subscriptions = subscriptions_of(&writer.dir)?;
-        let floors: Vec<([u8; 16], u64)> = runs
-            .iter()
-            .filter_map(|(run, fence, ..)| {
-                truncate_safe_of(&subscriptions, run, *fence).map(|safe| (*run, safe))
-            })
-            .collect();
-        if floors.is_empty() {
-            return Ok(None);
-        }
-        // The bytes past each run's floor.
-        let mut bytes = 0u64;
-        // Below the journal's first frame the run may have opened earlier (WP-5.6).
-        let mut current = writer
-            .base()
-            .map(|base| {
-                Ok::<_, StreamError>(
-                    super::super::run::RunStatement::decode(
-                        permguard_objects::cose::Sign1::decode(&base.statement)
-                            .map_err(|error| StreamError::Invalid(error.to_string()))?
-                            .payload_unverified(),
-                    )?
-                    .run_id,
-                )
-            })
-            .transpose()?;
-        for frame in writer.journal.frames()? {
-            match frame.kind {
-                super::RUN_OPEN => {
-                    current = Some(
+        // What the measure needs of the writer, taken under its lock and released before the
+        // journal is read: a measure never stalls the flushes behind it (WP-6.1, after the
+        // review).
+        let (floors, current, first_index, records_dir, batches) = {
+            let writer = physical.writer();
+            let subscriptions = subscriptions_of(&writer.dir)?;
+            let floors: Vec<([u8; 16], u64)> = runs
+                .iter()
+                .filter_map(|(run, fence, ..)| {
+                    truncate_safe_of(&subscriptions, run, *fence).map(|safe| (*run, safe))
+                })
+                .collect();
+            if floors.is_empty() {
+                return Ok(None);
+            }
+            // Below the journal's first frame the run may have opened earlier (WP-5.6).
+            let current = writer
+                .base()
+                .map(|base| {
+                    Ok::<_, StreamError>(
                         super::super::run::RunStatement::decode(
-                            permguard_objects::cose::Sign1::decode(&frame.payload)
+                            permguard_objects::cose::Sign1::decode(&base.statement)
                                 .map_err(|error| StreamError::Invalid(error.to_string()))?
                                 .payload_unverified(),
                         )?
                         .run_id,
-                    );
-                }
-                RECORDS => {
-                    let floor = current
-                        .and_then(|run| floors.iter().find(|(held, _)| *held == run))
-                        .map(|(_, floor)| *floor);
-                    let Some(floor) = floor else {
-                        continue;
-                    };
-                    let (first, records) = decode_group(&frame.payload)?;
-                    for (offset, record) in records.iter().enumerate() {
-                        if first + offset as u64 > floor {
-                            bytes += record.len() as u64;
-                        }
-                    }
-                }
-                _ => {}
+                    )
+                })
+                .transpose()?;
+            (
+                floors,
+                current,
+                writer.journal.first_index(),
+                writer.dir.subdir(super::RECORDS_DIR, false)?,
+                writer.dir.subdir(BATCHES, true)?,
+            )
+        };
+        // Read without the lock: an append under way leaves at most a torn tail, which is not a
+        // frame yet. A prefix deleted meanwhile moves the first frame, and the frames are then
+        // read again under the lock.
+        let frames = match permguard_host::storage::journal::read_frames(&records_dir) {
+            Ok(frames)
+                if frames
+                    .first()
+                    .is_none_or(|frame| frame.index == first_index) =>
+            {
+                frames
             }
-        }
+            _ => physical.writer().journal.frames()?,
+        };
+        let bytes = unacknowledged_bytes(&frames, current, &floors)?;
         if bytes >= bounds.max_bytes {
             return Ok(Some(codes::stream::SPOOL_FULL));
         }
         // The age of the oldest sealed batch past its run's floor.
         let now = self.context.time.now_secs();
-        let root = writer.dir.subdir(BATCHES, true)?;
+        let root = batches;
         for (run, floor) in &floors {
             let dir = root.subdir(&hex(run), true)?;
             let Some((_, _, name)) = batches_of(&dir)?
@@ -659,9 +745,16 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
         }
         let signer = self.signer_ring().map_err(wrap)?;
         let now = self.context.time.now_secs();
+        self.remember_fence(subscribed.selector, fence_of(subscribed));
         let mut due = Vec::new();
         for physical in self.every().map_err(wrap)? {
-            let runs = physical.runs(signer, &self.descriptor).map_err(wrap)?;
+            self.fence_for(&physical, subscribed).map_err(wrap)?;
+            // A forked stream ships nothing until its operator approves a successor, and keeps no
+            // other stream from shipping (WP-6.1, found by its test).
+            let runs = match physical.runs(signer, &self.descriptor) {
+                Err(StreamError::Forked { .. }) => continue,
+                runs => runs.map_err(wrap)?,
+            };
             let fenced: Vec<&super::seal::RunView> = runs
                 .iter()
                 .filter(|(_, fence, ..)| *fence == Some(subscribed.membership_id))

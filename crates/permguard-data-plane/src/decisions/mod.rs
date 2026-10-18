@@ -4,49 +4,70 @@
 //! Recording what this plane decided, as specified in `docs/decision-logs.md`.
 //!
 //! ```text
-//! decide ──► journal ──► spool (durable, local)
+//! decide ──► HostLog ──► the Host's producer `data/decisions` (durable, local)
 //!                            │
-//!                            ▼  batched, signed, at-least-once
-//!                        control plane
+//!                            ▼  sealed, shipped over `decisions.ship`, at-least-once
+//!                        coordinator
 //! ```
 //!
 //! Two properties shape everything here:
 //!
 //! - **The decision path never waits on the *network*.** Not for a delivery, not for an
-//!   acknowledgement, not in any mode. Even a plane configured to refuse rather than decide
-//!   unrecorded checks a local spool, never a socket — so a control plane down for a day costs
-//!   spool, not availability.
-//! - **A record is durable before its decision is answered.** A restart loses nothing, and no
-//!   caller holds a permit this plane cannot account for afterwards.
+//!   acknowledgement, not in any mode. A plane that refuses rather than decides unrecorded checks
+//!   its local stream, never a socket — so a coordinator down for a day costs disk, not
+//!   availability.
+//! - **A record is durable before its decision is answered** (`required`, WP-6.1). A restart loses
+//!   nothing, and a decision that cannot be recorded is refused `unavailable`.
 //!
 //! The second one *is* on the decision path, deliberately, and it is not free: writing the record
-//! durably is measured at roughly ten times the evaluation it records — the dominant cost of a
-//! decision on this plane, and the price of an audit trail that survives the process.
-//! `bench/decide.js` reports both numbers so the trade is a number rather than a belief.
+//! durably is the dominant cost of a decision on this plane, and the price of an audit trail that
+//! survives the process. `bench/decide.js` reports both numbers so the trade is a number rather
+//! than a belief.
 //!
-//! [`shipper`] is the sending half. [`mod@journal`] is the writing half: it turns a decision into a record at the
-//! position the chain demands, and ends the stream when the spool reaches a
-//! bound. [`measure`] is what it reports about itself.
+//! [`host`] is the writing half since WP-6.1: the Host's engine owns the run, the sequence, the
+//! flush, the reserve and the shipping. [`mod@journal`] and [`shipper`] are the version 1 spool's,
+//! kept to ship what an upgraded plane's spool still holds until it is empty (owner decision of
+//! 2026-10-16); nothing new is written there. [`measure`] is what the log reports about itself.
 
+pub mod host;
 pub mod journal;
 pub mod measure;
 pub mod service;
 pub mod shipper;
 
-pub use journal::{Journal, Written};
+pub use host::HostLog;
+pub use journal::{Decided, Journal, Written};
 pub use service::DecisionService;
 
 use std::sync::{Arc, OnceLock};
 
 use permguard_core::PlaneContext;
 
-/// The journal this plane writes to, when it keeps a decision log.
-///
-/// A singleton for the same reason the decider is one: there is exactly one
-/// spool, and a second writer would share its sequence. Two records claiming
-/// one `(stream, seq)` closes a stream permanently at the far end, so the
-/// impossibility is arranged here rather than trusted to callers.
-static JOURNAL: OnceLock<Option<Arc<Journal>>> = OnceLock::new();
+/// What the decision path records a decision with (WP-6.1).
+pub trait DecisionRecorder: Send + Sync {
+    /// Records one decision, answering once it is durable or saying why it is not.
+    fn record(&self, decided: &Decided<'_>) -> Result<Written, String>;
+
+    /// Whether a decision that cannot be recorded must be refused.
+    fn refuses_unrecorded(&self) -> bool;
+}
+
+impl DecisionRecorder for Journal {
+    fn record(&self, decided: &Decided<'_>) -> Result<Written, String> {
+        Journal::record(self, decided).map_err(|error| error.to_string())
+    }
+
+    fn refuses_unrecorded(&self) -> bool {
+        Journal::refuses_unrecorded(self)
+    }
+}
+
+/// The log this plane records to, when it keeps one: a singleton, so one process marks each run
+/// once and measures each stream once.
+static HOST_LOG: OnceLock<Option<Arc<HostLog>>> = OnceLock::new();
+
+/// The version 1 spool an upgraded plane still ships from, when it holds anything unshipped.
+static LEGACY: OnceLock<Result<Option<Arc<Journal>>, String>> = OnceLock::new();
 
 /// The scheme input tags are taken under: the Host's zone keys of `decision.commitment`, one key
 /// per ledger (WP-3.3). Held by the Host, derived in memory or read at start, so the decision path
@@ -185,60 +206,64 @@ fn rate(value: f64) -> String {
     format!("{rendered}.0")
 }
 
-/// Opens the journal from the plane's configuration, once.
+/// The epoch this process records under: its version, its engines and its permit sampling.
+fn epoch_of(config: &permguard_core::Config) -> journal::Epoch {
+    journal::Epoch {
+        version: config.version().to_owned(),
+        build: None,
+        // What the manifest's load gate constrains as a range, the marker records as the build
+        // that was actually inside it.
+        engines: permguard_languages::lookup::languages()
+            .iter()
+            .map(|language| {
+                (
+                    language.name().to_owned(),
+                    language.language_version().to_owned(),
+                )
+            })
+            .collect(),
+        sampling: rate(config.log_sample_permits()),
+    }
+}
+
+/// The decision log on the Host's producer, from the plane's configuration, once (WP-6.1).
 ///
-/// `None` when the log is off, or when the spool could not be opened — and the
-/// second is not silent: a plane configured to record and unable to is a plane
-/// whose operator must hear about it.
-pub fn journal(context: &PlaneContext<'_>) -> Option<Arc<Journal>> {
-    JOURNAL
+/// `None` when the log is off, or when it cannot be written — and the second is not silent: a
+/// plane configured to record and unable to is a plane whose operator must hear about it, and
+/// [`DecisionService`] refuses to start.
+pub fn host_log(context: &PlaneContext<'_>) -> Option<Arc<HostLog>> {
+    HOST_LOG
         .get_or_init(|| {
             let config = context.config();
             if !config.log_enabled() {
                 return None;
             }
-            let directory = config.working_dir().join(config.log_spool_directory());
-            let epoch = journal::Epoch {
-                version: config.version().to_owned(),
-                build: None,
-                // What the manifest's load gate constrains as a range, the
-                // marker records as the build that was actually inside it.
-                engines: permguard_languages::lookup::languages()
-                    .iter()
-                    .map(|language| {
-                        (
-                            language.name().to_owned(),
-                            language.language_version().to_owned(),
-                        )
-                    })
-                    .collect(),
-                sampling: rate(config.log_sample_permits()),
+            let unavailable = |error: &str| {
+                tracing::error!(
+                    event.name = "decisions.unavailable",
+                    component = "data-plane",
+                    error = error,
+                    "the decision log is configured and this plane cannot write it"
+                );
             };
-            let bounds = permguard_decisions::spool::Bounds {
-                bytes: config.log_spool_bytes(),
-                age: config.log_spool_age(),
-                segment_bytes: 8 * 1024 * 1024,
+            let Some(producer) = crate::handles::decision_producer(context) else {
+                unavailable("the Host composes no stream engine producing `data/decisions`");
+                return None;
             };
-            // The commitment key is the pseudonym key's sibling: a real secret,
-            // resolved once from the store, versioned so a reader can tell a
-            // different value from a different key, and never looked up on the
-            // decision path.
+            let Some(host_id) = crate::handles::host_id(context) else {
+                unavailable("the Host composes no identity to name the decision stream with");
+                return None;
+            };
             let commitment = match commitment_key(context) {
                 Ok(commitment) => commitment,
                 Err(error) => {
-                    tracing::error!(
-                        event.name = "decisions.unavailable",
-                        component = "data-plane",
-                        error = %error,
-                        "the decision log is configured and its commitment key could not be resolved"
-                    );
-
+                    unavailable(&format!("{error:#}"));
                     return None;
                 }
             };
-
-            // The zone key version must never name two keys in this spool (WP-3.3, owner decision
-            // of 2026-10-08): refused when the records already written used it under another key.
+            // The zone key version must never name two keys under this plane's decision log
+            // (WP-3.3, owner decision of 2026-10-08), witnessed where the plane always kept it.
+            let directory = config.working_dir().join(config.log_spool_directory());
             let checked = crate::handles::zone_key(
                 context,
                 permguard_host::secrets::ZonePurpose::DecisionCommitment,
@@ -246,40 +271,91 @@ pub fn journal(context: &PlaneContext<'_>) -> Option<Arc<Journal>> {
             .ok_or_else(|| anyhow::anyhow!("the Host holds no zone keys for input tags"))
             .and_then(|keys| check_zone_key_version(&directory, &keys));
             if let Err(error) = checked {
-                tracing::error!(
-                    event.name = "decisions.unavailable",
-                    component = "data-plane",
-                    error = %format!("{error:#}"),
-                    "the decision log is configured and its zone key version cannot be used"
-                );
+                unavailable(&format!("{error:#}"));
                 return None;
             }
-
-            match Journal::open(
-                &directory,
-                config.log_pdp_id(),
-                epoch,
-                if config.log_on_full_open() {
-                    journal::WhenFull::Open
-                } else {
-                    journal::WhenFull::Closed
-                },
-                bounds,
+            Some(Arc::new(HostLog::new(
+                producer,
+                host_id,
+                epoch_of(config),
                 commitment,
+                host::Bounds {
+                    max_bytes: config.log_spool_bytes(),
+                    max_age_secs: config.log_spool_age().as_secs(),
+                },
                 context.metrics().clone(),
-            ) {
-                Ok(journal) => Some(Arc::new(journal)),
-                Err(error) => {
-                    tracing::error!(
-                        event.name = "decisions.unavailable",
-                        component = "data-plane",
-                        error = %error,
-                        "the decision log is configured and this plane cannot write it"
-                    );
-
-                    None
-                }
-            }
+            )))
         })
         .clone()
+}
+
+/// What the decision path records with: the [`host_log`].
+pub fn recorder(context: &PlaneContext<'_>) -> Option<Arc<dyn DecisionRecorder>> {
+    host_log(context).map(|log| log as Arc<dyn DecisionRecorder>)
+}
+
+/// The version 1 spool an upgraded plane left, opened for its shipper alone when it holds
+/// anything unshipped (WP-6.1, owner decision of 2026-10-16); `None` when there is none or it is
+/// empty. Never written: decisions are recorded on the Host's stream.
+///
+/// An error is a spool that exists and cannot be read: records nobody would ship, which the
+/// plane refuses to start over rather than strand.
+pub fn legacy_spool(context: &PlaneContext<'_>) -> Result<Option<Arc<Journal>>, String> {
+    LEGACY
+        .get_or_init(|| {
+            let config = context.config();
+            let directory = config.working_dir().join(config.log_spool_directory());
+            open_legacy(
+                &directory,
+                permguard_decisions::spool::Bounds {
+                    bytes: config.log_spool_bytes(),
+                    age: config.log_spool_age(),
+                    segment_bytes: 8 * 1024 * 1024,
+                },
+                context.metrics().clone(),
+            )
+        })
+        .clone()
+}
+
+/// The legacy spool at `directory`, when it holds anything unshipped.
+pub fn open_legacy(
+    directory: &std::path::Path,
+    bounds: permguard_decisions::spool::Bounds,
+    metrics: permguard_core::Metrics,
+) -> Result<Option<Arc<Journal>>, String> {
+    if !holds_segments(directory)? {
+        return Ok(None);
+    }
+    let journal = Journal::drain(directory, bounds, metrics).map_err(|error| {
+        format!(
+            "the legacy decision spool at {} cannot be read: {error}",
+            directory.display()
+        )
+    })?;
+    if !journal
+        .holds_unshipped()
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(None);
+    }
+    Ok(Some(Arc::new(journal)))
+}
+
+/// Whether `directory` holds a version 1 spool's segments, opening nothing.
+pub(crate) fn holds_segments(directory: &std::path::Path) -> Result<bool, String> {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("listing {}: {error}", directory.display())),
+    };
+    for entry in entries {
+        let path = entry
+            .map_err(|error| format!("listing {}: {error}", directory.display()))?
+            .path();
+        if path.extension().and_then(std::ffi::OsStr::to_str) == Some("jsonl") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

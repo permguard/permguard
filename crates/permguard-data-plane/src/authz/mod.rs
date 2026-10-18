@@ -104,10 +104,10 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
             )
             .with_blocking(crate::blocking::shared(context))
             .with_audit(audit::decision_audit(context))
-            // The journal is opened once for the plane, not once per decider:
-            // there is one spool, and a second writer would share its sequence.
+            // The log is opened once for the plane, not once per decider: one process marks each
+            // run of a stream once and measures each stream once (WP-6.1).
             .with_journal(
-                crate::decisions::journal(context),
+                crate::decisions::recorder(context),
                 crate::handles::zone_key(
                     context,
                     permguard_host::secrets::ZonePurpose::AuditPseudonym,
