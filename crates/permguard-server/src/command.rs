@@ -222,6 +222,23 @@ pub enum MigrateCommand {
         #[arg(long, value_name = "DIRECTORY")]
         legacy: Option<PathBuf>,
     },
+    /// Archive the drained legacy decision spool into `data/decisions/legacy`, byte for byte,
+    /// with an external backup declared (WP-6.1c): what a server under the production profile
+    /// names once the spool's shipper sent it. A spool holding anything unshipped is refused.
+    Decisions {
+        /// The volume's root, the server's working directory.
+        #[arg(long, value_name = "DIRECTORY")]
+        volume: PathBuf,
+
+        /// The external backup taken before the migration, as the operator names it.
+        #[arg(long, value_name = "REFERENCE")]
+        backup: String,
+
+        /// The spool's directory, when `log.spool_directory` moved it; `data/decisions/spool`
+        /// below the volume otherwise.
+        #[arg(long, value_name = "DIRECTORY")]
+        legacy: Option<PathBuf>,
+    },
 }
 
 /// What can be asked of a volume's ownership from the command line.

@@ -91,23 +91,30 @@ fn commitment_key(context: &PlaneContext<'_>) -> anyhow::Result<permguard_decisi
     ))
 }
 
-/// The file in the spool naming every zone key version this plane has tagged under, with the
-/// witness of that version's key (WP-3.3).
-pub const ZONE_KEYS_FILE: &str = "ZONE_KEYS";
+/// The file naming every zone key version this plane has tagged under, with the witness of that
+/// version's key (WP-3.3): beside the spool directory since WP-6.1c, the spool being archived and
+/// its directory removed once its shipper sent it.
+pub const ZONE_KEYS_FILE: &str = permguard_decisions::archive::ZONE_KEYS;
 
-/// Refuses a zone key version that would name two keys in the spool at `directory`: one the
-/// records already written used with another scheme or another key, as their markers' `key_version`
-/// says, or one witnessed here under another key. Records the version and its witness the first
-/// time (owner decision of 2026-10-08).
+/// Where the zone key witness of the spool at `spool` lives: beside it, in its parent directory.
+pub fn zone_keys_path(spool: &std::path::Path) -> std::path::PathBuf {
+    spool.parent().unwrap_or(spool).join(ZONE_KEYS_FILE)
+}
+
+/// Refuses a zone key version that would name two keys in this plane's decision log: one the
+/// legacy records used with another scheme or another key, as their markers' `key_version` says,
+/// in the spool at `spool` or in its archive at `archive`, or one witnessed under another key.
+/// Records the version and its witness the first time (owner decision of 2026-10-08).
 ///
 /// The witness is the tag of a fixed input under the key of the nil zone and ledger: it names the
 /// key without showing it. A Host holding only delivered keys cannot compute it and records `-`.
+/// It lives beside the spool, seeded once from the copy a release before WP-6.1c kept in the
+/// spool, or from the archive's when the spool went (owner decision of 2026-10-18).
 pub fn check_zone_key_version(
-    directory: &std::path::Path,
+    spool: &std::path::Path,
+    archive: &std::path::Path,
     keys: &permguard_host::secrets::ZoneHandle,
 ) -> anyhow::Result<()> {
-    use anyhow::Context as _;
-
     let version = keys.version().to_string();
     let witness = keys
         .mac(
@@ -119,11 +126,18 @@ pub fn check_zone_key_version(
             || "-".to_owned(),
             |tag| tag.iter().map(|byte| format!("{byte:02x}")).collect(),
         );
-    let path = directory.join(ZONE_KEYS_FILE);
-    let held = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(error).with_context(|| format!("reading {}", path.display())),
+    let path = zone_keys_path(spool);
+    // A seed is written beside the spool only once the version passed: nothing is recorded on a
+    // refusal (after the review).
+    let (held, seeded) = match read_witness(&path)? {
+        Some(text) => (text, false),
+        None => match read_witness(&spool.join(ZONE_KEYS_FILE))?.map_or_else(
+            || read_witness(&archive.join(ZONE_KEYS_FILE)),
+            |seed| Ok(Some(seed)),
+        )? {
+            Some(seed) => (seed, true),
+            None => (String::new(), false),
+        },
     };
     let entries: Vec<(String, String)> = held
         .lines()
@@ -137,9 +151,13 @@ pub fn check_zone_key_version(
                  recorded it with: a new key takes a new `operations.secrets.zone_key_version`"
             );
         }
-        return Ok(());
+        return if seeded {
+            write_witness(&path, &held)
+        } else {
+            Ok(())
+        };
     }
-    if marker_versions(directory)?.contains(&version) {
+    if marker_versions(spool)?.contains(&version) || marker_versions(archive)?.contains(&version) {
         anyhow::bail!(
             "this spool holds records whose markers name `{version}` under the commitment key \
              before zone keys (WP-3.3): raise `operations.secrets.zone_key_version` so one version \
@@ -148,6 +166,25 @@ pub fn check_zone_key_version(
     }
     let mut text = held;
     text.push_str(&format!("{version}\t{witness}\n"));
+    write_witness(&path, &text)
+}
+
+/// The witness file at `path`, when there is one.
+fn read_witness(path: &std::path::Path) -> anyhow::Result<Option<String>> {
+    use anyhow::Context as _;
+
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
+    }
+}
+
+/// Replaces the witness file at `path` with `text`.
+fn write_witness(path: &std::path::Path, text: &str) -> anyhow::Result<()> {
+    use anyhow::Context as _;
+
+    let directory = path.parent().unwrap_or(path);
     std::fs::create_dir_all(directory)
         .with_context(|| format!("creating {}", directory.display()))?;
     let dir = permguard_host::storage::Dir::create_root(directory)
@@ -262,14 +299,22 @@ pub fn host_log(context: &PlaneContext<'_>) -> Option<Arc<HostLog>> {
                 }
             };
             // The zone key version must never name two keys under this plane's decision log
-            // (WP-3.3, owner decision of 2026-10-08), witnessed where the plane always kept it.
+            // (WP-3.3, owner decision of 2026-10-08), witnessed beside the spool (WP-6.1c).
             let directory = config.working_dir().join(config.log_spool_directory());
             let checked = crate::handles::zone_key(
                 context,
                 permguard_host::secrets::ZonePurpose::DecisionCommitment,
             )
             .ok_or_else(|| anyhow::anyhow!("the Host holds no zone keys for input tags"))
-            .and_then(|keys| check_zone_key_version(&directory, &keys));
+            .and_then(|keys| {
+                check_zone_key_version(
+                    &directory,
+                    &config
+                        .working_dir()
+                        .join(permguard_decisions::archive::TARGET),
+                    &keys,
+                )
+            });
             if let Err(error) = checked {
                 unavailable(&format!("{error:#}"));
                 return None;

@@ -20,6 +20,7 @@ pub mod custody;
 pub mod dormancy;
 pub mod host;
 pub mod host_api;
+pub mod legacy_spool;
 pub mod logging;
 pub mod offline;
 pub mod plane;

@@ -19,6 +19,13 @@ is cut.
 
 ### Added
 
+- **A drained version 1 decision spool is archived.**
+  Once the old shipper has sent everything a version 1 spool held, the spool is carried byte for byte, without its `LOCK`, into `data/decisions/legacy` under the layout `decisions-legacy`.
+  Below the `production` profile the first start that finds it drained archives it; from `production` upward the start goes on and names `permguard migrate decisions --volume <dir> --backup <reference> [--legacy <dir>]`, which archives it offline.
+  A spool still holding anything unshipped, outside the volume, or holding a file that is not the spool's is not archived, and the start never fails over one.
+  The old directory stays until `permguard migrate finalize --subsystem decisions-legacy` removes it.
+  The zone key witness `ZONE_KEYS` moves beside the spool, to `data/decisions/ZONE_KEYS` by default, copied once from the spool or from its archive.
+
 - **`streams verify` checks a stream's directory offline.**
   Every server binary gains `streams verify <dir> --keys <file>`, for a producer's or a consumer run's directory copied off a volume and the `keys export` of `data.attest`.
   It verifies every batch's signature, envelope and Merkle root, each run's chain from genesis or from its anchor, the anchor's checkpoint, and every record the journal holds against the batch that signed it, without repairing anything.

@@ -83,9 +83,9 @@ use crate::record::{DigestError, GENESIS, digest_of};
 /// producer that cannot end its stream.
 pub const RESERVE_BYTES: u64 = 64 * 1024;
 
-const LOCK_FILE: &str = "LOCK";
-const STATE_FILE: &str = "STATE";
-const RESERVE_FILE: &str = "RESERVE";
+pub(crate) const LOCK_FILE: &str = "LOCK";
+pub(crate) const STATE_FILE: &str = "STATE";
+pub(crate) const RESERVE_FILE: &str = "RESERVE";
 const SEGMENT_PREFIX: &str = "seg-";
 const SEGMENT_SUFFIX: &str = ".jsonl";
 
@@ -1153,7 +1153,7 @@ fn recover(
     Ok((seq, digest))
 }
 
-fn segment_seq(name: &str) -> Option<u64> {
+pub(crate) fn segment_seq(name: &str) -> Option<u64> {
     name.strip_prefix(SEGMENT_PREFIX)
         .and_then(|rest| rest.strip_suffix(SEGMENT_SUFFIX))
         .and_then(|digits| digits.parse().ok())

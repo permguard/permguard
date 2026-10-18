@@ -1565,6 +1565,7 @@ impl App {
         let mut layouts = self.layouts.clone();
         layouts.extend(permguard_host::keys::migration::layouts());
         layouts.extend(permguard_host::audit::jsonl::layouts());
+        layouts.extend(permguard_decisions::archive::layouts());
         permguard_host::storage::migrate::check_servable(&volume, &layouts).with_context(|| {
             format!("checking the layouts on {}", config.working_dir().display())
         })?;
@@ -1664,6 +1665,14 @@ impl App {
             config.working_dir(),
             time.now_secs(),
         )?;
+        // A version 1 decision spool its shipper sent whole (WP-6.1c), before any plane opens it.
+        crate::legacy_spool::archive_at_start(
+            &volume,
+            config.working_dir(),
+            config.log_spool_directory(),
+            config.assurance().profile(),
+            time.now_secs(),
+        );
         let audit_engine = {
             use permguard_host::audit::{Engine, Stamp, config_revision};
 
@@ -2701,6 +2710,13 @@ fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
             backup,
             legacy,
         } => return migrate_audit(volume, backup, legacy.as_deref(), out),
+        MigrateCommand::Decisions {
+            volume,
+            backup,
+            legacy,
+        } => {
+            return crate::legacy_spool::migrate_decisions(volume, backup, legacy.as_deref(), out);
+        }
     };
     let volume = hold(volume_root)
         .with_context(|| format!("holding the volume at {}", volume_root.display()))?;

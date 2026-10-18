@@ -26,6 +26,7 @@
 //! them. None of that is visible from here — which is what lets every side
 //! compute the same digests without agreeing on anything else.
 
+pub mod archive;
 pub mod chain;
 pub mod commitment;
 pub mod envelope;
