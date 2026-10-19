@@ -79,7 +79,7 @@ impl Import {
     fn origins(&self, resource: &Resource, context: &TaskContext) -> Result<Vec<u8>, Refusal> {
         let set = (self.origins)(resource).map_err(unavailable)?;
         // A set no member could read is refused here, not signed (after the review).
-        if false {
+        if set.origins.len() > MAX_ORIGINS {
             return Err(unavailable(format!(
                 "the ledger has more than {MAX_ORIGINS} required origins"
             )));
