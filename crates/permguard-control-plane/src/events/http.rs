@@ -68,12 +68,15 @@ pub const SIGNERS_PATH: &str = "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha
 pub struct EventFacade {
     /// Where events are kept.
     pub store: Arc<EventStore>,
-    /// The published key sets of the producers this plane accepts.
-    ///
-    /// Never fetched: ingestion must not depend on reaching the planes that are shipping to it.
+    /// The Host's consumer of the event stream, which the public reads answer from beside the
+    /// store (WP-6.2b); `None` when no engine consumes it.
+    pub host: Option<permguard_host::composition::StreamConsumer>,
+    /// Producers bound by whoever composes the facade: empty in a served deployment, where the
+    /// in-process ring is the only trust (WP-6.2b); what a test or an embedding names directly.
     pub producers: Arc<std::sync::RwLock<Vec<ProducerTrust>>>,
-    /// Where those sets are read from, for the re-read when a batch cannot be attributed.
-    pub producer_files: Vec<ProducerFile>,
+    /// The ring of the data plane sharing this process, bound to the legacy journals it may
+    /// still ship (WP-6.2b): no key file is read.
+    pub local: Option<LocalTrust>,
     /// The secret read offsets are signed with.
     pub cursor_key: crate::decisions::cursorkey::CursorKeys,
     /// The catalog, for turning the scope a reader named into the one records are keyed by.
@@ -92,15 +95,26 @@ pub struct EventFacade {
     pub base_url: String,
 }
 
+/// The `data.attest` ring of the data plane sharing this process, and the legacy journals beside
+/// it that its old shipper may still send here (WP-6.2b, owner decision of 2026-10-18).
 #[derive(Clone)]
-pub struct ProducerFile {
-    pub path: std::path::PathBuf,
-    pub producer: String,
-    pub zone: String,
-    pub ledger: String,
+pub struct LocalTrust {
+    /// The ring; `None` when this process composes no `data.attest` ring, which leaves the
+    /// journals' batches refused and the store degraded rather than silently waiting.
+    pub keys: Option<Arc<dyn permguard_core::keys::PublicSet>>,
+    /// `(producer, zone, ledger)` of each legacy journal.
+    pub bindings: Vec<(String, String, String)>,
 }
 
 impl EventFacade {
+    /// Where its reads find their events: the store, and the Host's consumer (WP-6.2b).
+    pub(crate) fn sources(&self) -> read::Sources<'_> {
+        read::Sources {
+            store: &self.store,
+            host: self.host.as_ref(),
+        }
+    }
+
     /// The keys a **new** batch may be signed under: what the producers publish today, and nothing
     /// else.
     ///
@@ -117,10 +131,57 @@ impl EventFacade {
     /// So ingest asks this, and a reader checking what is already stored asks
     /// [`EventFacade::verification_keys`].
     pub fn accepted_producers(&self) -> Vec<ProducerTrust> {
-        self.producers
+        let mut producers = self
+            .producers
             .read()
             .map(|held| held.clone())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // Read on every batch, so the ring's rotation needs no reload: what it publishes now.
+        if let Some(local) = &self.local
+            && let Some(keys) = &local.keys
+        {
+            match keys.public_keys() {
+                Ok(keys) => {
+                    for key in keys {
+                        for (producer, zone, ledger) in &local.bindings {
+                            producers.push(ProducerTrust {
+                                key: key.clone(),
+                                producer: producer.clone(),
+                                zone: zone.clone(),
+                                ledger: ledger.clone(),
+                            });
+                        }
+                    }
+                }
+                Err(error) => tracing::warn!(
+                    event.name = "events.local_keys_unreadable",
+                    error = %error,
+                    "the ring of the data plane in this process cannot publish its keys: batches \
+                     of its legacy journals are refused until it can"
+                ),
+            }
+        }
+        producers
+    }
+
+    /// Whether this store waits for batches over its ingest route: a bound producer, or a
+    /// legacy journal beside it (WP-6.2b). A plane in this process records on the Host's stream,
+    /// and a store expecting nothing is not degraded.
+    pub fn expects_batches(&self) -> bool {
+        self.local
+            .as_ref()
+            .is_some_and(|local| !local.bindings.is_empty())
+            || self
+                .producers
+                .read()
+                .map(|held| !held.is_empty())
+                .unwrap_or(true)
+    }
+
+    /// Whether this store expects batches it can accept from nobody: a legacy journal or a bound
+    /// producer waits, and no key is trusted. Health reports the store degraded then.
+    pub fn awaits_trust(&self) -> bool {
+        self.expects_batches() && self.accepted_producers().is_empty()
     }
 
     /// Every key that may verify evidence this store already holds.
@@ -147,41 +208,6 @@ impl EventFacade {
         }
 
         Ok(keys)
-    }
-
-    /// Re-reads the producers' published sets, for a batch nothing could attribute.
-    ///
-    /// A producer that rotates its ring should be a file to update rather than a plane to restart.
-    pub(crate) fn reload_producers(&self) -> Result<(), String> {
-        let mut keys = Vec::new();
-        for source in &self.producer_files {
-            let text = std::fs::read_to_string(&source.path)
-                .map_err(|error| format!("reading {}: {error}", source.path.display()))?;
-            let parsed = serde_json::from_str::<serde_json::Value>(&text)
-                .map_err(|error| format!("parsing {}: {error}", source.path.display()))?;
-            let set = parsed.get("keys").cloned().unwrap_or(parsed);
-            let found: Vec<Jwk> = serde_json::from_value(set)
-                .map_err(|error| format!("{} is not a JWKS: {error}", source.path.display()))?;
-            if found.is_empty() {
-                return Err(format!("{} publishes no keys", source.path.display()));
-            }
-            keys.extend(found.into_iter().map(|key| ProducerTrust {
-                key,
-                producer: source.producer.clone(),
-                zone: source.zone.clone(),
-                ledger: source.ledger.clone(),
-            }));
-        }
-        if keys.is_empty() {
-            return Err("no event producer trust sources are configured".to_owned());
-        }
-        if let Ok(mut held) = self.producers.write() {
-            *held = keys;
-        } else {
-            return Err("the event producer trust lock is poisoned".to_owned());
-        }
-
-        Ok(())
     }
 
     /// The event types this store accepts.
@@ -258,7 +284,7 @@ impl EventFacade {
                     error.to_string(),
                 )
             })?;
-        let truncated = page.truncated;
+        let mut truncated = page.truncated;
         let mut answered = Vec::with_capacity(page.streams.len());
         for stream in page.streams {
             let state = self.store.stream_state(&stream).map_err(|error| {
@@ -297,6 +323,84 @@ impl EventFacade {
             });
         }
 
+        // The Host consumer's runs of the ledger beside the legacy streams (WP-6.2b), in the same
+        // `(class, producer, instance)` order: past `after`, and no further than the last legacy
+        // stream of a truncated page, so the next page skips none of the streams in between.
+        if let Some(host) = &self.host {
+            let tuple = |view: &StreamSignersView| {
+                (
+                    view.producer_class.clone(),
+                    view.producer.clone(),
+                    view.instance.clone(),
+                )
+            };
+            let after = ask
+                .after
+                .as_ref()
+                .map(|after| permguard_stream::StreamPosition::clone(after).into_tuple());
+            let reached = truncated.then(|| answered.last().map(tuple)).flatten();
+            let unavailable = |error: String| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::stream::STORE_UNAVAILABLE,
+                    error,
+                )
+            };
+            let resource = permguard_core::authz::Resource::ledger("data", &zone, &ledger);
+            for run in host.signers(&resource).map_err(unavailable)? {
+                let view = StreamSignersView {
+                    producer_class: permguard_events::PRODUCER_CLASS_DATA_PLANE.to_owned(),
+                    producer: crate::decisions::read::hex(&run.producer),
+                    instance: crate::decisions::read::hex(&run.run),
+                    acked: run.acked,
+                    spans: Vec::new(),
+                };
+                let asked = |filter: &Option<String>, held: &str| {
+                    filter.as_deref().is_none_or(|filter| filter == held)
+                };
+                if !asked(&ask.producer_class, &view.producer_class)
+                    || !asked(&ask.producer, &view.producer)
+                    || !asked(&ask.instance, &view.instance)
+                    || after.as_ref().is_some_and(|after| tuple(&view) <= *after)
+                    || reached
+                        .as_ref()
+                        .is_some_and(|reached| tuple(&view) > *reached)
+                {
+                    continue;
+                }
+                let mut signers = permguard_stream::Signers::empty();
+                for (from, kid, jwk) in &run.spans {
+                    let jwk: serde_json::Value = serde_json::from_str(jwk).map_err(|error| {
+                        unavailable(format!("a signer of the Host's stream: {error}"))
+                    })?;
+                    signers
+                        .observe(*from, kid, &jwk)
+                        .map_err(|error| unavailable(format!("{error:?}")))?;
+                }
+                let spans = signers.covering(from_seq, until);
+                if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
+                    return Err(ApiError::new(
+                        ErrorClass::Validation,
+                        permguard_core::codes::stream::SIGNER_RANGE_TOO_WIDE,
+                        format!(
+                            "this range crosses more than {} signing-key spans; narrow \
+                             `from_seq` and `until_seq`",
+                            permguard_stream::MAX_SIGNER_SPANS
+                        ),
+                    ));
+                }
+                answered.push(StreamSignersView {
+                    spans: spans.to_vec(),
+                    ..view
+                });
+            }
+            answered.sort_by_key(tuple);
+            if answered.len() > SIGNERS_STREAM_CEILING {
+                answered.truncate(SIGNERS_STREAM_CEILING);
+                truncated = true;
+            }
+        }
+
         // The cursor is the last stream of a truncated page: the next ask passes it back as
         // `after` and the walk resumes strictly past it.
         let next = truncated
@@ -318,19 +422,7 @@ impl EventFacade {
     pub fn ingest(&self, batch: &Batch) -> Result<Accepted, Refused> {
         let started = std::time::Instant::now();
         let types = self.accepted_types();
-        let mut answered = ingest::accept(&self.store, batch, &self.accepted_producers(), &types);
-        if matches!(answered, Err(Refused::Unattributable(_))) {
-            // One re-read, then one retry: a producer that rotated is the ordinary reason a
-            // signature stops being attributable, and it should not need an operator.
-            if let Err(error) = self.reload_producers() {
-                tracing::warn!(
-                    event.name = "events.producer_keys_reload_failed",
-                    error = error.as_str(),
-                    "the event producer trust set could not be reloaded; keeping the last complete set"
-                );
-            }
-            answered = ingest::accept(&self.store, batch, &self.accepted_producers(), &types);
-        }
+        let answered = ingest::accept(&self.store, batch, &self.accepted_producers(), &types);
         self.metrics.observe(
             &measure::INGEST_SECONDS,
             &[],
@@ -371,7 +463,7 @@ impl EventFacade {
         window: &Window,
         kind: &'static str,
     ) -> Result<read::Page, read::ReadError> {
-        let answered = read::read(&self.store, scope, filters, &self.cursor_key, window);
+        let answered = read::read_with(&self.sources(), scope, filters, &self.cursor_key, window);
         match &answered {
             Ok(page) => {
                 self.metrics.count(
@@ -805,7 +897,7 @@ async fn record(
     let found = {
         let (facade, scope) = (facade.clone(), scope.clone());
         tokio::task::spawn_blocking(move || {
-            read::get(&facade.store, &scope, &event_id, &facade.cursor_key)
+            read::get(&facade.sources(), &scope, &event_id, &facade.cursor_key)
         })
         .await
         .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
@@ -1105,7 +1197,18 @@ mod openapi {
             oldest_available: "BBBB".to_owned(),
             high_watermark: "CCCC".to_owned(),
             more: false,
-            proof: vec![serde_json::to_value(&signed).expect("a signature serialises")],
+            // Each entry names its format (WP-6.2b): the legacy JWS, and a Host batch's.
+            proof: vec![
+                {
+                    let mut legacy = serde_json::to_value(&signed).expect("a signature serialises");
+                    legacy["format"] = json!(crate::decisions::read::LEGACY_FORMAT);
+                    legacy
+                },
+                json!({
+                    "format": crate::decisions::read::HOST_FORMAT,
+                    "signature": serde_json::to_value(&signed).expect("a signature serialises"),
+                }),
+            ],
             inclusion: vec![json!({
                 "seq": 1,
                 "leaf": leaves[0],
@@ -1119,6 +1222,16 @@ mod openapi {
             },
         };
         doc.check("EventBlock", &page);
+        // A proof entry naming no format, or the other format's members, is not one.
+        let mut unnamed = serde_json::to_value(&page).expect("a page serialises");
+        unnamed["proof"][0]
+            .as_object_mut()
+            .expect("an object")
+            .remove("format");
+        assert!(!doc.accepts_json("EventBlock", &unnamed));
+        let mut crossed = serde_json::to_value(&page).expect("a page serialises");
+        crossed["proof"][1]["format"] = json!(crate::decisions::read::LEGACY_FORMAT);
+        assert!(!doc.accepts_json("EventBlock", &crossed));
         let bare = permguard_stream::Block {
             proof: Vec::new(),
             inclusion: Vec::new(),
@@ -1228,10 +1341,11 @@ mod openapi {
             std::env::temp_dir().join(format!("permguard-events-refusal-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let facade = EventFacade {
+            host: None,
             catalog: None,
             store: std::sync::Arc::new(crate::events::EventStore::open(&root).expect("it opens")),
             producers: std::sync::Arc::new(std::sync::RwLock::new(Vec::new())),
-            producer_files: Vec::new(),
+            local: None,
             cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
                 b"a-test-cursor-key-of-32-bytes!!!!",
                 [1; 16],

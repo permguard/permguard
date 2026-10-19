@@ -151,7 +151,7 @@ impl EventLog for EventFacade {
         let facade = self.clone();
         let event_id = asked.event_id;
         let found = tokio::task::spawn_blocking(move || {
-            read::get(&facade.store, &scope, &event_id, &facade.cursor_key)
+            read::get(&facade.sources(), &scope, &event_id, &facade.cursor_key)
         })
         .await
         .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())));

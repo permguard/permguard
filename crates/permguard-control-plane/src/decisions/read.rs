@@ -144,14 +144,14 @@ pub struct Sources<'a> {
 }
 
 /// One run of the Host's consumer a read covers, and the name its position is kept under.
-struct HostRun {
-    resource: Resource,
-    run: ConsumedRun,
-    key: String,
+pub(crate) struct HostRun {
+    pub(crate) resource: Resource,
+    pub(crate) run: ConsumedRun,
+    pub(crate) key: String,
 }
 
 /// The cursor stream a consumer run's position is kept under.
-fn host_key(run: &ConsumedRun) -> String {
+pub(crate) fn host_key(run: &ConsumedRun) -> String {
     format!("host:{}:{}", hex(&run.producer), hex(&run.run))
 }
 
@@ -228,7 +228,7 @@ fn ledger_resource(
     }
 }
 
-fn unhex16(text: &str) -> Option<[u8; 16]> {
+pub(crate) fn unhex16(text: &str) -> Option<[u8; 16]> {
     if text.len() != 32 {
         return None;
     }
@@ -239,7 +239,7 @@ fn unhex16(text: &str) -> Option<[u8; 16]> {
     Some(bytes)
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -501,7 +501,13 @@ pub fn read_with(
                     .to_owned(),
             ));
         }
-        let (host_proof, host_inclusion) = host_proof(sources, &host_runs, &records, &origins)?;
+        let (host_proof, host_inclusion) = host_proof(
+            sources.host,
+            &host_runs,
+            &records,
+            &origins,
+            permguard_core::domains::digest::DECISION_RECORD,
+        )?;
         proof.extend(host_proof);
         inclusion.extend(host_inclusion);
         (proof, inclusion)
@@ -600,12 +606,14 @@ pub const LEGACY_FORMAT: &str = "legacy-jws-v1";
 pub const HOST_FORMAT: &str = "host-batch-v1";
 
 /// The sealed batch of every consumer run's records in the page, each once, and each record's
-/// RFC 6962 path to the root its batch's envelope signs.
-fn host_proof(
-    sources: &Sources<'_>,
+/// RFC 6962 path to the root its batch's envelope signs, its leaves digested under `domain`: what
+/// the decision and the event reads both prove a Host record with (WP-6.2b).
+pub(crate) fn host_proof(
+    host: Option<&StreamConsumer>,
     runs: &[HostRun],
     records: &[Value],
     origins: &[Option<usize>],
+    domain: &str,
 ) -> Result<(Vec<Value>, Vec<Value>), ReadError> {
     let mut proof = Vec::new();
     let mut inclusion = Vec::new();
@@ -626,8 +634,7 @@ fn host_proof(
         let at = match known {
             Some(at) => at,
             None => {
-                let host = sources
-                    .host
+                let host = host
                     .ok_or_else(|| ReadError::Unavailable("no consumer is composed".to_owned()))?;
                 let bytes = host
                     .batch(&held.resource, &held.run.producer, &held.run.run, seq)
@@ -650,10 +657,7 @@ fn host_proof(
                     let record = base64::engine::general_purpose::URL_SAFE_NO_PAD
                         .decode(encoded)
                         .map_err(|error| ReadError::Unavailable(error.to_string()))?;
-                    leaves.push(digest_string(
-                        permguard_core::domains::digest::DECISION_RECORD,
-                        &record,
-                    ));
+                    leaves.push(digest_string(domain, &record));
                 }
                 proof.push(serde_json::json!({
                     "format": HOST_FORMAT,

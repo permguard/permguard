@@ -3872,6 +3872,31 @@ fn the_consumer_answers_its_runs_records_and_batches() {
         None,
         "the run of another producer"
     );
+    // WP-6.2b: each run's signers, with what was acknowledged and the key that sealed them.
+    let mut signers = consumer.signers(&ledger(1)).expect("signers");
+    signers.sort_by_key(|run| run.run);
+    let mut expected = vec![(first_run, 3), (second_run, 2)];
+    expected.sort();
+    assert_eq!(
+        signers
+            .iter()
+            .map(|run| (run.run, run.acked))
+            .collect::<Vec<_>>(),
+        expected
+    );
+    for run in &signers {
+        assert_eq!(run.producer, host.identity.host_id());
+        assert_eq!(run.spans.len(), 1, "one key sealed the run");
+        assert_eq!(run.spans[0].0, 1, "from its first sequence");
+        assert_eq!(run.spans[0].1, envelope_kid(&sealed));
+        assert!(run.spans[0].2.contains("\"kty\""), "the key itself");
+    }
+    assert!(consumer.signers(&ledger(2)).expect("signers").is_empty());
+}
+
+/// The key a sealed batch names.
+fn envelope_kid(sealed: &batch::SealedBatch) -> String {
+    sealed.kid().expect("a kid")
 }
 
 /// WP-5.4, F-11: pressure counts only what no required subscription acknowledged: a stream

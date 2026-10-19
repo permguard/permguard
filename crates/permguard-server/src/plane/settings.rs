@@ -562,11 +562,8 @@ pub fn producer_keys(
     Ok(decisions.producer_keys().to_vec())
 }
 
-/// The producers a control plane accepts *event* records from.
-///
-/// Read from `controlPlane.events.producer_keys`. Every entry binds key material to one exact
-/// producer and an allowed tenant scope; the unbound decision-log trust list is deliberately not
-/// reused for event ingestion.
+/// What `controlPlane.events.producer_keys` declares: retired (WP-6.2b), read only so the control
+/// plane's start can refuse a configuration that still names it.
 pub fn event_producer_keys(
     value: &Value,
 ) -> Result<Vec<permguard_core::decisions::EventProducerSource>> {

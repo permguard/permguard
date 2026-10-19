@@ -34,6 +34,12 @@ use permguard_stream::{Block, Coverage, Frontier, Window};
 use serde_json::Value;
 
 use super::store::{EventStore, Scope, read_segment};
+use crate::decisions::read::{HostRun, host_key, unhex16};
+
+/// What every consumer run's cursor stream is named with.
+const HOST_KEY_PREFIX: &str = "host:";
+use permguard_core::authz::Resource;
+use permguard_host::composition::StreamConsumer;
 
 /// The API family an event-log offset belongs to.
 pub const API: &str = permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1;
@@ -235,7 +241,74 @@ impl std::error::Error for ReadError {}
 /// One page of events.
 pub type Page = Block<Value>;
 
-/// Reads one bounded, filtered block of `scope`.
+/// Where a read finds its events: the legacy store, and the Host's consumer of the event stream
+/// when one is composed (WP-6.2b).
+#[derive(Clone, Copy)]
+pub struct Sources<'a> {
+    pub store: &'a EventStore,
+    pub host: Option<&'a StreamConsumer>,
+}
+
+/// Whether `scope` reads the legacy store, and the consumer runs it covers: a stream scope naming
+/// a `host_id` and a run the consumer holds reads that run alone; a tenant scope reads the legacy
+/// store, then every run of its ledger by producer and opening order (WP-6.2b, as WP-6.1b).
+fn sources_of(sources: &Sources<'_>, scope: &Scope) -> Result<(bool, Vec<HostRun>), ReadError> {
+    let unavailable = |error: String| ReadError::Unavailable(error);
+    let Some(host) = sources.host else {
+        return Ok((true, Vec::new()));
+    };
+    let held = |zone: &str, ledger: &str| {
+        let resource = Resource::ledger("data", zone, ledger);
+        host.runs(&resource)
+            .map_err(unavailable)
+            .map(|runs| (resource, runs))
+    };
+    match scope {
+        Scope::Stream {
+            zone,
+            ledger,
+            class,
+            producer,
+            instance,
+        } => {
+            let (Some(producer), Some(run)) = (unhex16(producer), unhex16(instance)) else {
+                return Ok((true, Vec::new()));
+            };
+            if class != permguard_events::PRODUCER_CLASS_DATA_PLANE {
+                return Ok((true, Vec::new()));
+            }
+            let (resource, runs) = held(zone, ledger)?;
+            let runs: Vec<HostRun> = runs
+                .into_iter()
+                .filter(|held| held.producer == producer && held.run == run)
+                .map(|held| HostRun {
+                    key: host_key(&held),
+                    resource: resource.clone(),
+                    run: held,
+                })
+                .collect();
+            if runs.is_empty() {
+                return Ok((true, Vec::new()));
+            }
+            Ok((false, runs))
+        }
+        Scope::Tenant { zone, ledger } => {
+            let (resource, runs) = held(zone, ledger)?;
+            Ok((
+                true,
+                runs.into_iter()
+                    .map(|held| HostRun {
+                        key: host_key(&held),
+                        resource: resource.clone(),
+                        run: held,
+                    })
+                    .collect(),
+            ))
+        }
+    }
+}
+
+/// Reads one bounded, filtered block of `scope` from the legacy store alone.
 pub fn read(
     store: &EventStore,
     scope: &Scope,
@@ -243,17 +316,37 @@ pub fn read(
     keys: &CursorKeys,
     window: &Window,
 ) -> Result<Page, ReadError> {
+    read_with(&Sources { store, host: None }, scope, filters, keys, window)
+}
+
+/// Reads one bounded, filtered block of `scope` from `sources`: the legacy store first, then each
+/// consumer run, each from the position the cursor keeps for it (WP-6.2b).
+pub fn read_with(
+    sources: &Sources<'_>,
+    scope: &Scope,
+    filters: &Filters,
+    keys: &CursorKeys,
+    window: &Window,
+) -> Result<Page, ReadError> {
+    let store = sources.store;
+    let (legacy, host_runs) = sources_of(sources, scope)?;
     let gate = store.scope_gate(scope);
     let _reading = match gate.lock() {
         Ok(held) => held,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let end = store
-        .frontier(scope)
-        .map_err(|error| ReadError::Unavailable(error.to_string()))?;
-    let segments = store
-        .segments(scope)
-        .map_err(|error| ReadError::Unavailable(error.to_string()))?;
+    let (legacy_end, segments) = if legacy {
+        (
+            store
+                .frontier(scope)
+                .map_err(|error| ReadError::Unavailable(error.to_string()))?,
+            store
+                .segments(scope)
+                .map_err(|error| ReadError::Unavailable(error.to_string()))?,
+        )
+    } else {
+        (Frontier::empty(), Vec::new())
+    };
     let oldest_segment = segments.first().map(|(first, _)| *first).unwrap_or(0);
     let stream = scope.key();
     let bound = filters.digest();
@@ -293,66 +386,211 @@ pub fn read(
         _ => cursor.until.clone_from(&window.until),
     }
 
-    let mut position = cursor.position(&stream);
-    if position.segment == 0 {
-        position.segment = oldest_segment;
-    }
-    if position.segment < oldest_segment {
-        return Err(ReadError::Expired {
-            oldest: oldest_available,
-            oldest_sequence: oldest_segment,
-            requested_sequence: position.segment,
-        });
-    }
+    let mut records: Vec<Value> = Vec::new();
+    // Where each record came from: `None` the legacy store, else the consumer run it was read of.
+    let mut origins: Vec<Option<usize>> = Vec::new();
+    let mut examined = 0usize;
+    let mut scan_bounded = false;
+    let mut stopped_early = false;
+    let mut end = Frontier::empty();
 
-    let by_index = !filters.event_types.is_empty();
-    let walked = if by_index {
-        // The index names exactly the positions of the requested types, so the other types
-        // retained for this ledger are never opened.
-        indexed(
-            store,
-            scope,
-            filters,
-            &segments,
-            position,
-            window,
-            cursor.frontier.clone(),
-        )?
-    } else {
-        scanned(
-            scope,
-            &segments,
-            filters,
-            position,
-            window,
-            cursor.frontier.clone(),
-        )?
-    };
+    if legacy {
+        let mut position = cursor.position(&stream);
+        if position.segment == 0 {
+            position.segment = oldest_segment;
+        }
+        if position.segment < oldest_segment {
+            return Err(ReadError::Expired {
+                oldest: oldest_available,
+                oldest_sequence: oldest_segment,
+                requested_sequence: position.segment,
+            });
+        }
 
-    cursor.advance(&stream, walked.position);
-    cursor.frontier = walked.frontier;
-    let target = window.until.as_ref().unwrap_or(&end);
-    if !walked.stopped_early && !walked.scan_bounded {
-        let through = target.covered_through(&stream);
-        cursor.frontier.cover(&stream, through);
-        cursor.advance(&stream, position_of(through));
-    }
-    if cursor.frontier.covered_through(&stream) >= target.covered_through(&stream) {
+        let by_index = !filters.event_types.is_empty();
+        let walked = if by_index {
+            // The index names exactly the positions of the requested types, so the other types
+            // retained for this ledger are never opened.
+            indexed(
+                store,
+                scope,
+                filters,
+                &segments,
+                position,
+                window,
+                cursor.frontier.clone(),
+            )?
+        } else {
+            scanned(
+                scope,
+                &segments,
+                filters,
+                position,
+                window,
+                cursor.frontier.clone(),
+            )?
+        };
+
+        cursor.advance(&stream, walked.position);
+        cursor.frontier = walked.frontier;
+        let target = window.until.as_ref().unwrap_or(&legacy_end);
+        if !walked.stopped_early && !walked.scan_bounded {
+            let through = target.covered_through(&stream);
+            cursor.frontier.cover(&stream, through);
+            cursor.advance(&stream, position_of(through));
+        }
+        // The legacy producer streams the legacy walk reached through, never a consumer run's:
+        // a run is covered only as the loop below reads it (after the review).
+        if cursor.frontier.covered_through(&stream) >= target.covered_through(&stream) {
+            for (producer, sequence) in &target.covered {
+                if !producer.starts_with(HOST_KEY_PREFIX) {
+                    cursor.frontier.cover(producer, *sequence);
+                }
+            }
+        }
         for (producer, sequence) in &target.covered {
-            cursor.frontier.cover(producer, *sequence);
+            end.cover(producer, *sequence);
+        }
+        examined = walked.examined;
+        scan_bounded = walked.scan_bounded;
+        stopped_early = walked.stopped_early;
+        origins.extend(walked.records.iter().map(|_| None));
+        records = walked.records;
+    }
+
+    // Then each consumer run, from where the cursor stands in it.
+    let limit = window.records();
+    let budget = window.bytes();
+    let mut bytes: u64 = records
+        .iter()
+        .map(|record| {
+            serde_json::to_vec(record)
+                .map(|held| held.len() as u64)
+                .unwrap_or(0)
+        })
+        .sum();
+    for (index, held) in host_runs.iter().enumerate() {
+        let run = &held.run;
+        // An export reads a run up to the end its bound names, and a run its bound does not name
+        // belongs to a later export (after the review).
+        let last = match &window.until {
+            Some(bound) => match bound.covered_through(&held.key) {
+                0 => continue,
+                through => run.acked.min(through - 1),
+            },
+            None => run.acked,
+        };
+        end.cover(&held.key, run.acked + 1);
+        let at = cursor.position(&held.key).segment;
+        // A run whose prefix left on the retention schedule while this reader stood in it.
+        if at != 0 && at < run.oldest_retained {
+            return Err(ReadError::Expired {
+                oldest: oldest_available,
+                oldest_sequence: run.oldest_retained,
+                requested_sequence: at,
+            });
+        }
+        let from = at.max(run.oldest_retained).max(1);
+        // Nothing readable left in the run: the reader has observed all of it.
+        if from > last {
+            cursor.frontier.cover(&held.key, last + 1);
+            continue;
+        }
+        if stopped_early || scan_bounded {
+            continue;
+        }
+        let host = sources
+            .host
+            .ok_or_else(|| ReadError::Unavailable("no consumer is composed".to_owned()))?;
+        let mut next = from;
+        'run: while next <= last {
+            let page = host
+                .records(&held.resource, &run.producer, &run.run, next, 64)
+                .map_err(ReadError::Unavailable)?;
+            if page.records.is_empty() {
+                break;
+            }
+            for (seq, bytes_of) in page.records {
+                if seq > last {
+                    break 'run;
+                }
+                if examined >= permguard_stream::window::MAX_EXAMINED {
+                    scan_bounded = true;
+                    break 'run;
+                }
+                examined += 1;
+                let value: Value = serde_json::from_slice(&bytes_of).map_err(|error| {
+                    ReadError::Unavailable(format!("a record of the Host's stream: {error}"))
+                })?;
+                if !filters.matches(&value) {
+                    next = seq + 1;
+                    continue;
+                }
+                let size = bytes_of.len() as u64;
+                if !records.is_empty() && bytes + size > budget {
+                    stopped_early = true;
+                    break 'run;
+                }
+                bytes += size;
+                records.push(value);
+                origins.push(Some(index));
+                next = seq + 1;
+                if records.len() >= limit {
+                    stopped_early = true;
+                    break 'run;
+                }
+            }
+        }
+        cursor.advance(
+            &held.key,
+            Position {
+                segment: next,
+                offset: 0,
+            },
+        );
+        if next > from {
+            cursor.frontier.cover(&held.key, next);
         }
     }
+
     let observed_frontier = cursor.frontier.clone();
-    let more = permguard_stream::more(window, &observed_frontier, &end) || walked.stopped_early;
+    let more =
+        permguard_stream::more(window, &observed_frontier, &end) || stopped_early || scan_bounded;
 
     let (proof, inclusion) = if window.proof {
-        proofs(store, &walked.records)?
+        let legacy_records: Vec<Value> = records
+            .iter()
+            .zip(&origins)
+            .filter(|(_, origin)| origin.is_none())
+            .map(|(record, _)| record.clone())
+            .collect();
+        let (mut proof, mut inclusion) = proofs(store, &legacy_records)?;
+        // Each entry names its format (owner decision of 2026-10-18): the JWS members unchanged.
+        for envelope in &mut proof {
+            if let Some(object) = envelope.as_object_mut() {
+                object.insert(
+                    "format".to_owned(),
+                    Value::from(crate::decisions::read::LEGACY_FORMAT),
+                );
+            }
+        }
+        let (host_proof, host_inclusion) = crate::decisions::read::host_proof(
+            sources.host,
+            &host_runs,
+            &records,
+            &origins,
+            permguard_core::domains::digest::EVENT_RECORD,
+        )
+        .map_err(|error| ReadError::Unavailable(error.to_string()))?;
+        proof.extend(host_proof);
+        inclusion.extend(host_inclusion);
+        (proof, inclusion)
     } else {
         (Vec::new(), Vec::new())
     };
 
     Ok(Page {
-        records: walked.records,
+        records,
         next: cursor
             .seal_v2(key, keys.now(), keys.lifetime())
             .map_err(ReadError::Offset)?,
@@ -360,7 +598,7 @@ pub fn read(
         // A finite export keeps echoing the snapshot it is bounded by. Returning the moving
         // current end on later pages invites a client to replace its bound and create an export
         // that never finishes on a busy ledger.
-        high_watermark: target.encode(),
+        high_watermark: window.until.clone().unwrap_or(end).encode(),
         more,
         proof,
         inclusion,
@@ -368,8 +606,8 @@ pub fn read(
             // A contiguous run of one producer, and only when nothing narrowed it: anything else
             // is a subsequence whose chain does not link across the gaps.
             contiguous: matches!(scope, Scope::Stream { .. }) && filters.is_empty(),
-            examined: walked.examined,
-            scan_bounded: walked.scan_bounded,
+            examined,
+            scan_bounded,
         },
     })
 }
@@ -426,7 +664,7 @@ fn observe(scope: &Scope, frontier: &mut Frontier, position: Position, record: &
 /// Bounded like any other read: the search walks a finite snapshot and stops, so "no such event"
 /// is an answer rather than a command that never returns on a ledger that keeps growing.
 pub fn get(
-    store: &EventStore,
+    sources: &Sources<'_>,
     scope: &Scope,
     event_id: &str,
     key: &CursorKeys,
@@ -444,7 +682,7 @@ pub fn get(
     let mut snapshot = None;
     let mut resume = String::new();
     for _ in 0..SEARCH_PAGES {
-        let page = read(store, scope, &filters, key, &window)?;
+        let page = read_with(sources, scope, &filters, key, &window)?;
         if let Some(found) = page.records.into_iter().next() {
             return Ok(Some(found));
         }
@@ -1080,3 +1318,6 @@ mod scope_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod host_reads;

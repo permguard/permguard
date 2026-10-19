@@ -10,6 +10,7 @@ pub mod config;
 pub mod decisions;
 pub mod events;
 pub mod host;
+pub mod host_proof;
 pub mod inspect;
 pub mod objects;
 pub mod workspace;

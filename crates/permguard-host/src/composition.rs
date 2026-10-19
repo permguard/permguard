@@ -1618,6 +1618,17 @@ pub struct ConsumedRun {
     pub oldest_retained: u64,
 }
 
+/// One consumed run's signers (WP-6.2b): from which sequence each key signed, by `kid`, with its
+/// public JWK as JSON.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsumedSigners {
+    pub producer: [u8; 16],
+    pub run: [u8; 16],
+    pub acked: u64,
+    /// `(from_seq, kid, jwk)`, in sequence order.
+    pub spans: Vec<(u64, String, String)>,
+}
+
 /// A page of a run's records, as their bytes: read from a consumer, or from a producer (WP-6.2a).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConsumedPage {
@@ -1653,6 +1664,13 @@ pub trait StreamConsumerReads: Send + Sync {
         run: &[u8; 16],
         seq: u64,
     ) -> Result<Option<Vec<u8>>, String>;
+
+    /// The signing-key spans of each run over `resource` the consumer holds, with what it
+    /// acknowledged (WP-6.2b): what a verifier checks a run's batches against.
+    fn signers(&self, resource: &Resource) -> Result<Vec<ConsumedSigners>, String> {
+        let _ = resource;
+        Ok(Vec::new())
+    }
 }
 
 /// Reads a stream the Plane declared, as the Host's engine consumes it (WP-6.1).
@@ -1676,6 +1694,11 @@ impl StreamConsumer {
 
     pub fn runs(&self, resource: &Resource) -> Result<Vec<ConsumedRun>, String> {
         self.reads.runs(resource)
+    }
+
+    /// The signers of each run over `resource` (WP-6.2b).
+    pub fn signers(&self, resource: &Resource) -> Result<Vec<ConsumedSigners>, String> {
+        self.reads.signers(resource)
     }
 
     pub fn locate(&self, producer: &[u8; 16], run: &[u8; 16]) -> Result<Option<Resource>, String> {

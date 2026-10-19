@@ -70,6 +70,16 @@ const LOCK_FILE: &str = "LOCK";
 /// holding a stream apart from a directory that merely exists — how a restart finds every stream
 /// it has to ship, including ones no request has touched since.
 pub const STATE_FILE: &str = "STATE";
+
+/// The stream an existing journal's `STATE` names, read without opening it (WP-6.2a): what a
+/// legacy journal is reopened as, and the name a control plane beside it trusts its ring under.
+pub fn stream_of(directory: impl AsRef<Path>) -> Result<Stream, JournalError> {
+    let bytes = fs::read(directory.as_ref().join(STATE_FILE))
+        .map_err(|error| JournalError::Io(error.to_string()))?;
+    let held: State =
+        serde_json::from_slice(&bytes).map_err(|error| JournalError::Corrupt(error.to_string()))?;
+    Ok(held.stream)
+}
 const RESERVE_FILE: &str = "RESERVE";
 const SEGMENT_PREFIX: &str = "seg-";
 const SEGMENT_SUFFIX: &str = ".events";
@@ -258,16 +268,6 @@ impl Journal {
     /// Recovery happens here and nowhere else: a torn trailing record is truncated, the chain head
     /// and next sequence are re-derived from the segments rather than trusted from `STATE`, and a
     /// `STATE` naming a different stream is refused instead of appended to.
-    /// The stream an existing journal's `STATE` names, read without opening it (WP-6.2a): what a
-    /// legacy journal is reopened as.
-    pub fn stream_of(directory: impl AsRef<Path>) -> Result<Stream, JournalError> {
-        let bytes = fs::read(directory.as_ref().join(STATE_FILE))
-            .map_err(|error| JournalError::Io(error.to_string()))?;
-        let held: State = serde_json::from_slice(&bytes)
-            .map_err(|error| JournalError::Corrupt(error.to_string()))?;
-        Ok(held.stream)
-    }
-
     pub fn open(
         directory: impl AsRef<Path>,
         stream: Stream,

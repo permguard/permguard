@@ -405,7 +405,7 @@ impl Streams {
         {
             return Ok(None);
         }
-        let stream = Journal::stream_of(&directory)?;
+        let stream = permguard_events::journal::stream_of(&directory)?;
         Journal::open(&directory, stream, self.bounds).map(Some)
     }
 

@@ -518,8 +518,32 @@ fn verify(
 ) -> Verified {
     let (mut verified, mut failed) = (0, 0);
     let mut roots: Vec<(String, bool)> = Vec::new();
+    // The batches the producing Hosts' engines sealed (WP-6.2b): their roots are attributed only
+    // when their signatures verify under the keys given.
+    let mut host_batches = Vec::new();
+    for entry in proof {
+        match super::host_proof::host_batch(
+            entry,
+            keys,
+            permguard_core::domains::protected::DECISION_BATCH,
+        ) {
+            Some(Ok(batch)) => {
+                verified += usize::from(keys.is_some());
+                roots.push((batch.merkle_root.clone(), keys.is_some()));
+                host_batches.push(batch);
+            }
+            Some(Err(())) => failed += usize::from(keys.is_some()),
+            None => {}
+        }
+    }
+    let legacy: Vec<&Value> = proof
+        .iter()
+        .filter(|entry| {
+            entry.get("format").and_then(Value::as_str) != Some(super::host_proof::HOST_FORMAT)
+        })
+        .collect();
     if let Some(keys) = keys {
-        for envelope in proof {
+        for &envelope in &legacy {
             let signed = serde_json::from_value::<Signed>(envelope.clone())
                 .ok()
                 .map(|signed| signed.verify(keys));
@@ -534,7 +558,7 @@ fn verify(
     } else {
         // Without a key set the roots are still usable for the arithmetic —
         // they simply are not *attributed*, and the report says so.
-        for envelope in proof {
+        for &envelope in &legacy {
             if let Ok(signed) = serde_json::from_value::<Signed>(envelope.clone())
                 && let Ok(attested) = signed.envelope()
             {
@@ -556,7 +580,7 @@ fn verify(
                 // asked for, the chain result stands alone and the report says
                 // signatures were not checked.
                 Ok(_) if proof.is_empty() => (true, None),
-                Ok(verified) if attested(&verified, records, proof) => (true, None),
+                Ok(verified) if attested(&verified, records, proof, &host_batches) => (true, None),
                 Ok(_) => (
                     false,
                     Some(
@@ -608,7 +632,12 @@ fn verify(
 /// A run may still end mid-batch — a page boundary is not a batch boundary —
 /// and its final records are then bound by the *next* page's chain check
 /// rather than by a head of their own.
-fn attested(verified: &permguard_decisions::Verified, records: &[Value], proof: &[Value]) -> bool {
+fn attested(
+    verified: &permguard_decisions::Verified,
+    records: &[Value],
+    proof: &[Value],
+    host_batches: &[super::host_proof::HostBatch],
+) -> bool {
     let digests: std::collections::BTreeMap<u64, String> = records
         .iter()
         .filter_map(|record| {
@@ -617,7 +646,9 @@ fn attested(verified: &permguard_decisions::Verified, records: &[Value], proof: 
             record::digest_of(record).ok().map(|digest| (seq, digest))
         })
         .collect();
-    let envelopes: Vec<_> = proof
+    // `(first, last, head)` of each batch of the verified stream: a legacy envelope naming it, or
+    // a Host batch naming its `host_id` and run.
+    let mut envelopes: Vec<(u64, u64, String)> = proof
         .iter()
         .filter_map(|signed| {
             serde_json::from_value::<Signed>(signed.clone())
@@ -625,14 +656,23 @@ fn attested(verified: &permguard_decisions::Verified, records: &[Value], proof: 
                 .and_then(|signed| signed.envelope().ok())
         })
         .filter(|envelope| envelope.stream == verified.stream)
+        .map(|envelope| (envelope.first_seq, envelope.last_seq, envelope.head))
         .collect();
+    envelopes.extend(
+        host_batches
+            .iter()
+            .filter(|batch| {
+                batch.producer == verified.stream.id && batch.run == verified.stream.instance
+            })
+            .map(|batch| (batch.first_seq, batch.last_seq, batch.head.clone())),
+    );
 
     // Every attested head inside the run must be a digest the run reaches.
     // One that is not means the records and the signatures describe two
     // different histories, and "verified" must not be the answer.
-    for envelope in &envelopes {
-        if (verified.first_seq..=verified.last_seq).contains(&envelope.last_seq)
-            && digests.get(&envelope.last_seq) != Some(&envelope.head)
+    for (_, last, head) in &envelopes {
+        if (verified.first_seq..=verified.last_seq).contains(last)
+            && digests.get(last) != Some(head)
         {
             return false;
         }
@@ -642,7 +682,7 @@ fn attested(verified: &permguard_decisions::Verified, records: &[Value], proof: 
     // or carried by a batch that extends past the page.
     envelopes
         .iter()
-        .any(|envelope| (envelope.first_seq..=envelope.last_seq).contains(&verified.last_seq))
+        .any(|(first, last, _)| (*first..=*last).contains(&verified.last_seq))
 }
 
 /// How many records reach a root the producer attested, and how many do not.
@@ -759,5 +799,182 @@ fn read_failure(error: ReadError) -> Failure {
             "unavailable",
             permguard_core::codes::client::DECISION_LOG_UNREACHABLE,
         ),
+    }
+}
+
+#[cfg(test)]
+mod host_verify {
+    //! WP-6.2b (owner decision of 2026-10-19): a page of decisions a Host's stream recorded is
+    //! verified through the `host-batch-v1` entry its engine sealed, as `events verify` does.
+
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use permguard_decisions::record::{
+        ActionRef, Body, Build, Commitments, DecisionBody, GENESIS, Inputs, MarkerBody, Party,
+        Reason, Record, Sampling, StoreRef, Stream,
+    };
+
+    use super::super::host_proof::testing::{Key, sealed};
+    use super::*;
+
+    fn build() -> Build {
+        Build {
+            version: "0.1.0".to_owned(),
+            build: None,
+            engines: None,
+        }
+    }
+
+    /// A marker and a decision of the run `[7; 16]` of the Host `[1; 16]`, chained.
+    fn records() -> Vec<Value> {
+        let mut prev = GENESIS.to_owned();
+        (1..=2u64)
+            .map(|seq| {
+                let body = if seq == 1 {
+                    Body::Marker(Box::new(MarkerBody {
+                        predecessor: None,
+                        pdp: build(),
+                        sampling: Sampling {
+                            permits: "1.0".to_owned(),
+                        },
+                        commitments: Commitments {
+                            alg: "HMAC-SHA256".to_owned(),
+                            key_version: "v1".to_owned(),
+                        },
+                    }))
+                } else {
+                    Body::Decision(Box::new(DecisionBody {
+                        id: "d-2".to_owned(),
+                        pdp: build(),
+                        store: StoreRef {
+                            zone: "acme".to_owned(),
+                            ledger: "main".to_owned(),
+                            commit: "sha256:ec1773bf".to_owned(),
+                            counter: 1,
+                            profile: "default".to_owned(),
+                        },
+                        subject: Party {
+                            kind: "User".to_owned(),
+                            id: "pseudo:v1:9f2c".to_owned(),
+                            properties: None,
+                        },
+                        resource: Party {
+                            kind: "Document".to_owned(),
+                            id: "budget".to_owned(),
+                            properties: None,
+                        },
+                        action: ActionRef {
+                            name: "read".to_owned(),
+                        },
+                        principal: None,
+                        inputs: Inputs::default(),
+                        decision: true,
+                        outcome: None,
+                        causes: None,
+                        policies: vec!["policy-1".to_owned()],
+                        reason: Reason {
+                            code: "200".to_owned(),
+                        },
+                        trace: None,
+                        request_id: None,
+                        context: None,
+                        latency_us: 143,
+                        event: None,
+                    }))
+                };
+                let value = Record {
+                    v: permguard_decisions::record::VERSION,
+                    stream: Stream::new("01".repeat(16), "07".repeat(16)),
+                    seq,
+                    prev: prev.clone(),
+                    at: "2026-10-19T10:00:00Z".to_owned(),
+                    body,
+                }
+                .to_value()
+                .expect("a record");
+                prev = record::digest_of(&value).expect("a digest");
+                value
+            })
+            .collect()
+    }
+
+    /// The records, their Host entry and one path per record.
+    fn page(key: &Key) -> (Vec<Value>, Vec<Value>, Vec<Value>) {
+        let records = records();
+        let bytes: Vec<Vec<u8>> = records
+            .iter()
+            .map(|record| permguard_stream::jcs::canonicalize(record).expect("canonical"))
+            .collect();
+        let leaves: Vec<String> = records
+            .iter()
+            .map(|record| record::digest_of(record).expect("a digest"))
+            .collect();
+        let root = merkle::root(&leaves).expect("a root");
+        let proof = vec![sealed(
+            key,
+            permguard_core::domains::protected::DECISION_BATCH,
+            permguard_core::domains::digest::DECISION_RECORD,
+            &"01".repeat(16),
+            &"07".repeat(16),
+            1,
+            &bytes,
+        )];
+        let inclusion = (0..2)
+            .map(|at| {
+                serde_json::json!({
+                    "seq": at + 1,
+                    "leaf": leaves[at],
+                    "root": root,
+                    "path": merkle::path(&leaves, at).expect("a path"),
+                })
+            })
+            .collect();
+        (records, proof, inclusion)
+    }
+
+    #[test]
+    fn a_tenant_page_of_host_records_is_included_under_its_sealing_key() {
+        let key = Key::new("k1");
+        let (records, proof, inclusion) = page(&key);
+        let tenant = ReadScope::Tenant {
+            zone: "acme".to_owned(),
+            ledger: "main".to_owned(),
+        };
+        let verified = verify(&tenant, &records, &proof, &inclusion, Some(&[key.jwk()]));
+        assert_eq!(verified.included, Some(2));
+        assert_eq!(verified.not_included, Some(0));
+        assert_eq!((verified.signatures, verified.signatures_failed), (1, 0));
+        let refused = verify(
+            &tenant,
+            &records,
+            &proof,
+            &inclusion,
+            Some(&[Key::new("k1").jwk()]),
+        );
+        assert_eq!(refused.signatures_failed, 1);
+    }
+
+    #[test]
+    fn a_host_run_read_as_a_stream_is_attested_by_its_batch() {
+        let key = Key::new("k1");
+        let (records, proof, inclusion) = page(&key);
+        let stream = ReadScope::Stream {
+            pdp_id: "01".repeat(16),
+            instance: "07".repeat(16),
+        };
+        let verified = verify(&stream, &records, &proof, &inclusion, Some(&[key.jwk()]));
+        assert_eq!(verified.chain, Some(true), "{:?}", verified.chain_detail);
+        // A batch of another run attests nothing of this one.
+        let other = vec![sealed(
+            &key,
+            permguard_core::domains::protected::DECISION_BATCH,
+            permguard_core::domains::digest::DECISION_RECORD,
+            &"01".repeat(16),
+            &"08".repeat(16),
+            1,
+            &[b"{}".to_vec(), b"{}".to_vec()],
+        )];
+        let unattested = verify(&stream, &records, &other, &inclusion, Some(&[key.jwk()]));
+        assert_eq!(unattested.chain, Some(false));
     }
 }

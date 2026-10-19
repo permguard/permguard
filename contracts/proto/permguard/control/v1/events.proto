@@ -218,7 +218,10 @@ message ListRecordsResponse {
   string oldest_available = 4;
   // The exclusive end this read observed, opaque.
   string high_watermark = 5;
-  // The envelopes attesting these records, when asked for.
+  // The envelopes attesting these records, when asked for, each JSON naming its
+  // `format`: `legacy-jws-v1`, a legacy store's batch JWS with its members
+  // unchanged, or `host-batch-v1`, `{format, signature}` with the batch the
+  // producing Host's engine sealed (WP-6.2b).
   repeated bytes proof = 6;
   // One inclusion path per record, as JSON, when asked for.
   repeated bytes inclusion = 7;

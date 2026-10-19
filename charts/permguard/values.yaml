@@ -117,11 +117,7 @@ controlPlane:
   #         enabled: "true"
   #         directory: "data/events/store"     # a PersistentVolume, for the same reason
   #         retention: "90d"
-  #         producer_keys:                      # mandatory, and bound: no decision-key fallback
-  #           - path: /etc/permguard/trust/data-plane-events.jwks
-  #             producer: data-plane-eu-1
-  #             zone: "*"
-  #             ledger: "*"
+  #         # no producer key file: events arrive over the Host's `events.ship`
   #     experimental:
   #       dogwood: { enabled: "true" }        # required alongside it, and refused if missing
   extraConfig: {}

@@ -88,20 +88,19 @@ This starts one all-in-one process with:
 Dogwood is deliberately disabled by the ordinary `task run:all`; the temporal
 contract is still `v1alpha1` and must be enabled explicitly.
 
-## Step 2 — Establish event trust
+## Step 2 — Know where the evidence goes
 
-In terminal 2, publish the data plane's generated public keys where the local
-control-plane configuration expects them:
+The data plane records every event on the Host's stream engine, named by the
+Host's `host_id` and the run of its stream, and decides against it locally: the
+temporal decisions in steps 6 to 9 need nothing else.
 
-```bash
-mkdir -p .volume/all-in-one/trust
-curl -fsS http://127.0.0.1:7443/data-plane/keys \
-  -o .volume/all-in-one/trust/data-plane-events.jwks
-```
-
-No private key moves. The control plane reloads this JWKS without a restart and
-accepts it only for the producer and tenant scope declared in
-`config.local-experimental.yml`.
+The control plane's event and decision reads (steps 10 and 11) read what the
+Host's consumer holds, and records reach it only when a Host ships them over the
+membership tasks `events.ship` and `decisions.ship` to its coordinator. A single
+all-in-one process with no membership keeps them on its own stream, so those
+reads answer nothing until the Host is a member of a coordinator. There is no
+producer key file to publish: the batches are sealed under the Host's
+`data.attest` ring.
 
 ## Step 3 — Create and publish the ledger
 
@@ -296,8 +295,8 @@ sleep 6
 > An empty answer here means "no records under that scope", never "this ledger is
 > empty". `decisions` in step 11 is scoped the other way, by name.
 
-The six seconds allow the local event shipper to complete one round. Now read
-from the control plane, not from the data plane's working journal:
+The six seconds allow the Host to ship one round to its coordinator; without a
+membership these reads answer nothing (step 2). Now read from the control plane:
 
 ```bash
 task cli -- events list --zone "$ZONE_ID" --ledger "$LEDGER_ID"
@@ -336,13 +335,15 @@ third terminal while you submit:
 task cli -- events tail --zone "$ZONE_ID" --ledger "$LEDGER_ID" --follow
 ```
 
-Then verify the Merkle inclusion paths and the signed batches against the
-independently saved JWKS:
+Then verify the Merkle inclusion paths and the sealed batches against the
+Host's `data.attest` public keys, exported from the volume with the server's
+`keys export --directory .volume/all-in-one/host/keys/data.attest` and saved
+apart:
 
 ```bash
 task cli -- events verify \
   --zone "$ZONE_ID" --ledger "$LEDGER_ID" \
-  --keys .volume/all-in-one/trust/data-plane-events.jwks
+  --keys .volume/all-in-one/trust/data-attest.jwks
 ```
 
 ```text

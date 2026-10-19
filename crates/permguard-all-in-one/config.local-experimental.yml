@@ -105,11 +105,7 @@ controlPlane:
     # Whole segments only: a row removed from the middle would leave a chain with a hole in
     # it, while a segment that has left is a gap a reader is told about.
     retention: "90d"
-    producer_keys:
-      - path: trust/data-plane-events.jwks
-        producer: all-in-one-local
-        zone: "*"
-        ledger: "*"
+    # Events arrive over the Host's `events.ship`: no producer key file is configured (WP-6.2b).
 dataPlane:
   public:
     http:

@@ -237,19 +237,18 @@ recorded anything. Both are configuration mistakes that look like a working depl
 {{- end }}
 
 {{- /*
-An event store with no bounded producer authority.
+An event store naming producer key files, which are retired.
 
-Decision-log keys only prove cryptographic possession; they do not authorize an event producer to
-claim a producer identity or a tenant. Event ingest therefore has its own mandatory, structured
-trust policy. Catch an absent list while rendering instead of producing a pod that refuses startup.
+Events arrive over the Host's `events.ship` (WP-6.2), and the event store trusts only the signing
+ring of a data plane in the same process for what its legacy journals still ship. The server refuses
+`controlPlane.events.producer_keys` at start; refused here too, at install.
 */ -}}
 {{- range $component, $plane := dict "controlPlane" .Values.controlPlane "allInOne" .Values.allInOne }}
 {{- if $plane.enabled }}
 {{- $extra := $plane.extraConfig | default dict }}
 {{- $events := dig "controlPlane" "events" dict $extra | default dict }}
-{{- $enabled := dig "enabled" "" $events }}
-{{- if and $enabled (ne (toString $enabled) "false") (not (dig "producer_keys" list $events)) }}
-{{- fail (printf "%s enables controlPlane.events but declares no controlPlane.events.producer_keys. Event keys must be bound to an exact producer and an allowed zone/ledger; the decision-log trust list is not an event-ingestion policy." $component) }}
+{{- if dig "producer_keys" list $events }}
+{{- fail (printf "%s sets controlPlane.events.producer_keys, which is retired: events arrive over the Host's events.ship. Remove it." $component) }}
 {{- end }}
 {{- end }}
 {{- end }}

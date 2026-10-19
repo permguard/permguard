@@ -355,6 +355,19 @@ is cut.
 
 ### Changed
 
+- **The event reads answer from the Host's stream too, and the event producer key files are gone.**
+  A Control Plane composed with the Host's stream engine reads, besides its own event store, what the Host's consumer of `data/events` holds, in process.
+  A tenant read (`/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records`) answers what the store holds first, then each producer's runs of that ledger by `host_id` and the order they opened, every filter applied to both.
+  `producer` and `instance` naming a `host_id` and a run the consumer holds read that run alone; any other pair reads the store as before.
+  `GET /events/v1alpha1/records/{event_id}` and `GetRecord` search both.
+  Each `proof[]` entry now carries `format`: `host-batch-v1` with the sealed batch's JWS as `signature`, or `legacy-jws-v1` beside the store's JWS members, which are unchanged.
+  The tenant signers read answers each consumer run of the ledger beside the stored streams.
+  Configuration: `controlPlane.events.producer_keys` is retired and refused at start, and the Helm chart refuses it; the event store no longer re-reads key files.
+  Its ingest route (`POST /events/v1alpha1/batches`, `IngestBatch`) now trusts only the signing ring of a data plane in the same process, bound to the producer, zone and ledger each of that plane's legacy event journals names: a data plane in another process can no longer ship events over it.
+  The gauge `permguard_event_trusted_producers` and the log events `events.no_producers` and `events.producer_keys_reload_failed` are gone; health says the event store is degraded only while a legacy journal waits to ship and no ring can attest it.
+  `permguard events verify` and `permguard decisions verify` check a `host-batch-v1` entry's signature against the keys given (the `keys export` of `data.attest`), and count a record as included only when a batch names its Host, its run and its sequence and the record's path reaches that batch's root; before, `decisions verify` counted every record read from a Host as not included.
+  Records leave a Host only towards a coordinator, over `events.ship` and `decisions.ship`: a single process with no membership keeps them on its own stream, and the Control Plane's evidence reads answer nothing until it is a member of one.
+
 - **Temporal events are recorded on the Host's stream, and a submission takes `event.submit`.**
   A Data Plane serving the temporal interface now appends each occurrence to the Host's stream engine, one stream per zone and ledger, as `data/events`; the Host's producer owns the run, the sequence, the flush and the seal, and ships them over the membership's `events.ship` task.
   A record's `stream.producer.id` is the Host's `host_id` and `stream.producer.instance` the run, each as 32 lowercase hex digits; `seq` and `prev` are the engine's.

@@ -288,4 +288,50 @@ impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consum
         };
         batches.read(&name).map_err(|error| error.to_string())
     }
+
+    fn signers(
+        &self,
+        resource: &Resource,
+    ) -> Result<Vec<permguard_host::composition::ConsumedSigners>, String> {
+        let acked: Vec<([u8; 16], [u8; 16], u64)> =
+            permguard_host::composition::StreamConsumerReads::runs(self, resource)?
+                .into_iter()
+                .map(|run| (run.producer, run.run, run.acked))
+                .collect();
+        let mut found = Vec::new();
+        for (key, run) in self.runs_of(resource).map_err(wrap)? {
+            let Some(dir) = self.run_dir(&key, &run).map_err(wrap)? else {
+                continue;
+            };
+            let spans = match permguard_host::storage::write::read_view(
+                &dir,
+                super::SIGNERS,
+                permguard_host::storage::format::VIEW,
+            )
+            .map_err(|error| error.to_string())?
+            {
+                Some(bytes) => super::super::producer::Spans::decode(&bytes).map_err(wrap)?,
+                None => super::super::producer::Spans::default(),
+            };
+            let held = spans
+                .runs
+                .into_iter()
+                .find(|(held, _)| *held == run)
+                .map(|(_, spans)| spans)
+                .unwrap_or_default();
+            found.push(permguard_host::composition::ConsumedSigners {
+                producer: key.producer_host_id,
+                run,
+                acked: acked
+                    .iter()
+                    .find(|(producer, held, _)| *producer == key.producer_host_id && *held == run)
+                    .map_or(0, |(.., acked)| *acked),
+                spans: held
+                    .into_iter()
+                    .map(|span| (span.from_seq, span.kid, span.jwk))
+                    .collect(),
+            });
+        }
+        Ok(found)
+    }
 }

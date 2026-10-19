@@ -242,13 +242,6 @@ impl PlaneModule for ControlPlaneModule {
                 crate::events::retention::EventRetentionService::new()
                     .with_store(std::sync::Arc::clone(&self.event_store)),
             ),
-            // A producer publishes its keys into a file and rotates them. Re-reading only when a
-            // batch cannot be attributed makes "this plane trusts nobody" a state discovered by
-            // somebody else's failure, and on a first start there is no batch to discover it with.
-            Box::new(
-                crate::events::trust::EventTrustService::new()
-                    .with_facade(std::sync::Arc::clone(&self.event_trust)),
-            ),
         ]
     }
 
@@ -668,63 +661,16 @@ fn events_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
              or `controlPlane.events.enabled: false` if this plane should not receive events"
         );
     }
-    if events_served(config) && config.event_producer_keys().is_empty() {
+    // Retired (WP-6.2b, owner decision of 2026-10-18): events arrive over the Host's
+    // `events.ship`, and the ingest route trusts only the ring of the plane sharing this process
+    // for its legacy journals. A configuration still naming key files is refused, so no
+    // deployment believes they are in force.
+    if config.event_producer_keys_declared() {
         anyhow::bail!(
-            "the event store is enabled and `controlPlane.events.producer_keys` is empty. Event \
-             keys must be bound explicitly to a producer and its allowed zone/ledger scope; the \
-             unbound decision-producer list is not an event-ingestion trust policy"
+            "`controlPlane.events.producer_keys` is retired: events arrive over the Host's \
+             `events.ship`, and the event store trusts only the signing ring of a data plane in \
+             this process for what its legacy journals still ship. Remove it"
         );
-    }
-    for source in config.event_producer_keys() {
-        if source.path.trim().is_empty()
-            || source.producer.trim().is_empty()
-            || source.zone.trim().is_empty()
-            || source.ledger.trim().is_empty()
-            || source.producer == "*"
-        {
-            anyhow::bail!(
-                "every event producer key names a non-empty `path`, exact `producer`, and \
-                `zone`/`ledger` (which may be `*`)"
-            );
-        }
-        // A trust source that is not there *yet* is not the same fault as one that is there and
-        // wrong.
-        //
-        // A producer publishes its own public keys, and its ring rotates: the file is written by
-        // the plane that signs, on a cadence, into a volume both planes see. So on a first start —
-        // an all-in-one on a clean volume, a control plane scheduled before its data plane — the
-        // path is legitimately empty, and refusing to boot makes a deployment that would have
-        // converged in seconds unstartable instead. The reload behind `producer_files` picks the
-        // file up when it appears, which is the same path a rotation takes.
-        //
-        // Nothing is loosened by waiting: ingest is fail-closed per batch, and a producer whose
-        // keys this plane does not hold has its batches refused as unattributable. What is refused
-        // here is the *silent* version of that — a path nobody will ever write, misread as a plane
-        // that simply has not started yet — which is why only absence is tolerated. A file that
-        // exists and cannot be parsed, or that carries no key, is still fatal: it is a trust source
-        // an operator believes is in force.
-        // Silent here on purpose: startup checks run while the configuration is still being built,
-        // before `logging::install`, so a record emitted from this function reaches no subscriber.
-        // The operator is told once the surfaces compose, by `events.no_producers`, which names the
-        // setting and says the batches are refused until it is satisfied.
-        if !config.working_dir().join(&source.path).exists() {
-            continue;
-        }
-        let keys = read_key_set(config, &source.path).map_err(|error| {
-            anyhow::anyhow!(
-                "reading event producer `{}` from `{}`: {error:#}",
-                source.producer,
-                source.path
-            )
-        })?;
-        if keys.is_empty() {
-            anyhow::bail!(
-                "event producer `{}` publishes no keys in `{}`: an empty trust source would \
-                 make every batch from that producer unattributable",
-                source.producer,
-                source.path
-            );
-        }
     }
 
     Ok(())
@@ -810,34 +756,28 @@ fn build_event_facade(
         }
     };
 
-    // The explicitly bound event producers this plane accepts. Decision-log keys are not enough:
-    // an event key is authority for one producer and an allowed zone/ledger scope, and accepting
-    // an unbound key would let its holder claim another producer or tenant in the signed payload.
-    let producers = load_event_producer_keys(config);
-    if producers.is_empty() {
-        tracing::warn!(
-            event.name = "events.no_producers",
-            component = COMPONENT,
-            "the event store is on and this plane knows no producer's keys: name bound sources \
-             under `controlPlane.events.producer_keys`. Batches will be refused as unattributable \
-             rather than accepted unchecked"
-        );
-    }
+    // The ring of the data plane sharing this process, bound to the producer, zone and ledger of
+    // each legacy journal it may still ship (WP-6.2b): nothing else is trusted on this route.
+    let bindings = legacy_event_producers(config);
+    let local = (!bindings.is_empty()).then(|| {
+        let keys = crate::handles::data_public_keys(context);
+        if keys.is_none() {
+            tracing::warn!(
+                event.name = "events.legacy_untrusted",
+                component = COMPONENT,
+                "a legacy event journal beside this store waits to ship and this process composes \
+                 no data signing ring: its batches are refused"
+            );
+        }
+        crate::events::http::LocalTrust { keys, bindings }
+    });
 
     let facade = crate::events::http::EventFacade {
         catalog: context.catalog().map(std::sync::Arc::clone),
         store,
-        producers: std::sync::Arc::new(std::sync::RwLock::new(producers)),
-        producer_files: config
-            .event_producer_keys()
-            .iter()
-            .map(|source| crate::events::http::ProducerFile {
-                path: config.working_dir().join(&source.path),
-                producer: source.producer.clone(),
-                zone: source.zone.clone(),
-                ledger: source.ledger.clone(),
-            })
-            .collect(),
+        host: crate::handles::event_consumer(context),
+        producers: std::sync::Arc::new(std::sync::RwLock::new(Vec::new())),
+        local,
         cursor_key,
         disclosure: config.error_detail(),
         metrics: context.metrics().clone(),
@@ -1020,37 +960,45 @@ fn load_producer_keys(
     trusted
 }
 
-/// The event producers' published sets, from wherever this deployment named them.
-fn load_event_producer_keys(
-    config: &permguard_core::Config,
-) -> Vec<crate::events::ingest::ProducerTrust> {
-    let mut trusted = Vec::new();
-    for source in config.event_producer_keys() {
-        for key in load_keys_from(config, std::slice::from_ref(&source.path)) {
-            trusted.push(crate::events::ingest::ProducerTrust {
-                key,
-                producer: source.producer.clone(),
-                zone: source.zone.clone(),
-                ledger: source.ledger.clone(),
-            });
+/// The `(producer, zone, ledger)` each legacy event journal of the data plane in this process names
+/// (WP-6.2b): what its old shipper may still send here, under the ring it shares with this plane.
+/// None without a data plane keeping events and its signing ring.
+fn legacy_event_producers(config: &permguard_core::Config) -> Vec<(String, String, String)> {
+    if !config.events_enabled() || !config.data_signing_keys_enabled() {
+        return Vec::new();
+    }
+    let root = config.events_directory();
+    let mut found = Vec::new();
+    let Ok(zones) = std::fs::read_dir(&root) else {
+        return found;
+    };
+    for zone in zones.flatten() {
+        let Ok(ledgers) = std::fs::read_dir(zone.path()) else {
+            continue;
+        };
+        for ledger in ledgers.flatten() {
+            let directory = ledger.path();
+            if !directory
+                .join(permguard_events::journal::STATE_FILE)
+                .exists()
+            {
+                continue;
+            }
+            match permguard_events::journal::stream_of(&directory) {
+                Ok(stream) => found.push((stream.producer.id, stream.zone, stream.ledger)),
+                Err(error) => tracing::warn!(
+                    event.name = "events.legacy_unreadable",
+                    component = COMPONENT,
+                    error = %error,
+                    "a legacy event journal beside this store cannot be read: its producer is not \
+                     trusted here"
+                ),
+            }
         }
     }
-
-    trusted
-}
-
-fn read_key_set(
-    config: &permguard_core::Config,
-    path: &str,
-) -> anyhow::Result<Vec<permguard_core::Jwk>> {
-    let resolved = config.working_dir().join(path);
-    let text = std::fs::read_to_string(&resolved)
-        .with_context(|| format!("reading {}", resolved.display()))?;
-    let parsed: serde_json::Value =
-        serde_json::from_str(&text).with_context(|| format!("parsing {}", resolved.display()))?;
-    let set = parsed.get("keys").cloned().unwrap_or(parsed);
-
-    serde_json::from_value(set).with_context(|| format!("{} is not a JWKS", resolved.display()))
+    found.sort();
+    found.dedup();
+    found
 }
 
 fn load_keys_from(config: &permguard_core::Config, paths: &[String]) -> Vec<permguard_core::Jwk> {
@@ -1239,7 +1187,7 @@ async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
         // the wrong thing while the store's own refusal sits in the log above.
         let composed = events.lock().ok().and_then(|held| {
             held.as_ref()
-                .map(|facade| facade.accepted_producers().len())
+                .map(crate::events::http::EventFacade::awaits_trust)
         });
         match composed {
             None => found.push(degraded(
@@ -1247,12 +1195,13 @@ async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
                 "the event store did not compose: this plane serves no event routes at \
                          all, and the reason it could not open them was recorded at startup",
             )),
-            Some(0) => found.push(degraded(
+            Some(true) => found.push(degraded(
                 "events",
-                "no producer key set has loaded: batches are refused as unattributable \
-                         until one is published under `controlPlane.events.producer_keys`",
+                "a legacy event journal beside this store waits to ship and the ring of \
+                         its data plane publishes no key: its batches are refused as \
+                         unattributable until it does",
             )),
-            Some(_) => {}
+            Some(false) => {}
         }
     }
     if let Some(decisions) = &state.decisions {
@@ -1362,6 +1311,8 @@ mod tests {
         )
         .expect("the test configuration builds")
     }
+
+    mod legacy_events;
 
     /// `server` with this plane registered on a Host that knows its `host_id`: the salt of the
     /// stores' cursor keys (WP-3.3).

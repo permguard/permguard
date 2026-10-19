@@ -67,6 +67,7 @@ pub(crate) fn declaration() -> Declaration {
         .uses_task(TaskType::EventsShip, 1)
         // The public decision reads answer from the Host's consumer (WP-6.1b).
         .reads_stream(permguard_decisions::stream::STREAM)
+        .reads_stream(permguard_events::stream::STREAM)
 }
 
 pub(crate) fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
@@ -77,6 +78,25 @@ pub(crate) fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registratio
 /// (WP-3.3); `None` when no Host registered the plane.
 pub(crate) fn host_id(context: &PlaneContext<'_>) -> Option<[u8; 16]> {
     registration(context)?.host_id()
+}
+
+/// The Host's consumer of the event stream, which the public event reads answer from (WP-6.2b);
+/// `None` when the Host composes no stream engine consuming it.
+pub(crate) fn event_consumer(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::StreamConsumer> {
+    match registration(context)?.stream_consumer(permguard_events::stream::STREAM) {
+        Ok(consumer) => consumer,
+        Err(error) => {
+            tracing::error!(
+                event.name = "events.consumer_undeclared",
+                component = "control-plane",
+                error = %error,
+                "the event reads cannot reach the Host's consumer"
+            );
+            None
+        }
+    }
 }
 
 /// The Host's consumer of the decision stream, which the public decision reads answer from

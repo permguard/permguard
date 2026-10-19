@@ -1265,6 +1265,7 @@ impl App {
                 permguard_host::membership::record::TaskType::EventsShip,
             ));
         let decision_consumer = Arc::new(decision_consumer);
+        let event_consumer = Arc::new(event_consumer);
         Ok((
             permguard_stream::engine::Served::default()
                 .with(permguard_decisions::stream::STREAM, Arc::new(decisions))
@@ -1273,9 +1274,14 @@ impl App {
                 .with_consumer(
                     permguard_decisions::stream::STREAM,
                     Arc::clone(&decision_consumer),
+                )
+                // And its public event reads (WP-6.2b).
+                .with_consumer(
+                    permguard_events::stream::STREAM,
+                    Arc::clone(&event_consumer),
                 ),
             decision_consumer,
-            Arc::new(event_consumer),
+            event_consumer,
         ))
     }
 

@@ -43,7 +43,6 @@ pub mod measure;
 pub mod read;
 pub mod retention;
 pub mod store;
-pub mod trust;
 
 pub use ingest::{Accepted, Refused};
 pub use store::EventStore;

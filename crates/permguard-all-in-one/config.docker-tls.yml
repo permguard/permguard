@@ -126,11 +126,7 @@ controlPlane:
   #                                  # segment that has left is a gap a reader is told about.
   #                                  # Envelopes and the archived verification keys that prove
   #                                  # retained records are never dropped with them.
-  #   producer_keys:                 # required: key material plus producer/tenant authority
-  #     - path: trust/data-plane-events.jwks
-  #       producer: data-plane-eu-1
-  #       zone: "*"                  # `*` is allowed for zone/ledger, never for producer
-  #       ledger: "*"
+  #   # no producer key file: events arrive over the Host's `events.ship`
 
 dataPlane:
   public:

@@ -235,7 +235,57 @@ impl SealedBatch {
             B64.decode(text)
                 .map_err(|error| invalid(&error.to_string()))
         };
-        let protected = self.protected()?;
+        let envelope = verify_signature(&self.signature, keys, typ)?;
+        let records = self
+            .records
+            .iter()
+            .map(|record| decode(record))
+            .collect::<Result<Vec<_>, _>>()?;
+        if records.len() as u64 != envelope.count {
+            return Err(invalid("its range, count and records disagree"));
+        }
+        let digests: Vec<String> = records
+            .iter()
+            .map(|record| digest_string(domain, record))
+            .collect();
+        if digests.last() != Some(&envelope.head) {
+            return Err(invalid("its head is not its last record's digest"));
+        }
+        if crate::merkle::root(&digests).as_ref() != Some(&envelope.merkle_root) {
+            return Err(invalid("its Merkle root does not cover its records"));
+        }
+        Ok((envelope, records))
+    }
+}
+
+/// The envelope a batch signature's payload states, unverified: what a reader without keys can
+/// still check the arithmetic of (WP-6.2b).
+pub fn envelope_of(signature: &Jws) -> Result<Envelope, StreamError> {
+    let invalid = |detail: String| StreamError::Invalid(format!("a batch: {detail}"));
+    let bytes = B64
+        .decode(&signature.payload)
+        .map_err(|error| invalid(error.to_string()))?;
+    serde_json::from_value(
+        crate::jcs::decode_canonical(&bytes).map_err(|error| invalid(error.to_string()))?,
+    )
+    .map_err(|error| invalid(error.to_string()))
+}
+
+/// Verifies a batch signature alone against `keys` and `typ`, and the envelope it signs for its
+/// own consistency: what a read's `proof[]` carries without the records, which its inclusion
+/// paths bind to the envelope's Merkle root (WP-6.2b).
+pub fn verify_signature(signature: &Jws, keys: &[Jwk], typ: &str) -> Result<Envelope, StreamError> {
+    let invalid = |detail: &str| StreamError::Invalid(format!("a batch: {detail}"));
+    let decode = |text: &str| {
+        B64.decode(text)
+            .map_err(|error| invalid(&error.to_string()))
+    };
+    {
+        let protected: Protected = serde_json::from_value(
+            crate::jcs::decode_canonical(&decode(&signature.protected)?)
+                .map_err(|error| invalid(&error.to_string()))?,
+        )
+        .map_err(|error| invalid(&error.to_string()))?;
         if protected.typ != typ {
             return Err(invalid(&format!(
                 "`typ` is `{}`, not `{typ}`",
@@ -262,42 +312,22 @@ impl SealedBatch {
         };
         ring::signature::UnparsedPublicKey::new(verifier, &public)
             .verify(
-                format!("{}.{}", self.signature.protected, self.signature.payload).as_bytes(),
-                &decode(&self.signature.signature)?,
+                format!("{}.{}", signature.protected, signature.payload).as_bytes(),
+                &decode(&signature.signature)?,
             )
             .map_err(|_| invalid("the signature does not verify"))?;
-        let envelope: Envelope = serde_json::from_value(
-            crate::jcs::decode_canonical(&decode(&self.signature.payload)?)
-                .map_err(|error| invalid(&error.to_string()))?,
-        )
-        .map_err(|error| invalid(&error.to_string()))?;
-        let records = self
-            .records
-            .iter()
-            .map(|record| decode(record))
-            .collect::<Result<Vec<_>, _>>()?;
-        if envelope.first_seq == 0
-            || envelope.last_seq < envelope.first_seq
-            || envelope.last_seq - envelope.first_seq + 1 != envelope.count
-            || records.len() as u64 != envelope.count
-        {
-            return Err(invalid("its range, count and records disagree"));
-        }
-        let digests: Vec<String> = records
-            .iter()
-            .map(|record| digest_string(domain, record))
-            .collect();
-        if digests.last() != Some(&envelope.head) {
-            return Err(invalid("its head is not its last record's digest"));
-        }
-        if crate::merkle::root(&digests).as_ref() != Some(&envelope.merkle_root) {
-            return Err(invalid("its Merkle root does not cover its records"));
-        }
-        if envelope.batch_id != format!("{}-{}", envelope.run, envelope.first_seq) {
-            return Err(invalid("its batch id is not its run and first sequence"));
-        }
-        Ok((envelope, records))
     }
+    let envelope = envelope_of(signature)?;
+    if envelope.first_seq == 0
+        || envelope.last_seq < envelope.first_seq
+        || envelope.last_seq - envelope.first_seq + 1 != envelope.count
+    {
+        return Err(invalid("its range and count disagree"));
+    }
+    if envelope.batch_id != format!("{}-{}", envelope.run, envelope.first_seq) {
+        return Err(invalid("its batch id is not its run and first sequence"));
+    }
+    Ok(envelope)
 }
 
 /// The most bytes a batch file takes.

@@ -219,7 +219,10 @@ impl EventReader for Wire {
 
     fn get(&self, zone: &str, ledger: &str, event_id: &str) -> Result<Option<Value>, ReadError> {
         read::get(
-            &self.facade.store,
+            &read::Sources {
+                store: &self.facade.store,
+                host: None,
+            },
             &Scope::Tenant {
                 zone: zone.to_owned(),
                 ledger: ledger.to_owned(),
@@ -258,11 +261,12 @@ fn control(tag: &str, keys: &DirectoryKeyManager) -> Arc<Wire> {
 
     Arc::new(Wire {
         facade: EventFacade {
+            host: None,
             // These fixtures address records by identity, so there are no names to resolve.
             catalog: None,
             store: Arc::new(store),
             producers: Arc::new(std::sync::RwLock::new(producers)),
-            producer_files: Vec::new(),
+            local: None,
             cursor_key,
             disclosure: Disclosure::Full,
             metrics: Metrics::none(),

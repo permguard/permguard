@@ -669,7 +669,16 @@ fn one_occurrence_is_found_by_its_identifier_and_absence_is_an_answer() {
     .expect("stored");
 
     let key = cursor_key();
-    let found = read::get(&store, &tenant(), "i-1-7", &key).expect("it reads");
+    let found = read::get(
+        &read::Sources {
+            store: &store,
+            host: None,
+        },
+        &tenant(),
+        "i-1-7",
+        &key,
+    )
+    .expect("it reads");
     assert_eq!(
         found
             .as_ref()
@@ -679,7 +688,16 @@ fn one_occurrence_is_found_by_its_identifier_and_absence_is_an_answer() {
     );
 
     assert_eq!(
-        read::get(&store, &tenant(), "nothing-like-this", &key).expect("it reads"),
+        read::get(
+            &read::Sources {
+                store: &store,
+                host: None
+            },
+            &tenant(),
+            "nothing-like-this",
+            &key
+        )
+        .expect("it reads"),
         None,
         "a search over a growing ledger concludes rather than running forever"
     );

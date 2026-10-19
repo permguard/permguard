@@ -752,7 +752,25 @@ fn check(scope: &ReadScope, read: &Read, keys: Option<&[Jwk]>) -> Verified {
     let mut signatures = 0;
     let mut signatures_failed = 0;
     let mut malformed_envelopes = 0;
+    // The batches the producing Hosts' engines sealed (WP-6.2b): verified the same way, under the
+    // keys given, their records bound by their inclusion paths to the batch's Merkle root.
+    let mut host_batches = Vec::new();
     for value in &read.proof {
+        if let Some(held) = super::host_proof::host_batch(
+            value,
+            keys,
+            permguard_core::domains::protected::EVENT_BATCH,
+        ) {
+            match held {
+                Ok(batch) => {
+                    signatures += usize::from(keys.is_some());
+                    host_batches.push(batch);
+                }
+                Err(()) if keys.is_some() => signatures_failed += 1,
+                Err(()) => malformed_envelopes += 1,
+            }
+            continue;
+        }
         let Ok(signed) = serde_json::from_value::<Signed>(value.clone()) else {
             signatures_failed += usize::from(keys.is_some());
             malformed_envelopes += 1;
@@ -797,17 +815,28 @@ fn check(scope: &ReadScope, read: &Read, keys: Option<&[Jwk]>) -> Verified {
         let root = path.get("root").and_then(Value::as_str);
         let covered = match (record_stream, root) {
             (Some(stream), Some(root)) => {
+                let seq = record.get("seq").and_then(Value::as_u64);
                 scope_contains(scope, stream)
-                    && envelopes.iter().any(|envelope| {
+                    && (envelopes.iter().any(|envelope| {
                         envelope.stream == *stream
                             && envelope.merkle_root == root
-                            && record
-                                .get("seq")
-                                .and_then(Value::as_u64)
-                                .is_some_and(|seq| {
-                                    (envelope.first_seq..=envelope.last_seq).contains(&seq)
-                                })
-                    })
+                            && seq.is_some_and(|seq| {
+                                (envelope.first_seq..=envelope.last_seq).contains(&seq)
+                            })
+                    }) || (stream.producer.class
+                        == permguard_events::PRODUCER_CLASS_DATA_PLANE
+                        && host_batches
+                            .iter()
+                            .any(|batch: &super::host_proof::HostBatch| {
+                                batch.merkle_root == root
+                                    && seq.is_some_and(|seq| {
+                                        batch.covers(
+                                            &stream.producer.id,
+                                            &stream.producer.instance,
+                                            seq,
+                                        )
+                                    })
+                            })))
             }
             _ => false,
         };
@@ -933,5 +962,178 @@ fn read_failure(error: ReadError) -> Failure {
             "unavailable",
             permguard_core::codes::client::EVENT_STORE_UNREACHABLE,
         ),
+    }
+}
+
+#[cfg(test)]
+mod host_verify {
+    //! WP-6.2b (owner decision of 2026-10-19): a page holding records of a Host's stream is
+    //! verified through the `host-batch-v1` entry its engine sealed.
+
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use serde_json::json;
+
+    use super::super::host_proof::testing::{Key, sealed};
+    use super::*;
+
+    const ZONE: &str = "acme";
+    const LEDGER: &str = "main";
+
+    /// Two valid events of the run `[7; 16]` of the Host `[1; 16]`, chained.
+    fn records() -> Vec<Value> {
+        let producer = permguard_events::Producer {
+            class: permguard_events::PRODUCER_CLASS_DATA_PLANE.to_owned(),
+            id: "01".repeat(16),
+            instance: "07".repeat(16),
+        };
+        let mut prev = permguard_events::GENESIS.to_owned();
+        (1..=2)
+            .map(|seq| {
+                let event = json!({
+                    "event_id": format!("e-{seq}"),
+                    "kind": "response",
+                    "action": "Drupe::Action::Login",
+                    "principal": "Drupe::OAuthUser::\"alice\"",
+                    "resource": "Drupe::Gateway::\"gw1\"",
+                    "occurred_at": "2026-10-19T10:00:00Z",
+                });
+                let record = record::Record {
+                    v: 1,
+                    record_type: permguard_events::RECORD_TYPE.to_owned(),
+                    stream: permguard_events::Stream::new(producer.clone(), ZONE, LEDGER),
+                    seq,
+                    prev: prev.clone(),
+                    event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
+                    event_id: format!("e-{seq}"),
+                    source: Some("anonymous".to_owned()),
+                    occurrence_digest: permguard_events::occurrence_digest_of(&event)
+                        .expect("a digest"),
+                    kind: "response".to_owned(),
+                    profile: "temporal".to_owned(),
+                    policy_partitions: vec!["governance".to_owned()],
+                    commit: "sha256:commit".to_owned(),
+                    history_key: None,
+                    occurred_at: "2026-10-19T10:00:00Z".to_owned(),
+                    observed_at: "2026-10-19T10:00:01Z".to_owned(),
+                    event,
+                }
+                .to_value()
+                .expect("a record");
+                prev = permguard_events::digest_of(&record).expect("a digest");
+                record
+            })
+            .collect()
+    }
+
+    /// The page a tenant read answers: the records, the Host entry and one path per record.
+    fn page(key: &Key) -> Read {
+        let records = records();
+        let bytes: Vec<Vec<u8>> = records
+            .iter()
+            .map(|record| permguard_stream::jcs::canonicalize(record).expect("canonical"))
+            .collect();
+        let leaves: Vec<String> = records
+            .iter()
+            .map(|record| permguard_events::digest_of(record).expect("a digest"))
+            .collect();
+        let root = permguard_stream::merkle::root(&leaves).expect("a root");
+        let entry = sealed(
+            key,
+            permguard_core::domains::protected::EVENT_BATCH,
+            permguard_core::domains::digest::EVENT_RECORD,
+            &"01".repeat(16),
+            &"07".repeat(16),
+            1,
+            &bytes,
+        );
+        Read {
+            inclusion: (0..2)
+                .map(|at| {
+                    json!({
+                        "seq": at + 1,
+                        "leaf": leaves[at],
+                        "root": root,
+                        "path": permguard_stream::merkle::path(&leaves, at).expect("a path"),
+                    })
+                })
+                .collect(),
+            records,
+            proof: vec![entry],
+            next: String::new(),
+            oldest_available: String::new(),
+            high_watermark: String::new(),
+            more: false,
+            examined: 2,
+            scan_bounded: false,
+        }
+    }
+
+    fn tenant() -> ReadScope {
+        ReadScope::Tenant {
+            zone: ZONE.to_owned(),
+            ledger: LEDGER.to_owned(),
+        }
+    }
+
+    #[test]
+    fn host_records_are_included_under_the_key_that_sealed_their_batch() {
+        let key = Key::new("k1");
+        let verified = check(&tenant(), &page(&key), Some(&[key.jwk()]));
+        assert_eq!((verified.included, verified.not_included), (2, 0));
+        assert_eq!((verified.signatures, verified.signatures_failed), (1, 0));
+
+        // Under another key nothing is attributed, and so nothing included.
+        let other = Key::new("k1");
+        let refused = check(&tenant(), &page(&key), Some(&[other.jwk()]));
+        assert_eq!((refused.included, refused.not_included), (0, 2));
+        assert_eq!(refused.signatures_failed, 1);
+
+        // A record the batch does not name is not included by its root.
+        let mut moved = page(&key);
+        moved.records[1]["stream"]["producer"]["instance"] = json!("08".repeat(16));
+        let partly = check(&tenant(), &moved, Some(&[key.jwk()]));
+        assert_eq!(partly.included, 1);
+    }
+
+    #[test]
+    fn a_host_batch_includes_only_records_whose_paths_reach_its_own_root() {
+        let key = Key::new("k1");
+        let mut read = page(&key);
+        // The same run and range, sealed over other records: the page's paths reach a root no
+        // signed batch names.
+        let mut others = records();
+        others[0]["event_id"] = json!("e-other");
+        let bytes: Vec<Vec<u8>> = others
+            .iter()
+            .map(|record| permguard_stream::jcs::canonicalize(record).expect("canonical"))
+            .collect();
+        read.proof = vec![sealed(
+            &key,
+            permguard_core::domains::protected::EVENT_BATCH,
+            permguard_core::domains::digest::EVENT_RECORD,
+            &"01".repeat(16),
+            &"07".repeat(16),
+            1,
+            &bytes,
+        )];
+        let verified = check(&tenant(), &read, Some(&[key.jwk()]));
+        assert_eq!(verified.signatures, 1, "the batch itself is genuine");
+        assert_eq!((verified.included, verified.not_included), (0, 2));
+    }
+
+    #[test]
+    fn a_host_run_read_as_a_stream_verifies_its_chain() {
+        let key = Key::new("k1");
+        let scope = ReadScope::Stream {
+            zone: ZONE.to_owned(),
+            ledger: LEDGER.to_owned(),
+            class: permguard_events::PRODUCER_CLASS_DATA_PLANE.to_owned(),
+            producer: "01".repeat(16),
+            instance: "07".repeat(16),
+        };
+        let verified = check(&scope, &page(&key), Some(&[key.jwk()]));
+        assert_eq!(verified.chain, Some(true), "{:?}", verified.chain_detail);
+        assert_eq!(verified.included, 2);
     }
 }
