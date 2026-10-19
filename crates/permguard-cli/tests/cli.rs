@@ -140,6 +140,23 @@ fn config_set_get_show_reset_round_trip() {
 }
 
 #[test]
+fn config_set_accepts_grpc_endpoints() {
+    let dir = scratch("config-grpc");
+
+    for (key, endpoint) in [
+        ("control-plane.endpoint", "grpc://10.0.0.9:6443"),
+        ("data-plane.endpoint", "grpcs://10.0.0.9:7443"),
+    ] {
+        let set = run(&dir, &["config", "set", key, endpoint]);
+        assert!(set.status.success(), "{}", stderr(&set));
+
+        let get = run(&dir, &["config", "get", key]);
+        assert!(get.status.success(), "{}", stderr(&get));
+        assert_eq!(stdout(&get).trim(), endpoint);
+    }
+}
+
+#[test]
 fn an_unknown_setting_is_a_usage_error() {
     let dir = scratch("config-unknown");
     let output = run(&dir, &["config", "get", "no.such.setting"]);
