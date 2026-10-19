@@ -115,6 +115,9 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(record) = import::Checkpoint::decode(data) {
         assert_eq!(record.encode().ok().as_deref(), Some(data));
     }
+    if let Ok(record) = import::State::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
     // The `audit.checkpoints` contract's records (WP-5.9).
     if let Ok(record) = egress::Ship::decode(data) {
         assert_eq!(record.encode().ok().as_deref(), Some(data));

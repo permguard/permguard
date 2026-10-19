@@ -2066,6 +2066,11 @@ async fn the_import_origins_are_the_active_members_shipping_events_over_the_reso
         "the manifest in force, as signed"
     );
     assert_ne!(active.revision, none.revision);
+    // Its `data.attest` pins over its manifests, what the checkpoint signs for it.
+    assert_eq!(active.pins.len(), 1);
+    assert_eq!(active.pins[0].0, member.identity.host_id());
+    assert_eq!(active.pins[0].1.len(), 1);
+    assert_eq!(active.pins[0].1[0].ring, DATA_ATTEST);
     // Outside the task's selector, no origin is required.
     let elsewhere =
         permguard_core::authz::Resource::parse("plane/control/zone/z1").expect("a resource");

@@ -1747,6 +1747,61 @@ pub struct ConsumedPage {
     pub low_watermark: Option<u64>,
 }
 
+/// The origin a batch is imported from (WP-6.2c2a): its membership with the coordinator, the
+/// manifest epoch it was verified at, its `host_id` and the `data.attest` pins that manifest holds.
+#[derive(Debug, Clone, Copy)]
+pub struct ImportOrigin<'a> {
+    pub membership_id: [u8; 16],
+    pub epoch: u64,
+    pub host_id: [u8; 16],
+    pub pins: &'a [crate::membership::record::RingPin],
+}
+
+/// What importing one batch came to, as the engine's ingest answered it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Imported {
+    /// Kept, or already held: the run is acknowledged through `acked`.
+    Admitted { acked: u64 },
+    /// Not contiguous with what is held: the next sequence wanted is `acked + 1`.
+    OutOfOrder { acked: u64 },
+    /// Below what the run still holds and not the batch that went.
+    Gone { acked: u64 },
+    /// The origin's stream differs from what is held, in `run` from `at`: it is closed here,
+    /// every later batch of the origin answered so.
+    Fork { run: [u8; 16], at: u64 },
+    /// It did not verify under the origin's pins.
+    Unverifiable,
+}
+
+/// What the member Host's `events.import` needs of its consumer of the event stream (WP-6.2c2a,
+/// owner decisions of 2026-10-19): the runs it holds, the ingest of an origin's batch as the
+/// origin shipped it, and the import's state per ledger, kept beside the runs.
+pub trait StreamImport: Send + Sync {
+    /// The last sequence held of `origin`'s run `run` over `resource`; 0 when none.
+    fn held(&self, resource: &Resource, origin: &[u8; 16], run: &[u8; 16]) -> Result<u64, String>;
+
+    /// Ingests `body`, a `ship_message` as `origin` shipped it, into `origin`'s own run.
+    fn import(
+        &self,
+        resource: &Resource,
+        origin: &ImportOrigin<'_>,
+        body: &[u8],
+    ) -> Result<Imported, String>;
+
+    /// The import's state of `resource`, when one was kept.
+    fn import_state(
+        &self,
+        resource: &Resource,
+    ) -> Result<Option<crate::membership::import::State>, String>;
+
+    /// Replaces the import's state of `resource`, durably.
+    fn keep_import_state(
+        &self,
+        resource: &Resource,
+        state: &crate::membership::import::State,
+    ) -> Result<(), String>;
+}
+
 /// What a Plane reads of a stream the Host consumes (WP-6.1, owner decision of 2026-10-18): the
 /// public reads answer from the consumer in-process, one copy.
 pub trait StreamConsumerReads: Send + Sync {

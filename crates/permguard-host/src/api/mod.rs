@@ -928,6 +928,7 @@ pub(crate) mod testing {
                 live: Arc::default(),
                 streams: None,
                 shipping: None,
+                importing: None,
             })),
         });
         (api, store, volume)

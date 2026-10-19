@@ -31,17 +31,31 @@ fn checkpoint() -> Checkpoint {
                         admitted_at: None,
                     },
                 ],
+                pins: vec![data_pin(1)],
             },
             // A required origin with nothing shipped yet.
             CheckpointOrigin {
                 host_id: [6; 16],
                 runs: Vec::new(),
+                pins: Vec::new(),
             },
         ],
         issued_at: 1_700_000_100,
         channel_binding: [7; 32],
         ring_epoch: 0,
         key_set_digest: [0; 32],
+    }
+}
+
+/// A `data.attest` pin of an origin at `epoch`.
+fn data_pin(epoch: u64) -> RingPin {
+    RingPin {
+        owner: Role::Member,
+        ring: crate::keys::ring::DATA_ATTEST.to_owned(),
+        epoch,
+        key_set_digest: [epoch as u8; 32],
+        binding: vec![epoch as u8; 8],
+        retiring: false,
     }
 }
 
@@ -260,6 +274,7 @@ fn a_checkpoint_out_of_its_bounds_does_not_read() {
     let origin = |host: usize| CheckpointOrigin {
         host_id: (host as u128).to_be_bytes(),
         runs: Vec::new(),
+        pins: Vec::new(),
     };
     let mut many = checkpoint();
     many.origins = (0..=MAX_ORIGINS).map(origin).collect();
@@ -277,10 +292,12 @@ fn a_checkpoint_out_of_its_bounds_does_not_read() {
         CheckpointOrigin {
             host_id: [1; 16],
             runs: (0..MAX_CHECKPOINT_RUNS / 2).map(run).collect(),
+            pins: Vec::new(),
         },
         CheckpointOrigin {
             host_id: [2; 16],
             runs: (0..=MAX_CHECKPOINT_RUNS / 2).map(run).collect(),
+            pins: Vec::new(),
         },
     ];
     assert!(
@@ -289,4 +306,188 @@ fn a_checkpoint_out_of_its_bounds_does_not_read() {
     );
     runs.origins[1].runs.pop();
     assert!(Checkpoint::decode(&runs.encode().expect("encodes")).is_ok());
+}
+
+fn state() -> State {
+    State {
+        membership_id: [1; 16],
+        revision: [2; 32],
+        checkpoint: vec![3; 4],
+        verified_at: 1_800_000_000,
+        gaps: Vec::new(),
+    }
+}
+
+fn gap(origin: u8, run: u8, from: u64) -> Gap {
+    Gap {
+        origin: [origin; 16],
+        run: [run; 16],
+        from,
+        through: None,
+        reason: RETENTION.to_owned(),
+        detected_at: 1_800_000_001,
+        revision: [2; 32],
+    }
+}
+
+#[test]
+fn a_state_keeps_each_gap_once_in_order_and_reads_back() {
+    let mut held = state();
+    assert!(held.keep_gap(gap(2, 1, 5)));
+    assert!(held.keep_gap(gap(1, 1, 9)));
+    assert!(!held.keep_gap(gap(2, 1, 5)), "found again");
+    assert!(!held.keep_gap(gap(2, 1, 7)), "inside one already held");
+    assert!(
+        held.keep_gap(gap(2, 1, 3)),
+        "an earlier hole of the same run"
+    );
+    assert_eq!(held.gapped_from(&[2; 16], &[1; 16]), Some(3));
+    assert_eq!(held.gapped_from(&[2; 16], &[9; 16]), None);
+    let order: Vec<([u8; 16], u64)> = held.gaps.iter().map(|gap| (gap.origin, gap.from)).collect();
+    assert_eq!(order, vec![([1; 16], 9), ([2; 16], 3), ([2; 16], 5)]);
+    assert_eq!(
+        State::decode(&held.encode().expect("encodes")).expect("decodes"),
+        held
+    );
+}
+
+#[test]
+fn a_state_refuses_a_gap_out_of_its_rules() {
+    for broken in [
+        Gap {
+            from: 0,
+            ..gap(1, 1, 1)
+        },
+        Gap {
+            through: Some(2),
+            ..gap(1, 1, 3)
+        },
+        Gap {
+            reason: "forgot".to_owned(),
+            ..gap(1, 1, 1)
+        },
+    ] {
+        let mut held = state();
+        held.gaps = vec![broken];
+        assert!(State::decode(&held.encode().expect("encodes")).is_err());
+    }
+    let mut unordered = state();
+    unordered.gaps = vec![gap(2, 1, 1), gap(1, 1, 1)];
+    assert!(State::decode(&unordered.encode().expect("encodes")).is_err());
+    let mut many = state();
+    many.gaps = (0..=MAX_GAPS as u64).map(|at| gap(1, 1, at + 1)).collect();
+    assert!(many.encode().is_err(), "never written past its bound");
+    let mut written = state().encode().expect("encodes");
+    let gaps = many
+        .gaps
+        .iter()
+        .map(|gap| {
+            Value::Map(vec![
+                (Value::Int(1), Value::Bytes(gap.origin.to_vec())),
+                (Value::Int(2), Value::Bytes(gap.run.to_vec())),
+                (Value::Int(3), Value::Int(gap.from as i64)),
+                (Value::Int(5), Value::Text(gap.reason.clone())),
+                (Value::Int(6), Value::Int(gap.detected_at as i64)),
+                (Value::Int(7), Value::Bytes(gap.revision.to_vec())),
+            ])
+        })
+        .collect();
+    let Value::Map(mut pairs) = permguard_objects::cbor::decode_canonical(&written).expect("cbor")
+    else {
+        panic!("a map");
+    };
+    pairs[4].1 = Value::Array(gaps);
+    written = permguard_objects::cbor::encode(&Value::Map(pairs)).expect("encodes");
+    assert!(State::decode(&written).is_err(), "nor read past it");
+    many.gaps.pop();
+    assert!(State::decode(&many.encode().expect("encodes")).is_ok());
+}
+
+#[test]
+fn a_checkpoint_names_each_origins_own_data_attest_pins_and_no_other() {
+    let mut held = checkpoint();
+    held.origins[0].pins = vec![data_pin(1), data_pin(2)];
+    assert_eq!(
+        Checkpoint::decode(&held.encode().expect("encodes")).expect("decodes"),
+        held
+    );
+    let mut another_ring = checkpoint();
+    another_ring.origins[0].pins = vec![RingPin {
+        ring: CONTROL_ATTEST.to_owned(),
+        ..data_pin(1)
+    }];
+    assert!(Checkpoint::decode(&another_ring.encode().expect("encodes")).is_err());
+    let mut coordinators = checkpoint();
+    coordinators.origins[0].pins = vec![RingPin {
+        owner: Role::Coordinator,
+        ..data_pin(1)
+    }];
+    assert!(Checkpoint::decode(&coordinators.encode().expect("encodes")).is_err());
+    let mut many = checkpoint();
+    many.origins[0].pins = (0..=MAX_PINS as u64).map(data_pin).collect();
+    assert!(Checkpoint::decode(&many.encode().expect("encodes")).is_err());
+}
+
+#[test]
+fn an_origins_pins_are_every_set_its_history_held_once_the_latest_kept() {
+    use crate::membership::record::{HostRef, LeasePolicy, Status};
+
+    let manifest = |ring_pins: Vec<RingPin>| {
+        let host = |host_id| HostRef {
+            host_id,
+            epoch: 1,
+            fingerprint: "sha256:00".to_owned(),
+        };
+        Manifest {
+            membership_id: [1; 16],
+            coordinator: host([2; 16]),
+            member: host([3; 16]),
+            selector: permguard_core::authz::Selector::parse("plane/data/*").expect("a selector"),
+            tasks: Vec::new(),
+            member_assurance: permguard_core::assurance::AssuranceProfile::Development,
+            min_assurance: None,
+            assurance_binding: None,
+            ring_pins,
+            epoch: 1,
+            lease_policy: LeasePolicy {
+                max_session_seconds: 3600,
+                offline_grace_seconds: 86_400,
+                clock_skew_seconds: 30,
+                dormant_after_seconds: 2_592_000,
+                revoke_after_seconds: 7_776_000,
+            },
+            previous: None,
+            issued_at: 1,
+            not_after: 2,
+            status: Status::Active,
+        }
+    };
+    let history = vec![
+        manifest(vec![data_pin(1)]),
+        // A re-pin: the old set retiring beside the new one, then the new one alone.
+        manifest(vec![
+            RingPin {
+                retiring: true,
+                ..data_pin(1)
+            },
+            data_pin(2),
+        ]),
+        manifest(vec![data_pin(2)]),
+    ];
+    let pins = origin_pins(&history);
+    assert_eq!(
+        pins,
+        vec![data_pin(1), data_pin(2)],
+        "each set once, none retiring"
+    );
+    let long: Vec<Manifest> = (1..=MAX_PINS as u64 + 2)
+        .map(|epoch| manifest(vec![data_pin(epoch)]))
+        .collect();
+    let kept = origin_pins(&long);
+    assert_eq!(kept.len(), MAX_PINS);
+    assert_eq!(
+        kept.last(),
+        Some(&data_pin(MAX_PINS as u64 + 2)),
+        "the latest kept"
+    );
 }

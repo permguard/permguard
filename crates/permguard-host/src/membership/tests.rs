@@ -1137,6 +1137,7 @@ pub(crate) mod protocol {
             (TaskType::DecisionsShip, 1),
             (TaskType::DecisionsShip, 2),
             (TaskType::EventsShip, 1),
+            (TaskType::EventsImport, 1),
         ]
         .into_iter()
         .fold(Capabilities::default(), |capabilities, (task, version)| {

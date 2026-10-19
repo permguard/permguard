@@ -881,6 +881,7 @@ async fn side_with(
             shipping: served
                 .clone()
                 .map(|served| served as Arc<dyn permguard_host::composition::StreamShipping>),
+            importing: None,
         })),
     }));
     let listener = Surface::listener(

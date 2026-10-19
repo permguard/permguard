@@ -1324,6 +1324,14 @@ fn membership_samples() -> Vec<Sample> {
                             admitted_at: None,
                         },
                     ],
+                    pins: vec![permguard_host::membership::record::RingPin {
+                        owner: permguard_host::membership::record::Role::Member,
+                        ring: permguard_host::keys::ring::DATA_ATTEST.to_owned(),
+                        epoch: 2,
+                        key_set_digest: [0xA2; 32],
+                        binding: vec![0xA2; 8],
+                        retiring: false,
+                    }],
                 }],
                 issued_at: 1_800_000_100,
                 channel_binding: [7; 32],
@@ -1338,6 +1346,39 @@ fn membership_samples() -> Vec<Sample> {
                     bytes,
                 ))
             }),
+        ),
+        sample(
+            "import_state",
+            permguard_host::membership::import::State {
+                membership_id: [3; 16],
+                revision: [2; 32],
+                checkpoint: vec![0xD2; 8],
+                verified_at: 1_800_000_200,
+                gaps: vec![
+                    permguard_host::membership::import::Gap {
+                        origin: SCOPE_ID,
+                        run: [4; 16],
+                        from: 1,
+                        through: Some(2),
+                        reason: permguard_host::membership::import::RETENTION.to_owned(),
+                        detected_at: 1_800_000_300,
+                        revision: [2; 32],
+                    },
+                    permguard_host::membership::import::Gap {
+                        origin: SCOPE_ID,
+                        run: [5; 16],
+                        from: 7,
+                        through: None,
+                        reason: permguard_host::membership::import::UNVERIFIABLE.to_owned(),
+                        detected_at: 1_800_000_300,
+                        revision: [2; 32],
+                    },
+                ],
+            }
+            .encode()
+            .expect("encodes"),
+            &["import_gap.through"],
+            decoder(|bytes| verdict(permguard_host::membership::import::State::decode(bytes))),
         ),
         sample(
             "operator_approval",

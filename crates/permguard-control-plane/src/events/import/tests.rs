@@ -26,6 +26,18 @@ const A: [u8; 16] = [1; 16];
 const B: [u8; 16] = [2; 16];
 const STRANGER: [u8; 16] = [3; 16];
 
+/// A's `data.attest` pin, as its membership's manifests held it.
+fn a_pin() -> permguard_host::membership::record::RingPin {
+    permguard_host::membership::record::RingPin {
+        owner: permguard_host::membership::record::Role::Member,
+        ring: permguard_host::keys::ring::DATA_ATTEST.to_owned(),
+        epoch: 2,
+        key_set_digest: [0xA2; 32],
+        binding: vec![0xA2; 8],
+        retiring: false,
+    }
+}
+
 fn ledger() -> Resource {
     Resource::ledger("data", ZONE, LEDGER)
 }
@@ -179,6 +191,8 @@ fn fixture(tag: &str) -> Fixture {
     let set = OriginSet {
         revision: [0x5E; 32],
         origins: vec![origin(A), origin(B), origin([4; 16]), origin(MEMBER)],
+        // A's history: the pin its batches verify under, signed into the checkpoint.
+        pins: vec![(A, vec![a_pin()])],
     };
     Fixture {
         import: Import {
@@ -292,6 +306,17 @@ fn the_origins_come_with_a_checkpoint_of_what_the_consumer_holds_of_each() {
         "every run, by run id, with what was admitted and retained"
     );
     assert_eq!(of(B), vec![(7, 4, 1, Some(1_700_000_007))]);
+    let pins_of = |host: [u8; 16]| {
+        checkpoint
+            .origins
+            .iter()
+            .find(|origin| origin.host_id == host)
+            .expect("named")
+            .pins
+            .clone()
+    };
+    assert_eq!(pins_of(A), vec![a_pin()], "each origin's pins, signed");
+    assert!(pins_of(B).is_empty());
     assert_eq!(of([4; 16]), vec![], "a required origin with nothing yet");
     assert_eq!(
         of(MEMBER).len(),
@@ -415,6 +440,7 @@ fn a_checkpoint_a_member_would_refuse_is_never_signed() {
     // More required origins than a member reads.
     fixture.import.origins = Arc::new(|_: &Resource| {
         Ok(OriginSet {
+            pins: Vec::new(),
             revision: [1; 32],
             origins: (0..=MAX_ORIGINS)
                 .map(|at| Origin {

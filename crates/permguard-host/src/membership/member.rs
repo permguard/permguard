@@ -48,6 +48,8 @@ pub const SHIPPED: &str = "shipped";
 /// The progress reports this process sent: the coordinator numbers them per incarnation.
 static REPORT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+pub mod import;
+
 /// The coordinator a member reaches: where, and the pin it is accepted by.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
@@ -169,6 +171,11 @@ pub struct MemberTask {
 }
 
 impl MemberTask {
+    /// The coordinator as the session proved it.
+    pub fn peer(&self) -> &crate::identity::Verified {
+        &self.peer
+    }
+
     /// The session's connection, for tests that send what a member never would.
     #[cfg(test)]
     pub(crate) fn channel_for_tests(&mut self) -> &mut dyn TaskChannel {

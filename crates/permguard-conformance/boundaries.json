@@ -952,6 +952,16 @@
     },
     {
       "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/import.rs",
+      "item": "State::decode",
+      "entry": "permguard_host::membership::import::State::decode",
+      "max_input_bytes": 589824,
+      "limit": "`membership::import::MAX_STATE_BYTES` (576 KiB), checked by the decoder before it parses, and at most `MAX_GAPS` gaps: the import state the member's Host keeps per ledger, read back from its volume (WP-6.2c2a)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
       "source": "crates/permguard-host/src/membership/egress.rs",
       "item": "Ship::decode",
       "entry": "permguard_host::membership::egress::Ship::decode",

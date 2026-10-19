@@ -2177,6 +2177,17 @@ impl App {
                     shipping: streams.clone().map(|engine| {
                         engine as Arc<dyn permguard_host::composition::StreamShipping>
                     }),
+                    // The origins' history its `events.import` tasks deliver, into the event
+                    // consumer, for the ledgers a shared consistency mode names (WP-6.2c2a).
+                    importing: ingests.as_ref().and_then(|(_, events)| {
+                        import_ledgers(config).map(|ledgers| {
+                            Arc::new(permguard_host::membership::member::import::Importing {
+                                engine: Arc::clone(events)
+                                    as Arc<dyn permguard_host::composition::StreamImport>,
+                                ledgers,
+                            })
+                        })
+                    }),
                 })),
             });
             let api = match stream_reads.clone() {
@@ -2905,3 +2916,33 @@ type StreamParts = (
     Arc<permguard_stream::engine::Consumer<permguard_decisions::stream::Codec>>,
     Arc<permguard_stream::engine::Consumer<permguard_events::stream::Codec>>,
 );
+
+/// The ledgers the member side imports (WP-6.2c2a, owner decision of 2026-10-19): `ledgers[]` of
+/// the pull configuration, under a shared consistency mode; `None` when there are none. A ledger
+/// whose zone or ledger is not an identifier is left out, said once.
+fn import_ledgers(config: &Config) -> Option<Vec<permguard_core::authz::Resource>> {
+    if !config.events_pull_mode().is_shared() {
+        return None;
+    }
+    let ledgers: Vec<permguard_core::authz::Resource> = config
+        .events_pull_ledgers()
+        .iter()
+        .filter_map(|held| {
+            let named = format!("plane/data/zone/{}/ledger/{}", held.zone, held.ledger);
+            match permguard_core::authz::Resource::parse(&named) {
+                Ok(resource) => Some(resource),
+                Err(error) => {
+                    tracing::warn!(
+                        event.name = "host.membership.import_ledger_invalid",
+                        component = "host",
+                        resource = %named,
+                        error = %error,
+                        "a configured ledger names no resource: it is not imported"
+                    );
+                    None
+                }
+            }
+        })
+        .collect();
+    (!ledgers.is_empty()).then_some(ledgers)
+}

@@ -19,6 +19,16 @@ is cut.
 
 ### Added
 
+- **A member Host imports the required origins' event history over `events.import`.**
+  A Host that is a member of a coordinator with an `events.import` task, under a shared consistency mode (`events.pull.mode` `shared-eventual` or `shared-bounded`), now pulls each ledger of `events.pull.ledgers[]` the task covers, on its periodic membership pass.
+  It verifies the coordinator's checkpoint under the pinned `control.attest`, bound to its own session, ledger and coordinator, and each origin's manifest under the pinned `host.operations`; an origin whose manifest does not verify is left out of the pass and said.
+  Each batch past what it holds is ingested, as the origin shipped it, into the origin's own run of the Host's event consumer, verified under the origin's `data.attest` pins the coordinator signs into the checkpoint, every set its membership's manifests held, so a batch sealed under a set the origin has since rotated away from still verifies: nothing is re-signed, and the Host's own stream is never imported back.
+  The coordinator is the trust anchor: the member verifies the origins as the coordinator it pinned at approval attests them, not independently of it.
+  A ledger two memberships' import tasks cover is imported by neither, and a ledger holding 1024 gaps is not imported further; both are said on every pass.
+  Per ledger it keeps, beside the runs (`IMPORT`), the last checkpoint it verified, when, the origin set's revision, and every gap: a sequence the coordinator no longer holds (`retention`), a batch that does not verify (`unverifiable`) or that forks what is held (`fork`); a run is never imported past a gap, and the importer never removes one.
+  The ledgers' zone and ledger must be identifiers; another is left out and said.
+  The Data Plane does not read this history yet: a later change brings its shared modes onto it.
+
 - **A coordinator serves `events.import`: the required origins' event history, with a signed checkpoint.**
   A Control Plane on a coordinator Host now answers the `events.import` task (contract version 1) on a member's task session over one ledger of the `data` plane.
   An `origins` request answers every required origin of the ledger, the coordinator's active members whose `events.ship` task covers it, with the manifest in force, and one observation checkpoint signed now by the Control Plane's `control.attest` ring (`permguard.event.import-checkpoint.v1`): what the coordinator holds of each origin's runs, their acknowledged sequence, the first sequence still retained and when the last batch was admitted, the origin set's revision, and the session's channel binding.
@@ -28,6 +38,7 @@ is cut.
   The task's consumer side is the member's Host: a member Host declares it, and the Data Plane no longer does; until a later change brings the import itself, a member approved with the task does not pull.
   The origin set's revision digests each required origin's `host_id` and membership, so it moves when a member joins or leaves, and not when its manifest is re-issued.
   A set of more than 64 required origins, or of more than 1024 runs, is answered `unavailable` rather than signed.
+  Each origin of a checkpoint also names its own `data.attest` pins over its membership's manifests, at most 64 (WP-6.2c2a).
 
 - **A drained version 1 decision spool is archived.**
   Once the old shipper has sent everything a version 1 spool held, the spool is carried byte for byte, without its `LOCK`, into `data/decisions/legacy` under the layout `decisions-legacy`.

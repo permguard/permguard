@@ -84,6 +84,9 @@ pub struct MembershipService {
     pub streams: Option<Arc<dyn crate::composition::StreamCutovers>>,
     /// The streams this Host ships over its ship tasks (WP-5.4); without an engine it ships none.
     pub shipping: Option<Arc<dyn crate::composition::StreamShipping>>,
+    /// The consumer and the ledgers the member side imports with, as its `events.import` tasks
+    /// deliver them (WP-6.2c2a); without one it imports nothing.
+    pub importing: Option<Arc<crate::membership::member::import::Importing>>,
 }
 
 /// One open task session of a membership, as an operator reads it (WP-4.3).
@@ -1409,6 +1412,7 @@ impl HostApi {
         };
         let mut origins = Vec::new();
         let mut named = Vec::new();
+        let mut pins = Vec::new();
         for (id, held) in memberships.store.memberships() {
             let Some((manifest, envelope, _)) = held.manifest.as_ref() else {
                 continue;
@@ -1424,6 +1428,19 @@ impl HostApi {
             }
             let host_id = held.request.member.host_id;
             named.push((host_id, id));
+            // Every manifest of the membership, oldest first: the sets its batches were sealed
+            // under, retired ones included (after the review).
+            let history: Vec<Manifest> = memberships
+                .store
+                .history(&id)
+                .iter()
+                .filter_map(|envelope| {
+                    Sign1::decode(envelope)
+                        .ok()
+                        .and_then(|sign1| Manifest::decode(sign1.payload_unverified()).ok())
+                })
+                .collect();
+            pins.push((host_id, crate::membership::import::origin_pins(&history)));
             origins.push(crate::membership::import::Origin {
                 host_id,
                 membership_id: id,
@@ -1442,6 +1459,7 @@ impl HostApi {
             revision: crate::membership::import::revision(&named)
                 .map_err(|error| error.to_string())?,
             origins,
+            pins,
         })
     }
 
@@ -2275,6 +2293,26 @@ impl HostApi {
             .ship_due(crate::operations::journal::Initiator::System(
                 "host".to_owned(),
             ))
+            .await
+    }
+
+    /// Imports what this Host's `events.import` tasks have due (WP-6.2c2a): the server's periodic
+    /// pass. Nothing without a consumer composed for it.
+    pub async fn import_due(&self) -> usize {
+        let Ok((memberships, connector)) = self.member_side() else {
+            return 0;
+        };
+        let Some(importing) = memberships.importing.as_ref() else {
+            return 0;
+        };
+        let Ok(member) = self.acting_member(memberships, connector) else {
+            return 0;
+        };
+        member
+            .import_due(
+                crate::operations::journal::Initiator::System("host".to_owned()),
+                importing,
+            )
             .await
     }
 

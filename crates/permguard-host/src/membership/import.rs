@@ -21,7 +21,9 @@
 //! | ------------------ | ------------------------------------------------------------------------- |
 //! | import_request     | {1 action, 2? host_id, 3? run, 4? seq}                                    |
 //! | import_origins     | {1 checkpoint, 2 origins}: each {1 host_id, 2 membership_id, 3 manifest}  |
-//! | import_checkpoint  | {1 coordinator, 2 resource, 3 revision, 4 origins, 5 issued_at, 6 channel_binding, 7 ring_epoch, 8 key_set_digest}: each origin {1 host_id, 2 runs}, each run {1 run, 2 acked, 3 oldest_retained, 4? admitted_at} |
+//! | import_checkpoint  | {1 coordinator, 2 resource, 3 revision, 4 origins, 5 issued_at, 6 channel_binding, 7 ring_epoch, 8 key_set_digest}: each origin {1 host_id, 2 runs, 3 pins}, each run {1 run, 2 acked, 3 oldest_retained, 4? admitted_at} |
+//! | import_state       | {1 membership_id, 2 revision, 3 checkpoint, 4 verified_at, 5 gaps}: what the member's Host keeps per ledger (WP-6.2c2a) |
+//! | import_gap         | {1 origin, 2 run, 3 from, 4? through, 5 reason, 6 detected_at, 7 revision} |
 //!
 //! The required origins are the coordinator's active members whose `events.ship` task covers the
 //! resource (owner decision of 2026-10-19); their revision is the digest of each one's `host_id`
@@ -35,7 +37,7 @@ use permguard_core::domains::protected;
 use permguard_objects::cbor::Value;
 use permguard_objects::cose::Sign1;
 
-use super::record::{RingPin, RingStatement};
+use super::record::{Manifest, RingPin, RingStatement, Role, Status, TaskType};
 use super::{MembershipError, public_of, statement_matches};
 use crate::identity::record::{Labelled, RecordError, encode, uint};
 use crate::keys::ring::CONTROL_ATTEST;
@@ -54,6 +56,18 @@ pub const MAX_ORIGINS: usize = 64;
 pub const MAX_CHECKPOINT_RUNS: usize = 1024;
 /// The longest resource a checkpoint names.
 const MAX_RESOURCE_BYTES: usize = 512;
+/// The most gaps a ledger's import state keeps: a ledger holding them is not imported further.
+pub const MAX_GAPS: usize = 1024;
+/// The most `data.attest` pins a checkpoint names for one origin, its membership's history.
+pub const MAX_PINS: usize = 64;
+/// The most bytes an import state takes.
+pub const MAX_STATE_BYTES: usize = super::record::MAX_BODY_BYTES + 128 * 1024;
+/// A gap the coordinator's retention opened: it no longer holds the next sequence.
+pub const RETENTION: &str = "retention";
+/// A gap a batch that did not verify opened: no frontier advance, an incident.
+pub const UNVERIFIABLE: &str = "unverifiable";
+/// A gap a batch that forked what the member holds opened.
+pub const FORK: &str = "fork";
 
 /// What a member asks.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +146,9 @@ pub struct OriginSet {
     pub revision: [u8; 32],
     /// By `host_id`, each once.
     pub origins: Vec<Origin>,
+    /// Each origin's `data.attest` pins over its membership's manifests, oldest first: what the
+    /// batches it shipped under a set since retired still verify under (after the review).
+    pub pins: Vec<([u8; 16], Vec<RingPin>)>,
 }
 
 /// The coordinator's answer to [`Request::Origins`].
@@ -219,11 +236,14 @@ pub struct CheckpointRun {
     pub admitted_at: Option<u64>,
 }
 
-/// One required origin's runs.
+/// One required origin's runs, and the `data.attest` pins its batches verify under.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckpointOrigin {
     pub host_id: [u8; 16],
     pub runs: Vec<CheckpointRun>,
+    /// Every pin of its own `data.attest` its membership's manifests held, at most [`MAX_PINS`]:
+    /// signed here, so a batch sealed under a set since retired is verified as it was admitted.
+    pub pins: Vec<RingPin>,
 }
 
 /// The coordinator's observation checkpoint of a resource's required origins (owner decision of
@@ -264,6 +284,16 @@ impl Checkpoint {
             origins.push(Value::Map(vec![
                 (Value::Int(1), Value::Bytes(origin.host_id.to_vec())),
                 (Value::Int(2), Value::Array(runs)),
+                (
+                    Value::Int(3),
+                    Value::Array(
+                        origin
+                            .pins
+                            .iter()
+                            .map(RingPin::value)
+                            .collect::<Result<_, _>>()?,
+                    ),
+                ),
             ]));
         }
         encode(vec![
@@ -335,8 +365,28 @@ impl Checkpoint {
                     "a checkpoint origin names its runs in order, each once".to_owned(),
                 ));
             }
+            let named = origin.array(3)?;
+            if named.len() > MAX_PINS {
+                return Err(RecordError(format!(
+                    "a checkpoint origin names at most {MAX_PINS} pins"
+                )));
+            }
+            let mut pins = Vec::with_capacity(named.len());
+            for value in named {
+                let pin = RingPin::read(value)?;
+                if pin.owner != Role::Member || pin.ring != crate::keys::ring::DATA_ATTEST {
+                    return Err(RecordError(
+                        "a checkpoint origin's pins are its own `data.attest`".to_owned(),
+                    ));
+                }
+                pins.push(pin);
+            }
             origin.finish()?;
-            origins.push(CheckpointOrigin { host_id, runs });
+            origins.push(CheckpointOrigin {
+                host_id,
+                runs,
+                pins,
+            });
         }
         if !origins
             .windows(2)
@@ -414,6 +464,287 @@ pub fn verify_checkpoint(
         .verify(suite, &public_key, protected::EVENT_IMPORT_CHECKPOINT)
         .map_err(|error| unverified(&error.to_string()))?;
     Checkpoint::decode(payload).map_err(|error| unverified(&error.to_string()))
+}
+
+/// A durable hole in a ledger's imported history (`3-data-plane/5-data-plane-temporal.md`): never
+/// removed by the importer, resolved only by a snapshot or a change of the required origins.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Gap {
+    pub origin: [u8; 16],
+    pub run: [u8; 16],
+    /// The first sequence missing.
+    pub from: u64,
+    /// The last sequence missing, when known: below what the coordinator still holds.
+    pub through: Option<u64>,
+    /// [`RETENTION`], [`UNVERIFIABLE`] or [`FORK`].
+    pub reason: String,
+    /// The member's clock when it was first found.
+    pub detected_at: u64,
+    /// The origin set's revision it was found under.
+    pub revision: [u8; 32],
+}
+
+/// What the member's Host keeps of one ledger's import (owner decision of 2026-10-19): the last
+/// checkpoint it verified, when, under which origin set, and every gap found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct State {
+    /// The membership the checkpoint came over.
+    pub membership_id: [u8; 16],
+    pub revision: [u8; 32],
+    /// The checkpoint as signed: a reader verifies it again with the pinned set.
+    pub checkpoint: Vec<u8>,
+    /// The member's clock when it verified the checkpoint: what freshness counts from.
+    pub verified_at: u64,
+    /// By `(origin, run, from)`, each once.
+    pub gaps: Vec<Gap>,
+}
+
+impl State {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        let mut gaps = Vec::with_capacity(self.gaps.len());
+        for gap in &self.gaps {
+            let mut fields = vec![
+                (Value::Int(1), Value::Bytes(gap.origin.to_vec())),
+                (Value::Int(2), Value::Bytes(gap.run.to_vec())),
+                (Value::Int(3), uint(gap.from)?),
+            ];
+            if let Some(through) = gap.through {
+                fields.push((Value::Int(4), uint(through)?));
+            }
+            fields.extend([
+                (Value::Int(5), Value::Text(gap.reason.clone())),
+                (Value::Int(6), uint(gap.detected_at)?),
+                (Value::Int(7), Value::Bytes(gap.revision.to_vec())),
+            ]);
+            gaps.push(Value::Map(fields));
+        }
+        let bytes = encode(vec![
+            (Value::Int(1), Value::Bytes(self.membership_id.to_vec())),
+            (Value::Int(2), Value::Bytes(self.revision.to_vec())),
+            (Value::Int(3), Value::Bytes(self.checkpoint.clone())),
+            (Value::Int(4), uint(self.verified_at)?),
+            (Value::Int(5), Value::Array(gaps)),
+        ])?;
+        if self.gaps.len() > MAX_GAPS || bytes.len() > MAX_STATE_BYTES {
+            return Err(RecordError(
+                "an import state is out of its bound".to_owned(),
+            ));
+        }
+        Ok(bytes)
+    }
+
+    // conformance: boundary
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        if bytes.len() > MAX_STATE_BYTES {
+            return Err(RecordError(
+                "an import state is out of its bound".to_owned(),
+            ));
+        }
+        let mut map = Labelled::read(bytes, "an import state")?;
+        let membership_id = map.id(1)?;
+        let revision = map.fixed(2)?;
+        let checkpoint = map.bytes(3)?;
+        let verified_at = map.uint(4)?;
+        let items = map.array(5)?;
+        if items.len() > MAX_GAPS {
+            return Err(RecordError(format!(
+                "an import state keeps at most {MAX_GAPS} gaps"
+            )));
+        }
+        let mut gaps = Vec::with_capacity(items.len());
+        for item in items {
+            let mut held = Labelled::from_value(item, "an import gap")?;
+            let gap = Gap {
+                origin: held.id(1)?,
+                run: held.id(2)?,
+                from: held.uint(3)?,
+                through: held.optional_uint(4)?,
+                reason: held.text(5)?,
+                detected_at: held.uint(6)?,
+                revision: held.fixed(7)?,
+            };
+            held.finish()?;
+            if gap.from == 0
+                || gap.through.is_some_and(|through| through < gap.from)
+                || ![RETENTION, UNVERIFIABLE, FORK].contains(&gap.reason.as_str())
+            {
+                return Err(RecordError(
+                    "an import gap names a range from 1 and a known reason".to_owned(),
+                ));
+            }
+            gaps.push(gap);
+        }
+        if !gaps.windows(2).all(|pair| {
+            (pair[0].origin, pair[0].run, pair[0].from)
+                < (pair[1].origin, pair[1].run, pair[1].from)
+        }) {
+            return Err(RecordError(
+                "an import state keeps its gaps in order, each once".to_owned(),
+            ));
+        }
+        map.finish()?;
+        Ok(Self {
+            membership_id,
+            revision,
+            checkpoint,
+            verified_at,
+            gaps,
+        })
+    }
+
+    /// Keeps `gap` unless one of the same run already starts at or before it: a gap is never
+    /// removed, and one found again is not kept twice.
+    pub fn keep_gap(&mut self, gap: Gap) -> bool {
+        if self
+            .gaps
+            .iter()
+            .any(|held| held.origin == gap.origin && held.run == gap.run && held.from <= gap.from)
+        {
+            return false;
+        }
+        self.gaps.push(gap);
+        self.gaps.sort_by(|left, right| {
+            (left.origin, left.run, left.from).cmp(&(right.origin, right.run, right.from))
+        });
+        true
+    }
+
+    /// The first sequence of `origin`'s run `run` a gap holds, when one does: the run is not
+    /// imported past it.
+    pub fn gapped_from(&self, origin: &[u8; 16], run: &[u8; 16]) -> Option<u64> {
+        self.gaps
+            .iter()
+            .filter(|gap| gap.origin == *origin && gap.run == *run)
+            .map(|gap| gap.from)
+            .min()
+    }
+}
+
+/// An `origins` answer the member verified: the checkpoint's claims and, for each origin other
+/// than the member, its manifest and the pins the checkpoint names for it.
+#[derive(Debug, Clone)]
+pub struct VerifiedOrigins {
+    pub checkpoint: Checkpoint,
+    /// The required origins whose manifests verified, the member's own excluded.
+    pub origins: Vec<(Origin, Manifest, Vec<RingPin>)>,
+    /// The origins whose manifests did not verify, by `host_id`: not imported this pass.
+    pub unverified: Vec<[u8; 16]>,
+}
+
+/// Verifies an `origins` answer at the member (owner decision of 2026-10-18): the checkpoint
+/// under the coordinator's `control.attest` that `manifest`, the member's own, pins, with
+/// `statements` kept beside it; its coordinator, ledger and channel the session's; its origin set
+/// the answer's, by revision. Then each origin's manifest under the coordinator's
+/// `host.operations`, naming that origin, this coordinator, its membership, `active`, and an
+/// `events.ship` task covering the ledger. A manifest that does not verify leaves its origin out
+/// of the pass, never the whole answer.
+pub fn verify_origins(
+    answer: &Origins,
+    coordinator: &crate::identity::Verified,
+    manifest: &Manifest,
+    statements: &[RingStatement],
+    channel_binding: &[u8; 32],
+    resource: &permguard_core::authz::Resource,
+    now: u64,
+) -> Result<VerifiedOrigins, MembershipError> {
+    let unverified = |detail: &str| MembershipError::Unverified(format!("an import: {detail}"));
+    let pin = manifest
+        .ring_pins
+        .iter()
+        .find(|pin| pin.owner == Role::Coordinator && pin.ring == CONTROL_ATTEST && !pin.retiring)
+        .ok_or_else(|| unverified("the manifest pins no coordinator `control.attest`"))?;
+    let checkpoint = verify_checkpoint(&answer.checkpoint, statements, pin)?;
+    if checkpoint.coordinator != coordinator.host_id {
+        return Err(unverified("the checkpoint names another coordinator"));
+    }
+    if checkpoint.resource != resource.to_string() {
+        return Err(unverified("the checkpoint names another ledger"));
+    }
+    if checkpoint.channel_binding != *channel_binding {
+        return Err(unverified("the checkpoint answers another session"));
+    }
+    let named: Vec<([u8; 16], [u8; 16])> = answer
+        .origins
+        .iter()
+        .map(|origin| (origin.host_id, origin.membership_id))
+        .collect();
+    let hosts: Vec<[u8; 16]> = answer.origins.iter().map(|origin| origin.host_id).collect();
+    let checkpointed: Vec<[u8; 16]> = checkpoint
+        .origins
+        .iter()
+        .map(|origin| origin.host_id)
+        .collect();
+    if hosts != checkpointed
+        || revision(&named).map_err(|error| unverified(&error.to_string()))? != checkpoint.revision
+    {
+        return Err(unverified(
+            "the origins answered are not the set the checkpoint signs",
+        ));
+    }
+    let mut origins = Vec::new();
+    let mut left_out = Vec::new();
+    for origin in &answer.origins {
+        if origin.host_id == manifest.member.host_id {
+            continue;
+        }
+        let verified = super::verify_manifest(&origin.manifest, coordinator, statements)
+            .ok()
+            .map(|(held, _)| held)
+            .filter(|held| {
+                held.member.host_id == origin.host_id
+                    && held.membership_id == origin.membership_id
+                    && held.coordinator.host_id == coordinator.host_id
+                    && held.status == Status::Active
+                    && held.not_after > now
+                    && held.selector.contains(resource)
+                    && held.tasks.iter().any(|task| {
+                        task.task_type == TaskType::EventsShip && task.selector.contains(resource)
+                    })
+            });
+        let pins = checkpoint
+            .origins
+            .iter()
+            .find(|named| named.host_id == origin.host_id)
+            .map(|named| named.pins.clone())
+            .unwrap_or_default();
+        match verified {
+            Some(held) => origins.push((origin.clone(), held, pins)),
+            None => left_out.push(origin.host_id),
+        }
+    }
+    Ok(VerifiedOrigins {
+        checkpoint,
+        origins,
+        unverified: left_out,
+    })
+}
+
+/// The `data.attest` pins of an origin over its membership's manifests, `history` oldest first:
+/// each set once, at most [`MAX_PINS`], the latest kept. What the coordinator signs into a
+/// checkpoint, so a batch an origin sealed under a set since retired still verifies at a member.
+pub fn origin_pins(history: &[Manifest]) -> Vec<RingPin> {
+    let mut pins: Vec<RingPin> = Vec::new();
+    for manifest in history {
+        for pin in manifest
+            .ring_pins
+            .iter()
+            .filter(|pin| pin.owner == Role::Member && pin.ring == crate::keys::ring::DATA_ATTEST)
+        {
+            if !pins.iter().any(|held| {
+                held.epoch == pin.epoch
+                    && held.key_set_digest == pin.key_set_digest
+                    && held.binding == pin.binding
+            }) {
+                pins.push(RingPin {
+                    retiring: false,
+                    ..pin.clone()
+                });
+            }
+        }
+    }
+    let excess = pins.len().saturating_sub(MAX_PINS);
+    pins.drain(..excess);
+    pins
 }
 
 fn bounded(bytes: Vec<u8>, what: &str) -> Result<Vec<u8>, RecordError> {

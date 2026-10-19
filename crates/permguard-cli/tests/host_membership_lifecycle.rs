@@ -363,6 +363,7 @@ fn launch_host(
                         live: Arc::clone(&tasks.live),
                         streams: None,
                         shipping: None,
+                        importing: None,
                     })),
                 })
                 .with_streams(Arc::new(FixedStreams)),

@@ -110,6 +110,12 @@ impl Import {
             origins.push(CheckpointOrigin {
                 host_id: origin.host_id,
                 runs,
+                pins: set
+                    .pins
+                    .iter()
+                    .find(|(host, _)| *host == origin.host_id)
+                    .map(|(_, pins)| pins.clone())
+                    .unwrap_or_default(),
             });
         }
         let issued_at = u64::try_from(self.signer.signing_time())

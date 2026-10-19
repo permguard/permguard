@@ -307,6 +307,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
                 live: Arc::default(),
                 streams: None,
                 shipping: None,
+                importing: None,
             })),
         })
         .with_streams(Arc::new(FixedStreams)),

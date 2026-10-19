@@ -296,6 +296,7 @@ impl permguard_host::composition::ServingMembers for Members {
         Ok(permguard_host::membership::import::OriginSet {
             revision: [3; 32],
             origins: Vec::new(),
+            pins: Vec::new(),
         })
     }
 }

@@ -487,7 +487,8 @@
       "keys": "int",
       "fields": [
         { "label": 1, "name": "host_id", "type": "bytes", "occurs": "required", "note": "the origin's 16 bytes" },
-        { "label": 2, "name": "runs", "type": "array<map:checkpoint_run>", "occurs": "required", "note": "each run the coordinator holds, by run id, each once; at most 1024 over the checkpoint" }
+        { "label": 2, "name": "runs", "type": "array<map:checkpoint_run>", "occurs": "required", "note": "each run the coordinator holds, by run id, each once; at most 1024 over the checkpoint" },
+        { "label": 3, "name": "pins", "type": "array<map:ring_pin>", "occurs": "required", "note": "the origin's own `data.attest` pins over its membership's manifests, at most 64, none retiring: what its batches verify under (WP-6.2c2a)" }
       ]
     },
     "checkpoint_run": {
@@ -497,6 +498,28 @@
         { "label": 2, "name": "acked", "type": "uint", "occurs": "required", "note": "the last sequence the coordinator admitted" },
         { "label": 3, "name": "oldest_retained", "type": "uint", "occurs": "required", "note": "the first sequence it still holds, from 1 to acked + 1" },
         { "label": 4, "name": "admitted_at", "type": "uint", "occurs": "optional", "note": "the coordinator's clock when it admitted the run's last batch" }
+      ]
+    },
+    "import_state": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "the membership the checkpoint came over, 16 bytes (WP-6.2c2a)" },
+        { "label": 2, "name": "revision", "type": "bytes", "occurs": "required", "note": "32 bytes: the origin set's revision the checkpoint signs" },
+        { "label": 3, "name": "checkpoint", "type": "bytes", "occurs": "required", "note": "the `import_checkpoint` as signed" },
+        { "label": 4, "name": "verified_at", "type": "uint", "occurs": "required", "note": "the member's clock when it verified the checkpoint: what freshness counts from" },
+        { "label": 5, "name": "gaps", "type": "array<map:import_gap>", "occurs": "required", "note": "at most 1024, by origin, run and first sequence, each once" }
+      ]
+    },
+    "import_gap": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "origin", "type": "bytes", "occurs": "required", "note": "the origin's 16 bytes" },
+        { "label": 2, "name": "run", "type": "bytes", "occurs": "required", "note": "the run's 16 bytes" },
+        { "label": 3, "name": "from", "type": "uint", "occurs": "required", "note": "the first sequence missing, from 1" },
+        { "label": 4, "name": "through", "type": "uint", "occurs": "optional", "note": "the last sequence missing, when known" },
+        { "label": 5, "name": "reason", "type": "text", "occurs": "required", "note": "`retention`, `unverifiable` or `fork`" },
+        { "label": 6, "name": "detected_at", "type": "uint", "occurs": "required", "note": "the member's clock when it was first found" },
+        { "label": 7, "name": "revision", "type": "bytes", "occurs": "required", "note": "32 bytes: the origin set's revision it was found under" }
       ]
     }
   },
@@ -510,5 +533,5 @@
       { "position": 1, "name": "evidence", "type": "bytes", "note": "digested under `permguard.membership.assurance-evidence.v1\\n`, never kept" }
     ]
   },
-  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer", "task_progress", "progress_answer", "kept_progress", "last_session", "watch_request", "watch_event", "replay_entry", "ring_statement", "cutover", "acknowledgement", "delivered", "zone_request", "zone_delivery", "zone_receipt", "import_request", "import_origins", "import_checkpoint"]
+  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer", "task_progress", "progress_answer", "kept_progress", "last_session", "watch_request", "watch_event", "replay_entry", "ring_statement", "cutover", "acknowledgement", "delivered", "zone_request", "zone_delivery", "zone_receipt", "import_request", "import_origins", "import_checkpoint", "import_state"]
 }

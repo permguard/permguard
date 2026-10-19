@@ -72,6 +72,16 @@ pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>, egress: Egress)
             }
             let repinned = api.repin_due().await + api.cutover_due().await;
             let shipped = api.ship_due().await;
+            // The origins' history this Host imports, after what it ships (WP-6.2c2a).
+            let imported = api.import_due().await;
+            if imported > 0 {
+                tracing::debug!(
+                    event.name = "host.membership.imported",
+                    component = "host",
+                    batches = imported,
+                    "this Host's import tasks brought the origins' batches"
+                );
+            }
             // The audit checkpoints after the streams, then whether they left in time (WP-5.9).
             let exported = api.export_checkpoints_due().await;
             if exported > 0 {

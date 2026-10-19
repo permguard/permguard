@@ -48,6 +48,7 @@ use super::ingest::{Answer, Forked, Outcome, Ship, Shipping};
 use super::producer::{RECORDS, Span, Spans, canonical_jwk, decode_group};
 use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex};
 
+mod import;
 mod inspect;
 mod prune;
 

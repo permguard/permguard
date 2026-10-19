@@ -6444,3 +6444,156 @@ fn a_floor_registered_through_the_composition_bounds_a_history_stream() {
         "the last whole batch at or below 5"
     );
 }
+
+/// WP-6.2c2a: an origin's batches, as the origin shipped them, are imported into the origin's own
+/// run of the member's consumer under the origin's membership, epoch and pins; a batch the origin's
+/// pins do not verify is not; the import's state reads back as kept.
+#[test]
+fn an_origins_batches_import_into_its_own_run_under_its_pins() {
+    use permguard_host::composition::{ImportOrigin, Imported, StreamImport as _};
+    use permguard_host::membership::import::{Gap, RETENTION, State};
+
+    let origin = Host::new("import-origin");
+    let importer = Host::new("import-member");
+    let consumer = consumer_on(&importer);
+    let (producer, run, batches) = shipped(&origin, 3, 2);
+    assert_eq!(batches.len(), 2);
+    let pins = vec![pin_of(&origin)];
+    let from = ImportOrigin {
+        membership_id: MEMBERSHIP,
+        epoch: 1,
+        host_id: origin.identity.host_id(),
+        pins: &pins,
+    };
+    let held = |consumer: &Consumer<Text>| {
+        consumer
+            .held(&ledger(1), &origin.identity.host_id(), &run)
+            .expect("read")
+    };
+    assert_eq!(held(&consumer), 0);
+    assert_eq!(
+        consumer
+            .import(&ledger(1), &from, &ship_of(&origin, &batches[0]))
+            .expect("imported"),
+        Imported::Admitted { acked: 2 }
+    );
+    // Out of order, then in order, then the same again.
+    assert!(matches!(
+        consumer
+            .import(&ledger(1), &from, &ship_of(&origin, &batches[1]))
+            .expect("imported"),
+        Imported::Admitted { acked: 3 }
+    ));
+    assert_eq!(
+        consumer
+            .import(&ledger(1), &from, &ship_of(&origin, &batches[1]))
+            .expect("imported"),
+        Imported::Admitted { acked: 3 },
+        "a batch held already"
+    );
+    assert_eq!(held(&consumer), 3);
+    // Kept verbatim in the origin's own run, beside nothing of the importer's.
+    let runs = permguard_host::composition::StreamConsumerReads::runs(&consumer, &ledger(1))
+        .expect("runs");
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].producer, origin.identity.host_id());
+
+    // Under another Host's pins, or another membership, nothing is imported.
+    let stranger = Host::new("import-stranger");
+    let other = Host::new("import-member-2");
+    let fresh = consumer_on(&other);
+    let wrong_pins = vec![pin_of(&stranger)];
+    for wrong in [
+        ImportOrigin {
+            pins: &wrong_pins,
+            ..from
+        },
+        ImportOrigin {
+            membership_id: [9; 16],
+            ..from
+        },
+    ] {
+        assert_eq!(
+            fresh
+                .import(&ledger(1), &wrong, &ship_of(&origin, &batches[0]))
+                .expect("answered"),
+            Imported::Unverifiable
+        );
+    }
+    assert_eq!(held(&fresh), 0);
+    assert_eq!(
+        fresh
+            .import(&ledger(1), &from, &ship_of(&origin, &batches[1]))
+            .expect("answered"),
+        Imported::OutOfOrder { acked: 0 },
+        "the run starts at its first sequence"
+    );
+
+    // A batch that forks what is held names the run it forked in; a later batch of another run
+    // of the origin is answered with that run, the origin's stream closed here.
+    let forked = forge(
+        &origin,
+        run,
+        1,
+        batch::GENESIS_HEAD.to_owned(),
+        &["other"],
+        1,
+    );
+    assert_eq!(
+        consumer
+            .import(&ledger(1), &from, &ship_of(&origin, &forked))
+            .expect("answered"),
+        Imported::Fork { run, at: 1 }
+    );
+    let later_run = producer
+        .rollover(&ledger(1), Some(fence(1)))
+        .expect("rolled over")
+        .run_id;
+    assert_ne!(later_run, run);
+    producer
+        .append(&ledger(1), &"s0".to_owned())
+        .expect("appended");
+    let mut later = Vec::new();
+    while let Sealing::Sealed { bytes, .. } = producer.seal(&ledger(1), 1).expect("sealed") {
+        later.push(bytes);
+    }
+    assert!(matches!(
+        consumer
+            .import(&ledger(1), &from, &ship_of(&origin, &later[0]))
+            .expect("answered"),
+        Imported::Fork { run: marked, .. } if marked == run
+    ));
+
+    // The import's state of the ledger.
+    assert_eq!(consumer.import_state(&ledger(1)).expect("read"), None);
+    let state = State {
+        membership_id: [4; 16],
+        revision: [5; 32],
+        checkpoint: vec![6; 10],
+        verified_at: 1_800_000_000,
+        gaps: vec![Gap {
+            origin: origin.identity.host_id(),
+            run,
+            from: 9,
+            through: Some(12),
+            reason: RETENTION.to_owned(),
+            detected_at: 1_800_000_001,
+            revision: [5; 32],
+        }],
+    };
+    consumer
+        .keep_import_state(&ledger(1), &state)
+        .expect("kept");
+    assert_eq!(
+        consumer.import_state(&ledger(1)).expect("read"),
+        Some(state)
+    );
+    assert_eq!(consumer.import_state(&ledger(2)).expect("read"), None);
+    // The state beside the runs leaves the runs as they were.
+    assert_eq!(
+        permguard_host::composition::StreamConsumerReads::runs(&consumer, &ledger(1))
+            .expect("runs")
+            .len(),
+        1
+    );
+}
