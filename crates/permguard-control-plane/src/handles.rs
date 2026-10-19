@@ -6,6 +6,7 @@
 //! | Declared                          | Handle                          | Used by                          |
 //! | --------------------------------- | ------------------------------- | -------------------------------- |
 //! | signs `HeadStatementV1`           | `Signer<HeadStatementV1>`       | NOTP head statements, the JWKS   |
+//! | signs `ImportCheckpointV1`        | `Signer<ImportCheckpointV1>`    | `events.import` checkpoints      |
 //! | reads the public set of `data.attest` | `PublicKeys`                | verifying a local producer       |
 //! | audit schema [`ControlPlaneAudit`] | `AuditHandle<ControlPlaneAudit>` | catalog, NOTP, GC                |
 //! | task contracts (WP-4.4)           | none                            | approval's task capability       |
@@ -17,7 +18,8 @@ use std::sync::Arc;
 use permguard_core::PlaneContext;
 use permguard_core::keys::PublicSet;
 use permguard_host::composition::{
-    AuditHandle, AuditSchema, DATA_ATTEST, Declaration, HeadStatementV1, Registration, Signer,
+    AuditHandle, AuditSchema, DATA_ATTEST, Declaration, HeadStatementV1, ImportCheckpointV1,
+    Registration, Signer,
 };
 
 use crate::service::PLANE;
@@ -58,6 +60,8 @@ pub(crate) fn declaration() -> Declaration {
     // bodies answer `not_served_yet` until their packages bring the semantics.
     Declaration::new(PLANE)
         .signs::<HeadStatementV1>()
+        // The observation checkpoints of `events.import` (WP-6.2c1).
+        .signs::<ImportCheckpointV1>()
         .reads_public_keys(DATA_ATTEST)
         .audits::<ControlPlaneAudit>()
         .mutates(crate::store::REFS_DOMAIN)
@@ -168,6 +172,14 @@ pub(crate) fn head_signer(context: &PlaneContext<'_>) -> Option<Signer<HeadState
         .flatten()
 }
 
+/// The `events.import` checkpoint signer, when the plane's signing ring is composed (WP-6.2c1).
+pub(crate) fn import_signer(context: &PlaneContext<'_>) -> Option<Signer<ImportCheckpointV1>> {
+    registration(context)?
+        .signer::<ImportCheckpointV1>()
+        .ok()
+        .flatten()
+}
+
 /// A ring a test holds itself.
 #[cfg(test)]
 type TestRing = Arc<dyn permguard_core::KeyManager>;
@@ -225,6 +237,40 @@ pub(crate) fn head_signer_for_tests(keys: TestRing) -> Signer<HeadStatementV1> {
         .register(Declaration::new(PLANE).signs::<HeadStatementV1>())
         .ok()
         .and_then(|registration| registration.signer::<HeadStatementV1>().ok().flatten())
+        .unwrap_or_else(|| unreachable!("a declared signer over a composed ring"))
+}
+
+/// A ring on disk under `root`, published and active, for a test that signs with it.
+#[cfg(test)]
+pub(crate) fn ring_for_tests(root: &std::path::Path) -> TestRing {
+    use permguard_core::keys::KeyManager as _;
+
+    let keys = Arc::new(permguard_std::keys::DirectoryKeyManager::new(
+        root.join("keys"),
+        permguard_std::keys::KeyPolicy {
+            publish_ahead: std::time::Duration::ZERO,
+            rotate_every: std::time::Duration::from_secs(3600),
+            retain: std::time::Duration::from_secs(3600),
+            verify_retain: std::time::Duration::from_secs(3600),
+        },
+    ));
+    keys.maintain()
+        .unwrap_or_else(|error| unreachable!("the ring publishes: {error}"));
+    keys.maintain()
+        .unwrap_or_else(|error| unreachable!("the ring activates: {error}"));
+    keys
+}
+
+/// An `events.import` checkpoint signer over `keys`, for a test that holds a ring of its own.
+#[cfg(test)]
+pub(crate) fn import_signer_for_tests(keys: TestRing) -> Signer<ImportCheckpointV1> {
+    let keys: TestRing = Arc::new(EpochOne(keys));
+    permguard_host::composition::Host::builder()
+        .ring(permguard_host::composition::CONTROL_ATTEST, keys)
+        .build()
+        .register(Declaration::new(PLANE).signs::<ImportCheckpointV1>())
+        .ok()
+        .and_then(|registration| registration.signer::<ImportCheckpointV1>().ok().flatten())
         .unwrap_or_else(|| unreachable!("a declared signer over a composed ring"))
 }
 

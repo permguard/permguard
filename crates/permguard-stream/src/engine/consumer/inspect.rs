@@ -289,6 +289,62 @@ impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consum
         batches.read(&name).map_err(|error| error.to_string())
     }
 
+    fn statement(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        kid: &str,
+    ) -> Result<Option<Vec<u8>>, String> {
+        let key = self.descriptor.key(resource, *producer).map_err(wrap)?;
+        let Some(dir) = self.run_dir(&key, run).map_err(wrap)? else {
+            return Ok(None);
+        };
+        let Some(statements) = super::child(&dir, super::STATEMENTS, false).map_err(wrap)? else {
+            return Ok(None);
+        };
+        // Of the statements naming the key, the latest epoch's: the set the run moved on to.
+        let mut found: Option<(u64, Vec<u8>)> = None;
+        for name in statements.names().map_err(|error| error.to_string())? {
+            // A statement a crash left half-published is no statement (after the review).
+            if name.starts_with(permguard_host::storage::dir::TEMP_PREFIX) {
+                continue;
+            }
+            let Some(bytes) = statements.read(&name).map_err(|error| error.to_string())? else {
+                continue;
+            };
+            let statement = permguard_host::membership::record::RingStatement::decode(&bytes)
+                .map_err(|error| format!("a kept ring statement: {error}"))?;
+            let names_key = statement.keys.iter().any(|text| {
+                serde_json::from_str::<permguard_core::keys::Jwk>(text)
+                    .is_ok_and(|jwk| jwk.kid == kid)
+            });
+            if names_key
+                && found
+                    .as_ref()
+                    .is_none_or(|(epoch, _)| statement.epoch > *epoch)
+            {
+                found = Some((statement.epoch, bytes));
+            }
+        }
+        Ok(found.map(|(_, bytes)| bytes))
+    }
+
+    fn admitted_at(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+    ) -> Result<Option<u64>, String> {
+        let key = self.descriptor.key(resource, *producer).map_err(wrap)?;
+        Ok(self
+            .with_held(&key, *run, false, |held| {
+                Ok(held.admitted.last().map(|(_, at)| *at))
+            })
+            .map_err(wrap)?
+            .flatten())
+    }
+
     fn signers(
         &self,
         resource: &Resource,

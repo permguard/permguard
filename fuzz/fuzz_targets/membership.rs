@@ -15,6 +15,7 @@ use permguard_host::membership::record::{
     TaskType, Verdict, WatchEvent, WatchRequest,
 };
 use permguard_host::membership::egress;
+use permguard_host::membership::import;
 use permguard_host::membership::zone;
 
 fuzz_target!(|data: &[u8]| {
@@ -102,6 +103,16 @@ fuzz_target!(|data: &[u8]| {
         assert_eq!(record.encode().ok().as_deref().map(|bytes| bytes.as_slice()), Some(data));
     }
     if let Ok(record) = zone::Receipt::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    // The `events.import` contract's records (WP-6.2c1).
+    if let Ok(record) = import::Request::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = import::Origins::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = import::Checkpoint::decode(data) {
         assert_eq!(record.encode().ok().as_deref(), Some(data));
     }
     // The `audit.checkpoints` contract's records (WP-5.9).

@@ -1961,3 +1961,162 @@ async fn the_member_view_shows_member_reported_progress_apart_from_receipt() {
             .is_none()
     );
 }
+
+/// `member` enrolled with an `events.ship` task over `plane/data/*`, pending approval.
+async fn shipping_events(api: &HostApi, member: &Host, request_id: &str) -> Pending {
+    use crate::membership::record::TaskType;
+
+    let mut events = decisions("plane/data/*");
+    events.task_id = "events".to_owned();
+    events.task_type = TaskType::EventsShip;
+    events.resource_types = vec!["ledger".to_owned()];
+    let created = api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                tasks: vec![TaskView::from(&events)],
+                ..create(request_id, Some(member))
+            },
+        )
+        .await
+        .expect("invited");
+    let token = URL_SAFE_NO_PAD.decode(&created.token).expect("base64url");
+    let identity = api.identity.as_deref().expect("an identity");
+    let store = &api.memberships.as_deref().expect("memberships").store;
+    let pending = store
+        .check_enroll(
+            &Coordinator {
+                identity,
+                rings: api.keys.rings(),
+            },
+            &Enrolling {
+                peer: &member.verified(),
+                presentation: &member.presentation(),
+                declared_assurance: AssuranceProfile::Production,
+                exporter: &EXPORTER,
+            },
+            &EnrollRequest {
+                capabilities: crate::membership::tests::member_capabilities(),
+                invite_id: id_of(&created.invite_id).expect("an id"),
+                token_proof: token_proof(
+                    &token,
+                    &identity.host_id(),
+                    &member.identity.host_id(),
+                    &EXPORTER,
+                ),
+                selector: selector("plane/data/*").expect("a selector"),
+                tasks: vec![events],
+                member: member.host_ref(),
+                ring_statements: vec![member.statement(DATA_ATTEST)],
+            },
+            now(),
+        )
+        .expect("the enrollment checks");
+    store
+        .enroll(&Applying::for_tests(72), &pending, now())
+        .expect("enrolled");
+    pending
+}
+
+/// Approves the pending membership `id`.
+async fn approved(api: &HostApi, id: &str, request_id: &str) {
+    let revision = api.member(&admin(), id).expect("read").revision;
+    api.approve_member(
+        &admin(),
+        id,
+        ApproveMember {
+            request_id: request_id.to_owned(),
+            expected_revision: revision,
+            narrow: None,
+            lease_policy: None,
+            assurance: None,
+        },
+    )
+    .await
+    .expect("approved");
+}
+
+/// WP-6.2c1 (owner decision of 2026-10-19): the required origins of a resource are the active
+/// members whose `events.ship` covers it, each with its manifest in force; the revision moves when
+/// one leaves the set.
+#[tokio::test]
+async fn the_import_origins_are_the_active_members_shipping_events_over_the_resource() {
+    let root = scratch("members-import-origins");
+    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let member = Host::new("import-origins-m");
+    let pending = shipping_events(&api, &member, "origins-1").await;
+    let id = uuid_text(&pending.membership_id);
+    let ledger =
+        permguard_core::authz::Resource::parse("plane/data/zone/z1/ledger/l1").expect("a resource");
+
+    // Pending: not an origin yet.
+    let none = api.import_origins(&ledger).expect("read");
+    assert!(none.origins.is_empty());
+
+    approved(&api, &id, "origins-2").await;
+    let active = api.import_origins(&ledger).expect("read");
+    assert_eq!(active.origins.len(), 1);
+    let origin = &active.origins[0];
+    assert_eq!(origin.host_id, member.identity.host_id());
+    assert_eq!(origin.membership_id, pending.membership_id);
+    let view = api.member(&admin(), &id).expect("read");
+    assert_eq!(
+        URL_SAFE_NO_PAD.encode(&origin.manifest),
+        view.manifest.expect("signed"),
+        "the manifest in force, as signed"
+    );
+    assert_ne!(active.revision, none.revision);
+    // Outside the task's selector, no origin is required.
+    let elsewhere =
+        permguard_core::authz::Resource::parse("plane/control/zone/z1").expect("a resource");
+    assert!(
+        api.import_origins(&elsewhere)
+            .expect("read")
+            .origins
+            .is_empty()
+    );
+
+    // Suspended, it leaves the set, and the revision moves again.
+    api.suspend_member(&admin(), &id, change("origins-3", view.revision))
+        .await
+        .expect("suspended");
+    let suspended = api.import_origins(&ledger).expect("read");
+    assert!(suspended.origins.is_empty());
+    assert_eq!(
+        suspended.revision, none.revision,
+        "the empty set's revision"
+    );
+}
+
+/// After the review: a membership held for review is no origin, and a Host holding two active
+/// memberships over the resource is refused rather than named twice.
+#[tokio::test]
+async fn a_held_member_is_no_origin_and_one_host_is_never_two() {
+    let root = scratch("members-import-held");
+    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let member = Host::new("import-held-m");
+    let ledger =
+        permguard_core::authz::Resource::parse("plane/data/zone/z1/ledger/l1").expect("a resource");
+    let first = shipping_events(&api, &member, "held-1").await;
+    approved(&api, &uuid_text(&first.membership_id), "held-2").await;
+    assert_eq!(api.import_origins(&ledger).expect("read").origins.len(), 1);
+    api.memberships
+        .as_deref()
+        .expect("memberships")
+        .store
+        .hold(&Applying::for_tests(74), &first.membership_id, 4, now())
+        .expect("held");
+    assert!(
+        api.import_origins(&ledger)
+            .expect("read")
+            .origins
+            .is_empty()
+    );
+
+    let other = Host::new("import-held-twice");
+    let one = shipping_events(&api, &other, "twice-1").await;
+    approved(&api, &uuid_text(&one.membership_id), "twice-2").await;
+    let two = shipping_events(&api, &other, "twice-3").await;
+    approved(&api, &uuid_text(&two.membership_id), "twice-4").await;
+    assert!(api.import_origins(&ledger).is_err());
+}

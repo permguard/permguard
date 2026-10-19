@@ -45,13 +45,13 @@ pub type Audit = AuditHandle<DataPlaneAudit>;
 pub(crate) fn declaration(config: &Config) -> Declaration {
     use permguard_host::membership::record::TaskType;
 
-    // The task contracts this plane takes part in as a member (WP-4.4, owner decision).
+    // The task contracts this plane takes part in as a member (WP-4.4, owner decision); the
+    // member's Host consumes `events.import` itself (WP-6.2c1).
     let declaration = Declaration::new(PLANE)
         .signs::<DecisionBatchV1>()
         .signs::<EventBatchV1>()
         .audits::<DataPlaneAudit>()
         .uses_task(TaskType::PolicyMirror, 1)
-        .uses_task(TaskType::EventsImport, 1)
         .handles_task(TaskType::DecisionsShip, 1)
         .handles_task(TaskType::EventsShip, 1);
     let declaration = if crate::temporal::served(config) {
@@ -213,7 +213,6 @@ mod task_contract_tests {
             contracts,
             vec![
                 (TaskType::PolicyMirror, ContractRole::Consumer),
-                (TaskType::EventsImport, ContractRole::Consumer),
                 (TaskType::DecisionsShip, ContractRole::Provider),
                 (TaskType::EventsShip, ContractRole::Provider),
             ]

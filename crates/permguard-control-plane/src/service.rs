@@ -108,6 +108,8 @@ pub struct ControlPlaneModule {
     /// The NOTP facade, composed once: REST, gRPC and the `policy.mirror` task share its stores,
     /// so one gate serializes a ledger's compare-and-swap and its transfer sessions (WP-7.12).
     notp: Composed<crate::notp::NotpFacade>,
+    /// Whether the `events.import` handler was offered to the Host, once (WP-6.2c1).
+    import: std::sync::OnceLock<()>,
 }
 
 pub fn module() -> Box<dyn PlaneModule> {
@@ -141,6 +143,50 @@ fn composed<T: Clone>(
 }
 
 impl ControlPlaneModule {
+    /// Serves `events.import` from the Host's event consumer, once, when the Host routes task
+    /// sessions, consumes the event stream and composes this plane's signing ring (WP-6.2c1).
+    fn serve_import(&self, context: &PlaneContext<'_>) {
+        self.import.get_or_init(|| {
+            let (Some(registration), Some(consumer), Some(signer), Some(coordinator)) = (
+                crate::handles::registration(context),
+                crate::handles::event_consumer(context),
+                crate::handles::import_signer(context),
+                crate::handles::host_id(context),
+            ) else {
+                tracing::warn!(
+                    event.name = "events.import_unserved",
+                    component = COMPONENT,
+                    "the events.import task is not served: this Host routes no task sessions, \
+                     consumes no event stream or composes no control.attest ring"
+                );
+                return;
+            };
+            let origins = std::sync::Arc::clone(&registration);
+            let import = std::sync::Arc::new(crate::events::import::Import {
+                consumer,
+                origins: std::sync::Arc::new(move |resource| {
+                    origins
+                        .import_origins(resource)
+                        .unwrap_or_else(|| Ok(Default::default()))
+                }),
+                signer,
+                coordinator,
+            });
+            if let Err(error) = registration.serve_task(
+                permguard_host::membership::record::TaskType::EventsImport,
+                crate::events::import::VERSION,
+                import,
+            ) {
+                tracing::error!(
+                    event.name = "events.import_unserved",
+                    component = COMPONENT,
+                    error = %error,
+                    "the events.import task is not served by this plane"
+                );
+            }
+        });
+    }
+
     /// The event store's facade, composed once and shared by both surfaces.
     fn event_facade(&self, context: &PlaneContext<'_>) -> Option<crate::events::http::EventFacade> {
         let config = context.config();
@@ -291,6 +337,7 @@ impl PlaneModule for ControlPlaneModule {
     }
 
     fn http_routes(&self, context: &PlaneContext<'_>) -> Router {
+        self.serve_import(context);
         let state = plane_state(context)
             .serving_events(&self.event_trust, context.config())
             .serving_decisions(&self.decision_state, context.config());
@@ -355,6 +402,7 @@ impl PlaneModule for ControlPlaneModule {
     }
 
     fn grpc_routes(&self, context: &PlaneContext<'_>) -> Router {
+        self.serve_import(context);
         let state = plane_state(context)
             .serving_events(&self.event_trust, context.config())
             .serving_decisions(&self.decision_state, context.config());

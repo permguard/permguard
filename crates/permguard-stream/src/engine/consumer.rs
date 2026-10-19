@@ -12,6 +12,8 @@
 //!     ├── records/                   the records verbatim, the authority on `acked`
 //!     ├── batches/<first>-<last>.jws the batch files verbatim
 //!     ├── signers.cbor               the spans of the keys the batches were verified under
+//!     ├── statements/<sha256>.cbor   each ring statement a batch was verified under, verbatim
+//!                                    (WP-6.2c1): what the coordinator forwards to `events.import`
 //!     ├── STATE                      {1 acked, 2 oldest_retained, 3 opened?}
 //!     └── ANCHOR                     what the run keeps of a deleted prefix (WP-5.6b)
 //! ```
@@ -30,6 +32,8 @@
 
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
+
+use sha2::{Digest as _, Sha256};
 
 use permguard_core::authz::Resource;
 use permguard_host::membership::record::{RingPin, RingStatement};
@@ -52,6 +56,7 @@ const ADMITTED: u16 = 4;
 const FORKED: &str = "FORKED";
 const STATE: &str = "STATE";
 const SIGNERS: &str = "signers.cbor";
+const STATEMENTS: &str = "statements";
 const BATCHES: &str = "batches";
 const RECORDS_DIR: &str = "records";
 /// The most bytes a consumer's STATE and FORKED take.
@@ -622,6 +627,7 @@ impl<C: RecordCodec> Consumer<C> {
                 &records,
                 &jwk,
                 &ship.batch,
+                &ship.statement,
             )
         })?;
         ingested
@@ -640,6 +646,7 @@ impl<C: RecordCodec> Consumer<C> {
         records: &[Vec<u8>],
         jwk: &permguard_core::keys::Jwk,
         file: &[u8],
+        statement: &[u8],
     ) -> Result<(Answer, Option<Forked>), StreamError> {
         let (first, last) = (envelope.first_seq, envelope.last_seq);
         if first < held.oldest_retained {
@@ -736,7 +743,14 @@ impl<C: RecordCodec> Consumer<C> {
                 true
             }
         };
-        // Durable before the answer: the batch file, the span, the records, STATE.
+        // Durable before the answer: the statement, the batch file, the span, the records, STATE.
+        // The statement is kept by its digest, so a batch delivered again under a re-pinned set
+        // adds the new one beside the first (WP-6.2c1).
+        let statements = held.dir.subdir(STATEMENTS, true)?;
+        let name = format!("{}.cbor", hex(&Sha256::digest(statement)));
+        publish_immutable(&statements, &name, statement, &|_| true, &|stored| {
+            stored == statement
+        })?;
         let batches = held.dir.subdir(BATCHES, true)?;
         match publish_immutable(
             &batches,

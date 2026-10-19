@@ -1264,6 +1264,82 @@ fn membership_samples() -> Vec<Sample> {
             decoder(|bytes| verdict(zone::Receipt::decode(bytes))),
         ),
         sample(
+            "import_request",
+            permguard_host::membership::import::Request::Origins
+                .encode()
+                .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(permguard_host::membership::import::Request::decode(bytes))),
+        ),
+        sample(
+            "import_request",
+            permguard_host::membership::import::Request::Batch {
+                host_id: SCOPE_ID,
+                run: [4; 16],
+                seq: 3,
+            }
+            .encode()
+            .expect("encodes"),
+            &[
+                "import_request.host_id",
+                "import_request.run",
+                "import_request.seq",
+            ],
+            decoder(|bytes| verdict(permguard_host::membership::import::Request::decode(bytes))),
+        ),
+        sample(
+            "import_origins",
+            permguard_host::membership::import::Origins {
+                checkpoint: vec![0xD2; 8],
+                origins: vec![permguard_host::membership::import::Origin {
+                    host_id: SCOPE_ID,
+                    membership_id: [6; 16],
+                    manifest: vec![0xD2; 8],
+                }],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(permguard_host::membership::import::Origins::decode(bytes))),
+        ),
+        sample(
+            "import_checkpoint",
+            permguard_host::membership::import::Checkpoint {
+                coordinator: [1; 16],
+                resource: "plane/data/zone/z/ledger/l".to_owned(),
+                revision: [2; 32],
+                origins: vec![permguard_host::membership::import::CheckpointOrigin {
+                    host_id: SCOPE_ID,
+                    runs: vec![
+                        permguard_host::membership::import::CheckpointRun {
+                            run: [4; 16],
+                            acked: 9,
+                            oldest_retained: 1,
+                            admitted_at: Some(1_800_000_000),
+                        },
+                        permguard_host::membership::import::CheckpointRun {
+                            run: [5; 16],
+                            acked: 0,
+                            oldest_retained: 1,
+                            admitted_at: None,
+                        },
+                    ],
+                }],
+                issued_at: 1_800_000_100,
+                channel_binding: [7; 32],
+                ring_epoch: 1,
+                key_set_digest: [8; 32],
+            }
+            .encode()
+            .expect("encodes"),
+            &["checkpoint_run.admitted_at"],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::import::Checkpoint::decode(
+                    bytes,
+                ))
+            }),
+        ),
+        sample(
             "operator_approval",
             OperatorApproval {
                 membership_id: SCOPE_ID,

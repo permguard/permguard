@@ -1961,6 +1961,9 @@ impl App {
         // sessions: they route to a slot it fills (WP-7.12). The watches' hub is shared the same
         // way, so a commit's hint reaches every watch of the ledger.
         let mirror_slot = Arc::new(permguard_host::membership::task::Deferred::default());
+        // And `events.import`'s, which the Control Plane serves from the event consumer
+        // (WP-6.2c1).
+        let import_slot = Arc::new(permguard_host::membership::task::Deferred::default());
         let watch_hub = Arc::new(permguard_host::membership::watch::Hub::default());
         // The coordinator side of the re-pin pass, with the Host API's member side (WP-4.5).
         let mut repinning_coordinator: Option<
@@ -2081,6 +2084,14 @@ impl App {
                     Arc::clone(&mirror_slot)
                         as Arc<dyn permguard_host::membership::task::TaskHandler>,
                 )
+                .and_then(|handlers| {
+                    handlers.register(
+                        permguard_host::membership::record::TaskType::EventsImport,
+                        permguard_host::membership::import::VERSION,
+                        Arc::clone(&import_slot)
+                            as Arc<dyn permguard_host::membership::task::TaskHandler>,
+                    )
+                })
                 .map_err(|error| anyhow::anyhow!("{error}"))?;
             let tasks = Arc::new(permguard_host::membership::task::Tasks {
                 appraisal: Arc::new(appraisal.clone()),
@@ -2248,6 +2259,11 @@ impl App {
                 permguard_host::membership::record::TaskType::PolicyMirror,
                 1,
                 mirror_slot,
+            )
+            .task_slot(
+                permguard_host::membership::record::TaskType::EventsImport,
+                permguard_host::membership::import::VERSION,
+                import_slot,
             )
             .watch_hub(watch_hub);
         if let Some(streams) = streams {

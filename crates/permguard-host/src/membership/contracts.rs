@@ -8,13 +8,15 @@
 //! | `policy.mirror`     | coordinator | member      | Control Plane | Data Plane    | WP-7.x               |
 //! | `decisions.ship`    | member      | coordinator | Data Plane    | Control Plane | WP-5.x               |
 //! | `events.ship`       | member      | coordinator | Data Plane    | Control Plane | WP-5.x               |
-//! | `events.import`     | coordinator | member      | Control Plane | Data Plane    | WP-7.x               |
+//! | `events.import`     | coordinator | member      | Control Plane | Host          | [`super::import`]    |
 //! | `audit.checkpoints` | member      | coordinator | Host          | Host          | the audit export     |
 //! | `zone.secrets`      | coordinator | member      | Host          | Host          | [`super::zone`]      |
 //!
-//! Each side of a type has exactly one server: one Plane, or the Host, which no Plane may claim a
-//! side of (`composition::Host::register` refuses it). A contract whose bodies have not arrived
-//! answers `not_served_yet` at the coordinator.
+//! Each side of a type has exactly one server: one Plane, or the Host, and no Plane may claim a
+//! side the Host serves (`composition::Host::register` refuses it). `events.import` is served by
+//! the Control Plane and consumed by the member's Host, which ingests the origins' batches into its
+//! own consumer (owner decision of 2026-10-19). A contract whose bodies have not arrived answers
+//! `not_served_yet` at the coordinator.
 
 use super::record::{Role, TaskType};
 
@@ -81,9 +83,9 @@ pub const CONTRACTS: [Contract; 6] = [
         provider: Role::Coordinator,
         consumer: Role::Member,
         provided_by: Server::Plane("control"),
-        consumed_by: Server::Plane("data"),
-        messages: "6-contracts/4-contract-evidence-events.md: event history reads",
-        served: false,
+        consumed_by: Server::Host,
+        messages: "permguard_host::membership::import: origins with their checkpoint, and batches as the origins shipped them",
+        served: true,
     },
     Contract {
         task_type: TaskType::AuditCheckpoints,
@@ -114,7 +116,18 @@ pub fn contract(task: TaskType, version: u64) -> Option<&'static Contract> {
         .find(|contract| contract.task_type == task && contract.version == version)
 }
 
-/// Whether the Host serves both sides of `task`, so that no Plane may claim either.
+/// Whether the Host serves the `role` side of `task`, so that no Plane may claim it.
+pub fn host_side(task: TaskType, role: super::record::ContractRole) -> bool {
+    CONTRACTS.iter().any(|contract| {
+        contract.task_type == task
+            && match role {
+                super::record::ContractRole::Provider => contract.provided_by == Server::Host,
+                super::record::ContractRole::Consumer => contract.consumed_by == Server::Host,
+            }
+    })
+}
+
+/// Whether the Host serves both sides of `task`.
 pub fn host_served(task: TaskType) -> bool {
     CONTRACTS.iter().any(|contract| {
         contract.task_type == task

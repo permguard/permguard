@@ -142,6 +142,7 @@
     "protected.DECISION_BATCH": "permguard.decision.batch.v1",
     "protected.DECISION_RESPONSE": "permguard.decision.response.v1",
     "protected.EVENT_BATCH": "permguard.event.batch.v1",
+    "protected.EVENT_IMPORT_CHECKPOINT": "permguard.event.import-checkpoint.v1",
     "protected.HOST_GRANT": "permguard.host.grant.v1",
     "protected.HOST_IDENTITY": "permguard.host.identity.v1",
     "protected.HOST_PROOF": "permguard.host.proof.v1",

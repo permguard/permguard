@@ -19,6 +19,16 @@ is cut.
 
 ### Added
 
+- **A coordinator serves `events.import`: the required origins' event history, with a signed checkpoint.**
+  A Control Plane on a coordinator Host now answers the `events.import` task (contract version 1) on a member's task session over one ledger of the `data` plane.
+  An `origins` request answers every required origin of the ledger, the coordinator's active members whose `events.ship` task covers it, with the manifest in force, and one observation checkpoint signed now by the Control Plane's `control.attest` ring (`permguard.event.import-checkpoint.v1`): what the coordinator holds of each origin's runs, their acknowledged sequence, the first sequence still retained and when the last batch was admitted, the origin set's revision, and the session's channel binding.
+  The checkpoint is signed again on every request, also when nothing is new.
+  A `batch` request answers the batch covering one sequence of one origin's run as the origin shipped it, its batch file and the ring statement it was verified under; the coordinator re-signs nothing, and never sends a member its own stream.
+  The Host's event consumer now keeps, beside each run, every ring statement a batch was verified under (`statements/<sha256>.cbor`); a batch admitted before this release has none and is answered `unavailable`.
+  The task's consumer side is the member's Host: a member Host declares it, and the Data Plane no longer does; until a later change brings the import itself, a member approved with the task does not pull.
+  The origin set's revision digests each required origin's `host_id` and membership, so it moves when a member joins or leaves, and not when its manifest is re-issued.
+  A set of more than 64 required origins, or of more than 1024 runs, is answered `unavailable` rather than signed.
+
 - **A drained version 1 decision spool is archived.**
   Once the old shipper has sent everything a version 1 spool held, the spool is carried byte for byte, without its `LOCK`, into `data/decisions/legacy` under the layout `decisions-legacy`.
   Below the `production` profile the first start that finds it drained archives it; from `production` upward the start goes on and names `permguard migrate decisions --volume <dir> --backup <reference> [--legacy <dir>]`, which archives it offline.

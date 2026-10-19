@@ -37,6 +37,7 @@ pub mod appraisal;
 pub mod contracts;
 pub mod dormancy;
 pub mod egress;
+pub mod import;
 pub mod member;
 pub mod progress;
 pub mod record;
@@ -304,17 +305,24 @@ impl Capabilities {
         self.0.iter().copied().collect()
     }
 
-    /// The contracts the Host itself serves, both sides at version 1 (WP-4.4, owner decision):
-    /// `audit.checkpoints` and `zone.secrets`, whose provider is no Plane.
+    /// The contract sides the Host itself serves at version 1 (WP-4.4, owner decision): both
+    /// sides of `audit.checkpoints` and `zone.secrets`, whose provider is no Plane, and the
+    /// consumer side of `events.import`, the member's Host (WP-6.2c1).
     pub fn host() -> Self {
         contracts::CONTRACTS
             .iter()
-            .filter(|contract| contracts::host_served(contract.task_type))
-            .map(|contract| contract.task_type)
-            .fold(Self::default(), |capabilities, task| {
-                capabilities
-                    .declare(task, Role::Coordinator)
-                    .declare(task, Role::Member)
+            .fold(Self::default(), |capabilities, contract| {
+                let task = contract.task_type;
+                let capabilities = if contracts::host_side(task, record::ContractRole::Provider) {
+                    capabilities.declare(task, task.provider())
+                } else {
+                    capabilities
+                };
+                if contracts::host_side(task, record::ContractRole::Consumer) {
+                    capabilities.declare(task, task.consumer())
+                } else {
+                    capabilities
+                }
             })
     }
 

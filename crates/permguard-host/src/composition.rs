@@ -83,6 +83,17 @@ impl Artifact for HeadStatementV1 {
     const TIME_SENSITIVE: bool = true;
 }
 
+/// The coordinator's observation checkpoint of an `events.import` resource, signed by the Control
+/// Plane that provides the task (WP-6.2c1).
+pub struct ImportCheckpointV1;
+
+impl Artifact for ImportCheckpointV1 {
+    const TYPE: &'static str = permguard_core::domains::protected::EVENT_IMPORT_CHECKPOINT;
+    const RING: RingId = CONTROL_ATTEST;
+    /// `issued_at` is what a member's freshness starts from.
+    const TIME_SENSITIVE: bool = true;
+}
+
 /// A decision batch, signed by the Data Plane that decided.
 pub struct DecisionBatchV1;
 
@@ -457,12 +468,11 @@ impl Host {
             if claims.planes.contains(&plane) {
                 return Err(CompositionError::AlreadyRegistered(plane));
             }
-            // The Host serves both sides of its own contracts: no Plane claims either (WP-4.7).
-            if let Some(contract) = declaration
-                .tasks
-                .iter()
-                .find(|contract| crate::membership::contracts::host_served(contract.task_type))
-            {
+            // The Host serves the sides of its own contracts: no Plane claims one (WP-4.7,
+            // WP-6.2c1).
+            if let Some(contract) = declaration.tasks.iter().find(|contract| {
+                crate::membership::contracts::host_side(contract.task_type, contract.role)
+            }) {
                 return Err(CompositionError::Collision {
                     what: "task contract",
                     name: format!("{} {}", contract.task_type.as_str(), contract.role.as_str()),
@@ -635,8 +645,11 @@ impl Host {
                 .tasks
                 .iter()
                 .any(|contract| {
-                    contract.task_type == crate::membership::record::TaskType::PolicyMirror
-                        && contract.role == crate::membership::record::ContractRole::Provider
+                    matches!(
+                        contract.task_type,
+                        crate::membership::record::TaskType::PolicyMirror
+                            | crate::membership::record::TaskType::EventsImport
+                    ) && contract.role == crate::membership::record::ContractRole::Provider
                 })
                 .then(|| self.memberships.clone())
                 .flatten(),
@@ -681,6 +694,16 @@ pub trait ServingMembers: Send + Sync {
         &self,
         resource: &permguard_core::authz::Resource,
     ) -> Vec<crate::api::members::ServingMemberView>;
+
+    /// The required origins of `resource` for `events.import` (WP-6.2c1, owner decision of
+    /// 2026-10-19): the members this Host coordinates whose `events.ship` task covers it.
+    fn import_origins(
+        &self,
+        resource: &permguard_core::authz::Resource,
+    ) -> Result<crate::membership::import::OriginSet, String> {
+        let _ = resource;
+        Ok(crate::membership::import::OriginSet::default())
+    }
 }
 
 impl ServingMembers for crate::api::HostApi {
@@ -689,6 +712,13 @@ impl ServingMembers for crate::api::HostApi {
         resource: &permguard_core::authz::Resource,
     ) -> Vec<crate::api::members::ServingMemberView> {
         crate::api::HostApi::serving_members(self, resource)
+    }
+
+    fn import_origins(
+        &self,
+        resource: &permguard_core::authz::Resource,
+    ) -> Result<crate::membership::import::OriginSet, String> {
+        crate::api::HostApi::import_origins(self, resource)
     }
 }
 
@@ -856,10 +886,32 @@ impl Registration {
         &self,
         resource: &permguard_core::authz::Resource,
     ) -> Vec<crate::api::members::ServingMemberView> {
+        if !self.provides(crate::membership::record::TaskType::PolicyMirror) {
+            return Vec::new();
+        }
         self.memberships
             .as_ref()
             .map(|memberships| memberships.serving_members(resource))
             .unwrap_or_default()
+    }
+
+    /// The required origins of `resource` (WP-6.2c1): `None` for a Plane that does not provide
+    /// `events.import`, or a Host without memberships.
+    pub fn import_origins(
+        &self,
+        resource: &permguard_core::authz::Resource,
+    ) -> Option<Result<crate::membership::import::OriginSet, String>> {
+        if !self.provides(crate::membership::record::TaskType::EventsImport) {
+            return None;
+        }
+        self.memberships
+            .as_ref()
+            .map(|memberships| memberships.import_origins(resource))
+    }
+
+    /// Whether the Plane declared it provides `task`, at any version.
+    fn provides(&self, task: crate::membership::record::TaskType) -> bool {
+        self.provided.iter().any(|(provided, _)| *provided == task)
     }
 
     fn undeclared(&self, what: String) -> CompositionError {
@@ -1016,6 +1068,64 @@ impl Payload for permguard_objects::statement::HeadStatement {
         })?;
         signed.encode().map_err(|error| {
             permguard_core::KeyError::backend(format!("encoding the head statement: {error}"))
+        })
+    }
+}
+
+/// An import checkpoint is the payload of [`ImportCheckpointV1`]: a COSE_Sign1 under the ring's
+/// active key, binding the ring's epoch and key set, refused when the ring moved mid-signature.
+impl sealed::Sealed for crate::membership::import::Checkpoint {}
+
+impl Payload for crate::membership::import::Checkpoint {
+    type Artifact = ImportCheckpointV1;
+    type Signed = Vec<u8>;
+
+    fn sign_with(&self, keys: &dyn SigningRing) -> permguard_core::keys::Result<Vec<u8>> {
+        let set = keys.key_set()?;
+        let suite = permguard_objects::crypto::suite::Suite::from_jws_alg(set.algorithm)
+            .ok_or_else(|| {
+                permguard_core::KeyError::backend(format!(
+                    "the ring signs with `{}`, no suite of an import checkpoint",
+                    set.algorithm
+                ))
+            })?;
+        let checkpoint = crate::membership::import::Checkpoint {
+            ring_epoch: set.epoch,
+            key_set_digest: set.digest,
+            ..self.clone()
+        };
+        let payload = checkpoint.encode().map_err(|error| {
+            permguard_core::KeyError::backend(format!("encoding the import checkpoint: {error}"))
+        })?;
+        let kid = keys.active_key_id()?;
+        let failed = std::cell::RefCell::new(None::<permguard_core::KeyError>);
+        let signed = permguard_objects::cose::Sign1::sign_with(
+            suite,
+            ImportCheckpointV1::TYPE,
+            kid.as_str().as_bytes(),
+            payload,
+            |bytes| {
+                let signature = keys.sign(bytes).map_err(|error| {
+                    let detail = error.to_string();
+                    *failed.borrow_mut() = Some(error);
+                    detail
+                })?;
+                if signature.key_id() != &kid {
+                    return Err("the signing key rotated mid-signature".to_owned());
+                }
+                if keys.key_set().ok() != Some(set) {
+                    return Err("the ring's key set moved mid-signature".to_owned());
+                }
+                Ok(signature.bytes().to_vec())
+            },
+        )
+        .map_err(|error| {
+            failed.take().unwrap_or_else(|| {
+                permguard_core::KeyError::backend(format!("signing the import checkpoint: {error}"))
+            })
+        })?;
+        signed.encode().map_err(|error| {
+            permguard_core::KeyError::backend(format!("encoding the import checkpoint: {error}"))
         })
     }
 }
@@ -1671,6 +1781,31 @@ pub trait StreamConsumerReads: Send + Sync {
         let _ = resource;
         Ok(Vec::new())
     }
+
+    /// The ring statement, as its producer shipped it, under which the batches signed by `kid`
+    /// of `producer`'s run `run` were verified (WP-6.2c1): what `events.import` forwards.
+    fn statement(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        kid: &str,
+    ) -> Result<Option<Vec<u8>>, String> {
+        let _ = (resource, producer, run, kid);
+        Ok(None)
+    }
+
+    /// The consumer's own time it admitted the last batch of `producer`'s run `run` at, in
+    /// seconds (WP-6.2c1): the coordinator's receipt time a checkpoint names.
+    fn admitted_at(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+    ) -> Result<Option<u64>, String> {
+        let _ = (resource, producer, run);
+        Ok(None)
+    }
 }
 
 /// Reads a stream the Plane declared, as the Host's engine consumes it (WP-6.1).
@@ -1699,6 +1834,27 @@ impl StreamConsumer {
     /// The signers of each run over `resource` (WP-6.2b).
     pub fn signers(&self, resource: &Resource) -> Result<Vec<ConsumedSigners>, String> {
         self.reads.signers(resource)
+    }
+
+    /// The ring statement the batches `kid` signed of a run were verified under (WP-6.2c1).
+    pub fn statement(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        kid: &str,
+    ) -> Result<Option<Vec<u8>>, String> {
+        self.reads.statement(resource, producer, run, kid)
+    }
+
+    /// When the consumer admitted a run's last batch (WP-6.2c1).
+    pub fn admitted_at(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+    ) -> Result<Option<u64>, String> {
+        self.reads.admitted_at(resource, producer, run)
     }
 
     pub fn locate(&self, producer: &[u8; 16], run: &[u8; 16]) -> Result<Option<Resource>, String> {

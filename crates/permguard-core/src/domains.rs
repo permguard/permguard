@@ -135,6 +135,9 @@ pub mod protected {
     pub const AUDIT_CHECKPOINT: &str = "permguard.audit.checkpoint.v1";
     pub const DECISION_BATCH: &str = "permguard.decision.batch.v1";
     pub const EVENT_BATCH: &str = "permguard.event.batch.v1";
+    /// The coordinator's observation checkpoint of an `events.import` resource, under
+    /// `control.attest` (WP-6.2c).
+    pub const EVENT_IMPORT_CHECKPOINT: &str = "permguard.event.import-checkpoint.v1";
     pub const DECISION_RESPONSE: &str = "permguard.decision.response.v1";
     /// The NOTP head statement, a COSE content type rather than a bare name.
     pub const NOTP_HEAD: &str = "application/vnd.permguard.head.v1+cbor";
@@ -443,6 +446,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("protected.AUDIT_CHECKPOINT", protected::AUDIT_CHECKPOINT),
         ("protected.DECISION_BATCH", protected::DECISION_BATCH),
         ("protected.EVENT_BATCH", protected::EVENT_BATCH),
+        (
+            "protected.EVENT_IMPORT_CHECKPOINT",
+            protected::EVENT_IMPORT_CHECKPOINT,
+        ),
         ("protected.DECISION_RESPONSE", protected::DECISION_RESPONSE),
         ("protected.NOTP_HEAD", protected::NOTP_HEAD),
         ("record.DECISION_V1", record::DECISION_V1),

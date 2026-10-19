@@ -277,3 +277,76 @@ fn the_composed_binary_refuses_a_public_listener_in_the_clear_beyond_loopback() 
     assert!(!text.contains("panicked"), "{text}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The membership store's answer a test fixes, as the Host API would give it.
+struct Members;
+
+impl permguard_host::composition::ServingMembers for Members {
+    fn serving_members(
+        &self,
+        _: &permguard_core::authz::Resource,
+    ) -> Vec<permguard_host::api::members::ServingMemberView> {
+        Vec::new()
+    }
+
+    fn import_origins(
+        &self,
+        _: &permguard_core::authz::Resource,
+    ) -> Result<permguard_host::membership::import::OriginSet, String> {
+        Ok(permguard_host::membership::import::OriginSet {
+            revision: [3; 32],
+            origins: Vec::new(),
+        })
+    }
+}
+
+/// WP-6.2c1: the control plane provides `events.import`, so it signs its checkpoints and reads the
+/// required origins; the data plane does neither, and no plane may claim the side the member's Host
+/// serves.
+#[test]
+fn the_import_provider_reads_the_origins_and_signs_checkpoints_and_nothing_else_does() {
+    use permguard_host::composition::ImportCheckpointV1;
+    use permguard_host::membership::record::TaskType;
+
+    let host = Host::builder()
+        .ring(
+            permguard_host::composition::CONTROL_ATTEST,
+            Arc::new(Ring("control")),
+        )
+        .ring(DATA_ATTEST, Arc::new(Ring("data")))
+        .memberships(Arc::new(Members))
+        .build();
+    let config = config();
+    let control = host
+        .register(permguard_control_plane::module().declaration(&config))
+        .expect("the control plane registers");
+    let ledger = permguard_core::authz::Resource::ledger("data", "z", "l");
+    control
+        .signer::<ImportCheckpointV1>()
+        .expect("declared")
+        .expect("the ring is composed");
+    assert_eq!(
+        control
+            .import_origins(&ledger)
+            .expect("the provider of events.import")
+            .expect("read")
+            .revision,
+        [3; 32]
+    );
+    let data = host
+        .register(permguard_data_plane::module().declaration(&config))
+        .expect("the data plane registers");
+    assert!(data.import_origins(&ledger).is_none(), "not its task");
+    assert!(data.serving_members(&ledger).is_empty());
+    assert!(matches!(
+        data.signer::<ImportCheckpointV1>(),
+        Err(CompositionError::Undeclared { .. })
+    ));
+    let claiming = host
+        .register(Declaration::new("rival").uses_task(TaskType::EventsImport, 1))
+        .expect_err("the member's Host consumes events.import");
+    assert!(
+        matches!(&claiming, CompositionError::Collision { first, .. } if first == "host"),
+        "{claiming}"
+    );
+}

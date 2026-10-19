@@ -1396,6 +1396,55 @@ impl HostApi {
         Ok(MemberView::of(&held, &self.viewing(memberships)))
     }
 
+    /// The required origins of `resource` for `events.import` (WP-6.2c1, owner decision of
+    /// 2026-10-19): the members this Host coordinates, active and not held, whose `events.ship`
+    /// task covers it, each with its manifest in force; the revision digests their hosts and
+    /// memberships. Empty without a membership store.
+    pub fn import_origins(
+        &self,
+        resource: &permguard_core::authz::Resource,
+    ) -> Result<crate::membership::import::OriginSet, String> {
+        let Ok(memberships) = self.memberships() else {
+            return Ok(crate::membership::import::OriginSet::default());
+        };
+        let mut origins = Vec::new();
+        let mut named = Vec::new();
+        for (id, held) in memberships.store.memberships() {
+            let Some((manifest, envelope, _)) = held.manifest.as_ref() else {
+                continue;
+            };
+            if held.role != Role::Coordinator
+                || held.status != Status::Active
+                || held.held_epoch.is_some()
+                || !manifest.tasks.iter().any(|task| {
+                    task.task_type == TaskType::EventsShip && task.selector.contains(resource)
+                })
+            {
+                continue;
+            }
+            let host_id = held.request.member.host_id;
+            named.push((host_id, id));
+            origins.push(crate::membership::import::Origin {
+                host_id,
+                membership_id: id,
+                manifest: envelope.clone(),
+            });
+        }
+        origins.sort_by_key(|origin| origin.host_id);
+        if origins
+            .windows(2)
+            .any(|pair| pair[0].host_id == pair[1].host_id)
+        {
+            // Two active memberships of one Host: its one stream cannot be named twice.
+            return Err("a member holds two active memberships covering the resource".to_owned());
+        }
+        Ok(crate::membership::import::OriginSet {
+            revision: crate::membership::import::revision(&named)
+                .map_err(|error| error.to_string())?,
+            origins,
+        })
+    }
+
     /// The members this Host coordinates whose active `policy.mirror` task covers `resource`,
     /// with what it observed of them (WP-4.4): what the Control Plane's `GetLedger` answers
     /// beside a ledger, authorized there. Empty without a membership store.

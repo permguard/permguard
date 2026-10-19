@@ -3892,6 +3892,84 @@ fn the_consumer_answers_its_runs_records_and_batches() {
         assert!(run.spans[0].2.contains("\"kty\""), "the key itself");
     }
     assert!(consumer.signers(&ledger(2)).expect("signers").is_empty());
+    // WP-6.2c1: the statement each batch was verified under, kept verbatim, and when the last
+    // batch was admitted.
+    let kid = envelope_kid(&sealed);
+    let kept = consumer
+        .statement(&ledger(1), &host.identity.host_id(), &first_run, &kid)
+        .expect("read")
+        .expect("the statement the batches were verified under");
+    let statement =
+        permguard_host::membership::record::RingStatement::decode(&kept).expect("a statement");
+    assert!(statement.keys.iter().any(|text| text.contains(&kid)));
+    assert_eq!(
+        consumer
+            .statement(
+                &ledger(1),
+                &host.identity.host_id(),
+                &first_run,
+                "no-such-key"
+            )
+            .expect("read"),
+        None
+    );
+    assert_eq!(
+        consumer
+            .statement(&ledger(1), &host.identity.host_id(), &[9; 16], &kid)
+            .expect("read"),
+        None,
+        "a run not held"
+    );
+    assert!(
+        consumer
+            .admitted_at(&ledger(1), &host.identity.host_id(), &second_run)
+            .expect("read")
+            .is_some()
+    );
+    assert_eq!(
+        consumer
+            .admitted_at(&ledger(1), &host.identity.host_id(), &[9; 16])
+            .expect("read"),
+        None
+    );
+    // After the review: a statement a crash left half-published is skipped, and of two naming the
+    // key, the later epoch's is answered.
+    let dir = statements_dir(&host.root, &first_run);
+    std::fs::write(dir.join(".tmp-0123456789abcdef"), b"half").expect("planted");
+    let mut repinned = statement.clone();
+    repinned.epoch += 1;
+    let bytes = repinned.encode().expect("encodes");
+    // Named to list before the first, so the epoch decides and not the order.
+    std::fs::write(dir.join("0000-later.cbor"), &bytes).expect("planted");
+    assert_eq!(
+        consumer
+            .statement(&ledger(1), &host.identity.host_id(), &first_run, &kid)
+            .expect("read"),
+        Some(bytes)
+    );
+}
+
+/// The `statements/` directory of the consumer run `run`, found below `root`.
+fn statements_dir(root: &std::path::Path, run: &[u8; 16]) -> PathBuf {
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir).expect("a directory").flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if path.file_name().is_some_and(|name| name == "statements")
+                && path
+                    .parent()
+                    .and_then(|parent| parent.file_name())
+                    .is_some_and(|name| name.to_string_lossy() == hex(run))
+            {
+                return path;
+            }
+            pending.push(path);
+        }
+    }
+    panic!("no statements directory for the run");
 }
 
 /// The key a sealed batch names.
