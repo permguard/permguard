@@ -200,8 +200,13 @@ impl<C: RecordCodec> Consumer<C> {
                 return Ok(nothing());
             };
             bound = bound.min(held.acked);
+            let floor = self
+                .floor
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
             if self.descriptor.retention == Retention::History
-                && let Some(floor) = &self.floor
+                && let Some(floor) = floor
             {
                 bound = bound.min(floor.retention_safe(&key.resource, &run).unwrap_or(0));
             }

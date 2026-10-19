@@ -1861,6 +1861,29 @@ pub trait StreamConsumerReads: Send + Sync {
         let _ = (resource, producer, run);
         Ok(None)
     }
+
+    /// The member Host's import state of `resource` (WP-6.2c2b1): the checkpoint it last verified,
+    /// when, and the gaps it keeps; `None` when it imports nothing of it.
+    fn import_state(
+        &self,
+        resource: &Resource,
+    ) -> Result<Option<crate::membership::import::State>, String> {
+        let _ = resource;
+        Ok(None)
+    }
+
+    /// Keeps the consumer's `history` runs above `floor` (WP-6.2c2b1): what a loaded window still
+    /// reads of the imported origins. A consumer that keeps no floor refuses.
+    fn retain_above(&self, floor: Arc<dyn StreamFloor>) -> Result<(), String> {
+        let _ = floor;
+        Err("this consumer keeps no floor".to_owned())
+    }
+
+    /// Every resource the consumer holds a run of (WP-6.2c2b1, after the review): what a floor is
+    /// measured over, read or not.
+    fn resources(&self) -> Result<Vec<Resource>, String> {
+        Ok(Vec::new())
+    }
 }
 
 /// Reads a stream the Plane declared, as the Host's engine consumes it (WP-6.1).
@@ -1900,6 +1923,24 @@ impl StreamConsumer {
         kid: &str,
     ) -> Result<Option<Vec<u8>>, String> {
         self.reads.statement(resource, producer, run, kid)
+    }
+
+    /// The member Host's import state of `resource` (WP-6.2c2b1).
+    pub fn import_state(
+        &self,
+        resource: &Resource,
+    ) -> Result<Option<crate::membership::import::State>, String> {
+        self.reads.import_state(resource)
+    }
+
+    /// Keeps the consumer's `history` runs above `floor` (WP-6.2c2b1).
+    pub fn retain_above(&self, floor: Arc<dyn StreamFloor>) -> Result<(), String> {
+        self.reads.retain_above(floor)
+    }
+
+    /// Every resource the consumer holds a run of.
+    pub fn resources(&self) -> Result<Vec<Resource>, String> {
+        self.reads.resources()
     }
 
     /// When the consumer admitted a run's last batch (WP-6.2c1).

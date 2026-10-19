@@ -330,6 +330,39 @@ impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consum
         Ok(found.map(|(_, bytes)| bytes))
     }
 
+    fn resources(&self) -> Result<Vec<Resource>, String> {
+        let mut found: Vec<Resource> = Vec::new();
+        for (key, _) in self.runs().map_err(wrap)? {
+            let resource = Resource::parse(&key.resource).map_err(|error| error.to_string())?;
+            if !found.contains(&resource) {
+                found.push(resource);
+            }
+        }
+        Ok(found)
+    }
+
+    fn import_state(
+        &self,
+        resource: &Resource,
+    ) -> Result<Option<permguard_host::membership::import::State>, String> {
+        permguard_host::composition::StreamImport::import_state(self, resource)
+    }
+
+    fn retain_above(
+        &self,
+        floor: std::sync::Arc<dyn permguard_host::composition::StreamFloor>,
+    ) -> Result<(), String> {
+        *self
+            .floor
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(std::sync::Arc::new(
+            super::super::retention::PlaneFloor(floor),
+        ));
+        self.plane_floor
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+
     fn admitted_at(
         &self,
         resource: &Resource,

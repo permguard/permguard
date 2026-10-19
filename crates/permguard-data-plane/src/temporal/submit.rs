@@ -84,8 +84,12 @@ pub struct Submitter {
     allowed_lateness: std::time::Duration,
     /// Which history this plane's decisions range over.
     consistency: permguard_core::config::Consistency,
-    /// The imported histories, when this plane reads other planes' events.
+    /// The imported histories, when this plane reads other planes' events: what the HTTP pull
+    /// imported before WP-6.2c, read-only.
     imports: Option<Arc<super::imports::Imports>>,
+    /// The origins the member Host imports over `events.import` (WP-6.2c2b1): the history and the
+    /// freshness a shared mode decides on.
+    imported: Option<Arc<super::imported::Imported>>,
     /// How stale imported history may be before `shared-bounded` fails decisions closed.
     max_staleness: std::time::Duration,
     /// The imported watermark each `(zone, ledger, history, partition)` has been rebuilt to.
@@ -127,6 +131,7 @@ impl Submitter {
             // nothing to explain why.
             consistency: permguard_core::config::Consistency::Local,
             imports: None,
+            imported: None,
             max_staleness: permguard_core::config::DEFAULT_EVENTS_PULL_MAX_STALENESS,
             applied: std::sync::Mutex::new(std::collections::BTreeMap::new()),
         }
@@ -144,6 +149,19 @@ impl Submitter {
         self.max_staleness = max_staleness;
 
         self
+    }
+
+    /// Decides against the origins the member Host imports as well (WP-6.2c2b1): their records,
+    /// and freshness from the checkpoint the Host last verified.
+    pub fn with_imported(mut self, imported: Arc<super::imported::Imported>) -> Self {
+        self.imported = Some(imported);
+
+        self
+    }
+
+    /// The origins the member Host imports, when this plane reads them.
+    pub fn imported(&self) -> Option<&Arc<super::imported::Imported>> {
+        self.imported.as_ref()
     }
 
     /// Which history this plane's decisions range over.
@@ -1334,6 +1352,19 @@ impl Submitter {
             })?;
             newer.retain(behind);
         }
+        if let Some(imported) = &self.imported
+            && self.consistency.is_shared()
+            && newer.is_empty()
+        {
+            newer = imported.window(zone, ledger, &query).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
+                    format!("the imported history could not be read: {error}"),
+                )
+            })?;
+            newer.retain(behind);
+        }
 
         let Some(ahead) = newer.first() else {
             return Ok(());
@@ -1537,6 +1568,11 @@ impl Submitter {
     /// what was visible, and "only this plane's own events" is an answer to that question rather
     /// than the absence of one.
     fn history_scope(&self, zone: &str, ledger: &str) -> Result<HistoryScope, ApiError> {
+        if let Some(imported) = &self.imported
+            && self.consistency.is_shared()
+        {
+            return self.host_scope(imported, zone, ledger);
+        }
         let Some(imports) = &self.imports else {
             return Ok(HistoryScope::local());
         };
@@ -1653,6 +1689,134 @@ impl Submitter {
         })
     }
 
+    /// The scope of a shared decision over the origins the member Host imports (WP-6.2c2b1, owner
+    /// decision of 2026-10-18): freshness is this Host's age since it verified the coordinator's
+    /// checkpoint, never an event's time; `shared-bounded` also wants every run the checkpoint
+    /// names held through what it names, and no gap, the Host's or the HTTP pull's.
+    fn host_scope(
+        &self,
+        imported: &super::imported::Imported,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<HistoryScope, ApiError> {
+        let unreadable = |error: String| {
+            ApiError::new(
+                ErrorClass::Unavailable,
+                permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
+                format!(
+                    "this plane's imported history for `{zone}/{ledger}` cannot be read: {error}"
+                ),
+            )
+        };
+        let shared = imported
+            .shared(zone, ledger)
+            .map_err(|error| unreadable(error.to_string()))?;
+        let legacy = match &self.imports {
+            Some(imports) => Some(
+                imports
+                    .state(zone, ledger)
+                    .map_err(|error| unreadable(error.to_string()))?,
+            ),
+            None => None,
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|since| since.as_secs())
+            .unwrap_or_default();
+        let staleness = shared
+            .state
+            .as_ref()
+            .map(|state| now.saturating_sub(state.verified_at));
+        self.metrics.set_aggregated(
+            &measure::IMPORT_STALENESS,
+            permguard_core::Aggregate::Max,
+            &format!("{zone}/{ledger}"),
+            staleness.unwrap_or_default() as f64,
+        );
+        let bounded = matches!(
+            self.consistency,
+            permguard_core::config::Consistency::SharedBounded
+        );
+        let refuse = |code: &'static str, reason: String| {
+            self.metrics.count(
+                &measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, code)],
+            );
+            Err(ApiError::new(ErrorClass::Unavailable, code, reason))
+        };
+        if bounded {
+            let bound = self.max_staleness.as_secs();
+            match staleness {
+                None => {
+                    return refuse(
+                        permguard_core::codes::pdp_temporal::HISTORY_STALE,
+                        format!(
+                            "this Host has never verified a coordinator's checkpoint of \
+                             `{zone}/{ledger}`, and `shared-bounded` decides only on history it \
+                             can vouch for. The event is recorded; the decision is withheld"
+                        ),
+                    );
+                }
+                Some(held) if held > bound => {
+                    return refuse(
+                        permguard_core::codes::pdp_temporal::HISTORY_STALE,
+                        format!(
+                            "this Host last verified the coordinator's checkpoint of \
+                             `{zone}/{ledger}` {held}s ago, and `shared-bounded` decides only on \
+                             history no older than {bound}s. The event is recorded; the decision \
+                             is withheld"
+                        ),
+                    );
+                }
+                Some(_) => {}
+            }
+            if let Some((_, _, have, wanted)) = shared.behind.first() {
+                return refuse(
+                    permguard_core::codes::pdp_temporal::HISTORY_STALE,
+                    format!(
+                        "the coordinator's checkpoint of `{zone}/{ledger}` names an origin's run \
+                         through {wanted} and this Host holds it through {have}, so \
+                         `shared-bounded` would decide on less than the checkpoint vouches for. \
+                         The event is recorded; the decision is withheld"
+                    ),
+                );
+            }
+        }
+        let host_gaps = shared.state.as_ref().map_or(0, |state| state.gaps.len());
+        let legacy_gaps = legacy.as_ref().map_or(0, |state| {
+            state.gaps.iter().filter(|gap| !gap.resolved).count()
+        });
+        let gaps = host_gaps + legacy_gaps;
+        self.metrics.set_aggregated(
+            &measure::IMPORT_GAPS_OPEN,
+            permguard_core::Aggregate::Sum,
+            &format!("{zone}/{ledger}"),
+            gaps as f64,
+        );
+        if gaps > 0 && bounded {
+            return refuse(
+                permguard_core::codes::pdp_temporal::HISTORY_INCOMPLETE,
+                format!(
+                    "the shared history of `{zone}/{ledger}` has {gaps} recorded gap(s), and \
+                     `shared-bounded` decides only on a history it holds whole. The event is \
+                     recorded; the decision is withheld until a snapshot or a change of the \
+                     required origins resolves them"
+                ),
+            );
+        }
+        let legacy_mark = legacy
+            .as_ref()
+            .filter(|state| !state.offset.is_empty())
+            .map(|state| state.offset.clone())
+            .unwrap_or_default();
+        Ok(HistoryScope {
+            mode: self.consistency.as_str().to_owned(),
+            watermark: Some(format!("{legacy_mark}|{}", shared.watermark)),
+            staleness_seconds: staleness,
+            gaps: gaps as u64,
+        })
+    }
+
     /// Makes sure every addressed partition has observed the history it is about to decide against.
     ///
     /// # The two ways an engine ends up behind its own ledger
@@ -1695,11 +1859,24 @@ impl Submitter {
             })?),
             _ => None,
         };
-        let watermark = imported
+        let mut watermark = imported
             .as_ref()
             .filter(|state| state.imported > 0)
             .map(|state| state.offset.clone())
             .unwrap_or_default();
+        // What the plane has indexed of the origins the Host imports moves it too (WP-6.2c2b1).
+        if let Some(host_imports) = &self.imported
+            && self.consistency.is_shared()
+        {
+            let shared = host_imports.shared(zone, ledger).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
+                    error.to_string(),
+                )
+            })?;
+            watermark = format!("{watermark}|{}", shared.watermark);
+        }
 
         // The note is per partition — see the field. A partition needs a rebuild when its engine
         // has been told nothing (fresh: recompiled, evicted, or first sight of this history), or
@@ -1920,7 +2097,36 @@ impl Submitter {
                     .map_err(|error| unreadable("the imported history", error.to_string()))?,
             );
         }
-        records.sort_by_key(super::imports::order_of);
+        if let Some(imported) = &self.imported
+            && self.consistency.is_shared()
+        {
+            records.extend(
+                imported
+                    .window(zone, ledger, &query)
+                    .map_err(|error| unreadable("the imported history", error.to_string()))?,
+            );
+        }
+        let records = if self.consistency.is_shared() {
+            // One logical occurrence applies once, whichever plane recorded it; one recorded with
+            // different bytes is quarantined (WP-6.2c2b1).
+            let (records, quarantined) = super::imported::deduplicated(records);
+            if quarantined > 0 {
+                tracing::warn!(
+                    event.name = "temporal.occurrence_quarantined",
+                    component = "temporal",
+                    zone,
+                    ledger,
+                    quarantined,
+                    "occurrences recorded with different bytes by more than one plane are left \
+                     out of shared decisions"
+                );
+            }
+            records
+        } else {
+            let mut records = records;
+            records.sort_by_key(super::imports::order_of);
+            records
+        };
 
         let mut occurrences = Vec::with_capacity(records.len());
         for value in &records {

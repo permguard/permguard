@@ -455,3 +455,32 @@ async fn the_decision_log_refuses_to_start_without_its_signing_ring() {
     service.start(&context).await.expect("the log starts");
     service.stop(&context).await.expect("it stops");
 }
+
+/// WP-6.2c2b1: a shared mode reads the origins the Host imports through the consumer of the event
+/// stream, so the plane declares that read then and only then.
+#[test]
+fn the_data_plane_reads_the_event_consumer_only_under_a_shared_mode() {
+    use permguard_core::config::{
+        SETTING_EVENTS_ENABLED, SETTING_EVENTS_PULL_MODE, SETTING_EXPERIMENTAL_DOGWOOD,
+    };
+
+    for (mode, reads) in [
+        ("local", false),
+        ("shared-eventual", true),
+        ("shared-bounded", true),
+    ] {
+        let registration = host()
+            .register(permguard_data_plane::module().declaration(&config(&[
+                (SETTING_EVENTS_ENABLED, "true"),
+                (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
+                (SETTING_EVENTS_PULL_MODE, mode),
+            ])))
+            .expect("registers");
+        let consumer = registration.stream_consumer(permguard_events::stream::STREAM);
+        assert_eq!(
+            consumer.is_ok(),
+            reads,
+            "{mode}: declared exactly when shared"
+        );
+    }
+}

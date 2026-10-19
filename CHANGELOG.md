@@ -19,6 +19,14 @@ is cut.
 
 ### Added
 
+- **A shared temporal decision reads the origins the member Host imports, and measures its freshness from the coordinator's checkpoint.**
+  Under `shared-eventual` or `shared-bounded`, the Data Plane now reads, beside its own stream and what the HTTP pull imported before, the origins' runs its Host imported over `events.import`, from the Host's event consumer.
+  It keeps a rebuildable index of each imported run under `planes/data/temporal/<zone>/<ledger>/imported/`, caught up from the consumer before a shared decision, so a decision reads its window and never the whole imported history.
+  One logical occurrence, the same authenticated source and `event_id`, applies once whichever plane recorded it; one recorded with different bytes by two planes is left out of shared decisions, and said; a record with no source, or the anonymous one, is never merged with nor quarantined by another plane's.
+  An imported run a decision's window reads that the consumer no longer holds whole, or a checkpoint the Host kept that does not read or names another ledger, refuses the decision `imported_history_unreadable` rather than deciding on less.
+  `shared-bounded` decides only when the Host verified the coordinator's checkpoint within `events.pull.max_staleness`, the origins' runs are held through what that checkpoint names, and no gap is open, the Host's or the HTTP pull's: otherwise `history_stale` or `history_incomplete`, the event recorded and the decision withheld; an event's own time never counts.
+  The Data Plane registers a retention floor on the consumer, measured as its own stream's is, from the retention minimum, the lateness and the skew, on every ledger the consumer holds; the imported runs below it are deleted by the Host's garbage collection once that floor is registered, and kept whole before and wherever it was never measured.
+
 - **A member Host imports the required origins' event history over `events.import`.**
   A Host that is a member of a coordinator with an `events.import` task, under a shared consistency mode (`events.pull.mode` `shared-eventual` or `shared-bounded`), now pulls each ledger of `events.pull.ledgers[]` the task covers, on its periodic membership pass.
   It verifies the coordinator's checkpoint under the pinned `control.attest`, bound to its own session, ledger and coordinator, and each origin's manifest under the pinned `host.operations`; an origin whose manifest does not verify is left out of the pass and said.

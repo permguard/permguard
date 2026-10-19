@@ -57,6 +57,7 @@ pub mod configuration;
 pub mod grpc;
 pub mod host;
 pub mod http;
+pub mod imported;
 pub mod imports;
 pub mod measure;
 pub mod pull;
@@ -167,6 +168,36 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
                     config.events_pull_max_staleness(),
                 ),
                 false => submitter,
+            };
+            // The origins the member Host imports over `events.import`, from its consumer
+            // (WP-6.2c2b1): what a shared mode decides on and measures its freshness from.
+            let submitter = match (
+                consistency.is_shared(),
+                crate::handles::event_consumer(context),
+            ) {
+                (true, Some(consumer)) => match imported::Imported::new(
+                    consumer,
+                    host_id,
+                    config.working_dir().join(PLANE_DIRECTORY),
+                ) {
+                    Ok(imported) => submitter.with_imported(Arc::new(imported)),
+                    Err(error) => {
+                        unavailable(&error.to_string());
+                        return None;
+                    }
+                },
+                (true, None) => {
+                    // Said once: the freshness in force is the HTTP pull's last read, not a
+                    // verified checkpoint (after the review).
+                    tracing::warn!(
+                        event.name = "temporal.import_unavailable",
+                        component = "temporal",
+                        "a shared mode with no Host consumer of `data/events`: freshness is the \
+                         HTTP pull's last read, not a verified coordinator checkpoint"
+                    );
+                    submitter
+                }
+                _ => submitter,
             };
 
             Some(Arc::new(submitter))

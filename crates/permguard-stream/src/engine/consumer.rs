@@ -220,7 +220,11 @@ pub struct Consumer<C> {
     /// The clock an admission is dated by (WP-5.6b).
     time: std::sync::Arc<permguard_host::time::TimeGuard>,
     /// The `history` floor the Plane registered, and where each stream's retention comes from.
-    floor: Option<std::sync::Arc<dyn super::retention::RetentionFloor>>,
+    /// The `history` floor: the server's at build, a Plane's once it registers one (WP-6.2c2b1).
+    floor: std::sync::RwLock<Option<std::sync::Arc<dyn super::retention::RetentionFloor>>>,
+    /// Whether a Plane registered its floor through the composition: what a retention that waits
+    /// for one reads (WP-6.2c2b1).
+    plane_floor: std::sync::atomic::AtomicBool,
     source: Option<std::sync::Arc<dyn super::retention::RetentionSource>>,
     /// Keeps the garbage collection's passes from overlapping.
     lease: super::retention::Lease,
@@ -277,7 +281,8 @@ impl<C: RecordCodec> Consumer<C> {
             descriptor,
             codec,
             time,
-            floor: None,
+            floor: std::sync::RwLock::new(None),
+            plane_floor: std::sync::atomic::AtomicBool::new(false),
             source: None,
             lease: super::retention::Lease::default(),
             segment_bytes: permguard_host::storage::journal::DEFAULT_SEGMENT_BYTES,
@@ -296,8 +301,17 @@ impl<C: RecordCodec> Consumer<C> {
         mut self,
         floor: std::sync::Arc<dyn super::retention::RetentionFloor>,
     ) -> Self {
-        self.floor = Some(floor);
+        *self
+            .floor
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(floor);
         self
+    }
+
+    /// Whether a Plane registered the floor its loaded windows read through the composition
+    /// (WP-6.2c2b1).
+    pub fn plane_floor_registered(&self) -> bool {
+        self.plane_floor.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// This consumer's streams deleted past the retention `source` answers (WP-5.6b): without

@@ -1256,16 +1256,27 @@ impl App {
             .with_retention_source(retention(
                 permguard_host::membership::record::TaskType::DecisionsShip,
             ));
+        // The events' also keeps the origins this Host imports as long as its Data Plane's
+        // windows read them (WP-6.2c2b1).
+        let event_retention = Arc::new(crate::stream_gc::EventRetention {
+            ship: crate::stream_gc::ShipRetention {
+                members: Arc::clone(members),
+                task: permguard_host::membership::record::TaskType::EventsShip,
+            },
+            consumer: std::sync::OnceLock::new(),
+        });
         let event_consumer = engine
             .register_consumer(
                 permguard_events::stream::descriptor(),
                 permguard_events::stream::Codec,
             )?
-            .with_retention_source(retention(
-                permguard_host::membership::record::TaskType::EventsShip,
-            ));
+            .with_retention_source(Arc::clone(&event_retention)
+                as Arc<dyn permguard_stream::engine::retention::RetentionSource>);
         let decision_consumer = Arc::new(decision_consumer);
         let event_consumer = Arc::new(event_consumer);
+        let _ = event_retention
+            .consumer
+            .set(Arc::downgrade(&event_consumer));
         Ok((
             permguard_stream::engine::Served::default()
                 .with(permguard_decisions::stream::STREAM, Arc::new(decisions))

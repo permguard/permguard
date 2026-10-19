@@ -123,6 +123,8 @@ impl PlaneTask for EventService {
             let interval = self.tick.unwrap_or(DEFAULT_INTERVAL);
             let pull_interval = self.tick.unwrap_or(config.events_pull_interval());
             let streams = Arc::clone(submitter.streams());
+            // The origins the member Host imports, whose floor this loop keeps too (WP-6.2c2b1).
+            let imported = submitter.imported().cloned();
             let retention = streams.bounds().retention_minimum;
             let imported_retention = streams.bounds().required_retention(retention);
             // Recorded on the Host's producer and shipped by it over `events.ship` (WP-6.2a); this
@@ -193,8 +195,9 @@ impl PlaneTask for EventService {
                                 // Blocking: a round reads and flushes files. Off the runtime's threads.
                                 let shipper = shipper.clone();
                                 let streams = Arc::clone(&streams);
+                                let imported = imported.clone();
                                 let outcome = tokio::task::spawn_blocking(move || {
-                                    keep_floors(&streams, retention);
+                                    keep_floors(&streams, imported.as_deref(), retention);
                                     let rounds = shipper
                                         .map(|shipper| shipper.round())
                                         .unwrap_or_default();
@@ -603,14 +606,30 @@ fn legacy_unshipped(streams: &super::streams::Streams) -> bool {
 }
 
 /// Keeps the floor the Host's producer deletes above current: what no loaded window reads, plus
-/// what lateness and skew may add (WP-6.2a).
-fn keep_floors(streams: &super::streams::Streams, retention: Duration) {
+/// what lateness and skew may add (WP-6.2a); and the one its consumer deletes the imported
+/// origins' runs above (WP-6.2c2b1).
+fn keep_floors(
+    streams: &super::streams::Streams,
+    imported: Option<&super::imported::Imported>,
+    retention: Duration,
+) {
     let required = streams.bounds().required_retention(retention);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|since| since.as_secs() as i64)
         .unwrap_or_default();
-    if let Err(error) = streams.refresh_floors(now.saturating_sub(required.as_secs() as i64)) {
+    let horizon = now.saturating_sub(required.as_secs() as i64);
+    if let Some(imported) = imported
+        && let Err(error) = imported.refresh_floors(horizon)
+    {
+        warn!(
+            event.name = "events.import_floor_unmeasured",
+            component = COMPONENT,
+            error = %error,
+            "the imported runs' retention floor could not be measured: they are kept"
+        );
+    }
+    if let Err(error) = streams.refresh_floors(horizon) {
         // The floor last measured stays, and a run never measured is kept whole: the safe
         // direction.
         warn!(

@@ -6589,11 +6589,72 @@ fn an_origins_batches_import_into_its_own_run_under_its_pins() {
         Some(state)
     );
     assert_eq!(consumer.import_state(&ledger(2)).expect("read"), None);
+    // Read through the handle a Plane holds, and the floor a Plane registers marks the consumer.
+    assert_eq!(
+        permguard_host::composition::StreamConsumerReads::import_state(&consumer, &ledger(1))
+            .expect("read")
+            .map(|held| held.verified_at),
+        Some(1_800_000_000)
+    );
+    assert!(!consumer.plane_floor_registered());
+    struct Keep;
+    impl permguard_host::composition::StreamFloor for Keep {
+        fn retention_safe(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(0)
+        }
+    }
+    permguard_host::composition::StreamConsumerReads::retain_above(&consumer, Arc::new(Keep))
+        .expect("registered");
+    assert!(consumer.plane_floor_registered());
     // The state beside the runs leaves the runs as they were.
     assert_eq!(
         permguard_host::composition::StreamConsumerReads::runs(&consumer, &ledger(1))
             .expect("runs")
             .len(),
         1
+    );
+}
+
+/// WP-6.2c2b1, after the review: a consumer of a `history` stream whose retention leaves its
+/// imported runs to the Plane's floor keeps a run the floor never measured whole, and deletes a
+/// measured one through the floor, never past it.
+#[test]
+fn a_consumer_keeps_an_unmeasured_run_and_prunes_a_measured_one_to_its_floor() {
+    use permguard_host::composition::{StreamConsumerReads as _, StreamFloor};
+
+    struct Source;
+    impl super::retention::RetentionSource for Source {
+        fn retention_seconds(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(0)
+        }
+    }
+    struct Measured(std::sync::Mutex<Option<u64>>);
+    impl StreamFloor for Measured {
+        fn retention_safe(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            *self.0.lock().expect("lock")
+        }
+    }
+    let history = Descriptor {
+        retention: Retention::History,
+        ..descriptor()
+    };
+    let host = Host::new("prune-consumer-floor");
+    let consumer = host
+        .streams()
+        .register_consumer(history.clone(), Text)
+        .expect("registered")
+        .with_retention_source(Arc::new(Source));
+    let producer = small_sealer(&host, history);
+    acknowledged(&producer, &consumer, &host, 8);
+    let floor = Arc::new(Measured(std::sync::Mutex::new(None)));
+    consumer
+        .retain_above(Arc::clone(&floor) as Arc<dyn StreamFloor>)
+        .expect("registered");
+    assert_eq!(gc(&consumer)[0].run, None, "never measured: kept whole");
+    *floor.0.lock().expect("lock") = Some(5);
+    assert_eq!(
+        gc(&consumer)[0].through,
+        4,
+        "the last whole batch at or below the floor"
     );
 }

@@ -59,6 +59,12 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
     } else {
         declaration
     };
+    // A shared mode decides on the origins the Host imports, read from its consumer (WP-6.2c2b1).
+    let declaration = if crate::temporal::served(config) && config.events_pull_mode().is_shared() {
+        declaration.reads_stream(permguard_events::stream::STREAM)
+    } else {
+        declaration
+    };
     if config.log_enabled() {
         declaration
             .uses_zone_key(ZonePurpose::DecisionCommitment)
@@ -153,6 +159,17 @@ pub(crate) fn event_producer(
 ) -> Option<permguard_host::composition::StreamProducer> {
     registration(context)?
         .stream_producer(permguard_events::stream::STREAM)
+        .ok()
+        .flatten()
+}
+
+/// The Host's consumer of the event stream, when this plane decides on imported history and an
+/// engine is composed (WP-6.2c2b1).
+pub(crate) fn event_consumer(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::StreamConsumer> {
+    registration(context)?
+        .stream_consumer(permguard_events::stream::STREAM)
         .ok()
         .flatten()
 }

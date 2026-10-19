@@ -136,6 +136,54 @@ impl RetentionSource for ShipRetention {
     }
 }
 
+/// The retention of the event consumer (WP-6.2c2b1): what a ship task says of a run shipped to
+/// this Host; for an origin this Host imports over `events.import`, none of its own once the Data
+/// Plane registered its floor, so the windows it loaded bound those runs alone; before it does,
+/// and for any other run, what [`ShipRetention`] says.
+pub struct EventRetention {
+    pub ship: ShipRetention,
+    /// The event consumer, bound once it is built.
+    pub consumer: OnceLock<
+        std::sync::Weak<permguard_stream::engine::Consumer<permguard_events::stream::Codec>>,
+    >,
+}
+
+impl RetentionSource for EventRetention {
+    fn retention_seconds(&self, resource: &str, producer: &[u8; 16]) -> Option<u64> {
+        if let Some(seconds) = self.ship.retention_seconds(resource, producer) {
+            return Some(seconds);
+        }
+        let consumer = self.consumer.get()?.upgrade()?;
+        if !consumer.plane_floor_registered() {
+            return None;
+        }
+        let members = self.ship.members.get()?;
+        let manifests: Vec<Manifest> = members
+            .memberships()
+            .into_iter()
+            .filter(|(_, held)| {
+                held.role == permguard_host::membership::record::Role::Member
+                    && held.status == permguard_host::membership::record::Status::Active
+            })
+            .filter_map(|(_, held)| held.manifest.map(|(manifest, ..)| manifest))
+            .collect();
+        imported(&manifests, resource).then_some(0)
+    }
+}
+
+/// Whether one of `manifests`, a member's, imports `resource` over `events.import`.
+pub fn imported(manifests: &[Manifest], resource: &str) -> bool {
+    let Ok(resource) = Resource::parse(resource) else {
+        return false;
+    };
+    manifests.iter().any(|manifest| {
+        manifest.selector.contains(&resource)
+            && manifest.tasks.iter().any(|task| {
+                task.task_type == TaskType::EventsImport && task.selector.contains(&resource)
+            })
+    })
+}
+
 /// The longest `retention_seconds` among `manifests`' tasks of type `task` that ship `resource`
 /// from `producer`: the manifest's member is the producer, and both its selector and the task's
 /// hold the resource.
@@ -220,6 +268,58 @@ mod tests {
 
     /// WP-5.6b: a consumer keeps a stream as long as the longest task of its type shipping that
     /// resource from that producer says; another producer, type or resource gives nothing.
+    /// WP-6.2c2b1: a member's manifest with an `events.import` task covering a ledger is what makes
+    /// the ledger's imported runs bounded by the Data Plane's floor alone.
+    #[test]
+    fn a_ledger_is_imported_when_a_members_import_task_covers_it() {
+        let resource = "plane/data/zone/z/ledger/l";
+        let importing = manifest(
+            [3; 16],
+            "plane/data/*",
+            vec![task(TaskType::EventsImport, "plane/data/zone/z/*", 0)],
+        );
+        assert!(imported(std::slice::from_ref(&importing), resource));
+        assert!(!imported(
+            std::slice::from_ref(&importing),
+            "plane/data/zone/other/ledger/l"
+        ));
+        let shipping = manifest(
+            [3; 16],
+            "plane/data/*",
+            vec![task(TaskType::EventsShip, "plane/data/*", 60)],
+        );
+        assert!(
+            !imported(&[shipping], resource),
+            "shipping is not importing"
+        );
+        let narrow = manifest(
+            [3; 16],
+            "plane/data/zone/other/*",
+            vec![task(TaskType::EventsImport, "plane/data/*", 0)],
+        );
+        assert!(
+            !imported(&[narrow], resource),
+            "the manifest's selector too"
+        );
+        assert!(!imported(&[importing], "not a resource"));
+    }
+
+    /// Before the consumer is bound, or with no ship task, nothing is deleted.
+    #[test]
+    fn the_event_retention_waits_for_its_consumer_and_its_members() {
+        let retention = EventRetention {
+            ship: ShipRetention {
+                members: Arc::new(OnceLock::new()),
+                task: TaskType::EventsShip,
+            },
+            consumer: OnceLock::new(),
+        };
+        assert_eq!(
+            retention.retention_seconds("plane/data/zone/z/ledger/l", &PRODUCER),
+            None
+        );
+    }
+
     #[test]
     fn a_consumers_retention_is_the_longest_task_shipping_its_stream() {
         let resource = "plane/data/zone/z/ledger/l";

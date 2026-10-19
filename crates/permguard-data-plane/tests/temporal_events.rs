@@ -3050,3 +3050,327 @@ async fn a_store_changed_since_it_was_authorized_is_refused() {
         .await
         .expect("the store authorized");
 }
+
+/// The Host's consumer of `data/events` as the plane reads the imported origins: one origin's run
+/// holding `held` records, and the import state the Host keeps.
+#[derive(Default)]
+struct Imported {
+    held: std::sync::Mutex<u64>,
+    state: std::sync::Mutex<Option<permguard_host::membership::import::State>>,
+}
+
+const ORIGIN: [u8; 16] = [1; 16];
+const ORIGIN_RUN: [u8; 16] = [7; 16];
+
+impl permguard_host::composition::StreamConsumerReads for Imported {
+    fn runs(
+        &self,
+        _: &permguard_core::authz::Resource,
+    ) -> Result<Vec<permguard_host::composition::ConsumedRun>, String> {
+        let held = *self.held.lock().expect("lock");
+        Ok((held > 0)
+            .then_some(permguard_host::composition::ConsumedRun {
+                producer: ORIGIN,
+                run: ORIGIN_RUN,
+                acked: held,
+                oldest_retained: held + 1,
+            })
+            .into_iter()
+            .collect())
+    }
+
+    fn locate(
+        &self,
+        _: &[u8; 16],
+        _: &[u8; 16],
+    ) -> Result<Option<permguard_core::authz::Resource>, String> {
+        Ok(None)
+    }
+
+    // A run whose records the consumer no longer holds: what is read is its frontier alone.
+    fn records(
+        &self,
+        _: &permguard_core::authz::Resource,
+        _: &[u8; 16],
+        _: &[u8; 16],
+        _: u64,
+        _: usize,
+    ) -> Result<permguard_host::composition::ConsumedPage, String> {
+        Ok(permguard_host::composition::ConsumedPage {
+            records: Vec::new(),
+            low_watermark: None,
+        })
+    }
+
+    fn batch(
+        &self,
+        _: &permguard_core::authz::Resource,
+        _: &[u8; 16],
+        _: &[u8; 16],
+        _: u64,
+    ) -> Result<Option<Vec<u8>>, String> {
+        Ok(None)
+    }
+
+    fn import_state(
+        &self,
+        _: &permguard_core::authz::Resource,
+    ) -> Result<Option<permguard_host::membership::import::State>, String> {
+        Ok(self.state.lock().expect("lock").clone())
+    }
+
+    fn retain_above(
+        &self,
+        _: Arc<dyn permguard_host::composition::StreamFloor>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// The Host's state after verifying a checkpoint `age` seconds ago that names the origin's run
+/// through `through`, with `gaps` gaps.
+fn verified_import(
+    age: u64,
+    through: u64,
+    gaps: usize,
+) -> permguard_host::membership::import::State {
+    use permguard_host::membership::import::{Checkpoint, CheckpointOrigin, CheckpointRun, Gap};
+
+    let checkpoint = Checkpoint {
+        coordinator: [2; 16],
+        resource: permguard_core::authz::Resource::ledger("data", ZONE_ID, LEDGER_ID).to_string(),
+        revision: [3; 32],
+        origins: vec![CheckpointOrigin {
+            host_id: ORIGIN,
+            runs: vec![CheckpointRun {
+                run: ORIGIN_RUN,
+                acked: through,
+                oldest_retained: through + 1,
+                admitted_at: None,
+            }],
+            pins: Vec::new(),
+        }],
+        issued_at: 1,
+        channel_binding: [4; 32],
+        ring_epoch: 1,
+        key_set_digest: [5; 32],
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after the epoch")
+        .as_secs();
+    permguard_host::membership::import::State {
+        membership_id: [6; 16],
+        revision: [3; 32],
+        checkpoint: permguard_objects::cose::Sign1::sign_with(
+            permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+            permguard_core::domains::protected::EVENT_IMPORT_CHECKPOINT,
+            b"k",
+            checkpoint.encode().expect("encodes"),
+            |_| Ok(vec![0; 64]),
+        )
+        .expect("an envelope")
+        .encode()
+        .expect("encodes"),
+        verified_at: now - age,
+        gaps: (0..gaps as u64)
+            .map(|at| Gap {
+                origin: ORIGIN,
+                run: ORIGIN_RUN,
+                from: at + 1,
+                through: Some(at + 1),
+                reason: permguard_host::membership::import::RETENTION.to_owned(),
+                detected_at: 1,
+                revision: [3; 32],
+            })
+            .collect(),
+    }
+}
+
+/// WP-6.2c2b1 (owner decision of 2026-10-18): a bounded plane over the origins the member Host
+/// imports measures its freshness from the coordinator's checkpoint the Host verified, never from
+/// an event's time; it decides only when that verification is recent, the origins' runs are held
+/// through what the checkpoint names, and no gap is open.
+#[tokio::test]
+async fn a_bounded_plane_decides_on_imports_only_when_the_verified_checkpoint_vouches_for_them() {
+    let plane = plane("bounded-imports");
+    let root = plane
+        .events
+        .parent()
+        .expect("the scratch root")
+        .to_path_buf();
+    let consumer = Arc::new(Imported::default());
+    let imported = Arc::new(
+        permguard_data_plane::temporal::imported::Imported::new(
+            permguard_host::composition::StreamConsumer::over(
+                Arc::clone(&consumer) as Arc<dyn permguard_host::composition::StreamConsumerReads>
+            ),
+            [9; 16],
+            root.join("planes"),
+        )
+        .expect("the floor is registered"),
+    );
+    let submitter = Arc::try_unwrap(plane.submitter)
+        .unwrap_or_else(|_| panic!("the only holder"))
+        .with_shared_history(
+            permguard_core::config::Consistency::SharedBounded,
+            Arc::new(permguard_data_plane::temporal::imports::Imports::new(
+                root.join("pull"),
+            )),
+            std::time::Duration::from_secs(60),
+        )
+        .with_imported(imported);
+    let plane = Plane {
+        submitter: Arc::new(submitter),
+        ..plane
+    };
+    let router = surface(&plane);
+    let mut at = 0;
+    let mut submit = || {
+        at += 1;
+        submission(
+            at,
+            "Drupe::Action::Login",
+            "request",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        )
+    };
+
+    // Never verified: withheld, recorded.
+    let (status, refused) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+    assert_eq!(refused["code"], "history_stale", "{refused}");
+
+    // Verified long ago: withheld.
+    *consumer.state.lock().expect("lock") = Some(verified_import(600, 3, 0));
+    *consumer.held.lock().expect("lock") = 3;
+    let (status, refused) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+    assert_eq!(refused["code"], "history_stale", "{refused}");
+
+    // Verified now, but the origin's run is held through less than the checkpoint names.
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+    *consumer.held.lock().expect("lock") = 2;
+    let (status, refused) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+    assert_eq!(refused["code"], "history_stale", "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .is_some_and(|held| held.contains("through 3") && held.contains("through 2")),
+        "{refused}"
+    );
+
+    // A gap the Host keeps: incomplete.
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 1));
+    *consumer.held.lock().expect("lock") = 3;
+    let (status, refused) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+    assert_eq!(refused["code"], "history_incomplete", "{refused}");
+
+    // Fresh, whole and caught up: it decides, and says how fresh.
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+    let (status, answered) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::OK, "{answered}");
+    assert_eq!(answered["history"]["mode"], "shared-bounded", "{answered}");
+    assert!(
+        answered["history"]["staleness_seconds"]
+            .as_u64()
+            .is_some_and(|held| held <= 60),
+        "{answered}"
+    );
+    assert!(
+        answered["history"].get("gaps").is_none(),
+        "none open: {answered}"
+    );
+}
+
+/// WP-6.2c2b1, after the review: `shared-eventual` decides through staleness and gaps and reports
+/// them; under `shared-bounded` an unresolved gap the HTTP pull recorded refuses as well.
+#[tokio::test]
+async fn an_eventual_plane_decides_and_reports_and_a_legacy_gap_still_bounds() {
+    for (mode, legacy_gap) in [
+        (permguard_core::config::Consistency::SharedEventual, false),
+        (permguard_core::config::Consistency::SharedBounded, true),
+    ] {
+        let plane = plane(&format!("imports-{}", mode.as_str()));
+        let root = plane
+            .events
+            .parent()
+            .expect("the scratch root")
+            .to_path_buf();
+        let consumer = Arc::new(Imported::default());
+        *consumer.held.lock().expect("lock") = 3;
+        // Stale and gapped for the eventual plane; fresh and whole on the Host's side for the
+        // bounded one, whose hole is the pull's.
+        *consumer.state.lock().expect("lock") = Some(if legacy_gap {
+            verified_import(1, 3, 0)
+        } else {
+            verified_import(600, 3, 2)
+        });
+        let imports = Arc::new(permguard_data_plane::temporal::imports::Imports::new(
+            root.join("pull"),
+        ));
+        if legacy_gap {
+            imports
+                .record_gap(
+                    ZONE_ID,
+                    LEDGER_ID,
+                    "offset-oldest",
+                    permguard_data_plane::temporal::imports::Gap {
+                        zone: ZONE_ID.to_owned(),
+                        ledger: LEDGER_ID.to_owned(),
+                        from_sequence: 4,
+                        to_sequence: 9,
+                        at: "2026-08-29T00:00:00Z".to_owned(),
+                        consistency: "shared-bounded".to_owned(),
+                        resolved: false,
+                    },
+                )
+                .expect("the hole is recorded");
+        }
+        let imported = Arc::new(
+            permguard_data_plane::temporal::imported::Imported::new(
+                permguard_host::composition::StreamConsumer::over(Arc::clone(&consumer)
+                    as Arc<dyn permguard_host::composition::StreamConsumerReads>),
+                [9; 16],
+                root.join("planes"),
+            )
+            .expect("the floor is registered"),
+        );
+        let submitter = Arc::try_unwrap(plane.submitter)
+            .unwrap_or_else(|_| panic!("the only holder"))
+            .with_shared_history(mode, imports, std::time::Duration::from_secs(60))
+            .with_imported(imported);
+        let plane = Plane {
+            submitter: Arc::new(submitter),
+            ..plane
+        };
+        let (status, answered) = post(
+            &surface(&plane),
+            submission(
+                1,
+                "Drupe::Action::Login",
+                "request",
+                "alice",
+                json!({"user": "alice", "server": "s1"}),
+            ),
+        )
+        .await;
+        if legacy_gap {
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
+            assert_eq!(answered["code"], "history_incomplete", "{answered}");
+        } else {
+            assert_eq!(status, StatusCode::OK, "{answered}");
+            assert_eq!(answered["history"]["mode"], "shared-eventual", "{answered}");
+            assert_eq!(answered["history"]["gaps"], 2, "{answered}");
+            assert!(
+                answered["history"]["staleness_seconds"]
+                    .as_u64()
+                    .is_some_and(|held| held >= 600),
+                "{answered}"
+            );
+        }
+    }
+}

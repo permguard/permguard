@@ -48,7 +48,8 @@ use permguard_core::fault;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::journal::JournalError;
+/// The error an index answers with, named here for a reader that keeps no journal of its own.
+pub use crate::journal::JournalError;
 
 /// Where the index is kept, beside the segments it is derived from.
 pub(crate) const INDEX_FILE: &str = "INDEX";
