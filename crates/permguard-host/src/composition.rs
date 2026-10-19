@@ -135,6 +135,7 @@ pub struct Declaration {
     tasks: Vec<crate::membership::record::Capability>,
     scope_schemas: Vec<String>,
     mutations: Vec<&'static str>,
+    layouts: Vec<&'static str>,
 }
 
 impl Declaration {
@@ -215,6 +216,13 @@ impl Declaration {
     /// transaction (WP-3.6): its handle runs and recovers that domain's operations only.
     pub fn mutates(mut self, domain: &'static str) -> Self {
         self.mutations.push(domain);
+        self
+    }
+
+    /// Declares a WP-1.9 layout subsystem whose version in force this Plane reads (WP-6.2d): a
+    /// legacy store it stops reading once the volume archived it, without touching the volume.
+    pub fn reads_layout(mut self, subsystem: &'static str) -> Self {
+        self.layouts.push(subsystem);
         self
     }
 
@@ -305,6 +313,7 @@ pub struct Host {
     time: Arc<TimeGuard>,
     zone_keys: BTreeMap<crate::secrets::ZonePurpose, Arc<crate::secrets::ZoneHandle>>,
     host_id: Option<[u8; 16]>,
+    layouts: BTreeMap<String, u16>,
     claimed: std::sync::Mutex<Claims>,
 }
 
@@ -331,6 +340,7 @@ pub struct HostBuilder {
     time: Option<Arc<TimeGuard>>,
     zone_keys: BTreeMap<crate::secrets::ZonePurpose, Arc<crate::secrets::ZoneHandle>>,
     host_id: Option<[u8; 16]>,
+    layouts: BTreeMap<String, u16>,
 }
 
 impl HostBuilder {
@@ -414,6 +424,13 @@ impl HostBuilder {
         self
     }
 
+    /// The version in force of every WP-1.9 layout on the volume, as the start left it (WP-6.2d):
+    /// a Plane reads those it declared.
+    pub fn layouts(mut self, layouts: impl IntoIterator<Item = (String, u16)>) -> Self {
+        self.layouts.extend(layouts);
+        self
+    }
+
     pub fn build(self) -> Host {
         Host {
             mutations: self.mutations,
@@ -431,6 +448,7 @@ impl HostBuilder {
             }),
             zone_keys: self.zone_keys,
             host_id: self.host_id,
+            layouts: self.layouts,
             claimed: std::sync::Mutex::new(Claims::default()),
         }
     }
@@ -636,6 +654,11 @@ impl Host {
             consumers,
             declared_reads: declaration.read_streams.clone(),
             host_id: self.host_id,
+            layouts: declaration
+                .layouts
+                .iter()
+                .map(|subsystem| (*subsystem, self.layouts.get(*subsystem).copied()))
+                .collect(),
             authorization: self
                 .authorization
                 .clone()
@@ -681,6 +704,7 @@ pub struct Registration {
     consumers: BTreeMap<String, Arc<dyn StreamConsumerReads>>,
     declared_reads: Vec<String>,
     host_id: Option<[u8; 16]>,
+    layouts: BTreeMap<&'static str, Option<u16>>,
     authorization: Arc<Authorization>,
     time: Arc<TimeGuard>,
     memberships: Option<Arc<dyn ServingMembers>>,
@@ -872,6 +896,15 @@ impl Registration {
             engine: Arc::clone(engine),
             domain,
         }))
+    }
+
+    /// The version in force of the layout `subsystem` on the volume, `None` when it is not laid
+    /// out (WP-6.2d); refused for a layout this Plane did not declare.
+    pub fn layout(&self, subsystem: &str) -> Result<Option<u16>, CompositionError> {
+        self.layouts
+            .get(subsystem)
+            .copied()
+            .ok_or_else(|| self.undeclared(format!("the layout `{subsystem}`")))
     }
 
     /// This Host's `host_id`, when the composition knows it: public, the salt of a Host-local
@@ -2999,5 +3032,31 @@ mod tests {
         // Nothing was claimed: the Plane registers its own sides afterwards.
         host.register(Declaration::new("data").handles_task(TaskType::DecisionsShip, 1))
             .expect("the Plane's own side");
+    }
+
+    #[test]
+    fn a_layout_is_answered_only_when_declared() {
+        let host = Host::builder()
+            .layouts([("events-legacy".to_owned(), 2), ("keys".to_owned(), 1)])
+            .build();
+        let data = host
+            .register(
+                Declaration::new("data")
+                    .reads_layout("events-legacy")
+                    .reads_layout("decisions-legacy"),
+            )
+            .expect("registered");
+        assert_eq!(data.layout("events-legacy").expect("declared"), Some(2));
+        // Declared and not laid out on this volume.
+        assert_eq!(data.layout("decisions-legacy").expect("declared"), None);
+        // Laid out, and not this Plane's to read.
+        assert!(matches!(
+            data.layout("keys"),
+            Err(CompositionError::Undeclared { .. })
+        ));
+        let control = host
+            .register(Declaration::new("control"))
+            .expect("registered");
+        assert!(control.layout("events-legacy").is_err());
     }
 }

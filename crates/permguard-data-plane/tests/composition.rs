@@ -484,3 +484,98 @@ fn the_data_plane_reads_the_event_consumer_only_under_a_shared_mode() {
         );
     }
 }
+
+/// An engine whose every producer is one in memory: enough for the plane to compose its temporal
+/// history on the Host's stream.
+struct MemoryEngine(Arc<permguard_data_plane::temporal::testing::MemoryProducer>);
+
+impl permguard_host::composition::StreamEngine for MemoryEngine {
+    fn producer(&self, _: &str) -> Option<Arc<dyn permguard_host::composition::StreamAppender>> {
+        Some(Arc::clone(&self.0) as Arc<dyn permguard_host::composition::StreamAppender>)
+    }
+}
+
+/// WP-6.2d: the plane declares the legacy event history's layout when it serves the temporal
+/// interface, and once the volume archived it the plane it composes opens no legacy journal, the
+/// old generation left in `events.directory` as it is.
+#[test]
+fn an_archived_legacy_history_is_not_opened_by_the_composed_plane() {
+    use permguard_core::config::{
+        SETTING_EVENTS_ENABLED, SETTING_EVENTS_PULL_MODE, SETTING_EXPERIMENTAL_DOGWOOD,
+    };
+
+    // Declared exactly when the temporal interface is served.
+    let quiet = host()
+        .register(permguard_data_plane::module().declaration(&config(&[])))
+        .expect("registers");
+    assert!(quiet.layout(permguard_events::archive::SUBSYSTEM).is_err());
+
+    let working = std::env::temp_dir().join(format!(
+        "permguard-data-plane-archived-legacy-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&working);
+    // A legacy journal an earlier release wrote, which the volume archived since.
+    let journal = working.join("data/events/acme/main");
+    {
+        let stream = permguard_events::record::Stream::new(
+            permguard_events::record::Producer::data_plane("plane-before", "inst-1"),
+            "acme",
+            "main",
+        );
+        permguard_events::journal::Journal::open(
+            &journal,
+            stream,
+            permguard_events::journal::Bounds::default(),
+        )
+        .expect("the legacy journal");
+    }
+    std::fs::remove_file(journal.join("LOCK")).expect("the old writer's lock");
+    let serving = config(&[
+        (SETTING_EVENTS_ENABLED, "true"),
+        (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
+        (SETTING_EVENTS_PULL_MODE, "shared-bounded"),
+        (
+            permguard_core::config::SETTING_WORKING_DIR,
+            working.to_str().expect("a path"),
+        ),
+    ]);
+    let registration = Host::builder()
+        .streams(Arc::new(MemoryEngine(Arc::default())))
+        .host_id([1; 16])
+        .layouts([(
+            permguard_events::archive::SUBSYSTEM.to_owned(),
+            permguard_events::archive::TARGET_VERSION,
+        )])
+        .build()
+        .register(permguard_data_plane::module().declaration(&serving))
+        .expect("registers");
+    assert_eq!(
+        registration
+            .layout(permguard_events::archive::SUBSYSTEM)
+            .expect("declared"),
+        Some(permguard_events::archive::TARGET_VERSION)
+    );
+    let identity =
+        permguard_core::ProductIdentity::new("permguard-data-plane", "Permguard", "", "", "");
+    let storage = permguard_std::storage::MemoryStorage::new();
+    let audit = permguard_std::audit::RecordingAuditSink::new();
+    let server = permguard_core::ServerContext::new(identity, &serving, &storage, &audit)
+        .with_plane_handles("data", Arc::new(registration));
+    let context = permguard_core::PlaneContext::new(&server, "data");
+
+    let submitter = permguard_data_plane::temporal::submitter(&context).expect("composed");
+    assert!(
+        submitter.streams().ledgers().is_empty(),
+        "the archived journal is neither shipped nor evicted"
+    );
+    assert!(!journal.join("LOCK").exists(), "never opened");
+    // Shared, and with no store of the retired pull to read.
+    assert!(submitter.consistency().is_shared());
+    assert!(
+        submitter.imports().is_none(),
+        "the archived store is not read"
+    );
+    assert!(!working.join("data/events/pull").exists());
+    let _ = std::fs::remove_dir_all(&working);
+}

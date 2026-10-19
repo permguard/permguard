@@ -136,6 +136,11 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
                 clock_skew: config.events_clock_skew(),
             };
 
+            // The legacy journals and the retired pull's store, archived by the volume once no
+            // loaded window reads them (WP-6.2d): never opened again, their old generation left
+            // as `migrate finalize` finds it.
+            let archived =
+                permguard_events::archive::archived(crate::handles::events_legacy_layout(context));
             let submitter = Submitter::new(
                 crate::authz::decider(context),
                 Arc::new(
@@ -146,6 +151,9 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
                         bounds,
                         config.events_group_commit_delay(),
                     ) {
+                        Ok(streams) if archived => streams
+                            .without_legacy()
+                            .with_metrics(context.metrics().clone()),
                         Ok(streams) => streams.with_metrics(context.metrics().clone()),
                         Err(error) => {
                             unavailable(&error.to_string());
@@ -160,13 +168,16 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
             // turning it on changes what the policies mean, and that is a decision rather than a
             // default that shifts when a second plane appears.
             let consistency = config.events_pull_mode();
-            let submitter = match consistency.is_shared() {
-                true => submitter.with_shared_history(
+            let submitter = match (consistency.is_shared(), archived) {
+                (true, false) => submitter.with_shared_history(
                     consistency,
                     imports(config),
                     config.events_pull_max_staleness(),
                 ),
-                false => submitter,
+                (true, true) => {
+                    submitter.with_shared_mode(consistency, config.events_pull_max_staleness())
+                }
+                (false, _) => submitter,
             };
             // The origins the member Host imports over `events.import`, from its consumer
             // (WP-6.2c2b1): what a shared mode decides on and measures its freshness from.
@@ -214,7 +225,9 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
 /// would place it inside this plane's own sequence and hash chain, which would be a claim that
 /// this plane recorded it — and the next batch this plane signed would attest that claim.
 pub fn imports(config: &permguard_core::Config) -> Arc<imports::Imports> {
-    let root = config.events_directory().join("pull");
+    let root = config
+        .events_directory()
+        .join(permguard_events::archive::PULL);
     let stores = IMPORTS.get_or_init(|| Mutex::new(BTreeMap::new()));
     let mut stores = match stores.lock() {
         Ok(stores) => stores,

@@ -860,6 +860,16 @@ impl App {
             Action::Named(Command::Volume {
                 what: VolumeCommand::Verify { volume, sample },
             }) => verify_volume(volume, *sample, &self.verified_trees, out),
+            Action::Named(Command::Migrate {
+                what: MigrateCommand::Events { volume, backup, .. },
+            }) => crate::legacy_events::migrate_events(
+                volume,
+                backup,
+                config.working_dir(),
+                &config.events_directory(),
+                crate::legacy_events::bounds_of(config),
+                out,
+            ),
             Action::Named(Command::Migrate { what }) => migrate(what, out),
         }
     }
@@ -1341,6 +1351,11 @@ impl App {
     pub fn config_for(&self, action: &Action) -> Result<Config> {
         let file = match action {
             Action::Serve(args) => Some((args.config_file(), self.load(args.config_file())?)),
+            // The offline archive of the legacy event history reads the server's configuration as
+            // the server does (WP-6.2d): where the history is, and what it is measured against.
+            Action::Named(Command::Migrate {
+                what: MigrateCommand::Events { config, .. },
+            }) => Some((config.as_path(), self.load(config)?)),
             Action::Named(_) => None,
         };
 
@@ -1587,6 +1602,7 @@ impl App {
         layouts.extend(permguard_host::keys::migration::layouts());
         layouts.extend(permguard_host::audit::jsonl::layouts());
         layouts.extend(permguard_decisions::archive::layouts());
+        layouts.extend(permguard_events::archive::layouts());
         permguard_host::storage::migrate::check_servable(&volume, &layouts).with_context(|| {
             format!("checking the layouts on {}", config.working_dir().display())
         })?;
@@ -1691,6 +1707,16 @@ impl App {
             &volume,
             config.working_dir(),
             config.log_spool_directory(),
+            config.assurance().profile(),
+            time.now_secs(),
+        );
+        // The legacy event journals and the retired pull's store once shipped and older than every
+        // window (WP-6.2d), before the Data Plane opens them.
+        crate::legacy_events::archive_at_start(
+            &volume,
+            &config.events_directory(),
+            crate::legacy_events::bounds_of(config),
+            config_file,
             config.assurance().profile(),
             time.now_secs(),
         );
@@ -2269,7 +2295,14 @@ impl App {
                  the volume",
             );
         }
+        // The version in force of every layout, as the start steps left them: a Plane reads those
+        // it declared (WP-6.2d).
+        let laid_out = permguard_host::storage::migrate::status(&volume)
+            .context("reading the layouts")?
+            .into_iter()
+            .map(|status| (status.manifest.subsystem, status.manifest.active.version));
         let mut host = permguard_host::composition::Host::builder()
+            .layouts(laid_out)
             .audit(recorder)
             .authorization(authorization)
             .time(Arc::clone(&time))
@@ -2764,6 +2797,10 @@ fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
             legacy,
         } => {
             return crate::legacy_spool::migrate_decisions(volume, backup, legacy.as_deref(), out);
+        }
+        // Dispatched with its configuration before this is reached.
+        MigrateCommand::Events { .. } => {
+            anyhow::bail!("`migrate events` reads the server's configuration it names")
         }
     };
     let volume = hold(volume_root)

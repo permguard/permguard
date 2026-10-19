@@ -3374,3 +3374,86 @@ async fn an_eventual_plane_decides_and_reports_and_a_legacy_gap_still_bounds() {
         }
     }
 }
+
+/// WP-6.2d: once the volume archived the retired pull's store the plane reads none. Without the
+/// Host's import `shared-bounded` still refuses, as over a store that never read anything, and
+/// `shared-eventual` decides on the plane's own history; with a fresh import from the Host a legacy
+/// gap no longer bounds; and nothing recreates the store's directory.
+#[tokio::test]
+async fn an_archived_pull_store_is_not_read_and_bounded_still_refuses_without_an_import() {
+    let login = || {
+        submission(
+            1,
+            "Drupe::Action::Login",
+            "request",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        )
+    };
+    for mode in [
+        permguard_core::config::Consistency::SharedBounded,
+        permguard_core::config::Consistency::SharedEventual,
+    ] {
+        let plane = plane(&format!("archived-{}", mode.as_str()));
+        let root = plane
+            .events
+            .parent()
+            .expect("the scratch root")
+            .to_path_buf();
+        let submitter = Arc::try_unwrap(plane.submitter)
+            .unwrap_or_else(|_| panic!("the only holder"))
+            .with_shared_mode(mode, std::time::Duration::from_secs(60));
+        let plane = Plane {
+            submitter: Arc::new(submitter),
+            ..plane
+        };
+        let (status, answered) = post(&surface(&plane), login()).await;
+        match mode {
+            permguard_core::config::Consistency::SharedBounded => {
+                assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
+                assert_eq!(answered["code"], "history_stale", "{answered}");
+            }
+            _ => {
+                assert_eq!(status, StatusCode::OK, "{answered}");
+                assert_eq!(answered["history"]["mode"], "shared-eventual", "{answered}");
+            }
+        }
+        assert!(!root.join("pull").exists(), "no store was created");
+    }
+
+    // With the Host's import fresh and whole, the legacy gap the archived store kept bounds no more.
+    let plane = plane("archived-imported");
+    let root = plane
+        .events
+        .parent()
+        .expect("the scratch root")
+        .to_path_buf();
+    let consumer = Arc::new(Imported::default());
+    *consumer.held.lock().expect("lock") = 3;
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+    let imported = Arc::new(
+        permguard_data_plane::temporal::imported::Imported::new(
+            permguard_host::composition::StreamConsumer::over(
+                Arc::clone(&consumer) as Arc<dyn permguard_host::composition::StreamConsumerReads>
+            ),
+            [9; 16],
+            root.join("planes"),
+        )
+        .expect("the floor is registered"),
+    );
+    let submitter = Arc::try_unwrap(plane.submitter)
+        .unwrap_or_else(|_| panic!("the only holder"))
+        .with_shared_mode(
+            permguard_core::config::Consistency::SharedBounded,
+            std::time::Duration::from_secs(60),
+        )
+        .with_imported(imported);
+    let plane = Plane {
+        submitter: Arc::new(submitter),
+        ..plane
+    };
+    let (status, answered) = post(&surface(&plane), login()).await;
+    assert_eq!(status, StatusCode::OK, "{answered}");
+    assert_eq!(answered["history"]["mode"], "shared-bounded", "{answered}");
+    assert!(!root.join("pull").exists(), "no store was created");
+}

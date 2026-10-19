@@ -52,7 +52,7 @@ use serde_json::Value;
 pub use crate::journal::JournalError;
 
 /// Where the index is kept, beside the segments it is derived from.
-pub(crate) const INDEX_FILE: &str = "INDEX";
+pub const INDEX_FILE: &str = "INDEX";
 
 /// Where one record lives, and what it is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

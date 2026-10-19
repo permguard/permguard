@@ -11,6 +11,7 @@
 //! | zone keys `decision.commitment`       | `ZoneHandle`                     | input tags, per ledger         |
 //! | zone keys `audit.pseudonym`           | `ZoneHandle`                     | decision subjects, per zone    |
 //! | produces `data/decisions` (WP-6.1)    | `StreamProducer`                 | the decision log               |
+//! | layout `events-legacy` (WP-6.2d)      | its version in force             | the legacy event history       |
 //! | task contracts (WP-4.4)               | none                             | approval's task capability     |
 //!
 //! The plane never sees a key manager, the audit recorder, the secret store, a root or a key's
@@ -54,8 +55,11 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
         .uses_task(TaskType::PolicyMirror, 1)
         .handles_task(TaskType::DecisionsShip, 1)
         .handles_task(TaskType::EventsShip, 1);
+    // The legacy event history it stops reading once the volume archived it (WP-6.2d).
     let declaration = if crate::temporal::served(config) {
-        declaration.produces_stream(permguard_events::stream::STREAM)
+        declaration
+            .produces_stream(permguard_events::stream::STREAM)
+            .reads_layout(permguard_events::archive::SUBSYSTEM)
     } else {
         declaration
     };
@@ -159,6 +163,15 @@ pub(crate) fn event_producer(
 ) -> Option<permguard_host::composition::StreamProducer> {
     registration(context)?
         .stream_producer(permguard_events::stream::STREAM)
+        .ok()
+        .flatten()
+}
+
+/// The version in force of the legacy event history's layout on the volume (WP-6.2d): `None` when
+/// it is not laid out, or when this plane serves no temporal interface and so did not declare it.
+pub(crate) fn events_legacy_layout(context: &PlaneContext<'_>) -> Option<u16> {
+    registration(context)?
+        .layout(permguard_events::archive::SUBSYSTEM)
         .ok()
         .flatten()
 }

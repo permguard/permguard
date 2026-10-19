@@ -239,6 +239,24 @@ pub enum MigrateCommand {
         #[arg(long, value_name = "DIRECTORY")]
         legacy: Option<PathBuf>,
     },
+    /// Archive the drained legacy event history, the journals and the retired pull's store in
+    /// `events.directory`, into `data/events-legacy`, byte for byte, with an external backup
+    /// declared (WP-6.2d): what a server under the production profile names once it is shipped
+    /// and older than every window a loaded policy reads. Anything else is refused.
+    Events {
+        /// The volume's root, the server's working directory.
+        #[arg(long, value_name = "DIRECTORY")]
+        volume: PathBuf,
+
+        /// The external backup taken before the migration, as the operator names it.
+        #[arg(long, value_name = "REFERENCE")]
+        backup: String,
+
+        /// The server's configuration file, read as `permguard <config file>` reads it: where
+        /// the history is, and the retention, lateness and skew it is measured against.
+        #[arg(long, value_name = "CONFIG_FILE")]
+        config: PathBuf,
+    },
 }
 
 /// What can be asked of a volume's ownership from the command line.

@@ -139,13 +139,26 @@ impl Submitter {
 
     /// Decides against imported history as well, under this mode.
     pub fn with_shared_history(
-        mut self,
+        self,
         consistency: permguard_core::config::Consistency,
         imports: Arc<super::imports::Imports>,
         max_staleness: std::time::Duration,
     ) -> Self {
+        let mut this = self.with_shared_mode(consistency, max_staleness);
+        this.imports = Some(imports);
+
+        this
+    }
+
+    /// Decides under this shared mode with no store of the retired pull, once the volume archived
+    /// it (WP-6.2d): a decision is scoped as over a store that never read anything, so without
+    /// the Host's import `shared-bounded` still refuses.
+    pub fn with_shared_mode(
+        mut self,
+        consistency: permguard_core::config::Consistency,
+        max_staleness: std::time::Duration,
+    ) -> Self {
         self.consistency = consistency;
-        self.imports = Some(imports);
         self.max_staleness = max_staleness;
 
         self
@@ -162,6 +175,12 @@ impl Submitter {
     /// The origins the member Host imports, when this plane reads them.
     pub fn imported(&self) -> Option<&Arc<super::imported::Imported>> {
         self.imported.as_ref()
+    }
+
+    /// The retired pull's store, when this plane still reads it: not once the volume archived it
+    /// (WP-6.2d).
+    pub fn imports(&self) -> Option<&Arc<super::imports::Imports>> {
+        self.imports.as_ref()
     }
 
     /// Which history this plane's decisions range over.
@@ -1573,21 +1592,24 @@ impl Submitter {
         {
             return self.host_scope(imported, zone, ledger);
         }
-        let Some(imports) = &self.imports else {
-            return Ok(HistoryScope::local());
-        };
         if !self.consistency.is_shared() {
             return Ok(HistoryScope::local());
         }
-        let state = imports.state(zone, ledger).map_err(|error| {
-            ApiError::new(
-                ErrorClass::Unavailable,
-                permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
-                format!(
-                    "this plane's imported history for `{zone}/{ledger}` cannot be read: {error}"
-                ),
-            )
-        })?;
+        // The retired pull's store archived (WP-6.2d) and no import from the Host: the stalest
+        // state there is, a store that never read anything.
+        let state = match &self.imports {
+            Some(imports) => imports.state(zone, ledger).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
+                    format!(
+                        "this plane's imported history for `{zone}/{ledger}` cannot be read: \
+                         {error}"
+                    ),
+                )
+            })?,
+            None => super::imports::Cursor::default(),
+        };
         let staleness = staleness_of(&state.read_at);
         self.metrics.set_aggregated(
             &measure::IMPORT_STALENESS,

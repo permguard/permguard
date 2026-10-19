@@ -434,6 +434,60 @@ fn a_legacy_journal_is_read_first_and_never_appended_to() {
     );
 }
 
+/// WP-6.2d: once the volume archived the legacy history, the plane never opens its old generation:
+/// no journal is read, shipped or evicted, and its files, its lock among them, stay as they were.
+#[test]
+fn an_archived_legacy_journal_is_neither_opened_nor_written() {
+    let host = HostVolume::new("archived");
+    let directory = legacy_journal(&host.root, 2);
+    std::fs::remove_file(directory.join("LOCK")).expect("the old writer's lock");
+    // The same ledger journalled under its names too, as a release keying by name left it.
+    let named = host.root.join("data/events/zone-name/ledger-name");
+    std::fs::create_dir_all(&named).expect("created");
+    for entry in std::fs::read_dir(&directory).expect("listed").flatten() {
+        if entry.path().is_file() {
+            std::fs::copy(entry.path(), named.join(entry.file_name())).expect("copied");
+        }
+    }
+    let before = contents(&host.root.join("data/events"));
+    let producer = host.producer();
+    let streams = host.streams(&producer).without_legacy();
+    assert!(
+        streams.ledgers().is_empty(),
+        "no legacy journal is shipped or evicted"
+    );
+    // Neither adopted nor refused as ambiguous: the archived journals are not read.
+    streams
+        .adopt((ZONE_ID, LEDGER_ID), ("zone-name", "ledger-name"))
+        .expect("nothing to adopt in an archived legacy");
+
+    let (written, _) = streams
+        .append(ZONE_ID, LEDGER_ID, occurrence(3, "alice"))
+        .expect("durable");
+    assert!(
+        matches!(written, Written::Appended { seq: 1, .. }),
+        "the Host's runs alone: {written:?}"
+    );
+    let held = streams.read_from(ZONE_ID, LEDGER_ID, 0, 100).expect("read");
+    assert_eq!(
+        held.iter()
+            .map(|record| record["stream"]["producer"]["id"]
+                .as_str()
+                .unwrap()
+                .to_owned())
+            .collect::<Vec<_>>(),
+        [host.host_hex()],
+        "nothing of the archived journal"
+    );
+    drop(streams);
+    assert_eq!(
+        contents(&host.root.join("data/events")),
+        before,
+        "nothing written"
+    );
+    assert!(!directory.join("LOCK").exists(), "never opened");
+}
+
 /// WP-6.2a: the floor the plane measures is what it registered on the engine (whose replacement
 /// of its own floor the engine's tests show), per run.
 #[test]

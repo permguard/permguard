@@ -48,6 +48,14 @@ is cut.
   A set of more than 64 required origins, or of more than 1024 runs, is answered `unavailable` rather than signed.
   Each origin of a checkpoint also names its own `data.attest` pins over its membership's manifests, at most 64 (WP-6.2c2a).
 
+- **The drained legacy event history is archived.**
+  The history is drained once the old shipper has sent everything the version 1 event journals held, and every record they and the retired HTTP pull's store hold, and every unresolved pull gap, is older than the eviction's horizon (`retention_minimum` plus `allowed_lateness` plus `clock_skew` ago).
+  Then `events.directory` is carried byte for byte, without the journals' `LOCK` files, into `data/events-legacy` under the layout `events-legacy`.
+  Below the `production` profile the first start that finds it drained archives it; from `production` upward the start goes on and names `permguard migrate events --volume <dir> --backup <reference> --config <file>`, which archives it offline and reads the retention from the server's configuration file.
+  A history still holding anything unshipped or anything a loaded window may read, outside the volume, or holding a file that is not the history's is not archived, and the start never fails over one.
+  Once archived the Data Plane opens no legacy journal and no pull store: the legacy journal routes answer that the ledger is not held, and a shared mode without the Host's import decides as over a store that never read anything, so `shared-bounded` still refuses.
+  The old directory stays until `permguard migrate finalize --subsystem events-legacy` removes it.
+
 - **A drained version 1 decision spool is archived.**
   Once the old shipper has sent everything a version 1 spool held, the spool is carried byte for byte, without its `LOCK`, into `data/decisions/legacy` under the layout `decisions-legacy`.
   Below the `production` profile the first start that finds it drained archives it; from `production` upward the start goes on and names `permguard migrate decisions --volume <dir> --backup <reference> [--legacy <dir>]`, which archives it offline.

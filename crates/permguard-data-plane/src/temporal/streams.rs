@@ -213,6 +213,9 @@ impl StreamFloor for Floors {
 pub struct Streams {
     /// Where the legacy journals are.
     root: PathBuf,
+    /// Whether they are read: not once the volume archived them (WP-6.2d), their old generation
+    /// waiting in `root` for `migrate finalize`, never opened.
+    legacy: bool,
     /// Where the plane keeps what it remembers of each ledger on the Host.
     planes: PathBuf,
     host: HostSide,
@@ -289,6 +292,7 @@ impl Streams {
             })?;
         Ok(Self {
             root,
+            legacy: true,
             planes,
             host,
             floors,
@@ -300,6 +304,14 @@ impl Streams {
             metrics: Metrics::none(),
             group_commit_max_delay,
         })
+    }
+
+    /// The same ledgers with no legacy journal: the volume archived them (WP-6.2d), and none is
+    /// opened, shipped or evicted.
+    pub fn without_legacy(mut self) -> Self {
+        self.legacy = false;
+
+        self
     }
 
     /// The same ledgers, recording what they do to the deployment's metrics.
@@ -398,6 +410,9 @@ impl Streams {
 
     /// The legacy journal of one ledger, when an earlier release wrote one: never created here.
     fn legacy_journal(&self, zone: &str, ledger: &str) -> Result<Option<Journal>, JournalError> {
+        if !self.legacy {
+            return Ok(None);
+        }
         let directory = self.root.join(zone).join(ledger);
         if !directory
             .join(permguard_events::journal::STATE_FILE)
@@ -949,7 +964,9 @@ impl Streams {
         canonical: (&str, &str),
         display: (&str, &str),
     ) -> Result<(), JournalError> {
-        if canonical == display {
+        // An archived legacy (WP-6.2d) is an old generation nothing moves inside, and a pair of
+        // journals there is no longer read, so no longer ambiguous.
+        if !self.legacy || canonical == display {
             return Ok(());
         }
         let target = self.root.join(canonical.0).join(canonical.1);
@@ -1134,6 +1151,9 @@ impl Streams {
     /// restart the shipper has to find every journal with unshipped records, including the ones no
     /// request has touched yet.
     pub fn ledgers(&self) -> Vec<(String, String)> {
+        if !self.legacy {
+            return Vec::new();
+        }
         children_holding(&self.root, permguard_events::journal::STATE_FILE)
     }
 
