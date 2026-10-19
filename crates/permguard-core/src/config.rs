@@ -3441,6 +3441,12 @@ produce: use `EdDSA` or `ES256`"
         &self.events_pull_producer_keys
     }
 
+    /// Whether the configuration names any key file of the retired HTTP pull (WP-6.2c2b2): the
+    /// imported history arrives over `events.import`, verified under the membership's pins.
+    pub fn events_pull_producer_keys_declared(&self) -> bool {
+        !self.events_pull_producer_keys.is_empty()
+    }
+
     /// Records which ledgers this plane subscribes to.
     ///
     /// Structured, so it comes from the file rather than the layered pipeline — a list of

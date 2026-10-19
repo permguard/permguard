@@ -913,6 +913,8 @@ pub fn pull_ledgers(
         .collect()
 }
 
+/// Read from `dataPlane.events.pull.producer_keys`, which is retired (WP-6.2c2b2): read only so
+/// the Data Plane refuses a configuration still naming it.
 pub fn pull_producer_keys(
     value: &Value,
 ) -> anyhow::Result<Vec<permguard_core::decisions::EventProducerSource>> {

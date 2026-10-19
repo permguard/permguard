@@ -230,8 +230,8 @@ recorded anything. Both are configuration mistakes that look like a working depl
 {{- if and (ne $mode "local") (not (dig "ledgers" list ($pull | default dict))) }}
 {{- fail (printf "%s sets events.pull.mode=%q and subscribes to no ledgers: a shared mode decides against history other planes recorded, and this one has been told to read none of it. Name the ledgers under events.pull.ledgers, or use `local`." $component $mode) }}
 {{- end }}
-{{- if and (ne $mode "local") (not (dig "producer_keys" list ($pull | default dict))) }}
-{{- fail (printf "%s sets events.pull.mode=%q and declares no events.pull.producer_keys: imported records must be verified by a key bound to their exact producer and allowed zone/ledger. Add bound producer keys, or use `local`." $component $mode) }}
+{{- if dig "producer_keys" list ($pull | default dict) }}
+{{- fail (printf "%s sets events.pull.producer_keys, which is retired: a shared mode decides on the history the Host imports over events.import, verified under the membership's pinned rings. Remove it." $component) }}
 {{- end }}
 {{- end }}
 {{- end }}

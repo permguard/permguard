@@ -384,6 +384,14 @@ is cut.
 
 ### Changed
 
+- **The Data Plane's HTTP pull is retired: a shared mode decides on what the Host imports over `events.import`.**
+  `dataPlane.events.pull.producer_keys` is refused at start, and the Helm chart refuses it; a shared mode no longer needs it.
+  The pull worker is gone: a Data Plane no longer reads the Control Plane's public event reads, and `events.destination` is used only while a legacy event journal still drains.
+  What the pull imported before stays under `data/events/pull`, read-only and still read by shared decisions, until a later change archives it; it is no longer compacted.
+  `dataPlane.events.pull.mode`, `max_staleness` and `ledgers[]` keep their names: the ledgers the Host imports, the mode the plane decides under and how stale a verified checkpoint may be; a ledger named twice is refused at start.
+  `interval` and each ledger's `event_types` are still accepted and are inert: the Host imports a ledger's whole history on its membership pass.
+  The log events `events.import_quarantined`, `events.import_evicted`, `events.import_eviction_failed` and `events.subscription_unresolved`, and the pull's `events.import_gap`, `events.import_refused` and `events.imported`, are gone with it; the metrics `permguard_temporal_imports_total`, `permguard_temporal_imported_records_total` and `permguard_temporal_import_gaps_total` are no longer emitted.
+
 - **The event reads answer from the Host's stream too, and the event producer key files are gone.**
   A Control Plane composed with the Host's stream engine reads, besides its own event store, what the Host's consumer of `data/events` holds, in process.
   A tenant read (`/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records`) answers what the store holds first, then each producer's runs of that ledger by `host_id` and the order they opened, every filter applied to both.

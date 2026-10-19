@@ -46,8 +46,8 @@
 //! | [`streams`] | the journals, one per ledger: identity, dedup, watermarks, replay |
 //! | [`shipper`] | one round of shipping a contiguous signed batch to the control plane |
 //! | [`service`] | the loop that runs those rounds, and the eviction that follows them |
-//! | [`pull`] | importing verified history other planes recorded, when a deployment opts in |
-//! | [`mod@imports`] | where that history lives, and the two kinds of duplicate it is deduplicated by |
+//! | [`imported`] | the history the Host imports over `events.import`, read for shared decisions |
+//! | [`mod@imports`] | what the retired HTTP pull imported, read-only until it is archived |
 //! | [`submit`] | the one path both transports call |
 //! | [`configuration`] | what this plane publishes about the interface |
 //! | [`http`] / [`grpc`] | the two bindings, which share the path above and add nothing to it |
@@ -60,7 +60,6 @@ pub mod http;
 pub mod imported;
 pub mod imports;
 pub mod measure;
-pub mod pull;
 pub mod sequencer;
 pub mod service;
 pub mod shipper;
@@ -192,8 +191,10 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
                     tracing::warn!(
                         event.name = "temporal.import_unavailable",
                         component = "temporal",
-                        "a shared mode with no Host consumer of `data/events`: freshness is the \
-                         HTTP pull's last read, not a verified coordinator checkpoint"
+                        "a shared mode with no Host consumer of `data/events`: no import reaches \
+                         this plane, so `shared-bounded` refuses every decision and \
+                         `shared-eventual` decides on its own history and what the retired HTTP \
+                         pull imported before"
                     );
                     submitter
                 }
@@ -286,76 +287,26 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
             config.events_pull_mode().as_str()
         );
     }
-    if config.events_pull_mode().is_shared() {
-        let sources = config.events_pull_producer_keys();
-        if sources.is_empty() {
+    // The HTTP pull is retired (WP-6.2c2b2, owner decision of 2026-10-19): the imported history
+    // arrives over `events.import`, verified under the membership's pins. A configuration still
+    // naming its key files is refused, so no deployment believes they are in force.
+    if config.events_pull_producer_keys_declared() {
+        anyhow::bail!(
+            "`dataPlane.events.pull.producer_keys` is retired: the history a shared mode decides \
+             on is imported by the Host over `events.import`, from its coordinator, verified \
+             under the membership's pinned rings. Remove it"
+        );
+    }
+    // One ledger, one import: a ledger named twice is a configuration mistake.
+    let mut subscribed = std::collections::BTreeSet::new();
+    for subscription in config.events_pull_ledgers() {
+        if !subscribed.insert((&subscription.zone, &subscription.ledger)) {
             anyhow::bail!(
-                "`dataPlane.events.pull.mode` is `{}` and no producer trust is configured. Name \
-                 each accepted producer and its zone/ledger scope under \
-                 `dataPlane.events.pull.producer_keys`; imported history is never verified \
-                 against an unbound key list",
-                config.events_pull_mode().as_str()
+                "the shared event ledger `{}/{}` is declared more than once under \
+                 `dataPlane.events.pull.ledgers`: name it once",
+                subscription.zone,
+                subscription.ledger
             );
-        }
-        for source in sources {
-            if source.path.trim().is_empty()
-                || source.producer.trim().is_empty()
-                || source.zone.trim().is_empty()
-                || source.ledger.trim().is_empty()
-                || source.producer == "*"
-            {
-                anyhow::bail!(
-                    "every pull producer key names a non-empty `path`, exact `producer`, and \
-                    `zone`/`ledger` (which may be `*`)"
-                );
-            }
-            let resolved = config.working_dir().join(&source.path);
-            let text = std::fs::read_to_string(&resolved).map_err(|error| {
-                anyhow::anyhow!(
-                    "reading pull producer `{}` from {}: {error}",
-                    source.producer,
-                    resolved.display()
-                )
-            })?;
-            let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
-                anyhow::anyhow!("parsing pull producer keys {}: {error}", resolved.display())
-            })?;
-            let set = parsed.get("keys").cloned().unwrap_or(parsed);
-            let keys: Vec<permguard_core::Jwk> = serde_json::from_value(set).map_err(|error| {
-                anyhow::anyhow!("{} is not a JWKS: {error}", resolved.display())
-            })?;
-            if keys.is_empty() {
-                anyhow::bail!(
-                    "pull producer `{}` publishes no keys in {}",
-                    source.producer,
-                    resolved.display()
-                );
-            }
-        }
-        let mut subscribed = std::collections::BTreeSet::new();
-        for subscription in config.events_pull_ledgers() {
-            if !subscribed.insert((&subscription.zone, &subscription.ledger)) {
-                anyhow::bail!(
-                    "the shared event subscription `{}/{}` is declared more than once. One tenant \
-                     has one cursor and one canonical event-type selection: combine its types in \
-                     one entry",
-                    subscription.zone,
-                    subscription.ledger
-                );
-            }
-            let covered = sources.iter().any(|source| {
-                (source.zone == "*" || source.zone == subscription.zone)
-                    && (source.ledger == "*" || source.ledger == subscription.ledger)
-            });
-            if !covered {
-                anyhow::bail!(
-                    "the shared event subscription `{}/{}` has no producer key authorized for \
-                     that tenant. Add a bound entry under \
-                     `dataPlane.events.pull.producer_keys`, or remove the subscription",
-                    subscription.zone,
-                    subscription.ledger
-                );
-            }
         }
     }
     // The retention floor has to cover Dogwood's own default look-back plus what a journal must

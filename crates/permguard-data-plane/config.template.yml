@@ -251,17 +251,12 @@ dataPlane:
   #   #                    `max_staleness` — the mode for "decide only on history I can vouch for"
   #   pull:
   #     mode: local
-  #     interval: "2s"
+  #     interval: "2s"               # accepted and inert since the Host imports (WP-6.2c2b2)
   #     max_staleness: "10s"         # required in practice by shared-bounded
   #     ledgers:
   #       - zone: acme
   #         ledger: agent-governance
-  #         event_types: [permguard.dogwood.event.v1]
-  #     producer_keys:               # required by either shared mode; bound to origin and tenant
-  #       - path: trust/data-plane-b-events.jwks
-  #         producer: data-plane-b
-  #         zone: acme
-  #         ledger: agent-governance
+  #         event_types: [permguard.dogwood.event.v1]   # accepted and inert: the whole ledger is imported
 
 # Contracts this build carries whose wire and replication shapes have not yet proven stable.
 # A block rather than scattered flags, so what is provisional is visible in one place.

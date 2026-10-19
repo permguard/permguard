@@ -297,3 +297,53 @@ async fn discovery_lists_the_temporal_interface_only_where_it_is_served() {
         "half-configured is not served, so it is not advertised: {document}"
     );
 }
+
+/// WP-6.2c2b2: the HTTP pull is retired. A shared mode with its ledgers starts without any key
+/// file; a configuration still naming the pull's producer keys is refused by name.
+#[test]
+fn a_shared_mode_needs_no_pull_keys_and_naming_them_is_refused() {
+    use permguard_core::config::{
+        SETTING_EVENTS_ENABLED, SETTING_EVENTS_PULL_MODE, SETTING_EXPERIMENTAL_DOGWOOD,
+    };
+
+    let module = permguard_data_plane::module();
+    let shared = deployed_with(&[
+        (SETTING_EVENTS_ENABLED, "true"),
+        (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
+        (SETTING_EVENTS_PULL_MODE, "shared-bounded"),
+    ])
+    .with_pull_ledgers(vec![permguard_core::config::PullSubscription {
+        zone: "zone-1".to_owned(),
+        ledger: "ledger-1".to_owned(),
+        event_types: vec![permguard_core::domains::event::DOGWOOD_V1.to_owned()],
+    }]);
+    module
+        .startup_check(&shared)
+        .expect("no key file is needed any more");
+    let refused = module
+        .startup_check(&shared.clone().with_pull_producer_keys(vec![
+            permguard_core::decisions::EventProducerSource {
+                path: "trust/peer.jwks".to_owned(),
+                producer: "peer".to_owned(),
+                zone: "zone-1".to_owned(),
+                ledger: "ledger-1".to_owned(),
+            },
+        ]))
+        .expect_err("the retired keys are refused");
+    let said = refused.to_string();
+    assert!(
+        said.contains("dataPlane.events.pull.producer_keys"),
+        "{said}"
+    );
+    assert!(said.contains("retired"), "{said}");
+    // One ledger, one import.
+    let ledger = permguard_core::config::PullSubscription {
+        zone: "zone-1".to_owned(),
+        ledger: "ledger-1".to_owned(),
+        event_types: Vec::new(),
+    };
+    let twice = module
+        .startup_check(&shared.with_pull_ledgers(vec![ledger.clone(), ledger]))
+        .expect_err("a ledger named twice");
+    assert!(twice.to_string().contains("more than once"), "{twice}");
+}

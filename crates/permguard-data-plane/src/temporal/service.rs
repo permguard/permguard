@@ -35,13 +35,12 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Result, anyhow};
 use permguard_core::{BoxFuture, PlaneContext, PlaneTask, future::ready};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
-use super::pull::{Puller, Round as PullRound, Subscription};
 use super::shipper::{Backoff, Round, Shipper};
 
 const COMPONENT: &str = "temporal";
@@ -50,8 +49,6 @@ const COMPONENT: &str = "temporal";
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(5);
 /// The most bytes one batch carries.
 pub const DEFAULT_BATCH_BYTES: u64 = 4 * 1024 * 1024;
-/// How often the local copy of imported history is compacted.
-const IMPORT_EVICTION_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 /// The running loop, and the way to ask it to stop.
 struct Running {
@@ -121,21 +118,20 @@ impl PlaneTask for EventService {
             };
 
             let interval = self.tick.unwrap_or(DEFAULT_INTERVAL);
-            let pull_interval = self.tick.unwrap_or(config.events_pull_interval());
             let streams = Arc::clone(submitter.streams());
             // The origins the member Host imports, whose floor this loop keeps too (WP-6.2c2b1).
             let imported = submitter.imported().cloned();
             let retention = streams.bounds().retention_minimum;
-            let imported_retention = streams.bounds().required_retention(retention);
             // Recorded on the Host's producer and shipped by it over `events.ship` (WP-6.2a); this
             // loop keeps the floor the producer deletes above current. The old shipper runs only
             // while a legacy journal holds anything unshipped, which it sends until it is empty.
             let legacy_pending = legacy_unshipped(&streams);
-            let pull = config.events_pull_mode().is_shared();
             // An event-specific destination wins. Only its absence falls back to the decision
             // log's endpoint, so a value written under `events.destination` can never be accepted
             // by configuration and then ignored by the running service.
-            let remote = if legacy_pending || pull {
+            // The HTTP pull is retired (WP-6.2c2b2): only a legacy journal still draining reaches
+            // the Control Plane over it.
+            let remote = if legacy_pending {
                 Some(destination(context)?)
             } else {
                 None
@@ -167,27 +163,13 @@ impl PlaneTask for EventService {
                 "events are recorded on the Host's stream and shipped over events.ship"
             );
 
-            // The pull worker, when this deployment reads history other planes recorded. Built
-            // here so it shares the loop's cadence and its shutdown: a second loop would be a
-            // second thing to stop, and one of the two would be the one that is not stopped.
-            let puller = match &remote {
-                Some((url, tls)) => puller(context, url, tls)?,
-                None => None,
-            };
             let (stop, mut stopped) = watch::channel(false);
             let backoff = Backoff::default();
             let task = tokio::spawn(async move {
                 let mut ship_failures = 0u32;
-                let mut pull_failures = 0u32;
                 let mut next_ship = tokio::time::Instant::now() + interval;
-                let mut next_pull = tokio::time::Instant::now() + pull_interval;
-                let mut next_import_eviction = tokio::time::Instant::now();
                 loop {
-                    let deadline = if puller.is_some() {
-                        next_ship.min(next_pull).min(next_import_eviction)
-                    } else {
-                        next_ship
-                    };
+                    let deadline = next_ship;
                     tokio::select! {
                         _ = tokio::time::sleep_until(deadline) => {
                             let now = tokio::time::Instant::now();
@@ -228,86 +210,6 @@ impl PlaneTask for EventService {
                                 next_ship = tokio::time::Instant::now() + wait;
                             }
 
-                            if puller.is_some() && now >= next_pull {
-                                let puller = puller.clone();
-                                let outcome = tokio::task::spawn_blocking(move || {
-                                    puller.map(|held| held.round()).unwrap_or_default()
-                                }).await;
-                                match outcome {
-                                    Ok(rounds) => {
-                                        let deferred = rounds.iter().any(|(_, round)| {
-                                            matches!(round, PullRound::Deferred(_))
-                                        });
-                                        for (_, round) in rounds {
-                                            if let PullRound::Quarantined { records, reason } = round {
-                                                warn!(
-                                                    event.name = "events.import_quarantined",
-                                                    component = COMPONENT,
-                                                    records,
-                                                    reason = reason.as_str(),
-                                                    "imported records were refused and not applied"
-                                                );
-                                            }
-                                        }
-                                        pull_failures = if deferred {
-                                            pull_failures.saturating_add(1)
-                                        } else {
-                                            0
-                                        };
-                                    }
-                                    Err(_) => pull_failures = pull_failures.saturating_add(1),
-                                }
-                                let wait = match pull_failures {
-                                    0 => pull_interval,
-                                    held => backoff.wait(held, jitter()),
-                                };
-                                next_pull = tokio::time::Instant::now() + wait;
-                            }
-
-                            if puller.is_some() && now >= next_import_eviction {
-                                let puller = puller.clone();
-                                let outcome = tokio::task::spawn_blocking(move || {
-                                    let now = std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .map(|held| held.as_secs() as i64)
-                                        .unwrap_or_default();
-                                    let horizon = now.saturating_sub(
-                                        imported_retention.as_secs() as i64
-                                    );
-                                    puller
-                                        .map(|held| held.evict_before(horizon))
-                                        .unwrap_or_default()
-                                }).await;
-                                match outcome {
-                                    Ok(results) => {
-                                        for (_, result) in results {
-                                            match result {
-                                                Ok(0) => {}
-                                                Ok(removed) => info!(
-                                                    event.name = "events.import_evicted",
-                                                    component = COMPONENT,
-                                                    removed,
-                                                    "imported copies no temporal policy can still read were removed"
-                                                ),
-                                                Err(error) => warn!(
-                                                    event.name = "events.import_eviction_failed",
-                                                    component = COMPONENT,
-                                                    error = error.as_str(),
-                                                    "imported history could not be compacted; keeping it is the safe direction"
-                                                ),
-                                            }
-                                        }
-                                    }
-                                    Err(error) => warn!(
-                                        event.name = "events.import_eviction_failed",
-                                        component = COMPONENT,
-                                        error = %error,
-                                        "the imported-history compaction worker failed"
-                                    ),
-                                }
-                                next_import_eviction = tokio::time::Instant::now()
-                                    + IMPORT_EVICTION_INTERVAL;
-                            }
                         }
                         _ = stopped.changed() => break,
                     }
@@ -342,130 +244,6 @@ impl PlaneTask for EventService {
     }
 }
 
-/// The pull worker, when this deployment reads history other planes recorded.
-///
-/// `None` for `local`, which is the default and the ordinary case. A plane that reads only its own
-/// events has nothing to import and nothing to verify, and building a worker for it would be
-/// building something that runs and finds nothing for ever.
-fn puller(
-    context: &PlaneContext<'_>,
-    url: &str,
-    tls: &permguard_control_client::TlsOptions,
-) -> Result<Option<Arc<Puller>>> {
-    let config = context.config();
-    if !config.events_pull_mode().is_shared() {
-        return Ok(None);
-    }
-    let reader = permguard_control_client::events::client(
-        url,
-        tls,
-        Box::new(permguard_control_client::narrate::Silent),
-    )
-    .map_err(|error| anyhow!("reaching the event store at {url}: {error}"))?;
-
-    // Whose signatures this plane accepts on imported records. Its own ring is deliberately not
-    // among them: an imported record was produced by somebody else, and a plane that verified
-    // against itself would accept anything it could have written.
-    let keys = producer_keys(config);
-    if keys.is_empty() {
-        anyhow::bail!(
-            "`dataPlane.events.pull.mode` is `{}` and this plane knows no producer's keys: name \
-             them with producer and tenant bindings under \
-             `dataPlane.events.pull.producer_keys`. Imported history would otherwise be applied \
-             without authority to say who produced it",
-            config.events_pull_mode().as_str()
-        );
-    }
-
-    // Canonicalised against the mirrors this plane holds, for the same reason the submission path
-    // is: a ledger answers to its identifiers and to its display names, and an operator may have
-    // configured either. Imported history is keyed by identifier, so a subscription left as the
-    // operator spelled it would ask for a stream nobody publishes and import nothing — silently,
-    // because "no records" and "no such stream" look alike from a cursor.
-    //
-    // A pair this plane does not mirror is left as configured and named in the log: it may be a
-    // ledger whose first synchronization has not landed yet, and refusing to start over that would
-    // make an ordering problem into an outage.
-    let mirrors = config.mirrors_directory();
-    let canonical = |zone: &str, ledger: &str| -> (String, String) {
-        match crate::authz::store::find(&mirrors, zone, ledger) {
-            Some(mirror) => (
-                mirror.identity.zone_id.clone(),
-                mirror.identity.ledger_id.clone(),
-            ),
-            None => {
-                warn!(
-                    event.name = "events.subscription_unresolved",
-                    component = COMPONENT,
-                    zone,
-                    ledger,
-                    "a pull subscription names a ledger this plane does not mirror yet: it is used                      as written, and will import nothing until the mirror arrives"
-                );
-
-                (zone.to_owned(), ledger.to_owned())
-            }
-        }
-    };
-    let subscriptions: Vec<Subscription> = config
-        .events_pull_ledgers()
-        .iter()
-        .map(|held| {
-            let (zone, ledger) = canonical(&held.zone, &held.ledger);
-
-            Subscription {
-                zone,
-                ledger,
-                event_types: match held.event_types.is_empty() {
-                    // Absent means the one type this build validates, stated rather than left open:
-                    // the type set is part of the filter the read cursor is bound to, and a cursor
-                    // bound to "everything" would keep meaning something different as types are added.
-                    true => vec![permguard_languages::event::EVENT_TYPE.to_owned()],
-                    false => held.event_types.clone(),
-                },
-            }
-        })
-        .collect();
-
-    let imports = super::imports(config);
-    for subscription in &subscriptions {
-        imports
-            .bind(
-                &subscription.zone,
-                &subscription.ledger,
-                &subscription.event_types,
-            )
-            .with_context(|| {
-                format!(
-                    "binding the import cursor for `{}/{}` to its event types",
-                    subscription.zone, subscription.ledger
-                )
-            })?;
-    }
-
-    let key_files = config
-        .events_pull_producer_keys()
-        .iter()
-        .map(|source| super::pull::ProducerFile {
-            path: config.working_dir().join(&source.path),
-            producer: source.producer.clone(),
-            zone: source.zone.clone(),
-            ledger: source.ledger.clone(),
-        })
-        .collect();
-
-    Ok(Some(Arc::new(
-        Puller::new(
-            reader,
-            imports,
-            subscriptions,
-            keys,
-            config.events_pull_mode(),
-            context.metrics().clone(),
-        )
-        .with_key_files(key_files),
-    )))
-}
-
 /// Where this plane exchanges event records, using the event destination when one is declared and
 /// the decision-log endpoint otherwise for deployments that send both streams to one control
 /// plane.
@@ -498,37 +276,6 @@ fn tls_of(
         token: None,
     }
     .rooted_at(working_dir)
-}
-
-/// The producers' published key sets, from the paths the file names.
-fn producer_keys(config: &permguard_core::Config) -> Vec<super::pull::ProducerTrust> {
-    let mut keys = Vec::new();
-    for source in config.events_pull_producer_keys() {
-        let resolved = config.working_dir().join(&source.path);
-        let Ok(text) = std::fs::read_to_string(&resolved) else {
-            continue;
-        };
-        let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) else {
-            continue;
-        };
-        keys.extend(
-            parsed
-                .get("keys")
-                .and_then(serde_json::Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|value| serde_json::from_value::<permguard_core::Jwk>(value).ok())
-                .map(|key| super::pull::ProducerTrust {
-                    key,
-                    producer: source.producer.clone(),
-                    zone: source.zone.clone(),
-                    ledger: source.ledger.clone(),
-                }),
-        );
-    }
-
-    keys
 }
 
 /// Evicts what the control plane holds and no loaded policy could still read.

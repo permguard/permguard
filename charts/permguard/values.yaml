@@ -150,8 +150,6 @@ dataPlane:
   #         pull:
   #           mode: shared-eventual       # replication/audit convergence, not request-time HA
   #           ledgers: [{ zone: acme, ledger: agent-governance, event_types: [permguard.dogwood.event.v1] }]
-  #           producer_keys:                    # mandatory in a shared mode
-  #             - { path: /etc/permguard/trust/peer-events.jwks, producer: peer-plane, zone: acme, ledger: agent-governance }
   #     experimental:
   #       dogwood: { enabled: "true" }
   #
