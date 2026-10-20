@@ -295,6 +295,33 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "404": {
             "description": "The ledger or scope is not held.",
             "content": {
@@ -326,7 +353,8 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.EventLog/ListRecords"
+        "x-grpc-rpc": "permguard.control.v1.EventLog/ListRecords",
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
       }
     },
     "/events/v1alpha1/records/{event_id}": {
@@ -386,6 +414,33 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No event in this ledger carries that identifier.",
             "content": {
@@ -407,7 +462,8 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.EventLog/GetRecord"
+        "x-grpc-rpc": "permguard.control.v1.EventLog/GetRecord",
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
       }
     },
     "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records": {
@@ -622,6 +678,33 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "404": {
             "description": "The ledger or scope is not held.",
             "content": {
@@ -657,7 +740,8 @@
         "x-grpc-only": [
           "producer_class"
         ],
-        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ListRecordsRequest`: `producer_class`."
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ListRecordsRequest`: `producer_class`.",
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
       }
     },
     "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/signers": {

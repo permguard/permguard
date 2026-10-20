@@ -322,7 +322,8 @@ fn a_stream_read_names_one_host_run() {
     let page = fixture.read(&scope, &Filters::default(), &Window::default());
     assert_eq!(ids(&page), ["h-1-7-1", "h-1-7-2"]);
     assert!(page.coverage.contiguous);
-    // A run the consumer does not hold reads the legacy store, which holds nothing.
+    // A run the consumer does not hold, which the legacy store does not hold either, is no
+    // stream: `not_found`, never an empty page (WP-6.3c, after the review).
     let unknown = Scope::Stream {
         zone: ZONE.to_owned(),
         ledger: LEDGER.to_owned(),
@@ -330,12 +331,16 @@ fn a_stream_read_names_one_host_run() {
         producer: hex(&[1; 16]),
         instance: hex(&[8; 16]),
     };
-    assert!(
-        fixture
-            .read(&unknown, &Filters::default(), &Window::default())
-            .records
-            .is_empty()
-    );
+    assert!(matches!(
+        read_with(
+            &fixture.sources(),
+            &unknown,
+            &Filters::default(),
+            &fixture.keys,
+            &Window::default()
+        ),
+        Err(ReadError::NotHeld(_))
+    ));
 }
 
 #[test]
@@ -537,6 +542,7 @@ fn facade(fixture: &Fixture) -> crate::events::http::EventFacade {
         disclosure: permguard_core::Disclosure::Full,
         metrics: permguard_core::Metrics::none(),
         base_url: String::new(),
+        authorization: crate::evidence::permissive(),
     }
 }
 

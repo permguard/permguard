@@ -181,7 +181,7 @@ pub mod labels {
     label!(
         /// How an operation ended. Words, never a message or anything a client wrote.
         OUTCOME, "outcome", [
-            "accepted", "blocked", "conflict", "damaged", "decided", "deferred", "deny",
+            "accepted", "blocked", "conflict", "damaged", "decided", "deferred", "denied", "deny",
             "deny_by_default", "dropped", "empty", "expired", "failed", "indeterminate",
             "internal", "not_found", "ok", "out_of_order", "partial", "permit", "quarantined",
             "queued", "ready", "refused", "rejected", "replay", "replayed", "served", "skipped",

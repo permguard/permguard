@@ -255,6 +255,9 @@ fn control(tag: &str, keys: &DirectoryKeyManager) -> Arc<Wire> {
             disclosure: Disclosure::Full,
             metrics: Metrics::none(),
             base_url: "http://127.0.0.1:6443".to_owned(),
+            authorization: std::sync::Arc::new(
+                permguard_host::composition::Authorization::permissive(),
+            ),
         },
         down: std::sync::atomic::AtomicBool::new(false),
     })

@@ -197,6 +197,9 @@ pub enum ReadError {
     /// resolve is a statement about the request, and answering it with an empty page would let a
     /// mistyped or wrongly-shaped scope read as an audit trail with nothing in it.
     Unknown(String),
+    /// A producer stream neither the store nor the Host's consumer ever held: `not_found`, never
+    /// an empty complete page (WP-6.3c, after the review).
+    NotHeld(String),
     /// The search gave up before reaching the end of its snapshot.
     ///
     /// Distinct from "not found", and it has to be: a lookup that walked its bound and stopped has
@@ -214,7 +217,7 @@ impl std::fmt::Display for ReadError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Offset(error) => write!(formatter, "{error}"),
-            Self::Unknown(detail) => write!(formatter, "{detail}"),
+            Self::Unknown(detail) | Self::NotHeld(detail) => write!(formatter, "{detail}"),
             Self::Expired {
                 oldest,
                 oldest_sequence,
@@ -330,6 +333,19 @@ pub fn read_with(
 ) -> Result<Page, ReadError> {
     let store = sources.store;
     let (legacy, host_runs) = sources_of(sources, scope)?;
+    // A stream nobody held is not an empty one (WP-6.3c, after the review).
+    if let Scope::Stream { .. } = scope
+        && legacy
+        && host_runs.is_empty()
+        && !store
+            .scope_path(scope)
+            .map_err(|error| ReadError::Unavailable(error.to_string()))?
+            .is_dir()
+    {
+        return Err(ReadError::NotHeld(
+            "this store holds no such producer stream in this ledger".to_owned(),
+        ));
+    }
     let gate = store.scope_gate(scope);
     let _reading = match gate.lock() {
         Ok(held) => held,

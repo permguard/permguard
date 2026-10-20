@@ -74,6 +74,9 @@ pub struct DecisionFacade {
     pub catalog: Option<Arc<dyn permguard_core::catalog::Catalog>>,
     /// Where this plane is reached, what its discovery document's endpoints are built on.
     pub base_url: String,
+    /// The Host's authorization, every evidence read decides with before it looks anything up
+    /// (WP-6.3c).
+    pub authorization: Arc<permguard_host::composition::Authorization>,
 }
 
 /// One producer stream's signer history, with the receiver's durable frontier.
@@ -272,6 +275,87 @@ impl DecisionFacade {
             &self.cursor_key,
             window,
         )
+    }
+
+    /// The scope `actor` may read under `evidence.read`, resolved to ids (WP-6.3c): refused before
+    /// any lookup when nothing is granted under the plane; an unknown scope `not_found` only
+    /// under a whole-plane grant; a tenant on its ledger; a stream on the ledger of the Host run
+    /// it names, or on the whole plane for a legacy stream mixing tenants.
+    pub(crate) fn gate(
+        &self,
+        actor: &permguard_core::authz::Actor,
+        scope: Scope,
+    ) -> Result<Scope, crate::evidence::Gated<read::ReadError>> {
+        use crate::evidence::{self, Gated};
+
+        evidence::admitted(&self.authorization, actor).map_err(Gated::Denied)?;
+        let sources = read::Sources {
+            store: &self.store,
+            host: self.host.as_ref(),
+            catalog: self.catalog.as_ref(),
+        };
+        let scope = match read::canonical(&sources, scope) {
+            Ok(scope) => scope,
+            Err(error @ read::ReadError::Unknown(_)) => {
+                evidence::unknown(&self.authorization, actor).map_err(Gated::Denied)?;
+                return Err(Gated::Refused(error));
+            }
+            Err(error) => return Err(Gated::Refused(error)),
+        };
+        let allowed = match &scope {
+            Scope::Tenant { zone, ledger } => {
+                evidence::on_ledger(&self.authorization, actor, zone, ledger)
+            }
+            Scope::Stream { pdp_id, instance } => {
+                match self.run_ledger(pdp_id, instance).map_err(Gated::Refused)? {
+                    Some((zone_id, ledger_id)) => {
+                        evidence::on_ledger(&self.authorization, actor, &zone_id, &ledger_id)
+                    }
+                    None => evidence::on_plane(&self.authorization, actor),
+                }
+            }
+        };
+        allowed.map_err(Gated::Denied)?;
+        Ok(scope)
+    }
+
+    /// The ledger of the Host run `pdp_id`/`instance` names in hex, when the consumer holds it.
+    fn run_ledger(
+        &self,
+        pdp_id: &str,
+        instance: &str,
+    ) -> Result<Option<(String, String)>, read::ReadError> {
+        let (Some(host), Some(producer), Some(run)) = (
+            self.host.as_ref(),
+            read::unhex16(pdp_id),
+            read::unhex16(instance),
+        ) else {
+            return Ok(None);
+        };
+        Ok(
+            match host
+                .locate(&producer, &run)
+                .map_err(read::ReadError::Unavailable)?
+            {
+                Some(permguard_core::authz::Resource::Ledger {
+                    zone_id, ledger_id, ..
+                }) => Some((zone_id, ledger_id)),
+                _ => None,
+            },
+        )
+    }
+
+    /// Reads one bounded block of `scope` as `actor`, through the `evidence.read` gate (WP-6.3c):
+    /// what both transports answer.
+    pub(crate) fn read_as(
+        &self,
+        actor: &permguard_core::authz::Actor,
+        scope: Scope,
+        window: &Window,
+    ) -> Result<read::Page, crate::evidence::Gated<read::ReadError>> {
+        let scope = self.gate(actor, scope)?;
+        self.read(&scope, window)
+            .map_err(crate::evidence::Gated::Refused)
     }
 
     /// Whether this store waits for batches over its ingest route: a producer key set is
@@ -525,7 +609,11 @@ fn window_of(
     Ok((asked, query))
 }
 
-async fn records(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery) -> Response {
+async fn records(
+    State(facade): State<DecisionFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
+    RawQuery(query): RawQuery,
+) -> Response {
     let (window, query) = match window_of(query.as_deref(), &["pdp", "instance"]) {
         Ok(parsed) => parsed,
         Err(error) => return refuse(&facade, error),
@@ -543,7 +631,7 @@ async fn records(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery
     };
     let scope = Scope::Stream { pdp_id, instance };
 
-    serve(facade, scope, window, "stream").await
+    serve(facade, actor, scope, window, "stream").await
 }
 
 /// Which key signed which stretch of one producer stream, public keys included.
@@ -609,6 +697,7 @@ async fn signers(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery
 
 async fn tenant_records(
     State(facade): State<DecisionFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Response {
@@ -618,18 +707,40 @@ async fn tenant_records(
         Err(error) => return refuse(&facade, error),
     };
 
-    serve(facade, scope, window, "tenant").await
+    serve(facade, actor, scope, window, "tenant").await
 }
 
-async fn serve(facade: DecisionFacade, scope: Scope, asked: Asked, kind: &'static str) -> Response {
+async fn serve(
+    facade: DecisionFacade,
+    actor: Arc<permguard_core::authz::Actor>,
+    scope: Scope,
+    asked: Asked,
+    kind: &'static str,
+) -> Response {
     let window = asked.window();
     // Off the runtime's threads: a page is segment files read back, and a bulk
     // export must not stall the reactor the shippers are landing batches on.
     let page = {
-        let (reader, scope) = (facade.clone(), scope.clone());
-        tokio::task::spawn_blocking(move || reader.read(&scope, &window))
+        let reader = facade.clone();
+        tokio::task::spawn_blocking(move || reader.read_as(&actor, scope, &window))
             .await
-            .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+            .unwrap_or_else(|error| {
+                Err(crate::evidence::Gated::Refused(
+                    read::ReadError::Unavailable(error.to_string()),
+                ))
+            })
+    };
+    let page = match page {
+        Ok(page) => Ok(page),
+        // Before anything else: a denial says nothing the caller may not learn (WP-6.3c).
+        Err(crate::evidence::Gated::Denied(denial)) => {
+            facade.metrics.count(
+                &measure::READS,
+                &[(labels::SCOPE, kind), (labels::OUTCOME, "denied")],
+            );
+            return crate::wire::http_denial(&denial);
+        }
+        Err(crate::evidence::Gated::Refused(error)) => Err(error),
     };
     match page {
         Ok(page) => {
@@ -1475,7 +1586,258 @@ mod strict {
             host: None,
             catalog: None,
             base_url: String::new(),
+            authorization: std::sync::Arc::new(
+                permguard_host::composition::Authorization::permissive(),
+            ),
         }
+    }
+
+    /// The auditor every gate test reads as.
+    fn auditor() -> Arc<permguard_core::authz::Actor> {
+        Arc::new(permguard_core::authz::Actor::Authenticated(
+            permguard_core::authz::ActorContext::new(
+                permguard_core::authz::Principal::new("spiffe://acme/auditor")
+                    .expect("a principal"),
+                permguard_core::authz::Credential::SanUri,
+                None,
+            ),
+        ))
+    }
+
+    /// Everybody granted `evidence.read` on `selector`, and nothing else.
+    fn granted(selector: &str) -> Arc<permguard_host::composition::Authorization> {
+        Arc::new(permguard_host::composition::Authorization::public_only(&[
+            permguard_host::authz::PublicGrant::new(
+                &[permguard_core::authz::operations::EVIDENCE_READ],
+                permguard_core::authz::Selector::parse(selector).expect("a selector"),
+            ),
+        ]))
+    }
+
+    /// The routes of `facade` as `actor` reads them.
+    fn as_actor(facade: DecisionFacade, actor: Arc<permguard_core::authz::Actor>) -> Router {
+        routes(facade).layer(axum::Extension(actor))
+    }
+
+    /// WP-6.3c, owner decision of 2026-10-20: a tenant read takes `evidence.read` on its ledger in
+    /// this plane's tree and on nothing else; a caller no boundary decided is `401`.
+    #[tokio::test]
+    async fn a_tenant_read_takes_evidence_read_on_its_ledger_and_nothing_else() {
+        let held = DecisionFacade {
+            authorization: granted("plane/control/zone/acme/ledger/main"),
+            ..facade("gate-tenant")
+        };
+        let router = as_actor(held.clone(), auditor());
+        let (status, body) = get(&router, "/zones/acme/ledgers/main/decisions/v1/records").await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (status, body) = get(&router, "/zones/acme/ledgers/audit/decisions/v1/records").await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+        assert!(
+            body.get("class").is_none(),
+            "the closed denial body: {body}"
+        );
+        let (status, _) = get(
+            &routes(held),
+            "/zones/acme/ledgers/main/decisions/v1/records",
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    /// WP-6.3c: a ledger nobody holds is refused as a foreign one, unless the caller's grants
+    /// cover the whole plane, which learns it is `not_found`.
+    #[tokio::test]
+    async fn an_unknown_and_a_foreign_ledger_are_refused_alike() {
+        use permguard_core::catalog::{Catalog as _, Selector};
+
+        let root = std::env::temp_dir().join(format!(
+            "permguard-decisions-gate-catalog-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let catalog = permguard_std::catalog::FileCatalog::new(root.join("catalog"));
+        let zone = catalog.create_zone("acme").expect("a zone");
+        let main = catalog
+            .create_ledger(&Selector::Id(zone.id.clone()), "main")
+            .expect("a ledger");
+        catalog
+            .create_ledger(&Selector::Id(zone.id.clone()), "audit")
+            .expect("another");
+        let catalog: Arc<dyn permguard_core::catalog::Catalog> = Arc::new(catalog);
+        let on = |selector: &str| {
+            as_actor(
+                DecisionFacade {
+                    authorization: granted(selector),
+                    catalog: Some(Arc::clone(&catalog)),
+                    ..facade("gate-unknown")
+                },
+                auditor(),
+            )
+        };
+        let ledger = on(&format!(
+            "plane/control/zone/{}/ledger/{}",
+            zone.id, main.id
+        ));
+        let (status, _) = get(&ledger, "/zones/acme/ledgers/main/decisions/v1/records").await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "granted by its ids, asked by its names"
+        );
+        let foreign = get(&ledger, "/zones/acme/ledgers/audit/decisions/v1/records").await;
+        let unknown = get(&ledger, "/zones/acme/ledgers/nowhere/decisions/v1/records").await;
+        assert_eq!(foreign.0, StatusCode::FORBIDDEN);
+        assert_eq!(unknown, foreign, "indistinguishable");
+        let plane = on("plane/control/*");
+        let (status, body) = get(&plane, "/zones/acme/ledgers/nowhere/decisions/v1/records").await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        assert_eq!(body["code"], permguard_core::codes::stream::SCOPE_UNKNOWN);
+    }
+
+    /// WP-6.3c: a stream read takes the grant of the ledger of the Host run it names; a legacy
+    /// stream, mixing every tenant, a grant covering the whole plane.
+    #[tokio::test]
+    async fn a_decision_stream_read_takes_the_runs_ledger_or_the_whole_plane() {
+        let host_run = format!(
+            "/decisions/v1/records?pdp={}&instance={}",
+            read::hex(&[0xa1; 16]),
+            read::hex(&[0x01; 16])
+        );
+        let legacy = "/decisions/v1/records?pdp=plane-a&instance=i-1";
+        let ledger = as_actor(
+            DecisionFacade {
+                authorization: granted("plane/control/zone/acme/ledger/main"),
+                ..signing("gate-stream-ledger")
+            },
+            auditor(),
+        );
+        assert_eq!(get(&ledger, &host_run).await.0, StatusCode::OK);
+        assert_eq!(get(&ledger, legacy).await.0, StatusCode::FORBIDDEN);
+        let other = as_actor(
+            DecisionFacade {
+                authorization: granted("plane/control/zone/acme/ledger/audit"),
+                ..signing("gate-stream-other")
+            },
+            auditor(),
+        );
+        assert_eq!(get(&other, &host_run).await.0, StatusCode::FORBIDDEN);
+        let plane = as_actor(
+            DecisionFacade {
+                authorization: granted("plane/control/*"),
+                ..signing("gate-stream-plane")
+            },
+            auditor(),
+        );
+        // Admitted, and told the legacy stream it names was never held.
+        let (status, body) = get(&plane, legacy).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        assert_eq!(body["code"], permguard_core::codes::stream::STREAM_UNKNOWN);
+    }
+
+    /// WP-6.3c, after the review: a caller granted nothing under the plane is refused before the
+    /// catalog is consulted at all, and the refusal is counted.
+    #[tokio::test]
+    async fn nothing_granted_under_the_plane_is_refused_before_any_lookup() {
+        use permguard_core::Recorder as _;
+
+        let registry = Arc::new(permguard_std::metrics::Registry::new());
+        let held = DecisionFacade {
+            authorization: granted("plane/data/*"),
+            catalog: Some(Arc::new(crate::evidence::Untouchable)),
+            metrics: permguard_core::Metrics::new(
+                Arc::clone(&registry) as Arc<dyn permguard_core::Recorder>
+            ),
+            ..facade("gate-before")
+        };
+        let path = "/zones/acme/ledgers/main/decisions/v1/records";
+        let (status, _) = get(&routes(held.clone()), path).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "nobody");
+        let (status, _) = get(&as_actor(held, auditor()), path).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "nothing granted here");
+        let denied: f64 = registry
+            .snapshot()
+            .into_iter()
+            .filter(|sample| {
+                sample.metric.name() == measure::READS.name()
+                    && sample
+                        .labels
+                        .iter()
+                        .any(|(name, value)| name == "outcome" && value == "denied")
+            })
+            .map(|sample| match sample.reading {
+                permguard_core::metrics::Reading::Value(value) => value,
+                permguard_core::metrics::Reading::Distribution { count, .. } => count as f64,
+            })
+            .sum();
+        assert_eq!(denied, 2.0);
+    }
+
+    /// WP-6.3c: the signers and the discovery document are not evidence reads, and answer a
+    /// caller with no grant at all.
+    #[tokio::test]
+    async fn the_signers_and_the_documents_stay_open() {
+        let router = routes(DecisionFacade {
+            authorization: Arc::new(permguard_host::composition::Authorization::closed()),
+            ..signing("gate-open")
+        });
+        let (status, body) = get(
+            &router,
+            &format!(
+                "/decisions/v1/signers?pdp={}&instance={}",
+                read::hex(&[0xa1; 16]),
+                read::hex(&[0x01; 16])
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (status, _) = get(&router, super::super::configuration::CONFIGURATION_PATH).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = get(&router, "/zones/acme/ledgers/main/decisions/v1/records").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "the records are");
+    }
+
+    /// WP-6.3c: `Read` over gRPC is gated as the REST reads: `PERMISSION_DENIED` without the
+    /// grant, `UNAUTHENTICATED` for a caller no boundary decided.
+    #[tokio::test]
+    async fn the_grpc_reads_are_gated_as_the_rest_reads() {
+        use crate::v1::decision_log_server::DecisionLog;
+
+        let held = DecisionFacade {
+            authorization: granted("plane/control/zone/acme/ledger/main"),
+            ..facade("gate-grpc")
+        };
+        let ask = |ledger: &str, actor: Option<Arc<permguard_core::authz::Actor>>| {
+            let mut request = tonic::Request::new(crate::v1::ReadRequest {
+                zone: "acme".to_owned(),
+                ledger: ledger.to_owned(),
+                ..Default::default()
+            });
+            if let Some(actor) = actor {
+                request.extensions_mut().insert(actor);
+            }
+            request
+        };
+        assert!(
+            DecisionLog::read(&held, ask("main", Some(auditor())))
+                .await
+                .is_ok()
+        );
+        let refused = DecisionLog::read(&held, ask("audit", Some(auditor())))
+            .await
+            .expect_err("another ledger");
+        assert_eq!(refused.code(), tonic::Code::PermissionDenied);
+        let refused = DecisionLog::read(&held, ask("main", None))
+            .await
+            .expect_err("nobody");
+        assert_eq!(refused.code(), tonic::Code::Unauthenticated);
+    }
+
+    /// `router` as the authentication boundary leaves an anonymous caller (WP-6.3c): what the
+    /// test facades' public grants admit.
+    fn anonymous(router: Router) -> Router {
+        router.layer(axum::Extension(Arc::new(
+            permguard_core::authz::Actor::Anonymous,
+        )))
     }
 
     async fn get(router: &Router, uri: &str) -> (StatusCode, serde_json::Value) {
@@ -1509,7 +1871,7 @@ mod strict {
     async fn a_read_takes_only_its_parameters_and_only_its_own_cursors() {
         let facade = facade("query");
         let keys = facade.cursor_key.clone();
-        let router = routes(facade);
+        let router = anonymous(routes(facade));
         let path = "/zones/acme/ledgers/main/decisions/v1/records";
         for query in [
             "color=red",

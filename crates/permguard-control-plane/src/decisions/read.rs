@@ -91,6 +91,9 @@ pub enum ReadError {
     Unavailable(String),
     /// A tenant scope no ledger answers to: `not_found`, never an empty complete page (WP-6.3a).
     Unknown(String),
+    /// A producer stream neither the legacy store nor the Host's consumer ever held: `not_found`,
+    /// never an empty complete page (WP-6.3c, after the review).
+    NotHeld(String),
 }
 
 impl std::fmt::Display for ReadError {
@@ -108,7 +111,9 @@ impl std::fmt::Display for ReadError {
                  from `{oldest}`, knowing that {} positions are gone",
                 oldest_sequence.saturating_sub(*requested_sequence)
             ),
-            Self::Unavailable(detail) | Self::Unknown(detail) => write!(formatter, "{detail}"),
+            Self::Unavailable(detail) | Self::Unknown(detail) | Self::NotHeld(detail) => {
+                write!(formatter, "{detail}")
+            }
         }
     }
 }
@@ -134,6 +139,10 @@ pub fn refusal(error: &ReadError) -> (permguard_core::ErrorClass, &'static str) 
         ReadError::Unknown(_) => (
             permguard_core::ErrorClass::NotFound,
             permguard_core::codes::stream::SCOPE_UNKNOWN,
+        ),
+        ReadError::NotHeld(_) => (
+            permguard_core::ErrorClass::NotFound,
+            permguard_core::codes::stream::STREAM_UNKNOWN,
         ),
         _ => (permguard_core::ErrorClass::Validation, refusal_code(error)),
     }
@@ -320,6 +329,17 @@ pub fn read_with(
     // Keyed and bound by the ledger's concrete ids, never by the names it was asked by (WP-6.3a).
     let scope = &canonical(sources, scope.clone())?;
     let (legacy, host_runs) = sources_of(sources, scope)?;
+    // A stream nobody held is not an empty one (WP-6.3c, after the review).
+    if let Scope::Stream { pdp_id, instance } = scope
+        && legacy
+        && !store
+            .stream_exists(pdp_id, instance)
+            .map_err(|error| ReadError::Unavailable(error.to_string()))?
+    {
+        return Err(ReadError::NotHeld(format!(
+            "this store holds no stream for `{pdp_id}/{instance}`"
+        )));
+    }
     let segments = if legacy {
         store
             .segments(scope)
@@ -1545,10 +1565,14 @@ mod host_reads {
                 },
                 &Window::default(),
             )
-            .expect("a page");
-        assert!(
-            neither.records.is_empty(),
-            "no such run, and no such legacy stream"
+            .expect_err("no such run, and no such legacy stream");
+        assert!(matches!(neither, ReadError::NotHeld(_)), "{neither:?}");
+        assert_eq!(
+            refusal(&neither),
+            (
+                permguard_core::ErrorClass::NotFound,
+                permguard_core::codes::stream::STREAM_UNKNOWN
+            )
         );
     }
 

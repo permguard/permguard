@@ -36,7 +36,7 @@ pub const INGEST_SECONDS: Metric = Metric::histogram(
     SECONDS,
 );
 
-/// Reads answered, by scope and outcome: `ok`, `expired`, `refused`.
+/// Reads answered, by scope and outcome: `ok`, `expired`, `refused`, `denied` (WP-6.3c).
 pub const READS: Metric = Metric::counter(
     "permguard_events_reads_total",
     "Event reads answered, by scope and outcome.",

@@ -75,13 +75,21 @@ impl EventLog for EventFacade {
         &self,
         request: Request<ListRecordsRequest>,
     ) -> Result<Response<ListRecordsResponse>, Status> {
+        let actor = permguard_transport::actor_of(request.extensions());
         let asked = request.into_inner();
         let (scope, kind) =
             scope_of(&asked).map_err(|refused| status_of(&refused, self.disclosure))?;
-        // Same resolution as the HTTP list, so the two transports narrow to the same records.
-        let scope = match read::canonical(self.catalog.as_ref(), scope) {
+        // Same gate and resolution as the HTTP list, so the two transports narrow to the same
+        // records (WP-6.3c).
+        let scope = match self.gate(&actor, scope) {
             Ok(scope) => scope,
-            Err(error) => return Err(read_status(error, self.disclosure)),
+            Err(crate::evidence::Gated::Denied(denial)) => {
+                self.denied(kind);
+                return Err(crate::wire::grpc_denial(&denial));
+            }
+            Err(crate::evidence::Gated::Refused(error)) => {
+                return Err(read_status(error, self.disclosure));
+            }
         };
         let filters = filters_of(&asked);
         let window = permguard_stream::Window {
@@ -123,6 +131,7 @@ impl EventLog for EventFacade {
         &self,
         request: Request<GetRecordRequest>,
     ) -> Result<Response<GetRecordResponse>, Status> {
+        let actor = permguard_transport::actor_of(request.extensions());
         let asked = request.into_inner();
         if asked.zone.is_empty() || asked.ledger.is_empty() {
             return Err(status_of(
@@ -137,15 +146,21 @@ impl EventLog for EventFacade {
         // Resolved the same way the HTTP surface resolves it, so a reader gets one answer whichever
         // transport asked: a name and an identity address the same ledger, and a scope nobody holds
         // is a refusal rather than an empty answer.
-        let scope = match read::canonical(
-            self.catalog.as_ref(),
+        let scope = match self.gate(
+            &actor,
             Scope::Tenant {
                 zone: asked.zone,
                 ledger: asked.ledger,
             },
         ) {
             Ok(scope) => scope,
-            Err(error) => return Err(read_status(error, self.disclosure)),
+            Err(crate::evidence::Gated::Denied(denial)) => {
+                self.denied("record");
+                return Err(crate::wire::grpc_denial(&denial));
+            }
+            Err(crate::evidence::Gated::Refused(error)) => {
+                return Err(read_status(error, self.disclosure));
+            }
         };
 
         let facade = self.clone();
@@ -423,6 +438,14 @@ fn read_status(error: read::ReadError, disclosure: Disclosure) -> Status {
             &ApiError::new(
                 ErrorClass::NotFound,
                 permguard_core::codes::stream::LEDGER_NOT_HELD,
+                detail,
+            ),
+            disclosure,
+        ),
+        read::ReadError::NotHeld(detail) => status_of(
+            &ApiError::new(
+                ErrorClass::NotFound,
+                permguard_core::codes::stream::STREAM_UNKNOWN,
                 detail,
             ),
             disclosure,

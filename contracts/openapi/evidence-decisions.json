@@ -186,6 +186,33 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "410": {
             "description": "The offset fell behind retention.",
             "content": {
@@ -202,7 +229,8 @@
           "zone",
           "ledger"
         ],
-        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `zone`, `ledger`."
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `zone`, `ledger`.",
+        "description": "Under `evidence.read` on the ledger of the Host run `pdp` and `instance` name, or on `plane/control` whole for a legacy stream mixing tenants, authorized before any lookup (WP-6.3c)."
       }
     },
     "/zones/{zone}/ledgers/{ledger}/decisions/v1/records": {
@@ -315,6 +343,33 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "410": {
             "description": "The offset fell behind retention.",
             "content": {
@@ -331,7 +386,8 @@
           "pdp",
           "instance"
         ],
-        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `pdp`, `instance`."
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `pdp`, `instance`.",
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
       }
     },
     "/decisions/v1/signers": {

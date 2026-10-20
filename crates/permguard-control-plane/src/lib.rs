@@ -13,6 +13,7 @@ mod notp;
 pub mod decisions;
 pub mod engine;
 pub mod events;
+mod evidence;
 pub mod gc;
 mod handles;
 pub mod inventory;

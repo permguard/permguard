@@ -78,6 +78,9 @@ pub mod operations {
     /// Read the Host's streams: their descriptors, frontiers, records, signers, subscriptions,
     /// gaps and anchors (WP-5.7).
     pub const STREAMS_READ: &str = "streams.read";
+    /// Read the decision and event evidence the Control Plane serves, on the exact ledger
+    /// (WP-6.3c, `1-control-plane.md` plane public API).
+    pub const EVIDENCE_READ: &str = "evidence.read";
 
     /// Every registered operation.
     pub const ALL: &[&str] = &[
@@ -97,6 +100,7 @@ pub mod operations {
         MEMBERSHIP_ADMIN,
         AUDIT_READ,
         STREAMS_READ,
+        EVIDENCE_READ,
     ];
 
     /// Whether `operation` is registered.
@@ -701,6 +705,21 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// WP-6.3c: the evidence reads' operation is registered, so a grant naming it is accepted at
+    /// issue and loaded.
+    #[test]
+    fn evidence_read_is_a_registered_operation() {
+        assert_eq!(operations::EVIDENCE_READ, "evidence.read");
+        assert!(operations::is_registered(operations::EVIDENCE_READ));
+        assert_eq!(
+            operations::ALL
+                .iter()
+                .filter(|held| **held == operations::EVIDENCE_READ)
+                .count(),
+            1
+        );
+    }
 
     fn principal(name: &str) -> Principal {
         Principal::new(name).expect("a principal")

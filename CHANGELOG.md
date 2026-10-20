@@ -400,6 +400,16 @@ is cut.
 
 ### Changed
 
+- **Decision and event evidence reads take `evidence.read`.**
+  Every decision and event read of the Control Plane, the tenant and stream pages and one event by its id, on REST and gRPC, now takes the new operation `evidence.read`.
+  It is checked on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, the resource `catalog.read` takes.
+  A decision stream read takes the grant of the ledger its Host run records; a legacy stream, which mixes tenants, a grant covering `plane/control` whole.
+  A caller granted nothing under the plane is refused before any lookup, `401` or `403`, and a ledger nobody holds is refused as a foreign one unless the caller's grants cover the whole plane.
+  These reads were open before: grant `evidence.read` to every reader, or use `host.authz.public[]` for a public exposure meant as one; no setting reopens them.
+  The signers and the discovery documents stay open.
+  A decision or event stream read naming no stream the store or the Host's consumer ever held now answers `404` `stream_unknown` instead of an empty page.
+  Refused reads are counted as `permguard_decisions_reads_total` and `permguard_events_reads_total` with the new outcome `denied`.
+
 - **The decision tenant view reads the Host's stream by concrete ids, and a tail never shows a record that later disappears.**
   `GET /zones/{zone}/ledgers/{ledger}/decisions/v1/records` and `Read` answer the Host consumer's runs of the ledger, resolved to its zone and ledger ids, and no longer the legacy store's per-tenant views, which were kept under the names a record carries.
   A ledger recreated under a name reads none of the old one's decisions, and a cursor keeps working across a rename.

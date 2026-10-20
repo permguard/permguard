@@ -857,6 +857,7 @@ fn build_event_facade(
             permguard_server::plane::PlaneId::Control,
         )
         .unwrap_or_default(),
+        authorization: crate::handles::authorization(context),
     };
     if let Ok(mut held) = shared.lock() {
         *held = Some(std::sync::Arc::clone(&facade.store));
@@ -1006,6 +1007,7 @@ fn build_decision_facade(
             permguard_server::plane::PlaneId::Control,
         )
         .unwrap_or_default(),
+        authorization: crate::handles::authorization(context),
     };
     if let Ok(mut held) = shared.lock() {
         *held = Some(facade.clone());

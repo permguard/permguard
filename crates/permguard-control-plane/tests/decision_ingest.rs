@@ -545,9 +545,9 @@ fn a_batch_nobody_can_attribute_is_refused_before_anything_is_stored() {
         },
         None,
         10,
-    )
-    .expect("it reads");
-    assert!(page.records.is_empty());
+    );
+    // Nothing stored, so no stream: `not_found`, never an empty page (WP-6.3c).
+    assert!(matches!(page, Err(read::ReadError::NotHeld(_))));
 }
 
 #[test]
@@ -1044,7 +1044,7 @@ fn a_block_says_whether_its_records_are_a_contiguous_chain() {
     let producer = read::read(
         &store,
         &Scope::Stream {
-            pdp_id: "plane-a".to_owned(),
+            pdp_id: "plane".to_owned(),
             instance: "i-1".to_owned(),
         },
         &key,

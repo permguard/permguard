@@ -187,6 +187,7 @@ impl DecisionLog for DecisionFacade {
     }
 
     async fn read(&self, request: Request<ReadRequest>) -> Result<Response<ReadResponse>, Status> {
+        let actor = permguard_transport::actor_of(request.extensions());
         let asked = request.into_inner();
         let scope = if !asked.pdp.is_empty() && !asked.instance.is_empty() {
             Scope::Stream {
@@ -233,9 +234,25 @@ impl DecisionLog for DecisionFacade {
         let page = {
             let facade = self.clone();
             let scope = scope.clone();
-            tokio::task::spawn_blocking(move || facade.read(&scope, &window))
+            tokio::task::spawn_blocking(move || facade.read_as(&actor, scope, &window))
                 .await
-                .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+                .unwrap_or_else(|error| {
+                    Err(crate::evidence::Gated::Refused(
+                        read::ReadError::Unavailable(error.to_string()),
+                    ))
+                })
+        };
+        // Before anything else: a denial says nothing the caller may not learn (WP-6.3c).
+        let page = match page {
+            Ok(page) => Ok(page),
+            Err(crate::evidence::Gated::Denied(denial)) => {
+                self.metrics.count(
+                    &measure::READS,
+                    &[(labels::SCOPE, kind), (labels::OUTCOME, "denied")],
+                );
+                return Err(crate::wire::grpc_denial(&denial));
+            }
+            Err(crate::evidence::Gated::Refused(error)) => Err(error),
         };
         match page {
             Ok(page) => {
