@@ -593,8 +593,11 @@ fn the_key_that_signed_is_archived_beside_what_it_attests() {
     assert_eq!(store.archived_keys().expect("staging is ignored").len(), 1);
 }
 
+/// WP-6.3a, owner decision of 2026-10-20: the legacy store keeps producer streams alone; no view
+/// keyed by the zone and ledger names a record carries is written, and a tenant scope reads
+/// nothing of it.
 #[test]
-fn each_tenant_reads_a_partition_that_physically_holds_only_its_own_records() {
+fn a_legacy_ingest_writes_no_name_keyed_view() {
     let (keys, store) = (ring("views"), store("views"));
     ingest::accept(
         &store,
@@ -603,40 +606,70 @@ fn each_tenant_reads_a_partition_that_physically_holds_only_its_own_records() {
     )
     .expect("it is accepted");
 
-    let view = |zone: &str| {
-        page(
-            &store,
-            &Scope::Tenant {
-                zone: zone.to_owned(),
-                ledger: "main-ledger".to_owned(),
-            },
-            None,
-            1_000,
-        )
-        .expect("it reads")
-        .records
-    };
+    assert!(!store.root().join("views").exists(), "no view by name");
+    let tenant = page(
+        &store,
+        &Scope::Tenant {
+            zone: "acme".to_owned(),
+            ledger: "main-ledger".to_owned(),
+        },
+        None,
+        1_000,
+    )
+    .expect("it reads");
+    assert!(tenant.records.is_empty(), "the tenant view is the Host's");
+    let whole = page(
+        &store,
+        &Scope::Stream {
+            pdp_id: "plane".to_owned(),
+            instance: "inst".to_owned(),
+        },
+        None,
+        1_000,
+    )
+    .expect("it reads");
+    assert_eq!(whole.records.len(), 11, "the producer's stream, whole");
+    assert_eq!(whole.records[0]["kind"], json!("marker"));
+}
 
-    let acme = view("acme");
-    assert!(
-        acme.iter()
-            .filter(|record| record["kind"] == json!("decision"))
-            .all(|record| record["store"]["zone"] == json!("acme")),
-        "a partition cannot leak what it does not contain"
-    );
-    assert!(
-        !view("other").is_empty(),
-        "and the other tenant has its own"
-    );
+/// WP-6.3a: a rollback of one producer's scratch touches its own stream alone; another producer's
+/// records of the same tenants stay as they were, byte for byte.
+#[test]
+fn a_rollback_of_one_producer_leaves_another_producers_records() {
+    let (keys, store) = (ring("rollback"), store("rollback"));
+    ingest::accept(
+        &store,
+        &batch(&stream("other", 8), GENESIS, &keys),
+        &published(&keys),
+    )
+    .expect("it is accepted");
+    let other = store.root().join("streams/plane/other");
+    let before: Vec<(std::path::PathBuf, Vec<u8>)> = std::fs::read_dir(&other)
+        .expect("listed")
+        .map(|entry| {
+            let path = entry.expect("an entry").path();
+            let bytes = std::fs::read(&path).expect("read");
+            (path, bytes)
+        })
+        .collect();
 
-    // The epoch that governs these records is in the tenant's own view: without
-    // it the tenant holds records whose completeness claim it cannot read.
-    assert_eq!(
-        acme.first().map(|record| record["kind"].clone()),
-        Some(json!("marker")),
-        "stream-level records belong in every view"
-    );
-    assert_eq!(acme[0]["sampling"]["permits"], json!("1.0"));
+    let records = stream("inst", 6);
+    appended_without_acknowledging(&store, &records);
+    ingest::accept(
+        &store,
+        &batch(&records[..2], GENESIS, &keys),
+        &published(&keys),
+    )
+    .expect("the producer resends from its acknowledged point");
+
+    for (path, bytes) in before {
+        assert_eq!(
+            std::fs::read(&path).expect("read"),
+            bytes,
+            "{} untouched",
+            path.display()
+        );
+    }
 }
 
 #[test]
@@ -824,13 +857,18 @@ fn cursor_key() -> permguard_control_plane::decisions::cursorkey::CursorKeys {
 fn an_export_finishes_against_its_own_snapshot_while_the_stream_keeps_growing() {
     let keys = ring("export-keys");
     let store = store("export");
-    let acme = Scope::Tenant {
-        zone: "acme".to_owned(),
-        ledger: "main-ledger".to_owned(),
+    // One producer stream: the legacy store's tenant views are gone (WP-6.3a).
+    let acme = Scope::Stream {
+        pdp_id: "plane".to_owned(),
+        instance: "i-1".to_owned(),
     };
-    let records = stream("i-1", 10);
-    ingest::accept(&store, &batch(&records, GENESIS, &keys), &published(&keys))
-        .expect("the batch is accepted");
+    let records = stream("i-1", 20);
+    ingest::accept(
+        &store,
+        &batch(&records[..10], GENESIS, &keys),
+        &published(&keys),
+    )
+    .expect("the batch is accepted");
 
     // The first page captures the snapshot this export is of.
     let key = cursor_key();
@@ -839,9 +877,13 @@ fn an_export_finishes_against_its_own_snapshot_while_the_stream_keeps_growing() 
         .expect("the watermark is one this build issued");
 
     // Meanwhile the stream keeps growing, which is what makes a moving end unfinishable.
-    let more = stream("i-2", 10);
-    ingest::accept(&store, &batch(&more, GENESIS, &keys), &published(&keys))
-        .expect("the second batch is accepted");
+    let head = record::digest_of(&records[9]).expect("it digests");
+    ingest::accept(
+        &store,
+        &batch(&records[10..], &head, &keys),
+        &published(&keys),
+    )
+    .expect("the second batch is accepted");
 
     let mut walked = first.records.len();
     let mut bounded = permguard_stream::Window {
@@ -875,9 +917,10 @@ fn an_export_finishes_against_its_own_snapshot_while_the_stream_keeps_growing() 
 fn the_byte_bound_stops_a_page_before_the_record_bound_does() {
     let keys = ring("bytes-keys");
     let store = store("bytes");
-    let acme = Scope::Tenant {
-        zone: "acme".to_owned(),
-        ledger: "main-ledger".to_owned(),
+    // One producer stream: the legacy store's tenant views are gone (WP-6.3a).
+    let acme = Scope::Stream {
+        pdp_id: "plane".to_owned(),
+        instance: "i-1".to_owned(),
     };
     let records = stream("i-1", 20);
     ingest::accept(&store, &batch(&records, GENESIS, &keys), &published(&keys))
@@ -915,9 +958,10 @@ fn the_byte_bound_stops_a_page_before_the_record_bound_does() {
 fn a_single_record_larger_than_the_budget_is_still_returned() {
     let keys = ring("huge-keys");
     let store = store("huge");
-    let acme = Scope::Tenant {
-        zone: "acme".to_owned(),
-        ledger: "main-ledger".to_owned(),
+    // One producer stream: the legacy store's tenant views are gone (WP-6.3a).
+    let acme = Scope::Stream {
+        pdp_id: "plane".to_owned(),
+        instance: "i-1".to_owned(),
     };
     let records = stream("i-1", 4);
     ingest::accept(&store, &batch(&records, GENESIS, &keys), &published(&keys))

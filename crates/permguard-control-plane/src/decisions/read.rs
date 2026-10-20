@@ -89,6 +89,8 @@ pub enum ReadError {
     },
     /// The store could not answer.
     Unavailable(String),
+    /// A tenant scope no ledger answers to: `not_found`, never an empty complete page (WP-6.3a).
+    Unknown(String),
 }
 
 impl std::fmt::Display for ReadError {
@@ -106,7 +108,7 @@ impl std::fmt::Display for ReadError {
                  from `{oldest}`, knowing that {} positions are gone",
                 oldest_sequence.saturating_sub(*requested_sequence)
             ),
-            Self::Unavailable(detail) => write!(formatter, "{detail}"),
+            Self::Unavailable(detail) | Self::Unknown(detail) => write!(formatter, "{detail}"),
         }
     }
 }
@@ -128,6 +130,10 @@ pub fn refusal(error: &ReadError) -> (permguard_core::ErrorClass, &'static str) 
         ReadError::Unavailable(_) => (
             permguard_core::ErrorClass::Unavailable,
             permguard_core::codes::stream::STORE_UNAVAILABLE,
+        ),
+        ReadError::Unknown(_) => (
+            permguard_core::ErrorClass::NotFound,
+            permguard_core::codes::stream::SCOPE_UNKNOWN,
         ),
         _ => (permguard_core::ErrorClass::Validation, refusal_code(error)),
     }
@@ -156,12 +162,14 @@ pub(crate) fn host_key(run: &ConsumedRun) -> String {
 }
 
 /// Whether `scope` reads the legacy store, and the consumer runs it covers: a stream scope
-/// naming a run the consumer holds reads that run alone; a tenant scope reads the legacy store,
-/// then every run of its ledger by producer and opening order (owner decision of 2026-10-18).
+/// naming a run the consumer holds reads that run alone, any other the legacy store's stream; a
+/// tenant scope, already by concrete ids, reads every run of its ledger by producer and opening
+/// order (owner decision of 2026-10-18), and never the legacy store, whose tenant views were keyed
+/// by names (owner decision of 2026-10-20).
 fn sources_of(sources: &Sources<'_>, scope: &Scope) -> Result<(bool, Vec<HostRun>), ReadError> {
     let unavailable = |error: String| ReadError::Unavailable(error);
     let Some(host) = sources.host else {
-        return Ok((true, Vec::new()));
+        return Ok((matches!(scope, Scope::Stream { .. }), Vec::new()));
     };
     match scope {
         Scope::Stream { pdp_id, instance } => {
@@ -185,9 +193,7 @@ fn sources_of(sources: &Sources<'_>, scope: &Scope) -> Result<(bool, Vec<HostRun
             Ok((false, runs))
         }
         Scope::Tenant { zone, ledger } => {
-            let Some(resource) = ledger_resource(sources.catalog, zone, ledger)? else {
-                return Ok((true, Vec::new()));
-            };
+            let resource = Resource::ledger("data", zone, ledger);
             let runs = host
                 .runs(&resource)
                 .map_err(unavailable)?
@@ -198,30 +204,60 @@ fn sources_of(sources: &Sources<'_>, scope: &Scope) -> Result<(bool, Vec<HostRun
                     run: held,
                 })
                 .collect();
-            Ok((true, runs))
+            Ok((false, runs))
         }
     }
 }
 
-/// The ledger the catalog names `zone`/`ledger` by, as the Host's stream resource: `None` with
-/// no catalog, or for a ledger it does not hold.
-fn ledger_resource(
-    catalog: Option<&std::sync::Arc<dyn permguard_core::catalog::Catalog>>,
-    zone: &str,
-    ledger: &str,
-) -> Result<Option<Resource>, ReadError> {
+/// The tenant scope by the ledger's concrete ids (WP-6.3a, owner decision of 2026-10-20), what a
+/// read is keyed and bound by: names resolved through the catalog; ids taken as they are when the
+/// catalog holds the ledger or the consumer holds runs of it, so a deleted ledger's evidence stays
+/// readable by its ids; anything else `not_found`. A stream scope, and any scope with no catalog
+/// composed, is returned as it is.
+pub(crate) fn canonical(sources: &Sources<'_>, scope: Scope) -> Result<Scope, ReadError> {
     use permguard_core::catalog::{CatalogError, Selector};
 
-    let Some(catalog) = catalog else {
-        return Ok(None);
+    let Scope::Tenant { zone, ledger } = scope else {
+        return Ok(scope);
     };
-    let found = catalog.get_zone(&Selector::parse(zone)).and_then(|found| {
-        let held = catalog.get_ledger(&Selector::Id(found.id.clone()), &Selector::parse(ledger))?;
+    let Some(catalog) = sources.catalog else {
+        return Ok(Scope::Tenant { zone, ledger });
+    };
+    let unknown = || {
+        ReadError::Unknown(format!(
+            "`{zone}/{ledger}` is not a ledger this store holds: a name the catalog does not \
+             hold, or ids neither the catalog nor the Host's stream holds"
+        ))
+    };
+    let found = catalog.get_zone(&Selector::parse(&zone)).and_then(|found| {
+        let held =
+            catalog.get_ledger(&Selector::Id(found.id.clone()), &Selector::parse(&ledger))?;
         Ok((found.id, held.id))
     });
     match found {
-        Ok((zone_id, ledger_id)) => Ok(Some(Resource::ledger("data", zone_id, ledger_id))),
-        Err(CatalogError::NotFound { .. }) => Ok(None),
+        Ok((zone, ledger)) => Ok(Scope::Tenant { zone, ledger }),
+        Err(CatalogError::NotFound { .. }) => {
+            let (Selector::Id(zone_id), Selector::Id(ledger_id)) =
+                (Selector::parse(&zone), Selector::parse(&ledger))
+            else {
+                return Err(unknown());
+            };
+            let held = match sources.host {
+                Some(host) => !host
+                    .runs(&Resource::ledger("data", &zone_id, &ledger_id))
+                    .map_err(ReadError::Unavailable)?
+                    .is_empty(),
+                None => false,
+            };
+            if held {
+                Ok(Scope::Tenant {
+                    zone: zone_id,
+                    ledger: ledger_id,
+                })
+            } else {
+                Err(unknown())
+            }
+        }
         Err(error) => Err(ReadError::Unavailable(format!(
             "the catalog could not name this ledger: {error}"
         ))),
@@ -281,6 +317,8 @@ pub fn read_with(
     window: &Window,
 ) -> Result<Page, ReadError> {
     let store = sources.store;
+    // Keyed and bound by the ledger's concrete ids, never by the names it was asked by (WP-6.3a).
+    let scope = &canonical(sources, scope.clone())?;
     let (legacy, host_runs) = sources_of(sources, scope)?;
     let segments = if legacy {
         store
@@ -288,6 +326,18 @@ pub fn read_with(
             .map_err(|error| ReadError::Unavailable(error.to_string()))?
     } else {
         Vec::new()
+    };
+    // A legacy stream holds records above its acknowledged point as scratch, which the next batch
+    // rolls back: none is ever read, so a tail never shows a record that later disappears
+    // (WP-6.3a).
+    let acked = match scope {
+        Scope::Stream { pdp_id, instance } if legacy => {
+            store
+                .stream_state(pdp_id, instance)
+                .map_err(|error| ReadError::Unavailable(error.to_string()))?
+                .acked
+        }
+        _ => 0,
     };
     let oldest_segment = segments.first().map(|(first, _)| *first).unwrap_or(0);
     let stream = scope.key();
@@ -384,7 +434,17 @@ pub fn read_with(
             // single record larger than the whole budget is still returned, because refusing it
             // would stall the consumer forever at that position.
             let mut consumed = 0u64;
+            let mut unacknowledged = false;
             for record in found {
+                if record
+                    .get("seq")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(u64::MAX)
+                    > acked
+                {
+                    unacknowledged = true;
+                    break;
+                }
                 let size = serde_json::to_vec(&record)
                     .map(|held| held.len() as u64)
                     .unwrap_or(0);
@@ -398,12 +458,12 @@ pub fn read_with(
                 records.push(record);
                 origins.push(None);
             }
-            position.offset = if bound_by_bytes {
+            position.offset = if bound_by_bytes || unacknowledged {
                 position.offset + consumed
             } else {
                 next_offset
             };
-            if records.len() >= limit || bound_by_bytes {
+            if records.len() >= limit || bound_by_bytes || unacknowledged {
                 break;
             }
         }
@@ -419,7 +479,12 @@ pub fn read_with(
             cursor.frontier.cover(&stream, observed);
         }
         let held_through = cursor.frontier.covered_through(&stream);
-        end.cover(&stream, end_of(store, scope)?.unwrap_or(held_through));
+        // Nothing acknowledged has no end beyond where the reader stands: scratch alone is no
+        // `more` a reader would wait on forever (after the review).
+        let end_at = end_of(store, scope)?
+            .filter(|_| acked > 0)
+            .map(|end| end.min(acked + 1));
+        end.cover(&stream, end_at.unwrap_or(held_through));
     }
 
     // Then each consumer run, from where the cursor stands in it.
@@ -459,6 +524,10 @@ pub fn read_with(
             .map_err(ReadError::Unavailable)?;
         let mut next = from;
         for (seq, record) in page.records {
+            // No further than what the run acknowledged, whatever its reads answer (WP-6.3a).
+            if seq > run.acked {
+                break;
+            }
             let value: Value = serde_json::from_slice(&record).map_err(|error| {
                 ReadError::Unavailable(format!("a record of the Host's stream: {error}"))
             })?;
@@ -489,18 +558,9 @@ pub fn read_with(
     let more = permguard_stream::more(window, &observed_frontier, &end);
 
     let (proof, inclusion) = if window.proof {
+        // One source a page: a legacy stream's or the consumer's runs (WP-6.3a), so paths never
+        // pair across the two.
         let (mut proof, mut inclusion) = legacy_proof(store, &records, &origins)?;
-        // A path names only its sequence, so a page holding both sources pairs paths with
-        // records by position: a legacy record left without its path would shift every Host path
-        // onto the wrong record. Refused rather than answered short (after the review).
-        let legacy_count = origins.iter().filter(|origin| origin.is_none()).count();
-        if inclusion.len() != legacy_count && origins.iter().any(Option::is_some) {
-            return Err(ReadError::Unavailable(
-                "a legacy record of this page has no envelope to prove it by, and a proof \
-                 missing part of itself must not be returned as one"
-                    .to_owned(),
-            ));
-        }
         let (host_proof, host_inclusion) = host_proof(
             sources.host,
             &host_runs,
@@ -868,6 +928,8 @@ mod host_reads {
     /// The Host's consumer, as a Plane reads it.
     struct Held {
         runs: Mutex<Vec<Run>>,
+        /// Whether its reads answer records past a run's acknowledgement too.
+        past_acked: std::sync::atomic::AtomicBool,
     }
 
     impl Held {
@@ -956,9 +1018,20 @@ mod host_reads {
                 .find(|held| held.run.producer == *producer && held.run.run == *run)
                 .ok_or("no such run")?;
             let from = from.max(held.run.oldest_retained);
+            let last = if self.past_acked.load(std::sync::atomic::Ordering::SeqCst) {
+                held.records.len() as u64
+            } else {
+                held.run.acked
+            };
+            // Past its acknowledgement it answers everything it holds, the limit too ignored.
+            let take = if last > held.run.acked {
+                usize::MAX
+            } else {
+                limit
+            };
             Ok(ConsumedPage {
-                records: (from..=held.run.acked)
-                    .take(limit)
+                records: (from..=last)
+                    .take(take)
                     .map(|seq| (seq, held.records[(seq - 1) as usize].clone()))
                     .collect(),
                 low_watermark: None,
@@ -1050,7 +1123,12 @@ mod host_reads {
                     // Another ledger's run, which no read of this one sees.
                     run(&Resource::ledger("data", "z", "l"), 0xc3, 0x03, 4),
                 ]),
+                past_acked: std::sync::atomic::AtomicBool::new(false),
             });
+            // Shipped whole: what a legacy stream read reads.
+            store
+                .acknowledge("plane-a", "i-1", 2, "sha256:held")
+                .expect("acknowledged");
             Self {
                 store,
                 catalog: Arc::new(catalog),
@@ -1097,11 +1175,12 @@ mod host_reads {
             .collect()
     }
 
-    /// WP-6.1b, owner decisions and F-06: the tenant view reads the legacy store, then each
-    /// producer's runs of the ledger, from the position the cursor keeps for each, and every Host
-    /// record names its `host_id` and run.
+    /// WP-6.1b and WP-6.3a, owner decisions of 2026-10-18 and 2026-10-20: the tenant view reads
+    /// each producer's runs of the ledger by its concrete ids, from the position the cursor keeps
+    /// for each, and never the legacy store, whose views were keyed by names; every record names
+    /// its `host_id` and run.
     #[test]
-    fn the_tenant_view_reads_the_legacy_store_then_the_host_runs() {
+    fn the_tenant_view_reads_the_host_runs_by_id_and_never_the_legacy_views() {
         let fixture = Fixture::new("tenant");
         let (a, b) = (hex(&[0xa1; 16]), hex(&[0xb2; 16]));
         let first = fixture
@@ -1116,11 +1195,12 @@ mod host_reads {
         assert_eq!(
             named(&first),
             vec![
-                ("plane-a".to_owned(), 1),
-                ("plane-a".to_owned(), 2),
                 (a.clone(), 1),
-                (a.clone(), 2)
-            ]
+                (a.clone(), 2),
+                (a.clone(), 3),
+                (b.clone(), 1)
+            ],
+            "no legacy record of `acme/governance`, which carries the names"
         );
         assert!(first.more, "the rest is held");
         assert!(!first.coverage.contiguous);
@@ -1136,46 +1216,276 @@ mod host_reads {
             .expect("a page");
         assert_eq!(
             named(&second),
-            vec![(a.clone(), 3), (b.clone(), 1), (b.clone(), 2)],
+            vec![(b.clone(), 2)],
             "two producers on one ledger, both named"
         );
         assert!(!second.more, "read to the end");
-        for record in first.records.iter().chain(&second.records).skip(2) {
+        for record in first.records.iter().chain(&second.records) {
             assert_eq!(
                 record["stream"]["instance"].as_str().map(str::len),
                 Some(32)
             );
         }
-        // Named by its ids, the ledger reads the same.
-        let by_id = Scope::Tenant {
-            zone: match &fixture.resource {
-                Resource::Ledger { zone_id, .. } => zone_id.clone(),
-                _ => unreachable!(),
-            },
-            ledger: match &fixture.resource {
-                Resource::Ledger { ledger_id, .. } => ledger_id.clone(),
-                _ => unreachable!(),
-            },
-        };
-        let page = fixture.read(&by_id, &Window::default()).expect("a page");
-        assert_eq!(
-            named(&page)
-                .into_iter()
-                .filter(|(id, _)| id != "plane-a")
-                .count(),
-            5
-        );
-        // A ledger the catalog does not hold reads the legacy store alone.
-        let unknown = fixture
+        // Named by its ids, the ledger reads the same, and the cursor opens under either name.
+        let page = fixture
+            .read(&by_id(&fixture.resource), &Window::default())
+            .expect("a page");
+        assert_eq!(named(&page).len(), 5);
+        fixture
             .read(
-                &Scope::Tenant {
-                    zone: "acme".to_owned(),
-                    ledger: "nowhere".to_owned(),
+                &by_id(&fixture.resource),
+                &Window {
+                    from: Some(first.next),
+                    ..Window::default()
+                },
+            )
+            .expect("bound to the ids, not to the names it was asked by");
+    }
+
+    /// The tenant scope of `resource` by its ids.
+    fn by_id(resource: &Resource) -> Scope {
+        match resource {
+            Resource::Ledger {
+                zone_id, ledger_id, ..
+            } => Scope::Tenant {
+                zone: zone_id.clone(),
+                ledger: ledger_id.clone(),
+            },
+            _ => unreachable!("a ledger"),
+        }
+    }
+
+    /// WP-6.3a: a tenant scope no ledger answers to is `not_found`, never an empty complete
+    /// page; ids the catalog no longer names still read what the consumer holds of them.
+    #[test]
+    fn a_tenant_view_of_a_ledger_nobody_holds_is_not_found() {
+        let fixture = Fixture::new("unknown");
+        for scope in [
+            Scope::Tenant {
+                zone: "acme".to_owned(),
+                ledger: "nowhere".to_owned(),
+            },
+            Scope::Tenant {
+                zone: "elsewhere".to_owned(),
+                ledger: "governance".to_owned(),
+            },
+            by_id(&Resource::ledger(
+                "data",
+                "00000000-0000-4000-8000-000000000001",
+                "00000000-0000-4000-8000-000000000002",
+            )),
+        ] {
+            let refused = fixture
+                .read(&scope, &Window::default())
+                .expect_err("no such ledger");
+            assert!(matches!(refused, ReadError::Unknown(_)), "{refused:?}");
+            assert_eq!(
+                refusal(&refused),
+                (
+                    permguard_core::ErrorClass::NotFound,
+                    permguard_core::codes::stream::SCOPE_UNKNOWN
+                )
+            );
+        }
+        // Deleted from the catalog, its evidence stays with its ids.
+        let held = by_id(&fixture.resource);
+        let Scope::Tenant { zone, ledger } = &held else {
+            unreachable!("a tenant")
+        };
+        fixture
+            .catalog
+            .delete_ledger(&Selector::Id(zone.clone()), &Selector::Id(ledger.clone()))
+            .expect("deleted");
+        let page = fixture.read(&held, &Window::default()).expect("a page");
+        assert_eq!(named(&page).len(), 5);
+    }
+
+    /// WP-6.3a, F-05: a ledger recreated under the name of a deleted one reads none of the old
+    /// one's decisions, and a cursor issued for the old one opens under no other ledger; a
+    /// renamed ledger keeps its decisions and its cursors.
+    #[test]
+    fn a_ledger_recreated_under_the_same_name_reads_none_of_the_old_ones_decisions() {
+        let fixture = Fixture::new("recreated");
+        let first = fixture
+            .read(
+                &tenant(),
+                &Window {
+                    limit_records: 1,
+                    ..Window::default()
+                },
+            )
+            .expect("a page");
+        let (zone, _) = match &fixture.resource {
+            Resource::Ledger {
+                zone_id, ledger_id, ..
+            } => (zone_id.clone(), ledger_id.clone()),
+            _ => unreachable!("a ledger"),
+        };
+        fixture
+            .catalog
+            .rename_ledger(
+                &Selector::Id(zone.clone()),
+                &Selector::parse("governance"),
+                "audit",
+            )
+            .expect("renamed");
+        let renamed = Scope::Tenant {
+            zone: "acme".to_owned(),
+            ledger: "audit".to_owned(),
+        };
+        let page = fixture
+            .read(
+                &renamed,
+                &Window {
+                    from: Some(first.next.clone()),
+                    ..Window::default()
+                },
+            )
+            .expect("the cursor survives a rename");
+        assert_eq!(named(&page).len(), 4);
+
+        fixture
+            .catalog
+            .create_ledger(&Selector::Id(zone), "governance")
+            .expect("recreated under the old name");
+        let fresh = fixture.read(&tenant(), &Window::default()).expect("a page");
+        assert!(
+            fresh.records.is_empty(),
+            "none of the old ledger's decisions"
+        );
+        let refused = fixture
+            .read(
+                &tenant(),
+                &Window {
+                    from: Some(first.next),
+                    ..Window::default()
+                },
+            )
+            .expect_err("a cursor of another ledger");
+        assert!(matches!(refused, ReadError::Offset(_)), "{refused:?}");
+    }
+
+    /// WP-6.3a: a legacy stream holds records above its acknowledged point as scratch the next
+    /// batch rolls back; a tail reads none of them, so it never shows one that later disappears.
+    #[test]
+    fn a_tail_never_shows_a_record_above_the_acknowledged_point() {
+        let fixture = Fixture::new("scratch");
+        let stream = Scope::Stream {
+            pdp_id: "plane-a".to_owned(),
+            instance: "i-1".to_owned(),
+        };
+        let scratch = |seq: u64, kind: &str| {
+            json!({
+                "v": 1,
+                "kind": kind,
+                "seq": seq,
+                "stream": {"id": "plane-a", "instance": "i-1"},
+            })
+        };
+        fixture
+            .store
+            .append("plane-a", "i-1", &scratch(3, "decision"))
+            .expect("written, never acknowledged");
+        // And a later segment of scratch, as a rotation leaves it.
+        std::fs::write(
+            fixture
+                .store
+                .root()
+                .join("streams/plane-a/i-1/seg-00000000000000000004.jsonl"),
+            format!("{}\n", scratch(4, "decision")),
+        )
+        .expect("a later segment");
+        let tail = fixture.read(&stream, &Window::default()).expect("a page");
+        assert_eq!(
+            named(&tail),
+            vec![("plane-a".to_owned(), 1), ("plane-a".to_owned(), 2)]
+        );
+        assert!(!tail.more, "nothing acknowledged is left");
+        // The producer resends another record at 3, which replaces the scratch.
+        fixture
+            .store
+            .rollback_unacked("plane-a", "i-1", 2)
+            .expect("rolled back");
+        fixture
+            .store
+            .append("plane-a", "i-1", &scratch(3, "discontinuity"))
+            .expect("appended");
+        fixture
+            .store
+            .acknowledge("plane-a", "i-1", 3, "sha256:after")
+            .expect("acknowledged");
+        let next = fixture
+            .read(
+                &stream,
+                &Window {
+                    from: Some(tail.next),
+                    ..Window::default()
+                },
+            )
+            .expect("a page");
+        assert_eq!(named(&next), vec![("plane-a".to_owned(), 3)]);
+        assert_eq!(next.records[0]["kind"], json!("discontinuity"));
+    }
+
+    /// WP-6.3a, after the review: a legacy stream holding scratch and nothing acknowledged is
+    /// empty and not `more`, so a reader does not wait on it forever.
+    #[test]
+    fn a_stream_holding_only_scratch_is_empty_and_not_more() {
+        let fixture = Fixture::new("only-scratch");
+        fixture
+            .store
+            .append(
+                "plane-b",
+                "i-1",
+                &json!({"v": 1, "kind": "decision", "seq": 1, "stream": {"id": "plane-b", "instance": "i-1"}}),
+            )
+            .expect("written, never acknowledged");
+        let page = fixture
+            .read(
+                &Scope::Stream {
+                    pdp_id: "plane-b".to_owned(),
+                    instance: "i-1".to_owned(),
                 },
                 &Window::default(),
             )
             .expect("a page");
-        assert!(unknown.records.is_empty());
+        assert!(page.records.is_empty());
+        assert!(!page.more);
+    }
+
+    /// WP-6.3a: a consumer run is read no further than its acknowledgement, whatever the
+    /// consumer's reads answer.
+    #[test]
+    fn a_host_run_is_read_no_further_than_its_acknowledgement() {
+        let fixture = Fixture::new("past-acked");
+        {
+            let mut runs = fixture.held.runs.lock().unwrap();
+            runs[0].run.acked = 1;
+        }
+        fixture
+            .held
+            .past_acked
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let page = fixture
+            .read(
+                &Scope::Stream {
+                    pdp_id: hex(&[0xa1; 16]),
+                    instance: hex(&[0x01; 16]),
+                },
+                &Window::default(),
+            )
+            .expect("a page");
+        assert_eq!(named(&page), vec![(hex(&[0xa1; 16]), 1)]);
+        assert!(!page.more);
+        let tenant = fixture.read(&tenant(), &Window::default()).expect("a page");
+        assert_eq!(
+            named(&tenant),
+            vec![
+                (hex(&[0xa1; 16]), 1),
+                (hex(&[0xb2; 16]), 1),
+                (hex(&[0xb2; 16]), 2)
+            ]
+        );
     }
 
     /// WP-6.1b: `pdp` and `instance` naming a run the consumer holds read that run alone; any
@@ -1296,8 +1606,8 @@ mod host_reads {
         );
     }
 
-    /// WP-6.1b, owner decision: a legacy entry of a merged proof keeps its JWS members and names
-    /// its format beside them; the stored envelope is not changed.
+    /// WP-6.1b, owner decision: a legacy entry of a proof keeps its JWS members and names its
+    /// format beside them; the stored envelope is not changed.
     #[test]
     fn a_legacy_proof_entry_names_its_format() {
         let fixture = Fixture::new("legacy-proof");
@@ -1330,7 +1640,10 @@ mod host_reads {
             .expect("kept");
         let page = fixture
             .read(
-                &tenant(),
+                &Scope::Stream {
+                    pdp_id: "plane-a".to_owned(),
+                    instance: "i-1".to_owned(),
+                },
                 &Window {
                     proof: true,
                     ..Window::default()
@@ -1346,14 +1659,7 @@ mod host_reads {
         for member in ["protected", "payload", "signature"] {
             assert_eq!(legacy[0][member], signed[member], "{member} unchanged");
         }
-        assert_eq!(
-            page.proof
-                .iter()
-                .filter(|entry| entry["format"] == json!(HOST_FORMAT))
-                .count(),
-            3,
-            "the Host batches beside it: 1-2 and 3 of one producer, 1-2 of the other"
-        );
+        assert_eq!(page.proof.len(), 1, "a legacy stream's page alone");
         assert_eq!(
             fixture
                 .store
@@ -1377,21 +1683,17 @@ mod host_reads {
             pruned.run.oldest_retained = pruned.run.acked + 1;
         }
         let page = fixture.read(&tenant(), &Window::default()).expect("a page");
-        assert_eq!(
-            named(&page).len(),
-            5,
-            "the legacy records and the first producer's"
-        );
+        assert_eq!(named(&page).len(), 3, "the first producer's");
         assert!(!page.more, "nothing is left to read");
     }
 
-    /// WP-6.1b, after the review: pages bounded by bytes or filled by the legacy store resume
-    /// where they stopped, across the runs, never skipping or repeating a record.
+    /// WP-6.1b, after the review: pages bounded by bytes or records resume where they stopped,
+    /// across the runs, never skipping or repeating a record.
     #[test]
     fn pages_resume_across_sources_without_a_gap_or_a_repeat() {
         let fixture = Fixture::new("resume");
         let all = named(&fixture.read(&tenant(), &Window::default()).expect("a page"));
-        assert_eq!(all.len(), 7);
+        assert_eq!(all.len(), 5);
         for window in [
             Window {
                 limit_records: 2,
@@ -1422,60 +1724,18 @@ mod host_reads {
             }
             assert_eq!(seen, all, "every record once, in order");
         }
-        // A first page the legacy store fills leaves every run at its start.
+        // A first page the first run fills leaves the second at its start.
         let first = fixture
             .read(
                 &tenant(),
                 &Window {
-                    limit_records: 2,
+                    limit_records: 3,
                     ..Window::default()
                 },
             )
             .expect("a page");
-        assert!(named(&first).iter().all(|(id, _)| id == "plane-a"));
+        assert!(named(&first).iter().all(|(id, _)| *id == hex(&[0xa1; 16])));
         assert!(first.more);
-    }
-
-    /// WP-6.1b, after the review: a page mixing both sources whose legacy record has no envelope
-    /// is refused `unavailable`, since its paths pair with records by position; a legacy page
-    /// alone keeps answering as before.
-    #[test]
-    fn a_mixed_page_missing_a_legacy_envelope_is_refused() {
-        let fixture = Fixture::new("short-proof");
-        let refused = fixture
-            .read(
-                &tenant(),
-                &Window {
-                    proof: true,
-                    ..Window::default()
-                },
-            )
-            .expect_err("a legacy record without its envelope");
-        assert!(matches!(refused, ReadError::Unavailable(_)), "{refused:?}");
-        assert_eq!(
-            refusal(&refused),
-            (
-                permguard_core::ErrorClass::Unavailable,
-                permguard_core::codes::stream::STORE_UNAVAILABLE
-            )
-        );
-        let legacy = fixture
-            .read(
-                &Scope::Stream {
-                    pdp_id: "plane-a".to_owned(),
-                    instance: "i-1".to_owned(),
-                },
-                &Window {
-                    proof: true,
-                    ..Window::default()
-                },
-            )
-            .expect("a legacy page alone");
-        assert_eq!(legacy.records.len(), 2);
-        assert_eq!(
-            refusal(&ReadError::Offset(CursorError::Malformed)).0,
-            permguard_core::ErrorClass::Validation
-        );
     }
 
     /// WP-6.1b: a cursor standing in a run behind what the consumer still holds is answered,

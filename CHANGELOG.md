@@ -392,6 +392,13 @@ is cut.
 
 ### Changed
 
+- **The decision tenant view reads the Host's stream by concrete ids, and a tail never shows a record that later disappears.**
+  `GET /zones/{zone}/ledgers/{ledger}/decisions/v1/records` and `Read` answer the Host consumer's runs of the ledger, resolved to its zone and ledger ids, and no longer the legacy store's per-tenant views, which were kept under the names a record carries.
+  A ledger recreated under a name reads none of the old one's decisions, and a cursor keeps working across a rename.
+  A ledger no catalog entry or Host stream answers to is `404` `scope_unknown`, never an empty page; a deleted ledger's decisions stay readable by its ids.
+  Decisions recorded before the upgrade stay readable, exportable and verifiable whole by `pdp` and `instance`; the legacy store no longer writes `views/`, and views an earlier release wrote are left on disk and aged out as before.
+  A legacy stream read stops at what the store acknowledged, so records written and not yet acknowledged, which the next batch may replace, are never shown.
+
 - **The Data Plane's HTTP pull is retired: a shared mode decides on what the Host imports over `events.import`.**
   `dataPlane.events.pull.producer_keys` is refused at start, and the Helm chart refuses it; a shared mode no longer needs it.
   The pull worker is gone: a Data Plane no longer reads the Control Plane's public event reads, and `events.destination` is used only while a legacy event journal still drains.

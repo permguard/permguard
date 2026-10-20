@@ -4,20 +4,22 @@
 //! The decision-log store, as specified in `docs/decision-logs.md`.
 //!
 //! ```text
-//! data planes ──► ingest ──► segments (verbatim, append-only)
-//!                              │
-//!                              ├─► per-(zone, ledger) views
+//! legacy producers ──► ingest ──► producer streams (verbatim, append-only)
+//! the Host's consumer of `data/decisions` ──► the tenant view, by concrete ids
 //!                              │
 //!                              ▼  read from an offset
 //!                        SIEM, data lake, an application, the CLI
 //! ```
+//!
+//! Since WP-6.3a the tenant view reads the Host's consumer alone, by the ledger's concrete ids;
+//! this store keeps the legacy producers' streams, read whole by `pdp` and `instance`.
 //!
 //! | Module | What it does |
 //! | --- | --- |
 //! | [`ingest`] | verifies a batch and answers with a contiguous durable sequence |
 //! | [`http`] | the shipping and reading routes |
 //! | [`grpc`] | the same contract, over the other transport |
-//! | [`store`] | keeps records verbatim, and partitions them per tenant |
+//! | [`store`] | keeps the legacy producers' records verbatim, per producer stream |
 //! | [`offset`] | where a consumer stands, opaque and bound to its scope |
 //! | [`read`] | serving a page of records, and the proofs that go with them |
 //! | [`retention`] | how long they are kept, and what leaving looks like |

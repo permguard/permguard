@@ -13,10 +13,18 @@
 //!       EPOCHS.jsonl                 every marker and discontinuity of this stream
 //!       seg-<first>.jsonl            the records, exactly as they were signed
 //!       batch-<first>.jws            the envelope that attested them
-//!   views/<zone>/<ledger>/
-//!       seg-<first>.jsonl            the same records, for one tenant
 //!   verification-keys/<kid>.json     the PUBLIC halves that attest the segments
 //! ```
+//!
+//! # No tenant views since WP-6.3a
+//!
+//! The releases before this one also kept `views/<zone>/<ledger>/`, the same records partitioned
+//! by the zone and ledger *names* a record carries. That was a key derived from a name: a ledger
+//! recreated under a name would have read the old one's decisions (F-05), and a rollback of one
+//! producer truncated, by its own sequence, a view holding other producers' records. The tenant
+//! view now reads the Host's consumer by concrete ids (owner decision of 2026-10-20); this store
+//! keeps producer streams alone, read whole by `pdp` and `instance`, and views a release before
+//! this one wrote are left on disk, read by nothing.
 //!
 //! Under `data/` because that is what a restore has to bring back, beside the
 //! ledgers rather than at the volume root. And **not** under `operations/keys`,
@@ -32,22 +40,6 @@
 //! arrived, byte for byte, and this module never looks inside one except to
 //! read the few fields it must index by.
 //!
-//! # Views are partitions, not filters
-//!
-//! `store.zone` and `store.ledger` are inside the record, covered by its
-//! digest and by the batch signature, so the demultiplexing cannot be steered
-//! by anything a caller can change. A tenant then reads a directory that
-//! physically contains only its own records — a bug in a predicate leaks
-//! another tenant's data, a partition cannot.
-//!
-//! # Stream-level records live in every view
-//!
-//! `marker` and `discontinuity` records carry no tenancy: they are properties
-//! of the producer. A view that did not contain them would hold records whose
-//! completeness claim — the sampling rate, the build, the fact that the stream
-//! ended — is stated in a record the tenant cannot read. So they are copied
-//! into every view of their stream, and a view opened later is back-filled
-//! from `EPOCHS.jsonl` before it takes its first record.
 
 use permguard_host::storage::Dir;
 use std::fs::{self, OpenOptions};
@@ -125,7 +117,6 @@ impl DecisionStore {
     pub fn open(directory: impl Into<PathBuf>) -> Result<Self> {
         let root = directory.into();
         fs::create_dir_all(root.join("streams")).context("creating the decision store")?;
-        fs::create_dir_all(root.join("views")).context("creating the decision store")?;
         fs::create_dir_all(root.join(KEYS_DIRECTORY)).context("creating the decision store")?;
         // The temporaries a crashed replacement left below the store are never records.
         sweep_temporaries(&root)?;
@@ -165,7 +156,8 @@ impl DecisionStore {
         }
     }
 
-    /// Appends one record and, when it belongs to a tenant, to that tenant's view.
+    /// Appends one record to its producer's stream; a marker or a discontinuity to the stream's
+    /// epochs too.
     ///
     /// Nothing here is acknowledged: durability is a separate, explicit step,
     /// because the producer is about to delete its only other copy on the
@@ -181,21 +173,9 @@ impl DecisionStore {
         let line = render(record)?;
         append_line(&segment_for(&stream, seq)?, &line)?;
 
-        match tenancy(record) {
-            Some((zone, ledger)) => {
-                let view = self.view_path(&zone, &ledger)?;
-                self.ensure_view(&view, &stream)?;
-                self.remember_view(&stream, &zone, &ledger)?;
-                append_line(&segment_for(&view, seq)?, &line)?;
-            }
-            None => {
-                // A property of the producer: it belongs to every view of this
-                // stream, and to every view opened for it afterwards.
-                append_line(&stream.join(EPOCHS_FILE), &line)?;
-                for view in self.views_of(&stream)? {
-                    append_line(&segment_for(&view, seq)?, &line)?;
-                }
-            }
+        if tenancy(record).is_none() {
+            // A property of the producer, indexed beside its stream.
+            append_line(&stream.join(EPOCHS_FILE), &line)?;
         }
 
         Ok(())
@@ -229,22 +209,18 @@ impl DecisionStore {
         if !stream.exists() {
             return Ok(0);
         }
+        // This stream alone: nothing another producer wrote is touched (WP-6.3a).
         let mut dropped = 0;
-        let mut scopes = vec![stream.clone()];
-        scopes.extend(self.views_of(&stream)?);
-        for scope in scopes {
-            for (first, path) in segments_in(&scope)? {
-                if first > acked {
-                    dropped += lines_in(&path)?;
-                    fs::remove_file(&path).context("removing an unacknowledged segment")?;
-                    continue;
-                }
-                dropped += truncate_above(&path, acked)?;
+        for (first, path) in segments_in(&stream)? {
+            if first > acked {
+                dropped += lines_in(&path)?;
+                fs::remove_file(&path).context("removing an unacknowledged segment")?;
+                continue;
             }
+            dropped += truncate_above(&path, acked)?;
         }
         // The epoch index is appended before the acknowledgement too, so an
-        // unacknowledged marker is scratch there as well — otherwise a view
-        // opened later is back-filled from a record nobody stored.
+        // unacknowledged marker is scratch there as well.
         dropped += truncate_above(&stream.join(EPOCHS_FILE), acked)?;
 
         Ok(dropped)
@@ -264,9 +240,6 @@ impl DecisionStore {
     ) -> Result<StreamState> {
         let stream = self.stream_path(pdp_id, instance)?;
         flush_tree(&stream)?;
-        for view in self.views_of(&stream)? {
-            flush_tree(&view)?;
-        }
 
         let mut state = self.stream_state(pdp_id, instance)?;
         state.acked = acked;
@@ -480,68 +453,13 @@ impl DecisionStore {
         Ok(found.into_iter().map(|(_, value)| value).collect())
     }
 
-    /// The segments of one scope, oldest first.
+    /// The segments of one scope, oldest first: a producer stream's; a tenant scope holds none
+    /// here, its records being the Host consumer's (WP-6.3a).
     pub fn segments(&self, scope: &Scope) -> Result<Vec<(u64, PathBuf)>> {
-        let directory = match scope {
-            Scope::Stream { pdp_id, instance } => self.stream_path(pdp_id, instance)?,
-            Scope::Tenant { zone, ledger } => self.view_path(zone, ledger)?,
-        };
-
-        segments_in(&directory)
-    }
-
-    fn ensure_view(&self, view: &Path, stream: &Path) -> Result<()> {
-        if view.exists() {
-            return Ok(());
+        match scope {
+            Scope::Stream { pdp_id, instance } => segments_in(&self.stream_path(pdp_id, instance)?),
+            Scope::Tenant { .. } => Ok(Vec::new()),
         }
-        fs::create_dir_all(view).context("creating a tenant view")?;
-        // Back-fill the epochs, so the view is a self-describing stream from
-        // its first record rather than a bag of rows.
-        if let Ok(epochs) = fs::read_to_string(stream.join(EPOCHS_FILE)) {
-            for line in epochs.lines() {
-                if line.is_empty() {
-                    continue;
-                }
-                let seq = serde_json::from_str::<Value>(line)
-                    .ok()
-                    .and_then(|value| value.get("seq").and_then(Value::as_u64))
-                    .unwrap_or_default();
-                append_line(&segment_for(view, seq)?, &format!("{line}\n"))?;
-            }
-        }
-
-        Ok(())
-    }
-
-    fn views_of(&self, stream: &Path) -> Result<Vec<PathBuf>> {
-        // Which tenants this stream has written to is answered by which views
-        // hold any of its records. Kept as a file beside the stream rather than
-        // walked, because walking every view on every marker would cost the
-        // whole store per epoch.
-        let path = stream.join("VIEWS");
-        let Ok(text) = fs::read_to_string(&path) else {
-            return Ok(Vec::new());
-        };
-        let mut found = Vec::new();
-        for line in text.lines() {
-            if let Some((zone, ledger)) = line.split_once('\t') {
-                found.push(self.view_path(zone, ledger)?);
-            }
-        }
-
-        Ok(found)
-    }
-
-    fn remember_view(&self, stream: &Path, zone: &str, ledger: &str) -> Result<()> {
-        let path = stream.join("VIEWS");
-        let line = format!("{zone}\t{ledger}\n");
-        if let Ok(text) = fs::read_to_string(&path)
-            && text.lines().any(|held| held == line.trim_end())
-        {
-            return Ok(());
-        }
-
-        append_line(&path, &line)
     }
 
     fn write_state(&self, stream: &Path, state: &StreamState) -> Result<()> {
@@ -555,13 +473,6 @@ impl DecisionStore {
             safe(instance).ok_or_else(|| anyhow!("`{instance}` is not an incarnation id"))?;
 
         Ok(self.root.join("streams").join(pdp_id).join(instance))
-    }
-
-    fn view_path(&self, zone: &str, ledger: &str) -> Result<PathBuf> {
-        let zone = safe(zone).ok_or_else(|| anyhow!("`{zone}` is not a zone name"))?;
-        let ledger = safe(ledger).ok_or_else(|| anyhow!("`{ledger}` is not a ledger name"))?;
-
-        Ok(self.root.join("views").join(zone).join(ledger))
     }
 }
 

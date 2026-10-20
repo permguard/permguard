@@ -204,7 +204,8 @@ impl permguard_core::PlaneTask for RetentionService {
 /// Every directory that holds segments: each stream, and each tenant view.
 fn scopes(root: &Path) -> Result<Vec<PathBuf>> {
     let mut found = Vec::new();
-    // streams/<pdp>/<instance> and views/<zone>/<ledger> are both two deep.
+    // streams/<pdp>/<instance> and views/<zone>/<ledger> are both two deep; views are only what
+    // the releases before WP-6.3a wrote, aged out as before.
     for top in ["streams", "views"] {
         let directory = root.join(top);
         for outer in fs::read_dir(&directory).into_iter().flatten().flatten() {
