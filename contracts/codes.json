@@ -84,6 +84,30 @@
       "kind": "local",
       "class": "validation"
     },
+    "client.DECISION_EXPORT_MALFORMED": {
+      "code": "decision_export_malformed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.DECISION_EXPORT_TRUNCATED": {
+      "code": "decision_export_truncated",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.DECISION_EXPORT_TYPE_UNSUPPORTED": {
+      "code": "decision_export_type_unsupported",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.DECISION_EXPORT_UNREADABLE": {
+      "code": "decision_export_unreadable",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
     "client.EVENT_EXPORT_MALFORMED": {
       "code": "event_export_malformed",
       "contract": "5-command-line/1-command-line.md",

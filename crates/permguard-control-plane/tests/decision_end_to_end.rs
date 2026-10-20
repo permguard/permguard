@@ -539,6 +539,7 @@ fn asking_for_the_signers_of_a_stream_nobody_holds_is_not_found() {
         metrics: Metrics::none(),
         host: None,
         catalog: None,
+        base_url: String::new(),
     };
 
     let refused = facade

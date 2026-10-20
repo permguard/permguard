@@ -398,6 +398,7 @@ impl PlaneModule for ControlPlaneModule {
         routes.merge(discovery_routes(
             context,
             self.event_facade(context).is_some(),
+            self.decision_facade(context).is_some(),
         ))
     }
 
@@ -416,6 +417,7 @@ impl PlaneModule for ControlPlaneModule {
             configuration: control_configuration_document(
                 context,
                 self.event_facade(context).is_some(),
+                self.decision_facade(context).is_some(),
             ),
         }));
 
@@ -503,7 +505,11 @@ fn grpc_message_ceiling(config: &permguard_core::Config) -> usize {
 /// `/control-plane/keys` (the plane's signing ring, published as JWKS). The
 /// cross-plane registry is the process's business and lives on the telemetry
 /// surface, so nothing ever collapses two planes onto one public port.
-fn discovery_routes(context: &PlaneContext<'_>, events_composed: bool) -> Router {
+fn discovery_routes(
+    context: &PlaneContext<'_>,
+    events_composed: bool,
+    decisions_composed: bool,
+) -> Router {
     #[derive(Clone)]
     struct Discovery {
         document: String,
@@ -565,7 +571,7 @@ fn discovery_routes(context: &PlaneContext<'_>, events_composed: bool) -> Router
     }
 
     let state = Discovery {
-        document: control_configuration_document(context, events_composed),
+        document: control_configuration_document(context, events_composed, decisions_composed),
         keys: crate::handles::own_public_keys(context),
     };
 
@@ -580,7 +586,11 @@ fn discovery_routes(context: &PlaneContext<'_>, events_composed: bool) -> Router
 /// caller fills in (`{zone}`, `{ledger}`, `{ref}`). It describes this plane
 /// and nothing else; the base URL is resolved from the same configuration
 /// the listener binds with.
-fn control_configuration_document(context: &PlaneContext<'_>, events_composed: bool) -> String {
+fn control_configuration_document(
+    context: &PlaneContext<'_>,
+    events_composed: bool,
+    decisions_composed: bool,
+) -> String {
     let base = permguard_server::plane::plane_http_base(
         context.config(),
         permguard_server::plane::PlaneId::Control,
@@ -615,7 +625,7 @@ fn control_configuration_document(context: &PlaneContext<'_>, events_composed: b
         ),
         base = base,
         ledger = ledger,
-        interfaces = interfaces(events_composed, &base),
+        interfaces = interfaces(events_composed, decisions_composed, &base),
         http = transport_enabled(
             context,
             permguard_server::plane::SETTING_CONTROL_HTTP_ENABLED
@@ -642,7 +652,7 @@ fn control_configuration_document(context: &PlaneContext<'_>, events_composed: b
 /// Rendered as a trailing fragment rather than a field, because this document is written in source
 /// order on purpose: who I am, my keys, my protocols, the plain APIs, and only then the interfaces
 /// that hang off them.
-fn interfaces(events_composed: bool, base: &str) -> String {
+fn interfaces(events_composed: bool, decisions_composed: bool, base: &str) -> String {
     // Whether the interface *was composed*, not whether it was configured.
     //
     // A store that would not open, or read offsets that could not be signed, leave the routes
@@ -650,16 +660,29 @@ fn interfaces(events_composed: bool, base: &str) -> String {
     // document used to be written from the configuration instead, so exactly that deployment
     // advertised an endpoint which answered 404: a client would read the interface as present,
     // call it, and get a refusal that names nothing.
-    if !events_composed {
+    let mut served = Vec::new();
+    // The decision log beside the events' (WP-6.3b).
+    if decisions_composed {
+        served.push((
+            crate::decisions::read::API,
+            crate::decisions::configuration::CONFIGURATION_PATH,
+        ));
+    }
+    if events_composed {
+        served.push((
+            crate::events::read::API,
+            crate::events::configuration::CONFIGURATION_PATH,
+        ));
+    }
+    if served.is_empty() {
         return String::new();
     }
+    let entries: Vec<String> = served
+        .into_iter()
+        .map(|(api, path)| format!("\"{api}\":{{\"configuration\":\"{base}{path}\"}}"))
+        .collect();
 
-    format!(
-        ",\"interfaces\":{{\"{api}\":{{\"configuration\":\"{base}{path}\"}}}}",
-        api = crate::events::read::API,
-        base = base,
-        path = crate::events::configuration::CONFIGURATION_PATH,
-    )
+    format!(",\"interfaces\":{{{}}}", entries.join(","))
 }
 
 /// Whether one of this plane's transports is on: absent means on — a plane
@@ -978,6 +1001,11 @@ fn build_decision_facade(
         metrics: context.metrics().clone(),
         host: crate::handles::decision_consumer(context),
         catalog: context.catalog().map(std::sync::Arc::clone),
+        base_url: permguard_server::plane::plane_http_base(
+            config,
+            permguard_server::plane::PlaneId::Control,
+        )
+        .unwrap_or_default(),
     };
     if let Ok(mut held) = shared.lock() {
         *held = Some(facade.clone());
@@ -1487,11 +1515,32 @@ mod tests {
         let context = PlaneContext::new(&server, PLANE);
 
         // With and without the optional `interfaces` member.
-        for events_composed in [false, true] {
-            let text = control_configuration_document(&context, events_composed);
+        for (events_composed, decisions_composed) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let text =
+                control_configuration_document(&context, events_composed, decisions_composed);
             let json: serde_json::Value =
                 serde_json::from_str(&text).expect("the control plane's document is JSON");
-            assert_eq!(json.get("interfaces").is_some(), events_composed);
+            assert_eq!(
+                json.get("interfaces").is_some(),
+                events_composed || decisions_composed
+            );
+            // WP-6.3b: the decision log is listed exactly when its routes are served.
+            assert_eq!(
+                json.pointer(&format!(
+                    "/interfaces/{}",
+                    crate::decisions::read::API.replace('/', "~1")
+                ))
+                .and_then(|entry| entry["configuration"].as_str())
+                .map(|link| link.ends_with(crate::decisions::configuration::CONFIGURATION_PATH)),
+                decisions_composed.then_some(true)
+            );
+            assert_eq!(
+                json.pointer(&format!("/interfaces/{}", crate::events::read::API))
+                    .is_some(),
+                events_composed
+            );
             doc.check_json("ControlPlaneConfiguration", &json);
         }
 

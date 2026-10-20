@@ -343,7 +343,7 @@
             "name": "pdp",
             "in": "query",
             "required": true,
-            "description": "The producer's `pdp_id`.",
+            "description": "The producer's `pdp_id`, or the `host_id` of a Host run in lowercase hex (WP-6.3b).",
             "schema": {
               "type": "string"
             },
@@ -353,7 +353,7 @@
             "name": "instance",
             "in": "query",
             "required": true,
-            "description": "The producer incarnation.",
+            "description": "The producer incarnation, or the Host run in lowercase hex (WP-6.3b).",
             "schema": {
               "type": "string"
             },
@@ -425,6 +425,26 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.DecisionLog/GetSigners"
+      }
+    },
+    "/.well-known/permguard-decisions-native-v1-configuration": {
+      "get": {
+        "operationId": "getDecisionConfiguration",
+        "summary": "What this plane offers of the decision log interface",
+        "responses": {
+          "200": {
+            "description": "The configuration document. Unauthenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigurationDocument"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "REST-only: the gRPC DecisionLog service names Ship, Read and GetSigners (WP-6.3b)."
       }
     }
   },
@@ -1355,6 +1375,148 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.control.v1.GetDecisionSignersResponse"
+      },
+      "ConfigurationDocument": {
+        "type": "object",
+        "description": "What this plane publishes about permguard.api.decisions.native.v1 (WP-6.3b).",
+        "properties": {
+          "interface": {
+            "type": "string",
+            "const": "permguard.api.decisions.native.v1"
+          },
+          "store": {
+            "type": "string",
+            "description": "This store's identifier."
+          },
+          "endpoints": {
+            "$ref": "#/components/schemas/ConfigurationEndpoints"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "atomic-batches",
+                "idempotent-ingest",
+                "attributed-records",
+                "authenticated-offsets",
+                "read-coverage",
+                "tenant-scoped-reads"
+              ]
+            }
+          },
+          "offsets": {
+            "$ref": "#/components/schemas/ConfigurationOffsets"
+          },
+          "read_parameters": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "zone",
+                "ledger",
+                "pdp",
+                "instance",
+                "from",
+                "until",
+                "limit_records",
+                "limit_bytes",
+                "proof"
+              ]
+            }
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ConfigurationLimits"
+          }
+        },
+        "required": [
+          "interface",
+          "store",
+          "endpoints",
+          "capabilities",
+          "offsets",
+          "read_parameters",
+          "limits"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only."
+      },
+      "ConfigurationEndpoints": {
+        "type": "object",
+        "description": "Absolute URLs where batches are delivered, records read and signers answered.",
+        "properties": {
+          "batches": {
+            "type": "string"
+          },
+          "records": {
+            "type": "string",
+            "description": "One producer stream's records."
+          },
+          "tenant_records": {
+            "type": "string",
+            "description": "A template containing `{zone}` and `{ledger}`."
+          },
+          "signers": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "batches",
+          "records",
+          "tenant_records",
+          "signers"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only."
+      },
+      "ConfigurationOffsets": {
+        "type": "object",
+        "description": "How a reader's position is spelled.",
+        "properties": {
+          "api": {
+            "type": "string",
+            "description": "The API family an offset belongs to."
+          },
+          "format": {
+            "type": "string",
+            "description": "`opaque`."
+          },
+          "editable": {
+            "type": "boolean",
+            "description": "Whether an edited offset is accepted; never."
+          }
+        },
+        "required": [
+          "api",
+          "format",
+          "editable"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only."
+      },
+      "ConfigurationLimits": {
+        "type": "object",
+        "description": "The ceilings a read is clamped to.",
+        "properties": {
+          "max_records": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "max_records",
+          "max_bytes"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only."
       }
     }
   },

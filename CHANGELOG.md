@@ -19,6 +19,14 @@ is cut.
 
 ### Added
 
+- **Decision signers of the Host's runs, the decision log's discovery document, and offline `decisions verify`.**
+  `GET /decisions/v1/signers` and `GetSigners` answer a Host run named by `pdp`, its `host_id`, and `instance`, its run, in lowercase hex, from the signers the Host's stream observed; a pair no stream holds is `404` `stream_unknown`.
+  The control plane publishes `/.well-known/permguard-decisions-native-v1-configuration` for `permguard.api.decisions.native.v1`: its endpoints, capabilities, offsets, read parameters and limits; its plane document lists it beside the event log's.
+  `permguard decisions export` with `-o json` or `-o yaml` writes a self-contained archive in the format `permguard.decisions.export.v1`, records, envelopes and inclusion paths with their scope, always carrying its proofs.
+  `permguard decisions verify --file <archive> --keys <jwks>` checks such an archive without contacting a server and exits `2` when a record was altered, an envelope does not verify, or a non-empty archive carries none.
+  It also exits `2` when a record belongs to another scope than the one the archive binds, or when a producer stream's archive misses part of a signed batch.
+  An archive that cannot be read, does not parse, declares another format or is truncated is refused with `decision_export_unreadable`, `decision_export_malformed`, `decision_export_type_unsupported` or `decision_export_truncated`, exit `64`.
+
 - **A shared temporal decision reads the origins the member Host imports, and measures its freshness from the coordinator's checkpoint.**
   Under `shared-eventual` or `shared-bounded`, the Data Plane now reads, beside its own stream and what the HTTP pull imported before, the origins' runs its Host imported over `events.import`, from the Host's event consumer.
   It keeps a rebuildable index of each imported run under `planes/data/temporal/<zone>/<ledger>/imported/`, caught up from the consumer before a shared decision, so a decision reads its window and never the whole imported history.

@@ -16,6 +16,7 @@
 //!
 //! | Module | What it does |
 //! | --- | --- |
+//! | [`configuration`] | what this plane publishes about the decision log interface |
 //! | [`ingest`] | verifies a batch and answers with a contiguous durable sequence |
 //! | [`http`] | the shipping and reading routes |
 //! | [`grpc`] | the same contract, over the other transport |
@@ -30,6 +31,7 @@
 //! — OTLP, object storage, a broker, a webhook — are *readers*, configured,
 //! never a branch in the write path.
 
+pub mod configuration;
 pub mod cursorkey;
 pub mod grpc;
 pub mod http;

@@ -575,10 +575,30 @@ pub enum DecisionsAction {
         until_seq: Option<u64>,
     },
     /// Read in bulk, resumably: every page, from an offset, to standard output.
+    ///
+    /// With `-o json` or `-o yaml` the output is a self-contained archive, records, envelopes and
+    /// inclusion paths with their scope, which `decisions verify --file` checks offline.
     #[command(
         after_help = "Examples:\n  permguard decisions export -o json > decisions.json\n  permguard decisions export --pdp pdp-eu-1 --instance 7f3c --verify --keys data-plane-keys.json"
     )]
     Export(DecisionsQuery),
+    /// Verify a decision export offline: the chain or the inclusion paths, and the signatures.
+    ///
+    /// `--keys` is required: a path supplied by the same archive proves nothing about who
+    /// produced it until the batch envelope verifies against an independently supplied key.
+    /// Exits `2` when the archive does not verify.
+    #[command(
+        after_help = "Examples:\n  permguard decisions verify --file decisions.json --keys data-plane-keys.json\n  permguard decisions verify --file decisions.json --keys data-plane-keys.json -o json"
+    )]
+    Verify {
+        /// A JSON or YAML archive produced by `decisions export`, verified without contacting a
+        /// server.
+        #[arg(long, value_name = "FILE")]
+        file: String,
+        /// The producers' published key set (a JWKS file).
+        #[arg(long, value_name = "FILE")]
+        keys: String,
+    },
 }
 
 /// What to read, and how far.

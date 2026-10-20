@@ -165,6 +165,9 @@ pub mod interface {
     pub const EVENTS_NATIVE_V1ALPHA1: &str = "permguard.api.events.native.v1alpha1";
     /// The archive format `events export` writes.
     pub const EVENTS_EXPORT_V1ALPHA1: &str = "permguard.events.export.v1alpha1";
+    /// The archive format `decisions export` writes (WP-6.3b, owner decision of 2026-10-20): a
+    /// format identifier, never a record or signature domain.
+    pub const DECISIONS_EXPORT_V1: &str = "permguard.decisions.export.v1";
 }
 
 /// Media types of ledger objects and transfer bodies.
@@ -471,6 +474,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         (
             "interface.EVENTS_EXPORT_V1ALPHA1",
             interface::EVENTS_EXPORT_V1ALPHA1,
+        ),
+        (
+            "interface.DECISIONS_EXPORT_V1",
+            interface::DECISIONS_EXPORT_V1,
         ),
         ("media.NOTP_V1_CBOR", media::NOTP_V1_CBOR),
         ("media.MANIFEST_V1_CBOR", media::MANIFEST_V1_CBOR),

@@ -299,6 +299,12 @@ pub mod client {
     pub const TLS_CLIENT_IDENTITY_REJECTED: &str = "tls_client_identity_rejected";
     pub const TLS_CLIENT_IDENTITY_INCOMPLETE: &str = "tls_client_identity_incomplete";
     pub const TLS_CLIENT_CERTIFICATE_REQUIRED: &str = "tls_client_certificate_required";
+    /// A decision export file that cannot be read, does not parse, declares another format, or
+    /// ends before its last page (WP-6.3b, owner decision of 2026-10-20).
+    pub const DECISION_EXPORT_MALFORMED: &str = "decision_export_malformed";
+    pub const DECISION_EXPORT_TRUNCATED: &str = "decision_export_truncated";
+    pub const DECISION_EXPORT_TYPE_UNSUPPORTED: &str = "decision_export_type_unsupported";
+    pub const DECISION_EXPORT_UNREADABLE: &str = "decision_export_unreadable";
     pub const EVENT_EXPORT_MALFORMED: &str = "event_export_malformed";
     pub const EVENT_EXPORT_TRUNCATED: &str = "event_export_truncated";
     pub const EVENT_EXPORT_TYPE_UNSUPPORTED: &str = "event_export_type_unsupported";
@@ -679,6 +685,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::TLS_CLIENT_IDENTITY_REJECTED,
         client::TLS_CLIENT_IDENTITY_INCOMPLETE,
         client::TLS_CLIENT_CERTIFICATE_REQUIRED,
+        client::DECISION_EXPORT_MALFORMED,
+        client::DECISION_EXPORT_TRUNCATED,
+        client::DECISION_EXPORT_TYPE_UNSUPPORTED,
+        client::DECISION_EXPORT_UNREADABLE,
         client::EVENT_EXPORT_MALFORMED,
         client::EVENT_EXPORT_TRUNCATED,
         client::EVENT_EXPORT_TYPE_UNSUPPORTED,

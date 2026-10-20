@@ -72,6 +72,8 @@ pub struct DecisionFacade {
     /// The catalog, turning a tenant route's names into the ids the consumer's streams are keyed
     /// by (owner decision of 2026-10-18).
     pub catalog: Option<Arc<dyn permguard_core::catalog::Catalog>>,
+    /// Where this plane is reached, what its discovery document's endpoints are built on.
+    pub base_url: String,
 }
 
 /// One producer stream's signer history, with the receiver's durable frontier.
@@ -102,6 +104,11 @@ impl DecisionFacade {
                 permguard_core::codes::stream::STREAM_MALFORMED,
                 "`pdp` and `instance` are unchanged portable names",
             ));
+        }
+        // A Host run named by its `host_id` and run, as the read names it (WP-6.3b): answered from
+        // the consumer's signer observations of the run's resource.
+        if let Some(view) = self.host_signers(pdp_id, instance, from_seq, until_seq)? {
+            return Ok(view);
         }
         // A stream this store never held is a `404`, not an empty manifest: an empty answer
         // reads as "held, nothing signed yet", and a typo in a producer name must not read as
@@ -157,6 +164,67 @@ impl DecisionFacade {
             acked: state.acked,
             spans: spans.to_vec(),
         })
+    }
+
+    /// The signers of the Host run `pdp_id`/`instance` names in hex, when the consumer holds it
+    /// (WP-6.3b); `None` for a pair naming no run it holds, which the legacy store then answers.
+    fn host_signers(
+        &self,
+        pdp_id: &str,
+        instance: &str,
+        from_seq: u64,
+        until_seq: u64,
+    ) -> Result<Option<StreamSignersView>, ApiError> {
+        let (Some(host), Some(producer), Some(run)) = (
+            self.host.as_ref(),
+            read::unhex16(pdp_id),
+            read::unhex16(instance),
+        ) else {
+            return Ok(None);
+        };
+        let unavailable = |error: String| {
+            ApiError::new(
+                ErrorClass::Unavailable,
+                permguard_core::codes::stream::STORE_UNAVAILABLE,
+                error,
+            )
+        };
+        let Some(resource) = host.locate(&producer, &run).map_err(unavailable)? else {
+            return Ok(None);
+        };
+        let Some(held) = host
+            .signers(&resource)
+            .map_err(unavailable)?
+            .into_iter()
+            .find(|held| held.producer == producer && held.run == run)
+        else {
+            return Ok(None);
+        };
+        let mut signers = permguard_stream::Signers::empty();
+        for (from, kid, jwk) in &held.spans {
+            let jwk: serde_json::Value = serde_json::from_str(jwk)
+                .map_err(|error| unavailable(format!("a signer of the Host's stream: {error}")))?;
+            signers
+                .observe(*from, kid, &jwk)
+                .map_err(|error| unavailable(format!("{error:?}")))?;
+        }
+        let until = if until_seq == 0 { u64::MAX } else { until_seq };
+        let spans = signers.covering(from_seq, until);
+        if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
+            return Err(ApiError::new(
+                ErrorClass::Validation,
+                permguard_core::codes::stream::SIGNER_RANGE_TOO_WIDE,
+                format!(
+                    "this range crosses more than {} signing-key spans; narrow `from_seq` and \
+                     `until_seq`",
+                    permguard_stream::MAX_SIGNER_SPANS
+                ),
+            ));
+        }
+        Ok(Some(StreamSignersView {
+            acked: held.acked,
+            spans: spans.to_vec(),
+        }))
     }
 
     /// Every producer binding a batch may legitimately verify under.
@@ -265,17 +333,33 @@ pub struct ProducerFile {
     pub pdp: String,
 }
 
+/// Where a legacy producer delivers a batch.
+pub const BATCHES_PATH: &str = "/decisions/v1/batches";
+/// One producer stream's records.
+pub const RECORDS_PATH: &str = "/decisions/v1/records";
+/// One tenant's records.
+pub const TENANT_RECORDS_PATH: &str = "/zones/{zone}/ledgers/{ledger}/decisions/v1/records";
+/// One producer stream's signing-key spans.
+pub const SIGNERS_PATH: &str = "/decisions/v1/signers";
+
 /// The routes the control plane answers about decisions.
 pub(crate) fn routes(facade: DecisionFacade) -> Router {
     Router::new()
-        .route("/decisions/v1/batches", post(ship))
-        .route("/decisions/v1/records", get(records))
-        .route(
-            "/zones/{zone}/ledgers/{ledger}/decisions/v1/records",
-            get(tenant_records),
-        )
-        .route("/decisions/v1/signers", get(signers))
+        .route(BATCHES_PATH, post(ship))
+        .route(RECORDS_PATH, get(records))
+        .route(TENANT_RECORDS_PATH, get(tenant_records))
+        .route(SIGNERS_PATH, get(signers))
+        .route(super::configuration::CONFIGURATION_PATH, get(document))
         .with_state(facade)
+}
+
+/// What this plane offers of the decision log interface (WP-6.3b). Unauthenticated, like every
+/// layer of the discovery chain: it says what the shapes are, never what is inside them.
+async fn document(State(facade): State<DecisionFacade>) -> Json<super::configuration::Document> {
+    Json(super::configuration::document(
+        &facade.base_url,
+        &facade.base_url,
+    ))
 }
 
 /// What a producer is told about its batch.
@@ -863,6 +947,11 @@ mod openapi {
     #[test]
     fn test_the_decision_wire_types_match_openapi_evidence_decisions() {
         let doc = Document::load("evidence-decisions.json");
+        // The discovery document (WP-6.3b).
+        doc.check(
+            "ConfigurationDocument",
+            &super::super::configuration::document("http://host", "store"),
+        );
         let held = records();
         let values: Vec<Value> = held
             .iter()
@@ -1178,6 +1267,175 @@ mod strict {
 
     const ROOT: &[u8] = b"a-test-cursor-key-of-32-bytes!!!!";
 
+    /// The Host's consumer of one run, `a1…`/`01…` over `acme/main`, signed by `k1` from 1 and
+    /// `k2` from 5, acknowledged through 7.
+    struct Signing;
+
+    impl permguard_host::composition::StreamConsumerReads for Signing {
+        fn runs(
+            &self,
+            _: &permguard_core::authz::Resource,
+        ) -> Result<Vec<permguard_host::composition::ConsumedRun>, String> {
+            Ok(Vec::new())
+        }
+
+        fn locate(
+            &self,
+            producer: &[u8; 16],
+            run: &[u8; 16],
+        ) -> Result<Option<permguard_core::authz::Resource>, String> {
+            Ok((*producer == [0xa1; 16] && *run == [0x01; 16])
+                .then(|| permguard_core::authz::Resource::ledger("data", "acme", "main")))
+        }
+
+        fn records(
+            &self,
+            _: &permguard_core::authz::Resource,
+            _: &[u8; 16],
+            _: &[u8; 16],
+            _: u64,
+            _: usize,
+        ) -> Result<permguard_host::composition::ConsumedPage, String> {
+            Ok(permguard_host::composition::ConsumedPage::default())
+        }
+
+        fn batch(
+            &self,
+            _: &permguard_core::authz::Resource,
+            _: &[u8; 16],
+            _: &[u8; 16],
+            _: u64,
+        ) -> Result<Option<Vec<u8>>, String> {
+            Ok(None)
+        }
+
+        fn signers(
+            &self,
+            _: &permguard_core::authz::Resource,
+        ) -> Result<Vec<permguard_host::composition::ConsumedSigners>, String> {
+            let jwk = |kid: &str| {
+                serde_json::json!({"kty": "OKP", "crv": "Ed25519", "x": kid, "kid": kid})
+                    .to_string()
+            };
+            Ok(vec![
+                permguard_host::composition::ConsumedSigners {
+                    producer: [0xb2; 16],
+                    run: [0x01; 16],
+                    acked: 3,
+                    spans: vec![(1, "other".to_owned(), jwk("other"))],
+                },
+                permguard_host::composition::ConsumedSigners {
+                    producer: [0xa1; 16],
+                    run: [0x01; 16],
+                    acked: 7,
+                    spans: vec![
+                        (1, "k1".to_owned(), jwk("k1")),
+                        (5, "k2".to_owned(), jwk("k2")),
+                    ],
+                },
+            ])
+        }
+    }
+
+    fn signing(tag: &str) -> DecisionFacade {
+        DecisionFacade {
+            host: Some(permguard_host::composition::StreamConsumer::over(Arc::new(
+                Signing,
+            ))),
+            ..facade(tag)
+        }
+    }
+
+    /// WP-6.3b: `pdp` and `instance` naming a Host run in hex answer its signers from the
+    /// consumer, the run's own and no other's, cut to the range asked.
+    #[tokio::test]
+    async fn the_signers_of_a_host_run_come_from_the_consumer() {
+        let router = routes(signing("host-signers"));
+        let (pdp, instance) = (read::hex(&[0xa1; 16]), read::hex(&[0x01; 16]));
+        let (status, body) = get(
+            &router,
+            &format!("/decisions/v1/signers?pdp={pdp}&instance={instance}"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["acked"], 7);
+        let kids: Vec<&str> = body["spans"]
+            .as_array()
+            .expect("spans")
+            .iter()
+            .filter_map(|span| span["kid"].as_str())
+            .collect();
+        assert_eq!(kids, ["k1", "k2"]);
+        let (_, later) = get(
+            &router,
+            &format!("/decisions/v1/signers?pdp={pdp}&instance={instance}&from_seq=6"),
+        )
+        .await;
+        assert_eq!(later["spans"][0]["kid"], "k2");
+        assert_eq!(later["spans"].as_array().map(Vec::len), Some(1));
+    }
+
+    /// WP-6.3b: the decision log's discovery document is served beside its routes, on the base
+    /// the plane is reached at.
+    #[tokio::test]
+    async fn the_decision_document_is_served_beside_the_routes() {
+        let router = routes(DecisionFacade {
+            base_url: "http://plane:6443".to_owned(),
+            ..facade("document")
+        });
+        let (status, body) = get(&router, super::super::configuration::CONFIGURATION_PATH).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            body["endpoints"]["signers"],
+            format!("http://plane:6443{SIGNERS_PATH}")
+        );
+        assert_eq!(body["interface"], read::API);
+    }
+
+    /// WP-6.3b: a pair naming no run the consumer holds and no legacy stream is `404`, never an
+    /// empty manifest.
+    #[tokio::test]
+    async fn the_signers_of_a_run_nobody_holds_are_not_found() {
+        let router = routes(signing("host-signers-none"));
+        let (status, body) = get(
+            &router,
+            &format!(
+                "/decisions/v1/signers?pdp={}&instance={}",
+                read::hex(&[0xa1; 16]),
+                read::hex(&[0x09; 16])
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        assert_eq!(body["code"], permguard_core::codes::stream::STREAM_UNKNOWN);
+    }
+
+    /// WP-6.3b: `GetSigners` answers the same manifest of a Host run.
+    #[tokio::test]
+    async fn get_signers_answers_a_host_run_over_grpc() {
+        use crate::v1::decision_log_server::DecisionLog as _;
+
+        let answered = signing("host-signers-grpc")
+            .get_signers(tonic::Request::new(crate::v1::GetDecisionSignersRequest {
+                pdp: read::hex(&[0xa1; 16]),
+                instance: read::hex(&[0x01; 16]),
+                from_seq: 0,
+                until_seq: 0,
+            }))
+            .await
+            .expect("answered")
+            .into_inner();
+        assert_eq!(answered.acked, 7);
+        assert_eq!(
+            answered
+                .spans
+                .iter()
+                .map(|span| span.kid.as_str())
+                .collect::<Vec<_>>(),
+            ["k1", "k2"]
+        );
+    }
+
     /// WP-6.1: a store beside a plane recording on the Host's stream expects no batch unless a
     /// producer key set is configured or a legacy spool names its producer.
     #[test]
@@ -1216,6 +1474,7 @@ mod strict {
             metrics: permguard_core::Metrics::none(),
             host: None,
             catalog: None,
+            base_url: String::new(),
         }
     }
 
