@@ -8,6 +8,9 @@
 //! HTTP surface, `grpc`/`grpcs` the gRPC one — and the semantics are the
 //! server's. What is left here is what a command *is*: which question to ask,
 //! and how the answer reads.
+//!
+//! A rename or a delete names the revision it was made against (WP-7.3a): the one the operator
+//! gave with `--expected-revision`, or else the one a read just before answers.
 
 use std::process::ExitCode;
 
@@ -94,8 +97,18 @@ pub fn catalog_command(
                     trace,
                 )?;
             }
-            ZonesAction::Update { zone, name } => {
-                let zone = backend.rename_zone(&zone, &name).map_err(failed)?;
+            ZonesAction::Update {
+                zone,
+                name,
+                expected_revision,
+            } => {
+                let revision = match expected_revision {
+                    Some(revision) => revision,
+                    None => backend.get_zone(&zone).map_err(failed)?.revision,
+                };
+                let zone = backend
+                    .rename_zone(&zone, &name, revision)
+                    .map_err(failed)?;
 
                 render(
                     &workspace_out::ZoneReport {
@@ -106,8 +119,15 @@ pub fn catalog_command(
                     trace,
                 )?;
             }
-            ZonesAction::Delete { zone } => {
-                let zone = backend.delete_zone(&zone).map_err(failed)?;
+            ZonesAction::Delete {
+                zone,
+                expected_revision,
+            } => {
+                let revision = match expected_revision {
+                    Some(revision) => revision,
+                    None => backend.get_zone(&zone).map_err(failed)?.revision,
+                };
+                let zone = backend.delete_zone(&zone, revision).map_err(failed)?;
 
                 render(
                     &workspace_out::ZoneReport {
@@ -157,9 +177,18 @@ pub fn catalog_command(
                     trace,
                 )?;
             }
-            LedgersAction::Update { zone, ledger, name } => {
+            LedgersAction::Update {
+                zone,
+                ledger,
+                name,
+                expected_revision,
+            } => {
+                let revision = match expected_revision {
+                    Some(revision) => revision,
+                    None => backend.get_ledger(&zone, &ledger).map_err(failed)?.revision,
+                };
                 let ledger = backend
-                    .rename_ledger(&zone, &ledger, &name)
+                    .rename_ledger(&zone, &ledger, &name, revision)
                     .map_err(failed)?;
 
                 render(
@@ -171,8 +200,18 @@ pub fn catalog_command(
                     trace,
                 )?;
             }
-            LedgersAction::Delete { zone, ledger } => {
-                let ledger = backend.delete_ledger(&zone, &ledger).map_err(failed)?;
+            LedgersAction::Delete {
+                zone,
+                ledger,
+                expected_revision,
+            } => {
+                let revision = match expected_revision {
+                    Some(revision) => revision,
+                    None => backend.get_ledger(&zone, &ledger).map_err(failed)?.revision,
+                };
+                let ledger = backend
+                    .delete_ledger(&zone, &ledger, revision)
+                    .map_err(failed)?;
 
                 render(
                     &workspace_out::LedgerReport {

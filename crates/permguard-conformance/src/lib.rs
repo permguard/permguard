@@ -10,6 +10,7 @@
 //! | [`contracts`]            | the checked-in schemas, CBOR registries and code ownership match the code      |
 //! | [`schema`]               | a REST wire type and its OpenAPI schema agree both ways                        |
 //! | [`boundaries`]         | every untrusted decoder is registered, bounded and fuzzed, and nothing registered is dangling |
+//! | [`catalog_writers`]    | only the catalog facade, inside the WP-3.6 transaction, calls the catalog's writing methods |
 //! | `tests/crash.rs`       | a spool and a journal killed with `SIGKILL` at random points reopen to a valid chain and `STATE` |
 //! | `tests/log_fields.rs`  | no log field carries a payload, credential, principal or tenant name (P10 classification) |
 //! | `tests/release_scripts.rs` | the release's provenance verification, archive extraction and rebuild comparison behave as the release builder relies on |
@@ -18,6 +19,7 @@
 //! processes and inject faults freely.
 
 pub mod boundaries;
+pub mod catalog_writers;
 pub mod contracts;
 pub mod durability;
 pub mod fault;

@@ -143,9 +143,10 @@ tasks:
       - cargo test -p permguard-conformance --test durability --locked
 
   check:mutations:
-    desc: Check that security state is written only through the mutation engine.
+    desc: Check that security state and the catalog are written only through the mutation engine.
     cmds:
       - cargo test -p permguard-conformance --test mutations --locked
+      - cargo test -p permguard-conformance --test catalog_writers --locked
 
   fuzz:
     desc: Run every fuzz target for SECONDS each (nightly toolchain and cargo-fuzz).

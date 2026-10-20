@@ -40,12 +40,65 @@ pub(crate) fn routes(facade: CatalogFacade) -> Router {
         .with_state(facade)
 }
 
-/// What a create or rename carries: the name, and nothing else yet. A closed body: a member it
-/// does not name is refused, never ignored.
+/// What a create or rename carries (WP-7.3a, owner decision of 2026-10-20): the name, the request
+/// id a retry repeats, and for a rename the revision it expects. A closed body: a member it does
+/// not name is refused, never ignored.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct NameBody {
     name: String,
+    request_id: String,
+    #[serde(default)]
+    expected_revision: Option<u64>,
+}
+
+/// A rename's expected revision, required; a create's refused, a new record having none.
+fn revision_of(body: &NameBody, required: bool) -> Result<Option<u64>, ApiError> {
+    match (body.expected_revision, required) {
+        (Some(revision), true) => positive(revision).map(Some),
+        (None, false) => Ok(None),
+        (None, true) => Err(ApiError::new(
+            ErrorClass::Validation,
+            codes::common::INVALID_ARGUMENT,
+            "a change of a record names its `expected_revision`, the revision it was read at",
+        )),
+        (Some(_), false) => Err(ApiError::new(
+            ErrorClass::Validation,
+            codes::common::INVALID_ARGUMENT,
+            "a create has no `expected_revision`: the record does not exist yet",
+        )),
+    }
+}
+
+/// A delete's `request_id` and `expected_revision`, strict typed query parameters, both required.
+fn deletion_of(query: Option<&str>) -> Result<(String, u64), ApiError> {
+    let query = crate::query::parse(query, &["request_id", "expected_revision"], &[])?;
+    let missing = |name: &str| {
+        ApiError::new(
+            ErrorClass::Validation,
+            codes::common::INVALID_ARGUMENT,
+            format!("a delete names its `{name}`"),
+        )
+    };
+    let request_id = query
+        .value("request_id")
+        .ok_or_else(|| missing("request_id"))?;
+    let revision = query
+        .number("expected_revision")?
+        .ok_or_else(|| missing("expected_revision"))?;
+    Ok((request_id, positive(revision)?))
+}
+
+/// A revision a change names: 1 or more, records starting at 1, so 0 names none and is refused.
+fn positive(revision: u64) -> Result<u64, ApiError> {
+    if revision == 0 {
+        return Err(ApiError::new(
+            ErrorClass::Validation,
+            codes::common::INVALID_ARGUMENT,
+            "`expected_revision` is 1 or more: a record starts at revision 1",
+        ));
+    }
+    Ok(revision)
 }
 
 /// A [`NameBody`] read from the request. A body that is not one — not declared
@@ -92,25 +145,15 @@ impl FromRequest<CatalogFacade> for Named {
     }
 }
 
-/// The paging a listing was asked for: `?page=1&size=50`, pages counted from
-/// 0. Absent means all — the pre-pagination contract, unchanged for every
-/// existing caller. Parsed by hand, like the decision store's window: two
-/// integers do not justify a query framework, and a parameter nobody declared
-/// is ignored rather than an error.
-fn window_of(query: Option<&str>) -> super::ListWindow {
-    let mut window = super::ListWindow::default();
-    for pair in query.unwrap_or_default().split('&') {
-        let Some((name, value)) = pair.split_once('=') else {
-            continue;
-        };
-        match name {
-            "page" => window.page = value.parse().ok(),
-            "size" => window.size = value.parse().ok().filter(|size| *size > 0),
-            _ => {}
-        }
-    }
-
-    window
+/// The paging a listing was asked for: `?page=1&size=50`, pages counted from 0. Absent means
+/// all. Strict (WP-7.3a): a parameter nobody declared, one given twice, or a value that is not a
+/// number is refused.
+fn window_of(query: Option<&str>) -> Result<super::ListWindow, ApiError> {
+    let query = crate::query::parse(query, &["page", "size"], &[])?;
+    Ok(super::ListWindow::of(
+        query.number("page")?,
+        query.number("size")?,
+    ))
 }
 
 /// Shapes a domain outcome the one way every route does.
@@ -130,7 +173,10 @@ async fn create_zone(
     ActorOf(actor): ActorOf,
     Named(body): Named,
 ) -> Response {
-    let outcome = zones::create(&facade, &actor, &body.name).await;
+    if let Err(error) = revision_of(&body, false) {
+        return wire::http_error(&error, facade.disclosure);
+    }
+    let outcome = zones::create(&facade, &actor, &body.name, &body.request_id).await;
 
     answer(&facade, StatusCode::CREATED, outcome)
 }
@@ -140,10 +186,14 @@ async fn list_zones(
     ActorOf(actor): ActorOf,
     RawQuery(query): RawQuery,
 ) -> Response {
+    let window = match window_of(query.as_deref()) {
+        Ok(window) => window,
+        Err(error) => return wire::http_error(&error, facade.disclosure),
+    };
     answer(
         &facade,
         StatusCode::OK,
-        zones::list(&facade, &actor, window_of(query.as_deref())),
+        zones::list(&facade, &actor, window),
     )
 }
 
@@ -161,7 +211,19 @@ async fn rename_zone(
     Path(zone): Path<String>,
     Named(body): Named,
 ) -> Response {
-    let outcome = zones::rename(&facade, &actor, &zone, &body.name).await;
+    let revision = match revision_of(&body, true) {
+        Ok(revision) => revision.unwrap_or_default(),
+        Err(error) => return wire::http_error(&error, facade.disclosure),
+    };
+    let outcome = zones::rename(
+        &facade,
+        &actor,
+        &zone,
+        &body.name,
+        revision,
+        &body.request_id,
+    )
+    .await;
 
     answer(&facade, StatusCode::OK, outcome)
 }
@@ -170,8 +232,13 @@ async fn delete_zone(
     State(facade): State<CatalogFacade>,
     ActorOf(actor): ActorOf,
     Path(zone): Path<String>,
+    RawQuery(query): RawQuery,
 ) -> Response {
-    let outcome = zones::delete(&facade, &actor, &zone).await;
+    let (request_id, revision) = match deletion_of(query.as_deref()) {
+        Ok(asked) => asked,
+        Err(error) => return wire::http_error(&error, facade.disclosure),
+    };
+    let outcome = zones::delete(&facade, &actor, &zone, revision, &request_id).await;
 
     answer(&facade, StatusCode::OK, outcome)
 }
@@ -182,7 +249,10 @@ async fn create_ledger(
     Path(zone): Path<String>,
     Named(body): Named,
 ) -> Response {
-    let outcome = ledgers::create(&facade, &actor, &zone, &body.name).await;
+    if let Err(error) = revision_of(&body, false) {
+        return wire::http_error(&error, facade.disclosure);
+    }
+    let outcome = ledgers::create(&facade, &actor, &zone, &body.name, &body.request_id).await;
 
     answer(&facade, StatusCode::CREATED, outcome)
 }
@@ -196,7 +266,10 @@ async fn list_ledgers(
     answer(
         &facade,
         StatusCode::OK,
-        ledgers::list(&facade, &actor, &zone, window_of(query.as_deref())),
+        match window_of(query.as_deref()) {
+            Ok(window) => ledgers::list(&facade, &actor, &zone, window),
+            Err(error) => Err(error.into()),
+        },
     )
 }
 
@@ -218,7 +291,20 @@ async fn rename_ledger(
     Path((zone, ledger)): Path<(String, String)>,
     Named(body): Named,
 ) -> Response {
-    let outcome = ledgers::rename(&facade, &actor, &zone, &ledger, &body.name).await;
+    let revision = match revision_of(&body, true) {
+        Ok(revision) => revision.unwrap_or_default(),
+        Err(error) => return wire::http_error(&error, facade.disclosure),
+    };
+    let outcome = ledgers::rename(
+        &facade,
+        &actor,
+        &zone,
+        &ledger,
+        &body.name,
+        revision,
+        &body.request_id,
+    )
+    .await;
 
     answer(&facade, StatusCode::OK, outcome)
 }
@@ -227,8 +313,13 @@ async fn delete_ledger(
     State(facade): State<CatalogFacade>,
     ActorOf(actor): ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
 ) -> Response {
-    let outcome = ledgers::delete(&facade, &actor, &zone, &ledger).await;
+    let (request_id, revision) = match deletion_of(query.as_deref()) {
+        Ok(asked) => asked,
+        Err(error) => return wire::http_error(&error, facade.disclosure),
+    };
+    let outcome = ledgers::delete(&facade, &actor, &zone, &ledger, revision, &request_id).await;
 
     answer(&facade, StatusCode::OK, outcome)
 }
@@ -271,6 +362,9 @@ mod tests {
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
+            mutations: Some(crate::handles::catalog_mutations_for_tests(
+                &root.join("host"),
+            )),
             catalog: Arc::new(FileCatalog::new(root)),
             recorder: None,
             disclosure,
@@ -306,25 +400,35 @@ mod tests {
         (status, String::from_utf8_lossy(&bytes).into_owned())
     }
 
+    /// A create or rename body naming `name`, under a request id no other call in the run uses.
+    fn named(name: &str) -> String {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        serde_json::json!({
+            "name": name,
+            "request_id": format!("named-{}", NEXT.fetch_add(1, Ordering::SeqCst)),
+        })
+        .to_string()
+    }
+
     /// The status table in the wire module, proved row by row — and every refusal carries the same
     /// three fields: class, code, message.
     #[tokio::test]
     async fn test_every_refusal_is_the_shared_shape_with_the_promised_status() {
         let routes = testing_routes(Disclosure::Minimal);
 
-        let (status, body) =
-            send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         assert_eq!(status, 201, "{body}");
         assert!(body.contains(r#""name":"delivery""#), "{body}");
 
-        let (status, body) =
-            send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         assert_eq!(status, 409, "{body}");
         assert!(body.contains(r#""class":"conflict""#), "{body}");
         assert!(body.contains(r#""code":"name_taken""#), "{body}");
         assert!(body.contains(r#""message":""#), "{body}");
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"Pharma"}"#)).await;
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("Pharma"))).await;
         assert_eq!(status, 400, "{body}");
         assert!(body.contains(r#""class":"validation""#), "{body}");
         assert!(body.contains("lowercase"), "{body}");
@@ -337,26 +441,37 @@ mod tests {
             &routes,
             "POST",
             "/v1/zones/delivery/ledgers",
-            Some(r#"{"name":"policies"}"#),
+            Some(&named("policies")),
         )
         .await;
         assert_eq!(status, 201, "{body}");
 
-        let (status, body) = send(&routes, "DELETE", "/v1/zones/delivery", None).await;
+        let (status, body) = send(
+            &routes,
+            "DELETE",
+            "/v1/zones/delivery?request_id=r-delete&expected_revision=1",
+            None,
+        )
+        .await;
         assert_eq!(status, 409, "{body}");
         assert!(body.contains(r#""code":"zone_not_empty""#), "{body}");
     }
 
-    /// A create or rename body is closed: an unknown member, a repeated one, a missing `name` and
-    /// malformed JSON are each refused as `invalid_argument` in the shared shape, and nothing is
-    /// created.
+    /// A create or rename body is closed: an unknown member, a repeated one, a missing `name` or
+    /// `request_id`, a create naming a revision and malformed JSON are each refused as
+    /// `invalid_argument` in the shared shape, and nothing is created (WP-7.3a).
     #[tokio::test]
     async fn test_a_name_body_is_closed_and_refused_in_the_shared_shape() {
         let routes = testing_routes(Disclosure::Minimal);
         for body in [
-            r#"{"name":"delivery","extra":1}"#,
-            r#"{"name":"delivery","name":"other"}"#,
-            r#"{}"#,
+            r#"{"name":"delivery","request_id":"r-1","extra":1}"#,
+            r#"{"name":"delivery","name":"other","request_id":"r-1"}"#,
+            r#"{"request_id":"r-1"}"#,
+            r#"{"name":"delivery"}"#,
+            r#"{"name":"delivery","request_id":""}"#,
+            r#"{"name":"delivery","request_id":"r-1","revision":1}"#,
+            // A create names no revision: there is none to expect yet.
+            r#"{"name":"delivery","request_id":"r-1","expected_revision":1}"#,
             r#"{"name":"#,
         ] {
             let (status, answer) = send(&routes, "POST", "/v1/zones", Some(body)).await;
@@ -452,6 +567,9 @@ mod tests {
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
+            mutations: Some(crate::handles::catalog_mutations_for_tests(
+                &root.join("host"),
+            )),
             catalog: Arc::new(FileCatalog::new(root)),
             recorder: Some(crate::handles::audit_for_tests(recorder)),
             disclosure: Disclosure::Minimal,
@@ -459,18 +577,17 @@ mod tests {
             metrics: permguard_core::metrics::Metrics::none(),
         });
 
-        // A success, then the same name again: one created record, one refused record.
-        send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
-        send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        // A success, then the same name again: the success is the transaction's record, not this
+        // trail's (WP-7.3a), the refusal is this trail's.
+        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         // A validation refusal is trail material too, under the switch.
-        send(&routes, "POST", "/v1/zones", Some(r#"{"name":"Pharma"}"#)).await;
+        send(&routes, "POST", "/v1/zones", Some(&named("Pharma"))).await;
 
         let recorded = seen.lock().expect("the log lock holds").clone();
 
         assert!(
-            recorded
-                .iter()
-                .any(|line| line.starts_with("zone.created ->")),
+            !recorded.iter().any(|line| line.contains("zone.created")),
             "{recorded:?}"
         );
         assert!(
@@ -487,63 +604,613 @@ mod tests {
         );
     }
 
-    /// A zone whose `security` record fails is created and answered `mutation_unrecorded`, never
-    /// success; a refusal whose record fails is still the refusal (WP-3.6, owner decision).
-    #[tokio::test]
-    async fn test_a_change_whose_record_fails_is_unrecorded_and_stands() {
-        use permguard_core::{AuditEvent, AuditRecorder, AuditSink, BoxFuture};
+    /// What the transaction's phases land on, in a test: `(action, phase, target)` of each, and a
+    /// phase to refuse.
+    #[derive(Default)]
+    struct Trail {
+        records: std::sync::Mutex<Vec<(String, &'static str, Option<String>)>>,
+        refuse: std::sync::Mutex<Option<&'static str>>,
+    }
 
-        /// A sink that refuses every record.
-        struct Refusing;
-
-        impl AuditSink for Refusing {
-            fn name(&self) -> &'static str {
-                "refusing"
+    impl permguard_host::operations::mutation::Projection for Trail {
+        fn project(&self, event: &permguard_core::AuditEvent<'_>) -> Result<(), String> {
+            let (_, phase) = event.operation().expect("every record names its operation");
+            if *self.refuse.lock().expect("lock") == Some(phase.as_str()) {
+                return Err("the trail is full".to_owned());
             }
-
-            fn record<'a>(
-                &'a self,
-                _event: &'a AuditEvent<'_>,
-                _policy: Option<&'a dyn permguard_core::Pseudonymizer>,
-            ) -> BoxFuture<'a, Result<(), permguard_core::error::AuditError>> {
-                Box::pin(async move {
-                    Err(permguard_core::error::AuditError::unavailable(
-                        "the trail is full",
-                    ))
-                })
-            }
+            self.records.lock().expect("lock").push((
+                event.action().to_owned(),
+                phase.as_str(),
+                event.target().map(str::to_owned),
+            ));
+            Ok(())
         }
+    }
 
+    /// A scratch directory of its own for each call.
+    fn scratch(name: &str) -> std::path::PathBuf {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        static NEXT: AtomicUsize = AtomicUsize::new(2000);
+
+        static NEXT: AtomicUsize = AtomicUsize::new(3000);
         let root = std::env::temp_dir().join(format!(
-            "permguard-catalog-unrecorded-{}-{}",
+            "permguard-catalog-{name}-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::SeqCst)
         ));
         let _ = std::fs::remove_dir_all(&root);
+        root
+    }
+
+    /// The routes over `catalog`, every change in a transaction over `trail` on `root`'s volume.
+    fn transacted(
+        root: &std::path::Path,
+        catalog: Arc<dyn permguard_core::Catalog>,
+        trail: &Arc<Trail>,
+    ) -> Router {
+        let mutations = crate::handles::catalog_mutations_over(
+            &root.join("host"),
+            Arc::clone(trail) as Arc<dyn permguard_host::operations::mutation::Projection>,
+        );
+        routes(CatalogFacade {
+            host: None,
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+            mutations: super::super::recovered(mutations, &catalog),
+            catalog,
+            recorder: None,
+            disclosure: Disclosure::Minimal,
+            audit_refusals: false,
+            metrics: permguard_core::metrics::Metrics::none(),
+        })
+    }
+
+    /// WP-7.3a, owner decisions of 2026-10-20: a create, a rename and a delete are each an
+    /// operation of the WP-3.6 transaction, an intent then an applied record under the phased
+    /// `catalog.*` action, its target the record; the store keeps the operation id, the wire never
+    /// carries it.
+    #[tokio::test]
+    async fn a_catalog_mutation_is_an_operation_of_the_transaction() {
+        let root = scratch("transaction");
+        let trail = Arc::new(Trail::default());
+        let catalog: Arc<dyn permguard_core::Catalog> =
+            Arc::new(FileCatalog::new(root.join("catalog")));
+        let routes = transacted(&root, Arc::clone(&catalog), &trail);
+
+        let (status, created) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        assert_eq!(status, 201, "{created}");
+        let created: serde_json::Value = serde_json::from_str(&created).expect("JSON");
+        assert_eq!(created["revision"], 1);
+        assert!(created.get("operation").is_none(), "{created}");
+        let id = created["id"].as_str().expect("an id").to_owned();
+        let stored = catalog
+            .get_zone(&permguard_core::Selector::Id(id.clone()))
+            .expect("stored");
+        assert_eq!(stored.operation.as_deref().map(str::len), Some(32));
+
+        let rename = r#"{"name":"delivery-eu","request_id":"r-rename","expected_revision":1}"#;
+        let (status, renamed) = send(&routes, "PATCH", "/v1/zones/delivery", Some(rename)).await;
+        assert_eq!(status, 200, "{renamed}");
+        assert!(renamed.contains(r#""revision":2"#), "{renamed}");
+        let (status, deleted) = send(
+            &routes,
+            "DELETE",
+            &format!("/v1/zones/{id}?request_id=r-delete&expected_revision=2"),
+            None,
+        )
+        .await;
+        assert_eq!(status, 200, "{deleted}");
+
+        let zone = format!("zone/{id}");
+        let expected: Vec<(String, &str, Option<String>)> = [
+            ("catalog.zone.created", "intent", "zone-new"),
+            ("catalog.zone.created", "applied", zone.as_str()),
+            ("catalog.zone.renamed", "intent", zone.as_str()),
+            ("catalog.zone.renamed", "applied", zone.as_str()),
+            ("catalog.zone.deleted", "intent", zone.as_str()),
+            ("catalog.zone.deleted", "applied", zone.as_str()),
+        ]
+        .into_iter()
+        .map(|(action, phase, target)| (action.to_owned(), phase, Some(target.to_owned())))
+        .collect();
+        assert_eq!(*trail.records.lock().expect("lock"), expected);
+
+        // A name the rules refuse is refused before any intent: nothing reaches the trail.
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("Bad Name"))).await;
+        assert_eq!(status, 400, "{body}");
+        assert!(body.contains(r#""code":"invalid_name""#), "{body}");
+        assert_eq!(trail.records.lock().expect("lock").len(), 6, "no intent");
+    }
+
+    /// WP-7.3a, after the review: a retry of a rename or a delete learns the first answer,
+    /// although that answer renamed or deleted what the request names.
+    #[tokio::test]
+    async fn a_retry_of_a_rename_or_a_delete_learns_the_first_answer() {
+        let root = scratch("retry");
+        let trail = Arc::new(Trail::default());
+        let routes = transacted(
+            &root,
+            Arc::new(FileCatalog::new(root.join("catalog"))),
+            &trail,
+        );
+        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        send(
+            &routes,
+            "POST",
+            "/v1/zones/delivery/ledgers",
+            Some(&named("policies")),
+        )
+        .await;
+        send(
+            &routes,
+            "POST",
+            "/v1/zones/delivery/ledgers",
+            Some(&named("rules")),
+        )
+        .await;
+
+        let twice = |method: &'static str, uri: &'static str, body: Option<&'static str>| {
+            let routes = routes.clone();
+            async move {
+                let first = send(&routes, method, uri, body).await;
+                let again = send(&routes, method, uri, body).await;
+                assert_eq!(first.0, 200, "{uri}: {}", first.1);
+                assert_eq!(first, again, "{uri}: the first answer");
+            }
+        };
+        twice(
+            "PATCH",
+            "/v1/zones/delivery/ledgers/policies",
+            Some(r#"{"name":"policies-v2","request_id":"r-ledger-rename","expected_revision":1}"#),
+        )
+        .await;
+        twice(
+            "DELETE",
+            "/v1/zones/delivery/ledgers/rules?request_id=r-ledger-delete&expected_revision=1",
+            None,
+        )
+        .await;
+        twice(
+            "DELETE",
+            "/v1/zones/delivery/ledgers/policies-v2?request_id=r-ledger-delete-2&expected_revision=2",
+            None,
+        )
+        .await;
+        twice(
+            "PATCH",
+            "/v1/zones/delivery",
+            Some(r#"{"name":"delivery-eu","request_id":"r-zone-rename","expected_revision":1}"#),
+        )
+        .await;
+        twice(
+            "DELETE",
+            "/v1/zones/delivery-eu?request_id=r-zone-delete&expected_revision=2",
+            None,
+        )
+        .await;
+        // One operation each: an intent and an applied record, nothing applied twice.
+        let applied = trail
+            .records
+            .lock()
+            .expect("lock")
+            .iter()
+            .filter(|(_, phase, _)| *phase == "applied")
+            .count();
+        assert_eq!(applied, 3 + 5);
+    }
+
+    /// WP-7.3a: a Host that composes no mutation transaction refuses every change `503`
+    /// `unavailable`, and still answers reads.
+    #[tokio::test]
+    async fn without_the_transaction_every_change_is_unavailable() {
+        let root = scratch("untransacted");
         let routes = routes(CatalogFacade {
             host: None,
-            authorization: std::sync::Arc::new(
-                permguard_host::composition::Authorization::permissive(),
-            ),
-            catalog: Arc::new(FileCatalog::new(root)),
-            recorder: Some(crate::handles::audit_for_tests(AuditRecorder::new(
-                std::sync::Arc::new(Refusing),
-            ))),
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+            mutations: None,
+            catalog: Arc::new(FileCatalog::new(root.join("catalog"))),
+            recorder: None,
             disclosure: Disclosure::Minimal,
-            audit_refusals: true,
+            audit_refusals: false,
             metrics: permguard_core::metrics::Metrics::none(),
         });
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        assert_eq!(status, 503, "{body}");
+        assert!(body.contains(r#""code":"unavailable""#), "{body}");
+        let (status, body) = send(
+            &routes,
+            "DELETE",
+            "/v1/zones/delivery?request_id=r-1&expected_revision=1",
+            None,
+        )
+        .await;
+        assert_eq!(status, 503, "{body}");
+        let (status, body) = send(&routes, "GET", "/v1/zones", None).await;
+        assert_eq!((status, body.as_str()), (200, "[]"));
+    }
 
-        let (status, body) =
-            send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+    /// WP-7.3a: a retry of a create with the same request id learns the first answer, applying
+    /// nothing twice.
+    #[tokio::test]
+    async fn a_retry_with_the_same_request_id_learns_the_first_answer() {
+        let root = scratch("replay");
+        let trail = Arc::new(Trail::default());
+        let routes = transacted(
+            &root,
+            Arc::new(FileCatalog::new(root.join("catalog"))),
+            &trail,
+        );
+
+        let body = r#"{"name":"delivery","request_id":"r-once"}"#;
+        let (first_status, first) = send(&routes, "POST", "/v1/zones", Some(body)).await;
+        let (again_status, again) = send(&routes, "POST", "/v1/zones", Some(body)).await;
+        assert_eq!((first_status, again_status), (201, 201), "{again}");
+        assert_eq!(first, again, "the first answer, not a second zone");
+        let (_, listed) = send(&routes, "GET", "/v1/zones", None).await;
+        assert_eq!(
+            listed.matches(r#""name":"delivery""#).count(),
+            1,
+            "{listed}"
+        );
+        assert_eq!(
+            trail.records.lock().expect("lock").len(),
+            2,
+            "one operation"
+        );
+    }
+
+    /// WP-7.3a: the same request id for another body is `409 request_id_reused`, nothing applied.
+    #[tokio::test]
+    async fn a_request_id_reused_for_another_body_is_refused() {
+        let root = scratch("reused");
+        let trail = Arc::new(Trail::default());
+        let routes = transacted(
+            &root,
+            Arc::new(FileCatalog::new(root.join("catalog"))),
+            &trail,
+        );
+
+        let (status, _) = send(
+            &routes,
+            "POST",
+            "/v1/zones",
+            Some(r#"{"name":"alpha","request_id":"r-same"}"#),
+        )
+        .await;
+        assert_eq!(status, 201);
+        let (status, body) = send(
+            &routes,
+            "POST",
+            "/v1/zones",
+            Some(r#"{"name":"beta","request_id":"r-same"}"#),
+        )
+        .await;
+        assert_eq!(status, 409, "{body}");
+        assert!(body.contains(r#""code":"request_id_reused""#), "{body}");
+        let (status, _) = send(&routes, "GET", "/v1/zones/beta", None).await;
+        assert_eq!(status, 404, "nothing applied");
+    }
+
+    /// WP-7.3a, owner decision of 2026-10-20: a rename or a delete against another revision than
+    /// the record's is `409 revision_conflict` and changes nothing; a rename without one is
+    /// refused.
+    #[tokio::test]
+    async fn a_stale_revision_over_rest_is_a_conflict_and_changes_nothing() {
+        let root = scratch("revision");
+        let trail = Arc::new(Trail::default());
+        let routes = transacted(
+            &root,
+            Arc::new(FileCatalog::new(root.join("catalog"))),
+            &trail,
+        );
+        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        send(
+            &routes,
+            "POST",
+            "/v1/zones/delivery/ledgers",
+            Some(&named("policies")),
+        )
+        .await;
+
+        let rename = |name: &str, revision: u64, id: &str| {
+            format!(r#"{{"name":"{name}","request_id":"{id}","expected_revision":{revision}}}"#)
+        };
+        let (status, body) = send(
+            &routes,
+            "PATCH",
+            "/v1/zones/delivery",
+            Some(&rename("other", 2, "r-1")),
+        )
+        .await;
+        assert_eq!(status, 409, "{body}");
+        assert!(body.contains(r#""class":"conflict""#), "{body}");
+        assert!(body.contains(r#""code":"revision_conflict""#), "{body}");
+        let (status, body) = send(
+            &routes,
+            "PATCH",
+            "/v1/zones/delivery",
+            Some(r#"{"name":"other","request_id":"r-2"}"#),
+        )
+        .await;
+        assert_eq!(status, 400, "a rename names its revision: {body}");
+        let (status, body) = send(
+            &routes,
+            "PATCH",
+            "/v1/zones/delivery/ledgers/policies",
+            Some(&rename("rules", 3, "r-3")),
+        )
+        .await;
+        assert_eq!(status, 409, "{body}");
+        assert!(body.contains(r#""code":"revision_conflict""#), "{body}");
+        let (status, body) = send(
+            &routes,
+            "DELETE",
+            "/v1/zones/delivery/ledgers/policies?request_id=r-4&expected_revision=2",
+            None,
+        )
+        .await;
+        assert_eq!(status, 409, "{body}");
+        assert!(body.contains(r#""code":"revision_conflict""#), "{body}");
+
+        let (_, zone) = send(&routes, "GET", "/v1/zones/delivery", None).await;
+        assert!(zone.contains(r#""revision":1"#), "unchanged: {zone}");
+        let (status, ledger) =
+            send(&routes, "GET", "/v1/zones/delivery/ledgers/policies", None).await;
+        assert_eq!(status, 200, "still there: {ledger}");
+        assert!(ledger.contains(r#""revision":1"#), "unchanged: {ledger}");
+
+        let (status, body) = send(
+            &routes,
+            "PATCH",
+            "/v1/zones/delivery/ledgers/policies",
+            Some(&rename("rules", 1, "r-5")),
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+        assert!(body.contains(r#""revision":2"#), "{body}");
+    }
+
+    /// WP-7.3 step 3: a listing's and a delete's query parameters are strict, unique and typed; a
+    /// delete names its request id and revision.
+    #[tokio::test]
+    async fn an_unknown_duplicated_or_malformed_parameter_is_refused() {
+        let routes = testing_routes(Disclosure::Minimal);
+        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+
+        for uri in [
+            "/v1/zones?pages=1",
+            "/v1/zones?page=1&page=2",
+            "/v1/zones?page=x",
+            "/v1/zones?size=-1",
+            "/v1/zones/delivery/ledgers?limit=1",
+        ] {
+            let (status, body) = send(&routes, "GET", uri, None).await;
+            assert_eq!(status, 400, "{uri}: {body}");
+            assert!(
+                body.contains(r#""code":"invalid_argument""#),
+                "{uri}: {body}"
+            );
+        }
+        for uri in [
+            "/v1/zones/delivery",
+            "/v1/zones/delivery?request_id=r-1",
+            "/v1/zones/delivery?expected_revision=1",
+            "/v1/zones/delivery?request_id=r-1&expected_revision=x",
+            "/v1/zones/delivery?request_id=r-1&expected_revision=0",
+            "/v1/zones/delivery?request_id=r-1&request_id=r-2&expected_revision=1",
+            "/v1/zones/delivery?request_id=r-1&expected_revision=1&force=true",
+        ] {
+            let (status, body) = send(&routes, "DELETE", uri, None).await;
+            assert_eq!(status, 400, "{uri}: {body}");
+            assert!(
+                body.contains(r#""code":"invalid_argument""#),
+                "{uri}: {body}"
+            );
+        }
+        let (status, _) = send(&routes, "GET", "/v1/zones/delivery", None).await;
+        assert_eq!(status, 200, "nothing deleted");
+        let (status, body) = send(&routes, "GET", "/v1/zones?page=0&size=1", None).await;
+        assert_eq!(status, 200, "{body}");
+    }
+
+    /// A catalog that writes, then reports a failure for a create or a delete: an answer lost
+    /// after the write landed.
+    struct LosingAnswers(FileCatalog);
+
+    use permguard_core::catalog::CatalogError;
+
+    impl permguard_core::Catalog for LosingAnswers {
+        fn name(&self) -> &'static str {
+            "losing-answers"
+        }
+        fn create_zone_with(
+            &self,
+            name: &str,
+            write: &permguard_core::catalog::Write<'_>,
+        ) -> Result<permguard_core::Zone, CatalogError> {
+            self.0.create_zone_with(name, write)?;
+            Err(CatalogError::backend("the answer was lost"))
+        }
+        fn list_zones(&self) -> Result<Vec<permguard_core::Zone>, CatalogError> {
+            self.0.list_zones()
+        }
+        fn get_zone(
+            &self,
+            zone: &permguard_core::Selector,
+        ) -> Result<permguard_core::Zone, CatalogError> {
+            self.0.get_zone(zone)
+        }
+        fn rename_zone_with(
+            &self,
+            zone: &permguard_core::Selector,
+            name: &str,
+            write: &permguard_core::catalog::Write<'_>,
+        ) -> Result<permguard_core::Zone, CatalogError> {
+            self.0.rename_zone_with(zone, name, write)
+        }
+        fn delete_zone_with(
+            &self,
+            zone: &permguard_core::Selector,
+            write: &permguard_core::catalog::Write<'_>,
+        ) -> Result<permguard_core::Zone, CatalogError> {
+            self.0.delete_zone_with(zone, write)?;
+            Err(CatalogError::backend("the answer was lost"))
+        }
+        fn create_ledger_with(
+            &self,
+            zone: &permguard_core::Selector,
+            name: &str,
+            write: &permguard_core::catalog::Write<'_>,
+        ) -> Result<permguard_core::Ledger, CatalogError> {
+            self.0.create_ledger_with(zone, name, write)
+        }
+        fn list_ledgers(
+            &self,
+            zone: &permguard_core::Selector,
+        ) -> Result<Vec<permguard_core::Ledger>, CatalogError> {
+            self.0.list_ledgers(zone)
+        }
+        fn get_ledger(
+            &self,
+            zone: &permguard_core::Selector,
+            ledger: &permguard_core::Selector,
+        ) -> Result<permguard_core::Ledger, CatalogError> {
+            self.0.get_ledger(zone, ledger)
+        }
+        fn rename_ledger_with(
+            &self,
+            zone: &permguard_core::Selector,
+            ledger: &permguard_core::Selector,
+            name: &str,
+            write: &permguard_core::catalog::Write<'_>,
+        ) -> Result<permguard_core::Ledger, CatalogError> {
+            self.0.rename_ledger_with(zone, ledger, name, write)
+        }
+        fn delete_ledger_with(
+            &self,
+            zone: &permguard_core::Selector,
+            ledger: &permguard_core::Selector,
+            write: &permguard_core::catalog::Write<'_>,
+        ) -> Result<permguard_core::Ledger, CatalogError> {
+            self.0.delete_ledger_with(zone, ledger, write)
+        }
+    }
+
+    /// WP-7.3a, owner decision of 2026-10-20: a create whose answer was lost after the write is
+    /// left open, `mutation_unrecorded`; the next start finds the record carrying the operation and
+    /// commits it, and the retry with the same request id learns the zone, not a second one.
+    #[tokio::test]
+    async fn an_operation_a_crash_left_open_is_resolved_at_start() {
+        let root = scratch("recovery");
+        let trail = Arc::new(Trail::default());
+        let body = r#"{"name":"delivery","request_id":"r-lost"}"#;
+        {
+            let losing = transacted(
+                &root,
+                Arc::new(LosingAnswers(FileCatalog::new(root.join("catalog")))),
+                &trail,
+            );
+            let (status, answer) = send(&losing, "POST", "/v1/zones", Some(body)).await;
+            assert_eq!(status, 500, "{answer}");
+            assert!(
+                answer.contains(r#""code":"mutation_unrecorded""#),
+                "{answer}"
+            );
+        }
+
+        let restarted = transacted(
+            &root,
+            Arc::new(FileCatalog::new(root.join("catalog"))),
+            &trail,
+        );
+        assert!(
+            trail
+                .records
+                .lock()
+                .expect("lock")
+                .iter()
+                .any(
+                    |(action, phase, _)| action == "catalog.zone.created" && *phase == "reconciled"
+                ),
+            "{:?}",
+            trail.records.lock().expect("lock")
+        );
+        let (status, answer) = send(&restarted, "POST", "/v1/zones", Some(body)).await;
+        assert_eq!(status, 201, "{answer}");
+        let (_, got) = send(&restarted, "GET", "/v1/zones/delivery", None).await;
+        let id = |json: &str| {
+            serde_json::from_str::<serde_json::Value>(json).expect("JSON")["id"].clone()
+        };
+        assert_eq!(id(&answer), id(&got), "the zone the lost answer named");
+        let (_, listed) = send(&restarted, "GET", "/v1/zones", None).await;
+        assert_eq!(
+            listed.matches(r#""name":"delivery""#).count(),
+            1,
+            "{listed}"
+        );
+        drop(restarted);
+
+        // A delete whose answer was lost leaves nothing to show in 7.3a: the next start marks it
+        // failed, and its retry is answered as the zone being gone (owner decision's
+        // interpretation, until 7.3b's tombstone carries the operation).
+        let id = id(&got);
+        let id = id.as_str().expect("an id");
+        let delete = format!("/v1/zones/{id}?request_id=r-gone&expected_revision=1");
+        {
+            let losing = transacted(
+                &root,
+                Arc::new(LosingAnswers(FileCatalog::new(root.join("catalog")))),
+                &trail,
+            );
+            let (status, answer) = send(&losing, "DELETE", &delete, None).await;
+            assert_eq!(status, 500, "{answer}");
+        }
+        let restarted = transacted(
+            &root,
+            Arc::new(FileCatalog::new(root.join("catalog"))),
+            &trail,
+        );
+        assert!(
+            trail
+                .records
+                .lock()
+                .expect("lock")
+                .iter()
+                .any(|(action, phase, _)| action == "catalog.zone.deleted" && *phase == "failed"),
+            "{:?}",
+            trail.records.lock().expect("lock")
+        );
+        let (status, answer) = send(&restarted, "DELETE", &delete, None).await;
+        assert_eq!(status, 404, "{answer}");
+    }
+
+    /// WP-3.6 through WP-7.3a: an intent whose audit record fails changes nothing and answers
+    /// `audit_unavailable`; a change whose applied record fails stands and answers
+    /// `mutation_unrecorded`, never success; a refusal stays the refusal.
+    #[tokio::test]
+    async fn test_a_change_whose_record_fails_is_unrecorded_and_stands() {
+        let root = scratch("unrecorded");
+        let trail = Arc::new(Trail::default());
+        let routes = transacted(
+            &root,
+            Arc::new(FileCatalog::new(root.join("catalog"))),
+            &trail,
+        );
+
+        *trail.refuse.lock().expect("lock") = Some("intent");
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        assert_eq!(status, 503, "{body}");
+        assert!(body.contains(r#""code":"audit_unavailable""#), "{body}");
+        let (status, _) = send(&routes, "GET", "/v1/zones/delivery", None).await;
+        assert_eq!(status, 404, "nothing was made");
+
+        *trail.refuse.lock().expect("lock") = Some("applied");
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         assert_eq!(status, 500, "{body}");
         assert!(body.contains(r#""code":"mutation_unrecorded""#), "{body}");
         let (status, body) = send(&routes, "GET", "/v1/zones/delivery", None).await;
         assert_eq!(status, 200, "the zone stands: {body}");
-        let (status, body) =
-            send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+
+        *trail.refuse.lock().expect("lock") = None;
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         assert_eq!(status, 409, "a refusal stays a refusal: {body}");
     }
 
@@ -554,11 +1221,10 @@ mod tests {
         // regression guard on the default itself.
         let routes = testing_routes(Disclosure::Minimal);
 
-        let (status, _) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        let (status, _) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         assert_eq!(status, 201);
 
-        let (status, body) =
-            send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         assert_eq!(status, 409, "{body}");
         // No recorder is attached in testing_routes, so the assertion above is that the refusal
         // path with audit_refusals=false neither panics nor changes the answer.
@@ -569,7 +1235,7 @@ mod tests {
     async fn test_name_and_id_answer_the_same_zone() {
         let routes = testing_routes(Disclosure::Minimal);
 
-        let (_, created) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"dual"}"#)).await;
+        let (_, created) = send(&routes, "POST", "/v1/zones", Some(&named("dual"))).await;
         let id = created
             .split(r#""id":""#)
             .nth(1)
@@ -636,13 +1302,19 @@ mod tests {
 
         let doc = Document::load("catalog.json");
 
-        let sent = serde_json::json!({"name": "delivery"});
+        let sent = serde_json::json!({"name": "delivery", "request_id": "r-1"});
         let body: NameBody = serde_json::from_value(sent.clone()).expect("a name body parses");
         assert_eq!(body.name, "delivery");
         doc.check_json("NameBody", &sent);
         // The schema and the type refuse the same bodies: an unknown member, a missing name.
+        doc.check_json(
+            "NameBody",
+            &serde_json::json!({"name": "delivery", "request_id": "r-2", "expected_revision": 1}),
+        );
         for refused in [
-            serde_json::json!({"name": "x", "extra": 1}),
+            serde_json::json!({"name": "x", "request_id": "r-1", "extra": 1}),
+            serde_json::json!({"request_id": "r-1"}),
+            serde_json::json!({"name": "x"}),
             serde_json::json!({}),
         ] {
             assert!(!doc.accepts_json("NameBody", &refused), "{refused}");
@@ -729,19 +1401,28 @@ mod tests {
         let routes = routes(CatalogFacade {
             host: Some(Arc::new(provider)),
             authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+            mutations: Some(crate::handles::catalog_mutations_for_tests(
+                &root.join("host"),
+            )),
             catalog: Arc::new(FileCatalog::new(root)),
             recorder: None,
             disclosure: Disclosure::Minimal,
             audit_refusals: false,
             metrics: permguard_core::metrics::Metrics::none(),
         });
-        let (_, created) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        let (_, created) = send(
+            &routes,
+            "POST",
+            "/v1/zones",
+            Some(&super::tests::named("delivery")),
+        )
+        .await;
         let zone: serde_json::Value = serde_json::from_str(&created).expect("json");
         let (_, created) = send(
             &routes,
             "POST",
             "/v1/zones/delivery/ledgers",
-            Some(r#"{"name":"policies"}"#),
+            Some(&super::tests::named("policies")),
         )
         .await;
         let ledger: serde_json::Value = serde_json::from_str(&created).expect("json");

@@ -90,6 +90,8 @@ message Zone {
   string name = 2;
   uint64 created_at = 3;
   uint64 updated_at = 4;
+  // 1 at creation, one more at each change: what a change's `expected_revision` names (WP-7.3a).
+  uint64 revision = 5;
 }
 
 message Ledger {
@@ -104,6 +106,8 @@ message Ledger {
   // ledger, with what it observed of them; assignment and observations, not a guarantee that a
   // member serves now (WP-4.4).
   repeated ServingMember serving_members = 7;
+  // As Zone's (WP-7.3a).
+  uint64 revision = 8;
 }
 
 // One member assigned to serve a ledger (WP-4.4).
@@ -152,7 +156,9 @@ message ServingProgress {
   bool stale = 6;
 }
 
-message CreateZoneRequest { string name = 1; }
+// Every change names the `request_id` a retry repeats, and a change of a record the
+// `expected_revision` it read the record at, 0 being none (WP-7.3a).
+message CreateZoneRequest { string name = 1; string request_id = 2; }
 // A page of the listing: 0-based `page`, at most `size` per page. Both absent
 // means everything — the shape a synchronizing mirror wants, and what every
 // caller sent before pagination existed. The fields carry presence so that
@@ -164,13 +170,18 @@ message ListZonesRequest {
   optional uint32 size = 2;
 }
 message GetZoneRequest { string zone = 1; }
-message RenameZoneRequest { string zone = 1; string name = 2; }
-message DeleteZoneRequest { string zone = 1; }
+message RenameZoneRequest {
+  string zone = 1;
+  string name = 2;
+  string request_id = 3;
+  uint64 expected_revision = 4;
+}
+message DeleteZoneRequest { string zone = 1; string request_id = 2; uint64 expected_revision = 3; }
 
 message ZoneResponse { Zone zone = 1; }
 message ListZonesResponse { repeated Zone zones = 1; }
 
-message CreateLedgerRequest { string zone = 1; string name = 2; }
+message CreateLedgerRequest { string zone = 1; string name = 2; string request_id = 3; }
 message ListLedgersRequest {
   string zone = 1;
   // Same paging contract as ListZonesRequest.
@@ -178,8 +189,19 @@ message ListLedgersRequest {
   optional uint32 size = 3;
 }
 message GetLedgerRequest { string zone = 1; string ledger = 2; }
-message RenameLedgerRequest { string zone = 1; string ledger = 2; string name = 3; }
-message DeleteLedgerRequest { string zone = 1; string ledger = 2; }
+message RenameLedgerRequest {
+  string zone = 1;
+  string ledger = 2;
+  string name = 3;
+  string request_id = 4;
+  uint64 expected_revision = 5;
+}
+message DeleteLedgerRequest {
+  string zone = 1;
+  string ledger = 2;
+  string request_id = 3;
+  uint64 expected_revision = 4;
+}
 
 message LedgerResponse { Ledger ledger = 1; }
 message ListLedgersResponse { repeated Ledger ledgers = 1; }

@@ -86,6 +86,7 @@ fn zone(id: &str, name: &str) -> proto::Zone {
         name: name.into(),
         created_at: 1,
         updated_at: 1,
+        revision: 1,
     }
 }
 
@@ -98,6 +99,7 @@ fn ledger(id: &str, zone_id: &str, name: &str) -> proto::Ledger {
         created_at: 1,
         updated_at: 1,
         default_ref: "main".into(),
+        revision: 1,
     }
 }
 
@@ -107,8 +109,14 @@ impl ZoneCatalog for FakePlane {
         &self,
         request: Request<proto::CreateZoneRequest>,
     ) -> Result<Response<proto::ZoneResponse>, Status> {
+        let asked = request.into_inner();
+        if asked.request_id.len() != 32 {
+            return Err(Status::invalid_argument(
+                "a change names a fresh request id",
+            ));
+        }
         Ok(Response::new(proto::ZoneResponse {
-            zone: Some(zone("z-new", &request.into_inner().name)),
+            zone: Some(zone("z-new", &asked.name)),
         }))
     }
 
@@ -145,8 +153,14 @@ impl ZoneCatalog for FakePlane {
 
     async fn delete_zone(
         &self,
-        _request: Request<proto::DeleteZoneRequest>,
+        request: Request<proto::DeleteZoneRequest>,
     ) -> Result<Response<proto::ZoneResponse>, Status> {
+        let asked = request.into_inner();
+        if asked.request_id.len() != 32 || asked.expected_revision != 1 {
+            return Err(Status::invalid_argument(
+                "a delete names its request id and revision",
+            ));
+        }
         Ok(Response::new(proto::ZoneResponse {
             zone: Some(zone("z-1", "acme")),
         }))
@@ -190,8 +204,17 @@ impl ZoneCatalog for FakePlane {
         request: Request<proto::RenameLedgerRequest>,
     ) -> Result<Response<proto::LedgerResponse>, Status> {
         let asked = request.into_inner();
+        if asked.request_id.len() != 32 {
+            return Err(Status::invalid_argument(
+                "a change names a fresh request id",
+            ));
+        }
+        // The revision the client read, moved by one: what the server answers a rename with.
         Ok(Response::new(proto::LedgerResponse {
-            ledger: Some(ledger("l-1", &asked.zone, &asked.name)),
+            ledger: Some(proto::Ledger {
+                revision: asked.expected_revision + 1,
+                ..ledger("l-1", &asked.zone, &asked.name)
+            }),
         }))
     }
 
@@ -382,11 +405,12 @@ fn the_catalog_answers_over_grpc() {
     assert_eq!(ledgers[0].default_ref, "main");
 
     let renamed = admin
-        .rename_ledger("z-1", "l-1", "renamed")
+        .rename_ledger("z-1", "l-1", "renamed", 3)
         .expect("a ledger is renamed");
     assert_eq!(renamed.name, "renamed");
+    assert_eq!(renamed.revision, 4, "the revision named reached the server");
 
-    assert!(admin.delete_zone("z-1").is_ok());
+    assert!(admin.delete_zone("z-1", 1).is_ok());
     assert!(admin.get_ledger("z-1", "l-1").is_ok());
 
     // A refusal keeps the server's words and lands in the shared taxonomy.

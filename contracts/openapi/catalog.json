@@ -20,7 +20,7 @@
               "type": "integer",
               "minimum": 0
             },
-            "description": "Zero-based page; listing is whole without `page` and `size`. A malformed value is ignored today.",
+            "description": "Zero-based page; listing is whole without `page` and `size`. An unknown, repeated or malformed parameter is refused `invalid_argument`.",
             "x-grpc-field": "page"
           },
           {
@@ -29,9 +29,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "minimum": 1
+              "minimum": 0
             },
-            "description": "Page size. A malformed or zero value is ignored today.",
+            "description": "Page size; `0` is no size, as if absent. An unknown, repeated or malformed parameter is refused `invalid_argument`.",
             "x-grpc-field": "size"
           }
         ],
@@ -45,6 +45,16 @@
                   "items": {
                     "$ref": "#/components/schemas/Zone"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown, repeated or malformed query parameter (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
                 }
               }
             }
@@ -114,7 +124,7 @@
             }
           },
           "400": {
-            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "description": "The name breaks the naming rules (`invalid_name`); a body that is not a closed JSON `NameBody`, or one naming `expected_revision` (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -124,7 +134,7 @@
             }
           },
           "409": {
-            "description": "The name is taken (`name_taken`).",
+            "description": "The name is taken (`name_taken`); a request id already used for another change (`request_id_reused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -161,7 +171,17 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -173,7 +193,8 @@
         },
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/CreateZone",
         "x-grpc-body": {
-          "name": "name"
+          "name": "name",
+          "request_id": "request_id"
         }
       }
     },
@@ -279,7 +300,7 @@
             }
           },
           "400": {
-            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "description": "The name breaks the naming rules (`invalid_name`); a body that is not a closed JSON `NameBody`, or one without `expected_revision` (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -299,7 +320,7 @@
             }
           },
           "409": {
-            "description": "The name is taken (`name_taken`).",
+            "description": "The name is taken (`name_taken`); another revision than `expected_revision` (`revision_conflict`); a request id already used for another change (`request_id_reused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -336,7 +357,17 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -348,7 +379,9 @@
         },
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/RenameZone",
         "x-grpc-body": {
-          "name": "name"
+          "name": "name",
+          "request_id": "request_id",
+          "expected_revision": "expected_revision"
         }
       },
       "delete": {
@@ -376,7 +409,7 @@
             }
           },
           "409": {
-            "description": "The zone still holds ledgers (`zone_not_empty`).",
+            "description": "The zone still holds ledgers (`zone_not_empty`); another revision than `expected_revision` (`revision_conflict`); a request id already used for another change (`request_id_reused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -413,7 +446,27 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A missing, unknown, repeated or malformed query parameter (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -423,7 +476,31 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/DeleteZone"
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/DeleteZone",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The delete's request id, repeated by a retry (WP-7.3a).",
+            "x-grpc-field": "request_id"
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "The revision the zone was read at; another is `409 revision_conflict`.",
+            "x-grpc-field": "expected_revision"
+          }
+        ]
       }
     },
     "/v1/zones/{zone}/ledgers": {
@@ -451,7 +528,7 @@
               "type": "integer",
               "minimum": 0
             },
-            "description": "Zero-based page; listing is whole without `page` and `size`. A malformed value is ignored today.",
+            "description": "Zero-based page; listing is whole without `page` and `size`. An unknown, repeated or malformed parameter is refused `invalid_argument`.",
             "x-grpc-field": "page"
           },
           {
@@ -460,9 +537,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "minimum": 1
+              "minimum": 0
             },
-            "description": "Page size. A malformed or zero value is ignored today.",
+            "description": "Page size; `0` is no size, as if absent. An unknown, repeated or malformed parameter is refused `invalid_argument`.",
             "x-grpc-field": "size"
           }
         ],
@@ -476,6 +553,16 @@
                   "items": {
                     "$ref": "#/components/schemas/Ledger"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown, repeated or malformed query parameter (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
                 }
               }
             }
@@ -555,7 +642,7 @@
             }
           },
           "400": {
-            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "description": "The name breaks the naming rules (`invalid_name`); a body that is not a closed JSON `NameBody`, or one naming `expected_revision` (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -575,7 +662,7 @@
             }
           },
           "409": {
-            "description": "The name is taken in the zone (`name_taken`).",
+            "description": "The name is taken in the zone (`name_taken`); a request id already used for another change (`request_id_reused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -612,7 +699,17 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -624,7 +721,8 @@
         },
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/CreateLedger",
         "x-grpc-body": {
-          "name": "name"
+          "name": "name",
+          "request_id": "request_id"
         }
       }
     },
@@ -740,7 +838,7 @@
             }
           },
           "400": {
-            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "description": "The name breaks the naming rules (`invalid_name`); a body that is not a closed JSON `NameBody`, or one without `expected_revision` (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -760,7 +858,7 @@
             }
           },
           "409": {
-            "description": "The name is taken in the zone (`name_taken`).",
+            "description": "The name is taken in the zone (`name_taken`); another revision than `expected_revision` (`revision_conflict`); a request id already used for another change (`request_id_reused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -797,7 +895,17 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -809,7 +917,9 @@
         },
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/RenameLedger",
         "x-grpc-body": {
-          "name": "name"
+          "name": "name",
+          "request_id": "request_id",
+          "expected_revision": "expected_revision"
         }
       },
       "delete": {
@@ -864,7 +974,37 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another revision than `expected_revision` (`revision_conflict`); a request id already used for another change (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A missing, unknown, repeated or malformed query parameter (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -874,7 +1014,31 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/DeleteLedger"
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/DeleteLedger",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The delete's request id, repeated by a retry (WP-7.3a).",
+            "x-grpc-field": "request_id"
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "The revision the ledger was read at; another is `409 revision_conflict`.",
+            "x-grpc-field": "expected_revision"
+          }
+        ]
       }
     }
   },
@@ -886,15 +1050,26 @@
           "name": {
             "type": "string",
             "description": "The zone or ledger name: a-z, 0-9, `-`, `_`; letter first, alphanumeric last, 3 to 63 characters; a GUID-shaped name is refused with `invalid_name`."
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The change's request id, chosen by the caller and repeated by a retry: the same id with the same body learns the first answer, with another body is `request_id_reused` (WP-7.3a)."
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "On a rename only, required there: the revision the record was read at; another is `409 revision_conflict`. A create naming one is `invalid_argument`."
           }
         },
         "required": [
-          "name"
+          "name",
+          "request_id"
         ],
         "additionalProperties": false,
-        "description": "The body of a create or a rename. Closed by contract, although the Rust type does not deny unknown members yet.",
+        "description": "The body of a create or a rename, closed: an unknown or repeated member is `invalid_argument`.",
         "x-grpc-message": null,
-        "x-grpc-note": "The body of a create or rename: gRPC carries `name` as a field of each request (CreateZoneRequest, RenameZoneRequest, CreateLedgerRequest, RenameLedgerRequest), no standalone message."
+        "x-grpc-note": "The body of a create or rename: gRPC carries `name`, `request_id` and, on a rename, `expected_revision` as fields of each request (CreateZoneRequest, RenameZoneRequest, CreateLedgerRequest, RenameLedgerRequest), no standalone message."
       },
       "Zone": {
         "type": "object",
@@ -920,13 +1095,20 @@
             "minimum": 0,
             "description": "Seconds since the Unix epoch.",
             "x-grpc-field": "updated_at"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1 at creation, one more at each change: what a rename or a delete names as `expected_revision` (WP-7.3a).",
+            "x-grpc-field": "revision"
           }
         },
         "required": [
           "id",
           "name",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "revision"
         ],
         "additionalProperties": false,
         "description": "One zone.",
@@ -974,6 +1156,12 @@
             },
             "description": "On `GET …/ledgers/{ledger}` only: the members this Host coordinates whose `policy.mirror` task covers the ledger, with what it observed of them (WP-4.4). Assignment and observations, not a guarantee that a member serves now; absent from every other answer.",
             "x-grpc-field": "serving_members"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1 at creation, one more at each change: what a rename or a delete names as `expected_revision` (WP-7.3a).",
+            "x-grpc-field": "revision"
           }
         },
         "required": [
@@ -982,7 +1170,8 @@
           "name",
           "default_ref",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "revision"
         ],
         "additionalProperties": false,
         "description": "One ledger, inside one zone.",

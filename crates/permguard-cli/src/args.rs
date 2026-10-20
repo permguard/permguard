@@ -1001,6 +1001,10 @@ pub enum ZonesAction {
         /// The new name.
         #[arg(long)]
         name: String,
+        /// The revision the change is made against; absent, the one a read just before answers.
+        /// Another revision on the server refuses the change as `revision_conflict`.
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
+        expected_revision: Option<u64>,
     },
     /// Delete a zone. Refused while it still holds ledgers.
     #[command(
@@ -1009,6 +1013,10 @@ pub enum ZonesAction {
     Delete {
         /// The zone, by name or id.
         zone: String,
+        /// The revision the change is made against; absent, the one a read just before answers.
+        /// Another revision on the server refuses the change as `revision_conflict`.
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
+        expected_revision: Option<u64>,
     },
 }
 
@@ -1064,6 +1072,10 @@ pub enum LedgersAction {
         /// The new name.
         #[arg(long)]
         name: String,
+        /// The revision the change is made against; absent, the one a read just before answers.
+        /// Another revision on the server refuses the change as `revision_conflict`.
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
+        expected_revision: Option<u64>,
     },
     /// Delete a ledger.
     #[command(
@@ -1075,6 +1087,10 @@ pub enum LedgersAction {
         zone: String,
         /// The ledger, by name or id.
         ledger: String,
+        /// The revision the change is made against; absent, the one a read just before answers.
+        /// Another revision on the server refuses the change as `revision_conflict`.
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
+        expected_revision: Option<u64>,
     },
 }
 

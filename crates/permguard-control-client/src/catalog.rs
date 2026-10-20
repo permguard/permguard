@@ -24,6 +24,9 @@ pub struct Zone {
     pub name: String,
     pub created_at: u64,
     pub updated_at: u64,
+    /// The record's revision, what a rename or a delete names as expected (WP-7.3a).
+    #[serde(default)]
+    pub revision: u64,
 }
 
 /// One ledger, as the server answers it.
@@ -37,6 +40,9 @@ pub struct Ledger {
     pub default_ref: String,
     pub created_at: u64,
     pub updated_at: u64,
+    /// The record's revision, what a rename or a delete names as expected (WP-7.3a).
+    #[serde(default)]
+    pub revision: u64,
 }
 
 /// What the server says when it refuses: the shape every Permguard API shares.
@@ -124,14 +130,36 @@ pub(crate) fn call<T: for<'de> Deserialize<'de>>(
     }
 }
 
-/// The name in a request body, JSON-encoded properly rather than formatted into a string.
-fn name_body(name: &str) -> Result<String, Failure> {
+/// A fresh request id, what a retry of the same change repeats (WP-7.3a): 16 random bytes in hex,
+/// minted as the Host mints an operation's.
+pub fn request_id() -> Result<String, Failure> {
+    permguard_host::operations::journal::OperationId::mint()
+        .map(|id| id.to_string())
+        .ok_or_else(|| Failure {
+            class: "internal".to_owned(),
+            reason: permguard_core::codes::client::ENCODE_FAILED.to_owned(),
+            detail: "no randomness for a request id".to_owned(),
+            usage: false,
+        })
+}
+
+/// A create's or a rename's body (WP-7.3a): the name, a fresh request id and, for a rename, the
+/// revision the record was read at.
+fn name_body(name: &str, expected_revision: Option<u64>) -> Result<String, Failure> {
     #[derive(Serialize)]
     struct Body<'a> {
         name: &'a str,
+        request_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expected_revision: Option<u64>,
     }
 
-    serde_json::to_string(&Body { name }).map_err(|error| Failure {
+    serde_json::to_string(&Body {
+        name,
+        request_id: request_id()?,
+        expected_revision,
+    })
+    .map_err(|error| Failure {
         class: "internal".to_owned(),
         reason: permguard_core::codes::client::ENCODE_FAILED.to_owned(),
         detail: error.to_string(),
@@ -145,7 +173,7 @@ pub fn create_zone(client: &Client, endpoint: &Endpoint, name: &str) -> Result<Z
         endpoint,
         "POST",
         "/v1/zones",
-        Some(&name_body(name)?),
+        Some(&name_body(name, None)?),
     )
 }
 
@@ -190,22 +218,40 @@ pub fn rename_zone(
     endpoint: &Endpoint,
     zone: &str,
     name: &str,
+    expected_revision: u64,
 ) -> Result<Zone, Failure> {
     call(
         client,
         endpoint,
         "PATCH",
         &format!("/v1/zones/{}", crate::encode::value(zone)),
-        Some(&name_body(name)?),
+        Some(&name_body(name, Some(expected_revision))?),
     )
 }
 
-pub fn delete_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<Zone, Failure> {
+/// A delete's query (WP-7.3a): a fresh request id and the revision the record was read at.
+fn deletion(expected_revision: u64) -> Result<String, Failure> {
+    Ok(format!(
+        "request_id={}&expected_revision={expected_revision}",
+        request_id()?
+    ))
+}
+
+pub fn delete_zone(
+    client: &Client,
+    endpoint: &Endpoint,
+    zone: &str,
+    expected_revision: u64,
+) -> Result<Zone, Failure> {
     call(
         client,
         endpoint,
         "DELETE",
-        &format!("/v1/zones/{}", crate::encode::value(zone)),
+        &format!(
+            "/v1/zones/{}?{}",
+            crate::encode::value(zone),
+            deletion(expected_revision)?
+        ),
         None,
     )
 }
@@ -221,7 +267,7 @@ pub fn create_ledger(
         endpoint,
         "POST",
         &format!("/v1/zones/{}/ledgers", crate::encode::value(zone)),
-        Some(&name_body(name)?),
+        Some(&name_body(name, None)?),
     )
 }
 
@@ -270,6 +316,7 @@ pub fn rename_ledger(
     zone: &str,
     ledger: &str,
     name: &str,
+    expected_revision: u64,
 ) -> Result<Ledger, Failure> {
     call(
         client,
@@ -280,7 +327,7 @@ pub fn rename_ledger(
             crate::encode::value(zone),
             crate::encode::value(ledger)
         ),
-        Some(&name_body(name)?),
+        Some(&name_body(name, Some(expected_revision))?),
     )
 }
 
@@ -289,15 +336,17 @@ pub fn delete_ledger(
     endpoint: &Endpoint,
     zone: &str,
     ledger: &str,
+    expected_revision: u64,
 ) -> Result<Ledger, Failure> {
     call(
         client,
         endpoint,
         "DELETE",
         &format!(
-            "/v1/zones/{}/ledgers/{}",
+            "/v1/zones/{}/ledgers/{}?{}",
             crate::encode::value(zone),
-            crate::encode::value(ledger)
+            crate::encode::value(ledger),
+            deletion(expected_revision)?
         ),
         None,
     )
@@ -326,12 +375,25 @@ pub trait Catalog {
     ) -> Result<Vec<Ledger>, Failure>;
     fn get_ledger(&self, zone: &str, ledger: &str) -> Result<Ledger, Failure>;
 
+    /// The writes take a fresh request id each, and a change of a record the revision it was
+    /// read at (WP-7.3a): another one is refused `revision_conflict`.
     fn create_zone(&self, name: &str) -> Result<Zone, Failure>;
-    fn rename_zone(&self, zone: &str, name: &str) -> Result<Zone, Failure>;
-    fn delete_zone(&self, zone: &str) -> Result<Zone, Failure>;
+    fn rename_zone(&self, zone: &str, name: &str, expected_revision: u64) -> Result<Zone, Failure>;
+    fn delete_zone(&self, zone: &str, expected_revision: u64) -> Result<Zone, Failure>;
     fn create_ledger(&self, zone: &str, name: &str) -> Result<Ledger, Failure>;
-    fn rename_ledger(&self, zone: &str, ledger: &str, name: &str) -> Result<Ledger, Failure>;
-    fn delete_ledger(&self, zone: &str, ledger: &str) -> Result<Ledger, Failure>;
+    fn rename_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        name: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure>;
+    fn delete_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure>;
 }
 
 /// The catalog over HTTP.
@@ -366,24 +428,48 @@ impl Catalog for HttpCatalog {
         create_zone(&self.client, &self.endpoint, name)
     }
 
-    fn rename_zone(&self, zone: &str, name: &str) -> Result<Zone, Failure> {
-        rename_zone(&self.client, &self.endpoint, zone, name)
+    fn rename_zone(&self, zone: &str, name: &str, expected_revision: u64) -> Result<Zone, Failure> {
+        rename_zone(&self.client, &self.endpoint, zone, name, expected_revision)
     }
 
-    fn delete_zone(&self, zone: &str) -> Result<Zone, Failure> {
-        delete_zone(&self.client, &self.endpoint, zone)
+    fn delete_zone(&self, zone: &str, expected_revision: u64) -> Result<Zone, Failure> {
+        delete_zone(&self.client, &self.endpoint, zone, expected_revision)
     }
 
     fn create_ledger(&self, zone: &str, name: &str) -> Result<Ledger, Failure> {
         create_ledger(&self.client, &self.endpoint, zone, name)
     }
 
-    fn rename_ledger(&self, zone: &str, ledger: &str, name: &str) -> Result<Ledger, Failure> {
-        rename_ledger(&self.client, &self.endpoint, zone, ledger, name)
+    fn rename_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        name: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure> {
+        rename_ledger(
+            &self.client,
+            &self.endpoint,
+            zone,
+            ledger,
+            name,
+            expected_revision,
+        )
     }
 
-    fn delete_ledger(&self, zone: &str, ledger: &str) -> Result<Ledger, Failure> {
-        delete_ledger(&self.client, &self.endpoint, zone, ledger)
+    fn delete_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure> {
+        delete_ledger(
+            &self.client,
+            &self.endpoint,
+            zone,
+            ledger,
+            expected_revision,
+        )
     }
 }
 

@@ -156,6 +156,7 @@ fn zone(id: &str, name: &str) -> proto::Zone {
         name: name.into(),
         created_at: 1,
         updated_at: 1,
+        revision: 1,
     }
 }
 
@@ -168,12 +169,13 @@ fn ledger() -> proto::Ledger {
         created_at: 1,
         updated_at: 1,
         default_ref: "main".into(),
+        revision: 1,
     }
 }
 
 fn rest() -> Router {
-    let zones = r#"[{"id":"z-1","name":"acme","created_at":1,"updated_at":1},{"id":"z-2","name":"beta","created_at":1,"updated_at":1}]"#;
-    let ledgers = r#"[{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1}]"#;
+    let zones = r#"[{"id":"z-1","name":"acme","created_at":1,"updated_at":1,"revision":1},{"id":"z-2","name":"beta","created_at":1,"updated_at":1,"revision":1}]"#;
+    let ledgers = r#"[{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":1}]"#;
     let json = |body: String| {
         move || {
             let body = body.clone();

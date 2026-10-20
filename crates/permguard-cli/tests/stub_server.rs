@@ -17,10 +17,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Arc;
 
-/// A canned HTTP/1.1 answerer: method+path → (status, body). Unknown paths
-/// answer 404 with the structured refusal shape.
+/// A canned HTTP/1.1 answerer: method+path → (status, body), the query left out of the match.
+/// Unknown paths answer 404 with the structured refusal shape. Every request is kept, as
+/// `METHOD target body`, for a test that asserts what the CLI sent.
 struct Stub {
     address: String,
+    requests: Arc<std::sync::Mutex<Vec<String>>>,
     _server: std::thread::JoinHandle<()>,
 }
 
@@ -36,11 +38,14 @@ fn serve_owned(routes: HashMap<(String, String), (u16, String)>) -> Stub {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port is free");
     let address = format!("127.0.0.1:{}", listener.local_addr().unwrap().port());
     let routes = Arc::new(routes);
+    let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let kept = Arc::clone(&requests);
 
     let server = std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { break };
             let routes = Arc::clone(&routes);
+            let kept = Arc::clone(&kept);
             std::thread::spawn(move || {
                 // One exchange per connection: the client sends
                 // `Connection: close` and reads to EOF, so the stub answers
@@ -80,8 +85,13 @@ fn serve_owned(routes: HashMap<(String, String), (u16, String)>) -> Stub {
                         reader.read_exact(&mut body).expect("the body reads");
                     }
 
+                    kept.lock().expect("the log").push(format!(
+                        "{method} {path} {}",
+                        String::from_utf8_lossy(&body)
+                    ));
+                    let route = path.split('?').next().unwrap_or_default().to_owned();
                     let (status, answer) = routes
-                        .get(&(method.clone(), path.clone()))
+                        .get(&(method.clone(), route))
                         .cloned()
                         .unwrap_or((
                         404,
@@ -102,6 +112,7 @@ fn serve_owned(routes: HashMap<(String, String), (u16, String)>) -> Stub {
 
     Stub {
         address,
+        requests,
         _server: server,
     }
 }
@@ -137,7 +148,7 @@ fn stderr(output: &Output) -> String {
 }
 
 fn zone_json(id: &str, name: &str) -> String {
-    format!(r#"{{"id":"{id}","name":"{name}","created_at":1,"updated_at":1}}"#)
+    format!(r#"{{"id":"{id}","name":"{name}","created_at":1,"updated_at":1,"revision":1}}"#)
 }
 
 #[test]
@@ -160,6 +171,7 @@ fn zones_commands_speak_to_a_server_end_to_end() {
         ("PATCH", "/v1/zones/acme"),
         (200, zone_json("z-1", "renamed")),
     );
+    routes.insert(("GET", "/v1/zones/z-2"), (200, zone_json("z-2", "beta")));
     routes.insert(("DELETE", "/v1/zones/z-2"), (200, zone_json("z-2", "beta")));
     routes.insert(("GET", "/v1/zones/missing"), (
         404,
@@ -224,7 +236,7 @@ fn zones_commands_speak_to_a_server_end_to_end() {
 
 #[test]
 fn ledgers_commands_speak_to_a_server_end_to_end() {
-    let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1}"#;
+    let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":1}"#;
     let mut routes = HashMap::new();
     routes.insert(
         ("GET", "/v1/zones/acme/ledgers"),
@@ -284,6 +296,115 @@ fn ledgers_commands_speak_to_a_server_end_to_end() {
             stdout(&output)
         );
     }
+}
+
+/// WP-7.3a, owner decision of 2026-10-20: a rename or a delete names the revision a read just
+/// before answered, or the one `--expected-revision` gave without reading; every change carries a
+/// fresh request id.
+#[test]
+fn the_cli_renames_with_the_revision_it_read() {
+    let zone = r#"{"id":"z-1","name":"acme","created_at":1,"updated_at":1,"revision":7}"#;
+    let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":4}"#;
+    let mut routes = HashMap::new();
+    routes.insert(("GET", "/v1/zones/acme"), (200, zone.to_owned()));
+    routes.insert(("PATCH", "/v1/zones/acme"), (200, zone.to_owned()));
+    routes.insert(("DELETE", "/v1/zones/acme"), (200, zone.to_owned()));
+    let path = "/v1/zones/acme/ledgers/main-ledger";
+    routes.insert(("GET", path), (200, ledger.to_owned()));
+    routes.insert(("PATCH", path), (200, ledger.to_owned()));
+    routes.insert(("DELETE", path), (200, ledger.to_owned()));
+    let stub = serve(routes);
+    let endpoint = format!("http://{}", stub.address);
+    let dir = scratch("revisions");
+    let sent = |args: &[&str]| {
+        stub.requests.lock().expect("the log").clear();
+        let mut full = vec!["--endpoint", endpoint.as_str(), "-o", "json"];
+        full.extend(args);
+        let output = run(&dir, &full);
+        assert!(output.status.success(), "{args:?}: {}", stderr(&output));
+        stub.requests.lock().expect("the log").clone()
+    };
+    let body = |request: &str| -> serde_json::Value {
+        serde_json::from_str(request.splitn(3, ' ').nth(2).expect("a body")).expect("JSON")
+    };
+
+    let read_first = sent(&["zones", "update", "acme", "--name", "renamed"]);
+    assert_eq!(read_first.len(), 2, "{read_first:?}");
+    assert!(read_first[0].starts_with("GET /v1/zones/acme "));
+    let rename = body(&read_first[1]);
+    assert_eq!(rename["expected_revision"], 7);
+    assert_eq!(rename["name"], "renamed");
+    let first_id = rename["request_id"]
+        .as_str()
+        .expect("a request id")
+        .to_owned();
+    assert_eq!(first_id.len(), 32);
+
+    let given = sent(&[
+        "zones",
+        "update",
+        "acme",
+        "--name",
+        "renamed",
+        "--expected-revision",
+        "3",
+    ]);
+    assert_eq!(given.len(), 1, "no read: {given:?}");
+    assert_eq!(body(&given[0])["expected_revision"], 3);
+    assert_ne!(
+        body(&given[0])["request_id"],
+        first_id.as_str(),
+        "a fresh id"
+    );
+
+    let delete = sent(&["zones", "delete", "acme"]);
+    assert!(
+        delete[1].starts_with("DELETE /v1/zones/acme?"),
+        "{delete:?}"
+    );
+    assert!(delete[1].contains("expected_revision=7"), "{delete:?}");
+    assert!(delete[1].contains("request_id="), "{delete:?}");
+
+    let ledger_rename = sent(&[
+        "ledgers",
+        "update",
+        "main-ledger",
+        "--zone",
+        "acme",
+        "--name",
+        "renamed",
+    ]);
+    assert_eq!(body(&ledger_rename[1])["expected_revision"], 4);
+    let ledger_delete = sent(&[
+        "ledgers",
+        "delete",
+        "main-ledger",
+        "--zone",
+        "acme",
+        "--expected-revision",
+        "9",
+    ]);
+    assert_eq!(ledger_delete.len(), 1, "{ledger_delete:?}");
+    assert!(
+        ledger_delete[0].contains("expected_revision=9"),
+        "{ledger_delete:?}"
+    );
+
+    // The revision is reported, what an operator gives back as `--expected-revision`.
+    let shown = run(
+        &dir,
+        &[
+            "--endpoint",
+            &endpoint,
+            "-o",
+            "json",
+            "zones",
+            "get",
+            "acme",
+        ],
+    );
+    let shown: serde_json::Value = serde_json::from_slice(&shown.stdout).expect("JSON");
+    assert_eq!(shown["revision"], 7);
 }
 
 #[test]

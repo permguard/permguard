@@ -48,7 +48,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 
-use permguard_core::catalog::{Catalog, CatalogError, Ledger, Selector, Zone, validate_name};
+use permguard_core::catalog::{
+    Catalog, CatalogError, FIRST_REVISION, Ledger, Selector, Write, Zone, validate_name,
+};
 
 /// What the zone index file is called, beside the zone directories it describes.
 const ZONES_FILE: &str = "zones.json";
@@ -275,7 +277,7 @@ impl Catalog for FileCatalog {
         "directory"
     }
 
-    fn create_zone(&self, name: &str) -> Result<Zone> {
+    fn create_zone_with(&self, name: &str, write: &Write<'_>) -> Result<Zone> {
         validate_name(name)?;
 
         let _guard = self
@@ -299,6 +301,8 @@ impl Catalog for FileCatalog {
             name: name.to_owned(),
             created_at: at,
             updated_at: at,
+            revision: FIRST_REVISION,
+            operation: write.operation.map(str::to_owned),
         };
 
         // The zone's directory exists from birth, so everything that will live inside it — the
@@ -321,7 +325,7 @@ impl Catalog for FileCatalog {
         self.require_zone(zone)
     }
 
-    fn rename_zone(&self, zone: &Selector, name: &str) -> Result<Zone> {
+    fn rename_zone_with(&self, zone: &Selector, name: &str, write: &Write<'_>) -> Result<Zone> {
         validate_name(name)?;
 
         let _guard = self
@@ -330,6 +334,17 @@ impl Catalog for FileCatalog {
             .map_err(|_| CatalogError::backend("the zone lock is poisoned"))?;
 
         let mut index: ZoneIndex = self.read_index(&self.zones_path())?;
+        // The revision first, under the lock: a change that expected another one applies nothing
+        // (WP-7.3a).
+        if let Some(found) = Self::find_zone(&index, zone)
+            && !write.admits(found.revision)
+        {
+            return Err(CatalogError::RevisionConflict {
+                kind: "zone",
+                selector: zone.to_string(),
+                current: found.revision,
+            });
+        }
 
         if index.zones.iter().any(|candidate| {
             candidate.name == name && !matches!(zone, Selector::Id(id) if *id == candidate.id)
@@ -359,6 +374,8 @@ impl Catalog for FileCatalog {
 
         found.name = name.to_owned();
         found.updated_at = now();
+        found.revision += 1;
+        found.operation = write.operation.map(str::to_owned);
 
         let renamed = found.clone();
         self.write_index(&self.zones_path(), &index)?;
@@ -366,7 +383,7 @@ impl Catalog for FileCatalog {
         Ok(renamed)
     }
 
-    fn delete_zone(&self, zone: &Selector) -> Result<Zone> {
+    fn delete_zone_with(&self, zone: &Selector, write: &Write<'_>) -> Result<Zone> {
         let _zones = self
             .zones_lock
             .lock()
@@ -380,6 +397,13 @@ impl Catalog for FileCatalog {
                     kind: "zone",
                     selector: zone.to_string(),
                 })?;
+        if !write.admits(found.revision) {
+            return Err(CatalogError::RevisionConflict {
+                kind: "zone",
+                selector: zone.to_string(),
+                current: found.revision,
+            });
+        }
 
         // Zone lock first, this zone's ledger lock second — the same order everywhere, which is
         // what makes holding both deadlock-free. With both held, the emptiness check is a fact.
@@ -413,7 +437,7 @@ impl Catalog for FileCatalog {
         Ok(found)
     }
 
-    fn create_ledger(&self, zone: &Selector, name: &str) -> Result<Ledger> {
+    fn create_ledger_with(&self, zone: &Selector, name: &str, write: &Write<'_>) -> Result<Ledger> {
         validate_name(name)?;
 
         let owner = self.require_zone(zone)?;
@@ -444,6 +468,8 @@ impl Catalog for FileCatalog {
             default_ref: "main".to_owned(),
             created_at: at,
             updated_at: at,
+            revision: FIRST_REVISION,
+            operation: write.operation.map(str::to_owned),
         };
 
         // Born with its own directory: the address of whatever a ledger will hold is part of
@@ -478,7 +504,13 @@ impl Catalog for FileCatalog {
             })
     }
 
-    fn rename_ledger(&self, zone: &Selector, ledger: &Selector, name: &str) -> Result<Ledger> {
+    fn rename_ledger_with(
+        &self,
+        zone: &Selector,
+        ledger: &Selector,
+        name: &str,
+        write: &Write<'_>,
+    ) -> Result<Ledger> {
         validate_name(name)?;
 
         let owner = self.require_zone(zone)?;
@@ -488,6 +520,15 @@ impl Catalog for FileCatalog {
             .map_err(|_| CatalogError::backend("the ledger lock is poisoned"))?;
 
         let mut index: LedgerIndex = self.read_index(&self.ledgers_path(&owner.id))?;
+        if let Some(found) = Self::find_ledger(&index, ledger)
+            && !write.admits(found.revision)
+        {
+            return Err(CatalogError::RevisionConflict {
+                kind: "ledger",
+                selector: ledger.to_string(),
+                current: found.revision,
+            });
+        }
         let taken = index.ledgers.iter().any(|candidate| {
             candidate.name == name
                 && !matches!(ledger, Selector::Id(id) if *id == candidate.id)
@@ -515,6 +556,8 @@ impl Catalog for FileCatalog {
 
         found.name = name.to_owned();
         found.updated_at = now();
+        found.revision += 1;
+        found.operation = write.operation.map(str::to_owned);
 
         let renamed = found.clone();
         self.write_index(&self.ledgers_path(&owner.id), &index)?;
@@ -522,7 +565,12 @@ impl Catalog for FileCatalog {
         Ok(renamed)
     }
 
-    fn delete_ledger(&self, zone: &Selector, ledger: &Selector) -> Result<Ledger> {
+    fn delete_ledger_with(
+        &self,
+        zone: &Selector,
+        ledger: &Selector,
+        write: &Write<'_>,
+    ) -> Result<Ledger> {
         let owner = self.require_zone(zone)?;
         let lock = self.ledger_lock(&owner.id)?;
         let _guard = lock
@@ -537,6 +585,13 @@ impl Catalog for FileCatalog {
                     kind: "ledger",
                     selector: ledger.to_string(),
                 })?;
+        if !write.admits(found.revision) {
+            return Err(CatalogError::RevisionConflict {
+                kind: "ledger",
+                selector: ledger.to_string(),
+                current: found.revision,
+            });
+        }
 
         index.ledgers.retain(|candidate| candidate.id != found.id);
         self.write_index(&self.ledgers_path(&owner.id), &index)?;

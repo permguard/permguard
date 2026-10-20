@@ -1417,6 +1417,30 @@ impl MutationHandle {
         self.engine.run_checked(begin, check, apply)
     }
 
+    /// [`crate::operations::mutation::Mutations::replayed`], for a request of this domain: the
+    /// answer a retry learns before the caller resolves anything; one of another domain is
+    /// refused.
+    pub fn replayed<T, E>(
+        &self,
+        begin: &crate::operations::mutation::Begin,
+    ) -> Result<
+        Option<crate::operations::mutation::Outcome<T>>,
+        crate::operations::mutation::MutationError<E>,
+    >
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        if begin.domain != self.domain {
+            return Err(crate::operations::mutation::MutationError::Unavailable(
+                format!(
+                    "this handle applies `{}`, not `{}`",
+                    self.domain, begin.domain
+                ),
+            ));
+        }
+        self.engine.replayed(begin)
+    }
+
     /// Resolves the open operations this domain left at a crash.
     pub fn recover(
         &self,

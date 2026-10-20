@@ -159,3 +159,153 @@ fn test_ids_mint_in_creation_order() {
     // UUIDv7: the timestamp leads, so ids sort by age.
     assert!(first.id < second.id, "{} !< {}", first.id, second.id);
 }
+
+/// WP-7.3a: a record is born at revision 1, each mutation moves it by one and keeps the operation
+/// that wrote it.
+#[test]
+fn a_record_starts_at_revision_1_and_moves_by_one() {
+    use permguard_core::catalog::Write;
+
+    let catalog = FileCatalog::new(scratch("revisions"));
+    let zone = catalog
+        .create_zone_with(
+            "delivery",
+            &Write {
+                expected_revision: None,
+                operation: Some("op-1"),
+            },
+        )
+        .expect("created");
+    assert_eq!(
+        (zone.revision, zone.operation.as_deref()),
+        (1, Some("op-1"))
+    );
+    let renamed = catalog
+        .rename_zone_with(
+            &Selector::Id(zone.id.clone()),
+            "delivery-eu",
+            &Write {
+                expected_revision: Some(1),
+                operation: Some("op-2"),
+            },
+        )
+        .expect("renamed");
+    assert_eq!(
+        (renamed.revision, renamed.operation.as_deref()),
+        (2, Some("op-2"))
+    );
+    let ledger = catalog
+        .create_ledger(&Selector::Id(zone.id.clone()), "main-ledger")
+        .expect("a ledger");
+    assert_eq!(ledger.revision, 1);
+    let ledger = catalog
+        .rename_ledger_with(
+            &Selector::Id(zone.id.clone()),
+            &Selector::Id(ledger.id.clone()),
+            "audit",
+            &Write {
+                expected_revision: Some(1),
+                operation: Some("op-3"),
+            },
+        )
+        .expect("renamed");
+    assert_eq!(ledger.revision, 2);
+    // Durable: a store opened again reads the same revisions and operations.
+    let again = FileCatalog::new(scratch_kept("revisions"));
+    let read = again
+        .get_zone(&Selector::Id(zone.id.clone()))
+        .expect("read");
+    assert_eq!(
+        (read.revision, read.operation.as_deref()),
+        (2, Some("op-2"))
+    );
+    // Never on the wire.
+    assert!(
+        !serde_json::to_string(&read.public())
+            .expect("JSON")
+            .contains("operation")
+    );
+}
+
+/// WP-7.3a: a change that expected another revision is refused and applies nothing.
+#[test]
+fn a_stale_revision_is_a_conflict_and_changes_nothing() {
+    use permguard_core::catalog::Write;
+
+    let catalog = FileCatalog::new(scratch("conflict"));
+    let zone = catalog.create_zone("delivery").expect("a zone");
+    let ledger = catalog
+        .create_ledger(&Selector::Id(zone.id.clone()), "main-ledger")
+        .expect("a ledger");
+    let stale = Write {
+        expected_revision: Some(7),
+        operation: Some("op-x"),
+    };
+    let zone_id = Selector::Id(zone.id.clone());
+    let ledger_id = Selector::Id(ledger.id.clone());
+    for refused in [
+        catalog
+            .rename_zone_with(&zone_id, "elsewhere", &stale)
+            .err(),
+        catalog.delete_zone_with(&zone_id, &stale).err(),
+    ] {
+        assert!(
+            matches!(
+                refused,
+                Some(CatalogError::RevisionConflict {
+                    kind: "zone",
+                    current: 1,
+                    ..
+                })
+            ),
+            "{refused:?}"
+        );
+    }
+    for refused in [
+        catalog
+            .rename_ledger_with(&zone_id, &ledger_id, "audit", &stale)
+            .err(),
+        catalog
+            .delete_ledger_with(&zone_id, &ledger_id, &stale)
+            .err(),
+    ] {
+        assert!(
+            matches!(
+                refused,
+                Some(CatalogError::RevisionConflict {
+                    kind: "ledger",
+                    current: 1,
+                    ..
+                })
+            ),
+            "{refused:?}"
+        );
+    }
+    assert_eq!(catalog.get_zone(&zone_id).expect("kept"), zone);
+    assert_eq!(
+        catalog.get_ledger(&zone_id, &ledger_id).expect("kept"),
+        ledger
+    );
+}
+
+/// WP-7.3a: a record written before revisions existed reads as revision 1 and no operation.
+#[test]
+fn a_record_written_before_reads_as_revision_1() {
+    let root = scratch("before");
+    std::fs::create_dir_all(&root).expect("created");
+    std::fs::write(
+        root.join("zones.json"),
+        br#"{"version":1,"zones":[{"id":"0b1f8c5e-6b7a-4e3d-9c2a-1f0e5d4c3b2a","name":"delivery","created_at":1,"updated_at":1}]}"#,
+    )
+    .expect("written");
+    let catalog = FileCatalog::new(root);
+    let zone = catalog
+        .get_zone(&Selector::parse("delivery"))
+        .expect("read");
+    assert_eq!((zone.revision, zone.operation), (1, None));
+}
+
+/// The directory a test wrote before, kept as it is.
+fn scratch_kept(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("permguard-catalog-{name}-{}", std::process::id()))
+}

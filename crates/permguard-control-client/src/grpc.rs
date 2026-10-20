@@ -409,12 +409,17 @@ impl crate::catalog::Catalog for GrpcAdmin {
         GrpcAdmin::create_zone(self, name)
     }
 
-    fn rename_zone(&self, zone: &str, name: &str) -> Result<Zone, CatalogFailure> {
-        GrpcAdmin::rename_zone(self, zone, name)
+    fn rename_zone(
+        &self,
+        zone: &str,
+        name: &str,
+        expected_revision: u64,
+    ) -> Result<Zone, CatalogFailure> {
+        GrpcAdmin::rename_zone(self, zone, name, expected_revision)
     }
 
-    fn delete_zone(&self, zone: &str) -> Result<Zone, CatalogFailure> {
-        GrpcAdmin::delete_zone(self, zone)
+    fn delete_zone(&self, zone: &str, expected_revision: u64) -> Result<Zone, CatalogFailure> {
+        GrpcAdmin::delete_zone(self, zone, expected_revision)
     }
 
     fn create_ledger(&self, zone: &str, name: &str) -> Result<Ledger, CatalogFailure> {
@@ -426,12 +431,18 @@ impl crate::catalog::Catalog for GrpcAdmin {
         zone: &str,
         ledger: &str,
         name: &str,
+        expected_revision: u64,
     ) -> Result<Ledger, CatalogFailure> {
-        GrpcAdmin::rename_ledger(self, zone, ledger, name)
+        GrpcAdmin::rename_ledger(self, zone, ledger, name, expected_revision)
     }
 
-    fn delete_ledger(&self, zone: &str, ledger: &str) -> Result<Ledger, CatalogFailure> {
-        GrpcAdmin::delete_ledger(self, zone, ledger)
+    fn delete_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
+        GrpcAdmin::delete_ledger(self, zone, ledger, expected_revision)
     }
 }
 
@@ -502,6 +513,7 @@ impl GrpcAdmin {
             name: zone.name,
             created_at: zone.created_at,
             updated_at: zone.updated_at,
+            revision: zone.revision,
         })
     }
 
@@ -519,6 +531,7 @@ impl GrpcAdmin {
             default_ref: ledger.default_ref,
             created_at: ledger.created_at,
             updated_at: ledger.updated_at,
+            revision: ledger.revision,
         })
     }
 
@@ -529,7 +542,10 @@ impl GrpcAdmin {
             self.0
                 .call(
                     "CreateZone",
-                    client.create_zone(proto::CreateZoneRequest { name }),
+                    client.create_zone(proto::CreateZoneRequest {
+                        name,
+                        request_id: crate::catalog::request_id()?,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
@@ -556,6 +572,7 @@ impl GrpcAdmin {
                 name: zone.name,
                 created_at: zone.created_at,
                 updated_at: zone.updated_at,
+                revision: zone.revision,
             })
             .collect())
     }
@@ -570,27 +587,41 @@ impl GrpcAdmin {
         )
     }
 
-    pub fn rename_zone(&self, zone: &str, name: &str) -> Result<Zone, CatalogFailure> {
+    pub fn rename_zone(
+        &self,
+        zone: &str,
+        name: &str,
+        expected_revision: u64,
+    ) -> Result<Zone, CatalogFailure> {
         let mut client = self.catalog();
         let (zone, name) = (zone.to_owned(), name.to_owned());
         Self::zone(
             self.0
                 .call(
                     "RenameZone",
-                    client.rename_zone(proto::RenameZoneRequest { zone, name }),
+                    client.rename_zone(proto::RenameZoneRequest {
+                        zone,
+                        name,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
     }
 
-    pub fn delete_zone(&self, zone: &str) -> Result<Zone, CatalogFailure> {
+    pub fn delete_zone(&self, zone: &str, expected_revision: u64) -> Result<Zone, CatalogFailure> {
         let mut client = self.catalog();
         let zone = zone.to_owned();
         Self::zone(
             self.0
                 .call(
                     "DeleteZone",
-                    client.delete_zone(proto::DeleteZoneRequest { zone }),
+                    client.delete_zone(proto::DeleteZoneRequest {
+                        zone,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
@@ -603,7 +634,11 @@ impl GrpcAdmin {
             self.0
                 .call(
                     "CreateLedger",
-                    client.create_ledger(proto::CreateLedgerRequest { zone, name }),
+                    client.create_ledger(proto::CreateLedgerRequest {
+                        zone,
+                        name,
+                        request_id: crate::catalog::request_id()?,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
@@ -634,6 +669,7 @@ impl GrpcAdmin {
                 default_ref: ledger.default_ref,
                 created_at: ledger.created_at,
                 updated_at: ledger.updated_at,
+                revision: ledger.revision,
             })
             .collect())
     }
@@ -656,6 +692,7 @@ impl GrpcAdmin {
         zone: &str,
         ledger: &str,
         name: &str,
+        expected_revision: u64,
     ) -> Result<Ledger, CatalogFailure> {
         let mut client = self.catalog();
         let (zone, ledger, name) = (zone.to_owned(), ledger.to_owned(), name.to_owned());
@@ -663,20 +700,36 @@ impl GrpcAdmin {
             self.0
                 .call(
                     "RenameLedger",
-                    client.rename_ledger(proto::RenameLedgerRequest { zone, ledger, name }),
+                    client.rename_ledger(proto::RenameLedgerRequest {
+                        zone,
+                        ledger,
+                        name,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
     }
 
-    pub fn delete_ledger(&self, zone: &str, ledger: &str) -> Result<Ledger, CatalogFailure> {
+    pub fn delete_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
         let mut client = self.catalog();
         let (zone, ledger) = (zone.to_owned(), ledger.to_owned());
         Self::ledger(
             self.0
                 .call(
                     "DeleteLedger",
-                    client.delete_ledger(proto::DeleteLedgerRequest { zone, ledger }),
+                    client.delete_ledger(proto::DeleteLedgerRequest {
+                        zone,
+                        ledger,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )

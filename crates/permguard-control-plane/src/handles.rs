@@ -65,6 +65,8 @@ pub(crate) fn declaration() -> Declaration {
         .reads_public_keys(DATA_ATTEST)
         .audits::<ControlPlaneAudit>()
         .mutates(crate::store::REFS_DOMAIN)
+        // Every catalog mutation is an operation of the transaction (WP-7.3a).
+        .mutates(crate::catalog::CATALOG_DOMAIN)
         .handles_task(TaskType::PolicyMirror, 1)
         .handles_task(TaskType::EventsImport, 1)
         .uses_task(TaskType::DecisionsShip, 1)
@@ -143,6 +145,62 @@ pub(crate) fn ref_mutations(
         .mutations(crate::store::REFS_DOMAIN)
         .ok()
         .flatten()
+}
+
+/// The mutation transaction the catalog's mutations run in (WP-7.3a), when the Host composes
+/// one.
+pub(crate) fn catalog_mutations(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::MutationHandle> {
+    registration(context)?
+        .mutations(crate::catalog::CATALOG_DOMAIN)
+        .ok()
+        .flatten()
+}
+
+/// A mutation transaction of the catalog over an offline engine of its own on a fresh volume
+/// under `directory`, for a test.
+#[cfg(test)]
+pub(crate) fn catalog_mutations_for_tests(
+    directory: &std::path::Path,
+) -> permguard_host::composition::MutationHandle {
+    let volume = permguard_host::storage::volume::Volume::claim(
+        directory,
+        permguard_core::assurance::AssuranceProfile::Development,
+    )
+    .unwrap_or_else(|error| unreachable!("a test volume is claimed: {error}"));
+    let engine = permguard_host::operations::mutation::Mutations::open_offline(&volume, "test")
+        .unwrap_or_else(|error| unreachable!("a test mutation transaction opens: {error}"));
+    permguard_host::composition::MutationHandle::new(
+        std::sync::Arc::new(engine),
+        crate::catalog::CATALOG_DOMAIN,
+    )
+}
+
+/// A mutation transaction of the catalog over `projection` instead of an audit engine, on the
+/// volume under `directory`, fresh or reopened: for a test that sees, or refuses, the phases.
+#[cfg(test)]
+pub(crate) fn catalog_mutations_over(
+    directory: &std::path::Path,
+    projection: std::sync::Arc<dyn permguard_host::operations::mutation::Projection>,
+) -> permguard_host::composition::MutationHandle {
+    let volume = permguard_host::storage::volume::Volume::claim(
+        directory,
+        permguard_core::assurance::AssuranceProfile::Development,
+    )
+    .unwrap_or_else(|error| unreachable!("a test volume is claimed: {error}"));
+    let engine = permguard_host::operations::mutation::Mutations::open(
+        &volume,
+        projection,
+        std::sync::Arc::new(permguard_host::time::TimeGuard::system(
+            std::time::Duration::from_secs(30),
+        )),
+    )
+    .unwrap_or_else(|error| unreachable!("a test mutation transaction opens: {error}"));
+    permguard_host::composition::MutationHandle::new(
+        std::sync::Arc::new(engine),
+        crate::catalog::CATALOG_DOMAIN,
+    )
 }
 
 /// A mutation transaction of the ref updates over an offline engine of its own on a fresh volume

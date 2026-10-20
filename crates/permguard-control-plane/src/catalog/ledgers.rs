@@ -6,10 +6,27 @@
 
 use permguard_core::Ledger;
 use permguard_core::authz::{Actor, operations};
-use permguard_core::catalog::Selector;
+use permguard_core::catalog::{Selector, Write};
 
 use super::{CatalogFacade, ledger_resource};
 use crate::wire::Refusal;
+
+/// A retry learns the first answer before anything is resolved, which that answer may have
+/// renamed or deleted (after the review); the admission check comes first, as it does for a
+/// lookup.
+async fn replayed(
+    facade: &CatalogFacade,
+    actor: &Actor,
+    mutation: super::Mutation,
+    change: &super::Change<'_>,
+) -> Result<Option<Ledger>, Refusal> {
+    facade.authorization.may_act_under(
+        actor,
+        operations::CATALOG_WRITE,
+        &super::plane_resource(),
+    )?;
+    facade.replayed(actor, mutation, change).await
+}
 
 #[tracing::instrument(name = "ledger.create", skip_all)]
 pub(crate) async fn create(
@@ -17,20 +34,29 @@ pub(crate) async fn create(
     actor: &Actor,
     zone: &str,
     name: &str,
+    request_id: &str,
 ) -> Result<Ledger, Refusal> {
+    let change = super::Change {
+        request_id,
+        request: serde_json::json!({ "zone": zone, "name": name }),
+        name: Some(name),
+    };
+    if let Some(done) = replayed(facade, actor, super::LEDGER_CREATE, &change).await? {
+        return Ok(Ledger::public(done));
+    }
     // Creating in a zone is writing the zone.
     let resolved = facade.resolve_zone(actor, operations::CATALOG_WRITE, zone)?;
-    let ledger = match facade
-        .catalog
-        .create_ledger(&Selector::Id(resolved.id), name)
-    {
-        Ok(ledger) => ledger,
-        Err(error) => return Err(facade.refused("ledger.create.refused", error).await.into()),
-    };
-
-    facade.record("ledger.created", &ledger.id).await?;
-
-    Ok(ledger)
+    let zone_id = Selector::Id(resolved.id.clone());
+    facade
+        .mutate(
+            actor,
+            super::LEDGER_CREATE,
+            change,
+            super::target::new_ledger(&resolved.id),
+            |write| facade.catalog.create_ledger_with(&zone_id, name, write),
+        )
+        .await
+        .map(Ledger::public)
 }
 
 /// The ledgers of a zone the caller may read, windowed: a grant on one ledger is enough to name
@@ -56,6 +82,7 @@ pub(crate) fn list(
                 )
                 .is_ok()
         })
+        .map(Ledger::public)
         .collect();
 
     Ok(window.apply(ledgers))
@@ -81,7 +108,7 @@ pub(crate) fn get_served(
         })
         .unwrap_or_default();
     Ok(super::serving::LedgerServed {
-        ledger,
+        ledger: ledger.public(),
         serving_members,
     })
 }
@@ -93,20 +120,47 @@ pub(crate) async fn rename(
     zone: &str,
     ledger: &str,
     name: &str,
+    expected_revision: u64,
+    request_id: &str,
 ) -> Result<Ledger, Refusal> {
+    let change = super::Change {
+        request_id,
+        request: serde_json::json!({
+            "zone": zone,
+            "ledger": ledger,
+            "name": name,
+            "expected_revision": expected_revision,
+        }),
+        name: Some(name),
+    };
+    if let Some(done) = replayed(facade, actor, super::LEDGER_RENAME, &change).await? {
+        return Ok(Ledger::public(done));
+    }
     let (zone, resolved) = facade.resolve_ledger(actor, operations::CATALOG_WRITE, zone, ledger)?;
-    let ledger =
-        match facade
-            .catalog
-            .rename_ledger(&Selector::Id(zone.id), &Selector::Id(resolved.id), name)
-        {
-            Ok(ledger) => ledger,
-            Err(error) => return Err(facade.refused("ledger.rename.refused", error).await.into()),
-        };
-
-    facade.record("ledger.renamed", &ledger.id).await?;
-
-    Ok(ledger)
+    let (zone_id, id) = (
+        Selector::Id(zone.id.clone()),
+        Selector::Id(resolved.id.clone()),
+    );
+    facade
+        .mutate(
+            actor,
+            super::LEDGER_RENAME,
+            change,
+            super::target::ledger(&zone.id, &resolved.id),
+            |write| {
+                facade.catalog.rename_ledger_with(
+                    &zone_id,
+                    &id,
+                    name,
+                    &Write {
+                        expected_revision: Some(expected_revision),
+                        ..*write
+                    },
+                )
+            },
+        )
+        .await
+        .map(Ledger::public)
 }
 
 #[tracing::instrument(name = "ledger.delete", skip_all)]
@@ -115,17 +169,43 @@ pub(crate) async fn delete(
     actor: &Actor,
     zone: &str,
     ledger: &str,
+    expected_revision: u64,
+    request_id: &str,
 ) -> Result<Ledger, Refusal> {
-    let (zone, resolved) = facade.resolve_ledger(actor, operations::CATALOG_WRITE, zone, ledger)?;
-    let ledger = match facade
-        .catalog
-        .delete_ledger(&Selector::Id(zone.id), &Selector::Id(resolved.id))
-    {
-        Ok(ledger) => ledger,
-        Err(error) => return Err(facade.refused("ledger.delete.refused", error).await.into()),
+    let change = super::Change {
+        request_id,
+        request: serde_json::json!({
+            "zone": zone,
+            "ledger": ledger,
+            "expected_revision": expected_revision,
+        }),
+        name: None,
     };
-
-    facade.record("ledger.deleted", &ledger.id).await?;
-
-    Ok(ledger)
+    if let Some(done) = replayed(facade, actor, super::LEDGER_DELETE, &change).await? {
+        return Ok(Ledger::public(done));
+    }
+    let (zone, resolved) = facade.resolve_ledger(actor, operations::CATALOG_WRITE, zone, ledger)?;
+    let (zone_id, id) = (
+        Selector::Id(zone.id.clone()),
+        Selector::Id(resolved.id.clone()),
+    );
+    facade
+        .mutate(
+            actor,
+            super::LEDGER_DELETE,
+            change,
+            super::target::ledger(&zone.id, &resolved.id),
+            |write| {
+                facade.catalog.delete_ledger_with(
+                    &zone_id,
+                    &id,
+                    &Write {
+                        expected_revision: Some(expected_revision),
+                        ..*write
+                    },
+                )
+            },
+        )
+        .await
+        .map(Ledger::public)
 }

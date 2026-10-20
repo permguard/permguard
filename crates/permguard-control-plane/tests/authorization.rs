@@ -324,7 +324,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         "PATCH",
         &format!("/v1/zones/{}", deployed.billing_zone),
         Some(Arc::clone(&billing)),
-        Some(r#"{"name":"billing-2"}"#),
+        Some(r#"{"name":"billing-2","request_id":"r-rename","expected_revision":1}"#),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
@@ -333,7 +333,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         "POST",
         "/v1/zones",
         Some(Arc::clone(&billing)),
-        Some(r#"{"name":"finance"}"#),
+        Some(r#"{"name":"finance","request_id":"r-create"}"#),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
@@ -551,7 +551,7 @@ async fn an_explicit_public_grant_opens_exactly_what_it_names_to_anonymous() {
         "POST",
         "/v1/zones",
         None,
-        Some(r#"{"name":"finance"}"#),
+        Some(r#"{"name":"finance","request_id":"r-create"}"#),
     )
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");

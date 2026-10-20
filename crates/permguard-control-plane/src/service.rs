@@ -14,7 +14,7 @@ use crate::catalog::CatalogFacade;
 use crate::v1::control_plane_server::ControlPlaneServer;
 use crate::v1::zone_catalog_server::ZoneCatalogServer;
 
-const COMPONENT: &str = "control-plane";
+pub(crate) const COMPONENT: &str = "control-plane";
 pub(crate) const PLANE: &str = "control";
 
 #[derive(Clone)]
@@ -363,6 +363,7 @@ impl PlaneModule for ControlPlaneModule {
                     metrics: context.metrics().clone(),
                     authorization: crate::handles::authorization(context),
                     host: crate::handles::registration(context),
+                    mutations: catalog_mutations(context, catalog),
                 };
                 // The holdings gauges start truthful, not at zero.
                 facade.refresh_holdings();
@@ -430,6 +431,7 @@ impl PlaneModule for ControlPlaneModule {
                 metrics: context.metrics().clone(),
                 authorization: crate::handles::authorization(context),
                 host: crate::handles::registration(context),
+                mutations: catalog_mutations(context, catalog),
             }));
         }
 
@@ -641,6 +643,16 @@ fn control_configuration_document(
             "none"
         },
     )
+}
+
+/// The catalog's mutation transaction (WP-7.3a), the operations a crash left open resolved
+/// before the catalog takes a change: `None`, and every change refused `unavailable`, when the
+/// Host composes none or the recovery fails.
+fn catalog_mutations(
+    context: &PlaneContext<'_>,
+    catalog: &std::sync::Arc<dyn permguard_core::catalog::Catalog>,
+) -> Option<permguard_host::composition::MutationHandle> {
+    crate::catalog::recovered(crate::handles::catalog_mutations(context)?, catalog)
 }
 
 /// The interfaces this plane serves, as the second layer of the discovery chain.

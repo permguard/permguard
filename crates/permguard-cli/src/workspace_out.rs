@@ -672,6 +672,8 @@ pub struct ZoneView {
     pub name: String,
     pub created_at: String,
     pub updated_at: String,
+    /// What a rename or a delete names as `--expected-revision` (WP-7.3a).
+    pub revision: u64,
 }
 
 impl From<Zone> for ZoneView {
@@ -681,6 +683,7 @@ impl From<Zone> for ZoneView {
             name: zone.name,
             created_at: when(zone.created_at),
             updated_at: when(zone.updated_at),
+            revision: zone.revision,
         }
     }
 }
@@ -695,6 +698,8 @@ pub struct LedgerView {
     pub default_ref: String,
     pub created_at: String,
     pub updated_at: String,
+    /// What a rename or a delete names as `--expected-revision` (WP-7.3a).
+    pub revision: u64,
 }
 
 impl From<Ledger> for LedgerView {
@@ -706,6 +711,7 @@ impl From<Ledger> for LedgerView {
             default_ref: ledger.default_ref,
             created_at: when(ledger.created_at),
             updated_at: when(ledger.updated_at),
+            revision: ledger.revision,
         }
     }
 }
@@ -736,7 +742,8 @@ impl Report for ZoneReport {
             style::id(&self.zone.id)
         )?;
         writeln!(out, "  {} {}", style::dim("created:"), self.zone.created_at)?;
-        writeln!(out, "  {} {}", style::dim("updated:"), self.zone.updated_at)
+        writeln!(out, "  {} {}", style::dim("updated:"), self.zone.updated_at)?;
+        writeln!(out, "  {} {}", style::dim("revision:"), self.zone.revision)
     }
 }
 
@@ -819,6 +826,12 @@ impl Report for LedgerReport {
             "  {} {}",
             style::dim("updated:"),
             self.ledger.updated_at
+        )?;
+        writeln!(
+            out,
+            "  {} {}",
+            style::dim("revision:"),
+            self.ledger.revision
         )
     }
 }

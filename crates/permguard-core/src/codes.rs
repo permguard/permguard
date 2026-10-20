@@ -49,6 +49,8 @@ pub mod catalog {
     pub const ZONE_NOT_EMPTY: &str = "zone_not_empty";
     pub const INVALID_NAME: &str = "invalid_name";
     pub const CATALOG_FAILED: &str = "catalog_failed";
+    /// A mutation expected another revision than the record's (WP-7.3a, owner decision).
+    pub const REVISION_CONFLICT: &str = "revision_conflict";
 }
 
 /// `permguard.api.pdp.native.v1`.
@@ -486,6 +488,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         catalog::ZONE_NOT_EMPTY,
         catalog::INVALID_NAME,
         catalog::CATALOG_FAILED,
+        catalog::REVISION_CONFLICT,
         pdp_native::ZONE_REQUIRED,
         pdp_native::LEDGER_REQUIRED,
         pdp_native::PARTITION_UNKNOWN,

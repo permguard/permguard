@@ -197,8 +197,9 @@ check-boundaries: ## Check that every untrusted decoder is registered, bounded a
 check-durability: ## Check that every durability primitive lives in the storage library or is allow-listed.
 	cargo test -p permguard-conformance --test durability --locked
 
-check-mutations: ## Check that security state is written only through the mutation engine.
+check-mutations: ## Check that security state and the catalog are written only through the mutation engine.
 	cargo test -p permguard-conformance --test mutations --locked
+	cargo test -p permguard-conformance --test catalog_writers --locked
 
 fuzz: ## Run every fuzz target for SECONDS each (nightly toolchain and cargo-fuzz).
 	./scripts/fuzz.sh $(or $(SECONDS),30)

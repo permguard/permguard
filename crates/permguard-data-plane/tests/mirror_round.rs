@@ -280,8 +280,11 @@ async fn a_ledger_the_server_deleted_is_removed_here_too() {
     )
     .expect("the catalog client connects");
     let zone = catalog.get_zone("acme").expect("the zone is there");
+    let retired = catalog
+        .get_ledger(&zone.id, "retired")
+        .expect("the ledger is there");
     catalog
-        .delete_ledger(&zone.id, "retired")
+        .delete_ledger(&zone.id, "retired", retired.revision)
         .expect("the ledger is deleted on the server");
 
     let outcome = round::run(context(&url, &root, &[], &[])).await;

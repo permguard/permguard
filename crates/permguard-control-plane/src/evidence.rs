@@ -87,9 +87,10 @@ impl permguard_core::catalog::Catalog for Untouchable {
         "untouchable"
     }
 
-    fn create_zone(
+    fn create_zone_with(
         &self,
         _: &str,
+        _: &permguard_core::catalog::Write<'_>,
     ) -> Result<permguard_core::catalog::Zone, permguard_core::catalog::CatalogError> {
         panic!("looked up before the gate")
     }
@@ -107,25 +108,28 @@ impl permguard_core::catalog::Catalog for Untouchable {
         panic!("looked up before the gate")
     }
 
-    fn rename_zone(
+    fn rename_zone_with(
         &self,
         _: &permguard_core::catalog::Selector,
         _: &str,
+        _: &permguard_core::catalog::Write<'_>,
     ) -> Result<permguard_core::catalog::Zone, permguard_core::catalog::CatalogError> {
         panic!("looked up before the gate")
     }
 
-    fn delete_zone(
+    fn delete_zone_with(
         &self,
         _: &permguard_core::catalog::Selector,
+        _: &permguard_core::catalog::Write<'_>,
     ) -> Result<permguard_core::catalog::Zone, permguard_core::catalog::CatalogError> {
         panic!("looked up before the gate")
     }
 
-    fn create_ledger(
+    fn create_ledger_with(
         &self,
         _: &permguard_core::catalog::Selector,
         _: &str,
+        _: &permguard_core::catalog::Write<'_>,
     ) -> Result<permguard_core::catalog::Ledger, permguard_core::catalog::CatalogError> {
         panic!("looked up before the gate")
     }
@@ -145,19 +149,21 @@ impl permguard_core::catalog::Catalog for Untouchable {
         panic!("looked up before the gate")
     }
 
-    fn rename_ledger(
+    fn rename_ledger_with(
         &self,
         _: &permguard_core::catalog::Selector,
         _: &permguard_core::catalog::Selector,
         _: &str,
+        _: &permguard_core::catalog::Write<'_>,
     ) -> Result<permguard_core::catalog::Ledger, permguard_core::catalog::CatalogError> {
         panic!("looked up before the gate")
     }
 
-    fn delete_ledger(
+    fn delete_ledger_with(
         &self,
         _: &permguard_core::catalog::Selector,
         _: &permguard_core::catalog::Selector,
+        _: &permguard_core::catalog::Write<'_>,
     ) -> Result<permguard_core::catalog::Ledger, permguard_core::catalog::CatalogError> {
         panic!("looked up before the gate")
     }
