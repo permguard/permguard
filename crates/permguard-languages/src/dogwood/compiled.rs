@@ -138,6 +138,14 @@ impl Evaluating for super::Dogwood {
 
         let contract = contract_of(&lowered, artifacts)?;
         check_pins_are_injectable(&contract)?;
+        // What a version 2 occurrence projects into: the action's context, and the one-sided
+        // fields the author declared (TL-5c). Read for every partition; checked against the
+        // manifest's input at load (`check_input`).
+        let context = super::projection::context_leaves(action_source)?;
+        let projections = artifacts
+            .bytes(registry::PROJECTIONS)
+            .map(super::projection::Projections::parse)
+            .transpose()?;
         // The *augmented* schema: the action schema plus what lowering added to it (the hoisted
         // `context.providers.<id>` fields). Kept beside the authorizer because an attributed
         // entity store has to be checked against it before a decision, and afterwards is too
@@ -181,6 +189,8 @@ impl Evaluating for super::Dogwood {
             identities,
             footprint,
             warm: std::sync::OnceLock::new(),
+            context,
+            projections,
         }))
     }
 }
@@ -681,6 +691,11 @@ struct CompiledDogwood {
     owners: Vec<String>,
     identities: Vec<String>,
     footprint: usize,
+    /// The leaves of each action's context, by qualified action: one side of a version 2
+    /// occurrence's projection.
+    context: BTreeMap<String, super::projection::Side>,
+    /// The one-sided fields `projections.json` declares, when the partition carries it.
+    projections: Option<super::projection::Projections>,
 }
 
 /// The refusal of a history whose lock an earlier evaluation left poisoned: a panic's aftermath.
@@ -751,6 +766,48 @@ impl CompiledDogwood {
         self.charge(history, &fresh);
 
         Ok(fresh)
+    }
+
+    /// The occurrence as this partition decides it: a version 2 occurrence's fields projected into
+    /// its two bags by the schemas (TL-5c); a version 1 occurrence as it came.
+    ///
+    /// Replay projects every version 2 record by the schemas now loaded, whatever input the
+    /// partition declares: a ledger moved back to version 1 reads its version 2 records as the
+    /// schemas place them, one-sided fields being admitted under version 1 anyway. A record that no
+    /// longer projects — a field the schemas dropped — makes its history unreplayable, exactly as a
+    /// version 1 record that no longer checks does: it stays evidence and is never replayed
+    /// silently.
+    fn projected<'a>(
+        &self,
+        occurrence: &'a Occurrence,
+    ) -> Result<std::borrow::Cow<'a, Occurrence>, Refused> {
+        let Some(fields) = &occurrence.fields else {
+            return Ok(std::borrow::Cow::Borrowed(occurrence));
+        };
+        let Some(signature) = self
+            .contract
+            .signature(&occurrence.action, &occurrence.kind)
+        else {
+            return Err(unknown_event(&self.contract, occurrence));
+        };
+        let empty = super::projection::Side::default();
+        let (logged, request_context) = super::projection::project(
+            fields,
+            &super::projection::Side::of_event(super::projection::event_leaves(signature)),
+            self.context.get(&occurrence.action).unwrap_or(&empty),
+        )
+        .map_err(|why| {
+            Refused::new(
+                permguard_core::codes::pdp_temporal::EVENT_FIELD_UNDECLARED,
+                why,
+            )
+        })?;
+        let mut projected = occurrence.clone();
+        projected.logged = logged;
+        projected.request_context = request_context;
+        projected.fields = None;
+
+        Ok(std::borrow::Cow::Owned(projected))
     }
 
     /// What a warm engine is charged before it observes anything.
@@ -853,6 +910,7 @@ impl crate::temporal::Temporal for CompiledDogwood {
     }
 
     fn check(&self, occurrence: &Occurrence) -> Result<Checked, Refused> {
+        let occurrence = &*self.projected(occurrence)?;
         let Some(signature) = self
             .contract
             .signature(&occurrence.action, &occurrence.kind)
@@ -969,6 +1027,16 @@ impl crate::temporal::Temporal for CompiledDogwood {
                 ));
             }
             bytes = bytes.saturating_add(event_bytes(occurrence));
+            let occurrence = &*self.projected(occurrence).map_err(|refused| {
+                Refused::new(
+                    permguard_core::codes::pdp_temporal::HISTORY_NOT_REPLAYABLE,
+                    format!(
+                        "the occurrence `{}` is in this partition's history and does not project \
+                         by its schemas: {}",
+                        occurrence.event_id, refused.message
+                    ),
+                )
+            })?;
             let event = occurrence.to_event().map_err(|malformed| {
                 Refused::new(
                     permguard_core::codes::pdp_temporal::HISTORY_NOT_REPLAYABLE,
@@ -1031,6 +1099,26 @@ impl crate::temporal::Temporal for CompiledDogwood {
         self.decide(history, &engine, occurrence, checked)
     }
 
+    fn check_input(&self, input: Option<&str>) -> Result<(), String> {
+        if input == Some(super::occurrence::EVENT_TYPE_V2) {
+            return super::projection::check_complete(
+                &self.contract.signatures,
+                &self.context,
+                &self.projections.clone().unwrap_or_default(),
+            );
+        }
+        if self.projections.is_some() {
+            return Err(format!(
+                "dogwood: the partition carries `{}`, which only a partition whose input is `{}` \
+                 reads; declarations nothing reads are not kept",
+                registry::PROJECTIONS_FILENAME,
+                super::occurrence::EVENT_TYPE_V2
+            ));
+        }
+
+        Ok(())
+    }
+
     fn bind_warm(&self, budget: &Arc<crate::warm::Budget>, zone: &str) {
         // The first binding wins: the plane binds a partition before it hands it any work, and
         // one used unbound keeps the budget of its own it started with. A compiled partition
@@ -1085,6 +1173,12 @@ impl CompiledDogwood {
         occurrence: &Occurrence,
         checked: &Checked,
     ) -> Applied {
+        // Charged as it came, so a replayed history and a live one are charged alike.
+        let charged = event_bytes(occurrence);
+        let occurrence = match self.projected(occurrence) {
+            Ok(projected) => projected,
+            Err(refused) => return Applied::Decided(Verdict::engine_failed(refused.message)),
+        };
         let event = match occurrence.to_event() {
             Ok(event) => event,
             // Checked before it was journalled, so this is not a caller's mistake reaching here
@@ -1105,10 +1199,9 @@ impl CompiledDogwood {
                 engine
                     .observed
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                engine.bytes.fetch_add(
-                    event_bytes(occurrence),
-                    std::sync::atomic::Ordering::Relaxed,
-                );
+                engine
+                    .bytes
+                    .fetch_add(charged, std::sync::atomic::Ordering::Relaxed);
 
                 // Entered with room to recurse in: this is where a Dogwood partition
                 // actually decides, and a thread whose stack the platform under-reports would
@@ -1583,6 +1676,271 @@ mod tests {
         .expect("the body parses");
 
         body.read().expect("the occurrence is well formed")
+    }
+
+    /// One occurrence of upstream's trace as version 2: one canonical field map (TL-5c).
+    fn occurrence_v2(at: i64, action: &str, kind: &str, user: &str, fields: Json) -> Occurrence {
+        let instant = permguard_events::index::render_epoch_seconds(at)
+            .expect("the trace's timepoints are instants");
+        let body: super::super::occurrence::OccurrenceBodyV2 = serde_json::from_value(json!({
+            "event_id": format!("{action}-{kind}-{at}"),
+            "kind": kind,
+            "action": action,
+            "principal": format!("Drupe::OAuthUser::\"{user}\""),
+            "resource": "Drupe::Gateway::\"gw1\"",
+            "fields": fields,
+            "occurred_at": instant,
+        }))
+        .expect("the body parses");
+
+        body.read().expect("the occurrence is well formed")
+    }
+
+    /// The one-sided fields of upstream's pinned schema against its action schema.
+    const PROJECTIONS: &str =
+        r#"{"history_only": ["requestId", "sessionId"], "request_only": ["system"]}"#;
+
+    /// TL-5c: a version 2 partition declares every one-sided field, per action and kind; the
+    /// declarations belong to version 2; a declaration naming a field no side has is refused.
+    #[test]
+    fn a_version_2_partition_declares_every_one_sided_field() {
+        let v2 = Some(super::super::occurrence::EVENT_TYPE_V2);
+        let v1 = Some(super::super::occurrence::EVENT_TYPE);
+
+        let bare = example();
+        let temporal = bare.temporal().expect("it remembers");
+        let why = temporal
+            .check_input(v2)
+            .expect_err("one-sided and undeclared");
+        assert!(
+            why.contains("history_only") || why.contains("request_only"),
+            "{why}"
+        );
+        temporal
+            .check_input(v1)
+            .expect("version 1 needs no declaration");
+        temporal
+            .check_input(None)
+            .expect("nor does an undeclared input");
+
+        let declared = compile_with(vec![
+            (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+            (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+            (registry::PROJECTIONS, PROJECTIONS),
+        ])
+        .expect("it compiles");
+        let temporal = declared.temporal().expect("it remembers");
+        temporal
+            .check_input(v2)
+            .expect("every one-sided field is declared");
+        for input in [v1, None] {
+            let why = temporal
+                .check_input(input)
+                .expect_err("declarations nothing reads");
+            assert!(why.contains("projections.json"), "{input:?}: {why}");
+        }
+
+        for (stray, needle) in [
+            (
+                r#"{"history_only": ["requestId", "sessionId", "nowhere"], "request_only": ["system"]}"#,
+                "no event logs it",
+            ),
+            (
+                r#"{"history_only": ["requestId", "sessionId"], "request_only": ["system", "elsewhere"]}"#,
+                "no action's context",
+            ),
+            (
+                r#"{"history_only": ["requestId"], "request_only": ["system"]}"#,
+                "sessionId",
+            ),
+        ] {
+            let compiled = compile_with(vec![
+                (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+                (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+                (registry::PROJECTIONS, stray),
+            ])
+            .expect("it compiles");
+            let why = compiled
+                .temporal()
+                .expect("it remembers")
+                .check_input(v2)
+                .expect_err("refused");
+            assert!(why.contains(needle), "{stray}: {why}");
+        }
+    }
+
+    /// TL-5c: version 2 decides as version 1 does, the shared fields reaching both the history and
+    /// the request from one map; a field neither side declares is refused.
+    #[test]
+    fn a_version_2_occurrence_projects_and_decides_as_version_1_does() {
+        let compiled = compile_with(vec![
+            (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+            (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+            (registry::PROJECTIONS, PROJECTIONS),
+        ])
+        .expect("it compiles");
+        let temporal = compiled.temporal().expect("it remembers");
+
+        let login = occurrence_v2(
+            5,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"input": {"user": "alice", "server": "s1"}, "output": {}}),
+        );
+        let checked = temporal.check(&login).expect("well formed");
+        let key = history(&checked);
+        assert!(matches!(
+            temporal.apply(&key, &login, &checked),
+            Applied::Observed
+        ));
+        // The read correlates the logged login's `input.user` with the request's
+        // `context.input.user`: a permit says the one field reached both sides.
+        let read = occurrence_v2(
+            100,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"input": {"user": "alice", "document": "doc1"}}),
+        );
+        let checked = temporal.check(&read).expect("well formed");
+        match temporal.apply(&key, &read, &checked) {
+            Applied::Decided(verdict) => assert!(verdict.permitted(), "{verdict:?}"),
+            other => panic!("{other:?}"),
+        }
+
+        let stray = occurrence_v2(
+            101,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"input": {"user": "alice", "document": "doc1"}, "bogus": 1}),
+        );
+        let refused = temporal
+            .check(&stray)
+            .expect_err("neither side declares it");
+        assert_eq!(
+            refused.code,
+            permguard_core::codes::pdp_temporal::EVENT_FIELD_UNDECLARED
+        );
+    }
+
+    /// TL-5c, the migration fixture: a version 1 history replayed by a version 2 partition decides
+    /// the next version 2 occurrence as it would after the same events sent as version 2.
+    #[test]
+    fn a_version_1_history_replays_into_a_version_2_partition() {
+        let compiled = compile_with(vec![
+            (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+            (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+            (registry::PROJECTIONS, PROJECTIONS),
+        ])
+        .expect("it compiles");
+        let temporal = compiled.temporal().expect("it remembers");
+        let read = occurrence_v2(
+            100,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"input": {"user": "alice", "document": "doc1"}}),
+        );
+        let checked = temporal.check(&read).expect("well formed");
+        let key = history(&checked);
+
+        let mut verdicts = Vec::new();
+        for login in [
+            occurrence(
+                5,
+                "Drupe::Action::Login",
+                "response",
+                "alice",
+                json!({"input": {"user": "alice", "server": "s1"}, "output": {}}),
+            ),
+            occurrence_v2(
+                5,
+                "Drupe::Action::Login",
+                "response",
+                "alice",
+                json!({"input": {"user": "alice", "server": "s1"}, "output": {}}),
+            ),
+        ] {
+            temporal
+                .rebuild(&key, &[login], None)
+                .expect("the history replays");
+            match temporal.apply(&key, &read, &checked) {
+                Applied::Decided(verdict) => verdicts.push(verdict.permitted()),
+                other => panic!("{other:?}"),
+            }
+        }
+        assert_eq!(
+            verdicts,
+            [true, true],
+            "version 1 history and version 2 agree"
+        );
+    }
+
+    /// The required conformance case "provider infinite loop, deep recursion, large collection":
+    /// each is contained by upstream's sandbox and answers `E`, never a permit and never a hang.
+    #[test]
+    fn a_runaway_provider_is_contained_and_answers_e() {
+        let policy = r#"@id("runaway")
+permit (
+    principal,
+    action == Drupe::Action::"Read",
+    resource
+)
+when { Run::Away(context.input.document).ok == true };
+"#;
+        for (case, script) in [
+            ("an infinite loop", "fn evaluate(text) { loop { } }"),
+            (
+                "deep recursion",
+                "fn down(n) { down(n + 1) } fn evaluate(text) { down(0) }",
+            ),
+            (
+                "a large collection",
+                "fn evaluate(text) { let a = []; loop { a.push(text); } }",
+            ),
+        ] {
+            let providers = serde_json::json!({
+                "availableProviders": {
+                    "Run::Away": {
+                        "argumentTypes": [{"paramType": "string"}],
+                        "outputType": {
+                            "paramType": "record",
+                            "fields": {"ok": {"paramType": "bool"}},
+                            "required": ["ok"]
+                        },
+                        "implementation": {"kind": "rhai", "script": script}
+                    }
+                }
+            })
+            .to_string();
+            let compiled = compile_policy_with(
+                policy,
+                vec![
+                    (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+                    (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+                    (registry::PROVIDERS, &providers),
+                ],
+            )
+            .expect("it compiles");
+            let temporal = compiled.temporal().expect("it remembers");
+            let read = occurrence(
+                100,
+                "Drupe::Action::Read",
+                "request",
+                "alice",
+                json!({"input": {"user": "alice", "document": "doc1"}}),
+            );
+            let checked = temporal.check(&read).expect("well formed");
+            match temporal.apply(&history(&checked), &read, &checked) {
+                Applied::Decided(verdict) => assert!(
+                    verdict.error().is_some() && !verdict.permitted(),
+                    "{case}: {verdict:?}"
+                ),
+                other => panic!("{case}: {other:?}"),
+            }
+        }
     }
 
     /// The whole point: upstream's policy, upstream's schema, upstream's trace, upstream's answers.

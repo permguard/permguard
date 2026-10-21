@@ -50,6 +50,7 @@ pub mod annotations;
 pub mod artifacts;
 pub(crate) mod compiled;
 pub mod occurrence;
+pub mod projection;
 pub mod value;
 
 use crate::artifact::ArtifactType;
@@ -208,11 +209,15 @@ impl Language for Dogwood {
         // And the manifest's own claim about this partition's history, against what the schemas
         // turned out to say. Run here, where the author can still fix it, as well as at load.
         match compiled.temporal() {
-            Some(temporal) => crate::temporal::check_history_scope(
-                partition,
-                declared.history,
-                temporal.contract(),
-            ),
+            Some(temporal) => {
+                crate::temporal::check_history_scope(
+                    partition,
+                    declared.history,
+                    temporal.contract(),
+                )?;
+                // And its input: a version 2 partition declares its one-sided fields (TL-5c).
+                temporal.check_input(declared.input.as_ref().map(|input| input.r#type.as_str()))
+            }
             None => Ok(()),
         }
     }

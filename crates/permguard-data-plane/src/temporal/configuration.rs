@@ -72,7 +72,10 @@ pub fn document(base: &str, pdp: &str, header: permguard_core::stages::Header) -
         },
         // Read off the registry rather than written here: a build that gains an occurrence
         // contract advertises it, and one that does not cannot claim it.
-        event_types: vec![permguard_languages::event::EVENT_TYPE.to_owned()],
+        event_types: permguard_languages::event::EVENT_TYPES
+            .iter()
+            .map(|held| (*held).to_owned())
+            .collect(),
         capabilities: temporal::CAPABILITIES
             .iter()
             .map(|held| (*held).to_owned())
@@ -128,7 +131,10 @@ mod tests {
 
         assert_eq!(
             document["event_types"],
-            serde_json::json!([permguard_languages::event::EVENT_TYPE])
+            serde_json::json!([
+                permguard_languages::event::EVENT_TYPE,
+                permguard_languages::event::EVENT_TYPE_V2
+            ])
         );
     }
 

@@ -3645,7 +3645,7 @@ mod replay_plan {
     }
 
     /// The same volume in a process that remembers nothing, under `plan`.
-    fn restarted(events: &Path, plan: ReplayPlan) -> Plane {
+    pub(super) fn restarted(events: &Path, plan: ReplayPlan) -> Plane {
         let root = events.parent().expect("the volume is above the journals");
         let mirrors = root.join("mirrors");
         let decider = Arc::new(Decider::new(
@@ -3820,5 +3820,308 @@ mod replay_plan {
         let (status, answered) = post(&surface(&plane), read()).await;
         assert_eq!(status, StatusCode::OK, "{answered}");
         assert_eq!(answered["decision"], true, "{answered}");
+    }
+}
+
+/// TL-5c: the event's version 2, one canonical field map the partition projects (DOGWOOD-05,
+/// owner decisions of 2026-10-21).
+mod event_v2 {
+    use super::*;
+
+    use permguard_data_plane::temporal::submit::ReplayPlan;
+
+    /// The one-sided fields of the pinned schema against the action schema.
+    const PROJECTIONS: &str =
+        r#"{"history_only": ["requestId", "sessionId"], "request_only": ["system"]}"#;
+
+    fn manifest_v2(projections: bool) -> Manifest {
+        let mut manifest = manifest();
+        let partition = manifest
+            .partitions
+            .get_mut("governance")
+            .expect("the base manifest declares governance");
+        if projections {
+            partition.artifacts.push(ArtifactContract {
+                r#type: dogwood_artifacts::PROJECTIONS.to_owned(),
+                required: false,
+            });
+        }
+        partition.input = Some(permguard_objects::manifest::InputContract {
+            r#type: permguard_languages::event::EVENT_TYPE_V2.to_owned(),
+            required: true,
+        });
+        manifest
+    }
+
+    fn provision_v2(mirrors: &Path, projections: bool) {
+        let mut artifacts = vec![
+            (dogwood_artifacts::ACTION_SCHEMA, ACTION_SCHEMA),
+            (dogwood_artifacts::EVENT_SCHEMA, EVENT_SCHEMA),
+        ];
+        if projections {
+            artifacts.push((dogwood_artifacts::PROJECTIONS, PROJECTIONS));
+        }
+        provision_with(
+            mirrors,
+            &manifest_v2(projections),
+            ("01a0-read", POLICY),
+            &artifacts,
+        );
+    }
+
+    fn plane_v2(tag: &str, projections: bool) -> Plane {
+        plane_built(tag, blocking(), Metrics::none(), false, |mirrors| {
+            provision_v2(mirrors, projections);
+        })
+    }
+
+    /// One occurrence of the trace as version 2.
+    fn v2(at: i64, action: &str, kind: &str, user: &str, fields: Value) -> Value {
+        let occurred_at =
+            permguard_events::index::render_epoch_seconds(at).expect("the timepoint is an instant");
+        json!({
+            "store": {"zone": ZONE, "ledger": LEDGER, "profile": PROFILE},
+            "event": {
+                "type": permguard_languages::event::EVENT_TYPE_V2,
+                "data": {
+                    "event_id": format!("{action}-{kind}-{at}"),
+                    "kind": kind,
+                    "action": action,
+                    "principal": format!("Drupe::OAuthUser::\"{user}\""),
+                    "resource": "Drupe::Gateway::\"gw1\"",
+                    "fields": fields,
+                    "occurred_at": occurred_at,
+                }
+            }
+        })
+    }
+
+    fn trace_v2(at: i64, action: &str, kind: &str, user: &str) -> Value {
+        v2(
+            at,
+            action,
+            kind,
+            user,
+            json!({"input": input_of(at, action, kind, user)}),
+        )
+    }
+
+    /// Upstream's trace sent as version 2 decides as it does as version 1.
+    #[tokio::test]
+    async fn the_trace_sent_as_version_2_decides_as_version_1_does() {
+        let plane = plane_v2("v2-trace", true);
+        let router = surface(&plane);
+        let mut verdicts = Vec::new();
+        for (at, action, kind, user) in TRACE {
+            let (status, body) = post(&router, trace_v2(at, action, kind, user)).await;
+            assert_eq!(status, StatusCode::OK, "@{at}: {body}");
+            if body["outcome"] == "decided" {
+                verdicts.push((at, body["decision"].as_bool().expect("a decision")));
+            }
+        }
+        assert_eq!(
+            verdicts,
+            vec![(0, false), (100, true), (4000, false), (4100, false)]
+        );
+    }
+
+    /// A partition accepts the version its manifest declares, and a field neither side declares is
+    /// refused before anything is recorded.
+    #[tokio::test]
+    async fn each_partition_accepts_its_version_and_only_declared_fields() {
+        let v2_plane = plane_v2("v2-versions", true);
+        let (at, action, kind, user) = TRACE[0];
+        let (status, body) = post(
+            &surface(&v2_plane),
+            submission(at, action, kind, user, input_of(at, action, kind, user)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            body["code"],
+            permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED
+        );
+
+        let v1_plane = plane("v2-versions-v1");
+        let (status, body) = post(&surface(&v1_plane), trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            body["code"],
+            permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED
+        );
+
+        let (status, body) = post(
+            &surface(&v2_plane),
+            v2(
+                at,
+                action,
+                kind,
+                user,
+                json!({"input": input_of(at, action, kind, user), "bogus": 1}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            body["code"],
+            permguard_core::codes::pdp_temporal::EVENT_FIELD_UNDECLARED
+        );
+    }
+
+    /// After the review: a partition declaring no input accepts version 1 only; a refused version
+    /// is recorded nowhere, so the same id sent in the right version is a first submission.
+    #[tokio::test]
+    async fn an_undeclared_input_is_version_1_and_a_refusal_records_nothing() {
+        let mut undeclared = manifest();
+        undeclared
+            .partitions
+            .get_mut("governance")
+            .expect("governance")
+            .input = None;
+        let plane = plane_of("v2-undeclared-input", &undeclared, blocking());
+        let router = surface(&plane);
+        let (at, action, kind, user) = TRACE[0];
+        let (status, body) = post(&router, trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            body["code"],
+            permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED
+        );
+        let (status, body) = post(
+            &router,
+            submission(at, action, kind, user, input_of(at, action, kind, user)),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "nothing was recorded under that id: {body}"
+        );
+        assert_eq!(body["watermark"]["sequence"], 1, "{body}");
+    }
+
+    /// After the review: a version 2 retry is answered as one, and an occurrence behind its
+    /// history is refused across a history the version 2 scan reads.
+    #[tokio::test]
+    async fn a_version_2_retry_is_one_and_one_behind_its_history_is_refused() {
+        let plane = plane_v2("v2-retry", true);
+        let router = surface(&plane);
+        let (at, action, kind, user) = TRACE[2];
+        let (status, first) = post(&router, trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        let (status, again) = post(&router, trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::OK, "{again}");
+        assert_eq!(first, again, "one occurrence, one answer");
+
+        let (at, action, kind, user) = TRACE[0];
+        let (status, refused) = post(&router, trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+        assert_eq!(refused["code"], "event_out_of_order", "{refused}");
+    }
+
+    /// A version 2 partition that does not declare its one-sided fields is refused at load.
+    #[tokio::test]
+    async fn a_version_2_partition_without_its_declarations_does_not_load() {
+        let plane = plane_v2("v2-undeclared", false);
+        let (at, action, kind, user) = TRACE[0];
+        let (status, body) = post(&surface(&plane), trace_v2(at, action, kind, user)).await;
+        assert_ne!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["code"], "ledger_incompatible", "{body}");
+    }
+
+    /// The migration fixture: a ledger written in version 1 and moved to a version 2 partition
+    /// replays its version 1 records as written, and decides the next version 2 occurrence as the
+    /// same history sent in version 2 would.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_version_1_history_is_replayed_by_the_version_2_partition_that_follows_it() {
+        let plane = plane("v2-migration");
+        let events = plane.events.clone();
+        let mirrors = plane.mirrors.clone();
+        let router = surface(&plane);
+        for (at, action, kind, user) in &TRACE[..2] {
+            let (status, body) = post(
+                &router,
+                submission(*at, action, kind, user, input_of(*at, action, kind, user)),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+        }
+        drop(router);
+        drop(plane);
+
+        // The ledger moves to version 2, and the plane restarts.
+        provision_v2(&mirrors, true);
+        let restarted = super::replay_plan::restarted(&events, ReplayPlan::default());
+        let (at, action, kind, user) = TRACE[2];
+        let (status, body) = post(&surface(&restarted), trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            body["decision"], true,
+            "the version 1 login is in the history: {body}"
+        );
+    }
+}
+
+/// The required conformance case "one Host's history cannot authorise another tenant": a login
+/// recorded in one ledger is not history another ledger's policies range over (TL-5c).
+mod tenant_isolation {
+    use super::*;
+
+    const OTHER_LEDGER_ID: &str = "01a3185c-5000-7000-8000-000000000b02";
+    const OTHER_LEDGER: &str = "other-governance";
+
+    fn copy(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).expect("the copy's directory");
+        for entry in std::fs::read_dir(from).expect("readable") {
+            let entry = entry.expect("an entry");
+            let target = to.join(entry.file_name());
+            if entry.file_type().expect("a type").is_dir() {
+                copy(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), &target).expect("copied");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_login_in_one_ledger_permits_nothing_in_another() {
+        let plane = plane("tenant-isolation");
+        let other = plane.mirrors.join(ZONE_ID).join(OTHER_LEDGER_ID);
+        copy(&plane.mirrors.join(ZONE_ID).join(LEDGER_ID), &other);
+        permguard_data_plane::authz::store::record(
+            &other,
+            &Identity {
+                zone_id: ZONE_ID.to_owned(),
+                zone_name: ZONE.to_owned(),
+                ledger_id: OTHER_LEDGER_ID.to_owned(),
+                ledger_name: OTHER_LEDGER.to_owned(),
+                server: "http://127.0.0.1:6443".to_owned(),
+            },
+        )
+        .expect("recorded");
+        let router = surface(&plane);
+        for (at, action, kind, user) in &TRACE[..2] {
+            let (status, body) = post(
+                &router,
+                submission(*at, action, kind, user, input_of(*at, action, kind, user)),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+        }
+
+        let (at, action, kind, user) = TRACE[2];
+        let mut elsewhere = submission(at, action, kind, user, input_of(at, action, kind, user));
+        elsewhere["store"]["ledger"] = json!(OTHER_LEDGER);
+        let (status, body) = post(&router, elsewhere).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["decision"], false, "another ledger's login: {body}");
+
+        let (status, body) = post(
+            &router,
+            submission(at, action, kind, user, input_of(at, action, kind, user)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["decision"], true, "its own ledger's login: {body}");
     }
 }

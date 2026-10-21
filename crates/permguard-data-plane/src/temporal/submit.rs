@@ -730,8 +730,26 @@ impl Submitter {
         let addressed = self.addressed(&loaded, &profile)?;
         // Every engine charges its warm histories to this plane's budget, under this zone, before
         // it is handed any work (DOGWOOD-02).
-        for (_, engine) in &addressed {
+        for (partition, engine) in &addressed {
             engine.bind_warm(&self.warm, &zone);
+            // Each partition accepts the event version its manifest declares, version 1 when it
+            // declares none (TL-5c): a version 2 partition never reads two bags, and a version 1
+            // partition never projects.
+            let accepts = partition
+                .input
+                .as_deref()
+                .unwrap_or(permguard_languages::event::EVENT_TYPE);
+            if accepts != event_type {
+                return Err(ApiError::new(
+                    ErrorClass::Validation,
+                    permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED,
+                    format!(
+                        "the partition `{}` accepts `{accepts}`, and the occurrence is \
+                         `{event_type}`",
+                        partition.name
+                    ),
+                ));
+            }
         }
 
         // Every partition, before anything is written. A profile may address several with
@@ -1607,13 +1625,14 @@ impl Submitter {
         };
         let behind = |candidate: &serde_json::Value| super::imports::order_of(candidate) > order;
 
-        let mut newer = self.streams.scan(zone, ledger, &query).map_err(|error| {
-            ApiError::new(
-                ErrorClass::Unavailable,
-                permguard_core::codes::pdp_temporal::HISTORY_UNREADABLE,
-                format!("this plane's own journal could not be read: {error}"),
-            )
-        })?;
+        let mut newer =
+            both(&query, |query| self.streams.scan(zone, ledger, query)).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::HISTORY_UNREADABLE,
+                    format!("this plane's own journal could not be read: {error}"),
+                )
+            })?;
         // "Already observed" is everything below this sequence: this record and whatever the
         // journal placed after it have not been fed to the engine yet, and are not evidence of
         // where the history stands.
@@ -1626,7 +1645,7 @@ impl Submitter {
             && self.consistency.is_shared()
             && newer.is_empty()
         {
-            newer = imports.window(zone, ledger, &query).map_err(|error| {
+            newer = both(&query, |query| imports.window(zone, ledger, query)).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
                     permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
@@ -1639,13 +1658,14 @@ impl Submitter {
             && self.consistency.is_shared()
             && newer.is_empty()
         {
-            newer = imported.window(zone, ledger, &query).map_err(|error| {
-                ApiError::new(
-                    ErrorClass::Unavailable,
-                    permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
-                    format!("the imported history could not be read: {error}"),
-                )
-            })?;
+            newer =
+                both(&query, |query| imported.window(zone, ledger, query)).map_err(|error| {
+                    ApiError::new(
+                        ErrorClass::Unavailable,
+                        permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
+                        format!("the imported history could not be read: {error}"),
+                    )
+                })?;
             newer.retain(behind);
         }
 
@@ -2467,9 +2487,7 @@ impl Submitter {
         };
 
         // A range scan over this history and this window, never a read of the ledger.
-        let mut records = self
-            .streams
-            .scan(zone, ledger, &query)
+        let mut records = both(&query, |query| self.streams.scan(zone, ledger, query))
             .map_err(|error| unreadable("this plane's own journal", error.to_string()))?;
         records.retain(|(position, _)| *position < before_local_sequence);
         let mut records: Vec<serde_json::Value> =
@@ -2482,8 +2500,7 @@ impl Submitter {
             // record and filter", so a plane in a shared mode paid its whole retained import
             // history on every decision while its own journal cost one window.
             records.extend(
-                imports
-                    .window(zone, ledger, &query)
+                both(&query, |query| imports.window(zone, ledger, query))
                     .map_err(|error| unreadable("the imported history", error.to_string()))?,
             );
         }
@@ -2491,8 +2508,7 @@ impl Submitter {
             && self.consistency.is_shared()
         {
             records.extend(
-                imported
-                    .window(zone, ledger, &query)
+                both(&query, |query| imported.window(zone, ledger, query))
                     .map_err(|error| unreadable("the imported history", error.to_string()))?,
             );
         }
@@ -2526,11 +2542,11 @@ impl Submitter {
         for value in &records {
             let record = permguard_events::record::validate(value)
                 .map_err(|error| unreadable("a stored record", error.to_string()))?;
-            let body: OccurrenceBody = serde_json::from_value(record.event.clone())
-                .map_err(|error| unreadable("a stored record", error.to_string()))?;
-            let occurrence = body
-                .read()
-                .map_err(|malformed| unreadable("a stored occurrence", malformed.to_string()))?;
+            // Each record by the version it was written in: version 1 records stay as written and
+            // replay beside version 2 ones (TL-5c).
+            let occurrence =
+                permguard_languages::event::read_typed(&record.event_type, &record.event)
+                    .map_err(|why| unreadable("a stored occurrence", why))?;
             if occurrence.event_id != record.event_id
                 || occurrence.kind != record.kind
                 || occurrence.occurred_at != record.occurred_at
@@ -2632,14 +2648,15 @@ impl Submitter {
             )
         })?;
         let declared = body.kind.as_deref().unwrap_or_default();
-        // The type is checked, never obeyed. This build implements one occurrence contract; a
-        // second one is a registry entry with its own validator, not a branch here.
-        if declared != permguard_languages::event::EVENT_TYPE {
+        // The type is checked, never obeyed: one of the two registered versions, and which one the
+        // addressed partitions accept is checked against their manifests in `stage` (TL-5c).
+        if !EVENT_TYPES.contains(&declared) {
             return Err(malformed(
                 permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED,
                 format!(
-                    "`{declared}` is not an event type this plane accepts; it accepts `{}`",
-                    permguard_languages::event::EVENT_TYPE
+                    "`{declared}` is not an event type this plane accepts; it accepts `{}` and \
+                     `{}`",
+                    EVENT_TYPES[0], EVENT_TYPES[1]
                 ),
             ));
         }
@@ -2649,18 +2666,25 @@ impl Submitter {
                 "`event.data` is required".to_owned(),
             )
         })?;
-        let parsed: OccurrenceBody = serde_json::from_value(data.clone()).map_err(|error| {
-            malformed(
-                permguard_core::codes::pdp_temporal::EVENT_MALFORMED,
-                format!(
-                    "`event.data` is not a `{}`: {error}",
-                    permguard_languages::event::EVENT_TYPE
-                ),
-            )
-        })?;
-        let occurrence = parsed
-            .read()
-            .map_err(|why| malformed(why.code, why.message))?;
+        let occurrence = if declared == permguard_languages::event::EVENT_TYPE_V2 {
+            let parsed: permguard_languages::OccurrenceBodyV2 =
+                serde_json::from_value(data.clone()).map_err(|error| {
+                    malformed(
+                        permguard_core::codes::pdp_temporal::EVENT_MALFORMED,
+                        format!("`event.data` is not a `{declared}`: {error}"),
+                    )
+                })?;
+            parsed.read()
+        } else {
+            let parsed: OccurrenceBody = serde_json::from_value(data.clone()).map_err(|error| {
+                malformed(
+                    permguard_core::codes::pdp_temporal::EVENT_MALFORMED,
+                    format!("`event.data` is not a `{declared}`: {error}"),
+                )
+            })?;
+            parsed.read()
+        }
+        .map_err(|why| malformed(why.code, why.message))?;
 
         Ok(Read {
             zone,
@@ -2929,6 +2953,27 @@ struct StoredOccurrence {
     record: Record,
     occurrence: Occurrence,
 }
+
+/// One history scan over every registered event version: a history written in version 1 and
+/// continued in version 2 is one history (TL-5c). The caller orders what it read.
+fn both<T, E>(
+    query: &permguard_events::index::Query,
+    mut read: impl FnMut(&permguard_events::index::Query) -> Result<Vec<T>, E>,
+) -> Result<Vec<T>, E> {
+    let mut held = Vec::new();
+    for event_type in EVENT_TYPES {
+        let mut each = query.clone();
+        each.event_type = event_type.to_owned();
+        held.extend(read(&each)?);
+    }
+    Ok(held)
+}
+
+/// The registered event types a temporal submission may assert, version 1 first.
+const EVENT_TYPES: [&str; 2] = [
+    permguard_languages::event::EVENT_TYPE,
+    permguard_languages::event::EVENT_TYPE_V2,
+];
 
 /// The registered event type this submission asserted, after it was checked.
 fn temporal_event_type(request: &SubmitRequest) -> String {

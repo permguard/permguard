@@ -158,7 +158,10 @@ async fn the_chain_leads_from_the_plane_to_the_endpoints_a_producer_ships_to() {
     );
     assert_eq!(
         document["event_types"],
-        serde_json::json!([permguard_languages::event::EVENT_TYPE]),
+        serde_json::json!([
+            permguard_languages::event::EVENT_TYPE,
+            permguard_languages::event::EVENT_TYPE_V2
+        ]),
         "it advertises what this build can actually validate"
     );
 

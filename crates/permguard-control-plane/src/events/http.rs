@@ -254,7 +254,7 @@ impl EventFacade {
     /// build carries something that can validate it, and a list an operator could widen would be a
     /// way to store records nothing here understands.
     pub fn accepted_types(&self) -> Vec<&'static str> {
-        vec![permguard_languages::event::EVENT_TYPE]
+        permguard_languages::event::EVENT_TYPES.to_vec()
     }
 
     /// Accepts one batch.

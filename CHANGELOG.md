@@ -19,6 +19,14 @@ is cut.
 
 ### Added
 
+- **Dogwood's event version 2: one canonical field map the server projects (TL-5c).**
+  A partition whose manifest declares `input: {type: permguard.dogwood.event.v2}` accepts occurrences carrying `fields` in place of `logged` and `request_context` (DOGWOOD-05).
+  The server builds both projections per action and kind: a field the event and the action's context both declare is copied to both, so a caller can neither send two values nor omit one.
+  A field one side only declares must be listed in the new optional artifact `projections.json` (`history_only`, `request_only`), or the partition is refused at load.
+  A field neither side declares is refused, and a pin read from the context counts as shared, the server copying it into the history.
+  A version 2 partition refuses version 1 occurrences and the other way round, and it replays the version 1 records of its history as they were written.
+  The planes advertise and store both event types; the new artifact is refused on a partition that does not declare version 2.
+
 - **A Dogwood file's `@id` is read as upstream's grammar reads it, and `max_window` is held to upstream by pinned vectors (TL-5b).**
   The alias is the file's one `@id("…")` annotation, read from each policy's annotation prefix rather than line by line (DOGWOOD-07).
   Its escapes are decoded by Cedar's parser, and it is held to the common identity grammar.

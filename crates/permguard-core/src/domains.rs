@@ -187,6 +187,7 @@ pub mod media {
     pub const DOGWOOD_EVENT_SCHEMA: &str = "application/vnd.permguard.dogwood.event-schema";
     pub const DOGWOOD_MACROS: &str = "application/vnd.permguard.dogwood.macros";
     pub const DOGWOOD_PROVIDERS: &str = "application/vnd.permguard.dogwood.providers";
+    pub const DOGWOOD_PROJECTIONS: &str = "application/vnd.permguard.dogwood.projections";
     pub const DOGWOOD_PROVIDER_RHAI: &str = "application/vnd.permguard.dogwood.provider.rhai";
 }
 
@@ -201,6 +202,8 @@ pub mod artifact {
     pub const DOGWOOD_MACROS_V1: &str = "permguard.dogwood.macros.v1";
     pub const DOGWOOD_PROVIDERS_V1: &str = "permguard.dogwood.providers.v1";
     pub const DOGWOOD_PROVIDER_RHAI_V1: &str = "permguard.dogwood.provider.rhai.v1";
+    /// The fields a version 2 partition projects to one side only (TL-5c).
+    pub const DOGWOOD_PROJECTIONS_V1: &str = "permguard.dogwood.projections.v1";
 }
 
 /// Registered partition-input types a request asserts.
@@ -212,6 +215,8 @@ pub mod input {
 /// Registered event types a temporal occurrence carries.
 pub mod event {
     pub const DOGWOOD_V1: &str = "permguard.dogwood.event.v1";
+    /// One canonical field map, projected by the server (TL-5c, owner decision of 2026-10-21).
+    pub const DOGWOOD_V2: &str = "permguard.dogwood.event.v2";
 }
 
 /// Registered producer classes of event streams.
@@ -495,6 +500,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("media.DOGWOOD_EVENT_SCHEMA", media::DOGWOOD_EVENT_SCHEMA),
         ("media.DOGWOOD_MACROS", media::DOGWOOD_MACROS),
         ("media.DOGWOOD_PROVIDERS", media::DOGWOOD_PROVIDERS),
+        ("media.DOGWOOD_PROJECTIONS", media::DOGWOOD_PROJECTIONS),
         ("media.DOGWOOD_PROVIDER_RHAI", media::DOGWOOD_PROVIDER_RHAI),
         ("artifact.CEDAR_SCHEMA_V1", artifact::CEDAR_SCHEMA_V1),
         ("artifact.REGO_SCHEMA_V1", artifact::REGO_SCHEMA_V1),
@@ -516,9 +522,14 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             "artifact.DOGWOOD_PROVIDER_RHAI_V1",
             artifact::DOGWOOD_PROVIDER_RHAI_V1,
         ),
+        (
+            "artifact.DOGWOOD_PROJECTIONS_V1",
+            artifact::DOGWOOD_PROJECTIONS_V1,
+        ),
         ("input.CEDAR_ENTITIES_V1", input::CEDAR_ENTITIES_V1),
         ("input.REGO_DATA_V1", input::REGO_DATA_V1),
         ("event.DOGWOOD_V1", event::DOGWOOD_V1),
+        ("event.DOGWOOD_V2", event::DOGWOOD_V2),
         ("producer.DATA_PLANE_V1", producer::DATA_PLANE_V1),
         ("subject.HOST_V1_PREFIX", subject::HOST_V1_PREFIX),
         ("capability.PDP_V1_PREFIX", capability::PDP_V1_PREFIX),

@@ -867,15 +867,8 @@ fn check(scope: &ReadScope, read: &Read, keys: Option<&[Jwk]>) -> Verified {
 
 /// Whether the registered payload agrees with the record fields used for filtering and display.
 fn valid_occurrence(record: &record::Record) -> bool {
-    if record.event_type != permguard_languages::event::EVENT_TYPE {
-        return false;
-    }
-    let Ok(body) =
-        serde_json::from_value::<permguard_languages::event::OccurrenceBody>(record.event.clone())
+    let Ok(occurrence) = permguard_languages::event::read_typed(&record.event_type, &record.event)
     else {
-        return false;
-    };
-    let Ok(occurrence) = body.read() else {
         return false;
     };
 
@@ -1135,5 +1128,67 @@ mod host_verify {
         let verified = check(&scope, &page(&key), Some(&[key.jwk()]));
         assert_eq!(verified.chain, Some(true), "{:?}", verified.chain_detail);
         assert_eq!(verified.included, 2);
+    }
+}
+
+#[cfg(test)]
+mod event_versions {
+    //! TL-5c: `events` reads each registered event version by its own contract.
+
+    #![allow(clippy::expect_used)]
+
+    use permguard_events::record::{RECORD_TYPE, Record, VERSION, occurrence_digest_of};
+    use permguard_events::{GENESIS, Producer, Stream};
+    use serde_json::json;
+
+    fn record(event_type: &str, member: &str) -> Record {
+        let mut event = json!({
+            "event_id": "evt-1",
+            "kind": "request",
+            "action": "Drupe::Action::Login",
+            "principal": "Drupe::OAuthUser::\"alice\"",
+            "resource": "Drupe::Gateway::\"gw1\"",
+            "occurred_at": "2026-08-28T10:15:30Z",
+        });
+        event[member] = json!({"input": {"user": "alice"}});
+        Record {
+            v: VERSION,
+            record_type: RECORD_TYPE.to_owned(),
+            stream: Stream::new(Producer::data_plane("plane-a", "inst-1"), "acme", "gov"),
+            seq: 1,
+            prev: GENESIS.to_owned(),
+            event_type: event_type.to_owned(),
+            event_id: "evt-1".to_owned(),
+            source: None,
+            occurrence_digest: occurrence_digest_of(&event).expect("it digests"),
+            kind: "request".to_owned(),
+            profile: "temporal".to_owned(),
+            policy_partitions: vec!["governance".to_owned()],
+            commit: "sha256:commit".to_owned(),
+            history_key: None,
+            occurred_at: "2026-08-28T10:15:30Z".to_owned(),
+            observed_at: "2026-08-28T10:15:31Z".to_owned(),
+            event,
+        }
+    }
+
+    #[test]
+    fn each_event_version_is_read_by_its_own_contract() {
+        assert!(super::valid_occurrence(&record(
+            permguard_languages::event::EVENT_TYPE,
+            "logged"
+        )));
+        assert!(super::valid_occurrence(&record(
+            permguard_languages::event::EVENT_TYPE_V2,
+            "fields"
+        )));
+        assert!(!super::valid_occurrence(&record(
+            permguard_languages::event::EVENT_TYPE_V2,
+            "logged"
+        )));
+        assert!(!super::valid_occurrence(&record(
+            "permguard.dogwood.event.v3",
+            "fields"
+        )));
     }
 }

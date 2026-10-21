@@ -138,6 +138,9 @@ pub struct Partition {
     pub policies: usize,
     /// Roughly how much memory it holds, for the cache's bounds.
     pub footprint: usize,
+    /// The input type its manifest declares, when it declares one: which event version a temporal
+    /// partition accepts (TL-5c).
+    pub input: Option<String>,
     evaluator: Arc<dyn Evaluator>,
 }
 
@@ -176,6 +179,7 @@ impl Partition {
             language: "test".to_owned(),
             policies: 0,
             footprint,
+            input: None,
             evaluator,
         }
     }
@@ -376,6 +380,11 @@ pub fn compile(
             temporal.contract(),
         )
         .map_err(Refusal::Incompatible)?;
+        // And what it declared about its input: a version 2 partition's one-sided fields are
+        // declared, and only a version 2 partition carries the declarations (TL-5c).
+        temporal
+            .check_input(declared.input.as_ref().map(|input| input.r#type.as_str()))
+            .map_err(Refusal::Incompatible)?;
     }
 
     // What the cache charges: the runtime's own conservative estimate of what its engine keeps, not
@@ -387,6 +396,7 @@ pub fn compile(
         language: language_name,
         policies,
         footprint,
+        input: declared.input.as_ref().map(|input| input.r#type.clone()),
         evaluator,
     }))
 }

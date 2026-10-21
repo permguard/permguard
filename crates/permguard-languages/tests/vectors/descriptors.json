@@ -71,6 +71,7 @@
           "application/vnd.permguard.dogwood.action-schema",
           "application/vnd.permguard.dogwood.event-schema",
           "application/vnd.permguard.dogwood.macros",
+          "application/vnd.permguard.dogwood.projections",
           "application/vnd.permguard.dogwood.provider.rhai",
           "application/vnd.permguard.dogwood.providers",
           "application/vnd.permguard.policy.dogwood"
@@ -79,11 +80,13 @@
           "permguard.dogwood.action-schema.v1",
           "permguard.dogwood.event-schema.v1",
           "permguard.dogwood.macros.v1",
+          "permguard.dogwood.projections.v1",
           "permguard.dogwood.provider.rhai.v1",
           "permguard.dogwood.providers.v1"
         ],
         "inputs": [
-          "permguard.dogwood.event.v1"
+          "permguard.dogwood.event.v1",
+          "permguard.dogwood.event.v2"
         ],
         "capabilities": {
           "features": [],
@@ -109,7 +112,7 @@
           "reason": "provider work is bounded by operation and data-size limits but not by wall clock, and upstream offers no cancellation (LANG-08): from production upward a partition carrying providers is refused at load, and one without them runs in-process"
         }
       },
-      "digest": "sha256:12d2234ef7e5096f66f1b53f71b1bb3bd1f1a0cadb92f8722684cdd70c218bb3"
+      "digest": "sha256:8e4ce9f87ea90721699f193f520407e9a682688dd457e2849e591bdceb073606"
     },
     {
       "descriptor": {

@@ -278,6 +278,14 @@ pub trait Temporal: Send + Sync {
         let _ = (budget, zone);
     }
 
+    /// Checks this partition against the input its manifest declares, at load and where a ledger
+    /// is authored (TL-5c): a version 2 partition's one-sided fields must be declared, and the
+    /// declarations belong to version 2 only.
+    fn check_input(&self, input: Option<&str>) -> Result<(), String> {
+        let _ = input;
+        Ok(())
+    }
+
     /// How many occurrences this partition's `history` has been given since it was built or last
     /// rebuilt.
     ///

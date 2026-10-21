@@ -26,6 +26,8 @@ pub const MACROS: &str = permguard_core::domains::artifact::DOGWOOD_MACROS_V1;
 pub const PROVIDERS: &str = permguard_core::domains::artifact::DOGWOOD_PROVIDERS_V1;
 /// The registered type of one named Rhai provider implementation.
 pub const RHAI_PROVIDER: &str = permguard_core::domains::artifact::DOGWOOD_PROVIDER_RHAI_V1;
+/// The registered type of the optional one-sided field declarations of a version 2 partition.
+pub const PROJECTIONS: &str = permguard_core::domains::artifact::DOGWOOD_PROJECTIONS_V1;
 
 /// The file name reserved for the required Cedar action schema.
 pub const ACTION_SCHEMA_FILENAME: &str = "schema.cedarschema";
@@ -35,6 +37,8 @@ pub const EVENT_SCHEMA_FILENAME: &str = "events.dwschema";
 pub const MACROS_FILENAME: &str = "macros.dw";
 /// The file name reserved for the optional provider declarations.
 pub const PROVIDERS_FILENAME: &str = "providers.json";
+/// The file name reserved for the optional one-sided field declarations.
+pub const PROJECTIONS_FILENAME: &str = "projections.json";
 
 /// The required Cedar action schema — Dogwood's `PolicySchema`.
 struct ActionSchema;
@@ -245,6 +249,48 @@ impl ArtifactType for Providers {
     }
 }
 
+/// The fields a version 2 partition projects to one side only (TL-5c): `history_only` and
+/// `request_only`, closed, each path once.
+struct Projections;
+
+impl ArtifactType for Projections {
+    fn name(&self) -> &'static str {
+        PROJECTIONS
+    }
+
+    fn media_type(&self) -> &'static str {
+        permguard_core::domains::media::DOGWOOD_PROJECTIONS
+    }
+
+    fn runtime(&self) -> &'static str {
+        super::NAME
+    }
+
+    fn role(&self) -> ArtifactRole {
+        ArtifactRole::Support
+    }
+
+    fn semantic_role(&self) -> &'static str {
+        "projections"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["json"]
+    }
+
+    fn canonical_filename(&self) -> Option<&'static str> {
+        Some(PROJECTIONS_FILENAME)
+    }
+
+    fn cardinality(&self) -> Cardinality {
+        Cardinality::ZeroOrOne
+    }
+
+    fn validate(&self, bytes: &[u8]) -> Result<(), String> {
+        super::projection::Projections::parse(bytes).map(|_| ())
+    }
+}
+
 /// The largest provider script this build will store.
 ///
 /// A bound on what is *kept*, which is a different question from the bounds the sandbox puts on
@@ -323,8 +369,9 @@ pub fn all() -> &'static [&'static dyn ArtifactType] {
     const MACROS: &Macros = &Macros;
     const PROVIDERS: &Providers = &Providers;
     const RHAI: &RhaiProvider = &RhaiProvider;
+    const PROJECTIONS: &Projections = &Projections;
 
-    &[ACTION, EVENT, MACROS, PROVIDERS, RHAI]
+    &[ACTION, EVENT, MACROS, PROVIDERS, RHAI, PROJECTIONS]
 }
 
 #[cfg(test)]
