@@ -136,6 +136,7 @@ pub struct Declaration {
     scope_schemas: Vec<String>,
     mutations: Vec<&'static str>,
     layouts: Vec<&'static str>,
+    reads_holds: bool,
 }
 
 impl Declaration {
@@ -216,6 +217,13 @@ impl Declaration {
     /// transaction (WP-3.6): its handle runs and recovers that domain's operations only.
     pub fn mutates(mut self, domain: &'static str) -> Self {
         self.mutations.push(domain);
+        self
+    }
+
+    /// Declares that this Plane reads the Host's holds (WP-7.3c): what its garbage collection must
+    /// not sweep.
+    pub fn reads_holds(mut self) -> Self {
+        self.reads_holds = true;
         self
     }
 
@@ -306,6 +314,7 @@ pub struct Host {
     >,
     hub: Option<Arc<crate::membership::watch::Hub>>,
     memberships: Option<Arc<dyn ServingMembers>>,
+    holds: Option<Arc<crate::holds::HoldStore>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
@@ -333,6 +342,7 @@ pub struct HostBuilder {
     >,
     hub: Option<Arc<crate::membership::watch::Hub>>,
     memberships: Option<Arc<dyn ServingMembers>>,
+    holds: Option<Arc<crate::holds::HoldStore>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
@@ -424,6 +434,12 @@ impl HostBuilder {
         self
     }
 
+    /// The volume's holds (WP-7.3c): handed to a Plane that declared it reads them.
+    pub fn holds(mut self, holds: Arc<crate::holds::HoldStore>) -> Self {
+        self.holds = Some(holds);
+        self
+    }
+
     /// The version in force of every WP-1.9 layout on the volume, as the start left it (WP-6.2d):
     /// a Plane reads those it declared.
     pub fn layouts(mut self, layouts: impl IntoIterator<Item = (String, u16)>) -> Self {
@@ -437,6 +453,7 @@ impl HostBuilder {
             task_slots: self.task_slots,
             hub: self.hub,
             memberships: self.memberships,
+            holds: self.holds,
             streams: self.streams,
             rings: self.rings,
             recorder: self.recorder,
@@ -676,6 +693,10 @@ impl Host {
                 })
                 .then(|| self.memberships.clone())
                 .flatten(),
+            holds: declaration
+                .reads_holds
+                .then(|| self.holds.clone())
+                .flatten(),
         })
     }
 }
@@ -708,6 +729,7 @@ pub struct Registration {
     authorization: Arc<Authorization>,
     time: Arc<TimeGuard>,
     memberships: Option<Arc<dyn ServingMembers>>,
+    holds: Option<Arc<crate::holds::HoldStore>>,
 }
 
 /// Who serves a resource under this Host's memberships, and what was observed of them: the Host
@@ -911,6 +933,12 @@ impl Registration {
     /// key a Plane derives from its own root.
     pub fn host_id(&self) -> Option<[u8; 16]> {
         self.host_id
+    }
+
+    /// The Host's holds (WP-7.3c): `None` for a Plane that did not declare it reads them, or a
+    /// Host that composes none.
+    pub fn holds(&self) -> Option<Arc<crate::holds::HoldStore>> {
+        self.holds.clone()
     }
 
     /// The members serving `resource` (WP-4.4): empty for a Plane that does not provide

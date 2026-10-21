@@ -400,6 +400,12 @@ is cut.
 
 ### Changed
 
+- **Legal and incident holds keep a ledger, or a zone's ledgers, from the garbage collection.**
+  `permguard host holds add`, `list` and `release` manage holds offline on the `--volume` of a stopped server: each is a file under `host/holds/` naming a ledger, `plane/control/zone/<id>/ledger/<id>`, or a zone, `plane/control/zone/<id>`, by ids, with an owner, a reason and either `--expires-at` or `--review-at`.
+  Adding and releasing a hold run in the Host's security-mutation transaction under the new phased audit actions `host.hold.added` and `host.hold.released`, whose records name the hold's id and resource and never its owner or reason.
+  The Control Plane's garbage collection sweeps nothing of a held ledger, unreachable objects included, and counts the held ledgers in its `store.swept` record; holds that cannot be read sweep nothing that pass.
+  Past `expires_at` a hold keeps nothing and is listed `expired`; past `review_at` it still keeps, is listed `review_due` and says so in the log.
+
 - **A catalog delete leaves a tombstone and destroys nothing, and a ledger can be archived.**
   Deleting a zone or a ledger now writes a tombstone of its id, under `tombstones/` in the catalog, with the name it had, when it went, its last revision and the operation that deleted it; the id is never minted again.
   What a deleted ledger held, its objects and refs, stays on disk for the garbage collection after retention; a delete no longer removes the ledger's or the zone's directory.

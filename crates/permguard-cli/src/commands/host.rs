@@ -34,8 +34,8 @@ use permguard_host::operations::mutation::{MutationError, Mutations};
 use permguard_host::storage::volume::Volume;
 
 use crate::args::{
-    Globals, GrantRevokeAction, GrantsAction, HostAction, IdentityAction, InviteAction,
-    MemberChangeArgs, MemberRevokeAction, MembersAction, PinAction, ResetAction,
+    Globals, GrantRevokeAction, GrantsAction, HoldsAction, HostAction, IdentityAction,
+    InviteAction, MemberChangeArgs, MemberRevokeAction, MembersAction, PinAction, ResetAction,
 };
 use crate::failure::{EXIT_READY, Failure};
 use crate::output::Report;
@@ -62,6 +62,7 @@ pub fn host_command(
 ) -> Result<ExitCode, Failure> {
     match action {
         HostAction::Grants { action } => grants(globals, server_config, action, trace),
+        HostAction::Holds { action } => holds(globals, server_config, action, trace),
         HostAction::Identity { action } => identity(globals, server_config, action, trace),
         HostAction::Members { action } => members(globals, action, trace),
         HostAction::Streams { action } => streams(globals, action, trace),
@@ -165,6 +166,20 @@ fn open(
     volume: &std::path::Path,
     trace: &Trace,
 ) -> Result<(std::sync::Arc<GrantStore>, Volume), Failure> {
+    let held = claim(volume, trace)?;
+    let (store, recovery) = GrantStore::open(&held).map_err(failure)?;
+    if recovery.truncated_bytes > 0 {
+        trace.say(format!(
+            "the grant journal recovered, truncating {} byte(s)",
+            recovery.truncated_bytes
+        ));
+    }
+    Ok((store, held))
+}
+
+/// Claims `volume`, an existing one only, without opening any store: what `host holds` reads and
+/// writes beside the grants (after the review).
+fn claim(volume: &std::path::Path, trace: &Trace) -> Result<Volume, Failure> {
     trace.say(format!("volume: {}", volume.display()));
     // An existing volume only: a mistyped path must not become a fresh volume holding grants the
     // server never sees. The volume's own layout marker is what says it is one.
@@ -177,16 +192,222 @@ fn open(
     // Offline: the claim takes the process lock, so a volume a running server holds is refused
     // here with the lock's own message rather than written under it. The development profile is
     // the one that serves an unclaimed volume; the profile the server runs under is its own.
-    let held = Volume::claim(volume, AssuranceProfile::Development)
-        .map_err(|error| Failure::unavailable(format!("claiming the volume: {error}")))?;
-    let (store, recovery) = GrantStore::open(&held).map_err(failure)?;
-    if recovery.truncated_bytes > 0 {
+    Volume::claim(volume, AssuranceProfile::Development)
+        .map_err(|error| Failure::unavailable(format!("claiming the volume: {error}")))
+}
+
+/// `permguard host holds …` (WP-7.3c): offline, on the volume of a stopped server, through the
+/// Host's mutation transaction, the holds a crash left open resolved first.
+fn holds(
+    globals: &Globals,
+    server_config: Option<&Path>,
+    action: HoldsAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    use permguard_host::holds::{self, Deadline, HoldStore, NewHold};
+
+    let volume = volume_of(globals)?;
+    let held = claim(&volume, trace)?;
+    let store = HoldStore::open(&held)
+        .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?;
+    let now = permguard_host::authz::store::now();
+    match action {
+        HoldsAction::List => {
+            let listed = store.list().map_err(hold_refused)?;
+            std::mem::forget(held);
+            render(
+                &HoldListReport {
+                    holds: listed.iter().map(|hold| HoldView::of(hold, now)).collect(),
+                },
+                globals.output,
+                trace,
+            )?;
+        }
+        HoldsAction::Add {
+            resource,
+            owner,
+            reason,
+            expires_at,
+            review_at,
+        } => {
+            let mutations = offline_holds(&held, &store, server_config, trace)?;
+            std::mem::forget(held);
+            let at = |text: String| {
+                permguard_core::time::from_rfc3339(&text)
+                    .and_then(|seconds| u64::try_from(seconds).ok())
+                    .ok_or_else(|| Failure::usage(format!("`{text}` is not an RFC 3339 instant")))
+            };
+            let deadline = match (expires_at, review_at) {
+                (Some(text), None) => Deadline::Expires(at(text)?),
+                (None, Some(text)) => Deadline::Review(at(text)?),
+                _ => {
+                    return Err(Failure::usage(
+                        "a hold names exactly one of --expires-at and --review-at",
+                    ));
+                }
+            };
+            let added = holds::add(
+                &mutations,
+                &store,
+                Initiator::System("cli".to_owned()),
+                NewHold {
+                    resource,
+                    owner,
+                    reason,
+                    deadline,
+                },
+                now,
+            )
+            .map_err(hold_mutation_refused)?;
+            render(
+                &HoldReport {
+                    action: "added",
+                    hold: HoldView::of(&added, now),
+                },
+                globals.output,
+                trace,
+            )?;
+        }
+        HoldsAction::Release { id } => {
+            let mutations = offline_holds(&held, &store, server_config, trace)?;
+            std::mem::forget(held);
+            let released =
+                holds::release(&mutations, &store, Initiator::System("cli".to_owned()), &id)
+                    .map_err(hold_mutation_refused)?;
+            render(
+                &HoldReport {
+                    action: "released",
+                    hold: HoldView::of(&released, now),
+                },
+                globals.output,
+                trace,
+            )?;
+        }
+    }
+    Ok(ExitCode::from(EXIT_READY))
+}
+
+/// The offline transaction, the hold operations a crash left open resolved first.
+fn offline_holds(
+    held: &Volume,
+    store: &permguard_host::holds::HoldStore,
+    server_config: Option<&Path>,
+    trace: &Trace,
+) -> Result<Mutations, Failure> {
+    let mutations = offline_engine(held, server_config, trace)?;
+    let recovered = mutations
+        .recover(&permguard_host::holds::Holds(store))
+        .map_err(|error| Failure::unavailable(format!("recovering hold mutations: {error}")))?;
+    if !recovered.reconciled.is_empty() || !recovered.failed.is_empty() {
         trace.say(format!(
-            "the grant journal recovered, truncating {} byte(s)",
-            recovery.truncated_bytes
+            "hold mutations left open by a crash: {} committed, {} failed",
+            recovered.reconciled.len(),
+            recovered.failed.len()
         ));
     }
-    Ok((store, held))
+    Ok(mutations)
+}
+
+fn hold_refused(error: permguard_host::holds::HoldError) -> Failure {
+    use permguard_host::holds::HoldError;
+    match error {
+        HoldError::Invalid(_) | HoldError::NotFound(_) => Failure::usage(error.to_string()),
+        HoldError::Storage(_) => Failure::unavailable(error.to_string()),
+        HoldError::Record(_) => Failure::internal(error.to_string()),
+    }
+}
+
+fn hold_mutation_refused(error: MutationError<permguard_host::holds::HoldError>) -> Failure {
+    match error {
+        MutationError::Refused(error) => hold_refused(error),
+        MutationError::RequestIdReused(detail) => Failure::usage(detail),
+        other @ (MutationError::AuditUnavailable(_) | MutationError::Unavailable(_)) => {
+            Failure::unavailable(other)
+        }
+        other @ (MutationError::Unrecorded(_) | MutationError::Indeterminate(_)) => {
+            Failure::internal(other)
+        }
+    }
+}
+
+/// One hold as the CLI reports it: its times in RFC 3339 and where it stands now.
+#[derive(Debug, Serialize)]
+struct HoldView {
+    id: String,
+    resource: String,
+    owner: String,
+    reason: String,
+    status: &'static str,
+    created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    review_at: Option<String>,
+}
+
+impl HoldView {
+    fn of(hold: &permguard_host::holds::Hold, now: u64) -> Self {
+        let when = |seconds: u64| {
+            permguard_core::time::to_rfc3339(i64::try_from(seconds).unwrap_or(i64::MAX))
+        };
+        Self {
+            id: hold.id.clone(),
+            resource: hold.resource.clone(),
+            owner: hold.owner.clone(),
+            reason: hold.reason.clone(),
+            status: hold.status(now).as_str(),
+            created_at: when(hold.created_at),
+            expires_at: hold.expires_at.map(when),
+            review_at: hold.review_at.map(when),
+        }
+    }
+
+    fn render(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        writeln!(out, "  id:       {}", self.id)?;
+        writeln!(out, "  resource: {}", self.resource)?;
+        writeln!(out, "  owner:    {}", self.owner)?;
+        writeln!(out, "  reason:   {}", self.reason)?;
+        writeln!(out, "  status:   {}", self.status)?;
+        if let Some(at) = &self.expires_at {
+            writeln!(out, "  expires:  {at}")?;
+        }
+        if let Some(at) = &self.review_at {
+            writeln!(out, "  review:   {at}")?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct HoldReport {
+    action: &'static str,
+    #[serde(flatten)]
+    hold: HoldView,
+}
+
+impl Report for HoldReport {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        writeln!(out, "hold {}", self.action)?;
+        self.hold.render(out)
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct HoldListReport {
+    holds: Vec<HoldView>,
+}
+
+impl Report for HoldListReport {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        if self.holds.is_empty() {
+            return writeln!(out, "no holds");
+        }
+        for hold in &self.holds {
+            hold.render(out)?;
+            writeln!(out)?;
+        }
+        writeln!(out, "{} hold(s).", self.holds.len())
+    }
 }
 
 fn refused(error: MutationError<AuthzError>) -> Failure {

@@ -328,7 +328,8 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
                 }
                 | HostAction::Grants {
                     action: GrantsAction::Bootstrap { .. },
-                } => Class::Volume,
+                }
+                | HostAction::Holds { .. } => Class::Volume,
                 HostAction::Identity {
                     action: IdentityAction::Pin { .. },
                 } => Class::Local,

@@ -100,6 +100,35 @@
         }
       ],
       "state": "the identity reset: the retired identity's evidence, the RESETTING marker and the next identity (WP-4.1)"
+    },
+    {
+      "source": "crates/permguard-host/src/holds.rs",
+      "calls": [
+        "replace_bytes",
+        "unlink"
+      ],
+      "fields": [
+        "dir"
+      ],
+      "exempt": [
+        {
+          "item": "open",
+          "reason": "opens the holds directory and writes nothing"
+        },
+        {
+          "item": "list",
+          "reason": "reads every hold and writes nothing"
+        },
+        {
+          "item": "get",
+          "reason": "reads one hold and writes nothing"
+        },
+        {
+          "item": "read",
+          "reason": "reads one hold's file and writes nothing"
+        }
+      ],
+      "state": "the legal and incident holds"
     }
   ]
 }

@@ -1551,6 +1551,11 @@
       "source": "crates/permguard-stream/src/engine/batch.rs",
       "item": "SealedBatch::verify",
       "reason": "reads a batch `SealedBatch::decode` already bounded and parsed, registered and fuzzed; its header and envelope parse only through `jcs::decode_canonical`, registered and fuzzed"
+    },
+    {
+      "source": "crates/permguard-host/src/holds.rs",
+      "item": "HoldStore::open",
+      "reason": "the holds' own directory on the Host's volume, written by this process or the offline CLI under the volume's lock; a hold that does not read is refused, never skipped"
     }
   ]
 }

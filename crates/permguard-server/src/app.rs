@@ -2310,6 +2310,10 @@ impl App {
             // A Plane's security mutations run in the Host's transaction (WP-3.6): the Control
             // Plane's ref updates (WP-7.12).
             .mutations(Arc::clone(&mutations))
+            // What the Control Plane's garbage collection keeps (WP-7.3c).
+            .holds(Arc::new(
+                permguard_host::holds::HoldStore::open(&volume).context("opening the holds")?,
+            ))
             .task_slot(
                 permguard_host::membership::record::TaskType::PolicyMirror,
                 1,

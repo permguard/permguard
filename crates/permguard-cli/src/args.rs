@@ -1513,6 +1513,12 @@ pub enum HostAction {
         #[command(subcommand)]
         action: IdentityAction,
     },
+    /// Legal and incident holds that keep a ledger, or a zone's ledgers, from the garbage
+    /// collection; offline, on a stopped server's volume.
+    Holds {
+        #[command(subcommand)]
+        action: HoldsAction,
+    },
     /// Membership enrollment, approval and lifecycle operations on the Host listener.
     Members {
         #[command(subcommand)]
@@ -1522,6 +1528,48 @@ pub enum HostAction {
     Streams {
         #[command(subcommand)]
         action: StreamsAction,
+    },
+}
+
+/// `permguard host holds …` (WP-7.3c): offline, on the `--volume` of a stopped server.
+#[derive(Debug, Subcommand)]
+pub enum HoldsAction {
+    /// Hold a ledger, or every ledger of a zone, from the garbage collection, until the hold
+    /// expires or is released; a review date keeps it and only marks it due.
+    #[command(
+        group(clap::ArgGroup::new("deadline").required(true).args(["expires_at", "review_at"])),
+        after_help = "Examples:\n  permguard host holds add --volume ./volume --resource plane/control/zone/01a0…/ledger/01a1… --owner legal@acme --reason \"litigation 2026-17\" --review-at 2027-01-01T00:00:00Z\n  permguard host holds add --volume ./volume --resource plane/control/zone/01a0… --owner security@acme --reason \"incident 42\" --expires-at 2026-12-31T00:00:00Z -o json"
+    )]
+    Add {
+        /// The ledger or the zone, by ids: `plane/control/zone/<id>/ledger/<id>` or
+        /// `plane/control/zone/<id>`.
+        #[arg(long)]
+        resource: String,
+        /// Who answers for the hold.
+        #[arg(long)]
+        owner: String,
+        /// Why the hold is taken.
+        #[arg(long)]
+        reason: String,
+        /// When the hold stops keeping, RFC 3339.
+        #[arg(long, value_name = "INSTANT", value_parser = rfc3339_instant)]
+        expires_at: Option<String>,
+        /// When the hold is due for review, RFC 3339; it keeps past it.
+        #[arg(long, value_name = "INSTANT", value_parser = rfc3339_instant)]
+        review_at: Option<String>,
+    },
+    /// List the holds, each with where it stands: `active`, `review_due` or `expired`.
+    #[command(
+        after_help = "Examples:\n  permguard host holds list --volume ./volume\n  permguard host holds list --volume ./volume -o json"
+    )]
+    List,
+    /// Release a hold: what it kept follows the garbage collection's rules again.
+    #[command(
+        after_help = "Examples:\n  permguard host holds release --volume ./volume 01a2…\n  permguard host holds release --volume ./volume 01a2… -o json"
+    )]
+    Release {
+        /// The hold's id, as `list` prints it.
+        id: String,
     },
 }
 

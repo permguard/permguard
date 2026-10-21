@@ -18,6 +18,7 @@ pub mod api;
 pub mod audit;
 pub mod authz;
 pub mod composition;
+pub mod holds;
 pub mod identity;
 pub mod keys;
 pub mod membership;

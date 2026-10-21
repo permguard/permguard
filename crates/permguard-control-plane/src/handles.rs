@@ -67,6 +67,8 @@ pub(crate) fn declaration() -> Declaration {
         .mutates(crate::store::REFS_DOMAIN)
         // Every catalog mutation is an operation of the transaction (WP-7.3a).
         .mutates(crate::catalog::CATALOG_DOMAIN)
+        // The garbage collection keeps what a hold names (WP-7.3c).
+        .reads_holds()
         .handles_task(TaskType::PolicyMirror, 1)
         .handles_task(TaskType::EventsImport, 1)
         .uses_task(TaskType::DecisionsShip, 1)
@@ -145,6 +147,18 @@ pub(crate) fn ref_mutations(
         .mutations(crate::store::REFS_DOMAIN)
         .ok()
         .flatten()
+}
+
+/// The Host's holds (WP-7.3c): `Ok(None)` for a plane no Host registered, which has no holds to
+/// keep; an error for a registered plane, which declared it reads them, handed none (after the
+/// review).
+pub(crate) fn holds(
+    context: &PlaneContext<'_>,
+) -> Result<Option<std::sync::Arc<permguard_host::holds::HoldStore>>, ()> {
+    match registration(context) {
+        None => Ok(None),
+        Some(registration) => registration.holds().map(Some).ok_or(()),
+    }
 }
 
 /// The mutation transaction the catalog's mutations run in (WP-7.3a), when the Host composes

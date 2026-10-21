@@ -19,7 +19,12 @@
 //!
 //! ```text
 //! keep  =  reachable from ANY ref   ∪   pinned by a kept transfer session   ∪   younger than the grace period
+//!       ∪  everything of a ledger a hold keeps
 //! ```
+//!
+//! A hold (WP-7.3c) names a ledger, or a zone and so every ledger of it, and keeps all it holds,
+//! unreachable objects included, until it expires or is released. The holds are read once per
+//! pass, before any ledger: holds that cannot be read sweep nothing that pass.
 //!
 //! Reachability is computed from **every ref of the ledger**, not the default
 //! one, walking commits to their predecessors, their manifest and their tree,
@@ -167,6 +172,7 @@ impl PlaneTask for GcService {
                 grace: config.gc_grace(),
                 metrics: context.metrics().clone(),
                 recorder: crate::handles::audit(context),
+                holds: crate::handles::holds(context),
             };
             let every = self.every.unwrap_or_else(|| config.gc_interval());
             info!(
@@ -236,6 +242,9 @@ struct Sweep {
     grace: Duration,
     metrics: Metrics,
     recorder: Option<crate::handles::Audit>,
+    /// The Host's holds (WP-7.3c): `Ok(None)` without a Host; an error when a Host registered the
+    /// plane and handed it none, which sweeps nothing (after the review).
+    holds: std::result::Result<Option<Arc<permguard_host::holds::HoldStore>>, ()>,
 }
 
 /// What a sweep did.
@@ -251,12 +260,20 @@ pub struct Outcome {
     /// Ledgers that could not be swept — a store that would not list, a ref
     /// that would not read. Nothing was removed for those.
     pub skipped: usize,
+    /// Ledgers a hold keeps, left whole (WP-7.3c).
+    pub held: usize,
+    /// The holds could not be read: nothing was swept (after the review).
+    pub holds_unreadable: bool,
 }
 
 impl Outcome {
     /// How the sweep ended, in one word.
     pub fn label(&self) -> &'static str {
-        if self.skipped == 0 { "ok" } else { "partial" }
+        if self.skipped == 0 && !self.holds_unreadable {
+            "ok"
+        } else {
+            "partial"
+        }
     }
 }
 
@@ -265,6 +282,37 @@ impl Sweep {
     fn run(&self) -> Outcome {
         let started = Instant::now();
         let mut outcome = Outcome::default();
+        let now = permguard_host::authz::store::now();
+        // The holds first, once: a pass that cannot know what is held removes nothing.
+        let listed = match &self.holds {
+            Ok(None) => Ok(Vec::new()),
+            Ok(Some(store)) => store.list().map_err(|error| error.to_string()),
+            Err(()) => Err("the Host handed this plane no holds".to_owned()),
+        };
+        let holds = match listed {
+            Ok(holds) => holds,
+            Err(error) => {
+                warn!(
+                    event.name = "gc.holds_unreadable",
+                    component = COMPONENT,
+                    error = %error,
+                    "the holds could not be read: nothing is swept this round"
+                );
+                outcome.holds_unreadable = true;
+
+                return outcome;
+            }
+        };
+        for hold in &holds {
+            if hold.status(now) == permguard_host::holds::Status::ReviewDue {
+                warn!(
+                    event.name = "gc.hold_review_due",
+                    component = COMPONENT,
+                    hold = hold.id.as_str(),
+                    "a hold is past its review date: it still keeps what it names"
+                );
+            }
+        }
         let zones = match self.catalog.list_zones() {
             Ok(zones) => zones,
             Err(error) => {
@@ -299,6 +347,13 @@ impl Sweep {
             for ledger in &ledgers {
                 outcome.ledgers += 1;
                 listed.insert(format!("{}/{}", zone.id, ledger.id));
+                if holds
+                    .iter()
+                    .any(|hold| hold.keeps(&zone.id, &ledger.id, now))
+                {
+                    outcome.held += 1;
+                    continue;
+                }
                 let directory = self.root.join(&zone.id).join("ledgers").join(&ledger.id);
                 let store = FileObjectStore::new(&directory);
                 match self.sweep_ledger(&store, &zone.id, &ledger.id) {
@@ -389,15 +444,14 @@ impl Sweep {
             retained = outcome.retained,
             temporaries = outcome.temporaries,
             skipped = outcome.skipped,
+            held = outcome.held,
+            holds_unreadable = outcome.holds_unreadable,
             "a garbage-collection sweep finished"
         );
         let Some(recorder) = &self.recorder else {
             return;
         };
-        let target = format!(
-            "{} ledgers swept, {} objects removed, {} bytes reclaimed, {} retained, {} skipped",
-            outcome.ledgers, outcome.removed, outcome.reclaimed, outcome.retained, outcome.skipped
-        );
+        let target = trail_target(outcome);
         if let Err(error) = recorder
             .record_on("store.swept", Subject::System(COMPONENT), &target)
             .await
@@ -410,6 +464,23 @@ impl Sweep {
             );
         }
     }
+}
+
+/// What the `store.swept` record names: every count of the pass, the held ledgers included
+/// (WP-7.3c).
+fn trail_target(outcome: &Outcome) -> String {
+    if outcome.holds_unreadable {
+        return "nothing swept: the holds could not be read".to_owned();
+    }
+    format!(
+        "{} ledgers swept, {} objects removed, {} bytes reclaimed, {} retained, {} skipped, {} held",
+        outcome.ledgers,
+        outcome.removed,
+        outcome.reclaimed,
+        outcome.retained,
+        outcome.skipped,
+        outcome.held
+    )
 }
 
 /// What one ledger's sweep did.
@@ -540,4 +611,249 @@ fn reachable(store: &FileObjectStore) -> Result<BTreeSet<Digest>> {
     }
 
     Ok(reached)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_host::holds::{Deadline, HoldStore, NewHold};
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::Mutations;
+    use permguard_host::storage::volume::Volume;
+    use permguard_objects::object::Blob;
+    use permguard_std::catalog::FileCatalog;
+
+    use super::*;
+
+    /// Two ledgers of one zone, each holding one orphan old enough to go, and the volume's holds.
+    struct Fixture {
+        sweep: Sweep,
+        holds: Arc<HoldStore>,
+        mutations: Mutations,
+        zone: String,
+        ledgers: Vec<(String, FileObjectStore, permguard_objects::Digest)>,
+    }
+
+    fn fixture(tag: &str) -> Fixture {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-gc-holds-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let catalog = Arc::new(FileCatalog::new(root.join("zones")));
+        let zone = catalog.create_zone("delivery").expect("a zone");
+        let mut ledgers = Vec::new();
+        for name in ["policies", "rules"] {
+            let ledger = catalog
+                .create_ledger(&Selector::Id(zone.id.clone()), name)
+                .expect("a ledger");
+            let store = FileObjectStore::new(
+                root.join("zones")
+                    .join(&zone.id)
+                    .join("ledgers")
+                    .join(&ledger.id),
+            );
+            let bytes = Blob {
+                media_type: "application/vnd.permguard.policy.cedar".to_owned(),
+                data: format!("permit (principal, action, resource); // {name}").into_bytes(),
+            }
+            .encode()
+            .expect("a blob");
+            let digest = store.put_object(&bytes).expect("stored").0;
+            let hex = digest.to_string();
+            let hex = &hex["sha256:".len()..];
+            std::fs::File::options()
+                .write(true)
+                .open(store.root().join("objects").join(&hex[..2]).join(&hex[2..]))
+                .expect("the object")
+                .set_modified(std::time::SystemTime::now() - Duration::from_secs(30 * 86_400))
+                .expect("aged");
+            ledgers.push((ledger.id, store, digest));
+        }
+        let volume =
+            Volume::claim(&root.join("volume"), AssuranceProfile::Development).expect("a volume");
+        let holds = Arc::new(HoldStore::open(&volume).expect("the holds"));
+        let mutations = Mutations::open_offline(&volume, "test").expect("the transaction");
+        Fixture {
+            sweep: Sweep {
+                catalog,
+                root: root.join("zones"),
+                grace: Duration::from_secs(60),
+                metrics: Metrics::none(),
+                recorder: None,
+                holds: Ok(Some(Arc::clone(&holds))),
+            },
+            holds,
+            mutations,
+            zone: zone.id,
+            ledgers,
+        }
+    }
+
+    fn hold(fixture: &Fixture, resource: String) -> String {
+        permguard_host::holds::add(
+            &fixture.mutations,
+            &fixture.holds,
+            Initiator::System("test".to_owned()),
+            NewHold {
+                resource,
+                owner: "legal".to_owned(),
+                reason: "litigation".to_owned(),
+                deadline: Deadline::Review(permguard_host::authz::store::now() + 3_600),
+            },
+            permguard_host::authz::store::now(),
+        )
+        .expect("held")
+        .id
+    }
+
+    fn present(fixture: &Fixture) -> Vec<bool> {
+        fixture
+            .ledgers
+            .iter()
+            .map(|(_, store, digest)| store.has_object(digest))
+            .collect()
+    }
+
+    /// WP-7.3c, owner decision of 2026-10-21: a held ledger is not swept at all, its unreachable
+    /// objects included; the ledger beside it is swept as before, and a released hold keeps
+    /// nothing.
+    #[test]
+    fn a_held_ledger_is_not_swept() {
+        let fixture = fixture("ledger");
+        let id = hold(
+            &fixture,
+            format!(
+                "plane/control/zone/{}/ledger/{}",
+                fixture.zone, fixture.ledgers[0].0
+            ),
+        );
+
+        let outcome = fixture.sweep.run();
+        assert_eq!((outcome.held, outcome.removed, outcome.skipped), (1, 1, 0));
+        assert_eq!(present(&fixture), vec![true, false]);
+
+        permguard_host::holds::release(
+            &fixture.mutations,
+            &fixture.holds,
+            Initiator::System("test".to_owned()),
+            &id,
+        )
+        .expect("released");
+        let outcome = fixture.sweep.run();
+        assert_eq!((outcome.held, outcome.removed), (0, 1));
+        assert_eq!(present(&fixture), vec![false, false]);
+    }
+
+    /// WP-7.3c, owner decision of 2026-10-21: a zone's hold keeps every ledger of the zone.
+    #[test]
+    fn a_zone_hold_keeps_every_ledger_of_the_zone() {
+        let fixture = fixture("zone");
+        hold(&fixture, format!("plane/control/zone/{}", fixture.zone));
+
+        let outcome = fixture.sweep.run();
+        assert_eq!((outcome.held, outcome.removed), (2, 0));
+        assert_eq!(present(&fixture), vec![true, true]);
+    }
+
+    /// WP-7.3c, owner decision of 2026-10-21: holds that cannot be read sweep nothing that pass.
+    #[test]
+    fn unreadable_holds_sweep_nothing() {
+        let fixture = fixture("unreadable");
+        let volume = fixture
+            .sweep
+            .root
+            .parent()
+            .expect("the root")
+            .join("volume");
+        std::fs::write(
+            volume
+                .join("host")
+                .join(permguard_host::holds::DIRECTORY)
+                .join("01a00000-0000-7000-8000-00000000000c.json"),
+            b"{ not a hold",
+        )
+        .expect("a broken hold");
+
+        let outcome = fixture.sweep.run();
+        assert!(outcome.holds_unreadable);
+        assert_eq!(
+            (outcome.removed, outcome.ledgers, outcome.label()),
+            (0, 0, "partial")
+        );
+        assert_eq!(present(&fixture), vec![true, true]);
+        assert_eq!(
+            trail_target(&outcome),
+            "nothing swept: the holds could not be read"
+        );
+    }
+
+    /// WP-7.3c, after the review: a plane a Host registered, declaring it reads the holds and
+    /// handed none, sweeps nothing: it cannot know what is held.
+    #[test]
+    fn a_plane_handed_no_holds_sweeps_nothing() {
+        let mut fixture = fixture("missing");
+        fixture.sweep.holds = Err(());
+
+        let outcome = fixture.sweep.run();
+        assert!(outcome.holds_unreadable);
+        assert_eq!(present(&fixture), vec![true, true]);
+    }
+
+    /// WP-7.3c, owner decision of 2026-10-21: an expired hold keeps nothing; its ledger is swept.
+    #[test]
+    fn an_expired_hold_keeps_nothing_from_the_sweep() {
+        let fixture = fixture("expired");
+        let id = hold(
+            &fixture,
+            format!(
+                "plane/control/zone/{}/ledger/{}",
+                fixture.zone, fixture.ledgers[0].0
+            ),
+        );
+        // Its deadline moved into the past, as the clock would move it.
+        let path = fixture
+            .sweep
+            .root
+            .parent()
+            .expect("the root")
+            .join("volume")
+            .join("host")
+            .join(permguard_host::holds::DIRECTORY)
+            .join(format!("{id}.json"));
+        let mut written: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).expect("the hold")).expect("JSON");
+        written
+            .as_object_mut()
+            .expect("an object")
+            .remove("review_at");
+        written["expires_at"] = serde_json::json!(1);
+        std::fs::write(&path, written.to_string()).expect("rewritten");
+
+        let outcome = fixture.sweep.run();
+        assert_eq!((outcome.held, outcome.removed), (0, 2));
+        assert_eq!(present(&fixture), vec![false, false]);
+    }
+
+    /// WP-7.3c, owner decision of 2026-10-21: the `store.swept` record counts the held ledgers.
+    #[test]
+    fn the_sweep_record_counts_the_held_ledgers() {
+        let target = trail_target(&Outcome {
+            ledgers: 3,
+            removed: 4,
+            reclaimed: 5,
+            retained: 6,
+            temporaries: 0,
+            skipped: 0,
+            held: 2,
+            holds_unreadable: false,
+        });
+        assert_eq!(
+            target,
+            "3 ledgers swept, 4 objects removed, 5 bytes reclaimed, 6 retained, 0 skipped, 2 held"
+        );
+    }
 }
