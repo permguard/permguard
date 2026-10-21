@@ -19,6 +19,14 @@ is cut.
 
 ### Added
 
+- **A Dogwood file's `@id` is read as upstream's grammar reads it, and `max_window` is held to upstream by pinned vectors (TL-5b).**
+  The alias is the file's one `@id("…")` annotation, read from each policy's annotation prefix rather than line by line (DOGWOOD-07).
+  Its escapes are decoded by Cedar's parser, and it is held to the common identity grammar.
+  A file declaring `@id` more than once, on one policy or across two, or an `@id` without a value, is refused at authoring and at load; split such a file into one file per `@id`.
+  At load the annotations this build reads must be the ones upstream parsed, policy by policy.
+  The `max_window` directive and the `@id` annotation are checked against upstream itself by vectors pinned to its revision (DOGWOOD-06).
+  An upgrade that changes either grammar fails the build until the vectors are rerun.
+
 - **Dogwood's warm state is bounded by bytes, its replays by a plan, and its providers are refused from `production` (TL-5a).**
   From the `production` assurance profile upward a Dogwood partition carrying `providers.json` or a `.rhai` program is refused at load (DOGWOOD-01).
   Upstream gives a running provider no wall-clock cancellation, so providers run in-process only under `development`; a partition without them serves at every profile that serves Dogwood.

@@ -1,0 +1,66 @@
+{
+  "_comment": "TL-5b, DOGWOOD-07: the @id a Dogwood policy file declares, as this build reads it and as upstream parses it at the pinned revision. Each source is the prefix below followed by the fixture policy without its own annotation; `alias` is the alias, null for none, and `refused` marks a file refused. `upstream` is what upstream's own parser answers for the same source: `parses` or `refuses`.",
+  "revision": "c6237c88099b3f492ecc5fcee42df06a19224b97",
+  "cases": [
+    {
+      "prefix": "@id(\"read_login_not_logout\")",
+      "alias": "read_login_not_logout",
+      "upstream": "parses"
+    },
+    {
+      "prefix": "",
+      "alias": null,
+      "upstream": "parses"
+    },
+    {
+      "prefix": "// @id(\"in-a-comment\")",
+      "alias": null,
+      "upstream": "parses"
+    },
+    {
+      "prefix": "@id ( \"spaced\" )",
+      "alias": "spaced",
+      "upstream": "parses"
+    },
+    {
+      "prefix": "@advice(\"x\")\n@id(\"after-another\")",
+      "alias": "after-another",
+      "upstream": "parses"
+    },
+    {
+      "prefix": "@id(\"read\\u{2d}escaped\")",
+      "alias": "read-escaped",
+      "upstream": "parses"
+    },
+    {
+      "prefix": "@id(\"Upper\")",
+      "refused": true,
+      "upstream": "parses"
+    },
+    {
+      "prefix": "@id(\"\")",
+      "refused": true,
+      "upstream": "parses"
+    },
+    {
+      "prefix": "@id",
+      "refused": true,
+      "upstream": "parses"
+    },
+    {
+      "prefix": "@id(\"a\")\n@id(\"b\")",
+      "refused": true,
+      "upstream": "parses"
+    },
+    {
+      "prefix": "@id(\"bad\\q\")",
+      "refused": true,
+      "upstream": "parses"
+    },
+    {
+      "prefix": "@id(\"a\") @",
+      "refused": true,
+      "upstream": "refuses"
+    }
+  ]
+}

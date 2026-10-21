@@ -86,6 +86,41 @@ impl Evaluating for super::Dogwood {
         let lowered = LoweredPolicySet::from_str(&source, &service, &schema)
             .map_err(|error| format!("dogwood: the partition does not lower: {error}"))?;
 
+        // DOGWOOD-07: the annotations this build reads are the ones upstream parsed, policy by
+        // policy — an alias is identity, and two readings of one source must not differ. The file's
+        // own rule (one `@id` at most) is held at load too, for a ledger pushed before it.
+        let mut read_ids: Vec<Option<String>> = Vec::new();
+        for stored in policies {
+            let text = super::source_of(&stored.source, "a Dogwood policy")?;
+            let read = super::annotations::read(text)?;
+            super::annotations::alias_of(&read)
+                .map_err(|error| format!("policy {}: {error}", stored.id))?;
+            for annotations in read {
+                read_ids.push(
+                    annotations
+                        .into_iter()
+                        .find(|annotation| annotation.key == super::annotations::ID)
+                        .and_then(|annotation| annotation.raw),
+                );
+            }
+        }
+        let lowered_ids: Vec<Option<String>> = lowered
+            .rules()
+            .map(|rule| {
+                lowered
+                    .as_cedar()
+                    .policy(&cedar_policy::PolicyId::new(&rule.cedar_policy_id))
+                    .map(|policy| policy.annotation(super::annotations::ID).map(str::to_owned))
+                    .ok_or_else(|| {
+                        format!(
+                            "dogwood: the lowered set names rule `{}` and holds no such policy",
+                            rule.cedar_policy_id
+                        )
+                    })
+            })
+            .collect::<Result<_, _>>()?;
+        super::annotations::agrees_with(&read_ids, &lowered_ids)?;
+
         // Validation is not advisory. A set with errors is a set whose policies mean something
         // other than what they say, and serving it would be answering against a model nobody
         // agreed to.

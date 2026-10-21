@@ -46,6 +46,7 @@
 //! are `.dw` — the same extension as a policy — so the walk asks
 //! [`crate::artifact`] rather than guessing from a name.
 
+pub mod annotations;
 pub mod artifacts;
 pub(crate) mod compiled;
 pub mod occurrence;
@@ -153,10 +154,11 @@ impl Language for Dogwood {
             .map_err(|error| format!("dogwood: {error}"))
     }
 
-    /// The alias a Dogwood policy declares — Cedar's own `@id("…")` annotation, which Dogwood
-    /// inherits and which its own examples use as the policy's handle.
+    /// The alias a Dogwood policy file declares — Cedar's own `@id("…")` annotation, which Dogwood
+    /// inherits and which its own examples use as the policy's handle — read as upstream's grammar
+    /// reads it, decoded and held to the identity grammar (DOGWOOD-07).
     fn declared_alias(&self, source: &[u8]) -> Result<Option<String>, String> {
-        Ok(std::str::from_utf8(source).ok().and_then(alias_of))
+        annotations::alias(source_of(source, "a Dogwood policy")?)
     }
 
     fn authoring(&self) -> Option<&dyn Authoring> {
@@ -225,37 +227,6 @@ impl Language for Dogwood {
     }
 }
 
-/// The `@id("…")` annotation above a policy, when it carries one.
-///
-/// Read line by line rather than with a regular expression over the whole source: an `@id` inside
-/// a string literal in the body of a policy is not that policy's identity, and a scan that did not
-/// care where it looked would find it.
-fn alias_of(text: &str) -> Option<String> {
-    for line in text.lines() {
-        let line = line.trim();
-        if line.starts_with("//") {
-            continue;
-        }
-        let Some(rest) = line.strip_prefix("@id(") else {
-            // The annotation precedes the policy head; once the head starts, there is none.
-            if line.starts_with("permit") || line.starts_with("forbid") {
-                return None;
-            }
-
-            continue;
-        };
-        let inner = rest.strip_suffix(')')?.trim();
-        let alias = inner.strip_prefix('"')?.strip_suffix('"')?;
-        if alias.is_empty() {
-            return None;
-        }
-
-        return Some(alias.to_owned());
-    }
-
-    None
-}
-
 /// The bytes as Dogwood source, or the refusal.
 pub(crate) fn source_of<'a>(bytes: &'a [u8], what: &str) -> Result<&'a str, String> {
     std::str::from_utf8(bytes).map_err(|_| format!("dogwood: {what} must be valid UTF-8"))
@@ -279,7 +250,7 @@ impl Authoring for Dogwood {
         // partition means.
         Ok(vec![ExtractedPolicy {
             bytes: source.to_vec(),
-            alias: alias_of(text),
+            alias: annotations::alias(text)?,
         }])
     }
 }
@@ -312,10 +283,27 @@ when temporal {
     #[test]
     fn an_id_inside_a_comment_is_not_the_alias() {
         // The comment above the annotation names something else on purpose.
-        assert_eq!(alias_of(POLICY).as_deref(), Some("read_login_not_logout"));
+        assert_eq!(
+            Dogwood
+                .declared_alias(POLICY.as_bytes())
+                .expect("one alias")
+                .as_deref(),
+            Some("read_login_not_logout")
+        );
 
         let unannotated = "permit (principal, action, resource) when { true };\n";
-        assert_eq!(alias_of(unannotated), None);
+        assert_eq!(
+            Dogwood
+                .declared_alias(unannotated.as_bytes())
+                .expect("none"),
+            None
+        );
+        assert!(
+            Dogwood
+                .extract(b"@id(\"a\")\n@id(\"b\")\npermit (principal, action, resource);\n")
+                .is_err(),
+            "two aliases refuse the file at authoring too"
+        );
     }
 
     #[test]
