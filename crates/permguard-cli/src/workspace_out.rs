@@ -700,6 +700,8 @@ pub struct LedgerView {
     pub updated_at: String,
     /// What a rename or a delete names as `--expected-revision` (WP-7.3a).
     pub revision: u64,
+    /// `active` or `archived` (WP-7.3b).
+    pub state: String,
 }
 
 impl From<Ledger> for LedgerView {
@@ -712,6 +714,7 @@ impl From<Ledger> for LedgerView {
             created_at: when(ledger.created_at),
             updated_at: when(ledger.updated_at),
             revision: ledger.revision,
+            state: ledger.state,
         }
     }
 }
@@ -751,7 +754,7 @@ impl Report for ZoneReport {
 fn sigil(action: &str) -> String {
     match action {
         "created" => style::create("+"),
-        "updated" | "renamed" => style::modify("~"),
+        "updated" | "renamed" | "archived" | "restored" => style::modify("~"),
         "deleted" => style::delete("-"),
         _ => " ".to_owned(),
     }
@@ -832,7 +835,8 @@ impl Report for LedgerReport {
             "  {} {}",
             style::dim("revision:"),
             self.ledger.revision
-        )
+        )?;
+        writeln!(out, "  {} {}", style::dim("state:  "), self.ledger.state)
     }
 }
 

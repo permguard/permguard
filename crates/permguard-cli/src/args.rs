@@ -1077,6 +1077,36 @@ pub enum LedgersAction {
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
         expected_revision: Option<u64>,
     },
+    /// Archive a ledger: it stays readable and mirrored, and takes no push until restored.
+    #[command(
+        after_help = "Examples:\n  permguard ledgers archive --zone delivery release-pipeline\n  permguard ledgers archive --zone delivery release-pipeline --expected-revision 3 -o json"
+    )]
+    Archive {
+        /// The zone, by name or id.
+        #[arg(long, alias = "zone-id")]
+        zone: String,
+        /// The ledger, by name or id.
+        ledger: String,
+        /// The revision the change is made against; absent, the one a read just before answers.
+        /// Another revision on the server refuses the change as `revision_conflict`.
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
+        expected_revision: Option<u64>,
+    },
+    /// Restore an archived ledger: it takes pushes again.
+    #[command(
+        after_help = "Examples:\n  permguard ledgers restore --zone delivery release-pipeline\n  permguard ledgers restore --zone delivery release-pipeline -o json"
+    )]
+    Restore {
+        /// The zone, by name or id.
+        #[arg(long, alias = "zone-id")]
+        zone: String,
+        /// The ledger, by name or id.
+        ledger: String,
+        /// The revision the change is made against; absent, the one a read just before answers.
+        /// Another revision on the server refuses the change as `revision_conflict`.
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
+        expected_revision: Option<u64>,
+    },
     /// Delete a ledger.
     #[command(
         after_help = "Examples:\n  permguard ledgers delete --zone delivery release-pipeline\n  permguard ledgers delete --zone delivery release-pipeline -o json"

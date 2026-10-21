@@ -170,12 +170,13 @@ fn ledger() -> proto::Ledger {
         updated_at: 1,
         default_ref: "main".into(),
         revision: 1,
+        state: "active".into(),
     }
 }
 
 fn rest() -> Router {
     let zones = r#"[{"id":"z-1","name":"acme","created_at":1,"updated_at":1,"revision":1},{"id":"z-2","name":"beta","created_at":1,"updated_at":1,"revision":1}]"#;
-    let ledgers = r#"[{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":1}]"#;
+    let ledgers = r#"[{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":1,"state":"active"}]"#;
     let json = |body: String| {
         move || {
             let body = body.clone();
@@ -386,6 +387,20 @@ impl ZoneCatalog for Plane {
     async fn delete_ledger(
         &self,
         _request: Request<proto::DeleteLedgerRequest>,
+    ) -> Result<Response<proto::LedgerResponse>, Status> {
+        unserved()
+    }
+
+    async fn archive_ledger(
+        &self,
+        _request: Request<proto::ArchiveLedgerRequest>,
+    ) -> Result<Response<proto::LedgerResponse>, Status> {
+        unserved()
+    }
+
+    async fn restore_ledger(
+        &self,
+        _request: Request<proto::RestoreLedgerRequest>,
     ) -> Result<Response<proto::LedgerResponse>, Status> {
         unserved()
     }

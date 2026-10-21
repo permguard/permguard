@@ -27,7 +27,7 @@ use syn::visit::Visit;
 use crate::durability::{is_test_gated, sources, test_module_files};
 
 /// The catalog's writing methods: the plain ones and the ones carrying a revision and an
-/// operation id.
+/// operation id, and the archive's and the restore's (WP-7.3b).
 pub const WRITES: &[&str] = &[
     "create_zone",
     "rename_zone",
@@ -41,6 +41,9 @@ pub const WRITES: &[&str] = &[
     "create_ledger_with",
     "rename_ledger_with",
     "delete_ledger_with",
+    "set_ledger_state_with",
+    "archive_ledger",
+    "restore_ledger",
 ];
 
 /// The files that may call a writing method, each with why.

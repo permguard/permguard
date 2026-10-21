@@ -162,6 +162,18 @@ mod tests {
                 outcome(catalog.rename_ledger("finance", "refunds", "returns", 1)),
             ),
             (
+                "archive a ledger",
+                outcome(catalog.archive_ledger("finance", "returns", 2)),
+            ),
+            (
+                "archive with a stale revision",
+                outcome(catalog.archive_ledger("finance", "returns", 2)),
+            ),
+            (
+                "restore a ledger",
+                outcome(catalog.restore_ledger("finance", "returns", 3)),
+            ),
+            (
                 "delete a ledger with a stale revision",
                 outcome(catalog.delete_ledger("finance", "returns", 1)),
             ),
@@ -175,7 +187,7 @@ mod tests {
             ),
             (
                 "delete the last ledger",
-                outcome(catalog.delete_ledger("finance", "returns", 2)),
+                outcome(catalog.delete_ledger("finance", "returns", 4)),
             ),
             (
                 "delete the empty zone",

@@ -17,6 +17,11 @@ use serde::{Deserialize, Serialize};
 use crate::endpoint::Endpoint;
 use crate::http::Client;
 
+/// The state a ledger answered before states existed is.
+fn active() -> String {
+    "active".to_owned()
+}
+
 /// One zone, as the server answers it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Zone {
@@ -43,6 +48,9 @@ pub struct Ledger {
     /// The record's revision, what a rename or a delete names as expected (WP-7.3a).
     #[serde(default)]
     pub revision: u64,
+    /// `active` or `archived` (WP-7.3b): an archived ledger is read and takes no push.
+    #[serde(default = "active")]
+    pub state: String,
 }
 
 /// What the server says when it refuses: the shape every Permguard API shares.
@@ -331,6 +339,44 @@ pub fn rename_ledger(
     )
 }
 
+/// Archives or restores a ledger (WP-7.3b): `verb` is `archive` or `restore`.
+pub fn set_ledger_state(
+    client: &Client,
+    endpoint: &Endpoint,
+    zone: &str,
+    ledger: &str,
+    verb: &str,
+    expected_revision: u64,
+) -> Result<Ledger, Failure> {
+    #[derive(Serialize)]
+    struct Body {
+        request_id: String,
+        expected_revision: u64,
+    }
+
+    let body = serde_json::to_string(&Body {
+        request_id: request_id()?,
+        expected_revision,
+    })
+    .map_err(|error| Failure {
+        class: "internal".to_owned(),
+        reason: permguard_core::codes::client::ENCODE_FAILED.to_owned(),
+        detail: error.to_string(),
+        usage: false,
+    })?;
+    call(
+        client,
+        endpoint,
+        "POST",
+        &format!(
+            "/v1/zones/{}/ledgers/{}/{verb}",
+            crate::encode::value(zone),
+            crate::encode::value(ledger)
+        ),
+        Some(&body),
+    )
+}
+
 pub fn delete_ledger(
     client: &Client,
     endpoint: &Endpoint,
@@ -389,6 +435,20 @@ pub trait Catalog {
         expected_revision: u64,
     ) -> Result<Ledger, Failure>;
     fn delete_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure>;
+    /// Archives a ledger (WP-7.3b): it is read and takes no push.
+    fn archive_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure>;
+    /// Restores an archived ledger: it takes pushes again.
+    fn restore_ledger(
         &self,
         zone: &str,
         ledger: &str,
@@ -468,6 +528,38 @@ impl Catalog for HttpCatalog {
             &self.endpoint,
             zone,
             ledger,
+            expected_revision,
+        )
+    }
+
+    fn archive_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure> {
+        set_ledger_state(
+            &self.client,
+            &self.endpoint,
+            zone,
+            ledger,
+            "archive",
+            expected_revision,
+        )
+    }
+
+    fn restore_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure> {
+        set_ledger_state(
+            &self.client,
+            &self.endpoint,
+            zone,
+            ledger,
+            "restore",
             expected_revision,
         )
     }

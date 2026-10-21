@@ -203,6 +203,16 @@ pub(crate) const LEDGER_DELETE: Mutation = Mutation {
     action: "catalog.ledger.deleted",
     refused: "ledger.delete.refused",
 };
+pub(crate) const LEDGER_ARCHIVE: Mutation = Mutation {
+    operation: "catalog.ledger.archive",
+    action: "catalog.ledger.archived",
+    refused: "ledger.archive.refused",
+};
+pub(crate) const LEDGER_RESTORE: Mutation = Mutation {
+    operation: "catalog.ledger.restore",
+    action: "catalog.ledger.restored",
+    refused: "ledger.restore.refused",
+};
 
 /// What a caller asks of one catalog mutation (WP-7.3a): its request id, and the request as it
 /// was sent, the selectors as given and the body, which a retry repeats byte for byte; the name a
@@ -278,7 +288,8 @@ impl Record for permguard_core::Ledger {
 
 /// The catalog as the mutation transaction's domain: an operation shows when the record its
 /// target names was last written by it, at the record's revision; a create's, when a record of
-/// the place it names was.
+/// the place it names was; a delete's, when the record is gone and its tombstone names the
+/// operation (WP-7.3b).
 ///
 /// Only the last writer is kept: a create whose answer was lost and whose record another change
 /// wrote before the next start reads as failed there, although it applied, and its retry is
@@ -308,24 +319,33 @@ impl permguard_host::operations::mutation::Domain for CatalogDomain {
             )
         };
         match target.split('/').collect::<Vec<_>>().as_slice() {
-            ["zone", _] => {
-                let zone = permguard_core::Zone::at(self.catalog.as_ref(), target).ok()?;
-                written(zone.revision, zone.operation.as_deref(), zone.target())
-            }
+            ["zone", id] => match permguard_core::Zone::at(self.catalog.as_ref(), target) {
+                Ok(zone) => written(zone.revision, zone.operation.as_deref(), zone.target()),
+                Err(CatalogError::NotFound { .. }) => {
+                    let gone = self.catalog.zone_tombstone(id).ok()??;
+                    written(gone.revision, gone.operation.as_deref(), target.to_owned())
+                }
+                Err(_) => None,
+            },
             ["zone-new"] => self
                 .catalog
                 .list_zones()
                 .ok()?
                 .into_iter()
                 .find_map(|zone| written(zone.revision, zone.operation.as_deref(), zone.target())),
-            ["ledger", _, _] => {
-                let ledger = permguard_core::Ledger::at(self.catalog.as_ref(), target).ok()?;
-                written(
+            ["ledger", zone, id] => match permguard_core::Ledger::at(self.catalog.as_ref(), target)
+            {
+                Ok(ledger) => written(
                     ledger.revision,
                     ledger.operation.as_deref(),
                     ledger.target(),
-                )
-            }
+                ),
+                Err(CatalogError::NotFound { .. }) => {
+                    let gone = self.catalog.ledger_tombstone(zone, id).ok()??;
+                    written(gone.revision, gone.operation.as_deref(), target.to_owned())
+                }
+                Err(_) => None,
+            },
             ["ledger-new", zone] => self
                 .catalog
                 .list_ledgers(&Selector::Id((*zone).to_owned()))

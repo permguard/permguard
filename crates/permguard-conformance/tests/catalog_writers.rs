@@ -55,6 +55,10 @@ fn a_seeded_write_is_found_however_it_is_called() {
             debug_assert!(catalog.delete_ledger(&zone, &ledger).is_ok());
         }
 
+        fn archives(catalog: &dyn Catalog) {
+            catalog.set_ledger_state_with(&zone, &ledger, LedgerState::Archived, &write);
+        }
+
         impl Catalog for FileCatalog {
             fn create_zone_with(&self, name: &str, write: &Write<'_>) -> Result<Zone, CatalogError> {
                 self.store(name)
@@ -90,6 +94,7 @@ fn a_seeded_write_is_found_however_it_is_called() {
             (16, "create_ledger_with".to_owned()),
             (20, "delete_zone".to_owned()),
             (24, "delete_ledger".to_owned()),
+            (28, "set_ledger_state_with".to_owned()),
         ]
     );
 }

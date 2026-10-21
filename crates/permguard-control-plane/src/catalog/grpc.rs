@@ -47,6 +47,7 @@ fn wire_ledger(ledger: permguard_core::Ledger) -> v1::Ledger {
         updated_at: ledger.updated_at,
         serving_members: Vec::new(),
         revision: ledger.revision,
+        state: ledger.state.as_str().to_owned(),
     }
 }
 
@@ -231,6 +232,52 @@ impl ZoneCatalog for CatalogFacade {
         let request = request.into_inner();
         let revision = expected(request.expected_revision).map_err(|error| self.refuse(error))?;
         let ledger = ledgers::delete(
+            self,
+            &actor,
+            &request.zone,
+            &request.ledger,
+            revision,
+            &request.request_id,
+        )
+        .await
+        .map_err(|error| self.refuse(error))?;
+
+        Ok(Response::new(v1::LedgerResponse {
+            ledger: Some(wire_ledger(ledger)),
+        }))
+    }
+
+    async fn archive_ledger(
+        &self,
+        request: Request<v1::ArchiveLedgerRequest>,
+    ) -> Answer<v1::LedgerResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let request = request.into_inner();
+        let revision = expected(request.expected_revision).map_err(|error| self.refuse(error))?;
+        let ledger = ledgers::archive(
+            self,
+            &actor,
+            &request.zone,
+            &request.ledger,
+            revision,
+            &request.request_id,
+        )
+        .await
+        .map_err(|error| self.refuse(error))?;
+
+        Ok(Response::new(v1::LedgerResponse {
+            ledger: Some(wire_ledger(ledger)),
+        }))
+    }
+
+    async fn restore_ledger(
+        &self,
+        request: Request<v1::RestoreLedgerRequest>,
+    ) -> Answer<v1::LedgerResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let request = request.into_inner();
+        let revision = expected(request.expected_revision).map_err(|error| self.refuse(error))?;
+        let ledger = ledgers::restore(
             self,
             &actor,
             &request.zone,

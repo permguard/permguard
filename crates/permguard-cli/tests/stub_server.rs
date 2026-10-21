@@ -236,7 +236,7 @@ fn zones_commands_speak_to_a_server_end_to_end() {
 
 #[test]
 fn ledgers_commands_speak_to_a_server_end_to_end() {
-    let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":1}"#;
+    let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":1,"state":"active"}"#;
     let mut routes = HashMap::new();
     routes.insert(
         ("GET", "/v1/zones/acme/ledgers"),
@@ -405,6 +405,75 @@ fn the_cli_renames_with_the_revision_it_read() {
     );
     let shown: serde_json::Value = serde_json::from_slice(&shown.stdout).expect("JSON");
     assert_eq!(shown["revision"], 7);
+}
+
+/// WP-7.3b, owner decision of 2026-10-21: `ledgers archive` and `restore` post the revision a read
+/// just before answered, or the one `--expected-revision` gave, with a fresh request id; the
+/// report shows the state.
+#[test]
+fn the_cli_archives_and_restores_with_the_revision_it_read() {
+    let path = "/v1/zones/acme/ledgers/main-ledger";
+    let ledger = |state: &str, revision: u64| {
+        format!(
+            r#"{{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":{revision},"state":"{state}"}}"#
+        )
+    };
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("GET".to_owned(), path.to_owned()),
+        (200, ledger("active", 6)),
+    );
+    routes.insert(
+        ("POST".to_owned(), format!("{path}/archive")),
+        (200, ledger("archived", 7)),
+    );
+    routes.insert(
+        ("POST".to_owned(), format!("{path}/restore")),
+        (200, ledger("active", 8)),
+    );
+    let stub = serve_owned(routes);
+    let endpoint = format!("http://{}", stub.address);
+    let dir = scratch("archive");
+    let sent = |args: &[&str]| {
+        stub.requests.lock().expect("the log").clear();
+        let mut full = vec!["--endpoint", endpoint.as_str(), "-o", "json"];
+        full.extend(args);
+        let output = run(&dir, &full);
+        assert!(output.status.success(), "{args:?}: {}", stderr(&output));
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("JSON");
+        (stub.requests.lock().expect("the log").clone(), report)
+    };
+    let body = |request: &str| -> serde_json::Value {
+        serde_json::from_str(request.splitn(3, ' ').nth(2).expect("a body")).expect("JSON")
+    };
+
+    let (requests, report) = sent(&["ledgers", "archive", "main-ledger", "--zone", "acme"]);
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(requests[0].starts_with(&format!("GET {path} ")));
+    assert!(requests[1].starts_with(&format!("POST {path}/archive ")));
+    let archive = body(&requests[1]);
+    assert_eq!(archive["expected_revision"], 6);
+    assert_eq!(archive["request_id"].as_str().map(str::len), Some(32));
+    assert_eq!(
+        (report["action"].as_str(), report["state"].as_str()),
+        (Some("archived"), Some("archived"))
+    );
+
+    let (requests, report) = sent(&[
+        "ledgers",
+        "restore",
+        "main-ledger",
+        "--zone",
+        "acme",
+        "--expected-revision",
+        "7",
+    ]);
+    assert_eq!(requests.len(), 1, "no read: {requests:?}");
+    assert_eq!(body(&requests[0])["expected_revision"], 7);
+    assert_eq!(
+        (report["action"].as_str(), report["state"].as_str()),
+        (Some("restored"), Some("active"))
+    );
 }
 
 #[test]

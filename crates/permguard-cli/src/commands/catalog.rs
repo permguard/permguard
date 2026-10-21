@@ -200,6 +200,50 @@ pub fn catalog_command(
                     trace,
                 )?;
             }
+            LedgersAction::Archive {
+                zone,
+                ledger,
+                expected_revision,
+            } => {
+                let revision = match expected_revision {
+                    Some(revision) => revision,
+                    None => backend.get_ledger(&zone, &ledger).map_err(failed)?.revision,
+                };
+                let ledger = backend
+                    .archive_ledger(&zone, &ledger, revision)
+                    .map_err(failed)?;
+
+                render(
+                    &workspace_out::LedgerReport {
+                        action: "archived",
+                        ledger: ledger.into(),
+                    },
+                    globals.output,
+                    trace,
+                )?;
+            }
+            LedgersAction::Restore {
+                zone,
+                ledger,
+                expected_revision,
+            } => {
+                let revision = match expected_revision {
+                    Some(revision) => revision,
+                    None => backend.get_ledger(&zone, &ledger).map_err(failed)?.revision,
+                };
+                let ledger = backend
+                    .restore_ledger(&zone, &ledger, revision)
+                    .map_err(failed)?;
+
+                render(
+                    &workspace_out::LedgerReport {
+                        action: "restored",
+                        ledger: ledger.into(),
+                    },
+                    globals.output,
+                    trace,
+                )?;
+            }
             LedgersAction::Delete {
                 zone,
                 ledger,

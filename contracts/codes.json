@@ -18,6 +18,12 @@
       "kind": "refusal",
       "class": "conflict"
     },
+    "catalog.LEDGER_ARCHIVED": {
+      "code": "ledger_archived",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
     "catalog.INVALID_NAME": {
       "code": "invalid_name",
       "contract": "6-contracts/7-contract-catalog-discovery.md",

@@ -4,9 +4,9 @@
 //! What each ledger operation *means* — the ledger twin of [`super::zones`], same rules:
 //! one implementation, both transports, no wire in sight, authorization before lookup.
 
-use permguard_core::Ledger;
 use permguard_core::authz::{Actor, operations};
 use permguard_core::catalog::{Selector, Write};
+use permguard_core::{Ledger, LedgerState};
 
 use super::{CatalogFacade, ledger_resource};
 use crate::wire::Refusal;
@@ -199,6 +199,100 @@ pub(crate) async fn delete(
                 facade.catalog.delete_ledger_with(
                     &zone_id,
                     &id,
+                    &Write {
+                        expected_revision: Some(expected_revision),
+                        ..*write
+                    },
+                )
+            },
+        )
+        .await
+        .map(Ledger::public)
+}
+
+/// Archives a ledger (WP-7.3b, owner decision of 2026-10-21): it stays readable, pulled and
+/// mirrored, and refuses a push.
+#[tracing::instrument(name = "ledger.archive", skip_all)]
+pub(crate) async fn archive(
+    facade: &CatalogFacade,
+    actor: &Actor,
+    zone: &str,
+    ledger: &str,
+    expected_revision: u64,
+    request_id: &str,
+) -> Result<Ledger, Refusal> {
+    set_state(
+        facade,
+        actor,
+        (zone, ledger),
+        LedgerState::Archived,
+        expected_revision,
+        request_id,
+    )
+    .await
+}
+
+/// Restores an archived ledger: it takes pushes again.
+#[tracing::instrument(name = "ledger.restore", skip_all)]
+pub(crate) async fn restore(
+    facade: &CatalogFacade,
+    actor: &Actor,
+    zone: &str,
+    ledger: &str,
+    expected_revision: u64,
+    request_id: &str,
+) -> Result<Ledger, Refusal> {
+    set_state(
+        facade,
+        actor,
+        (zone, ledger),
+        LedgerState::Active,
+        expected_revision,
+        request_id,
+    )
+    .await
+}
+
+async fn set_state(
+    facade: &CatalogFacade,
+    actor: &Actor,
+    (zone, ledger): (&str, &str),
+    state: LedgerState,
+    expected_revision: u64,
+    request_id: &str,
+) -> Result<Ledger, Refusal> {
+    let mutation = match state {
+        LedgerState::Archived => super::LEDGER_ARCHIVE,
+        LedgerState::Active => super::LEDGER_RESTORE,
+    };
+    let change = super::Change {
+        request_id,
+        request: serde_json::json!({
+            "zone": zone,
+            "ledger": ledger,
+            "expected_revision": expected_revision,
+        }),
+        name: None,
+    };
+    if let Some(done) = replayed(facade, actor, mutation, &change).await? {
+        return Ok(Ledger::public(done));
+    }
+    let (zone, resolved) = facade.resolve_ledger(actor, operations::CATALOG_WRITE, zone, ledger)?;
+    let (zone_id, id) = (
+        Selector::Id(zone.id.clone()),
+        Selector::Id(resolved.id.clone()),
+    );
+    facade
+        .mutate(
+            actor,
+            mutation,
+            change,
+            super::target::ledger(&zone.id, &resolved.id),
+            |write| {
+                facade.catalog.set_ledger_state_with(
+                    &zone_id,
+                    &id,
+                    state,
                     &Write {
                         expected_revision: Some(expected_revision),
                         ..*write

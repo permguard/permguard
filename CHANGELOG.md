@@ -400,6 +400,17 @@ is cut.
 
 ### Changed
 
+- **A catalog delete leaves a tombstone and destroys nothing, and a ledger can be archived.**
+  Deleting a zone or a ledger now writes a tombstone of its id, under `tombstones/` in the catalog, with the name it had, when it went, its last revision and the operation that deleted it; the id is never minted again.
+  What a deleted ledger held, its objects and refs, stays on disk for the garbage collection after retention; a delete no longer removes the ledger's or the zone's directory.
+  A deleted ledger is gone from listing and lookup, `404`, and so from every push, pull, fetch and mirror; a zone whose ledgers were all deleted can be deleted.
+  A ledger recreated under the name of a deleted one is a new ledger with a new id: the old one's decisions stay readable by the old ids, and none of them under the new one.
+  `POST /v1/zones/{zone}/ledgers/{ledger}/archive` and `…/restore`, gRPC `ArchiveLedger` and `RestoreLedger`, take `{request_id, expected_revision}` and run in the Host's security-mutation transaction under the new phased audit actions `catalog.ledger.archived` and `catalog.ledger.restored`.
+  Ledgers answer `state`, `active` or `archived`, on REST and gRPC; a record written before reads as `active`.
+  An archived ledger is still read, pulled and mirrored, and a push to it is refused `409` `ledger_archived`, gRPC `FAILED_PRECONDITION`, until it is restored.
+  `permguard ledgers archive` and `permguard ledgers restore` read the ledger's revision first, or take `--expected-revision`; the ledger reports show `state`.
+  A delete a crash left open is now reconciled at the next start from its tombstone; its retry answers `404`, the record being gone.
+
 - **Catalog changes carry a request id and the revision they were read at, and run in the Host's security-mutation transaction.**
   Zones and ledgers now answer `revision`, 1 at creation and one more at each change; a record written before this release reads as revision 1.
   A create, on REST and gRPC, names `request_id`; a rename names `request_id` and `expected_revision` in its body, and a delete as the query parameters `request_id` and `expected_revision`, all required, a revision being 1 or more.
@@ -408,7 +419,7 @@ is cut.
   Each change is an operation of the Host's security-mutation transaction: an intent and an applied record under the new phased audit actions `catalog.zone.created`, `catalog.zone.renamed`, `catalog.zone.deleted`, `catalog.ledger.created`, `catalog.ledger.renamed` and `catalog.ledger.deleted`, which name the records by id and never by name.
   The plain `zone.*` and `ledger.*` actions stay registered for trails already written and are no longer written for a change; the `*.refused` actions are unchanged, and a name the rules refuse is refused before any intent.
   An intent whose audit record cannot be written changes nothing and answers `503` `audit_unavailable`; a Host that composes no transaction refuses every change `503` `unavailable`.
-  A store failure during a change answers `500` `mutation_unrecorded` instead of `catalog_failed`, its outcome being unknown until the next start: a create or a rename that landed is then committed from the record, which keeps the operation that wrote it, and its retry learns the record; a delete is marked failed, and its retry answers `404`.
+  A store failure during a change answers `500` `mutation_unrecorded` instead of `catalog_failed`, its outcome being unknown until the next start: a create or a rename that landed is then committed from the record, which keeps the operation that wrote it, and its retry learns the record; a delete is committed from its tombstone, and its retry answers `404`.
   A body is closed, and a listing's `page` and `size` and a delete's parameters are strict: an unknown, repeated or malformed one is `400` `invalid_argument`, where it was ignored; a `size` of `0` still reads as no size.
   `permguard zones update|delete` and `permguard ledgers update|delete` read the record first and send its revision, or send the one `--expected-revision` names; their reports show `revision`.
   A conformance check, run by `task check:mutations`, holds that only the catalog facade calls the catalog's writing methods.

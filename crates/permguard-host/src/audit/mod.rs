@@ -388,6 +388,8 @@ pub const REGISTRY: &[ActionSchema] = &[
     action("ledger.create.refused", Class::Security, CONTROL),
     action("ledger.rename.refused", Class::Security, CONTROL),
     action("ledger.delete.refused", Class::Security, CONTROL),
+    action("ledger.archive.refused", Class::Security, CONTROL),
+    action("ledger.restore.refused", Class::Security, CONTROL),
     // A catalog mutation (WP-7.3a, owner decision of 2026-10-20): the phases of one mutation
     // transaction (WP-3.6). The plain actions above stay registered for the trails they wrote.
     mutation("catalog.zone.created", CONTROL),
@@ -396,6 +398,8 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("catalog.ledger.created", CONTROL),
     mutation("catalog.ledger.renamed", CONTROL),
     mutation("catalog.ledger.deleted", CONTROL),
+    mutation("catalog.ledger.archived", CONTROL),
+    mutation("catalog.ledger.restored", CONTROL),
     // A ref update (WP-7.12): a phase of one mutation transaction (WP-3.6).
     mutation("ledger.pushed", CONTROL),
     action("notp.push.negotiate.refused", Class::Security, CONTROL),

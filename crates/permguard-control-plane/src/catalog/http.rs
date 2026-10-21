@@ -11,7 +11,7 @@ use axum::body::Bytes;
 use axum::extract::{FromRequest, Path, RawQuery, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 
@@ -36,6 +36,14 @@ pub(crate) fn routes(facade: CatalogFacade) -> Router {
         .route(
             "/v1/zones/{zone}/ledgers/{ledger}",
             get(get_ledger).patch(rename_ledger).delete(delete_ledger),
+        )
+        .route(
+            "/v1/zones/{zone}/ledgers/{ledger}/archive",
+            post(archive_ledger),
+        )
+        .route(
+            "/v1/zones/{zone}/ledgers/{ledger}/restore",
+            post(restore_ledger),
         )
         .with_state(facade)
 }
@@ -115,34 +123,70 @@ impl FromRequest<CatalogFacade> for Named {
     type Rejection = Response;
 
     async fn from_request(request: Request, facade: &CatalogFacade) -> Result<Self, Response> {
-        let refuse = |message: String| {
-            wire::http_error(
-                &ApiError::new(
-                    ErrorClass::Validation,
-                    codes::common::INVALID_ARGUMENT,
-                    message,
-                ),
-                facade.disclosure,
-            )
-        };
-        let json = request
-            .headers()
-            .get(axum::http::header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.split(';').next())
-            .is_some_and(|media| media.trim().eq_ignore_ascii_case("application/json"));
-        if !json {
-            return Err(refuse(
-                "the body must be declared `Content-Type: application/json`".to_owned(),
-            ));
-        }
-        let bytes = Bytes::from_request(request, facade)
+        closed(request, facade, "a name")
             .await
-            .map_err(IntoResponse::into_response)?;
-        serde_json::from_slice(&bytes)
             .map(Named)
-            .map_err(|error| refuse(format!("the body is not a name: {error}")))
+            .map_err(|refusal| *refusal)
     }
+}
+
+/// What an archive or a restore carries (WP-7.3b, owner decision of 2026-10-21): the request id
+/// a retry repeats and the revision the ledger was read at, both required. Closed, as
+/// [`NameBody`].
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StateBody {
+    request_id: String,
+    expected_revision: u64,
+}
+
+/// A [`StateBody`] read from the request, refused as a [`Named`] body is.
+struct Stating(StateBody);
+
+impl FromRequest<CatalogFacade> for Stating {
+    type Rejection = Response;
+
+    async fn from_request(request: Request, facade: &CatalogFacade) -> Result<Self, Response> {
+        closed(request, facade, "a state change")
+            .await
+            .map(Stating)
+            .map_err(|refusal| *refusal)
+    }
+}
+
+/// A closed JSON body of type `T`, `what` naming it in the refusal; the refusal boxed, being
+/// a whole response.
+async fn closed<T: serde::de::DeserializeOwned>(
+    request: Request,
+    facade: &CatalogFacade,
+    what: &str,
+) -> Result<T, Box<Response>> {
+    let refuse = |message: String| {
+        Box::new(wire::http_error(
+            &ApiError::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                message,
+            ),
+            facade.disclosure,
+        ))
+    };
+    let json = request
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|media| media.trim().eq_ignore_ascii_case("application/json"));
+    if !json {
+        return Err(refuse(
+            "the body must be declared `Content-Type: application/json`".to_owned(),
+        ));
+    }
+    let bytes = Bytes::from_request(request, facade)
+        .await
+        .map_err(|rejection| Box::new(rejection.into_response()))?;
+    serde_json::from_slice(&bytes)
+        .map_err(|error| refuse(format!("the body is not {what}: {error}")))
 }
 
 /// The paging a listing was asked for: `?page=1&size=50`, pages counted from 0. Absent means
@@ -305,6 +349,38 @@ async fn rename_ledger(
         &body.request_id,
     )
     .await;
+
+    answer(&facade, StatusCode::OK, outcome)
+}
+
+async fn archive_ledger(
+    State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
+    Path((zone, ledger)): Path<(String, String)>,
+    Stating(body): Stating,
+) -> Response {
+    let revision = match positive(body.expected_revision) {
+        Ok(revision) => revision,
+        Err(error) => return wire::http_error(&error, facade.disclosure),
+    };
+    let outcome =
+        ledgers::archive(&facade, &actor, &zone, &ledger, revision, &body.request_id).await;
+
+    answer(&facade, StatusCode::OK, outcome)
+}
+
+async fn restore_ledger(
+    State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
+    Path((zone, ledger)): Path<(String, String)>,
+    Stating(body): Stating,
+) -> Response {
+    let revision = match positive(body.expected_revision) {
+        Ok(revision) => revision,
+        Err(error) => return wire::http_error(&error, facade.disclosure),
+    };
+    let outcome =
+        ledgers::restore(&facade, &actor, &zone, &ledger, revision, &body.request_id).await;
 
     answer(&facade, StatusCode::OK, outcome)
 }
@@ -797,6 +873,100 @@ mod tests {
         assert_eq!(applied, 3 + 5);
     }
 
+    /// WP-7.3b, owner decision of 2026-10-21: a ledger is archived and restored by its own verbs,
+    /// each an operation of the transaction, held to the revision expected and answered again to
+    /// a retry; the body is closed.
+    #[tokio::test]
+    async fn a_ledger_is_archived_and_restored_through_the_transaction() {
+        let root = scratch("archive");
+        let trail = Arc::new(Trail::default());
+        let routes = transacted(
+            &root,
+            Arc::new(FileCatalog::new(root.join("catalog"))),
+            &trail,
+        );
+        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        send(
+            &routes,
+            "POST",
+            "/v1/zones/delivery/ledgers",
+            Some(&named("policies")),
+        )
+        .await;
+        let base = "/v1/zones/delivery/ledgers/policies";
+
+        let (status, archived) = send(
+            &routes,
+            "POST",
+            &format!("{base}/archive"),
+            Some(r#"{"request_id":"r-archive","expected_revision":1}"#),
+        )
+        .await;
+        assert_eq!(status, 200, "{archived}");
+        let read: serde_json::Value = serde_json::from_str(&archived).expect("JSON");
+        assert_eq!(
+            (read["state"].as_str(), read["revision"].as_u64()),
+            (Some("archived"), Some(2))
+        );
+        let (_, again) = send(
+            &routes,
+            "POST",
+            &format!("{base}/archive"),
+            Some(r#"{"request_id":"r-archive","expected_revision":1}"#),
+        )
+        .await;
+        assert_eq!(again, archived, "a retry learns the first answer");
+        let (_, got) = send(&routes, "GET", base, None).await;
+        assert!(got.contains(r#""state":"archived""#), "{got}");
+
+        for (body, code) in [
+            (r#"{"request_id":"r-stale","expected_revision":1}"#, 409),
+            (r#"{"request_id":"r-zero","expected_revision":0}"#, 400),
+            (r#"{"request_id":"r-open"}"#, 400),
+            (
+                r#"{"request_id":"r-more","expected_revision":2,"state":"active"}"#,
+                400,
+            ),
+        ] {
+            let (status, answer) =
+                send(&routes, "POST", &format!("{base}/restore"), Some(body)).await;
+            assert_eq!(status, code, "{body}: {answer}");
+        }
+        let (status, restored) = send(
+            &routes,
+            "POST",
+            &format!("{base}/restore"),
+            Some(r#"{"request_id":"r-restore","expected_revision":2}"#),
+        )
+        .await;
+        assert_eq!(status, 200, "{restored}");
+        assert!(restored.contains(r#""state":"active""#), "{restored}");
+        assert!(restored.contains(r#""revision":3"#), "{restored}");
+
+        let phases: Vec<(String, &str)> = trail
+            .records
+            .lock()
+            .expect("lock")
+            .iter()
+            .filter(|(action, _, _)| {
+                action.starts_with("catalog.ledger.a") || action.starts_with("catalog.ledger.r")
+            })
+            .map(|(action, phase, _)| (action.clone(), *phase))
+            .collect();
+        assert_eq!(
+            phases,
+            vec![
+                ("catalog.ledger.archived".to_owned(), "intent"),
+                ("catalog.ledger.archived".to_owned(), "applied"),
+                ("catalog.ledger.restored".to_owned(), "intent"),
+                ("catalog.ledger.restored".to_owned(), "failed"),
+                ("catalog.ledger.restored".to_owned(), "intent"),
+                ("catalog.ledger.restored".to_owned(), "applied"),
+            ],
+            "the stale restore is an operation that failed; the malformed ones never began"
+        );
+    }
+
     /// WP-7.3a: a Host that composes no mutation transaction refuses every change `503`
     /// `unavailable`, and still answers reads.
     #[tokio::test]
@@ -1092,6 +1262,28 @@ mod tests {
         ) -> Result<permguard_core::Ledger, CatalogError> {
             self.0.delete_ledger_with(zone, ledger, write)
         }
+        fn set_ledger_state_with(
+            &self,
+            zone: &permguard_core::Selector,
+            ledger: &permguard_core::Selector,
+            state: permguard_core::LedgerState,
+            write: &permguard_core::catalog::Write<'_>,
+        ) -> Result<permguard_core::Ledger, CatalogError> {
+            self.0.set_ledger_state_with(zone, ledger, state, write)
+        }
+        fn zone_tombstone(
+            &self,
+            zone_id: &str,
+        ) -> Result<Option<permguard_core::Tombstone>, CatalogError> {
+            self.0.zone_tombstone(zone_id)
+        }
+        fn ledger_tombstone(
+            &self,
+            zone_id: &str,
+            ledger_id: &str,
+        ) -> Result<Option<permguard_core::Tombstone>, CatalogError> {
+            self.0.ledger_tombstone(zone_id, ledger_id)
+        }
     }
 
     /// WP-7.3a, owner decision of 2026-10-20: a create whose answer was lost after the write is
@@ -1148,9 +1340,9 @@ mod tests {
         );
         drop(restarted);
 
-        // A delete whose answer was lost leaves nothing to show in 7.3a: the next start marks it
-        // failed, and its retry is answered as the zone being gone (owner decision's
-        // interpretation, until 7.3b's tombstone carries the operation).
+        // A delete whose answer was lost is reconciled at the next start from its tombstone, which
+        // names the operation (WP-7.3b); its retry is answered as the zone being gone, the record
+        // the first answer carried no longer existing.
         let id = id(&got);
         let id = id.as_str().expect("an id");
         let delete = format!("/v1/zones/{id}?request_id=r-gone&expected_revision=1");
@@ -1174,7 +1366,9 @@ mod tests {
                 .lock()
                 .expect("lock")
                 .iter()
-                .any(|(action, phase, _)| action == "catalog.zone.deleted" && *phase == "failed"),
+                .any(
+                    |(action, phase, _)| action == "catalog.zone.deleted" && *phase == "reconciled"
+                ),
             "{:?}",
             trail.records.lock().expect("lock")
         );
@@ -1320,6 +1514,26 @@ mod tests {
             assert!(!doc.accepts_json("NameBody", &refused), "{refused}");
             assert!(
                 serde_json::from_value::<NameBody>(refused.clone()).is_err(),
+                "{refused}"
+            );
+        }
+
+        // An archive's or a restore's body, closed as a name's (WP-7.3b).
+        let sent = serde_json::json!({"request_id": "r-1", "expected_revision": 2});
+        let body: StateBody = serde_json::from_value(sent.clone()).expect("a state body parses");
+        assert_eq!(
+            (body.request_id.as_str(), body.expected_revision),
+            ("r-1", 2)
+        );
+        doc.check_json("StateBody", &sent);
+        for refused in [
+            serde_json::json!({"request_id": "r-1"}),
+            serde_json::json!({"expected_revision": 1}),
+            serde_json::json!({"request_id": "r-1", "expected_revision": 1, "state": "archived"}),
+        ] {
+            assert!(!doc.accepts_json("StateBody", &refused), "{refused}");
+            assert!(
+                serde_json::from_value::<StateBody>(refused.clone()).is_err(),
                 "{refused}"
             );
         }

@@ -83,6 +83,9 @@ service ZoneCatalog {
   rpc GetLedger(GetLedgerRequest) returns (LedgerResponse);
   rpc RenameLedger(RenameLedgerRequest) returns (LedgerResponse);
   rpc DeleteLedger(DeleteLedgerRequest) returns (LedgerResponse);
+  // An archived ledger stays readable, pulled and mirrored, and refuses a push (WP-7.3b).
+  rpc ArchiveLedger(ArchiveLedgerRequest) returns (LedgerResponse);
+  rpc RestoreLedger(RestoreLedgerRequest) returns (LedgerResponse);
 }
 
 message Zone {
@@ -108,6 +111,8 @@ message Ledger {
   repeated ServingMember serving_members = 7;
   // As Zone's (WP-7.3a).
   uint64 revision = 8;
+  // `active` or `archived`, always present (WP-7.3b).
+  string state = 9;
 }
 
 // One member assigned to serve a ledger (WP-4.4).
@@ -197,6 +202,20 @@ message RenameLedgerRequest {
   uint64 expected_revision = 5;
 }
 message DeleteLedgerRequest {
+  string zone = 1;
+  string ledger = 2;
+  string request_id = 3;
+  uint64 expected_revision = 4;
+}
+
+message ArchiveLedgerRequest {
+  string zone = 1;
+  string ledger = 2;
+  string request_id = 3;
+  uint64 expected_revision = 4;
+}
+
+message RestoreLedgerRequest {
   string zone = 1;
   string ledger = 2;
   string request_id = 3;

@@ -444,6 +444,24 @@ impl crate::catalog::Catalog for GrpcAdmin {
     ) -> Result<Ledger, CatalogFailure> {
         GrpcAdmin::delete_ledger(self, zone, ledger, expected_revision)
     }
+
+    fn archive_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
+        GrpcAdmin::archive_ledger(self, zone, ledger, expected_revision)
+    }
+
+    fn restore_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
+        GrpcAdmin::restore_ledger(self, zone, ledger, expected_revision)
+    }
 }
 
 /// The refusal a gRPC status carries, as every client here reports it (TC-1): the class and
@@ -532,6 +550,7 @@ impl GrpcAdmin {
             created_at: ledger.created_at,
             updated_at: ledger.updated_at,
             revision: ledger.revision,
+            state: active_unless_said(ledger.state),
         })
     }
 
@@ -670,6 +689,7 @@ impl GrpcAdmin {
                 created_at: ledger.created_at,
                 updated_at: ledger.updated_at,
                 revision: ledger.revision,
+                state: active_unless_said(ledger.state),
             })
             .collect())
     }
@@ -733,6 +753,64 @@ impl GrpcAdmin {
                 )
                 .map_err(Self::failure)?,
         )
+    }
+
+    /// Archives a ledger (WP-7.3b).
+    pub fn archive_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
+        let mut client = self.catalog();
+        let (zone, ledger) = (zone.to_owned(), ledger.to_owned());
+        Self::ledger(
+            self.0
+                .call(
+                    "ArchiveLedger",
+                    client.archive_ledger(proto::ArchiveLedgerRequest {
+                        zone,
+                        ledger,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
+                )
+                .map_err(Self::failure)?,
+        )
+    }
+
+    /// Restores an archived ledger (WP-7.3b).
+    pub fn restore_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
+        let mut client = self.catalog();
+        let (zone, ledger) = (zone.to_owned(), ledger.to_owned());
+        Self::ledger(
+            self.0
+                .call(
+                    "RestoreLedger",
+                    client.restore_ledger(proto::RestoreLedgerRequest {
+                        zone,
+                        ledger,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
+                )
+                .map_err(Self::failure)?,
+        )
+    }
+}
+
+/// A ledger's state as gRPC carries it: a server older than states sends none, which reads as
+/// `active`, as it does over REST (WP-7.3b).
+fn active_unless_said(state: String) -> String {
+    if state.is_empty() {
+        "active".to_owned()
+    } else {
+        state
     }
 }
 

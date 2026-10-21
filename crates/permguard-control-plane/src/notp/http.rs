@@ -824,6 +824,173 @@ mod tests {
         }
     }
 
+    /// `(status, body)` of a `GET` of `path`.
+    async fn get_of(routes: &Router, path: &str) -> (u16, Vec<u8>) {
+        let request = HttpRequest::builder()
+            .method("GET")
+            .uri(path)
+            .body(Body::empty())
+            .expect("a request builds");
+        let answer = routes.clone().oneshot(request).await.expect("answers");
+        let status = answer.status().as_u16();
+        let bytes = axum::body::to_bytes(answer.into_body(), usize::MAX)
+            .await
+            .expect("a body");
+        (status, bytes.to_vec())
+    }
+
+    /// A push negotiation of `head` as a REST client sends it.
+    fn negotiation(objects: &[Vec<u8>], head: &Digest, request_id: &str) -> Vec<u8> {
+        NegotiatePushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: objects
+                .iter()
+                .map(|bytes| ObjectClaim {
+                    digest: Digest::compute(bytes),
+                    size: bytes.len() as u64,
+                })
+                .collect(),
+            request_id: request_id.into(),
+        }
+        .encode()
+        .expect("it encodes")
+    }
+
+    /// WP-7.3b, owner decision of 2026-10-21: an archived ledger refuses a push `409`
+    /// `ledger_archived` and keeps answering its refs; restored, it takes pushes again.
+    #[tokio::test]
+    async fn an_archived_ledger_refuses_a_push_and_still_serves() {
+        use permguard_core::catalog::{LedgerState, Selector, Write};
+
+        let (facade, zone, ledger) = testing_facade_with(None, None);
+        let routes = routes(facade.clone());
+        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let (objects, head) = build_commit();
+        rest_push(&routes, &base, &objects, &head).await;
+        let state = |state| {
+            facade
+                .catalog
+                .set_ledger_state_with(
+                    &Selector::parse(&zone),
+                    &Selector::parse(&ledger),
+                    state,
+                    &Write::default(),
+                )
+                .expect("the state is set")
+        };
+
+        // A transfer negotiated while the ledger was active, to upload and commit once it is not.
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiation(&objects, &head, "push-before"),
+        )
+        .await;
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+        let transfer_id = NegotiatePushResponse::decode(&body)
+            .expect("decodes")
+            .transfer_id;
+
+        state(LedgerState::Archived);
+        let archived = |body: &[u8]| {
+            let body: serde_json::Value = serde_json::from_slice(body).expect("a refusal");
+            assert_eq!(body["code"], "ledger_archived", "{body}");
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiation(&objects, &head, "push-archived"),
+        )
+        .await;
+        assert_eq!(status, 409, "{}", String::from_utf8_lossy(&body));
+        archived(&body);
+        let upload = UploadObjectsRequest {
+            objects: objects.clone(),
+            compression: None,
+            transfer_id,
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/objects"),
+            upload.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 409, "{}", String::from_utf8_lossy(&body));
+        archived(&body);
+        let commit = CommitPushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            transfer_id,
+            request_id: "push-before".into(),
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/commit"),
+            commit.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 409, "{}", String::from_utf8_lossy(&body));
+        archived(&body);
+        let (status, _) = get_of(&routes, &format!("{base}/refs/main")).await;
+        assert_eq!(status, 200, "an archived ledger still serves its refs");
+
+        state(LedgerState::Active);
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiation(&objects, &head, "push-restored"),
+        )
+        .await;
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    }
+
+    /// WP-7.3b, owner decision of 2026-10-20: a deleted ledger serves no ref and takes no push,
+    /// and what it held stays on disk.
+    #[tokio::test]
+    async fn a_deleted_ledger_serves_no_ref() {
+        use permguard_core::catalog::Selector;
+
+        let (facade, zone, ledger) = testing_facade_with(None, None);
+        let routes = routes(facade.clone());
+        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let (objects, head) = build_commit();
+        rest_push(&routes, &base, &objects, &head).await;
+        let (zone_id, ledger_id) = facade.ledger_ids(&zone, &ledger).expect("the ledger");
+        facade
+            .catalog
+            .delete_ledger(
+                &Selector::Id(zone_id.clone()),
+                &Selector::Id(ledger_id.clone()),
+            )
+            .expect("deleted");
+
+        let (status, _) = get_of(&routes, &format!("{base}/refs/main")).await;
+        assert_eq!(status, 404);
+        let (status, _) = get_of(
+            &routes,
+            &format!("/v1/zones/{zone_id}/ledgers/{ledger_id}/refs/main"),
+        )
+        .await;
+        assert_eq!(status, 404, "not by its ids either");
+        let (status, _) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiation(&objects, &head, "push-deleted"),
+        )
+        .await;
+        assert_eq!(status, 404);
+        let refs = facade
+            .zones_root
+            .join(&zone_id)
+            .join("ledgers")
+            .join(&ledger_id)
+            .join("refs");
+        assert!(refs.is_dir(), "the deleted ledger's refs stay on disk");
+    }
+
     async fn post(routes: &Router, path: &str, body: Vec<u8>) -> (u16, Vec<u8>) {
         let request = HttpRequest::builder()
             .method("POST")

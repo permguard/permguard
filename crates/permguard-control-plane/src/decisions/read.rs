@@ -1323,6 +1323,50 @@ mod host_reads {
     /// WP-6.3a, F-05: a ledger recreated under the name of a deleted one reads none of the old
     /// one's decisions, and a cursor issued for the old one opens under no other ledger; a
     /// renamed ledger keeps its decisions and its cursors.
+    /// WP-7.3 step 4, F-05: a deleted ledger leaves its tombstone, the ledger recreated under
+    /// its name is minted a new id, and the old ledger's decisions stay with the old ids, read by
+    /// them whole, and never by the new ledger.
+    #[test]
+    fn f05_a_recreated_ledger_has_a_new_id_and_the_old_ones_evidence_stays_with_it() {
+        let fixture = Fixture::new("f05");
+        let (zone, ledger) = match &fixture.resource {
+            Resource::Ledger {
+                zone_id, ledger_id, ..
+            } => (zone_id.clone(), ledger_id.clone()),
+            _ => unreachable!("a ledger"),
+        };
+        let before = named(&fixture.read(&tenant(), &Window::default()).expect("a page"));
+        assert!(!before.is_empty());
+
+        fixture
+            .catalog
+            .delete_ledger(&Selector::Id(zone.clone()), &Selector::Id(ledger.clone()))
+            .expect("deleted");
+        assert!(
+            fixture
+                .catalog
+                .ledger_tombstone(&zone, &ledger)
+                .expect("reads")
+                .is_some()
+        );
+        let recreated = fixture
+            .catalog
+            .create_ledger(&Selector::Id(zone.clone()), "governance")
+            .expect("recreated under the old name");
+        assert_ne!(recreated.id, ledger, "an id is never reused");
+
+        let by_ids = Scope::Tenant {
+            zone: zone.clone(),
+            ledger: ledger.clone(),
+        };
+        let kept = fixture
+            .read(&by_ids, &Window::default())
+            .expect("the old ledger's evidence, by its ids");
+        assert_eq!(named(&kept), before);
+        let fresh = fixture.read(&tenant(), &Window::default()).expect("a page");
+        assert!(fresh.records.is_empty(), "none of it under the new id");
+    }
+
     #[test]
     fn a_ledger_recreated_under_the_same_name_reads_none_of_the_old_ones_decisions() {
         let fixture = Fixture::new("recreated");

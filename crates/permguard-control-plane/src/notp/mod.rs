@@ -279,11 +279,13 @@ impl NotpFacade {
     }
 
     /// Resolves the ledger a request names — name or id, like every surface —
-    /// and answers its identity plus its process-shared store.
+    /// and answers its identity plus its process-shared store. A push to an archived ledger is
+    /// refused `ledger_archived` (WP-7.3b); a pull or a fetch keeps reading it.
     fn resolve(
         &self,
         zone: &str,
         ledger: &str,
+        access: Access,
     ) -> Result<(LedgerIdentity, Arc<FileObjectStore>), ApiError> {
         let zone = self
             .catalog
@@ -293,6 +295,13 @@ impl NotpFacade {
             .catalog
             .get_ledger(&Selector::Id(zone.id.clone()), &Selector::parse(ledger))
             .map_err(crate::catalog::api_error)?;
+        if access == Access::Push && ledger.state == permguard_core::LedgerState::Archived {
+            return Err(ApiError::new(
+                ErrorClass::Conflict,
+                permguard_core::codes::catalog::LEDGER_ARCHIVED,
+                "the ledger is archived: it is read, and takes no push until it is restored",
+            ));
+        }
 
         let mut stores = self
             .stores
@@ -397,7 +406,7 @@ impl NotpFacade {
     ) -> Result<GetRefResponse, ApiError> {
         let started = std::time::Instant::now();
         let result = (|| {
-            let (identity, store) = self.resolve(zone, ledger)?;
+            let (identity, store) = self.resolve(zone, ledger, Access::Read)?;
             let signer = self.signer();
             let engine = self.engine(caller, identity, &store);
             let (state, statement) = engine.get_ref(name, &signer).map_err(api_error)?;
@@ -421,7 +430,7 @@ impl NotpFacade {
     ) -> Result<NegotiatePushResponse, crate::wire::Refusal> {
         self.authorize_push(actor, zone, ledger)?;
         let started = std::time::Instant::now();
-        let result = match self.resolve(zone, ledger) {
+        let result = match self.resolve(zone, ledger, Access::Push) {
             Ok((identity, store)) => {
                 match self
                     .engine(&Self::caller_of(actor), identity, &store)
@@ -450,7 +459,7 @@ impl NotpFacade {
     ) -> Result<UploadObjectsResponse, crate::wire::Refusal> {
         self.authorize_push(actor, zone, ledger)?;
         let started = std::time::Instant::now();
-        let result = match self.resolve(zone, ledger) {
+        let result = match self.resolve(zone, ledger, Access::Push) {
             Ok((identity, store)) => match self.decode_batch(request) {
                 Ok(raw) => match self
                     .engine(&Self::caller_of(actor), identity, &store)
@@ -485,7 +494,7 @@ impl NotpFacade {
     ) -> Result<CommitPushResponse, crate::wire::Refusal> {
         self.authorize_push(actor, zone, ledger)?;
         let started = std::time::Instant::now();
-        let result = match self.resolve(zone, ledger) {
+        let result = match self.resolve(zone, ledger, Access::Push) {
             Ok((identity, store)) => {
                 // The ref update is recorded by the mutation transaction it runs in (WP-3.6).
                 let signer = self.signer();
@@ -530,7 +539,7 @@ impl NotpFacade {
     ) -> Result<NegotiatePullResponse, ApiError> {
         let started = std::time::Instant::now();
         let result = (|| {
-            let (identity, store) = self.resolve(zone, ledger)?;
+            let (identity, store) = self.resolve(zone, ledger, Access::Read)?;
             let signer = self.signer();
             let engine = self.engine(caller, identity, &store);
             let mut response = engine.negotiate_pull(request, &signer).map_err(api_error)?;
@@ -563,7 +572,7 @@ impl NotpFacade {
     ) -> Result<FetchObjectsResponse, ApiError> {
         let started = std::time::Instant::now();
         let result = (|| {
-            let (identity, store) = self.resolve(zone, ledger)?;
+            let (identity, store) = self.resolve(zone, ledger, Access::Read)?;
             let engine = self.engine(caller, identity, &store);
             let mut response = engine.fetch(request).map_err(api_error)?;
             if self.compression && request.accept_compression.as_deref() == Some(compress::DEFLATE)
@@ -733,6 +742,13 @@ fn internal(detail: impl std::fmt::Display) -> ApiError {
         "the ledger store failed",
     )
     .with_internal(detail.to_string())
+}
+
+/// What a resolution is for: a push is refused on an archived ledger, a read is not (WP-7.3b).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Access {
+    Read,
+    Push,
 }
 
 /// Translates the engine's vocabulary into the API's — the one place they meet.

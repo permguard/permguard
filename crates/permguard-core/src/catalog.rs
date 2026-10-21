@@ -86,6 +86,29 @@ pub struct Ledger {
     /// The WP-3.6 operation that last wrote the record, as [`Zone::operation`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operation: Option<String>,
+    /// Whether the ledger takes pushes (WP-7.3b): a record written before reads as active.
+    #[serde(default)]
+    pub state: LedgerState,
+}
+
+/// A ledger's state (WP-7.3b, owner decision of 2026-10-21): an archived ledger stays readable,
+/// pulled and mirrored, and refuses a push.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LedgerState {
+    #[default]
+    Active,
+    Archived,
+}
+
+impl LedgerState {
+    /// The name the wire carries.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Archived => "archived",
+        }
+    }
 }
 
 impl Ledger {
@@ -95,6 +118,22 @@ impl Ledger {
         self.operation = None;
         self
     }
+}
+
+/// What a deleted zone or ledger leaves (WP-7.3b, owner decision of 2026-10-21): its id, never
+/// minted again, the name it had, when it went, the revision it was deleted at, and the WP-3.6
+/// operation that deleted it, for recovery. Never on the wire in 7.3b.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Tombstone {
+    pub id: String,
+    /// The zone a deleted ledger belonged to; absent for a zone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone_id: Option<String>,
+    pub name: String,
+    pub deleted_at: u64,
+    pub revision: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
 }
 
 /// The revision a record is born at, and one written before revisions existed reads as.
@@ -310,11 +349,38 @@ pub trait Catalog: Send + Sync {
         self.delete_ledger_with(zone, ledger, &Write::default())
     }
 
-    /// Deletes a ledger, held to `write` (WP-7.3a).
+    /// Deletes a ledger, held to `write` (WP-7.3a): its tombstone is written and the id is never
+    /// minted again, and what the ledger holds stays on disk (WP-7.3b).
     fn delete_ledger_with(
         &self,
         zone: &Selector,
         ledger: &Selector,
+        write: &Write<'_>,
+    ) -> Result<Ledger, CatalogError>;
+
+    /// The tombstone a deleted zone left, by its id (WP-7.3b); `None` for an id never deleted.
+    fn zone_tombstone(&self, zone_id: &str) -> Result<Option<Tombstone>, CatalogError> {
+        let _ = zone_id;
+        Ok(None)
+    }
+
+    /// The tombstone a deleted ledger left, by its ids (WP-7.3b).
+    fn ledger_tombstone(
+        &self,
+        zone_id: &str,
+        ledger_id: &str,
+    ) -> Result<Option<Tombstone>, CatalogError> {
+        let _ = (zone_id, ledger_id);
+        Ok(None)
+    }
+
+    /// Archives or restores a ledger, held to `write` (WP-7.3b): the revision moves whether or
+    /// not the state does.
+    fn set_ledger_state_with(
+        &self,
+        zone: &Selector,
+        ledger: &Selector,
+        state: LedgerState,
         write: &Write<'_>,
     ) -> Result<Ledger, CatalogError>;
 }

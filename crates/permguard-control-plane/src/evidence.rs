@@ -167,6 +167,16 @@ impl permguard_core::catalog::Catalog for Untouchable {
     ) -> Result<permguard_core::catalog::Ledger, permguard_core::catalog::CatalogError> {
         panic!("looked up before the gate")
     }
+
+    fn set_ledger_state_with(
+        &self,
+        _: &permguard_core::catalog::Selector,
+        _: &permguard_core::catalog::Selector,
+        _: permguard_core::catalog::LedgerState,
+        _: &permguard_core::catalog::Write<'_>,
+    ) -> Result<permguard_core::catalog::Ledger, permguard_core::catalog::CatalogError> {
+        panic!("looked up before the gate")
+    }
 }
 
 #[cfg(test)]

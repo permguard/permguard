@@ -51,6 +51,8 @@ pub mod catalog {
     pub const CATALOG_FAILED: &str = "catalog_failed";
     /// A mutation expected another revision than the record's (WP-7.3a, owner decision).
     pub const REVISION_CONFLICT: &str = "revision_conflict";
+    /// A push to an archived ledger (WP-7.3b, owner decision of 2026-10-21).
+    pub const LEDGER_ARCHIVED: &str = "ledger_archived";
 }
 
 /// `permguard.api.pdp.native.v1`.
@@ -489,6 +491,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         catalog::INVALID_NAME,
         catalog::CATALOG_FAILED,
         catalog::REVISION_CONFLICT,
+        catalog::LEDGER_ARCHIVED,
         pdp_native::ZONE_REQUIRED,
         pdp_native::LEDGER_REQUIRED,
         pdp_native::PARTITION_UNKNOWN,

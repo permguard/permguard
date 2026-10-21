@@ -166,6 +166,7 @@
   "codes": {
     "catalog.CATALOG_FAILED": "catalog_failed",
     "catalog.REVISION_CONFLICT": "revision_conflict",
+    "catalog.LEDGER_ARCHIVED": "ledger_archived",
     "catalog.INVALID_NAME": "invalid_name",
     "catalog.NAME_TAKEN": "name_taken",
     "catalog.ZONE_NOT_EMPTY": "zone_not_empty",

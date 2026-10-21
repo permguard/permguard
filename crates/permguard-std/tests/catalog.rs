@@ -309,3 +309,232 @@ fn a_record_written_before_reads_as_revision_1() {
 fn scratch_kept(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("permguard-catalog-{name}-{}", std::process::id()))
 }
+
+/// WP-7.3b, owner decisions of 2026-10-20 and 2026-10-21: a deleted ledger leaves a tombstone of
+/// its id, with its name, revision and the operation that deleted it, and is gone from listing
+/// and lookup; what it held stays on disk.
+#[test]
+fn a_deleted_ledger_leaves_a_tombstone_and_its_directory() {
+    use permguard_core::catalog::Write;
+
+    let root = scratch("ledger-tombstone");
+    let catalog = FileCatalog::new(&root);
+    let zone = catalog.create_zone("delivery").expect("a zone");
+    let ledger = catalog
+        .create_ledger(&Selector::Id(zone.id.clone()), "policies")
+        .expect("a ledger");
+    let held = root
+        .join(&zone.id)
+        .join("ledgers")
+        .join(&ledger.id)
+        .join("objects");
+    std::fs::create_dir_all(&held).expect("the ledger's objects");
+    std::fs::write(held.join("ab"), b"an object").expect("an object");
+    assert_eq!(
+        catalog
+            .ledger_tombstone(&zone.id, &ledger.id)
+            .expect("reads"),
+        None
+    );
+
+    let deleted = catalog
+        .delete_ledger_with(
+            &Selector::Id(zone.id.clone()),
+            &Selector::Name("policies".to_owned()),
+            &Write {
+                expected_revision: Some(1),
+                operation: Some("op-delete"),
+            },
+        )
+        .expect("deleted");
+    assert_eq!(deleted.id, ledger.id);
+
+    let tombstone = catalog
+        .ledger_tombstone(&zone.id, &ledger.id)
+        .expect("reads")
+        .expect("a tombstone");
+    assert_eq!(tombstone.id, ledger.id);
+    assert_eq!(tombstone.zone_id.as_deref(), Some(zone.id.as_str()));
+    assert_eq!(tombstone.name, "policies");
+    assert_eq!(tombstone.revision, 1);
+    assert_eq!(tombstone.operation.as_deref(), Some("op-delete"));
+    assert!(matches!(
+        catalog.get_ledger(
+            &Selector::Id(zone.id.clone()),
+            &Selector::Id(ledger.id.clone())
+        ),
+        Err(CatalogError::NotFound { .. })
+    ));
+    assert!(
+        catalog
+            .list_ledgers(&Selector::Id(zone.id.clone()))
+            .expect("lists")
+            .is_empty()
+    );
+    assert_eq!(
+        std::fs::read(held.join("ab")).expect("still there"),
+        b"an object",
+        "a delete destroys nothing"
+    );
+    // A name or a malformed id forms no path and reads as no tombstone.
+    assert_eq!(
+        catalog.ledger_tombstone(&zone.id, "../x").expect("reads"),
+        None
+    );
+    assert_eq!(catalog.zone_tombstone("delivery").expect("reads"), None);
+
+    // The name is free again, under a new id.
+    let again = catalog
+        .create_ledger(&Selector::Id(zone.id.clone()), "policies")
+        .expect("recreated");
+    assert_ne!(again.id, ledger.id);
+}
+
+/// WP-7.3b: a zone whose ledgers were all deleted is empty and can be deleted; it leaves its own
+/// tombstone, and its directory stays with what its ledgers held.
+#[test]
+fn a_deleted_zone_leaves_a_tombstone_and_its_directory() {
+    let root = scratch("zone-tombstone");
+    let catalog = FileCatalog::new(&root);
+    let zone = catalog.create_zone("delivery").expect("a zone");
+    let id = Selector::Id(zone.id.clone());
+    let ledger = catalog.create_ledger(&id, "policies").expect("a ledger");
+    assert!(matches!(
+        catalog.delete_zone(&id),
+        Err(CatalogError::NotEmpty { .. })
+    ));
+    catalog
+        .delete_ledger(&id, &Selector::Id(ledger.id.clone()))
+        .expect("the ledger deleted");
+
+    catalog
+        .delete_zone(&id)
+        .expect("an emptied zone is deleted");
+    let tombstone = catalog
+        .zone_tombstone(&zone.id)
+        .expect("reads")
+        .expect("a tombstone");
+    assert_eq!(
+        (tombstone.name.as_str(), tombstone.zone_id),
+        ("delivery", None)
+    );
+    assert!(catalog.get_zone(&id).is_err());
+    assert!(
+        root.join(&zone.id)
+            .join("ledgers")
+            .join(&ledger.id)
+            .is_dir(),
+        "the deleted ledger's directory stays"
+    );
+    assert!(
+        catalog
+            .ledger_tombstone(&zone.id, &ledger.id)
+            .expect("reads")
+            .is_some()
+    );
+}
+
+/// WP-7.3b, owner decision of 2026-10-21: a ledger is archived and restored, the revision moving
+/// each time, held to the revision expected; a record written before reads as active.
+#[test]
+fn a_ledger_is_archived_and_restored_in_the_store() {
+    use permguard_core::catalog::{LedgerState, Write};
+
+    let catalog = FileCatalog::new(scratch("ledger-state"));
+    let zone = catalog.create_zone("delivery").expect("a zone");
+    let (zone, ledger) = (
+        Selector::Id(zone.id.clone()),
+        Selector::Name("policies".to_owned()),
+    );
+    let created = catalog.create_ledger(&zone, "policies").expect("a ledger");
+    assert_eq!(created.state, LedgerState::Active);
+    let at = |revision| Write {
+        expected_revision: Some(revision),
+        operation: None,
+    };
+
+    let archived = catalog
+        .set_ledger_state_with(&zone, &ledger, LedgerState::Archived, &at(1))
+        .expect("archived");
+    assert_eq!(
+        (archived.state, archived.revision),
+        (LedgerState::Archived, 2)
+    );
+    assert!(matches!(
+        catalog.set_ledger_state_with(&zone, &ledger, LedgerState::Active, &at(1)),
+        Err(CatalogError::RevisionConflict { current: 2, .. })
+    ));
+    let read = catalog.get_ledger(&zone, &ledger).expect("read");
+    assert_eq!(
+        read.state,
+        LedgerState::Archived,
+        "unchanged by the conflict"
+    );
+    let restored = catalog
+        .set_ledger_state_with(&zone, &ledger, LedgerState::Active, &at(2))
+        .expect("restored");
+    assert_eq!(
+        (restored.state, restored.revision),
+        (LedgerState::Active, 3)
+    );
+
+    let old: permguard_core::catalog::Ledger = serde_json::from_str(
+        r#"{"id":"i","zone_id":"z","name":"n","created_at":1,"updated_at":1}"#,
+    )
+    .expect("an old record");
+    assert_eq!(old.state, LedgerState::Active);
+}
+
+/// WP-7.3b: a tombstone whose id is still indexed is what a delete interrupted between its two
+/// writes left; the record stays live, listed and found, and the next delete replaces it.
+#[test]
+fn a_tombstone_an_interrupted_delete_left_leaves_the_record_live() {
+    use permguard_core::catalog::Write;
+
+    let root = scratch("stray-tombstone");
+    let catalog = FileCatalog::new(&root);
+    let zone = catalog.create_zone("delivery").expect("a zone");
+    let id = Selector::Id(zone.id.clone());
+    let ledger = catalog.create_ledger(&id, "policies").expect("a ledger");
+    let stray = root
+        .join(&zone.id)
+        .join("tombstones")
+        .join(format!("{}.json", ledger.id));
+    std::fs::create_dir_all(stray.parent().expect("a parent")).expect("the directory");
+    std::fs::write(
+        &stray,
+        serde_json::json!({
+            "id": ledger.id, "zone_id": zone.id, "name": "policies",
+            "deleted_at": 1, "revision": 1, "operation": "op-interrupted",
+        })
+        .to_string(),
+    )
+    .expect("a stray tombstone");
+
+    let live = Selector::Id(ledger.id.clone());
+    assert_eq!(
+        catalog.get_ledger(&id, &live).expect("still found").id,
+        ledger.id
+    );
+    assert_eq!(catalog.list_ledgers(&id).expect("lists").len(), 1);
+    catalog
+        .delete_ledger_with(
+            &id,
+            &live,
+            &Write {
+                expected_revision: Some(1),
+                operation: Some("op-delete"),
+            },
+        )
+        .expect("deleted");
+    let tombstone = catalog
+        .ledger_tombstone(&zone.id, &ledger.id)
+        .expect("reads")
+        .expect("a tombstone");
+    assert_eq!(
+        tombstone.operation.as_deref(),
+        Some("op-delete"),
+        "replaced"
+    );
+    assert!(catalog.get_ledger(&id, &live).is_err());
+}

@@ -100,6 +100,7 @@ fn ledger(id: &str, zone_id: &str, name: &str) -> proto::Ledger {
         updated_at: 1,
         default_ref: "main".into(),
         revision: 1,
+        state: "active".into(),
     }
 }
 
@@ -214,6 +215,40 @@ impl ZoneCatalog for FakePlane {
             ledger: Some(proto::Ledger {
                 revision: asked.expected_revision + 1,
                 ..ledger("l-1", &asked.zone, &asked.name)
+            }),
+        }))
+    }
+
+    async fn archive_ledger(
+        &self,
+        request: Request<proto::ArchiveLedgerRequest>,
+    ) -> Result<Response<proto::LedgerResponse>, Status> {
+        let asked = request.into_inner();
+        if asked.request_id.len() != 32 {
+            return Err(Status::invalid_argument(
+                "a change names a fresh request id",
+            ));
+        }
+        Ok(Response::new(proto::LedgerResponse {
+            ledger: Some(proto::Ledger {
+                revision: asked.expected_revision + 1,
+                state: "archived".into(),
+                ..ledger("l-1", &asked.zone, "main-ledger")
+            }),
+        }))
+    }
+
+    async fn restore_ledger(
+        &self,
+        request: Request<proto::RestoreLedgerRequest>,
+    ) -> Result<Response<proto::LedgerResponse>, Status> {
+        let asked = request.into_inner();
+        Ok(Response::new(proto::LedgerResponse {
+            // A server older than states sends none: it reads as active.
+            ledger: Some(proto::Ledger {
+                revision: asked.expected_revision + 1,
+                state: String::new(),
+                ..ledger("l-1", &asked.zone, "main-ledger")
             }),
         }))
     }
@@ -409,6 +444,17 @@ fn the_catalog_answers_over_grpc() {
         .expect("a ledger is renamed");
     assert_eq!(renamed.name, "renamed");
     assert_eq!(renamed.revision, 4, "the revision named reached the server");
+    let archived = admin
+        .archive_ledger("z-1", "l-1", 4)
+        .expect("a ledger is archived");
+    assert_eq!(
+        (archived.state.as_str(), archived.revision),
+        ("archived", 5)
+    );
+    let restored = admin
+        .restore_ledger("z-1", "l-1", 5)
+        .expect("a ledger is restored");
+    assert_eq!((restored.state.as_str(), restored.revision), ("active", 6));
 
     assert!(admin.delete_zone("z-1", 1).is_ok());
     assert!(admin.get_ledger("z-1", "l-1").is_ok());
