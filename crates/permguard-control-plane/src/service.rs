@@ -415,7 +415,7 @@ impl PlaneModule for ControlPlaneModule {
             version: state.version,
             commit: state.commit,
             health: state.health,
-            configuration: control_configuration_document(
+            rest: control_configuration_document(
                 context,
                 self.event_facade(context).is_some(),
                 self.decision_facade(context).is_some(),
@@ -514,15 +514,18 @@ fn discovery_routes(
 ) -> Router {
     #[derive(Clone)]
     struct Discovery {
-        document: String,
+        /// Everything after `plane` and `state`: the document as composed at start.
+        rest: String,
         keys: Option<std::sync::Arc<dyn permguard_core::keys::PublicSet>>,
+        health: permguard_core::PlaneHealth,
     }
 
     async fn configuration(State(state): State<Discovery>) -> axum::response::Response {
         use axum::response::IntoResponse as _;
+        let document = plane_document(&state.rest, state.health.phase());
         (
             [(axum::http::header::CONTENT_TYPE, "application/json")],
-            state.document,
+            document,
         )
             .into_response()
     }
@@ -573,8 +576,9 @@ fn discovery_routes(
     }
 
     let state = Discovery {
-        document: control_configuration_document(context, events_composed, decisions_composed),
+        rest: control_configuration_document(context, events_composed, decisions_composed),
         keys: crate::handles::own_public_keys(context),
+        health: context.health(),
     };
 
     Router::new()
@@ -583,11 +587,22 @@ fn discovery_routes(
         .with_state(state)
 }
 
+/// The plane document as answered: `plane`, then `state`, the phase as it is now rather than as
+/// it was when the rest was composed (WP-7.4a), then the rest. A phase is one of eight fixed
+/// words, never anything to escape.
+pub(crate) fn plane_document(rest: &str, phase: permguard_core::lifecycle::Phase) -> String {
+    format!(
+        "{{\"plane\":\"control-plane\",\"state\":\"{}\",{rest}",
+        phase.as_str()
+    )
+}
+
 /// This plane's configuration document, OIDC-discovery style: flat
 /// `*_endpoint` names, absolute URLs, RFC 6570 templates for the segments a
 /// caller fills in (`{zone}`, `{ledger}`, `{ref}`). It describes this plane
 /// and nothing else; the base URL is resolved from the same configuration
-/// the listener binds with.
+/// the listener binds with. Answered without its first two members, `plane` and `state`, which
+/// the route writes in front of it when it answers (WP-7.4a).
 fn control_configuration_document(
     context: &PlaneContext<'_>,
     events_composed: bool,
@@ -605,8 +620,6 @@ fn control_configuration_document(
     // then the plain APIs.
     format!(
         concat!(
-            "{{",
-            "\"plane\":\"control-plane\",",
             "\"transports\":{{\"http\":{http},\"grpc\":{grpc}}},",
             "\"jwks_uri\":\"{base}/control-plane/keys\",",
             "\"notp\":{{",
@@ -689,9 +702,13 @@ fn interfaces(events_composed: bool, decisions_composed: bool, base: &str) -> St
     if served.is_empty() {
         return String::new();
     }
+    // Each with its stage (WP-7.4a); an id the registry does not serve is not listed.
     let entries: Vec<String> = served
         .into_iter()
-        .map(|(api, path)| format!("\"{api}\":{{\"configuration\":\"{base}{path}\"}}"))
+        .filter_map(|(api, path)| {
+            let link = permguard_server::plane::InterfaceLink::of(api, format!("{base}{path}"))?;
+            Some(format!("\"{api}\":{}", serde_json::to_string(&link).ok()?))
+        })
         .collect();
 
     format!(",\"interfaces\":{{{}}}", entries.join(","))
@@ -869,6 +886,7 @@ fn build_event_facade(
             permguard_server::plane::PlaneId::Control,
         )
         .unwrap_or_default(),
+        describer: permguard_core::stages::Describer::of_plane(context, "control-plane"),
         authorization: crate::handles::authorization(context),
     };
     if let Ok(mut held) = shared.lock() {
@@ -1019,6 +1037,7 @@ fn build_decision_facade(
             permguard_server::plane::PlaneId::Control,
         )
         .unwrap_or_default(),
+        describer: permguard_core::stages::Describer::of_plane(context, "control-plane"),
         authorization: crate::handles::authorization(context),
     };
     if let Ok(mut held) = shared.lock() {
@@ -1532,10 +1551,26 @@ mod tests {
         for (events_composed, decisions_composed) in
             [(false, false), (true, false), (false, true), (true, true)]
         {
-            let text =
-                control_configuration_document(&context, events_composed, decisions_composed);
+            let text = plane_document(
+                &control_configuration_document(&context, events_composed, decisions_composed),
+                permguard_core::lifecycle::Phase::Serving,
+            );
             let json: serde_json::Value =
                 serde_json::from_str(&text).expect("the control plane's document is JSON");
+            // WP-7.4a: its phase, and every interface with its stage.
+            assert_eq!(json["state"], "serving");
+            if decisions_composed {
+                assert_eq!(
+                    json["interfaces"][crate::decisions::read::API]["stage"],
+                    "v1"
+                );
+            }
+            if events_composed {
+                assert_eq!(
+                    json["interfaces"][crate::events::read::API]["stage"],
+                    "v1alpha1"
+                );
+            }
             assert_eq!(
                 json.get("interfaces").is_some(),
                 events_composed || decisions_composed
@@ -1560,6 +1595,7 @@ mod tests {
 
         let mut data = PlaneConfiguration {
             plane: "data-plane".to_owned(),
+            state: "serving".to_owned(),
             jwks_uri: "http://127.0.0.1:7443/data-plane/keys".to_owned(),
             streams_endpoint: None,
             interfaces: std::collections::BTreeMap::new(),
@@ -1570,6 +1606,9 @@ mod tests {
             "permguard.api.pdp.native.v1".to_owned(),
             InterfaceLink {
                 configuration: "http://127.0.0.1:7443/.well-known/x-configuration".to_owned(),
+                // Every member present: a deprecated interface carries its sunset (WP-7.4a).
+                stage: "deprecated".to_owned(),
+                sunset: Some("2027-06-30T00:00:00Z".to_owned()),
             },
         );
         doc.check("DataPlaneConfiguration", &data);
@@ -1588,6 +1627,7 @@ mod tests {
         planes.insert(
             "control-plane".to_owned(),
             PlaneLink {
+                state: "serving".to_owned(),
                 server_configuration: Some("http://a/.well-known/server-configuration".to_owned()),
                 grpc_endpoint: None,
             },
@@ -1595,6 +1635,7 @@ mod tests {
         planes.insert(
             "data-plane".to_owned(),
             PlaneLink {
+                state: "load".to_owned(),
                 server_configuration: None,
                 grpc_endpoint: Some("127.0.0.1:7444".to_owned()),
             },
@@ -1602,6 +1643,8 @@ mod tests {
         doc.check(
             "ServerConfiguration",
             &ServerConfiguration {
+                host_id: Some("01a00000-0000-7000-8000-000000000001".to_owned()),
+                state: "serving".to_owned(),
                 planes,
                 jwks_uri: Some("http://a/server-host/keys".to_owned()),
                 // Every member of the block filled: a higher control added and a relaxation.
@@ -1648,14 +1691,18 @@ mod tests {
                 ],
             },
         );
-        let written: serde_json::Value = serde_json::from_str(
-            &permguard_server::plane::server_configuration_document(&config),
-        )
-        .expect("the registry is JSON");
+        let written: serde_json::Value =
+            serde_json::from_str(&permguard_server::plane::server_configuration_document(
+                &config,
+                &permguard_core::lifecycle::Lifecycle::new(),
+            ))
+            .expect("the registry is JSON");
         doc.check_json("ServerConfiguration", &written);
         doc.check(
             "ServerConfiguration",
             &ServerConfiguration {
+                host_id: None,
+                state: "bootstrap".to_owned(),
                 planes: std::collections::BTreeMap::new(),
                 jwks_uri: None,
                 assurance: permguard_core::assurance::Assurance::new(

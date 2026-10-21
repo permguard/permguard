@@ -93,6 +93,9 @@ pub struct EventFacade {
     /// The document's endpoints are absolute, because the producer that reads it is configured with
     /// one URL and has to arrive at four. A relative path would leave it joining strings.
     pub base_url: String,
+    /// Who serves the interface, its build and its phase: the discovery document's common header
+    /// (WP-7.4a).
+    pub describer: permguard_core::stages::Describer,
     /// The Host's authorization, every evidence read decides with before it looks anything up
     /// (WP-6.3c).
     pub authorization: Arc<permguard_host::composition::Authorization>,
@@ -702,12 +705,20 @@ async fn signers(
 ///
 /// Unauthenticated on purpose, like every other layer of the discovery chain: it says what the
 /// shapes are, never what is inside them. Reading a record still takes a scope and an offset.
-async fn document(State(facade): State<EventFacade>) -> Json<super::configuration::Document> {
-    Json(super::configuration::document(
-        &facade.base_url,
-        &facade.base_url,
-        &facade.accepted_types(),
-    ))
+async fn document(State(facade): State<EventFacade>) -> Response {
+    match facade
+        .describer
+        .header(permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1)
+    {
+        Ok(header) => Json(super::configuration::document(
+            &facade.base_url,
+            &facade.base_url,
+            &facade.accepted_types(),
+            header,
+        ))
+        .into_response(),
+        Err(refused) => crate::wire::http_error(&refused, facade.disclosure),
+    }
 }
 
 async fn batches(State(facade): State<EventFacade>, body: axum::body::Bytes) -> Response {
@@ -1351,8 +1362,31 @@ mod openapi {
             "http://plane.example",
             "plane.example",
             &[permguard_languages::event::EVENT_TYPE],
+            permguard_core::stages::Describer::detached("control-plane")
+                .header(permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1)
+                .expect("served"),
         );
         doc.check("Document", &configuration);
+        // A deprecated interface's header, every member present (WP-7.4a).
+        doc.check(
+            "Document",
+            &super::super::configuration::document(
+                "http://plane.example",
+                "plane.example",
+                &[permguard_languages::event::EVENT_TYPE],
+                permguard_core::stages::Header::of(
+                    &permguard_core::stages::Registered {
+                        id: permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1,
+                        stage: permguard_core::stages::Stage::Deprecated {
+                            sunset: "2027-06-30T00:00:00Z",
+                        },
+                    },
+                    "control-plane",
+                    "0.1.0",
+                    permguard_core::lifecycle::Phase::Serving,
+                ),
+            ),
+        );
         let mut unlimited = serde_json::to_value(&configuration).expect("it serialises");
         unlimited
             .as_object_mut()
@@ -1427,6 +1461,7 @@ mod openapi {
             disclosure: permguard_core::Disclosure::default(),
             metrics: permguard_core::metrics::Metrics::default(),
             base_url: String::new(),
+            describer: permguard_core::stages::Describer::detached("control-plane"),
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
@@ -1496,6 +1531,7 @@ mod gate {
             disclosure: permguard_core::Disclosure::default(),
             metrics: permguard_core::metrics::Metrics::default(),
             base_url: String::new(),
+            describer: permguard_core::stages::Describer::detached("control-plane"),
             authorization: Arc::new(permguard_host::composition::Authorization::public_only(&[
                 permguard_host::authz::PublicGrant::new(
                     &[permguard_core::authz::operations::EVIDENCE_READ],
@@ -1503,6 +1539,100 @@ mod gate {
                 ),
             ])),
         }
+    }
+
+    /// WP-7.4a, owner decisions of 2026-10-21: the event store's discovery document carries the
+    /// common header, the same on REST and over gRPC, and a retired interface's document is
+    /// refused `interface_retired` on both, never answered under another id.
+    #[tokio::test]
+    async fn the_event_document_carries_the_header_on_both_transports_and_a_retired_one_is_refused()
+    {
+        use crate::v1::event_log_server::EventLog as _;
+        use permguard_core::stages::{Describer, Registered, Stage};
+
+        static RETIRED: &[Registered] = &[Registered {
+            id: permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1,
+            stage: Stage::Retired,
+        }];
+        let get = |facade: EventFacade| async move {
+            let answer = routes(facade)
+                .layer(axum::Extension(auditor()))
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(super::super::configuration::CONFIGURATION_PATH)
+                        .body(axum::body::Body::empty())
+                        .expect("a request"),
+                )
+                .await
+                .expect("answered");
+            let status = answer.status().as_u16();
+            let bytes = answer
+                .into_body()
+                .collect()
+                .await
+                .expect("a body")
+                .to_bytes();
+            (
+                status,
+                serde_json::from_slice::<serde_json::Value>(&bytes).expect("JSON"),
+            )
+        };
+
+        let served = facade("header", "plane/control/*");
+        let (status, document) = get(served.clone()).await;
+        assert_eq!(status, 200);
+        assert_eq!(
+            (
+                document["component"].as_str(),
+                document["state"].as_str(),
+                document["stage"].as_str(),
+                document["version"].as_str()
+            ),
+            (
+                Some("control-plane"),
+                Some("bootstrap"),
+                Some("v1alpha1"),
+                Some("")
+            )
+        );
+        let over_grpc = served
+            .get_event_configuration(tonic::Request::new(
+                crate::v1::GetEventConfigurationRequest {},
+            ))
+            .await
+            .expect("answered")
+            .into_inner();
+        assert_eq!(
+            (
+                over_grpc.version.as_str(),
+                over_grpc.component.as_str(),
+                over_grpc.state.as_str(),
+                over_grpc.stage.as_str(),
+                over_grpc.sunset
+            ),
+            ("", "control-plane", "bootstrap", "v1alpha1", None)
+        );
+        for name in ["max_records", "max_bytes", "max_examined"] {
+            assert_eq!(
+                serde_json::json!(over_grpc.limits[name]),
+                document["limits"][name],
+                "{name}"
+            );
+        }
+
+        let mut retired = served;
+        retired.describer = Describer::detached("control-plane").with_registry(RETIRED);
+        let (status, refused) = get(retired.clone()).await;
+        assert_eq!(status, 400);
+        assert_eq!(refused["code"], "interface_retired");
+        assert_eq!(refused["class"], "validation");
+        let refused = retired
+            .get_event_configuration(tonic::Request::new(
+                crate::v1::GetEventConfigurationRequest {},
+            ))
+            .await
+            .expect_err("retired");
+        assert_eq!(refused.code(), tonic::Code::InvalidArgument);
     }
 
     async fn status(facade: &EventFacade, uri: &str) -> StatusCode {

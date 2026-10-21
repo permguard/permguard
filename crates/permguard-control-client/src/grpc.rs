@@ -1209,7 +1209,7 @@ impl crate::pdp::Pdp for GrpcPdp {
         let endpoints = answer.endpoints.unwrap_or_default();
         let scope = answer.store_scope.unwrap_or_default();
 
-        Ok(serde_json::json!({
+        let mut document = serde_json::json!({
             "interface": answer.r#interface,
             "pdp": answer.pdp,
             "endpoints": {
@@ -1223,8 +1223,49 @@ impl crate::pdp::Pdp for GrpcPdp {
                 "ledger": scope.ledger,
                 "profile": scope.profile,
             },
-        }))
+        });
+        header_json(
+            &mut document,
+            answer.version,
+            answer.component,
+            answer.state,
+            answer.stage,
+            answer.sunset,
+            answer.limits,
+        );
+        Ok(document)
     }
+}
+
+/// The common header a gRPC configuration answer carries, as the HTTP document spells it
+/// (WP-7.4a): `sunset` only when there is one, `limits` by name.
+pub(crate) fn header_json(
+    document: &mut serde_json::Value,
+    version: String,
+    component: String,
+    state: String,
+    stage: String,
+    sunset: Option<String>,
+    limits: std::collections::HashMap<String, u64>,
+) {
+    let Some(object) = document.as_object_mut() else {
+        return;
+    };
+    object.insert("version".to_owned(), version.into());
+    object.insert("component".to_owned(), component.into());
+    object.insert("state".to_owned(), state.into());
+    object.insert("stage".to_owned(), stage.into());
+    if let Some(sunset) = sunset {
+        object.insert("sunset".to_owned(), sunset.into());
+    }
+    object.insert(
+        "limits".to_owned(),
+        limits
+            .into_iter()
+            .map(|(name, value)| (name, serde_json::Value::from(value)))
+            .collect::<serde_json::Map<_, _>>()
+            .into(),
+    );
 }
 
 /// The proto request a JSON payload means, **or a refusal**.

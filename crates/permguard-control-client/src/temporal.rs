@@ -161,7 +161,7 @@ impl TemporalPdp for GrpcTemporal {
         let endpoints = answer.endpoints.unwrap_or_default();
         let scope = answer.store_scope.unwrap_or_default();
 
-        Ok(serde_json::json!({
+        let mut document = serde_json::json!({
             "interface": answer.r#interface,
             "pdp": answer.pdp,
             "endpoints": {"submission": endpoints.submission},
@@ -173,7 +173,17 @@ impl TemporalPdp for GrpcTemporal {
                 "ledger": scope.ledger,
                 "profile": scope.profile,
             },
-        }))
+        });
+        crate::grpc::header_json(
+            &mut document,
+            answer.version,
+            answer.component,
+            answer.state,
+            answer.stage,
+            answer.sunset,
+            answer.limits,
+        );
+        Ok(document)
     }
 }
 

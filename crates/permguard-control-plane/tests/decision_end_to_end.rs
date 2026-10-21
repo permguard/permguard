@@ -540,6 +540,7 @@ fn asking_for_the_signers_of_a_stream_nobody_holds_is_not_found() {
         host: None,
         catalog: None,
         base_url: String::new(),
+        describer: permguard_core::stages::Describer::detached("control-plane"),
         authorization: std::sync::Arc::new(permguard_host::composition::Authorization::permissive()),
     };
 

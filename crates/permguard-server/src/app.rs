@@ -1963,6 +1963,11 @@ impl App {
             .with_realms(realms);
         // An `operations` record the engine could not write degrades the Host's readiness.
         audit_engine.observe(context.health().clone());
+        // The process document names the Host by its id (WP-7.4a).
+        context
+            .health()
+            .lifecycle()
+            .set_host_id(host_identity.host_id_text());
         mutations.observe(context.health().clone());
 
         if let Some(catalog) = catalog {

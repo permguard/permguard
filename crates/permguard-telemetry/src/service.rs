@@ -36,8 +36,10 @@ pub struct TelemetryService {
     keys_location: Option<KeysLocation>,
 }
 
-/// Renders the registry document from the materialized configuration.
-type ConfigurationDocument = Box<dyn Fn(&Config) -> String + Send + Sync>;
+/// Renders the registry document from the materialized configuration and the lifecycle as it is
+/// when the document is answered (WP-7.4a).
+type ConfigurationDocument =
+    std::sync::Arc<dyn Fn(&Config, &permguard_core::lifecycle::Lifecycle) -> String + Send + Sync>;
 
 /// Names where the keys moved to, from the materialized configuration; `None` keeps the route.
 type KeysLocation = Box<dyn Fn(&Config) -> Option<String> + Send + Sync>;
@@ -51,9 +53,9 @@ impl TelemetryService {
     /// Names how the process-level server-configuration document is built.
     pub fn with_configuration<F>(mut self, build: F) -> Self
     where
-        F: Fn(&Config) -> String + Send + Sync + 'static,
+        F: Fn(&Config, &permguard_core::lifecycle::Lifecycle) -> String + Send + Sync + 'static,
     {
-        self.configuration = Some(Box::new(build));
+        self.configuration = Some(std::sync::Arc::new(build));
 
         self
     }
@@ -125,7 +127,12 @@ impl Service for TelemetryService {
                     context.metrics().clone(),
                 ));
                 if let Some(build) = &self.configuration {
-                    routes = routes.merge(probes::configuration_route(build(context.config())));
+                    let build = std::sync::Arc::clone(build);
+                    let config = context.config().clone();
+                    let lifecycle = context.health().lifecycle().clone();
+                    routes = routes.merge(probes::configuration_route(std::sync::Arc::new(
+                        move || build(&config, &lifecycle),
+                    )));
                 }
                 // The process version, under the same disclosure policy the planes answer with.
                 routes = routes.merge(host::version_route(host::version_body(

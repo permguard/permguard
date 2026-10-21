@@ -65,20 +65,37 @@ pub struct StoreScope {
 pub struct Configuration {
     /// The contract and its version: `permguard.api.pdp.native.v1`.
     pub interface: &'static str,
+    /// The common header (WP-7.4a): `version`, `component`, `state`, `stage` and `sunset`.
+    #[serde(flatten)]
+    pub header: permguard_core::stages::Header,
     /// This PDP's identifier — the base URL the document was fetched from.
     pub pdp: String,
     pub endpoints: Endpoints,
     /// What this interface offers. Every entry is implemented and tested here.
     pub capabilities: Vec<String>,
     pub store_scope: StoreScope,
+    /// What one request is held to (WP-7.4a).
+    pub limits: Limits,
 }
 
-/// The configuration for a plane reached at `base_url`.
-pub fn configuration(base_url: &str) -> Configuration {
+/// The ceilings of one request.
+#[derive(Debug, Clone, Serialize)]
+pub struct Limits {
+    /// The most evaluations one boxcar request carries; more is `too_many_evaluations`.
+    pub max_evaluations: u64,
+}
+
+/// The configuration for a plane reached at `base_url`, its requests held to `max_evaluations`.
+pub fn configuration(
+    base_url: &str,
+    header: permguard_core::stages::Header,
+    max_evaluations: usize,
+) -> Configuration {
     let base = base_url.trim_end_matches('/');
 
     Configuration {
         interface: INTERFACE,
+        header,
         pdp: base.to_owned(),
         endpoints: Endpoints {
             evaluation: format!("{base}{EVALUATION_PATH}"),
@@ -92,6 +109,9 @@ pub fn configuration(base_url: &str) -> Configuration {
             // Absent means `default`, which is a profile every ledger declares or is refused for.
             profile: "optional",
         },
+        limits: Limits {
+            max_evaluations: max_evaluations as u64,
+        },
     }
 }
 
@@ -103,8 +123,12 @@ pub fn configuration(base_url: &str) -> Configuration {
 /// answered `200` with a configuration describing an interface that offers nothing — a caller
 /// would have configured itself from it and found no endpoints, with no error anywhere to explain
 /// why.
-pub fn document(base_url: &str) -> Result<String, serde_json::Error> {
-    serde_json::to_string_pretty(&configuration(base_url))
+pub fn document(
+    base_url: &str,
+    header: permguard_core::stages::Header,
+    max_evaluations: usize,
+) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(&configuration(base_url, header, max_evaluations))
 }
 
 #[cfg(test)]
@@ -114,7 +138,40 @@ mod tests {
     use super::*;
 
     fn parsed(base: &str) -> serde_json::Value {
-        serde_json::from_str(&document(base).expect("it serializes")).expect("the document is JSON")
+        serde_json::from_str(
+            &document(
+                base,
+                permguard_core::stages::Describer::detached("data-plane")
+                    .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+                    .expect("served"),
+                100,
+            )
+            .expect("it serializes"),
+        )
+        .expect("the document is JSON")
+    }
+
+    /// WP-7.4a, after the review: the interface this plane serves here is one the stage registry
+    /// serves, or its link would vanish from the plane document and its own document refuse.
+    #[test]
+    fn the_served_interface_is_in_the_stage_registry() {
+        assert!(permguard_core::stages::served(permguard_languages::request::INTERFACE).is_ok());
+    }
+
+    /// WP-7.4a, owner decision of 2026-10-21: the document carries the common header and the
+    /// boxcar bound it enforces.
+    #[test]
+    fn every_interface_document_carries_the_common_header() {
+        let document = parsed("http://host");
+        assert_eq!(document["component"], "data-plane");
+        assert_eq!(document["state"], "bootstrap");
+        assert_eq!(document["stage"], "v1");
+        assert_eq!(document["version"], "");
+        assert!(
+            document.get("sunset").is_none(),
+            "only a deprecated interface has one"
+        );
+        assert_eq!(document["limits"]["max_evaluations"], 100);
     }
 
     #[test]

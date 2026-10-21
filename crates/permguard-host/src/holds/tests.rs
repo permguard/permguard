@@ -222,10 +222,7 @@ fn a_hold_file_that_breaks_the_rules_does_not_read() {
         " ".repeat(9 * 1024)
     );
     std::fs::write(&path, &padded).expect("written");
-    assert!(
-        matches!(store.list(), Err(HoldError::Record(_))),
-        "padded"
-    );
+    assert!(matches!(store.list(), Err(HoldError::Record(_))), "padded");
 }
 
 /// WP-7.3c, owner decision of 2026-10-21: past `expires_at` a hold keeps nothing; past

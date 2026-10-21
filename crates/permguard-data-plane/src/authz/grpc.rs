@@ -45,6 +45,9 @@ pub struct PdpApi {
     pub decider: std::sync::Arc<Decider>,
     pub disclosure: Disclosure,
     pub base_url: String,
+    /// Who serves the interface, its build and its phase: the discovery document's common header
+    /// (WP-7.4a).
+    pub describer: permguard_core::stages::Describer,
     /// The Host's authorization: `decision.evaluate` on the exact ledger, before any policy runs.
     pub authorization: std::sync::Arc<permguard_host::composition::Authorization>,
 }
@@ -75,7 +78,12 @@ impl PolicyDecisionPoint for PdpApi {
         &self,
         _request: Request<GetConfigurationRequest>,
     ) -> Result<Response<GetConfigurationResponse>, Status> {
-        let document = configuration::configuration(&self.base_url);
+        let header = self
+            .describer
+            .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+            .map_err(|refused| status_of(&refused, self.disclosure))?;
+        let document =
+            configuration::configuration(&self.base_url, header, self.decider.max_evaluations());
 
         Ok(Response::new(GetConfigurationResponse {
             r#interface: document.interface.to_owned(),
@@ -91,6 +99,17 @@ impl PolicyDecisionPoint for PdpApi {
                 ledger: document.store_scope.ledger.to_owned(),
                 profile: document.store_scope.profile.to_owned(),
             }),
+            version: document.header.version,
+            component: document.header.component,
+            state: document.header.state,
+            stage: document.header.stage,
+            sunset: document.header.sunset,
+            limits: [(
+                "max_evaluations".to_owned(),
+                document.limits.max_evaluations,
+            )]
+            .into_iter()
+            .collect(),
         }))
     }
 }

@@ -147,8 +147,33 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
     doc.check("DecisionContext", &DecisionContext::default());
 
     // The discovery document, as the handler serves it: a value of the real type.
-    let configuration = permguard_data_plane::authz::configuration::configuration("http://host/");
+    let configuration = permguard_data_plane::authz::configuration::configuration(
+        "http://host/",
+        permguard_core::stages::Describer::detached("data-plane")
+            .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+            .expect("served"),
+        100,
+    );
     doc.check("Configuration", &configuration);
+    // A deprecated interface's header, every member present (WP-7.4a).
+    doc.check(
+        "Configuration",
+        &permguard_data_plane::authz::configuration::configuration(
+            "http://host/",
+            permguard_core::stages::Header::of(
+                &permguard_core::stages::Registered {
+                    id: permguard_core::domains::interface::PDP_NATIVE_V1,
+                    stage: permguard_core::stages::Stage::Deprecated {
+                        sunset: "2027-06-30T00:00:00Z",
+                    },
+                },
+                "data-plane",
+                "0.1.0",
+                permguard_core::lifecycle::Phase::Serving,
+            ),
+            100,
+        ),
+    );
 
     // Negative cases: the structural envelopes are closed, the dynamic containers are not.
     assert!(!doc.accepts_json("CheckRequest", &json!({ "zone": "z", "unknown": 1 })));
@@ -258,9 +283,33 @@ fn test_pdp_temporal_v1alpha1_document_describes_what_the_wire_types_serialise()
     assert!(!doc.accepts_json("HistoryScope", &json!({ "mode": "shared-sometimes" })));
 
     // The discovery document, as the handler serves it.
-    let configuration =
-        permguard_data_plane::temporal::configuration::document("http://host/", "pdp-1");
+    let configuration = permguard_data_plane::temporal::configuration::document(
+        "http://host/",
+        "pdp-1",
+        permguard_core::stages::Describer::detached("data-plane")
+            .header(permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1)
+            .expect("served"),
+    );
     doc.check("Document", &configuration);
+    // A deprecated interface's header, every member present (WP-7.4a).
+    doc.check(
+        "Document",
+        &permguard_data_plane::temporal::configuration::document(
+            "http://host/",
+            "pdp-1",
+            permguard_core::stages::Header::of(
+                &permguard_core::stages::Registered {
+                    id: permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1,
+                    stage: permguard_core::stages::Stage::Deprecated {
+                        sunset: "2027-06-30T00:00:00Z",
+                    },
+                },
+                "data-plane",
+                "0.1.0",
+                permguard_core::lifecycle::Phase::Serving,
+            ),
+        ),
+    );
 
     // GET /events/v1alpha1/signers: the body is built with `json!` in the handler
     // (crates/permguard-data-plane/src/temporal/http.rs, `signers`), from the same types.

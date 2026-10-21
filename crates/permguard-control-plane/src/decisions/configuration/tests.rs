@@ -5,8 +5,22 @@
 
 use super::*;
 
+/// WP-7.4a, after the review: the interface this plane serves here is one the stage registry
+/// serves, or its link would vanish from the plane document and its own document refuse.
+#[test]
+fn the_served_interface_is_in_the_stage_registry() {
+    assert!(permguard_core::stages::served(super::super::read::API).is_ok());
+}
+
 fn parsed(base: &str) -> serde_json::Value {
-    serde_json::to_value(document(base, "test-store")).expect("the document serializes")
+    serde_json::to_value(document(
+        base,
+        "test-store",
+        permguard_core::stages::Describer::detached("control-plane")
+            .header(permguard_core::domains::interface::DECISIONS_NATIVE_V1)
+            .expect("served"),
+    ))
+    .expect("the document serializes")
 }
 
 /// WP-6.3b: every endpoint is the path the router mounts, on the base the plane is reached at.

@@ -400,6 +400,13 @@ is cut.
 
 ### Changed
 
+- **Discovery names the Host, every state and every interface's stage.**
+  The process document at `/.well-known/server-configuration` on the telemetry listener now carries `host_id`, once the Host's identity is open, the Host's `state`, and each plane's `state`, the lifecycle phases as they are when it is asked for.
+  Each plane's own document carries its `state`, and lists every interface it serves with its `stage`, `v1alpha1`, `v1` or `deprecated` with a `sunset`.
+  Every interface document, the native and temporal PDPs', the decision log's and the event store's, starts with a common header, on REST and on the gRPC configuration calls of those that have one: `version`, the product version `/version` publishes, `component`, `state`, `stage` and, when deprecated, `sunset`, and carries `limits`; the native PDP publishes its `max_evaluations`.
+  A retired interface id is refused `400` `interface_retired` and never answered under another id: its discovery document, and a manifest that binds it, which the Data Plane refuses with that code and a push refuses at the Control Plane's load gate, naming it in the refusal's detail.
+  Today `permguard.api.pdp.native.v1` and `permguard.api.decisions.native.v1` are `v1`, `permguard.api.pdp.temporal.v1alpha1` and `permguard.api.events.native.v1alpha1` are `v1alpha1`, and none is deprecated or retired.
+
 - **Legal and incident holds keep a ledger, or a zone's ledgers, from the garbage collection.**
   `permguard host holds add`, `list` and `release` manage holds offline on the `--volume` of a stopped server: each is a file under `host/holds/` naming a ledger, `plane/control/zone/<id>/ledger/<id>`, or a zone, `plane/control/zone/<id>`, by ids, with an owner, a reason and either `--expires-at` or `--review-at`.
   Adding and releasing a hold run in the Host's security-mutation transaction under the new phased audit actions `host.hold.added` and `host.hold.released`, whose records name the hold's id and resource and never its owner or reason.

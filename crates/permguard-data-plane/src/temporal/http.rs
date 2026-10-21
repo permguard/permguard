@@ -53,6 +53,9 @@ pub struct Surface {
     pub disclosure: Disclosure,
     /// The base URL this plane is reached at, for the configuration document.
     pub base_url: String,
+    /// Who serves the interface, its build and its phase: the discovery document's common header
+    /// (WP-7.4a).
+    pub describer: permguard_core::stages::Describer,
     /// This PDP's identifier, as the document publishes it.
     pub pdp: String,
     /// The Host's authorization: `event.submit` on the exact ledger, before anything is read or
@@ -135,8 +138,19 @@ async fn submit(
 }
 
 /// What this interface offers here.
-async fn document(State(surface): State<Surface>) -> Json<configuration::Document> {
-    Json(configuration::document(&surface.base_url, &surface.pdp))
+async fn document(State(surface): State<Surface>) -> Response {
+    match surface
+        .describer
+        .header(permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1)
+    {
+        Ok(header) => Json(configuration::document(
+            &surface.base_url,
+            &surface.pdp,
+            header,
+        ))
+        .into_response(),
+        Err(refused) => error(&refused, surface.disclosure),
+    }
 }
 
 /// The signers refusal for a ledger this plane keeps no journal for, the same on both bindings.

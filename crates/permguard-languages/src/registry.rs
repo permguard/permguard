@@ -219,6 +219,7 @@ pub fn check_manifest_with(
     manifest: &Manifest,
     enabled: &Enabled,
 ) -> Result<(), permguard_objects::manifest::ManifestError> {
+    check_stages(manifest, permguard_core::stages::REGISTRY)?;
     permguard_objects::manifest::check_load_gate(manifest, &provided_runtimes())?;
     permguard_objects::manifest::check_input_contracts(
         manifest,
@@ -230,6 +231,29 @@ pub fn check_manifest_with(
     )?;
     check_enabled(manifest, enabled)?;
     check_profile_runtimes(manifest)
+}
+
+/// Refuses a manifest that binds a retired interface (WP-7.4a): its detail names the id and the
+/// code, `interface_retired`.
+pub fn check_stages(
+    manifest: &Manifest,
+    registry: &[permguard_core::stages::Registered],
+) -> Result<(), permguard_objects::manifest::ManifestError> {
+    let retired = permguard_objects::manifest::retired_interfaces(manifest, registry);
+    if retired.is_empty() {
+        return Ok(());
+    }
+    Err(permguard_objects::manifest::ManifestError {
+        detail: format!(
+            "the manifest binds {}, which is retired ({}): no other id answers for it",
+            retired
+                .iter()
+                .map(|id| format!("`{id}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            permguard_core::codes::common::INTERFACE_RETIRED
+        ),
+    })
 }
 
 /// Refuses a ledger that names a contract this deployment has not opted into.
@@ -708,6 +732,43 @@ mod tests {
     use super::*;
 
     /// A manifest with one partition of `language`, named by one profile of `profile_type`.
+    /// WP-7.4a, owner decision of 2026-10-21: a manifest that binds a retired interface fails the
+    /// load gate with `interface_retired`, its profile's or a partition's, and is never read as
+    /// another id; today's registry retires nothing.
+    #[test]
+    fn a_manifest_binding_a_retired_interface_fails_the_load_gate() {
+        use permguard_core::stages::{REGISTRY, Registered, Stage};
+
+        let native = manifest("cedar", PROFILE_PDP_NATIVE_V1);
+        assert!(check_stages(&native, REGISTRY).is_ok());
+        assert!(check_manifest(&native).is_ok());
+        let retired = [Registered {
+            id: PROFILE_PDP_NATIVE_V1,
+            stage: Stage::Retired,
+        }];
+        let refused = check_stages(&native, &retired).expect_err("a retired profile");
+        assert!(
+            refused.detail.contains("interface_retired"),
+            "{}",
+            refused.detail
+        );
+        assert!(
+            refused.detail.contains(PROFILE_PDP_NATIVE_V1),
+            "{}",
+            refused.detail
+        );
+        // The legacy spelling names the same interface, retired with it.
+        let legacy = manifest("cedar", PROFILE_PDP_V1);
+        assert!(check_stages(&legacy, &retired).is_err());
+        // A partition promising it is refused the same way.
+        let mut promised = manifest("cedar", PROFILE_PDP_NATIVE_V1);
+        promised.profiles.clear();
+        for partition in promised.partitions.values_mut() {
+            partition.interfaces = vec![PROFILE_PDP_NATIVE_V1.to_owned()];
+        }
+        assert!(check_stages(&promised, &retired).is_err());
+    }
+
     fn manifest(language: &str, profile_type: &str) -> Manifest {
         let mut runtimes = BTreeMap::new();
         runtimes.insert(

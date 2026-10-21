@@ -477,6 +477,7 @@ fn surface(plane: &Plane) -> axum::Router {
         submitter: Arc::clone(&plane.submitter),
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
         pdp: "test-plane".to_owned(),
         authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
     })
@@ -932,6 +933,7 @@ async fn an_event_id_conflict_is_409_over_http_and_aborted_over_grpc() {
         submitter: Arc::clone(&plane.submitter),
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
         pdp: "test-plane".to_owned(),
         authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
     };
@@ -1114,6 +1116,76 @@ async fn the_discovery_document_names_the_route_this_plane_answers() {
     assert_eq!(status, StatusCode::OK);
 }
 
+/// WP-7.4a, owner decisions of 2026-10-21: the temporal document's common header is the same over
+/// HTTP and over gRPC, and a retired interface's document is refused `interface_retired`.
+#[tokio::test]
+async fn the_temporal_document_carries_the_header_on_both_transports() {
+    use permguard_core::stages::{Describer, Registered, Stage};
+    use permguard_data_plane::temporal::grpc;
+    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+
+    static RETIRED: &[Registered] = &[Registered {
+        id: permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1,
+        stage: Stage::Retired,
+    }];
+    let plane = plane("header-parity");
+    let response = surface(&plane)
+        .oneshot(
+            Request::builder()
+                .uri(configuration::CONFIGURATION_PATH)
+                .body(Body::empty())
+                .expect("the request builds"),
+        )
+        .await
+        .expect("the surface answers");
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("the body is read")
+        .to_bytes();
+    let over_http: Value = serde_json::from_slice(&bytes).expect("the document parses");
+
+    let api = |describer: Describer| grpc::TemporalPdpApi {
+        submitter: Arc::clone(&plane.submitter),
+        disclosure: Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        describer,
+        pdp: "test-plane".to_owned(),
+        authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+    };
+    let over_grpc = api(Describer::detached("data-plane"))
+        .get_temporal_configuration(tonic::Request::new(
+            permguard_data_plane::v1::GetTemporalConfigurationRequest {},
+        ))
+        .await
+        .expect("answered")
+        .into_inner();
+    assert_eq!(over_http["component"], over_grpc.component.as_str());
+    assert_eq!(over_http["state"], over_grpc.state.as_str());
+    assert_eq!(over_http["stage"], over_grpc.stage.as_str());
+    assert_eq!(over_http["version"], over_grpc.version.as_str());
+    assert_eq!(over_grpc.stage, "v1alpha1");
+    assert!(over_grpc.sunset.is_none() && over_http.get("sunset").is_none());
+    assert_eq!(over_http["limits"], json!({}));
+    assert!(over_grpc.limits.is_empty());
+
+    let refused = api(Describer::detached("data-plane").with_registry(RETIRED))
+        .get_temporal_configuration(tonic::Request::new(
+            permguard_data_plane::v1::GetTemporalConfigurationRequest {},
+        ))
+        .await
+        .expect_err("retired");
+    assert_eq!(refused.code(), tonic::Code::InvalidArgument);
+    assert_eq!(
+        refused
+            .metadata()
+            .get(permguard_core::GRPC_ERROR_CODE)
+            .and_then(|value| value.to_str().ok()),
+        Some("interface_retired")
+    );
+}
+
 /// The two transports are one interface: same request, same answer, same path underneath.
 #[tokio::test]
 async fn grpc_and_http_answer_the_same_submission_identically() {
@@ -1129,6 +1201,7 @@ async fn grpc_and_http_answer_the_same_submission_identically() {
         submitter: Arc::clone(&over_grpc.submitter),
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
         pdp: "test-plane".to_owned(),
         authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
     };
@@ -2685,6 +2758,7 @@ when { Boom::Fail(context.input.document).ok == true };
             submitter: Arc::clone(&plane.submitter),
             disclosure: Disclosure::Minimal,
             base_url: "http://plane.test".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
             pdp: "test-plane".to_owned(),
             authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         });
@@ -2710,6 +2784,7 @@ when { Boom::Fail(context.input.document).ok == true };
             submitter: Arc::clone(&plane.submitter),
             disclosure: Disclosure::Minimal,
             base_url: "http://plane.test".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
             pdp: "test-plane".to_owned(),
             authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         };
@@ -2812,6 +2887,7 @@ when { Boom::Fail(context.input.document).ok == true };
             submitter: Arc::clone(&plane.submitter),
             disclosure: Disclosure::Full,
             base_url: "http://plane.test".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
             pdp: "test-plane".to_owned(),
             authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         };
@@ -2891,6 +2967,7 @@ async fn a_submission_without_event_submit_is_refused_before_anything_is_recorde
         submitter: Arc::clone(&plane.submitter),
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
         pdp: "test-plane".to_owned(),
         authorization: Arc::clone(&closed),
     });
@@ -2908,6 +2985,7 @@ async fn a_submission_without_event_submit_is_refused_before_anything_is_recorde
         submitter: Arc::clone(&plane.submitter),
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
         pdp: "test-plane".to_owned(),
         authorization: closed,
     };

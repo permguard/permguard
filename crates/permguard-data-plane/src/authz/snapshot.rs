@@ -69,6 +69,8 @@ pub enum Refusal {
     /// The request named a profile or a partition the manifest does not
     /// declare.
     Unknown(String),
+    /// The manifest binds a retired interface (WP-7.4a): refused `interface_retired`.
+    Retired(String),
     /// The partition does not meet the operator's assurance floor — a Cedar partition without a
     /// schema under `production`, say. Answered like an incompatible ledger, and never written down
     /// as a block: the block is keyed on the commit alone, and lowering the floor must take effect
@@ -83,6 +85,7 @@ impl std::fmt::Display for Refusal {
             Self::Incompatible(detail)
             | Self::Damaged(detail)
             | Self::Unknown(detail)
+            | Self::Retired(detail)
             | Self::BelowFloor(detail) => {
                 write!(f, "{detail}")
             }
@@ -241,6 +244,12 @@ pub fn head_at(
     let manifest = Manifest::decode(&blob.data)
         .map_err(|error| Refusal::Damaged(format!("the manifest does not decode: {error}")))?;
 
+    // A retired interface first, refused under its own code (WP-7.4a): never served, never
+    // read as another id. `check_manifest_with` asks again for the paths that call it alone;
+    // here it is asked first so the refusal keeps `interface_retired` rather than the gate's.
+    if let Err(error) = registry::check_stages(&manifest, permguard_core::stages::REGISTRY) {
+        return Err(Refusal::Retired(error.detail));
+    }
     // The gate, before anything is compiled or answered: the engine this build carries, and the
     // input contracts it implements. Both, from one call, so neither can be forgotten here.
     registry::check_manifest_with(&manifest, enabled).map_err(|error| {

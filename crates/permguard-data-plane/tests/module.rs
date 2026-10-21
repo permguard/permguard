@@ -257,6 +257,38 @@ fn the_temporal_interface_needs_both_switches_and_says_so_when_it_has_one() {
 /// A discovery document is a promise about what answers here. Listing an interface a client then
 /// cannot reach is the failure the three-layer discovery chain exists to prevent, so the link and
 /// the route are decided by one predicate rather than by two that could drift.
+/// WP-7.4a, owner decision of 2026-10-21: the plane document carries the plane's phase as it is
+/// when it is asked for, and lists the native PDP with its stage.
+#[tokio::test]
+async fn a_plane_document_carries_its_phase() {
+    use permguard_core::lifecycle::{Kind, Phase};
+
+    let config = deployed();
+    let storage = MemoryStorage::new();
+    let audit = RecordingAuditSink::new();
+    let server = ServerContext::new(identity(), &config, &storage, &audit);
+    let context = PlaneContext::new(&server, "data");
+    let routes = permguard_data_plane::module().http_routes(&context);
+    let state = |document: &str| -> serde_json::Value {
+        serde_json::from_str::<serde_json::Value>(document).expect("JSON")["state"].clone()
+    };
+
+    let (_, before) = get(routes.clone(), "/.well-known/server-configuration").await;
+    server
+        .health()
+        .lifecycle()
+        .enter("data", Kind::Plane, true, Phase::Serving);
+    let (status, after) = get(routes, "/.well-known/server-configuration").await;
+    assert_eq!(status, 200);
+    assert_ne!(state(&before), state(&after), "read when asked: {before}");
+    assert_eq!(state(&after), "serving");
+    let document: serde_json::Value = serde_json::from_str(&after).expect("JSON");
+    assert_eq!(
+        document["interfaces"][permguard_languages::request::INTERFACE]["stage"],
+        "v1"
+    );
+}
+
 #[tokio::test]
 async fn discovery_lists_the_temporal_interface_only_where_it_is_served() {
     use permguard_core::config::SETTING_EVENTS_ENABLED;

@@ -61,6 +61,29 @@ pub fn interface_of(r#type: &str) -> &str {
     }
 }
 
+/// The interface ids `manifest` binds, its profiles' and its partitions', that `registry` holds as
+/// retired (WP-7.4a): what the load gate refuses `interface_retired`, never serving them under
+/// another id.
+pub fn retired_interfaces(
+    manifest: &Manifest,
+    registry: &[permguard_core::stages::Registered],
+) -> Vec<String> {
+    let mut bound: Vec<&str> = manifest
+        .profiles
+        .values()
+        .map(|profile| interface_of(&profile.r#type))
+        .chain(
+            manifest
+                .partitions
+                .values()
+                .flat_map(|partition| partition.interfaces.iter().map(|id| interface_of(id))),
+        )
+        .collect();
+    bound.sort_unstable();
+    bound.dedup();
+    permguard_core::stages::retired_in(registry, bound)
+}
+
 /// The partitions of `manifest` that list no interfaces, the legacy inference applying to
 /// them: what a load gate under `interfaces.explicit` refuses (WP-7.1).
 pub fn implicit_partitions(manifest: &Manifest) -> Vec<&str> {

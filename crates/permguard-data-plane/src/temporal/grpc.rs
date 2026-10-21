@@ -40,6 +40,9 @@ pub struct TemporalPdpApi {
     pub submitter: std::sync::Arc<Submitter>,
     pub disclosure: Disclosure,
     pub base_url: String,
+    /// Who serves the interface, its build and its phase: the discovery document's common header
+    /// (WP-7.4a).
+    pub describer: permguard_core::stages::Describer,
     pub pdp: String,
     /// The Host's authorization: `event.submit` on the exact ledger (WP-6.2a).
     pub authorization: std::sync::Arc<permguard_host::composition::Authorization>,
@@ -153,7 +156,11 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
         &self,
         _request: Request<GetTemporalConfigurationRequest>,
     ) -> Result<Response<GetTemporalConfigurationResponse>, Status> {
-        let document = configuration::document(&self.base_url, &self.pdp);
+        let header = self
+            .describer
+            .header(permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1)
+            .map_err(|refused| status_of(&refused, self.disclosure))?;
+        let document = configuration::document(&self.base_url, &self.pdp, header);
 
         Ok(Response::new(GetTemporalConfigurationResponse {
             r#interface: document.interface,
@@ -169,6 +176,12 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
                 ledger: document.store_scope.ledger,
                 profile: document.store_scope.profile,
             }),
+            version: document.header.version,
+            component: document.header.component,
+            state: document.header.state,
+            stage: document.header.stage,
+            sunset: document.header.sunset,
+            limits: document.limits.into_iter().collect(),
         }))
     }
 }

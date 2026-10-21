@@ -49,6 +49,7 @@ pub mod realm;
 pub mod redact;
 pub mod secrets;
 pub mod server;
+pub mod stages;
 pub mod storage;
 pub mod time;
 pub mod tls;

@@ -63,6 +63,9 @@ pub const FILTERS: [&str; 10] = [
 pub struct Document {
     /// The contract and its version.
     pub interface: String,
+    /// The common header (WP-7.4a): `version`, `component`, `state`, `stage` and `sunset`.
+    #[serde(flatten)]
+    pub header: permguard_core::stages::Header,
     /// This store's identifier.
     pub store: String,
     pub endpoints: Endpoints,
@@ -137,11 +140,17 @@ pub struct Offsets {
 }
 
 /// The document for a plane reached at `base`.
-pub fn document(base: &str, store: &str, event_types: &[&str]) -> Document {
+pub fn document(
+    base: &str,
+    store: &str,
+    event_types: &[&str],
+    header: permguard_core::stages::Header,
+) -> Document {
     let base = base.trim_end_matches('/');
 
     Document {
         interface: super::read::API.to_owned(),
+        header,
         store: store.to_owned(),
         endpoints: Endpoints {
             // Built from the constants the router mounts, so the two cannot drift.
@@ -175,11 +184,21 @@ mod tests {
 
     use super::*;
 
+    /// WP-7.4a, after the review: the interface this plane serves here is one the stage registry
+    /// serves, or its link would vanish from the plane document and its own document refuse.
+    #[test]
+    fn the_served_interface_is_in_the_stage_registry() {
+        assert!(permguard_core::stages::served(super::super::read::API).is_ok());
+    }
+
     fn parsed(base: &str) -> serde_json::Value {
         serde_json::to_value(document(
             base,
             "test-store",
             &[permguard_languages::event::EVENT_TYPE],
+            permguard_core::stages::Describer::detached("control-plane")
+                .header(permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1)
+                .expect("served"),
         ))
         .expect("the document serializes")
     }

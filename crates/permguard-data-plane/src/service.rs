@@ -57,6 +57,7 @@ fn discovery_routes(context: &PlaneContext<'_>) -> Router {
     struct Discovery {
         document: permguard_server::plane::PlaneConfiguration,
         keys: Option<std::sync::Arc<dyn permguard_core::keys::PublicSet>>,
+        health: permguard_core::PlaneHealth,
     }
 
     /// Serialized by the response type, not by hand. A document that could not be rendered is a
@@ -64,7 +65,10 @@ fn discovery_routes(context: &PlaneContext<'_>) -> Router {
     async fn configuration(
         State(state): State<Discovery>,
     ) -> Json<permguard_server::plane::PlaneConfiguration> {
-        Json(state.document)
+        // The phase as it is now, not as it was when the document was composed (WP-7.4a).
+        let mut document = state.document;
+        document.state = state.health.phase().as_str().to_owned();
+        Json(document)
     }
 
     /// Three states, three answers. A composed ring that reads is the JWKS with the cache header
@@ -115,6 +119,7 @@ fn discovery_routes(context: &PlaneContext<'_>) -> Router {
     let state = Discovery {
         document: data_plane_configuration(context),
         keys: crate::handles::public_keys(context),
+        health: context.health(),
     };
 
     Router::new()
@@ -150,22 +155,26 @@ fn data_plane_configuration(
         context.config(),
         permguard_server::plane::PlaneId::Data,
     );
-    configuration.interfaces.insert(
-        permguard_languages::request::INTERFACE.to_owned(),
-        permguard_server::plane::InterfaceLink {
-            configuration: format!("{base}{}", permguard_languages::request::CONFIGURATION_PATH),
-        },
-    );
+    if let Some(link) = permguard_server::plane::InterfaceLink::of(
+        permguard_languages::request::INTERFACE,
+        format!("{base}{}", permguard_languages::request::CONFIGURATION_PATH),
+    ) {
+        configuration
+            .interfaces
+            .insert(permguard_languages::request::INTERFACE.to_owned(), link);
+    }
     // The second interface is listed only when it is served. A plane's discovery document is a
     // promise about what answers here, and listing an interface a caller then cannot reach is
     // exactly the failure the three-layer chain exists to prevent.
-    if temporal::served(context.config()) {
-        configuration.interfaces.insert(
-            permguard_languages::temporal::INTERFACE.to_owned(),
-            permguard_server::plane::InterfaceLink {
-                configuration: format!("{base}{}", temporal::configuration::CONFIGURATION_PATH),
-            },
-        );
+    if temporal::served(context.config())
+        && let Some(link) = permguard_server::plane::InterfaceLink::of(
+            permguard_languages::temporal::INTERFACE,
+            format!("{base}{}", temporal::configuration::CONFIGURATION_PATH),
+        )
+    {
+        configuration
+            .interfaces
+            .insert(permguard_languages::temporal::INTERFACE.to_owned(), link);
     }
 
     configuration
@@ -183,6 +192,7 @@ fn temporal_routes(context: &PlaneContext<'_>) -> Router {
         disclosure: context.config().error_detail(),
         pdp: base_url.clone(),
         base_url,
+        describer: permguard_core::stages::Describer::of_plane(context, "data-plane"),
         authorization: crate::handles::authorization(context),
     })
 }
@@ -230,6 +240,7 @@ impl PlaneModule for DataPlaneModule {
                 decider: authz::decider(context),
                 disclosure: context.config().error_detail(),
                 base_url: authz::base_url(context),
+                describer: permguard_core::stages::Describer::of_plane(context, "data-plane"),
                 authorization: crate::handles::authorization(context),
             }))
             // The temporal interface, when this deployment serves one. Merged rather than always
@@ -315,6 +326,7 @@ impl PlaneModule for DataPlaneModule {
             decider: authz::decider(context),
             disclosure: context.config().error_detail(),
             base_url: authz::base_url(context),
+            describer: permguard_core::stages::Describer::of_plane(context, "data-plane"),
             authorization: crate::handles::authorization(context),
         }));
         // And the temporal interface, on the same terms and only when it is served.
@@ -324,6 +336,7 @@ impl PlaneModule for DataPlaneModule {
                     submitter,
                     disclosure: context.config().error_detail(),
                     base_url: authz::base_url(context),
+                    describer: permguard_core::stages::Describer::of_plane(context, "data-plane"),
                     pdp: authz::base_url(context),
                     authorization: crate::handles::authorization(context),
                 },

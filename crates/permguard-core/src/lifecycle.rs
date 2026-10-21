@@ -212,6 +212,9 @@ struct Registry {
     /// The Planes whose start the Host finished: only these move on by themselves once nothing is
     /// awaited.
     settled: std::collections::BTreeSet<String>,
+    /// The Host's id, UUID text, once its identity is open (WP-7.4a): what the process document
+    /// names.
+    host_id: Option<String>,
 }
 
 /// The name the Host reports under.
@@ -223,6 +226,16 @@ impl Lifecycle {
         let lifecycle = Self::default();
         lifecycle.enter(HOST, Kind::Host, true, Phase::Bootstrap);
         lifecycle
+    }
+
+    /// Records the Host's id once its identity is open (WP-7.4a).
+    pub fn set_host_id(&self, host_id: impl Into<String>) {
+        self.lock().host_id = Some(host_id.into());
+    }
+
+    /// The Host's id, when its identity is open.
+    pub fn host_id(&self) -> Option<String> {
+        self.lock().host_id.clone()
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Registry> {

@@ -202,6 +202,15 @@ message GetConfigurationResponse {
   // Every entry is implemented and tested here. A capability is a promise.
   repeated string capabilities = 4;
   StoreScope store_scope = 5;
+  // The common header (WP-7.4a): the product version `/version` publishes, the serving
+  // component, its lifecycle phase, the interface's stage, and its sunset when deprecated.
+  string version = 6;
+  string component = 7;
+  string state = 8;
+  string stage = 9;
+  optional string sunset = 10;
+  // The interface's ceilings, by name; empty when it publishes none.
+  map<string, uint64> limits = 11;
 }
 
 // ─── permguard.api.pdp.temporal.v1alpha1 ─────────────────────────────────────
@@ -377,4 +386,13 @@ message GetTemporalConfigurationResponse {
   repeated string event_types = 4;
   repeated string capabilities = 5;
   StoreScope store_scope = 6;
+  // The common header (WP-7.4a): the product version `/version` publishes, the serving
+  // component, its lifecycle phase, the interface's stage, and its sunset when deprecated.
+  string version = 7;
+  string component = 8;
+  string state = 9;
+  string stage = 10;
+  optional string sunset = 11;
+  // The interface's ceilings, by name; empty when it publishes none.
+  map<string, uint64> limits = 12;
 }

@@ -46,6 +46,9 @@ pub struct Surface {
     pub disclosure: Disclosure,
     /// The base URL this plane is reached at, for the configuration document.
     pub base_url: String,
+    /// Who serves the interface, its build and its phase: the discovery document's common header
+    /// (WP-7.4a).
+    pub describer: permguard_core::stages::Describer,
     /// The Host's authorization: `decision.evaluate` on the exact ledger, before any policy runs.
     pub authorization: std::sync::Arc<permguard_host::composition::Authorization>,
 }
@@ -164,8 +167,19 @@ async fn answer(
 ///
 /// Answered as a value: the response type serializes it, so there is no path where a failure to
 /// render becomes a `200` carrying an empty object.
-async fn pdp_configuration(State(surface): State<Surface>) -> Json<configuration::Configuration> {
-    Json(configuration::configuration(&surface.base_url))
+async fn pdp_configuration(State(surface): State<Surface>) -> Response {
+    match surface
+        .describer
+        .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+    {
+        Ok(header) => Json(configuration::configuration(
+            &surface.base_url,
+            header,
+            surface.decider.max_evaluations(),
+        ))
+        .into_response(),
+        Err(refused) => error(&refused, surface.disclosure),
+    }
 }
 
 /// Turns a refusal into the answer the contract names.

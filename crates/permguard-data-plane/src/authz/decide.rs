@@ -336,6 +336,12 @@ impl Loading {
                 ErrorClass::Validation,
                 permguard_core::codes::pdp_native::PROFILE_UNKNOWN,
             ),
+            // A retired interface, refused under its own code and never served (WP-7.4a).
+            Refusal::Retired(_) => (
+                permguard_core::codes::common::INTERFACE_RETIRED,
+                ErrorClass::Validation,
+                permguard_core::codes::common::INTERFACE_RETIRED,
+            ),
         };
         self.metrics.count(
             &super::measure::REFUSALS,
@@ -490,6 +496,11 @@ enum AuditTarget {
 }
 
 impl Decider {
+    /// The most evaluations one boxcar request carries (WP-7.4a, published by discovery).
+    pub fn max_evaluations(&self) -> usize {
+        self.max_evaluations
+    }
+
     /// Builds the decider from the plane's configuration.
     pub fn new(
         root: PathBuf,

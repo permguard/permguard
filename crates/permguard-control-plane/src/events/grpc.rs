@@ -296,8 +296,16 @@ impl EventLog for EventFacade {
         &self,
         _request: Request<GetEventConfigurationRequest>,
     ) -> Result<Response<GetEventConfigurationResponse>, Status> {
-        let document =
-            super::configuration::document(&self.base_url, &self.base_url, &self.accepted_types());
+        let header = self
+            .describer
+            .header(permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1)
+            .map_err(|refused| crate::wire::grpc_error(&refused, self.disclosure))?;
+        let document = super::configuration::document(
+            &self.base_url,
+            &self.base_url,
+            &self.accepted_types(),
+            header,
+        );
 
         Ok(Response::new(GetEventConfigurationResponse {
             r#interface: document.interface,
@@ -315,6 +323,18 @@ impl EventLog for EventFacade {
                 format: document.offsets.format,
                 editable: document.offsets.editable,
             }),
+            version: document.header.version,
+            component: document.header.component,
+            state: document.header.state,
+            stage: document.header.stage,
+            sunset: document.header.sunset,
+            limits: [
+                ("max_records".to_owned(), document.limits.max_records),
+                ("max_bytes".to_owned(), document.limits.max_bytes),
+                ("max_examined".to_owned(), document.limits.max_examined),
+            ]
+            .into_iter()
+            .collect(),
         }))
     }
 }

@@ -67,10 +67,25 @@
           "configuration": {
             "type": "string",
             "description": "The address of that interface's own configuration document."
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "v1alpha1",
+              "v1",
+              "deprecated"
+            ],
+            "description": "The interface's stage (WP-7.4a); a retired one is not listed."
+          },
+          "sunset": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a deprecated interface stops being served; present only then."
           }
         },
         "required": [
-          "configuration"
+          "configuration",
+          "stage"
         ],
         "additionalProperties": false,
         "description": "Where one interface publishes what it offers.",
@@ -83,6 +98,20 @@
           "plane": {
             "type": "string",
             "const": "control-plane"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The lifecycle phase when the document was answered (WP-7.4a)."
           },
           "transports": {
             "type": "object",
@@ -176,6 +205,7 @@
         },
         "required": [
           "plane",
+          "state",
           "transports",
           "jwks_uri",
           "notp",
@@ -195,6 +225,20 @@
             "type": "string",
             "const": "data-plane"
           },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The lifecycle phase when the document was answered (WP-7.4a)."
+          },
           "jwks_uri": {
             "type": "string",
             "description": "Where this plane's signing keys are published."
@@ -213,6 +257,7 @@
         },
         "required": [
           "plane",
+          "state",
           "jwks_uri"
         ],
         "additionalProperties": false,
@@ -223,6 +268,20 @@
       "PlaneLink": {
         "type": "object",
         "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The lifecycle phase when the document was answered (WP-7.4a)."
+          },
           "server_configuration": {
             "type": "string",
             "description": "The plane's own well-known document."
@@ -232,7 +291,9 @@
             "description": "For a plane serving only gRPC, its endpoint instead."
           }
         },
-        "required": [],
+        "required": [
+          "state"
+        ],
         "additionalProperties": false,
         "description": "Where one plane publishes its own document; at least one member is present.",
         "x-grpc-message": null,
@@ -241,6 +302,24 @@
       "ServerConfiguration": {
         "type": "object",
         "properties": {
+          "host_id": {
+            "type": "string",
+            "description": "The Host's id, UUID text in lowercase; absent while the Host has no identity (WP-7.4a)."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The Host's lifecycle phase when the document was answered (WP-7.4a)."
+          },
           "planes": {
             "type": "object",
             "additionalProperties": {
@@ -269,6 +348,7 @@
           }
         },
         "required": [
+          "state",
           "planes",
           "assurance",
           "peer_sessions",

@@ -1362,6 +1362,7 @@ mod surface {
             decider: decider(root),
             disclosure: Disclosure::Full,
             base_url: "http://127.0.0.1:7443".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
         })
     }
 
@@ -1839,6 +1840,7 @@ mod grpc_socket {
             decider: decider(root),
             disclosure: Disclosure::Full,
             base_url: format!("http://{address}"),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
         };
 
         std::thread::spawn(move || {
@@ -1919,8 +1921,14 @@ mod grpc_socket {
         // The HTTP document the same plane would serve, built by the one function both call.
         let base = over_grpc["pdp"].as_str().expect("a pdp identifier");
         let over_http: Value = serde_json::from_str(
-            &permguard_data_plane::authz::configuration::document(base)
-                .expect("the configuration serializes"),
+            &permguard_data_plane::authz::configuration::document(
+                base,
+                permguard_core::stages::Describer::detached("data-plane")
+                    .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+                    .expect("served"),
+                256,
+            )
+            .expect("the configuration serializes"),
         )
         .expect("it is JSON");
 
@@ -2164,12 +2172,14 @@ mod parity {
                 decider: decider.clone(),
                 disclosure: Disclosure::Full,
                 base_url: base_url.clone(),
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             }),
             tonic::service::Routes::new(served(PdpApi {
                 authorization: permissive(),
                 decider,
                 disclosure: Disclosure::Full,
                 base_url,
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             })),
         );
         let over_http = pdp(&served.http);
@@ -2242,6 +2252,7 @@ mod parity {
             decider: decider(&root),
             disclosure: Disclosure::Full,
             base_url: "http://127.0.0.1:7443".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
         };
         for (case, request) in [
             (
@@ -2616,12 +2627,14 @@ mod indeterminate {
                 decider: decider.clone(),
                 disclosure: Disclosure::Full,
                 base_url: base_url.clone(),
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             }),
             tonic::service::Routes::new(served(PdpApi {
                 authorization: permissive(),
                 decider,
                 disclosure: Disclosure::Full,
                 base_url,
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             })),
         );
         let pdp = |url: &str| {
@@ -2679,12 +2692,14 @@ mod indeterminate {
                 decider: decider.clone(),
                 disclosure: Disclosure::Full,
                 base_url: base_url.clone(),
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             }),
             tonic::service::Routes::new(served(PdpApi {
                 authorization: permissive(),
                 decider,
                 disclosure: Disclosure::Full,
                 base_url,
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             })),
         );
         let pdp = |url: &str| {

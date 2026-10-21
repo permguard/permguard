@@ -74,6 +74,9 @@ pub struct DecisionFacade {
     pub catalog: Option<Arc<dyn permguard_core::catalog::Catalog>>,
     /// Where this plane is reached, what its discovery document's endpoints are built on.
     pub base_url: String,
+    /// Who serves the interface, its build and its phase: the discovery document's common header
+    /// (WP-7.4a).
+    pub describer: permguard_core::stages::Describer,
     /// The Host's authorization, every evidence read decides with before it looks anything up
     /// (WP-6.3c).
     pub authorization: Arc<permguard_host::composition::Authorization>,
@@ -439,11 +442,19 @@ pub(crate) fn routes(facade: DecisionFacade) -> Router {
 
 /// What this plane offers of the decision log interface (WP-6.3b). Unauthenticated, like every
 /// layer of the discovery chain: it says what the shapes are, never what is inside them.
-async fn document(State(facade): State<DecisionFacade>) -> Json<super::configuration::Document> {
-    Json(super::configuration::document(
-        &facade.base_url,
-        &facade.base_url,
-    ))
+async fn document(State(facade): State<DecisionFacade>) -> Response {
+    match facade
+        .describer
+        .header(permguard_core::domains::interface::DECISIONS_NATIVE_V1)
+    {
+        Ok(header) => Json(super::configuration::document(
+            &facade.base_url,
+            &facade.base_url,
+            header,
+        ))
+        .into_response(),
+        Err(refused) => crate::wire::http_error(&refused, facade.disclosure),
+    }
 }
 
 /// What a producer is told about its batch.
@@ -1058,10 +1069,35 @@ mod openapi {
     #[test]
     fn test_the_decision_wire_types_match_openapi_evidence_decisions() {
         let doc = Document::load("evidence-decisions.json");
+        // A deprecated interface's header, every member present (WP-7.4a).
+        doc.check(
+            "ConfigurationDocument",
+            &super::super::configuration::document(
+                "http://host",
+                "store",
+                permguard_core::stages::Header::of(
+                    &permguard_core::stages::Registered {
+                        id: permguard_core::domains::interface::DECISIONS_NATIVE_V1,
+                        stage: permguard_core::stages::Stage::Deprecated {
+                            sunset: "2027-06-30T00:00:00Z",
+                        },
+                    },
+                    "control-plane",
+                    "0.1.0",
+                    permguard_core::lifecycle::Phase::Serving,
+                ),
+            ),
+        );
         // The discovery document (WP-6.3b).
         doc.check(
             "ConfigurationDocument",
-            &super::super::configuration::document("http://host", "store"),
+            &super::super::configuration::document(
+                "http://host",
+                "store",
+                permguard_core::stages::Describer::detached("control-plane")
+                    .header(permguard_core::domains::interface::DECISIONS_NATIVE_V1)
+                    .expect("served"),
+            ),
         );
         let held = records();
         let values: Vec<Value> = held
@@ -1586,6 +1622,7 @@ mod strict {
             host: None,
             catalog: None,
             base_url: String::new(),
+            describer: permguard_core::stages::Describer::detached("control-plane"),
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),

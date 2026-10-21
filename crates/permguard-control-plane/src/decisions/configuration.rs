@@ -49,6 +49,9 @@ pub const READ_PARAMETERS: [&str; 9] = [
 pub struct Document {
     /// The contract and its version.
     pub interface: String,
+    /// The common header (WP-7.4a): `version`, `component`, `state`, `stage` and `sunset`.
+    #[serde(flatten)]
+    pub header: permguard_core::stages::Header,
     /// This store's identifier.
     pub store: String,
     pub endpoints: Endpoints,
@@ -94,11 +97,12 @@ pub struct Limits {
 }
 
 /// The document for a plane reached at `base`.
-pub fn document(base: &str, store: &str) -> Document {
+pub fn document(base: &str, store: &str, header: permguard_core::stages::Header) -> Document {
     let base = base.trim_end_matches('/');
 
     Document {
         interface: super::read::API.to_owned(),
+        header,
         store: store.to_owned(),
         endpoints: Endpoints {
             // Built from the constants the router mounts, so the two cannot drift.

@@ -542,6 +542,7 @@ fn facade(fixture: &Fixture) -> crate::events::http::EventFacade {
         disclosure: permguard_core::Disclosure::Full,
         metrics: permguard_core::Metrics::none(),
         base_url: String::new(),
+        describer: permguard_core::stages::Describer::detached("control-plane"),
         authorization: crate::evidence::permissive(),
     }
 }

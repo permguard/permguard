@@ -1488,7 +1488,7 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": null,
-        "x-grpc-note": "REST-only: the configuration document's `limits` member has no field in permguard.control.v1.GetEventConfigurationResponse."
+        "x-grpc-note": "gRPC carries the ceilings as the `limits` map of GetEventConfigurationResponse, by name (WP-7.4a)."
       },
       "Endpoints": {
         "type": "object",
@@ -1558,6 +1558,51 @@
             "type": "string",
             "x-grpc-field": "interface"
           },
+          "version": {
+            "type": "string",
+            "description": "The product version `/version` publishes; empty where the deployment does not disclose its build (WP-7.4a).",
+            "x-grpc-field": "version"
+          },
+          "component": {
+            "type": "string",
+            "enum": [
+              "control-plane",
+              "data-plane"
+            ],
+            "description": "The component serving the interface.",
+            "x-grpc-field": "component"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The serving component's lifecycle phase when the document was answered.",
+            "x-grpc-field": "state"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "v1alpha1",
+              "v1",
+              "deprecated"
+            ],
+            "description": "The interface's stage; a retired one has no document and is refused `interface_retired`.",
+            "x-grpc-field": "stage"
+          },
+          "sunset": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a deprecated interface stops being served; present only then.",
+            "x-grpc-field": "sunset"
+          },
           "store": {
             "type": "string",
             "description": "This store's identifier.",
@@ -1606,8 +1651,7 @@
           },
           "limits": {
             "$ref": "#/components/schemas/Limits",
-            "x-grpc-field": null,
-            "x-grpc-note": "REST-only: not a field of GetEventConfigurationResponse."
+            "x-grpc-field": "limits"
           }
         },
         "required": [
@@ -1619,7 +1663,11 @@
           "offsets",
           "producer_classes",
           "filters",
-          "limits"
+          "limits",
+          "version",
+          "component",
+          "state",
+          "stage"
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.control.v1.GetEventConfigurationResponse",

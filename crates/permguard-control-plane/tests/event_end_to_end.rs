@@ -255,6 +255,7 @@ fn control(tag: &str, keys: &DirectoryKeyManager) -> Arc<Wire> {
             disclosure: Disclosure::Full,
             metrics: Metrics::none(),
             base_url: "http://127.0.0.1:6443".to_owned(),
+            describer: permguard_core::stages::Describer::detached("control-plane"),
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),

@@ -674,6 +674,51 @@
             "type": "string",
             "x-grpc-field": "interface"
           },
+          "version": {
+            "type": "string",
+            "description": "The product version `/version` publishes; empty where the deployment does not disclose its build (WP-7.4a).",
+            "x-grpc-field": "version"
+          },
+          "component": {
+            "type": "string",
+            "enum": [
+              "control-plane",
+              "data-plane"
+            ],
+            "description": "The component serving the interface.",
+            "x-grpc-field": "component"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The serving component's lifecycle phase when the document was answered.",
+            "x-grpc-field": "state"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "v1alpha1",
+              "v1",
+              "deprecated"
+            ],
+            "description": "The interface's stage; a retired one has no document and is refused `interface_retired`.",
+            "x-grpc-field": "stage"
+          },
+          "sunset": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a deprecated interface stops being served; present only then.",
+            "x-grpc-field": "sunset"
+          },
           "pdp": {
             "type": "string",
             "x-grpc-field": "pdp"
@@ -692,6 +737,10 @@
           "store_scope": {
             "$ref": "#/components/schemas/StoreScope",
             "x-grpc-field": "store_scope"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/Limits",
+            "x-grpc-field": "limits"
           }
         },
         "required": [
@@ -699,7 +748,12 @@
           "pdp",
           "endpoints",
           "capabilities",
-          "store_scope"
+          "store_scope",
+          "version",
+          "component",
+          "state",
+          "stage",
+          "limits"
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.data.v1.GetConfigurationResponse"
@@ -756,6 +810,23 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.data.v1.StoreScope"
+      },
+      "Limits": {
+        "type": "object",
+        "description": "The ceilings of one request (WP-7.4a).",
+        "properties": {
+          "max_evaluations": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The most evaluations one boxcar request carries; more is `too_many_evaluations`."
+          }
+        },
+        "required": [
+          "max_evaluations"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC carries the ceilings as the `limits` map of GetConfigurationResponse, by name."
       }
     }
   },
