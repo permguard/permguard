@@ -512,6 +512,21 @@ pub enum Command {
         #[command(subcommand)]
         action: EventsAction,
     },
+    /// Walk the discovery chain from one address: the process, each plane, each interface.
+    ///
+    /// The address is a process's telemetry listener or a plane's public one; every link is
+    /// followed over HTTP or HTTPS, the operator's token never sent. A link that does not answer
+    /// is shown and makes the exit 69; a retired interface is shown, not an error.
+    #[command(
+        after_help = "Examples:\n  permguard discover http://127.0.0.1:5443\n  permguard discover https://control.example:6443 -o json"
+    )]
+    Discover {
+        /// The address to start from: `scheme://host:port`, HTTP or HTTPS.
+        url: String,
+        /// How long to wait for one request, in seconds.
+        #[arg(long, default_value = "5", value_name = "SECONDS")]
+        timeout: u64,
+    },
     /// Report what each Permguard plane is, and whether it is willing to be sent work.
     ///
     /// Every plane is probed and reported, whether it answers or not: a plane that is down is a

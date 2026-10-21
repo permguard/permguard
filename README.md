@@ -607,6 +607,7 @@ Use the installed CLI:
 ```sh
 permguard --help                   # CLI help
 permguard inspect                  # inspect local planes
+permguard discover http://127.0.0.1:5443  # walk the discovery chain from an address
 permguard config show              # show CLI configuration
 permguard completion zsh           # shell completions
 ```

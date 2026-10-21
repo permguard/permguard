@@ -42,6 +42,7 @@ mod commands;
 mod config;
 mod confirm;
 mod decision_out;
+mod discover;
 mod event_out;
 mod failure;
 mod inspect;
@@ -223,6 +224,9 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
             action,
         } => commands::host::host_command(&globals, server_config.as_deref(), action, &trace),
         Command::Inspect { timeout } => inspect_command(&globals, timeout, &trace),
+        Command::Discover { url, timeout } => {
+            commands::discover::discover_command(&globals, &url, timeout, &trace)
+        }
         Command::Init { name, language } => {
             let languages: Vec<&str> = language.iter().map(String::as_str).collect();
             workspace_command(
@@ -321,6 +325,7 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Apply { .. } => ("apply", Class::Control),
         Command::Verify => ("verify", Class::Control),
         Command::Inspect { .. } => ("inspect", Class::Planes),
+        Command::Discover { .. } => ("discover", Class::Local),
         Command::Host { action, .. } => {
             let class = match action {
                 HostAction::Identity {

@@ -48,10 +48,12 @@ pub struct PlaneInfo {
 }
 
 /// How a plane says it is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlaneHealth {
     pub live: bool,
     pub ready: bool,
+    /// Its lifecycle phase (WP-7.4b).
+    pub state: String,
 }
 
 /// The local reason a failed call is reported under (TC-1): a deadline, an endpoint that could
@@ -247,6 +249,7 @@ impl GrpcChannel {
                     .map(|health| PlaneHealth {
                         live: health.live,
                         ready: health.ready,
+                        state: health.state,
                     });
                 Ok((
                     PlaneInfo {
@@ -271,6 +274,7 @@ impl GrpcChannel {
                     .map(|health| PlaneHealth {
                         live: health.live,
                         ready: health.ready,
+                        state: health.state,
                     });
                 Ok((
                     PlaneInfo {

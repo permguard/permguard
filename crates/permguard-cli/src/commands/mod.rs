@@ -8,6 +8,7 @@ pub mod catalog;
 pub mod check;
 pub mod config;
 pub mod decisions;
+pub mod discover;
 pub mod events;
 pub mod host;
 pub mod host_proof;

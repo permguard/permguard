@@ -19,6 +19,13 @@ is cut.
 
 ### Added
 
+- **`permguard discover <url>` walks the discovery chain, and `inspect` reports states and stages.**
+  `discover` starts from the address of a process's telemetry listener or of a plane, and follows each link over HTTP or HTTPS: the process document's `host_id`, the Host's state and each plane, each plane's state and interfaces, and each interface document's `version`, `component`, `state`, `stage`, `sunset` and `limits`.
+  It never sends the operator's token, discovery being unauthenticated and a link able to name another host, and presents the operator's client certificate to the start address's host alone; a plane served only over gRPC is listed by its endpoint and not followed.
+  A hostile document cannot hold the walk: at most 64 planes and 256 interfaces per plane are followed, an address already read is not read again, and every string a server sent is printed escaped.
+  A link that does not answer is shown and the command exits `69`, and an address it does not walk is a usage error, `64`; a retired interface is shown as retired, and a deprecated one is warned with its sunset.
+  `inspect` now reports each plane's `state` and, over HTTP, the interfaces its document lists with their `stage`, warning about a deprecated one; its exit codes are unchanged.
+
 - **Decision signers of the Host's runs, the decision log's discovery document, and offline `decisions verify`.**
   `GET /decisions/v1/signers` and `GetSigners` answer a Host run named by `pdp`, its `host_id`, and `instance`, its run, in lowercase hex, from the signers the Host's stream observed; a pair no stream holds is `404` `stream_unknown`.
   The control plane publishes `/.well-known/permguard-decisions-native-v1-configuration` for `permguard.api.decisions.native.v1`: its endpoints, capabilities, offsets, read parameters and limits; its plane document lists it beside the event log's.

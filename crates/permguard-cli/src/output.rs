@@ -31,6 +31,26 @@ pub enum OutputFormat {
 /// encoding, and neither wants a hand-written implementation. The terminal is the only format that
 /// is a *presentation* rather than an encoding — field order, alignment, what to leave out when a
 /// value would be meaningless — so it is the only one a report writes itself.
+/// `text` as a terminal may show it when a server wrote it: every control character escaped, so
+/// an escape sequence or a carriage return in a remote string cannot rewrite what the operator
+/// reads (WP-7.4b, after the review).
+pub fn printable(text: &str) -> std::borrow::Cow<'_, str> {
+    if text.chars().any(char::is_control) {
+        text.chars()
+            .map(|c| {
+                if c.is_control() {
+                    c.escape_debug().to_string()
+                } else {
+                    c.to_string()
+                }
+            })
+            .collect::<String>()
+            .into()
+    } else {
+        text.into()
+    }
+}
+
 pub trait Report: Serialize {
     /// Writes the human-facing rendering of this answer.
     fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()>;
