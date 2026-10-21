@@ -19,6 +19,15 @@ is cut.
 
 ### Added
 
+- **Dogwood's warm state is bounded by bytes, its replays by a plan, and its providers are refused from `production` (TL-5a).**
+  From the `production` assurance profile upward a Dogwood partition carrying `providers.json` or a `.rhai` program is refused at load (DOGWOOD-01).
+  Upstream gives a running provider no wall-clock cancellation, so providers run in-process only under `development`; a partition without them serves at every profile that serves Dogwood.
+  The fixed bound of 256 warm histories per partition is replaced by bytes: `dataPlane.events.warm.bytes` for the Host (default 256 MiB), `warm.zone_bytes` (default a quarter of it) and `warm.partition_bytes` (default 64 MiB).
+  Each history is charged its engine and the events it observed, by an estimate a measuring test holds above what the engine retains (DOGWOOD-02, DOGWOOD-08).
+  A cold history is replayed under `dataPlane.events.replay.max_records`, `max_bytes`, `timeout` and `concurrency` (DOGWOOD-03).
+  Past any of them a decision kind answers `E` `evaluation_deadline_exceeded` and a history-only kind is accepted; the occurrence stays durable and the history is replayed before its next occurrence.
+  `dataPlane.events.replay.prewarm` replays the most recently used histories of each ledger in the background after load, off by default and never touching readiness.
+
 - **`permguard discover <url>` walks the discovery chain, and `inspect` reports states and stages.**
   `discover` starts from the address of a process's telemetry listener or of a plane, and follows each link over HTTP or HTTPS: the process document's `host_id`, the Host's state and each plane, each plane's state and interfaces, and each interface document's `version`, `component`, `state`, `stage`, `sunset` and `limits`.
   It never sends the operator's token, discovery being unauthenticated and a link able to name another host, and presents the operator's client certificate to the start address's host alone; a plane served only over gRPC is listed by its endpoint and not followed.

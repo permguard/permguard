@@ -582,6 +582,29 @@ pub const SETTING_EVENTS_CLOCK_SKEW: &str = "PERMGUARD_EVENTS_CLOCK_SKEW";
 /// disk. What this buys is that ten submissions arriving together cost one flush rather than ten.
 pub const SETTING_EVENTS_GROUP_COMMIT_DELAY: &str = "PERMGUARD_EVENTS_GROUP_COMMIT_MAX_DELAY";
 
+/// The bytes every warm temporal history of this Host may hold (`events.warm.bytes`, TL-5).
+///
+/// A warm history is an engine holding a lowered policy set and the events it observed: disposable
+/// derived state the journal rebuilds, bounded by bytes rather than by a count of histories.
+pub const SETTING_EVENTS_WARM_BYTES: &str = "PERMGUARD_EVENTS_WARM_BYTES";
+/// The bytes the warm histories of one zone may hold (`events.warm.zone_bytes`).
+pub const SETTING_EVENTS_WARM_ZONE_BYTES: &str = "PERMGUARD_EVENTS_WARM_ZONE_BYTES";
+/// The bytes the warm histories of one compiled partition may hold (`events.warm.partition_bytes`).
+pub const SETTING_EVENTS_WARM_PARTITION_BYTES: &str = "PERMGUARD_EVENTS_WARM_PARTITION_BYTES";
+/// The most records one cold history's replay may read (`events.replay.max_records`).
+pub const SETTING_EVENTS_REPLAY_MAX_RECORDS: &str = "PERMGUARD_EVENTS_REPLAY_MAX_RECORDS";
+/// The most bytes one cold history's replay may read (`events.replay.max_bytes`).
+pub const SETTING_EVENTS_REPLAY_MAX_BYTES: &str = "PERMGUARD_EVENTS_REPLAY_MAX_BYTES";
+/// How long one submission's replay may run before its partitions answer `E`
+/// (`events.replay.timeout`).
+pub const SETTING_EVENTS_REPLAY_TIMEOUT: &str = "PERMGUARD_EVENTS_REPLAY_TIMEOUT";
+/// How many cold replays may run at once before a submission needing another is turned away
+/// (`events.replay.concurrency`).
+pub const SETTING_EVENTS_REPLAY_CONCURRENCY: &str = "PERMGUARD_EVENTS_REPLAY_CONCURRENCY";
+/// How many recently used histories of each ledger are replayed in the background after load
+/// (`events.replay.prewarm`), under the replay plan and its concurrency; `0` turns prewarm off.
+pub const SETTING_EVENTS_REPLAY_PREWARM: &str = "PERMGUARD_EVENTS_REPLAY_PREWARM";
+
 /// Whether this deployment will serve Dogwood partitions.
 ///
 /// The language is compiled in either way — a language is a build, not a deployment action, so
@@ -969,6 +992,18 @@ pub const DEFAULT_EVENTS_ALLOWED_LATENESS: Duration = Duration::from_secs(5 * 60
 pub const DEFAULT_EVENTS_CLOCK_SKEW: Duration = Duration::from_secs(30);
 /// How long a group commit may wait to amortise an `fsync`.
 pub const DEFAULT_EVENTS_GROUP_COMMIT_DELAY: Duration = Duration::from_millis(5);
+/// The Host's bound on warm temporal state; a zone's defaults to a quarter of it.
+pub const DEFAULT_EVENTS_WARM_BYTES: u64 = 256 * 1024 * 1024;
+/// One compiled partition's bound on warm temporal state.
+pub const DEFAULT_EVENTS_WARM_PARTITION_BYTES: u64 = 64 * 1024 * 1024;
+/// The most records one cold history's replay reads.
+pub const DEFAULT_EVENTS_REPLAY_MAX_RECORDS: u64 = 100_000;
+/// The most bytes one cold history's replay reads.
+pub const DEFAULT_EVENTS_REPLAY_MAX_BYTES: u64 = 64 * 1024 * 1024;
+/// How long one submission's replay may run.
+pub const DEFAULT_EVENTS_REPLAY_TIMEOUT: Duration = Duration::from_secs(2);
+/// How many cold replays run at once.
+pub const DEFAULT_EVENTS_REPLAY_CONCURRENCY: usize = 4;
 /// How often the pull worker asks for more, when a deployment turns pull on.
 pub const DEFAULT_EVENTS_PULL_INTERVAL: Duration = Duration::from_secs(2);
 /// How stale imported history may be before `shared-bounded` fails decisions closed.
@@ -1306,6 +1341,14 @@ pub struct Config {
     events_allowed_lateness: Duration,
     events_clock_skew: Duration,
     events_group_commit_delay: Duration,
+    events_warm_bytes: u64,
+    events_warm_zone_bytes: Option<u64>,
+    events_warm_partition_bytes: u64,
+    events_replay_max_records: u64,
+    events_replay_max_bytes: u64,
+    events_replay_timeout: Duration,
+    events_replay_concurrency: usize,
+    events_replay_prewarm: usize,
     events_pull_mode: Consistency,
     events_pull_interval: Duration,
     events_pull_max_staleness: Duration,
@@ -1500,6 +1543,14 @@ impl Default for Config {
             events_allowed_lateness: DEFAULT_EVENTS_ALLOWED_LATENESS,
             events_clock_skew: DEFAULT_EVENTS_CLOCK_SKEW,
             events_group_commit_delay: DEFAULT_EVENTS_GROUP_COMMIT_DELAY,
+            events_warm_bytes: DEFAULT_EVENTS_WARM_BYTES,
+            events_warm_zone_bytes: None,
+            events_warm_partition_bytes: DEFAULT_EVENTS_WARM_PARTITION_BYTES,
+            events_replay_max_records: DEFAULT_EVENTS_REPLAY_MAX_RECORDS,
+            events_replay_max_bytes: DEFAULT_EVENTS_REPLAY_MAX_BYTES,
+            events_replay_timeout: DEFAULT_EVENTS_REPLAY_TIMEOUT,
+            events_replay_concurrency: DEFAULT_EVENTS_REPLAY_CONCURRENCY,
+            events_replay_prewarm: 0,
             events_pull_mode: Consistency::Local,
             events_pull_interval: DEFAULT_EVENTS_PULL_INTERVAL,
             events_pull_max_staleness: DEFAULT_EVENTS_PULL_MAX_STALENESS,
@@ -1644,6 +1695,16 @@ impl Config {
     /// The zone's cache bounds against the whole cache's, once every layer has applied: a file may
     /// set a small cache that the command line then raises, and only the result is the bound.
     fn check_cache_bounds(&self) -> anyhow::Result<()> {
+        if self.events_warm_zone_bytes() > self.events_warm_bytes
+            || self.events_warm_partition_bytes > self.events_warm_bytes
+        {
+            anyhow::bail!(
+                "a zone's or a partition's warm-state bound ({SETTING_EVENTS_WARM_ZONE_BYTES}, \
+                 {SETTING_EVENTS_WARM_PARTITION_BYTES}) is larger than the Host's \
+                 ({SETTING_EVENTS_WARM_BYTES}): it could never be reached, and the setting would \
+                 bound nothing"
+            );
+        }
         if self.authz_cache_zone_partitions() > self.authz_cache_partitions
             || self.authz_cache_zone_bytes() > self.authz_cache_bytes
         {
@@ -3385,6 +3446,49 @@ produce: use `EdDSA` or `ES256`"
         self.events_group_commit_delay
     }
 
+    /// The bytes every warm temporal history of this Host may hold.
+    pub fn events_warm_bytes(&self) -> u64 {
+        self.events_warm_bytes
+    }
+
+    /// The bytes the warm histories of one zone may hold: as configured, or a quarter of the
+    /// Host's.
+    pub fn events_warm_zone_bytes(&self) -> u64 {
+        self.events_warm_zone_bytes
+            .unwrap_or(self.events_warm_bytes / 4)
+            .max(1)
+    }
+
+    /// The bytes the warm histories of one compiled partition may hold.
+    pub fn events_warm_partition_bytes(&self) -> u64 {
+        self.events_warm_partition_bytes
+    }
+
+    /// The most records one cold history's replay reads.
+    pub fn events_replay_max_records(&self) -> u64 {
+        self.events_replay_max_records
+    }
+
+    /// The most bytes one cold history's replay reads.
+    pub fn events_replay_max_bytes(&self) -> u64 {
+        self.events_replay_max_bytes
+    }
+
+    /// How long one submission's replay may run.
+    pub fn events_replay_timeout(&self) -> Duration {
+        self.events_replay_timeout
+    }
+
+    /// How many cold replays run at once.
+    pub fn events_replay_concurrency(&self) -> usize {
+        self.events_replay_concurrency
+    }
+
+    /// How many recently used histories of each ledger are replayed after load; `0` is off.
+    pub fn events_replay_prewarm(&self) -> usize {
+        self.events_replay_prewarm
+    }
+
     /// Which history this plane's decisions range over.
     pub fn events_pull_mode(&self) -> Consistency {
         self.events_pull_mode
@@ -4221,6 +4325,14 @@ produce: use `EdDSA` or `ES256`"
             SETTING_EVENTS_ALLOWED_LATENESS => d(self.events_allowed_lateness),
             SETTING_EVENTS_CLOCK_SKEW => d(self.events_clock_skew),
             SETTING_EVENTS_GROUP_COMMIT_DELAY => d(self.events_group_commit_delay),
+            SETTING_EVENTS_WARM_BYTES => n(self.events_warm_bytes),
+            SETTING_EVENTS_WARM_ZONE_BYTES => n(self.events_warm_zone_bytes()),
+            SETTING_EVENTS_WARM_PARTITION_BYTES => n(self.events_warm_partition_bytes),
+            SETTING_EVENTS_REPLAY_MAX_RECORDS => n(self.events_replay_max_records),
+            SETTING_EVENTS_REPLAY_MAX_BYTES => n(self.events_replay_max_bytes),
+            SETTING_EVENTS_REPLAY_TIMEOUT => d(self.events_replay_timeout),
+            SETTING_EVENTS_REPLAY_CONCURRENCY => n(self.events_replay_concurrency),
+            SETTING_EVENTS_REPLAY_PREWARM => n(self.events_replay_prewarm),
             SETTING_EVENTS_PULL_MODE => Some(self.events_pull_mode.as_str().to_owned()),
             SETTING_EVENTS_PULL_INTERVAL => d(self.events_pull_interval),
             SETTING_EVENTS_PULL_MAX_STALENESS => d(self.events_pull_max_staleness),
@@ -4955,6 +5067,60 @@ produce: use `EdDSA` or `ES256`"
         if let Some(value) = settings.get(SETTING_EVENTS_GROUP_COMMIT_DELAY) {
             self.events_group_commit_delay = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_EVENTS_GROUP_COMMIT_DELAY}"))?;
+        }
+        // The warm-state budgets and the replay plan (TL-5): every bound positive, since a bound
+        // of nothing holds or replays nothing and every temporal decision would answer `E`.
+        let positive_bytes = |key: &str| -> anyhow::Result<Option<u64>> {
+            let Some(value) = settings.get(key) else {
+                return Ok(None);
+            };
+            // `parse_bytes` refuses zero itself.
+            parse_bytes(value)
+                .map(Some)
+                .with_context(|| format!("reading {key}"))
+        };
+        let positive_count = |key: &str| -> anyhow::Result<Option<u64>> {
+            let Some(value) = settings.get(key) else {
+                return Ok(None);
+            };
+            let count: u64 = value.parse().with_context(|| format!("reading {key}"))?;
+            if count == 0 {
+                anyhow::bail!("reading {key}: a bound of nothing admits nothing");
+            }
+            Ok(Some(count))
+        };
+        if let Some(bytes) = positive_bytes(SETTING_EVENTS_WARM_BYTES)? {
+            self.events_warm_bytes = bytes;
+        }
+        if let Some(bytes) = positive_bytes(SETTING_EVENTS_WARM_ZONE_BYTES)? {
+            self.events_warm_zone_bytes = Some(bytes);
+        }
+        if let Some(bytes) = positive_bytes(SETTING_EVENTS_WARM_PARTITION_BYTES)? {
+            self.events_warm_partition_bytes = bytes;
+        }
+        if let Some(count) = positive_count(SETTING_EVENTS_REPLAY_MAX_RECORDS)? {
+            self.events_replay_max_records = count;
+        }
+        if let Some(bytes) = positive_bytes(SETTING_EVENTS_REPLAY_MAX_BYTES)? {
+            self.events_replay_max_bytes = bytes;
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_REPLAY_TIMEOUT) {
+            self.events_replay_timeout = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_REPLAY_TIMEOUT}"))?;
+            if self.events_replay_timeout.is_zero() {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_REPLAY_TIMEOUT}: a replay given no time replays \
+                     nothing"
+                );
+            }
+        }
+        if let Some(count) = positive_count(SETTING_EVENTS_REPLAY_CONCURRENCY)? {
+            self.events_replay_concurrency = usize::try_from(count).unwrap_or(usize::MAX);
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_REPLAY_PREWARM) {
+            self.events_replay_prewarm = value
+                .parse()
+                .with_context(|| format!("reading {SETTING_EVENTS_REPLAY_PREWARM}"))?;
         }
         if let Some(value) = settings.get(SETTING_EVENTS_PULL_MODE) {
             self.events_pull_mode = Consistency::parse(value).ok_or_else(|| {
@@ -5783,8 +5949,16 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_EVENTS_PULL_INTERVAL,
     SETTING_EVENTS_PULL_MAX_STALENESS,
     SETTING_EVENTS_PULL_MODE,
+    SETTING_EVENTS_REPLAY_CONCURRENCY,
+    SETTING_EVENTS_REPLAY_MAX_BYTES,
+    SETTING_EVENTS_REPLAY_MAX_RECORDS,
+    SETTING_EVENTS_REPLAY_PREWARM,
+    SETTING_EVENTS_REPLAY_TIMEOUT,
     SETTING_EVENTS_RETENTION_MINIMUM,
     SETTING_EVENTS_SEGMENT_BYTES,
+    SETTING_EVENTS_WARM_BYTES,
+    SETTING_EVENTS_WARM_PARTITION_BYTES,
+    SETTING_EVENTS_WARM_ZONE_BYTES,
     SETTING_EVENT_STORE_DIRECTORY,
     SETTING_EVENT_STORE_ENABLED,
     SETTING_EVENT_STORE_RETENTION,

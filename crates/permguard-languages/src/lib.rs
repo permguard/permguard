@@ -45,6 +45,7 @@ pub mod registry;
 pub mod request;
 pub mod role;
 pub mod temporal;
+pub mod warm;
 pub mod worker;
 
 pub use dogwood::artifacts as dogwood_artifacts;

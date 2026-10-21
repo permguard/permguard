@@ -255,7 +255,28 @@ pub trait Temporal: Send + Sync {
     /// `occurrences` must already be in the deterministic order the caller documents; this does not
     /// sort, because the order across producers is a replication decision rather than a runtime
     /// one, and a runtime that re-sorted could disagree with the store that recorded them.
-    fn rebuild(&self, history: &str, occurrences: &[Occurrence]) -> Result<(), Refused>;
+    ///
+    /// # The deadline
+    ///
+    /// A replay is part of the decision that needed it, and stops when that decision's replay
+    /// budget runs out (DOGWOOD-03): past `deadline` the rebuild is abandoned between two events,
+    /// refused `evaluation_deadline_exceeded`, and the history keeps what it had. It never goes on
+    /// consuming work after the caller has been answered.
+    fn rebuild(
+        &self,
+        history: &str,
+        occurrences: &[Occurrence],
+        deadline: Option<std::time::Instant>,
+    ) -> Result<(), Refused>;
+
+    /// Charges this partition's warm histories to `budget`, under `zone` (DOGWOOD-02).
+    ///
+    /// Called by the plane each time it hands the partition work; the first call binds it, and
+    /// later ones are no-ops. A partition never bound charges a budget of its own under the
+    /// default bounds, so its warm state is bounded either way.
+    fn bind_warm(&self, budget: &std::sync::Arc<crate::warm::Budget>, zone: &str) {
+        let _ = (budget, zone);
+    }
 
     /// How many occurrences this partition's `history` has been given since it was built or last
     /// rebuilt.
@@ -285,6 +306,16 @@ pub trait Temporal: Send + Sync {
     /// index is scanned by, so a partition deciding under one key while the record was stored under
     /// another is a state this signature does not have.
     fn apply(&self, history: &str, occurrence: &Occurrence, checked: &Checked) -> Applied;
+
+    /// [`Temporal::apply`], for a plane that has just replayed `history` or found it warm.
+    ///
+    /// A history the warm budget evicted between that replay and this call holds nothing, and
+    /// observing the occurrence into an empty engine would decide against one record while the
+    /// plane believes the history whole. Such a history answers `E` rather than being rebuilt
+    /// empty, and the plane marks it for replay (after the review).
+    fn apply_replayed(&self, history: &str, occurrence: &Occurrence, checked: &Checked) -> Applied {
+        self.apply(history, occurrence, checked)
+    }
 }
 
 // ─── The interface, as the wire carries it ───────────────────────────────────

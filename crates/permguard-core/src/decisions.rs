@@ -64,6 +64,12 @@ use crate::config::{
     SETTING_EVENTS_GROUP_COMMIT_DELAY, SETTING_EVENTS_PULL_INTERVAL,
     SETTING_EVENTS_PULL_MAX_STALENESS, SETTING_EVENTS_PULL_MODE,
 };
+use crate::config::{
+    SETTING_EVENTS_REPLAY_CONCURRENCY, SETTING_EVENTS_REPLAY_MAX_BYTES,
+    SETTING_EVENTS_REPLAY_MAX_RECORDS, SETTING_EVENTS_REPLAY_PREWARM,
+    SETTING_EVENTS_REPLAY_TIMEOUT, SETTING_EVENTS_WARM_BYTES, SETTING_EVENTS_WARM_PARTITION_BYTES,
+    SETTING_EVENTS_WARM_ZONE_BYTES,
+};
 use crate::mirrors::MirrorTls;
 
 /// The decision path's block, as the file declares it.
@@ -472,6 +478,41 @@ pub struct EventsSection {
     /// Whether this plane also *reads* history other planes recorded.
     #[serde(default)]
     pull: EventsPullSection,
+    /// What warm temporal histories may hold (TL-5).
+    #[serde(default)]
+    warm: EventsWarmSection,
+    /// What a cold history's replay may cost (TL-5).
+    #[serde(default)]
+    replay: EventsReplaySection,
+}
+
+/// The bytes warm temporal histories may hold: the Host's, one zone's, one partition's.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventsWarmSection {
+    #[serde(default)]
+    bytes: Option<String>,
+    #[serde(default)]
+    zone_bytes: Option<String>,
+    #[serde(default)]
+    partition_bytes: Option<String>,
+}
+
+/// The replay plan of a cold history: its records, bytes and time, how many run at once, and how
+/// many recently used histories are replayed after load.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventsReplaySection {
+    #[serde(default)]
+    max_records: Option<String>,
+    #[serde(default)]
+    max_bytes: Option<String>,
+    #[serde(default)]
+    timeout: Option<String>,
+    #[serde(default)]
+    concurrency: Option<String>,
+    #[serde(default)]
+    prewarm: Option<String>,
 }
 
 /// What bounds one ledger's journal.
@@ -593,6 +634,29 @@ impl EventsSection {
                 SETTING_EVENTS_CLOCK_SKEW,
                 self.retention.clock_skew.as_ref(),
             ),
+            (SETTING_EVENTS_WARM_BYTES, self.warm.bytes.as_ref()),
+            (
+                SETTING_EVENTS_WARM_ZONE_BYTES,
+                self.warm.zone_bytes.as_ref(),
+            ),
+            (
+                SETTING_EVENTS_WARM_PARTITION_BYTES,
+                self.warm.partition_bytes.as_ref(),
+            ),
+            (
+                SETTING_EVENTS_REPLAY_MAX_RECORDS,
+                self.replay.max_records.as_ref(),
+            ),
+            (
+                SETTING_EVENTS_REPLAY_MAX_BYTES,
+                self.replay.max_bytes.as_ref(),
+            ),
+            (SETTING_EVENTS_REPLAY_TIMEOUT, self.replay.timeout.as_ref()),
+            (
+                SETTING_EVENTS_REPLAY_CONCURRENCY,
+                self.replay.concurrency.as_ref(),
+            ),
+            (SETTING_EVENTS_REPLAY_PREWARM, self.replay.prewarm.as_ref()),
             (SETTING_EVENTS_PULL_MODE, self.pull.mode.as_ref()),
             (SETTING_EVENTS_PULL_INTERVAL, self.pull.interval.as_ref()),
             (
@@ -703,6 +767,36 @@ mod tests {
         assert!(
             section.include().resource_properties.is_empty(),
             "an allow-list, never a deny-list"
+        );
+    }
+
+    /// TL-5: the warm-state budgets and the replay plan are members of the events block.
+    #[test]
+    fn the_warm_and_replay_blocks_become_the_settings_the_plane_reads() {
+        let section: EventsSection = serde_norway::from_str(
+            "warm:\n  bytes: 512M\n  zone_bytes: 128M\n  partition_bytes: 32M\nreplay:\n  max_records: \"5000\"\n  max_bytes: 8M\n  timeout: 500ms\n  concurrency: \"2\"\n  prewarm: \"16\"\n",
+        )
+        .expect("the section parses");
+        let settings = section.settings();
+
+        for expected in [
+            (SETTING_EVENTS_WARM_BYTES, "512M"),
+            (SETTING_EVENTS_WARM_ZONE_BYTES, "128M"),
+            (SETTING_EVENTS_WARM_PARTITION_BYTES, "32M"),
+            (SETTING_EVENTS_REPLAY_MAX_RECORDS, "5000"),
+            (SETTING_EVENTS_REPLAY_MAX_BYTES, "8M"),
+            (SETTING_EVENTS_REPLAY_TIMEOUT, "500ms"),
+            (SETTING_EVENTS_REPLAY_CONCURRENCY, "2"),
+            (SETTING_EVENTS_REPLAY_PREWARM, "16"),
+        ] {
+            assert!(
+                settings.contains(&(expected.0.to_owned(), expected.1.to_owned())),
+                "{expected:?} in {settings:?}"
+            );
+        }
+        assert!(
+            serde_norway::from_str::<EventsSection>("warm:\n  count: \"256\"\n").is_err(),
+            "a count of histories is not a member: the bound is bytes"
         );
     }
 

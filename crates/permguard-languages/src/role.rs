@@ -165,6 +165,19 @@ pub trait Language: Send + Sync {
         &[]
     }
 
+    /// The artifact types a partition of this language may not carry to serve under `profile`;
+    /// empty when it may carry any.
+    ///
+    /// The other half of the floor: what a runtime cannot bound in-process from `production`
+    /// upward and does not run in a worker is refused at load rather than run unbounded — Dogwood's
+    /// executable providers, which upstream gives no wall-clock cancellation (DOGWOOD-01).
+    fn refused_artifacts(
+        &self,
+        _profile: permguard_core::assurance::AssuranceProfile,
+    ) -> &'static [&'static str] {
+        &[]
+    }
+
     /// Whether a partition of this language must run in a supervised worker under `profile`.
     ///
     /// A runtime whose worst case cannot be bounded in-process — no hard memory bound — does not

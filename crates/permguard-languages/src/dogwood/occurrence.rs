@@ -136,6 +136,37 @@ pub struct AttributedEntity {
     pub parents: Vec<EntityRef>,
 }
 
+impl Occurrence {
+    /// The bytes this occurrence's content spells: what a warm engine that observed it is charged
+    /// for, scaled by the measured factor (DOGWOOD-08).
+    pub fn weight(&self) -> usize {
+        let reference = |entity: &EntityRef| entity.kind.len() + entity.id.len();
+        let values = |bag: &BTreeMap<String, DogwoodValue>| -> usize {
+            bag.iter()
+                .map(|(key, value)| key.len() + super::value::canonical(value).len())
+                .sum()
+        };
+
+        self.event_id.len()
+            + self.kind.len()
+            + self.action.len()
+            + reference(&self.principal)
+            + reference(&self.resource)
+            + values(&self.logged)
+            + values(&self.request_context)
+            + self
+                .entities
+                .iter()
+                .map(|entity| {
+                    reference(&entity.uid)
+                        + values(&entity.attrs)
+                        + entity.parents.iter().map(reference).sum::<usize>()
+                })
+                .sum::<usize>()
+            + self.occurred_at.len()
+    }
+}
+
 /// Why an occurrence is not one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Malformed {

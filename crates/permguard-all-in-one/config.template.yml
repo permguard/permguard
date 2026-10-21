@@ -413,6 +413,21 @@ dataPlane:
   #                                    # still withheld until the record is on disk. What this buys
   #                                    # is that ten submissions arriving together cost one flush.
   #
+  #   warm:                          # what warm temporal histories may hold, in bytes (TL-5):
+  #     bytes: "256M"                # the Host's, across every zone
+  #     zone_bytes: "64M"            # one zone's; defaults to a quarter of the Host's
+  #     partition_bytes: "64M"       # one compiled partition's; the coldest history goes first,
+  #                                  # and an evicted one is replayed from the journal
+  #
+  #   replay:                        # the plan of one cold history's replay; past any limit the
+  #                                  # partition answers E `evaluation_deadline_exceeded`
+  #     max_records: "100000"        # the most records one replay reads
+  #     max_bytes: "64M"             # the most bytes one replay feeds an engine
+  #     timeout: "2s"                # how long one submission's replay may run
+  #     concurrency: "4"             # cold replays at once; another is turned away at once
+  #     prewarm: "0"                 # recently used histories of each ledger replayed after
+  #                                  # load, in the background; 0 is off
+  #
   #   retention:
   #     minimum: "48h"               # a FLOOR, not the answer: the requirement is this plus what
   #                                  # the loaded policies' longest `max_window` asks for, and a

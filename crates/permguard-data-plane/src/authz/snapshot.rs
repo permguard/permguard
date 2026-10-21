@@ -342,6 +342,9 @@ pub fn compile(
     // refused before anything is compiled (CEDAR-05).
     registry::check_schema_floor(&language_name, profile, &collected.artifacts)
         .map_err(Refusal::BelowFloor)?;
+    // And what it may not carry there: Dogwood's providers from `production` upward (DOGWOOD-01).
+    registry::check_artifact_floor(&language_name, profile, &collected.artifacts)
+        .map_err(Refusal::BelowFloor)?;
 
     let policies = collected.policies.len();
     // A runtime with no hard bound in-process runs in its supervised worker where the profile

@@ -361,6 +361,25 @@ fn plane_built(
     journalled: bool,
     build: impl FnOnce(&Path),
 ) -> Plane {
+    plane_built_under(
+        tag,
+        permguard_core::assurance::AssuranceProfile::Development,
+        blocking,
+        metrics,
+        journalled,
+        build,
+    )
+}
+
+/// The same plane, loading its partitions under the assurance `profile`.
+fn plane_built_under(
+    tag: &str,
+    profile: permguard_core::assurance::AssuranceProfile,
+    blocking: Blocking,
+    metrics: Metrics,
+    journalled: bool,
+    build: impl FnOnce(&Path),
+) -> Plane {
     let root = scratch(tag);
     let mirrors = root.join("mirrors");
     std::fs::create_dir_all(&mirrors).expect("the mirrors root is created");
@@ -373,7 +392,8 @@ fn plane_built(
         metrics.clone(),
         None,
         256,
-    );
+    )
+    .with_profile(profile);
     let decider = Arc::new(if journalled {
         let journal = permguard_data_plane::decisions::journal::Journal::open(
             &decisions,
@@ -2654,6 +2674,67 @@ when { Boom::Fail(context.input.document).ok == true };
         )
     }
 
+    /// DOGWOOD-01, owner decision of 2026-10-21: upstream gives a provider no wall-clock
+    /// cancellation, so from `production` upward a partition carrying providers is refused at
+    /// load; the same partition without them serves there, and with them below it.
+    #[tokio::test]
+    async fn a_partition_carrying_providers_is_refused_from_production() {
+        use permguard_core::assurance::AssuranceProfile;
+
+        let explicit = |mut manifest: Manifest| {
+            for partition in manifest.partitions.values_mut() {
+                partition.interfaces =
+                    vec![permguard_objects::manifest::PROFILE_PDP_TEMPORAL_V1ALPHA1.to_owned()];
+            }
+            manifest
+        };
+        for profile in [AssuranceProfile::Production, AssuranceProfile::Regulated] {
+            let plane = plane_built_under(
+                &format!("temporal-providers-{profile}"),
+                profile,
+                blocking(),
+                Metrics::none(),
+                false,
+                |mirrors| {
+                    provision_with(
+                        mirrors,
+                        &explicit(manifest_with_providers()),
+                        ("01a0-boom", BOOM_POLICY),
+                        &[
+                            (dogwood_artifacts::ACTION_SCHEMA, ACTION_SCHEMA),
+                            (dogwood_artifacts::EVENT_SCHEMA, EVENT_SCHEMA),
+                            (dogwood_artifacts::PROVIDERS, BOOM_PROVIDERS),
+                        ],
+                    );
+                },
+            );
+            let (status, answered) = post(&surface(&plane), read(100)).await;
+            assert_ne!(status, StatusCode::OK, "{profile}: {answered}");
+            assert_eq!(
+                answered["code"],
+                json!("ledger_incompatible"),
+                "{profile}: {answered}"
+            );
+        }
+
+        let plain = plane_built_under(
+            "temporal-providers-none",
+            AssuranceProfile::Production,
+            blocking(),
+            Metrics::none(),
+            false,
+            |mirrors| {
+                provision(mirrors, &explicit(manifest()));
+            },
+        );
+        let (status, answered) = post(&surface(&plain), read(100)).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+
+        let below = plane_failing("temporal-providers-development");
+        let (status, answered) = post(&surface(&below), read(100)).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+    }
+
     #[tokio::test]
     async fn an_evaluation_failure_is_answered_indeterminate_not_denied() {
         let plane = plane_failing("temporal-indeterminate");
@@ -3534,4 +3615,210 @@ async fn an_archived_pull_store_is_not_read_and_bounded_still_refuses_without_an
     assert_eq!(status, StatusCode::OK, "{answered}");
     assert_eq!(answered["history"]["mode"], "shared-bounded", "{answered}");
     assert!(!root.join("pull").exists(), "no store was created");
+}
+
+/// TL-5a: the replay plan of a cold history, and prewarm (DOGWOOD-03, owner decisions of
+/// 2026-10-21).
+mod replay_plan {
+    use super::*;
+
+    use permguard_data_plane::temporal::submit::ReplayPlan;
+
+    /// Alice logs in on a plane that is then dropped: on the next process her history is cold,
+    /// and her read at 100 needs a replay of two records to be permitted.
+    async fn cold(tag: &str, plan: ReplayPlan) -> Plane {
+        let plane = plane(tag);
+        let events = plane.events.clone();
+        let router = surface(&plane);
+        for (at, action, kind, user) in &TRACE[..2] {
+            let (status, body) = post(
+                &router,
+                submission(*at, action, kind, user, input_of(*at, action, kind, user)),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+        }
+        drop(router);
+        drop(plane);
+
+        restarted(&events, plan)
+    }
+
+    /// The same volume in a process that remembers nothing, under `plan`.
+    fn restarted(events: &Path, plan: ReplayPlan) -> Plane {
+        let root = events.parent().expect("the volume is above the journals");
+        let mirrors = root.join("mirrors");
+        let decider = Arc::new(Decider::new(
+            mirrors.clone(),
+            Arc::new(Cache::new(64, 32 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        ));
+        let bounds = Bounds {
+            retention_minimum: std::time::Duration::MAX,
+            allowed_lateness: std::time::Duration::from_secs(u32::MAX.into()),
+            clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
+            ..Bounds::default()
+        };
+        let streams = Arc::new(
+            Streams::new(
+                events.to_path_buf(),
+                root.join("planes"),
+                permguard_data_plane::temporal::testing::host_side(events),
+                bounds,
+            )
+            .expect("the floor is registered"),
+        );
+
+        Plane {
+            submitter: Arc::new(
+                Submitter::new(decider, Arc::clone(&streams), blocking(), Metrics::none())
+                    .with_replay(plan),
+            ),
+            events: events.to_path_buf(),
+            streams,
+            mirrors,
+            decisions: root.join("decisions"),
+        }
+    }
+
+    fn read() -> Value {
+        let (at, action, kind, user) = TRACE[2];
+        submission(at, action, kind, user, input_of(at, action, kind, user))
+    }
+
+    /// Every limit of the plan answers `E` `evaluation_deadline_exceeded`: the occurrence is
+    /// durable and receipted, no verdict is fabricated, and the operator's message names the
+    /// limit. Under the default plan the same cold history replays and the read is permitted.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_replay_past_its_plan_answers_e_and_within_it_decides() {
+        let tight = [
+            (
+                "records",
+                ReplayPlan {
+                    max_records: 1,
+                    ..ReplayPlan::default()
+                },
+                "events.replay.max_records",
+            ),
+            (
+                "bytes",
+                ReplayPlan {
+                    max_bytes: 1,
+                    ..ReplayPlan::default()
+                },
+                "events.replay.max_bytes",
+            ),
+            (
+                "timeout",
+                ReplayPlan {
+                    timeout: std::time::Duration::ZERO,
+                    ..ReplayPlan::default()
+                },
+                "events.replay.timeout",
+            ),
+            (
+                "concurrency",
+                ReplayPlan {
+                    concurrency: 0,
+                    ..ReplayPlan::default()
+                },
+                "events.replay.concurrency",
+            ),
+        ];
+        for (limit, plan, setting) in tight {
+            let plane = cold(&format!("replay-{limit}"), plan).await;
+            let (status, answered) = post(&surface(&plane), read()).await;
+            assert_eq!(status, StatusCode::OK, "{limit}: {answered}");
+            assert_eq!(answered["outcome"], "indeterminate", "{limit}: {answered}");
+            assert!(answered.get("decision").is_none(), "{limit}: {answered}");
+            assert!(
+                answered["watermark"]["sequence"].as_u64().is_some(),
+                "{limit}: durable and receipted: {answered}"
+            );
+            let partition = &answered["evaluations"][0];
+            assert_eq!(
+                partition["reason"]["code"],
+                json!(permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED),
+                "{limit}: {answered}"
+            );
+            assert!(
+                partition["reason"]["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains(setting)),
+                "{limit}: the message names the limit: {answered}"
+            );
+        }
+
+        // At the boundary: two records under a bound of two replay and decide.
+        let plane = cold(
+            "replay-boundary",
+            ReplayPlan {
+                max_records: 2,
+                ..ReplayPlan::default()
+            },
+        )
+        .await;
+        let (status, answered) = post(&surface(&plane), read()).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+        assert_eq!(answered["decision"], true, "{answered}");
+    }
+
+    /// After the review: a history-only kind whose replay is abandoned is accepted, its record
+    /// durable, rather than answered `event_application_incomplete`; nothing is decided for it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_history_only_occurrence_is_accepted_when_its_replay_is_abandoned() {
+        let plane = cold(
+            "replay-history-only",
+            ReplayPlan {
+                concurrency: 0,
+                ..ReplayPlan::default()
+            },
+        )
+        .await;
+        let (status, answered) = post(
+            &surface(&plane),
+            submission(
+                50,
+                "Drupe::Action::Login",
+                "response",
+                "alice",
+                input_of(50, "Drupe::Action::Login", "response", "alice"),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+        assert_eq!(answered["outcome"], "accepted", "{answered}");
+        assert!(answered.get("decision").is_none(), "{answered}");
+        assert!(
+            answered["watermark"]["sequence"].as_u64().is_some(),
+            "durable and receipted: {answered}"
+        );
+    }
+
+    /// Prewarm replays the recently used history in the background before any submission, into
+    /// the warm budget; a history already warm is not replayed again; the read that follows is
+    /// decided against the whole history.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn prewarm_replays_recent_histories_before_a_submission_needs_them() {
+        let plane = cold("replay-prewarm", ReplayPlan::default()).await;
+        assert_eq!(plane.submitter.prewarm(0).await, 0, "off");
+        assert_eq!(plane.submitter.warm().held("", 0).0, 0, "nothing warm yet");
+
+        assert_eq!(plane.submitter.prewarm(8).await, 1, "alice's history");
+        assert!(
+            plane.submitter.warm().held("", 0).0 > 0,
+            "the replayed engine is charged to the budget"
+        );
+        assert_eq!(
+            plane.submitter.prewarm(8).await,
+            0,
+            "a warm history is not replayed again"
+        );
+
+        let (status, answered) = post(&surface(&plane), read()).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+        assert_eq!(answered["decision"], true, "{answered}");
+    }
 }

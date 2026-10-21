@@ -108,6 +108,68 @@ pub struct Submitter {
     /// request would then find its engine non-empty and the note current, skip the rebuild, and
     /// decide against a history that is still missing the event.
     applied: std::sync::Mutex<std::collections::BTreeMap<(String, String, String, String), String>>,
+    /// What warm histories may hold, per partition, zone and Host (DOGWOOD-02).
+    warm: Arc<permguard_languages::warm::Budget>,
+    /// What a cold history's replay may cost (DOGWOOD-03).
+    replay: ReplayPlan,
+    /// How many cold replays are running now.
+    replaying: std::sync::atomic::AtomicUsize,
+    /// One lock per ledger, held for writing while prewarm replays one of its histories and for
+    /// reading from a submission's replay to its apply: a prewarm never replaces an engine a
+    /// submission is feeding, and never holds another ledger's submissions (after the review).
+    prewarming: std::sync::Mutex<Exclusions>,
+}
+
+/// The prewarm exclusion of each ledger, by zone and ledger.
+type Exclusions = std::collections::HashMap<(String, String), Arc<std::sync::RwLock<()>>>;
+
+/// The replay plan of a cold history (DOGWOOD-03, owner decision of 2026-10-21).
+///
+/// A replay is part of the decision that needed it. Past any of these limits the partitions it was
+/// for answer `E` `evaluation_deadline_exceeded` — the replay cannot finish within the decision's
+/// budget — and the history stays marked for replay; the occurrence is durable either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReplayPlan {
+    /// The most records one replay reads.
+    pub max_records: u64,
+    /// The most bytes one replay feeds an engine, as the occurrences spell them.
+    pub max_bytes: u64,
+    /// How long one submission's replay may run.
+    pub timeout: std::time::Duration,
+    /// How many cold replays run at once; a submission needing another is turned away at once.
+    pub concurrency: usize,
+}
+
+impl Default for ReplayPlan {
+    fn default() -> Self {
+        Self {
+            max_records: permguard_core::config::DEFAULT_EVENTS_REPLAY_MAX_RECORDS,
+            max_bytes: permguard_core::config::DEFAULT_EVENTS_REPLAY_MAX_BYTES,
+            timeout: permguard_core::config::DEFAULT_EVENTS_REPLAY_TIMEOUT,
+            concurrency: permguard_core::config::DEFAULT_EVENTS_REPLAY_CONCURRENCY,
+        }
+    }
+}
+
+impl ReplayPlan {
+    /// The plan a configuration states.
+    pub fn of(config: &permguard_core::config::Config) -> Self {
+        Self {
+            max_records: config.events_replay_max_records(),
+            max_bytes: config.events_replay_max_bytes(),
+            timeout: config.events_replay_timeout(),
+            concurrency: config.events_replay_concurrency(),
+        }
+    }
+}
+
+/// One cold replay's slot, given back when it is dropped.
+struct Replaying<'a>(&'a std::sync::atomic::AtomicUsize);
+
+impl Drop for Replaying<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 impl Submitter {
@@ -134,7 +196,162 @@ impl Submitter {
             imported: None,
             max_staleness: permguard_core::config::DEFAULT_EVENTS_PULL_MAX_STALENESS,
             applied: std::sync::Mutex::new(std::collections::BTreeMap::new()),
+            warm: permguard_languages::warm::Budget::new(
+                permguard_languages::warm::Limits::default(),
+            ),
+            replay: ReplayPlan::default(),
+            replaying: std::sync::atomic::AtomicUsize::new(0),
+            prewarming: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
+    }
+
+    /// The prewarm exclusion of one ledger.
+    fn exclusion(&self, zone: &str, ledger: &str) -> Arc<std::sync::RwLock<()>> {
+        let mut locks = match self.prewarming.lock() {
+            Ok(locks) => locks,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        Arc::clone(
+            locks
+                .entry((zone.to_owned(), ledger.to_owned()))
+                .or_default(),
+        )
+    }
+
+    /// Replays up to `count` recently used histories of each ledger this plane journals
+    /// (DOGWOOD-03, owner decision of 2026-10-21), and returns how many it warmed.
+    ///
+    /// Run in the background after load. It claims nothing: readiness is not touched, and a
+    /// submission that arrives first replays its own history as it always does. What it replays is
+    /// what the ledger's sequencer has applied, read under the ledger's exclusion where it cannot
+    /// move, under the same plan a submission's replay runs under — including its concurrency
+    /// slots — and only into a history still cold: it never replaces an engine a submission fed,
+    /// and the occurrences waiting for their turn apply on top of it in order.
+    pub async fn prewarm(self: &Arc<Self>, count: usize) -> usize {
+        /// How far back the tail read for recently used histories goes, per ledger.
+        const TAIL: u64 = 4096;
+
+        if count == 0 {
+            return 0;
+        }
+        let mut ledgers = self.streams.host_ledgers();
+        ledgers.extend(self.streams.ledgers());
+        ledgers.sort();
+        ledgers.dedup();
+
+        let mut warmed = 0;
+        for (zone, ledger) in ledgers {
+            let Ok(sequencer) = self.streams.sequencer(&zone, &ledger) else {
+                continue;
+            };
+            // Only where to read the tail from: what is replayed is bounded again under the lock.
+            let through = sequencer.applied_through();
+            let after = through.saturating_sub(TAIL);
+            let Ok(tail) = self.streams.read_from(
+                &zone,
+                &ledger,
+                after,
+                usize::try_from(through - after).unwrap_or(usize::MAX),
+            ) else {
+                continue;
+            };
+            // The most recent occurrence of each history, newest histories first.
+            let mut picked: Vec<Record> = Vec::new();
+            for value in tail.iter().rev() {
+                let Ok(record) = permguard_events::record::validate(value) else {
+                    continue;
+                };
+                let same = |held: &Record| {
+                    held.profile == record.profile && held.history_key == record.history_key
+                };
+                if let Some(held) = picked.iter_mut().find(|held| same(held)) {
+                    if record.occurred_at > held.occurred_at {
+                        *held = record;
+                    }
+                } else if picked.len() < count {
+                    picked.push(record);
+                }
+            }
+            for record in picked {
+                let Ok(loaded) = self.decider.loaded(&zone, &ledger, &record.profile).await else {
+                    continue;
+                };
+                let this = Arc::clone(self);
+                let (zone, ledger) = (zone.clone(), ledger.clone());
+                let warm = tokio::task::spawn_blocking(move || {
+                    this.prewarm_one(&loaded, &zone, &ledger, &record)
+                })
+                .await
+                .unwrap_or(false);
+                if warm {
+                    warmed += 1;
+                }
+            }
+        }
+
+        warmed
+    }
+
+    /// Replays one history up to what the ledger has applied, if it is still cold.
+    fn prewarm_one(&self, loaded: &Loaded, zone: &str, ledger: &str, record: &Record) -> bool {
+        let exclusion = self.exclusion(zone, ledger);
+        let Ok(_exclusive) = exclusion.write() else {
+            return false;
+        };
+        // Read under the lock: a submission releases its turn only after its apply, and none
+        // reaches its replay while this is held, so what the ledger has applied cannot move now.
+        let Ok(sequencer) = self.streams.sequencer(zone, ledger) else {
+            return false;
+        };
+        let through = sequencer.applied_through();
+        let Ok(addressed) = self.addressed(loaded, &record.profile) else {
+            return false;
+        };
+        let Ok(body) = serde_json::from_value::<OccurrenceBody>(record.event.clone()) else {
+            return false;
+        };
+        let Ok(occurrence) = body.read() else {
+            return false;
+        };
+        let history = history_of(&record.history_key);
+        let mut checks: Vec<Verified<'_>> = Vec::with_capacity(addressed.len());
+        for (partition, engine) in &addressed {
+            engine.bind_warm(&self.warm, zone);
+            if permguard_languages::guard::contained(|| engine.observed(&history)).unwrap_or(1) > 0
+            {
+                return false;
+            }
+            let Ok(Ok(checked)) =
+                permguard_languages::guard::contained(|| engine.check(&occurrence))
+            else {
+                return false;
+            };
+            checks.push((Arc::clone(partition), *engine, checked));
+        }
+
+        matches!(
+            self.ensure_history(&checks, &history, &occurrence, zone, ledger, through + 1),
+            Ok(abandoned) if abandoned.is_empty()
+        )
+    }
+
+    /// Charges warm histories to this budget (DOGWOOD-02).
+    pub fn with_warm(mut self, budget: Arc<permguard_languages::warm::Budget>) -> Self {
+        self.warm = budget;
+
+        self
+    }
+
+    /// Replays cold histories under this plan (DOGWOOD-03).
+    pub fn with_replay(mut self, plan: ReplayPlan) -> Self {
+        self.replay = plan;
+
+        self
+    }
+
+    /// The warm budget, for a caller that reports what it holds.
+    pub fn warm(&self) -> &Arc<permguard_languages::warm::Budget> {
+        &self.warm
     }
 
     /// Decides against imported history as well, under this mode.
@@ -511,6 +728,11 @@ impl Submitter {
         source: String,
     ) -> Result<Staged, ApiError> {
         let addressed = self.addressed(&loaded, &profile)?;
+        // Every engine charges its warm histories to this plane's budget, under this zone, before
+        // it is handed any work (DOGWOOD-02).
+        for (_, engine) in &addressed {
+            engine.bind_warm(&self.warm, &zone);
+        }
 
         // Every partition, before anything is written. A profile may address several with
         // different schemas, and an occurrence only some of them accept is not one this ledger can
@@ -966,7 +1188,16 @@ impl Submitter {
         // allowed a later concurrent submission to pass the freshness check while an earlier,
         // durable sequence was still waiting to be applied. The current record is excluded by its
         // sequence, so rebuilding here cannot observe it twice.
-        if let Err(error) = self.ensure_history(
+        // Never while prewarm replays this ledger: it would replace the engine this feeds.
+        let exclusion = self.exclusion(&zone, &ledger);
+        let _replaying = exclusion.read().map_err(|_| {
+            ApiError::new(
+                ErrorClass::Internal,
+                permguard_core::codes::pdp_temporal::HISTORY_LOCK_POISONED,
+                "this plane's prewarm left its lock unusable",
+            )
+        })?;
+        let abandoned = match self.ensure_history(
             &checks,
             &partition_key,
             &occurrence,
@@ -974,9 +1205,12 @@ impl Submitter {
             &ledger,
             sequence,
         ) {
-            self.invalidate_history(&zone, &ledger, &partition_key);
-            return Err(error);
-        }
+            Ok(abandoned) => abandoned,
+            Err(error) => {
+                self.invalidate_history(&zone, &ledger, &partition_key);
+                return Err(error);
+            }
+        };
 
         // The history this decision will range over, and — for a bounded mode — whether it is
         // fresh enough to range over at all. Checked after the event is durable and before it is
@@ -995,7 +1229,18 @@ impl Submitter {
 
         // Durable, and this record's turn. Only now may an engine see it.
         let applying = Instant::now();
-        let (verdicts, complete) = self.apply(&checks, &partition_key, &occurrence, &zone, &ledger);
+        let (verdicts, complete) = self.apply(
+            &checks,
+            &partition_key,
+            &occurrence,
+            &zone,
+            &ledger,
+            &abandoned,
+        );
+        if !abandoned.is_empty() {
+            // Behind its journal: replayed before the next occurrence of this history.
+            self.invalidate_history(&zone, &ledger, &partition_key);
+        }
         if !complete {
             // A partition may have observed the occurrence before a sibling failed. Replaying the
             // complete retained run is the only state that makes all addressed partitions agree.
@@ -1180,14 +1425,33 @@ impl Submitter {
         occurrence: &Occurrence,
         zone: &str,
         ledger: &str,
+        abandoned: &std::collections::BTreeMap<String, permguard_languages::evaluate::Verdict>,
     ) -> (Vec<(String, permguard_languages::evaluate::Verdict)>, bool) {
         let mut verdicts = Vec::with_capacity(checks.len());
         let mut complete = true;
         for (partition, engine, checked) in checks {
+            // A partition whose replay was abandoned is not shown the occurrence: its history is
+            // behind, and the answer is the `E` its replay plan gave (DOGWOOD-03).
+            if let Some(verdict) = abandoned.get(&partition.name) {
+                if let Some(failure) = verdict.failure() {
+                    self.metrics.count(
+                        &crate::authz::measure::PARTITION_FAILURES,
+                        &[(permguard_core::metrics::labels::REASON, failure.code)],
+                    );
+                }
+                // A decision kind answers the `E`. A history-only kind is accepted: the record is
+                // durable, and the history stays marked, so the next submission replays it
+                // (after the review).
+                if checked.decides {
+                    complete = false;
+                    verdicts.push((partition.name.clone(), verdict.clone()));
+                }
+                continue;
+            }
             // Inside the panic boundary: an engine that came apart applying a durable occurrence is
             // that partition's `E`, never a lost submission.
             let applied = permguard_languages::guard::contained(|| {
-                engine.apply(history, occurrence, checked)
+                engine.apply_replayed(history, occurrence, checked)
             })
             .unwrap_or_else(|_| {
                 Applied::Decided(permguard_languages::evaluate::Verdict::panicked(
@@ -1870,7 +2134,8 @@ impl Submitter {
         zone: &str,
         ledger: &str,
         before_local_sequence: u64,
-    ) -> Result<(), ApiError> {
+    ) -> Result<std::collections::BTreeMap<String, permguard_languages::evaluate::Verdict>, ApiError>
+    {
         let imported = match (&self.imports, self.consistency.is_shared()) {
             (Some(imports), true) => Some(imports.state(zone, ledger).map_err(|error| {
                 ApiError::new(
@@ -1942,17 +2207,73 @@ impl Submitter {
                 .collect()
         };
         if stale.is_empty() {
-            return Ok(());
+            return Ok(std::collections::BTreeMap::new());
         }
 
-        let records = self.observable(
+        // The replay plan (DOGWOOD-03): a bounded number of cold replays at once, each within one
+        // deadline, a record count and a byte count. Past any of them the stale partitions answer
+        // `E` and stay marked for replay; nothing goes on working once the caller is answered.
+        let abandon = |why: String| -> std::collections::BTreeMap<
+            String,
+            permguard_languages::evaluate::Verdict,
+        > {
+            warn!(
+                event.name = "temporal.replay_abandoned",
+                component = COMPONENT,
+                zone,
+                ledger,
+                code = permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED,
+                "a cold history's replay did not fit its plan: answering `E` rather than deciding \
+                 against a history that is behind"
+            );
+            stale
+                .iter()
+                .map(|partition| {
+                    (
+                        partition.clone(),
+                        permguard_languages::evaluate::Verdict::deadline_exceeded(why.clone()),
+                    )
+                })
+                .collect()
+        };
+        if self
+            .replaying
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            >= self.replay.concurrency
+        {
+            self.replaying
+                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            return Ok(abandon(format!(
+                "{} cold histories are already being replayed, the most this plane runs at once \
+                 (`events.replay.concurrency`)",
+                self.replay.concurrency
+            )));
+        }
+        let _slot = Replaying(&self.replaying);
+        let deadline = std::time::Instant::now() + self.replay.timeout;
+
+        let Some(records) = self.observable(
             zone,
             ledger,
             history,
             occurrence,
             checks,
             before_local_sequence,
-        )?;
+        )?
+        else {
+            return Ok(abandon(format!(
+                "the history holds more than {} records, the most one replay reads \
+                 (`events.replay.max_records`)",
+                self.replay.max_records
+            )));
+        };
+        if std::time::Instant::now() >= deadline {
+            return Ok(abandon(format!(
+                "the history could not be read within {:?} (`events.replay.timeout`)",
+                self.replay.timeout
+            )));
+        }
+        let mut abandoned = std::collections::BTreeMap::new();
         // Only what is stale. A partition that is already up to date must not be rebuilt by a
         // sibling's staleness — a rebuild discards a history to replace it, and doing that
         // needlessly is a window somebody's concurrent decision falls into.
@@ -1962,7 +2283,14 @@ impl Submitter {
             .collect();
         for (partition, engine, _) in rebuilding {
             let mut occurrences = Vec::new();
+            let mut late = false;
             for stored in &records {
+                // The checks are part of the replay's work, under the same deadline (after the
+                // review).
+                if std::time::Instant::now() >= deadline {
+                    late = true;
+                    break;
+                }
                 // A ledger history is shared by profiles, while a partition's history is not. A
                 // record addressed to a sibling profile or partition remains valid evidence but is
                 // never an input to this engine.
@@ -2014,10 +2342,47 @@ impl Submitter {
                 }
                 occurrences.push(stored.occurrence.clone());
             }
-            contained(permguard_core::codes::common::UNAVAILABLE, || {
-                engine.rebuild(history, &occurrences)
-            })
-            .map_err(|refused| {
+            if late {
+                abandoned.insert(
+                    partition.name.clone(),
+                    permguard_languages::evaluate::Verdict::deadline_exceeded(format!(
+                        "the history could not be checked within {:?} (`events.replay.timeout`)",
+                        self.replay.timeout
+                    )),
+                );
+                continue;
+            }
+            let bytes: u64 = occurrences
+                .iter()
+                .map(|occurrence| occurrence.weight() as u64)
+                .sum();
+            if bytes > self.replay.max_bytes {
+                abandoned.insert(
+                    partition.name.clone(),
+                    permguard_languages::evaluate::Verdict::deadline_exceeded(format!(
+                        "the history spells {bytes} bytes, more than the {} one replay feeds an \
+                         engine (`events.replay.max_bytes`)",
+                        self.replay.max_bytes
+                    )),
+                );
+                continue;
+            }
+            let rebuilt = contained(permguard_core::codes::common::UNAVAILABLE, || {
+                engine.rebuild(history, &occurrences, Some(deadline))
+            });
+            if let Err(refused) = &rebuilt
+                && refused.code == permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED
+            {
+                abandoned.insert(
+                    partition.name.clone(),
+                    permguard_languages::evaluate::Verdict::deadline_exceeded(format!(
+                        "{} (`events.replay.timeout` is {:?})",
+                        refused.message, self.replay.timeout
+                    )),
+                );
+                continue;
+            }
+            rebuilt.map_err(|refused| {
                 warn!(
                     event.name = "temporal.rebuild_failed",
                     component = COMPONENT,
@@ -2041,10 +2406,13 @@ impl Submitter {
             )
         })?;
         for partition in stale {
+            if abandoned.contains_key(&partition) {
+                continue;
+            }
             applied.insert(key_of(&partition), watermark.clone());
         }
 
-        Ok(())
+        Ok(abandoned)
     }
 
     /// The ordered run a partition of this ledger should have observed.
@@ -2061,7 +2429,7 @@ impl Submitter {
         occurrence: &Occurrence,
         checks: &[Verified<'_>],
         before_local_sequence: u64,
-    ) -> Result<Vec<StoredOccurrence>, ApiError> {
+    ) -> Result<Option<Vec<StoredOccurrence>>, ApiError> {
         let unreadable = |what: &str, detail: String| {
             ApiError::new(
                 ErrorClass::Unavailable,
@@ -2128,6 +2496,10 @@ impl Submitter {
                     .map_err(|error| unreadable("the imported history", error.to_string()))?,
             );
         }
+        // The replay plan's record bound, before anything is parsed (DOGWOOD-03).
+        if records.len() as u64 > self.replay.max_records {
+            return Ok(None);
+        }
         let records = if self.consistency.is_shared() {
             // One logical occurrence applies once, whichever plane recorded it; one recorded with
             // different bytes is quarantined (WP-6.2c2b1).
@@ -2171,7 +2543,7 @@ impl Submitter {
             occurrences.push(StoredOccurrence { record, occurrence });
         }
 
-        Ok(occurrences)
+        Ok(Some(occurrences))
     }
 
     /// The occurrence's history key, which every addressed partition must agree on.

@@ -697,6 +697,36 @@ pub fn check_schema_floor(
     ))
 }
 
+/// The artifact a floor that came apart refuses: every one, so every partition is refused.
+pub const EVERY_ARTIFACT: &str = "every artifact, the floor having come apart";
+
+/// Refuses a partition that carries an artifact its language may not carry at `profile`.
+///
+/// The load gate's other half of the assurance floor (DOGWOOD-01): checked against what the
+/// partition actually carries, so a manifest cannot declare its way around it.
+pub fn check_artifact_floor(
+    language_name: &str,
+    profile: permguard_core::assurance::AssuranceProfile,
+    artifacts: &crate::artifact::Artifacts,
+) -> Result<(), String> {
+    let Some(language) = crate::lookup::language(language_name) else {
+        return Ok(());
+    };
+    let refused = language.refused_artifacts(profile);
+    let carried = refused
+        .iter()
+        .find(|name| **name == EVERY_ARTIFACT || !artifacts.all(name).is_empty());
+    let Some(carried) = carried else {
+        return Ok(());
+    };
+
+    Err(format!(
+        "a `{language_name}` partition carries `{carried}`, which the `{}` assurance profile \
+         refuses: this runtime cannot bound it in-process and runs no worker for it",
+        profile.as_str()
+    ))
+}
+
 /// Whether a partition of `language_name` must run in a supervised worker under `profile`.
 pub fn isolation_required(
     language_name: &str,

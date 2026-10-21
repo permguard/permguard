@@ -97,8 +97,27 @@ impl Language for Dogwood {
             isolation: Isolation {
                 mode: IsolationMode::InProcess,
                 reason: "provider work is bounded by operation and data-size limits but not by \
-                         wall clock (LANG-08), and adopting the supervised worker is TL-5",
+                         wall clock, and upstream offers no cancellation (LANG-08): from \
+                         production upward a partition carrying providers is refused at load, and \
+                         one without them runs in-process",
             },
+        }
+    }
+
+    /// From `production` upward, the provider declarations and programs (DOGWOOD-01).
+    ///
+    /// A provider is Rhai code upstream bounds by operations and data size but not by wall clock,
+    /// and upstream exposes no cooperative cancellation. Of the blueprint's two answers — refuse
+    /// the bundle, or run the whole evaluation in a supervised worker — this build takes the first
+    /// (owner decision of 2026-10-21): under `development` providers run in-process.
+    fn refused_artifacts(
+        &self,
+        profile: permguard_core::assurance::AssuranceProfile,
+    ) -> &'static [&'static str] {
+        if profile.at_least(permguard_core::assurance::AssuranceProfile::Production) {
+            &[artifacts::PROVIDERS, artifacts::RHAI_PROVIDER]
+        } else {
+            &[]
         }
     }
 
@@ -303,6 +322,59 @@ when temporal {
     fn a_source_dogwood_cannot_parse_is_refused() {
         assert!(Dogwood.validate_policy(b"permit (principal").is_err());
         assert!(Dogwood.validate_policy(&[0xff, 0xfe]).is_err());
+    }
+
+    /// DOGWOOD-01: from `production` upward the providers are refused, whichever of the two a
+    /// partition carries; below it, and for a partition without them, nothing is.
+    #[test]
+    fn providers_are_refused_from_production_and_nothing_else_is() {
+        use crate::artifact::{ArtifactBlob, Artifacts, artifact_type};
+        use permguard_core::assurance::AssuranceProfile;
+
+        let carrying = |names: &[&str]| {
+            let mut bundle = Artifacts::default();
+            for name in names {
+                bundle.insert(
+                    artifact_type(name).expect("a registered artifact"),
+                    ArtifactBlob {
+                        name: (*name).to_owned(),
+                        media_type: String::new(),
+                        data: b"x".to_vec(),
+                    },
+                );
+            }
+            bundle
+        };
+        let floor = |profile, bundle: &Artifacts| {
+            crate::registry::check_artifact_floor(NAME, profile, bundle)
+        };
+
+        for profile in [AssuranceProfile::Production, AssuranceProfile::Regulated] {
+            for refused in [artifacts::PROVIDERS, artifacts::RHAI_PROVIDER] {
+                let why = floor(profile, &carrying(&[artifacts::ACTION_SCHEMA, refused]))
+                    .expect_err("a provider is refused");
+                assert!(why.contains(refused), "{why}");
+                assert!(why.contains(profile.as_str()), "{why}");
+            }
+            floor(
+                profile,
+                &carrying(&[artifacts::ACTION_SCHEMA, artifacts::EVENT_SCHEMA]),
+            )
+            .expect("a partition without providers serves");
+        }
+        floor(
+            AssuranceProfile::Development,
+            &carrying(&[artifacts::PROVIDERS, artifacts::RHAI_PROVIDER]),
+        )
+        .expect("below production providers run in-process");
+        assert!(
+            Dogwood
+                .engine()
+                .isolation
+                .reason
+                .contains("from production upward"),
+            "the descriptor says why"
+        );
     }
 
     #[test]

@@ -106,10 +106,10 @@
         ],
         "isolation": {
           "mode": "in_process",
-          "reason": "provider work is bounded by operation and data-size limits but not by wall clock (LANG-08), and adopting the supervised worker is TL-5"
+          "reason": "provider work is bounded by operation and data-size limits but not by wall clock, and upstream offers no cancellation (LANG-08): from production upward a partition carrying providers is refused at load, and one without them runs in-process"
         }
       },
-      "digest": "sha256:bd6dfcfdfc9a1cc12d2a022b32f13ad758d3b09de0c9550ab0a680eb897b323f"
+      "digest": "sha256:12d2234ef7e5096f66f1b53f71b1bb3bd1f1a0cadb92f8722684cdd70c218bb3"
     },
     {
       "descriptor": {

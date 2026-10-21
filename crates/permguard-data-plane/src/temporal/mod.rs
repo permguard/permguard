@@ -211,8 +211,43 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
                 }
                 _ => submitter,
             };
+            // The warm-state budget and the replay plan the deployment states (TL-5).
+            let submitter = submitter
+                .with_warm(permguard_languages::warm::Budget::new(
+                    permguard_languages::warm::Limits {
+                        host: config.events_warm_bytes(),
+                        zone: config.events_warm_zone_bytes(),
+                        partition: config.events_warm_partition_bytes(),
+                    },
+                ))
+                .with_replay(submit::ReplayPlan::of(config));
+            let submitter = Arc::new(submitter);
+            // Prewarm, in the background and claiming nothing: readiness is untouched, and a
+            // submission that arrives first replays its own history (DOGWOOD-03).
+            let prewarm = config.events_replay_prewarm();
+            if prewarm > 0 {
+                let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+                    tracing::warn!(
+                        event.name = "temporal.prewarm_skipped",
+                        component = "temporal",
+                        "`events.replay.prewarm` is set and no runtime is running to replay in: \
+                         histories are replayed by the submissions that need them"
+                    );
+                    return Some(submitter);
+                };
+                let warming = Arc::clone(&submitter);
+                runtime.spawn(async move {
+                    let warmed = warming.prewarm(prewarm).await;
+                    tracing::info!(
+                        event.name = "temporal.prewarmed",
+                        component = "temporal",
+                        warmed,
+                        "recently used histories replayed after load"
+                    );
+                });
+            }
 
-            Some(Arc::new(submitter))
+            Some(submitter)
         })
         .clone()
 }

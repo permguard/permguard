@@ -1101,7 +1101,7 @@ fn run_temporal(
     touched.dedup();
     for history in &touched {
         for (name, engine) in &engines {
-            let reset = languages::guard::contained(|| engine.rebuild(history, &[]))
+            let reset = languages::guard::contained(|| engine.rebuild(history, &[], None))
                 .unwrap_or_else(|_| {
                     Err(permguard_languages::temporal::Refused::new(
                         permguard_core::codes::common::INTERNAL,

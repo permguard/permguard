@@ -1531,6 +1531,97 @@ fn the_group_commit_default_can_be_written_down() {
     );
 }
 
+/// TL-5: the warm-state budgets and the replay plan default to the owner's numbers, read what is
+/// written, and refuse a bound of nothing and a zone or partition bound above the Host's.
+#[test]
+fn the_warm_budgets_and_the_replay_plan_are_read_and_bounded() {
+    let defaulted = config(&[], &[], &[]);
+    assert_eq!(defaulted.events_warm_bytes(), DEFAULT_EVENTS_WARM_BYTES);
+    assert_eq!(
+        defaulted.events_warm_zone_bytes(),
+        DEFAULT_EVENTS_WARM_BYTES / 4,
+        "a quarter of the Host's"
+    );
+    assert_eq!(
+        defaulted.events_warm_partition_bytes(),
+        DEFAULT_EVENTS_WARM_PARTITION_BYTES
+    );
+    assert_eq!(
+        defaulted.events_replay_max_records(),
+        DEFAULT_EVENTS_REPLAY_MAX_RECORDS
+    );
+    assert_eq!(
+        defaulted.events_replay_max_bytes(),
+        DEFAULT_EVENTS_REPLAY_MAX_BYTES
+    );
+    assert_eq!(
+        defaulted.events_replay_timeout(),
+        DEFAULT_EVENTS_REPLAY_TIMEOUT
+    );
+    assert_eq!(
+        defaulted.events_replay_concurrency(),
+        DEFAULT_EVENTS_REPLAY_CONCURRENCY
+    );
+    assert_eq!(defaulted.events_replay_prewarm(), 0, "prewarm is off");
+
+    let written = config(
+        &[
+            (SETTING_EVENTS_WARM_BYTES, "1G"),
+            (SETTING_EVENTS_WARM_ZONE_BYTES, "100M"),
+            (SETTING_EVENTS_WARM_PARTITION_BYTES, "10M"),
+            (SETTING_EVENTS_REPLAY_MAX_RECORDS, "10"),
+            (SETTING_EVENTS_REPLAY_MAX_BYTES, "1M"),
+            (SETTING_EVENTS_REPLAY_TIMEOUT, "250ms"),
+            (SETTING_EVENTS_REPLAY_CONCURRENCY, "1"),
+            (SETTING_EVENTS_REPLAY_PREWARM, "32"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(written.events_warm_bytes(), 1024 * 1024 * 1024);
+    assert_eq!(written.events_warm_zone_bytes(), 100 * 1024 * 1024);
+    assert_eq!(written.events_warm_partition_bytes(), 10 * 1024 * 1024);
+    assert_eq!(written.events_replay_max_records(), 10);
+    assert_eq!(written.events_replay_max_bytes(), 1024 * 1024);
+    assert_eq!(written.events_replay_timeout(), Duration::from_millis(250));
+    assert_eq!(written.events_replay_concurrency(), 1);
+    assert_eq!(written.events_replay_prewarm(), 32);
+
+    let refused = |pairs_written: &[(&str, &str)]| {
+        format!(
+            "{:#}",
+            Config::from_layers(
+                build_settings(),
+                NO_DECLARED,
+                Layers::new().with_file(pairs(pairs_written)),
+            )
+            .expect_err("refused")
+        )
+    };
+    for key in [
+        SETTING_EVENTS_WARM_BYTES,
+        SETTING_EVENTS_WARM_ZONE_BYTES,
+        SETTING_EVENTS_WARM_PARTITION_BYTES,
+        SETTING_EVENTS_REPLAY_MAX_RECORDS,
+        SETTING_EVENTS_REPLAY_MAX_BYTES,
+        SETTING_EVENTS_REPLAY_TIMEOUT,
+        SETTING_EVENTS_REPLAY_CONCURRENCY,
+    ] {
+        let message = refused(&[(key, "0")]);
+        assert!(message.contains(key), "{key}: {message}");
+    }
+    for key in [
+        SETTING_EVENTS_WARM_ZONE_BYTES,
+        SETTING_EVENTS_WARM_PARTITION_BYTES,
+    ] {
+        let message = refused(&[(SETTING_EVENTS_WARM_BYTES, "64M"), (key, "128M")]);
+        assert!(
+            message.contains("larger than the Host's"),
+            "{key}: {message}"
+        );
+    }
+}
+
 /// `ms` is tested before `s`, so a millisecond value is never read as a broken second value.
 #[test]
 fn a_millisecond_value_is_not_mistaken_for_a_malformed_second_value() {
