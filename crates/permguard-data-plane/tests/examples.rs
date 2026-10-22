@@ -361,6 +361,7 @@ fn provision(root: &Path, name: &str) -> Manifest {
             head: head.to_string(),
             counter: 1,
             ref_digest: None,
+            ..Default::default()
         },
     )
     .expect("the checkpoint is written");

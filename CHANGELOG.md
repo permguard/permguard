@@ -19,6 +19,14 @@ is cut.
 
 ### Added
 
+- **A native decision response is signed on request under the plane's `data.attest` ring (WP-6.6b).**
+  A request carrying `request_nonce` from an authenticated caller is answered with a top-level `attestation`, a flattened JWS of type `permguard.decision.response.v1`; gRPC carries the same three values in its `Attestation` message.
+  Its protected header is the closed JCS `{alg, kid, typ}`, and its closed payload binds the request digest, the nonce, the request ids, the caller's authenticated principal as `audience`, the exact policy state, the decision, the response digest, the evidence and a lifetime.
+  The policy state names the Host whose head statement vouched for the ledger, its ref, commit, counter and profile; the mirror checkpoint now keeps the authority and the ref, and a mirror pulled before signs from its next pull.
+  A request for a signature that cannot be made is refused `503` `response_signing_unavailable` before anything is decided; an anonymous one is refused `401` where the plane signs.
+  `decisions.response_signing` sets it: `enabled` (on where the ring is composed), `validity` (default `5m`, at most `1h`) and `clock_skew` (default `30s`, at most `5m`).
+  Native discovery publishes `response_signing`, `{state: optional, validity_seconds, clock_skew_seconds}` or `{state: disabled}`, and lists `urn:permguard:pdp:v1:signed-response` exactly when signing is offered; the temporal interface publishes neither.
+
 - **Every native decision says what became of its record, and a request for a signed response is never answered unsigned (WP-6.6a).**
   Each decision's `context.evidence` is the closed object `{mode, status, record_id, position}`: `disabled` with no log, and with one `durable`, naming the record's id and its Host position `{host_id, run, sequence}`.
   A boxcarred request carries it on each evaluation and not on the batch's own context; `context.id` stays and equals `record_id`.

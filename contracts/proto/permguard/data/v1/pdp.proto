@@ -201,6 +201,17 @@ message EvaluateResponse {
   DecisionContext context = 3;
   // Present exactly when the request carried evaluations, in the same order.
   repeated Decision evaluations = 4;
+  // The signed response, present exactly when `request_nonce` asked for one.
+  Attestation attestation = 5;
+}
+
+// A flattened JWS of `permguard.decision.response.v1`: the three base64url
+// values the REST answer carries as `attestation`, verifying to the same
+// payload bytes.
+message Attestation {
+  string protected = 1;
+  string payload = 2;
+  string signature = 3;
 }
 
 message GetConfigurationRequest {}
@@ -240,6 +251,16 @@ message GetConfigurationResponse {
   optional string sunset = 10;
   // The interface's ceilings, by name; empty when it publishes none.
   map<string, uint64> limits = 11;
+  // Whether a request may ask for a signed response.
+  ResponseSigning response_signing = 12;
+}
+
+// `optional` with the lifetime the server emits and the skew a verifier
+// allows, or `disabled`, whose two numbers are absent from the JSON document.
+message ResponseSigning {
+  string state = 1;
+  uint32 validity_seconds = 2;
+  uint32 clock_skew_seconds = 3;
 }
 
 // ─── permguard.api.pdp.temporal.v1alpha1 ─────────────────────────────────────

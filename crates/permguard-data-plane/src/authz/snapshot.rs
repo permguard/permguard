@@ -100,6 +100,11 @@ pub struct Head {
     pub commit: String,
     /// The counter of the verified head statement.
     pub counter: u64,
+    /// The Host the verified head statement names as its authority, a canonical UUID; absent for
+    /// a mirror pulled before it was kept (WP-6.6b).
+    pub authority_host_id: Option<String>,
+    /// The ref the verified head statement signed (WP-6.6b).
+    pub reference: Option<String>,
     pub manifest: Manifest,
 }
 
@@ -110,6 +115,8 @@ impl Head {
         Self {
             commit: "sha256:test".to_owned(),
             counter: 0,
+            authority_host_id: None,
+            reference: None,
             manifest: Manifest::default(),
         }
     }
@@ -266,6 +273,8 @@ pub fn head_at(
     Ok(Head {
         commit: checkpoint.head,
         counter: checkpoint.counter,
+        authority_host_id: checkpoint.authority_host_id,
+        reference: checkpoint.reference,
         manifest,
     })
 }

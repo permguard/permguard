@@ -239,6 +239,9 @@ pub mod capability {
     pub const PDP_V1_PRINCIPAL: &str = "urn:permguard:pdp:v1:principal";
     pub const PDP_V1_STRUCTURED_REASONS: &str = "urn:permguard:pdp:v1:structured-reasons";
     pub const PDP_V1_BOXCARRING: &str = "urn:permguard:pdp:v1:boxcarring";
+    /// A request may ask for a response signed under `data.attest` (WP-6.6b): listed exactly
+    /// when signing is enabled.
+    pub const PDP_V1_SIGNED_RESPONSE: &str = "urn:permguard:pdp:v1:signed-response";
     pub const TEMPORAL_V1ALPHA1_STORE_IN_PAYLOAD: &str =
         "urn:permguard:pdp:temporal:v1alpha1:store-in-payload";
     pub const TEMPORAL_V1ALPHA1_TYPED_EVENTS: &str =
@@ -553,6 +556,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         (
             "capability.PDP_V1_BOXCARRING",
             capability::PDP_V1_BOXCARRING,
+        ),
+        (
+            "capability.PDP_V1_SIGNED_RESPONSE",
+            capability::PDP_V1_SIGNED_RESPONSE,
         ),
         (
             "capability.TEMPORAL_V1ALPHA1_STORE_IN_PAYLOAD",

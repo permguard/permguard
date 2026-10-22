@@ -37,6 +37,7 @@
     "assurance.SCHEMA_WARNINGS_AS_ERRORS": "schema.warnings_as_errors",
     "assurance.TLS_1_3_ONLY": "tls.1_3_only",
     "capability.PDP_V1_BOXCARRING": "urn:permguard:pdp:v1:boxcarring",
+    "capability.PDP_V1_SIGNED_RESPONSE": "urn:permguard:pdp:v1:signed-response",
     "capability.PDP_V1_PARTITION_INPUTS": "urn:permguard:pdp:v1:partition-inputs",
     "capability.PDP_V1_PREFIX": "urn:permguard:pdp:v1:",
     "capability.PDP_V1_PRINCIPAL": "urn:permguard:pdp:v1:principal",

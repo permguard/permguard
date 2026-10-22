@@ -142,6 +142,15 @@ dataPlane:
   #     bytes: "256M"          # what they may weigh; accepts k/M/G
   #   max_evaluations: "256"   # the most evaluations one boxcarred request may carry
 
+  #   # A signed response, when a request sends `request_nonce`: a JWS under the plane's
+  #   # `data.attest` ring, addressed to the authenticated caller. On by default where that ring is
+  #   # composed; a request for a signature this plane cannot make is refused, never answered
+  #   # unsigned.
+  #   response_signing:
+  #     enabled: "true"
+  #     validity: "5m"         # the lifetime every signed response carries; 1s to 1h, whole seconds
+  #     clock_skew: "30s"      # the skew discovery tells a verifier to allow; 1s to 5m
+
   #   # Every decision, recorded where it can be kept, proven and consumed. Off by default: a
   #   # decision log is a security control and a data-protection surface at once, and neither is
   #   # switched on for a deployment that did not ask for it.

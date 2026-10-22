@@ -82,8 +82,12 @@ impl PolicyDecisionPoint for PdpApi {
             .describer
             .header(permguard_core::domains::interface::PDP_NATIVE_V1)
             .map_err(|refused| status_of(&refused, self.disclosure))?;
-        let document =
-            configuration::configuration(&self.base_url, header, self.decider.max_evaluations());
+        let document = configuration::configuration(
+            &self.base_url,
+            header,
+            self.decider.max_evaluations(),
+            self.decider.response_signing(),
+        );
 
         Ok(Response::new(GetConfigurationResponse {
             r#interface: document.interface.to_owned(),
@@ -110,6 +114,20 @@ impl PolicyDecisionPoint for PdpApi {
             )]
             .into_iter()
             .collect(),
+            response_signing: Some(match document.response_signing {
+                configuration::ResponseSigningState::Optional {
+                    validity_seconds,
+                    clock_skew_seconds,
+                } => crate::v1::ResponseSigning {
+                    state: "optional".to_owned(),
+                    validity_seconds,
+                    clock_skew_seconds,
+                },
+                configuration::ResponseSigningState::Disabled => crate::v1::ResponseSigning {
+                    state: "disabled".to_owned(),
+                    ..crate::v1::ResponseSigning::default()
+                },
+            }),
         }))
     }
 }
@@ -142,6 +160,9 @@ impl PdpApi {
                     self.disclosure,
                 )
             })?;
+        // What a signed response binds, taken before the metadata touches the body (WP-6.6b).
+        let asker = super::signing::asker(&actor, &wire, self.decider.response_signing())
+            .map_err(|denial| super::gate::grpc_denial(&denial))?;
         if wire.request_id.is_none() {
             wire.request_id = carried;
         }
@@ -158,7 +179,7 @@ impl PdpApi {
 
         match self
             .decider
-            .decide_as(&wire, trace, authorized.as_ref())
+            .decide_signed(&wire, trace, authorized.as_ref(), asker)
             .await
         {
             Ok(answered) => Ok(Response::new(translate::response_to_proto(answered))),

@@ -303,6 +303,7 @@ fn provision_with(
             head: commit_digest.to_string(),
             counter: 1,
             ref_digest: None,
+            ..Default::default()
         },
     )
     .expect("the checkpoint is written");
@@ -1402,6 +1403,7 @@ mod shipped_example {
                 head: commit_digest.to_string(),
                 counter: 1,
                 ref_digest: None,
+                ..Default::default()
             },
         )
         .expect("the checkpoint is written");

@@ -2062,6 +2062,55 @@ fn test_key_versions_the_coordinator_root_and_the_retired_commitment_key() {
     );
 }
 
+/// WP-6.6b: response signing follows the data plane's signing ring unless set, and its lifetime
+/// and skew are whole seconds within their bounds.
+#[test]
+fn response_signing_follows_the_ring_and_its_lifetime_is_bounded() {
+    use permguard_core::config::{
+        SETTING_DATA_KEYS_ENABLED, SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
+        SETTING_RESPONSE_SIGNING_ENABLED, SETTING_RESPONSE_SIGNING_VALIDITY,
+    };
+    let built = |extra: &[(&'static str, &'static str)]| {
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_file(pairs(extra)),
+        )
+    };
+    let with_ring = built(&[(SETTING_DATA_KEYS_ENABLED, "true")]).expect("builds");
+    assert!(with_ring.response_signing_enabled(), "on with the ring");
+    assert_eq!(with_ring.response_signing_validity().as_secs(), 300);
+    assert_eq!(with_ring.response_signing_clock_skew().as_secs(), 30);
+    let without = built(&[(SETTING_DATA_KEYS_ENABLED, "false")]).expect("builds");
+    assert!(!without.response_signing_enabled(), "off without it");
+    let off = built(&[
+        (SETTING_DATA_KEYS_ENABLED, "true"),
+        (SETTING_RESPONSE_SIGNING_ENABLED, "false"),
+    ])
+    .expect("builds");
+    assert!(!off.response_signing_enabled(), "off when said");
+    let set = built(&[
+        (SETTING_RESPONSE_SIGNING_VALIDITY, "1h"),
+        (SETTING_RESPONSE_SIGNING_CLOCK_SKEW, "5m"),
+    ])
+    .expect("the bounds themselves");
+    assert_eq!(set.response_signing_validity().as_secs(), 3600);
+    assert_eq!(set.response_signing_clock_skew().as_secs(), 300);
+    for (key, value) in [
+        (SETTING_RESPONSE_SIGNING_VALIDITY, "0s"),
+        (SETTING_RESPONSE_SIGNING_VALIDITY, "3601s"),
+        (SETTING_RESPONSE_SIGNING_VALIDITY, "1500ms"),
+        (SETTING_RESPONSE_SIGNING_CLOCK_SKEW, "301s"),
+        (SETTING_RESPONSE_SIGNING_CLOCK_SKEW, "0s"),
+    ] {
+        let error = built(&[(key, value)]).expect_err("out of bounds");
+        assert!(
+            format!("{error:#}").contains(key),
+            "{key}={value}: {error:#}"
+        );
+    }
+}
+
 /// WP-6.6: `required` answers only what it recorded, so permit sampling below one is refused
 /// under it and accepted with no log.
 #[test]

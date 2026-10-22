@@ -2478,6 +2478,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "axum",
+ "base64 0.23.1",
  "futures-core",
  "http",
  "http-body-util",

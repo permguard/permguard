@@ -1237,6 +1237,20 @@ impl crate::pdp::Pdp for GrpcPdp {
             answer.sunset,
             answer.limits,
         );
+        // The closed `response_signing` object as the HTTP document writes it (WP-6.6b): the two
+        // numbers only when signing is offered.
+        if let (Some(object), Some(signing)) = (document.as_object_mut(), answer.response_signing) {
+            let state = if signing.state == "optional" {
+                serde_json::json!({
+                    "state": signing.state,
+                    "validity_seconds": signing.validity_seconds,
+                    "clock_skew_seconds": signing.clock_skew_seconds,
+                })
+            } else {
+                serde_json::json!({ "state": signing.state })
+            };
+            object.insert("response_signing".to_owned(), state);
+        }
         Ok(document)
     }
 }
@@ -1531,6 +1545,18 @@ fn answer_of(answer: pdp::EvaluateResponse) -> serde_json::Value {
                     })
                     .collect(),
             ),
+        );
+    }
+
+    // The signed response, as the REST answer carries it (WP-6.6b).
+    if let Some(attestation) = answer.attestation {
+        object.insert(
+            "attestation".to_owned(),
+            serde_json::json!({
+                "protected": attestation.protected,
+                "payload": attestation.payload,
+                "signature": attestation.signature,
+            }),
         );
     }
 

@@ -76,6 +76,33 @@ pub struct Configuration {
     pub store_scope: StoreScope,
     /// What one request is held to (WP-7.4a).
     pub limits: Limits,
+    /// Whether a request may ask for a signed response (WP-6.6b).
+    pub response_signing: ResponseSigningState,
+}
+
+/// The closed `response_signing` object: `optional` with the lifetime the server emits and the
+/// skew a verifier allows, or `disabled`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "lowercase")]
+pub enum ResponseSigningState {
+    Optional {
+        validity_seconds: u32,
+        clock_skew_seconds: u32,
+    },
+    Disabled,
+}
+
+impl ResponseSigningState {
+    /// The state of `signing`, as this plane offers it.
+    pub fn of(signing: Option<&super::signing::ResponseSigning>) -> Self {
+        match signing {
+            Some(signing) => Self::Optional {
+                validity_seconds: u32::try_from(signing.validity.as_secs()).unwrap_or(u32::MAX),
+                clock_skew_seconds: u32::try_from(signing.clock_skew.as_secs()).unwrap_or(u32::MAX),
+            },
+            None => Self::Disabled,
+        }
+    }
 }
 
 /// The ceilings of one request.
@@ -90,8 +117,14 @@ pub fn configuration(
     base_url: &str,
     header: permguard_core::stages::Header,
     max_evaluations: usize,
+    signing: Option<&super::signing::ResponseSigning>,
 ) -> Configuration {
     let base = base_url.trim_end_matches('/');
+    let mut capabilities: Vec<String> = CAPABILITIES.iter().map(|urn| (*urn).to_owned()).collect();
+    // Listed exactly when a request may ask for it: a capability listed and refused is a defect.
+    if signing.is_some() {
+        capabilities.push(permguard_core::domains::capability::PDP_V1_SIGNED_RESPONSE.to_owned());
+    }
 
     Configuration {
         interface: INTERFACE,
@@ -101,7 +134,7 @@ pub fn configuration(
             evaluation: format!("{base}{EVALUATION_PATH}"),
             evaluations: format!("{base}{EVALUATIONS_PATH}"),
         },
-        capabilities: CAPABILITIES.iter().map(|urn| (*urn).to_owned()).collect(),
+        capabilities,
         store_scope: StoreScope {
             r#in: "payload",
             zone: "required",
@@ -112,6 +145,7 @@ pub fn configuration(
         limits: Limits {
             max_evaluations: max_evaluations as u64,
         },
+        response_signing: ResponseSigningState::of(signing),
     }
 }
 
@@ -127,8 +161,9 @@ pub fn document(
     base_url: &str,
     header: permguard_core::stages::Header,
     max_evaluations: usize,
+    signing: Option<&super::signing::ResponseSigning>,
 ) -> Result<String, serde_json::Error> {
-    serde_json::to_string_pretty(&configuration(base_url, header, max_evaluations))
+    serde_json::to_string_pretty(&configuration(base_url, header, max_evaluations, signing))
 }
 
 #[cfg(test)]
@@ -145,6 +180,7 @@ mod tests {
                     .header(permguard_core::domains::interface::PDP_NATIVE_V1)
                     .expect("served"),
                 100,
+                None,
             )
             .expect("it serializes"),
         )

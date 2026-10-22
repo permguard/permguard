@@ -80,6 +80,7 @@ fn build(root: &Path) {
             head: digest.to_string(),
             counter: 1,
             ref_digest: None,
+            ..Checkpoint::default()
         },
     )
     .expect("the checkpoint is written");

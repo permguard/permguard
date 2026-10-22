@@ -361,10 +361,13 @@ pub fn request_digest(request: &CheckRequest) -> Result<String, DigestError> {
     )
 }
 
-/// The response digest of `response`: its JSON as the plane answers it. The attestation that
-/// will sit beside it is not part of this answer's model yet (WP-6.6b).
+/// The response digest of `response`: its JSON as the plane answers it, without `attestation`.
 pub fn response_digest(response: &CheckResponse) -> Result<String, DigestError> {
-    let value = serde_json::to_value(response).map_err(|error| DigestError(error.to_string()))?;
+    let mut value =
+        serde_json::to_value(response).map_err(|error| DigestError(error.to_string()))?;
+    if let Some(members) = value.as_object_mut() {
+        members.remove("attestation");
+    }
     response_value_digest(&value)
 }
 
@@ -375,6 +378,147 @@ pub fn response_value_digest(response: &Value) -> Result<String, DigestError> {
         permguard_core::domains::digest::DECISION_RESPONSE_BODY,
         response,
     )
+}
+
+/// A flattened JWS: the three base64url values REST carries as `attestation` and gRPC as its
+/// message of the same name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Attestation {
+    pub protected: String,
+    pub payload: String,
+    pub signature: String,
+}
+
+/// The `v` of the payload this build writes and reads.
+pub const PAYLOAD_VERSION: u32 = 1;
+
+/// The exact policy state a decision was made under.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Policy {
+    /// The Host whose head statement vouched for it, a canonical UUID.
+    pub authority_host_id: String,
+    pub zone_id: String,
+    pub ledger_id: String,
+    /// The resolved ref.
+    #[serde(rename = "ref")]
+    pub reference: String,
+    /// The commit, `sha256:` and 64 lowercase hex digits.
+    pub commit: String,
+    /// The head statement's counter, unsigned decimal text.
+    pub counter: String,
+    /// The resolved profile.
+    pub profile: String,
+}
+
+/// The closed payload of `permguard.decision.response.v1`: every member required, no other.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Payload {
+    pub v: u32,
+    pub interface: String,
+    pub request_digest: String,
+    pub request_nonce: String,
+    /// One per effective evaluation in response order, one for the single endpoint.
+    pub request_ids: Vec<Option<String>>,
+    /// `ActorContext.authorization_principal`, exactly.
+    pub audience: String,
+    pub policy: Policy,
+    pub decision: bool,
+    pub response_digest: String,
+    pub evidence: Evidence,
+    /// Whole-second UTC RFC 3339.
+    pub issued_at: String,
+    pub expires_at: String,
+}
+
+impl Payload {
+    /// Checks every form the contract fixes, beyond the closed shape: the version and interface,
+    /// the digests, the nonce, the UUIDs, the counter, the evidence and the times, `issued_at`
+    /// strictly before `expires_at`.
+    pub fn check(&self) -> Result<(), String> {
+        if self.v != PAYLOAD_VERSION {
+            return Err(format!(
+                "payload version {} is not {PAYLOAD_VERSION}",
+                self.v
+            ));
+        }
+        if self.interface != INTERFACE {
+            return Err(format!("`{}` is not the native interface", self.interface));
+        }
+        for (name, digest) in [
+            ("request_digest", &self.request_digest),
+            ("response_digest", &self.response_digest),
+            ("policy.commit", &self.policy.commit),
+        ] {
+            if !is_sha256(digest) {
+                return Err(format!(
+                    "`{name}` is not `sha256:` and 64 lowercase hex digits"
+                ));
+            }
+        }
+        nonce_bytes(&self.request_nonce)?;
+        if self.request_ids.is_empty() {
+            return Err("`request_ids` names no evaluation".to_owned());
+        }
+        if self.audience.is_empty() {
+            return Err("`audience` is empty".to_owned());
+        }
+        for (name, id) in [
+            ("policy.authority_host_id", &self.policy.authority_host_id),
+            ("policy.zone_id", &self.policy.zone_id),
+            ("policy.ledger_id", &self.policy.ledger_id),
+        ] {
+            if !is_uuid(id) {
+                return Err(format!("`{name}` is not a lowercase hyphenated UUID"));
+            }
+        }
+        if !is_decimal_u64(&self.policy.counter) {
+            return Err("`policy.counter` is not unsigned decimal text".to_owned());
+        }
+        if self.policy.reference.is_empty() || self.policy.profile.is_empty() {
+            return Err("`policy.ref` and `policy.profile` name something".to_owned());
+        }
+        self.evidence.check(self.decision)?;
+        let issued = instant(&self.issued_at, "issued_at")?;
+        let expires = instant(&self.expires_at, "expires_at")?;
+        if issued >= expires {
+            return Err("`issued_at` is not before `expires_at`".to_owned());
+        }
+        Ok(())
+    }
+
+    /// The payload's bytes: its JCS form, what the JWS carries.
+    pub fn canonical(&self) -> Result<Vec<u8>, DigestError> {
+        let value = serde_json::to_value(self).map_err(|error| DigestError(error.to_string()))?;
+        permguard_stream::jcs::canonicalize(&value)
+            .map_err(|error| DigestError(format!("{error:?}")))
+    }
+}
+
+/// A whole-second UTC instant, `YYYY-MM-DDTHH:MM:SSZ`, in epoch seconds.
+pub fn instant(text: &str, name: &str) -> Result<i64, String> {
+    let well_formed = text.len() == 20
+        && text.ends_with('Z')
+        && text
+            .as_bytes()
+            .iter()
+            .enumerate()
+            .all(|(at, byte)| match at {
+                4 | 7 => *byte == b'-',
+                10 => *byte == b'T',
+                13 | 16 => *byte == b':',
+                19 => *byte == b'Z',
+                _ => byte.is_ascii_digit(),
+            });
+    let seconds = well_formed
+        .then(|| permguard_core::time::from_rfc3339(text))
+        .flatten();
+    match seconds {
+        Some(seconds) if permguard_core::time::to_rfc3339(seconds) == text => Ok(seconds),
+        _ => Err(format!("`{name}` is not a whole-second UTC instant")),
+    }
 }
 
 #[cfg(test)]

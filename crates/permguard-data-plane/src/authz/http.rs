@@ -130,6 +130,13 @@ async fn answer(
             );
         }
     };
+    // What a signed response binds, taken before the header below touches the body (WP-6.6b).
+    let asker = match super::signing::asker(actor, &request, surface.decider.response_signing()) {
+        Ok(asker) => asker,
+        Err(denial) => {
+            return with_request_id(super::gate::http_denial(&denial), request_id.as_deref());
+        }
+    };
     // The header is the transport's way of saying it; the body is the
     // profile's. Either does, and the body wins because it is the one a
     // boxcarred evaluation can carry per entry.
@@ -153,7 +160,7 @@ async fn answer(
 
     let response = match surface
         .decider
-        .decide_as(&request, trace, authorized.as_ref())
+        .decide_signed(&request, trace, authorized.as_ref(), asker)
         .await
     {
         Ok(answered) => (StatusCode::OK, Json(answered)).into_response(),
@@ -176,6 +183,7 @@ async fn pdp_configuration(State(surface): State<Surface>) -> Response {
             &surface.base_url,
             header,
             surface.decider.max_evaluations(),
+            surface.decider.response_signing(),
         ))
         .into_response(),
         Err(refused) => error(&refused, surface.disclosure),

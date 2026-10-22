@@ -47,6 +47,7 @@ pub mod grpc;
 pub mod http;
 pub mod measure;
 pub mod quarantine;
+pub mod signing;
 pub mod snapshot;
 pub mod store;
 pub mod translate;
@@ -106,6 +107,32 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
             .with_audit(audit::decision_audit(context))
             // The log is opened once for the plane, not once per decider: one process marks each
             // run of a stream once and measures each stream once (WP-6.1).
+            // Signed responses on request, when the deployment offers them and the Host composes
+            // the `data.attest` ring that signs them (WP-6.6b).
+            .with_response_signing(
+                config
+                    .response_signing_enabled()
+                    .then(|| {
+                        let signer = crate::handles::response_signer(context);
+                        // Configured on with no ring to sign with: discovery says `disabled`, and
+                        // the operator hears why.
+                        if signer.is_none() {
+                            tracing::warn!(
+                                event.name = "authz.response_signing_unavailable",
+                                component = "data-plane",
+                                "response signing is enabled and this plane composes no \
+                                 `data.attest` ring: requests for a signed response are refused"
+                            );
+                        }
+                        signer
+                    })
+                    .flatten()
+                    .map(|signer| signing::ResponseSigning {
+                        signer: Arc::new(signer),
+                        validity: config.response_signing_validity(),
+                        clock_skew: config.response_signing_clock_skew(),
+                    }),
+            )
             .with_journal(
                 crate::decisions::recorder(context),
                 crate::handles::zone_key(

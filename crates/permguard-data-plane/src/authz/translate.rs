@@ -74,6 +74,13 @@ pub fn response_to_proto(response: CheckResponse) -> EvaluateResponse {
         decision: response.decision,
         request_id: response.request_id.unwrap_or_default(),
         context: response.context.map(context_to_proto),
+        attestation: response
+            .attestation
+            .map(|attestation| crate::v1::Attestation {
+                protected: attestation.protected,
+                payload: attestation.payload,
+                signature: attestation.signature,
+            }),
         evaluations: response
             .evaluations
             .unwrap_or_default()
@@ -506,6 +513,7 @@ mod tests {
                 request_id: Some("one".to_owned()),
                 context: None,
             }]),
+            attestation: None,
         };
 
         let proto = response_to_proto(answer);

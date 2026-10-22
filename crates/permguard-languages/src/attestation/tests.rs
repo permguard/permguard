@@ -268,6 +268,7 @@ fn the_response_digest_covers_the_answer_without_its_attestation() {
             )),
         }),
         evaluations: None,
+        attestation: None,
     };
     let digest = response_digest(&response).expect("a digest");
     assert_eq!(
@@ -336,4 +337,140 @@ fn a_padded_or_empty_name_is_the_question_its_trimmed_form_asks() {
     let mut empty = base;
     empty["request_id"] = json!("");
     assert_eq!(digest_of(empty), digest_of(absent), "an empty id is no id");
+}
+
+/// One change to a payload, named.
+type Alteration = Box<dyn Fn(&mut Payload)>;
+
+fn payload() -> Payload {
+    Payload {
+        v: PAYLOAD_VERSION,
+        interface: INTERFACE.to_owned(),
+        request_digest: format!("sha256:{}", "a".repeat(64)),
+        request_nonce: NONCE.to_owned(),
+        request_ids: vec![None, Some("two".to_owned())],
+        audience: "spiffe://acme/pep".to_owned(),
+        policy: Policy {
+            authority_host_id: "01937000-0000-7000-8000-00000000a0a0".to_owned(),
+            zone_id: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+            ledger_id: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c".to_owned(),
+            reference: "main".to_owned(),
+            commit: format!("sha256:{}", "b".repeat(64)),
+            counter: "18446744073709551615".to_owned(),
+            profile: "default".to_owned(),
+        },
+        decision: true,
+        response_digest: format!("sha256:{}", "c".repeat(64)),
+        evidence: Evidence::durable(EvidenceMode::Required, "dec-1".to_owned(), position()),
+        issued_at: "2026-10-22T10:00:00Z".to_owned(),
+        expires_at: "2026-10-22T10:05:00Z".to_owned(),
+    }
+}
+
+#[test]
+fn the_payload_is_closed_canonical_and_every_form_is_checked() {
+    let held = payload();
+    held.check().expect("every form canonical");
+    let bytes = held.canonical().expect("JCS");
+    let text = String::from_utf8(bytes.clone()).expect("UTF-8");
+    assert!(
+        text.starts_with(r#"{"audience":"spiffe://acme/pep","decision":true,"evidence":{"#),
+        "{text}"
+    );
+    assert!(text.contains(r#""policy":{"authority_host_id":"#), "{text}");
+    assert!(text.contains(r#""ref":"main""#), "{text}");
+    assert!(text.contains(r#""request_ids":[null,"two"]"#), "{text}");
+    assert!(
+        text.contains(r#""counter":"18446744073709551615""#),
+        "{text}"
+    );
+    assert_eq!(
+        serde_json::from_slice::<Payload>(&bytes).expect("reads back"),
+        held
+    );
+
+    let refused: Vec<(&str, Alteration)> = vec![
+        ("version", Box::new(|p| p.v = 2)),
+        (
+            "interface",
+            Box::new(|p| {
+                p.interface = permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1.to_owned()
+            }),
+        ),
+        (
+            "request digest",
+            Box::new(|p| p.request_digest = "sha256:AA".to_owned()),
+        ),
+        (
+            "response digest",
+            Box::new(|p| p.response_digest = format!("sha512:{}", "c".repeat(64))),
+        ),
+        ("nonce", Box::new(|p| p.request_nonce = "short".to_owned())),
+        ("no evaluation", Box::new(|p| p.request_ids.clear())),
+        ("no audience", Box::new(|p| p.audience.clear())),
+        (
+            "authority",
+            Box::new(|p| p.policy.authority_host_id = "nope".to_owned()),
+        ),
+        (
+            "zone",
+            Box::new(|p| p.policy.zone_id = p.policy.zone_id.to_uppercase()),
+        ),
+        ("counter", Box::new(|p| p.policy.counter = "01".to_owned())),
+        ("commit", Box::new(|p| p.policy.commit = "abc".to_owned())),
+        ("ref", Box::new(|p| p.policy.reference.clear())),
+        ("evidence", Box::new(|p| p.evidence.position = None)),
+        (
+            "issued",
+            Box::new(|p| p.issued_at = "2026-10-22T10:00:00.5Z".to_owned()),
+        ),
+        (
+            "offset",
+            Box::new(|p| p.expires_at = "2026-10-22T12:05:00+02:00".to_owned()),
+        ),
+        ("order", Box::new(|p| p.expires_at = p.issued_at.clone())),
+        (
+            "hour 24",
+            Box::new(|p| p.expires_at = "2026-10-22T24:00:00Z".to_owned()),
+        ),
+        (
+            "day 32",
+            Box::new(|p| p.expires_at = "2026-10-32T10:05:00Z".to_owned()),
+        ),
+        (
+            "second 60",
+            Box::new(|p| p.expires_at = "2026-10-22T23:59:60Z".to_owned()),
+        ),
+    ];
+    for (why, alter) in refused {
+        let mut altered = payload();
+        alter(&mut altered);
+        assert!(altered.check().is_err(), "{why}: {altered:?}");
+    }
+    // Closed: a member the contract does not name is refused at reading.
+    let mut extra = serde_json::to_value(payload()).expect("JSON");
+    extra["extension"] = json!(true);
+    assert!(serde_json::from_value::<Payload>(extra).is_err());
+}
+
+#[test]
+fn the_response_digest_leaves_the_attestation_out() {
+    let mut response = CheckResponse {
+        decision: false,
+        request_id: None,
+        context: None,
+        evaluations: None,
+        attestation: None,
+    };
+    let unsigned = response_digest(&response).expect("a digest");
+    response.attestation = Some(Attestation {
+        protected: "p".to_owned(),
+        payload: "q".to_owned(),
+        signature: "s".to_owned(),
+    });
+    assert_eq!(
+        response_digest(&response).expect("a digest"),
+        unsigned,
+        "signing never changes what it signs"
+    );
 }

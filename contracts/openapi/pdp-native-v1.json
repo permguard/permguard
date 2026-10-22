@@ -589,6 +589,10 @@
             },
             "description": "Present exactly when the request carried `evaluations[]`, in the same order.",
             "x-grpc-field": "evaluations"
+          },
+          "attestation": {
+            "$ref": "#/components/schemas/Attestation",
+            "x-grpc-field": "attestation"
           }
         },
         "required": [
@@ -753,6 +757,10 @@
           "limits": {
             "$ref": "#/components/schemas/Limits",
             "x-grpc-field": "limits"
+          },
+          "response_signing": {
+            "$ref": "#/components/schemas/ResponseSigning",
+            "x-grpc-field": "response_signing"
           }
         },
         "required": [
@@ -765,7 +773,8 @@
           "component",
           "state",
           "stage",
-          "limits"
+          "limits",
+          "response_signing"
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.data.v1.GetConfigurationResponse"
@@ -918,6 +927,60 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.data.v1.EvidencePosition"
+      },
+      "Attestation": {
+        "type": "object",
+        "description": "A flattened JWS of `permguard.decision.response.v1` under `data.attest`, present exactly when `request_nonce` asked for a signature and it was made. Its protected header is the closed JCS `{alg, kid, typ}`; its payload binds the request and response digests, the authenticated audience, the exact policy state, the decision, its evidence and a lifetime.",
+        "properties": {
+          "protected": {
+            "type": "string",
+            "x-grpc-field": "protected"
+          },
+          "payload": {
+            "type": "string",
+            "x-grpc-field": "payload"
+          },
+          "signature": {
+            "type": "string",
+            "x-grpc-field": "signature"
+          }
+        },
+        "required": [
+          "protected",
+          "payload",
+          "signature"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Attestation"
+      },
+      "ResponseSigning": {
+        "type": "object",
+        "description": "Whether a request may ask for a signed response: `optional` with `validity_seconds`, the lifetime the server emits, and `clock_skew_seconds`, the skew a verifier allows, both positive whole seconds; or `disabled`, with neither number. The capability `urn:permguard:pdp:v1:signed-response` is listed exactly in the first case.",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "optional",
+              "disabled"
+            ],
+            "x-grpc-field": "state"
+          },
+          "validity_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "x-grpc-field": "validity_seconds"
+          },
+          "clock_skew_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "x-grpc-field": "clock_skew_seconds"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.ResponseSigning"
       }
     }
   },

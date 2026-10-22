@@ -693,6 +693,7 @@ mod two_planes {
                 head: head.to_string(),
                 counter: 1,
                 ref_digest: None,
+                ..Default::default()
             },
         )
         .expect("the checkpoint is written");

@@ -70,6 +70,7 @@ fn checkpoint(counter: u64, content: &[u8]) -> Checkpoint {
         head: Digest::compute(content).to_string(),
         counter,
         ref_digest: Some(ref_digest(counter, content).to_string()),
+        ..Checkpoint::default()
     }
 }
 
@@ -304,6 +305,7 @@ fn malformed_inputs_are_parse_errors_never_panics() {
         head: "not-a-digest".into(),
         counter: 1,
         ref_digest: None,
+        ..Checkpoint::default()
     };
     let error = refused(&jwks_for("k1", &key), &envelope, Some(&corrupt));
     assert!(error.contains("checkpoint is corrupt"), "{error}");

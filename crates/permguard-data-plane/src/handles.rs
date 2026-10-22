@@ -51,6 +51,7 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
     let declaration = Declaration::new(PLANE)
         .signs::<DecisionBatchV1>()
         .signs::<EventBatchV1>()
+        .signs::<permguard_host::composition::DecisionResponseV1>()
         .audits::<DataPlaneAudit>()
         .uses_task(TaskType::PolicyMirror, 1)
         .handles_task(TaskType::DecisionsShip, 1)
@@ -111,6 +112,16 @@ pub(crate) fn decision_signer(
         .ok()
         .flatten()?;
     Some(Arc::new(signer))
+}
+
+/// The decision response signer, when the plane's signing ring is composed (WP-6.6b).
+pub(crate) fn response_signer(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::Signer<permguard_host::composition::DecisionResponseV1>> {
+    registration(context)?
+        .signer::<permguard_host::composition::DecisionResponseV1>()
+        .ok()
+        .flatten()
 }
 
 /// The event batch signer, when the plane's signing ring is composed.

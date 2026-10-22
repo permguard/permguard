@@ -143,6 +143,7 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
             request_id: None,
             context: None,
             evaluations: None,
+            attestation: None,
         },
     );
     doc.check(
@@ -152,6 +153,11 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
             request_id: Some("req-1".to_owned()),
             context: Some(context()),
             evaluations: Some(vec![decided]),
+            attestation: Some(permguard_languages::attestation::Attestation {
+                protected: "p".to_owned(),
+                payload: "q".to_owned(),
+                signature: "s".to_owned(),
+            }),
         },
     );
     doc.check("DecisionContext", &DecisionContext::default());
@@ -183,8 +189,65 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
             .header(permguard_core::domains::interface::PDP_NATIVE_V1)
             .expect("served"),
         100,
+        None,
     );
     doc.check("Configuration", &configuration);
+    // Signing offered: the closed `optional` object and the capability (WP-6.6b).
+    struct Never;
+    impl permguard_data_plane::authz::signing::ResponseSigner for Never {
+        fn sign(&self, _: &[u8]) -> Result<permguard_languages::attestation::Attestation, String> {
+            Err("never".to_owned())
+        }
+        fn now(&self) -> i64 {
+            0
+        }
+    }
+    let signing = permguard_data_plane::authz::signing::ResponseSigning {
+        signer: std::sync::Arc::new(Never),
+        validity: std::time::Duration::from_secs(300),
+        clock_skew: std::time::Duration::from_secs(30),
+    };
+    let offered = permguard_data_plane::authz::configuration::configuration(
+        "http://host/",
+        permguard_core::stages::Describer::detached("data-plane")
+            .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+            .expect("served"),
+        100,
+        Some(&signing),
+    );
+    doc.check("Configuration", &offered);
+    doc.check("ResponseSigning", &offered.response_signing);
+    doc.check("ResponseSigning", &configuration.response_signing);
+    doc.check(
+        "Attestation",
+        &permguard_languages::attestation::Attestation {
+            protected: "p".to_owned(),
+            payload: "q".to_owned(),
+            signature: "s".to_owned(),
+        },
+    );
+    assert!(!doc.accepts_json("ResponseSigning", &json!({ "state": "sometimes" })));
+    assert_eq!(
+        serde_json::to_value(&configuration.response_signing).expect("JSON"),
+        json!({ "state": "disabled" }),
+        "no numbers when nothing is offered"
+    );
+    assert_eq!(
+        serde_json::to_value(&offered.response_signing).expect("JSON"),
+        json!({ "state": "optional", "validity_seconds": 300, "clock_skew_seconds": 30 })
+    );
+    assert!(
+        offered
+            .capabilities
+            .iter()
+            .any(|urn| urn == permguard_core::domains::capability::PDP_V1_SIGNED_RESPONSE)
+    );
+    assert!(
+        !configuration
+            .capabilities
+            .iter()
+            .any(|urn| urn == permguard_core::domains::capability::PDP_V1_SIGNED_RESPONSE)
+    );
     // A deprecated interface's header, every member present (WP-7.4a).
     doc.check(
         "Configuration",
@@ -202,6 +265,7 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
                 permguard_core::lifecycle::Phase::Serving,
             ),
             100,
+            None,
         ),
     );
 
@@ -359,6 +423,15 @@ fn test_pdp_temporal_v1alpha1_document_describes_what_the_wire_types_serialise()
             .expect("served"),
     );
     doc.check("Document", &configuration);
+    // The temporal interface neither reuses nor advertises the native signed response (WP-6.6b).
+    let temporal = serde_json::to_value(&configuration).expect("JSON");
+    assert!(temporal.get("response_signing").is_none(), "{temporal}");
+    assert!(
+        !temporal
+            .to_string()
+            .contains(permguard_core::domains::capability::PDP_V1_SIGNED_RESPONSE),
+        "{temporal}"
+    );
     // A deprecated interface's header, every member present (WP-7.4a).
     doc.check(
         "Document",

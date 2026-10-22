@@ -40,6 +40,10 @@ pub struct VerifiedHead {
     pub counter: u64,
     /// The digest of the verified ref state.
     pub ref_digest: Digest,
+    /// The Host the head statement names as its authority.
+    pub authority_host_id: [u8; 16],
+    /// The ref the statement signed.
+    pub reference: String,
     /// How many objects actually crossed the wire.
     pub fetched: usize,
 }
@@ -132,6 +136,8 @@ pub fn fetch_closure(
         head,
         counter: statement.counter,
         ref_digest: statement.ref_digest,
+        authority_host_id: statement.authority_host_id,
+        reference: tracked.r#ref.clone(),
         fetched,
     })
 }
@@ -149,7 +155,22 @@ pub fn commit_checkpoint(
             head: verified.head.to_string(),
             counter: verified.counter,
             ref_digest: Some(verified.ref_digest.to_string()),
+            authority_host_id: Some(uuid_text(&verified.authority_host_id)),
+            reference: Some(verified.reference.clone()),
         },
+    )
+}
+
+/// 16 UUID bytes in their canonical text form: lowercase, hyphenated.
+fn uuid_text(bytes: &[u8; 16]) -> String {
+    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..]
     )
 }
 
@@ -192,4 +213,43 @@ pub fn walk_region_local(
         }
     }
     Ok(region)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// WP-6.6b: the checkpoint keeps the authority the verified statement names, as a canonical
+    /// UUID, and the ref it signed — what a signed decision response cites.
+    #[test]
+    fn the_checkpoint_keeps_the_statements_authority_and_ref() {
+        let root =
+            std::env::temp_dir().join(format!("permguard-pull-checkpoint-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = crate::store::FsStore::new(&root);
+        let verified = VerifiedHead {
+            head: Digest::compute(b"head"),
+            counter: 7,
+            ref_digest: Digest::compute(b"ref state"),
+            authority_host_id: [
+                0x01, 0x93, 0x70, 0x00, 0x00, 0x00, 0x70, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0xa0, 0xa0,
+            ],
+            reference: "main".to_owned(),
+            fetched: 0,
+        };
+        commit_checkpoint(&store, "refs/main", &verified).expect("written");
+        let held = checkpoint::read(&store, "refs/main")
+            .expect("reads")
+            .expect("held");
+        assert_eq!(
+            held.authority_host_id.as_deref(),
+            Some("01937000-0000-7000-8000-00000000a0a0")
+        );
+        assert_eq!(held.reference.as_deref(), Some("main"));
+        assert_eq!(held.counter, 7);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

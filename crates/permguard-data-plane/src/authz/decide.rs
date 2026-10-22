@@ -453,6 +453,8 @@ pub struct Decider {
     max_evaluations: usize,
     /// Where decisions are recorded, when this plane keeps a log.
     journal: Option<Arc<dyn crate::decisions::DecisionRecorder>>,
+    /// Signed responses, when this plane offers them (WP-6.6b).
+    response_signing: Option<super::signing::ResponseSigning>,
     /// Which caller-supplied attributes this plane may record in clear.
     include: permguard_core::decisions::IncludeSection,
     /// Turns an identifier into the zone's shared token before it ever leaves this plane
@@ -519,6 +521,7 @@ impl Decider {
             audit: recorder.map(AuditTarget::Direct),
             max_evaluations: max_evaluations.max(1),
             journal: None,
+            response_signing: None,
             include: permguard_core::decisions::IncludeSection::default(),
             subjects: None,
             expire_after: None,
@@ -659,6 +662,22 @@ impl Decider {
         self.include = include;
 
         self
+    }
+
+    /// Signs a native response when a request asks for one (WP-6.6b); `None` refuses every such
+    /// request as `response_signing_unavailable`.
+    pub fn with_response_signing(
+        mut self,
+        signing: Option<super::signing::ResponseSigning>,
+    ) -> Self {
+        self.response_signing = signing;
+
+        self
+    }
+
+    /// Response signing as this plane offers it: what discovery publishes.
+    pub fn response_signing(&self) -> Option<&super::signing::ResponseSigning> {
+        self.response_signing.as_ref()
     }
 
     /// The mirrors root, for the surfaces that report on what is held.
@@ -805,8 +824,22 @@ impl Decider {
         trace: Option<TraceContext>,
         authorized: Option<&(String, String)>,
     ) -> Result<CheckResponse, ApiError> {
+        self.decide_signed(request, trace, authorized, Asker::default())
+            .await
+    }
+
+    /// [`Self::decide_as`], for a request whose caller the transport authenticated as
+    /// `asker.audience` and whose request digest it took before touching the body (WP-6.6b): what
+    /// a signed response binds.
+    pub async fn decide_signed(
+        &self,
+        request: &CheckRequest,
+        trace: Option<TraceContext>,
+        authorized: Option<&(String, String)>,
+        asker: Asker,
+    ) -> Result<CheckResponse, ApiError> {
         let started = Instant::now();
-        let outcome = self.answer(request, trace, authorized).await;
+        let outcome = self.answer(request, trace, authorized, asker).await;
         self.metrics.observe(
             &super::measure::REQUEST_SECONDS,
             &[],
@@ -822,6 +855,7 @@ impl Decider {
         request: &CheckRequest,
         trace: Option<TraceContext>,
         authorized: Option<&(String, String)>,
+        asker: Asker,
     ) -> Result<CheckResponse, ApiError> {
         // The decision's own clock, which the log records: how long the plane
         // took, separate from how long the transport took.
@@ -838,23 +872,45 @@ impl Decider {
             // bad request, not a decision.
             ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
         })?);
-        // A nonce asks for a signed answer, and this plane has nothing that signs one: refused
-        // before anything is decided or recorded, never answered unsigned (WP-6.6).
-        if request.request_nonce.is_some() {
-            self.metrics.count(
-                &super::measure::REFUSALS,
-                &[(
-                    permguard_core::metrics::labels::REASON,
-                    permguard_core::codes::pdp_native::RESPONSE_SIGNING_UNAVAILABLE,
-                )],
-            );
-            return Err(ApiError::new(
-                ErrorClass::Unavailable,
-                permguard_core::codes::pdp_native::RESPONSE_SIGNING_UNAVAILABLE,
-                "the request asks for a signed response, and this plane has no signer for one: \
-                 it answers no request for a signature unsigned",
-            ));
-        }
+        // A nonce asks for a signed answer (WP-6.6): one this plane cannot sign — no signer, no
+        // authenticated audience, no request digest — is refused before anything is decided or
+        // recorded, never answered unsigned.
+        let signed = match &request.request_nonce {
+            None => None,
+            Some(nonce) => {
+                let Some(signing) = self.response_signing.clone() else {
+                    return Err(self.signing_unavailable(
+                        "the request asks for a signed response, and this plane has no signer for \
+                         one",
+                    ));
+                };
+                let Some(audience) = asker.audience else {
+                    return Err(self.signing_unavailable(
+                        "the request asks for a signed response, and no authenticated caller is \
+                         there to address it to",
+                    ));
+                };
+                // Taken by the transport from what the caller sent, before anything was filled in:
+                // never recomputed here, where the body may no longer be the caller's.
+                let Some(request_digest) = asker.request_digest else {
+                    return Err(self.signing_unavailable(
+                        "the request digest of what the caller sent was not taken",
+                    ));
+                };
+                // The clock and the key, before anything is decided or recorded.
+                if let Err(error) = signing.signer.ready() {
+                    return Err(
+                        self.signing_unavailable(&format!("the signer cannot sign now: {error}"))
+                    );
+                }
+                Some(Signed {
+                    signing,
+                    audience,
+                    nonce: nonce.clone(),
+                    request_digest,
+                })
+            }
+        };
 
         let Loaded {
             mirror,
@@ -874,6 +930,14 @@ impl Decider {
                 ErrorClass::Unavailable,
                 permguard_core::codes::common::UNAVAILABLE,
                 "the store the request names changed while the request was authorized; retry",
+            ));
+        }
+        // A signature names the authority of the head statement it was decided under: a mirror
+        // pulled before that was kept signs nothing, refused before anything is decided.
+        if signed.is_some() && (head.authority_host_id.is_none() || head.reference.is_none()) {
+            return Err(self.signing_unavailable(
+                "this ledger's mirror was pulled before it kept the authority of its head \
+                 statement; it signs from its next pull",
             ));
         }
 
@@ -1161,7 +1225,7 @@ impl Decider {
                 .unwrap_or_default()
         };
 
-        Ok(CheckResponse {
+        let mut response = CheckResponse {
             decision: overall,
             request_id: resolved.request_id.clone(),
             context: Some(context),
@@ -1170,7 +1234,116 @@ impl Decider {
             } else {
                 None
             },
-        })
+            attestation: None,
+        };
+        if let Some(signed) = signed {
+            response.attestation =
+                Some(self.attest(&response, signed, &mirror, &head, &resolved.profile)?);
+        }
+
+        Ok(response)
+    }
+
+    /// The refusal of a request for a signature this plane cannot make.
+    fn signing_unavailable(&self, reason: &str) -> ApiError {
+        self.metrics.count(
+            &super::measure::REFUSALS,
+            &[(
+                permguard_core::metrics::labels::REASON,
+                permguard_core::codes::pdp_native::RESPONSE_SIGNING_UNAVAILABLE,
+            )],
+        );
+        ApiError::new(
+            ErrorClass::Unavailable,
+            permguard_core::codes::pdp_native::RESPONSE_SIGNING_UNAVAILABLE,
+            format!("{reason}: this plane answers no request for a signature unsigned"),
+        )
+    }
+
+    /// Signs `response` for the request `signed` describes (WP-6.6b): the payload binds the
+    /// request and response digests, the audience, the exact policy state, the decision, its
+    /// evidence and a lifetime; checked whole before the Host signs its JCS bytes.
+    fn attest(
+        &self,
+        response: &CheckResponse,
+        signed: Signed,
+        mirror: &store::Mirror,
+        head: &Head,
+        profile: &str,
+    ) -> Result<permguard_languages::attestation::Attestation, ApiError> {
+        use permguard_languages::attestation::{Payload, Policy, response_digest};
+
+        let (Some(authority), Some(reference)) =
+            (head.authority_host_id.clone(), head.reference.clone())
+        else {
+            return Err(self.signing_unavailable(
+                "this ledger's mirror was pulled before it kept the authority of its head \
+                 statement; it signs from its next pull",
+            ));
+        };
+        // One request id per evaluation answered, in response order; the single endpoint's one.
+        // A batch's evidence is its last evaluation's record: every evaluation's own evidence is
+        // bound through the response digest (decided autonomously, 2026-10-22).
+        let (request_ids, evidence) = match &response.evaluations {
+            Some(evaluations) => (
+                evaluations
+                    .iter()
+                    .map(|decision| decision.request_id.clone())
+                    .collect(),
+                evaluations
+                    .last()
+                    .and_then(|decision| decision.context.as_ref())
+                    .and_then(|context| context.evidence.clone()),
+            ),
+            None => (
+                vec![response.request_id.clone()],
+                response
+                    .context
+                    .as_ref()
+                    .and_then(|context| context.evidence.clone()),
+            ),
+        };
+        let Some(evidence) = evidence else {
+            return Err(self.signing_unavailable("the decision names no evidence to sign"));
+        };
+        let response_digest = response_digest(response).map_err(|error| {
+            self.signing_unavailable(&format!("the response digest cannot be taken: {error}"))
+        })?;
+        let issued = signed.signing.signer.now();
+        let validity = i64::try_from(signed.signing.validity.as_secs()).unwrap_or(i64::MAX);
+        let payload = Payload {
+            v: permguard_languages::attestation::PAYLOAD_VERSION,
+            interface: permguard_languages::request::INTERFACE.to_owned(),
+            request_digest: signed.request_digest,
+            request_nonce: signed.nonce,
+            request_ids,
+            audience: signed.audience,
+            policy: Policy {
+                authority_host_id: authority,
+                zone_id: mirror.identity.zone_id.clone(),
+                ledger_id: mirror.identity.ledger_id.clone(),
+                reference,
+                commit: head.commit.clone(),
+                counter: head.counter.to_string(),
+                profile: profile.to_owned(),
+            },
+            decision: response.decision,
+            response_digest,
+            evidence,
+            issued_at: permguard_core::time::to_rfc3339(issued),
+            expires_at: permguard_core::time::to_rfc3339(issued.saturating_add(validity)),
+        };
+        payload.check().map_err(|reason| {
+            self.signing_unavailable(&format!("the signed payload would not be exact: {reason}"))
+        })?;
+        let bytes = payload.canonical().map_err(|error| {
+            self.signing_unavailable(&format!("the payload cannot be written: {error}"))
+        })?;
+        signed
+            .signing
+            .signer
+            .sign(&bytes)
+            .map_err(|error| self.signing_unavailable(&format!("the signer refused: {error}")))
     }
 
     /// The ledger a request names, loaded: its mirror, its verified head, and the compiled
@@ -1325,6 +1498,36 @@ impl Decider {
             }
         }
     }
+}
+
+/// Who asked, as the transport saw it (WP-6.6b): the authenticated principal a signed response is
+/// addressed to, and the request digest taken before the transport touched the body.
+#[derive(Debug, Clone, Default)]
+pub struct Asker {
+    /// `ActorContext.authorization_principal`, copied exactly; `None` for nobody authenticated.
+    pub audience: Option<String>,
+    /// The request digest, taken before a header filled anything in.
+    pub request_digest: Option<String>,
+}
+
+impl Asker {
+    /// `audience`, and the request digest of `request` as it stands now: to be called before a
+    /// transport fills anything into the body. A digest that cannot be taken is absent, and a
+    /// request for a signature is then refused.
+    pub fn of(audience: Option<String>, request: &CheckRequest) -> Self {
+        Self {
+            audience,
+            request_digest: permguard_languages::attestation::request_digest(request).ok(),
+        }
+    }
+}
+
+/// A request for a signature, once it is known it can be made.
+struct Signed {
+    signing: super::signing::ResponseSigning,
+    audience: String,
+    nonce: String,
+    request_digest: String,
 }
 
 /// The zone and the ledger of `mirror` as their 16 UUID bytes: the scope its records' tags and

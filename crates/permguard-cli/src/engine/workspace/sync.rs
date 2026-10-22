@@ -216,6 +216,7 @@ impl Workspace<'_> {
             head: statement.digest.to_string(),
             counter: statement.counter,
             ref_digest: Some(statement.ref_digest.to_string()),
+            ..Checkpoint::default()
         };
         config::write_checkpoint(self.store, &r#ref, &checkpoint).map_err(err)?;
         config::write_head(self.store, &r#ref).map_err(err)?;

@@ -46,7 +46,8 @@ use crate::config::{
     SETTING_LOG_BATCH_INTERVAL, SETTING_LOG_COMMITMENT_KEY_REF, SETTING_LOG_COMMITMENT_KEY_VERSION,
     SETTING_LOG_ENABLED, SETTING_LOG_MODE, SETTING_LOG_ON_FULL, SETTING_LOG_PDP_ID,
     SETTING_LOG_SAMPLE_PERMITS, SETTING_LOG_SPOOL_AGE, SETTING_LOG_SPOOL_BYTES,
-    SETTING_LOG_SPOOL_DIRECTORY, SETTING_MAX_BLOCKING,
+    SETTING_LOG_SPOOL_DIRECTORY, SETTING_MAX_BLOCKING, SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
+    SETTING_RESPONSE_SIGNING_ENABLED, SETTING_RESPONSE_SIGNING_VALIDITY,
 };
 use crate::config::{
     SETTING_DECISION_STORE_DIRECTORY, SETTING_DECISION_STORE_ENABLED,
@@ -92,6 +93,21 @@ pub struct DecisionsSection {
     /// Where the record of each decision goes.
     #[serde(default)]
     log: LogSection,
+    /// Signed native responses, on request (WP-6.6b).
+    #[serde(default)]
+    response_signing: ResponseSigningSection,
+}
+
+/// Whether a native decision response is signed when a request asks, and its lifetime.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResponseSigningSection {
+    #[serde(default)]
+    enabled: Option<String>,
+    #[serde(default)]
+    validity: Option<String>,
+    #[serde(default)]
+    clock_skew: Option<String>,
 }
 
 /// The in-memory bound: entries, and bytes.
@@ -351,6 +367,18 @@ impl DecisionsSection {
             (SETTING_LOG_BATCH_INTERVAL, self.log.batch.interval.as_ref()),
             (SETTING_LOG_ON_FULL, self.log.on_full.as_ref()),
             (SETTING_LOG_SAMPLE_PERMITS, self.log.sample.permits.as_ref()),
+            (
+                SETTING_RESPONSE_SIGNING_ENABLED,
+                self.response_signing.enabled.as_ref(),
+            ),
+            (
+                SETTING_RESPONSE_SIGNING_VALIDITY,
+                self.response_signing.validity.as_ref(),
+            ),
+            (
+                SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
+                self.response_signing.clock_skew.as_ref(),
+            ),
             (
                 SETTING_LOG_COMMITMENT_KEY_REF,
                 self.log.commitment.key_ref.as_ref(),

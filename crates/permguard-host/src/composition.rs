@@ -114,6 +114,17 @@ impl Artifact for EventBatchV1 {
     const TIME_SENSITIVE: bool = false;
 }
 
+/// A native decision response, signed by the Data Plane that decided, when the request asked
+/// for it (WP-6.6b).
+pub struct DecisionResponseV1;
+
+impl Artifact for DecisionResponseV1 {
+    const TYPE: &'static str = permguard_core::domains::protected::DECISION_RESPONSE;
+    const RING: RingId = DATA_ATTEST;
+    /// `issued_at` and `expires_at` are what a verifier judges it by.
+    const TIME_SENSITIVE: bool = true;
+}
+
 /// The actions an audit schema lets its holder record.
 pub trait AuditSchema: 'static {
     /// The schema's name, unique across Planes.
@@ -1061,6 +1072,20 @@ impl<T: Artifact> Signer<T> {
         payload.sign_with(self.keys.as_ref())
     }
 
+    /// Whether a payload of `T` could be signed now: the clock trusted for an artifact that
+    /// carries a time, and an active key. What a caller asks before committing to work whose
+    /// answer needs the signature (WP-6.6b).
+    pub fn ready(&self) -> permguard_core::keys::Result<()> {
+        if T::TIME_SENSITIVE
+            && let Err(anomaly) = self.time.trusted_now()
+        {
+            return Err(permguard_core::KeyError::ClockAnomaly {
+                detail: anomaly.to_string(),
+            });
+        }
+        self.keys.active_key_id().map(|_| ())
+    }
+
     /// The key that signs now.
     pub fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
         self.keys.active_key_id()
@@ -1198,10 +1223,22 @@ pub trait JwsArtifact: Artifact + sealed::Sealed {
     const ALGORITHM: &'static str;
     /// Whether the header declares [`Artifact::TYPE`] as its `typ`.
     const DECLARES_TYPE: bool;
+    /// Whether the header is written in its JCS form, members sorted (`alg`, `kid`, `typ`): what
+    /// a signed decision response's contract fixes (WP-6.6b). The batches keep the bytes they
+    /// were always signed with.
+    const CANONICAL_HEADER: bool = false;
 }
 
 impl sealed::Sealed for DecisionBatchV1 {}
 impl sealed::Sealed for EventBatchV1 {}
+impl sealed::Sealed for DecisionResponseV1 {}
+
+/// A signed decision response's header is the closed JCS `{"alg","kid","typ"}`.
+impl JwsArtifact for DecisionResponseV1 {
+    const ALGORITHM: &'static str = "EdDSA";
+    const DECLARES_TYPE: bool = true;
+    const CANONICAL_HEADER: bool = true;
+}
 
 /// A decision batch's header is `{"alg","kid"}`.
 impl JwsArtifact for DecisionBatchV1 {
@@ -1271,6 +1308,14 @@ struct JwsHeader<'a> {
     kid: &'a str,
 }
 
+/// The JCS header: members in code-point order, every one present.
+#[derive(serde::Serialize)]
+struct CanonicalJwsHeader<'a> {
+    alg: &'a str,
+    kid: &'a str,
+    typ: &'a str,
+}
+
 /// Signs `payload` as a JWS of `T` under `keys`' active key: the one framing of a batch, used by
 /// the Host's [`Signer<T>`] and by a tool that holds a ring itself.
 pub fn sign_jws<T: JwsArtifact>(
@@ -1281,11 +1326,19 @@ pub fn sign_jws<T: JwsArtifact>(
     use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 
     let kid = keys.active_key_id().map_err(JwsError::Key)?;
-    let header = serde_json::to_vec(&JwsHeader {
-        alg: T::ALGORITHM,
-        typ: T::DECLARES_TYPE.then_some(T::TYPE),
-        kid: kid.as_str(),
-    })
+    let header = if T::CANONICAL_HEADER {
+        serde_json::to_vec(&CanonicalJwsHeader {
+            alg: T::ALGORITHM,
+            kid: kid.as_str(),
+            typ: T::TYPE,
+        })
+    } else {
+        serde_json::to_vec(&JwsHeader {
+            alg: T::ALGORITHM,
+            typ: T::DECLARES_TYPE.then_some(T::TYPE),
+            kid: kid.as_str(),
+        })
+    }
     .map_err(|error| {
         JwsError::Key(permguard_core::KeyError::backend(format!(
             "writing the protected header: {error}"
@@ -2176,6 +2229,36 @@ mod tests {
             Ok(vec![Jwk::okp(self.0, "Ed25519", "EdDSA", "x")])
         }
     }
+
+    /// WP-6.6b: a signed decision response's header is the closed JCS `{alg, kid, typ}`, while a
+    /// batch keeps the header bytes it was always signed with.
+    #[test]
+    fn a_decision_response_header_is_jcs_and_a_batch_header_keeps_its_bytes() {
+        use base64::Engine as _;
+        let decode = |part: &str| {
+            String::from_utf8(
+                base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .decode(part)
+                    .expect("base64url"),
+            )
+            .expect("UTF-8")
+        };
+        let ring = TaggedRing("k-1");
+        let response = sign_jws::<DecisionResponseV1>(b"{}", &ring).expect("signed");
+        assert_eq!(
+            decode(&response.protected),
+            r#"{"alg":"EdDSA","kid":"k-1","typ":"permguard.decision.response.v1"}"#
+        );
+        assert_eq!(decode(&response.payload), "{}");
+        let batch = sign_jws::<EventBatchV1>(b"{}", &ring).expect("signed");
+        assert_eq!(
+            decode(&batch.protected),
+            format!(
+                r#"{{"alg":"EdDSA","typ":"{}","kid":"k-1"}}"#,
+                permguard_core::domains::protected::EVENT_BATCH
+            )
+        );
+    }
     /// A ring whose key set reads epoch 5, or, `moving`, a later epoch at every read: a rotation
     /// landing while a head statement is signed.
     struct EpochRing {
@@ -2697,6 +2780,44 @@ mod tests {
 
         wall.jump(31);
         heads.sign(&head).expect("the wall clock caught up");
+    }
+
+    /// WP-6.6b: a signed decision response carries the times a verifier judges it by, so a clock
+    /// in anomaly stops it, and `ready` says so before anything is signed.
+    #[test]
+    fn a_clock_anomaly_stops_a_signed_decision_response() {
+        use crate::time::{ManualClock, ManualMonotonic, TimeGuard};
+
+        let wall = Arc::new(ManualClock::at(1_800_000_000));
+        let time = Arc::new(TimeGuard::new(
+            wall.clone(),
+            Arc::new(ManualMonotonic::default()),
+            std::time::Duration::from_secs(30),
+        ));
+        let host = Host::builder()
+            .ring(DATA_ATTEST, Arc::new(TaggedRing("data")))
+            .time(time)
+            .build();
+        let data = host
+            .register(Declaration::new("data").signs::<DecisionResponseV1>())
+            .expect("registers");
+        let responses = data
+            .signer::<DecisionResponseV1>()
+            .expect("declared")
+            .expect("composed");
+        let payload = Jws::<DecisionResponseV1>::new(b"{}");
+        responses.ready().expect("a sound clock");
+        responses.sign(&payload).expect("signs");
+
+        wall.jump(-31);
+        assert!(matches!(
+            responses.ready().expect_err("in anomaly"),
+            permguard_core::KeyError::ClockAnomaly { .. }
+        ));
+        assert!(matches!(
+            responses.sign(&payload).expect_err("in anomaly"),
+            permguard_core::KeyError::ClockAnomaly { .. }
+        ));
     }
 
     #[test]

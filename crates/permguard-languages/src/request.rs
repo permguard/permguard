@@ -746,6 +746,10 @@ pub struct CheckResponse {
     /// order.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evaluations: Option<Vec<Decision>>,
+    /// The signed response, present exactly when `request_nonce` asked for one and it was made
+    /// (WP-6.6b): a flattened JWS whose payload binds this answer's digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attestation: Option<crate::attestation::Attestation>,
 }
 
 /// What a request asks, once its defaults are applied and its required fields
@@ -1337,6 +1341,7 @@ mod tests {
             request_id: None,
             context: Some(DecisionContext::default()),
             evaluations: None,
+            attestation: None,
         };
 
         assert_eq!(

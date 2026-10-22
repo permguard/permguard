@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::store::Store;
 
 /// What was last accepted for one ref, and must never silently regress.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Checkpoint {
     pub head: String,
     pub counter: u64,
@@ -19,6 +19,14 @@ pub struct Checkpoint {
     /// it, whose next verdict falls back to the head.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ref_digest: Option<String>,
+    /// The Host whose head statement vouched for this state, a lowercase hyphenated UUID
+    /// (WP-6.6b): what a signed decision response names as the policy's authority. Absent in a
+    /// checkpoint written before it; such a mirror signs no response until its next pull.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_host_id: Option<String>,
+    /// The ref the statement signed, as the tracked ref names it (WP-6.6b).
+    #[serde(default, rename = "ref", skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
 }
 
 /// Reads the checkpoint at `path`, `None` when nothing was accepted yet.

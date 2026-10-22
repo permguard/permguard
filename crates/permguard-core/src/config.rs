@@ -681,6 +681,20 @@ pub const SETTING_LOG_ON_FULL: &str = "PERMGUARD_DECISIONS_LOG_ON_FULL";
 /// `required` is not (WP-6.6): every answer it gives is durable.
 pub const SETTING_LOG_SAMPLE_PERMITS: &str = "PERMGUARD_DECISIONS_LOG_SAMPLE_PERMITS";
 
+/// Whether this plane signs a native decision response a request asks a signature for (WP-6.6b).
+/// Absent, it follows whether the plane composes its `data.attest` ring; on with no ring
+/// composed, discovery says `disabled` and a request for a signature is refused.
+pub const SETTING_RESPONSE_SIGNING_ENABLED: &str = "PERMGUARD_DECISIONS_RESPONSE_SIGNING_ENABLED";
+
+/// How long a signed decision response is valid: what discovery publishes as `validity_seconds`
+/// and the distance between `issued_at` and `expires_at`. Whole seconds, at most an hour.
+pub const SETTING_RESPONSE_SIGNING_VALIDITY: &str = "PERMGUARD_DECISIONS_RESPONSE_SIGNING_VALIDITY";
+
+/// The clock skew a verifier allows a signed decision response, published as
+/// `clock_skew_seconds`. Whole seconds, at most five minutes.
+pub const SETTING_RESPONSE_SIGNING_CLOCK_SKEW: &str =
+    "PERMGUARD_DECISIONS_RESPONSE_SIGNING_CLOCK_SKEW";
+
 /// Retired (WP-3.3): input tags are keyed by the per-ledger zone key derived from
 /// [`SETTING_SECRETS_COORDINATOR_ROOT_REF`]; a configuration that still sets this is refused.
 pub const SETTING_LOG_COMMITMENT_KEY_REF: &str = "PERMGUARD_DECISIONS_LOG_COMMITMENT_KEY_REF";
@@ -1074,6 +1088,10 @@ const DEFAULT_LOG_SPOOL_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 const DEFAULT_LOG_BATCH_BYTES: u64 = 256 * 1024;
 const DEFAULT_LOG_BATCH_INTERVAL: Duration = Duration::from_secs(1);
 const DEFAULT_LOG_SAMPLE_PERMITS: f64 = 1.0;
+const DEFAULT_RESPONSE_SIGNING_VALIDITY: Duration = Duration::from_secs(300);
+const MAX_RESPONSE_SIGNING_VALIDITY: Duration = Duration::from_secs(3600);
+const DEFAULT_RESPONSE_SIGNING_CLOCK_SKEW: Duration = Duration::from_secs(30);
+const MAX_RESPONSE_SIGNING_CLOCK_SKEW: Duration = Duration::from_secs(300);
 
 /// Ninety days: long enough for the investigation that starts a quarter late, short enough that
 /// nobody keeps personal data indefinitely by not choosing.
@@ -1365,6 +1383,9 @@ pub struct Config {
     log_batch_bytes: u64,
     log_batch_interval: Duration,
     log_sample_permits: f64,
+    response_signing_enabled: Option<bool>,
+    response_signing_validity: Duration,
+    response_signing_clock_skew: Duration,
     log_destination: Option<crate::decisions::LogDestination>,
     events_destination: Option<crate::decisions::EventDestination>,
     log_include: crate::decisions::IncludeSection,
@@ -1562,6 +1583,9 @@ impl Default for Config {
             log_batch_bytes: DEFAULT_LOG_BATCH_BYTES,
             log_batch_interval: DEFAULT_LOG_BATCH_INTERVAL,
             log_sample_permits: DEFAULT_LOG_SAMPLE_PERMITS,
+            response_signing_enabled: None,
+            response_signing_validity: DEFAULT_RESPONSE_SIGNING_VALIDITY,
+            response_signing_clock_skew: DEFAULT_RESPONSE_SIGNING_CLOCK_SKEW,
             log_destination: None,
             events_destination: None,
             log_include: crate::decisions::IncludeSection::default(),
@@ -3591,6 +3615,23 @@ produce: use `EdDSA` or `ES256`"
         self.log_sample_permits
     }
 
+    /// Whether native decision responses are signed on request (WP-6.6b): as configured, else
+    /// whether the plane composes its signing ring.
+    pub fn response_signing_enabled(&self) -> bool {
+        self.response_signing_enabled
+            .unwrap_or_else(|| self.data_signing_keys_enabled())
+    }
+
+    /// How long a signed decision response is valid.
+    pub fn response_signing_validity(&self) -> Duration {
+        self.response_signing_validity
+    }
+
+    /// The clock skew a verifier allows a signed decision response.
+    pub fn response_signing_clock_skew(&self) -> Duration {
+        self.response_signing_clock_skew
+    }
+
     /// Where records are shipped, when the file names a server.
     pub fn log_destination(&self) -> Option<&crate::decisions::LogDestination> {
         self.log_destination.as_ref()
@@ -4317,6 +4358,9 @@ produce: use `EdDSA` or `ES256`"
             SETTING_LOG_BATCH_INTERVAL => d(self.log_batch_interval),
             SETTING_LOG_ON_FULL => Some("closed".to_owned()),
             SETTING_LOG_SAMPLE_PERMITS => n(self.log_sample_permits),
+            SETTING_RESPONSE_SIGNING_ENABLED => b(self.response_signing_enabled()),
+            SETTING_RESPONSE_SIGNING_VALIDITY => d(self.response_signing_validity),
+            SETTING_RESPONSE_SIGNING_CLOCK_SKEW => d(self.response_signing_clock_skew),
             SETTING_EVENTS_ENABLED => b(self.events_enabled),
             SETTING_EVENTS_DIRECTORY => Some(self.events_directory().display().to_string()),
             SETTING_EVENTS_MAX_BYTES => n(self.events_max_bytes),
@@ -5213,6 +5257,38 @@ produce: use `EdDSA` or `ES256`"
                 );
             }
         }
+        if let Some(value) = settings.get(SETTING_RESPONSE_SIGNING_ENABLED) {
+            self.response_signing_enabled = Some(
+                parse_bool(value)
+                    .with_context(|| format!("reading {SETTING_RESPONSE_SIGNING_ENABLED}"))?,
+            );
+        }
+        // Whole seconds, positive and bounded (WP-6.6b): discovery publishes them as integers,
+        // and a lifetime the server does not actually emit would be an unenforced promise.
+        for (key, held, bound) in [
+            (
+                SETTING_RESPONSE_SIGNING_VALIDITY,
+                &mut self.response_signing_validity,
+                MAX_RESPONSE_SIGNING_VALIDITY,
+            ),
+            (
+                SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
+                &mut self.response_signing_clock_skew,
+                MAX_RESPONSE_SIGNING_CLOCK_SKEW,
+            ),
+        ] {
+            if let Some(value) = settings.get(key) {
+                let read = parse_duration(value).with_context(|| format!("reading {key}"))?;
+                if read.is_zero() || read.subsec_nanos() != 0 || read > bound {
+                    anyhow::bail!(
+                        "reading {key}: `{value}` is not a whole number of seconds between 1s \
+                         and {}s",
+                        bound.as_secs()
+                    );
+                }
+                *held = read;
+            }
+        }
         // `required` answers only what is durable (WP-6.6): a permit sampled out would be an
         // answer with no record, under the mode that promises one for each.
         if self.log_enabled && self.log_sample_permits < 1.0 {
@@ -6022,6 +6098,9 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_LOG_SPOOL_BYTES,
     SETTING_LOG_SPOOL_DIRECTORY,
     SETTING_MAX_BLOCKING,
+    SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
+    SETTING_RESPONSE_SIGNING_ENABLED,
+    SETTING_RESPONSE_SIGNING_VALIDITY,
     SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
     SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING,
     SETTING_MIRRORS_ENABLED,

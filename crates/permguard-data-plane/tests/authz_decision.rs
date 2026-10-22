@@ -317,6 +317,9 @@ fn provision(
             head: commit_digest.to_string(),
             counter: 1,
             ref_digest: None,
+            // The Host and ref the head statement vouched for (WP-6.6b).
+            authority_host_id: Some(AUTHORITY.to_owned()),
+            reference: Some("main".to_owned()),
         },
     )
     .expect("the checkpoint is written");
@@ -335,6 +338,9 @@ fn provision(
 
 /// A zone or ledger id as the catalog mints it, a UUIDv7, derived from `name` so a test can name
 /// it again: zone keys are keyed by ids of 16 bytes (WP-3.3).
+/// The Host whose head statement every provisioned ledger carries.
+const AUTHORITY: &str = "01937000-0000-7000-8000-00000000a0a0";
+
 fn uuid_of(name: &str) -> String {
     use std::hash::{Hash as _, Hasher as _};
     let mut bytes = [0u8; 16];
@@ -1927,6 +1933,7 @@ mod grpc_socket {
                     .header(permguard_core::domains::interface::PDP_NATIVE_V1)
                     .expect("served"),
                 256,
+                None,
             )
             .expect("the configuration serializes"),
         )
@@ -3204,6 +3211,11 @@ mod host_log {
             )
         }
 
+        /// The `data.attest` ring, which signs responses as it signs batches (WP-6.6b).
+        pub(super) fn attest(&self) -> Arc<Ring> {
+            Arc::clone(&self.attest)
+        }
+
         pub(super) fn host_hex(&self) -> String {
             hex(&self.identity.host_id())
         }
@@ -3874,4 +3886,579 @@ async fn every_decision_names_its_evidence_and_a_nonce_is_refused_until_somethin
     .await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
     assert_eq!(body["code"], "response_signing_unavailable", "{body}");
+}
+
+/// WP-6.6b: a signed native response, end to end, under a real `data.attest` ring.
+mod signed_response {
+    use super::*;
+
+    use base64::Engine as _;
+    use permguard_data_plane::authz::signing::{ResponseSigner, ResponseSigning};
+    use permguard_languages::attestation::{Attestation, Payload};
+
+    pub(super) const AUDIENCE: &str = "spiffe://acme/pep";
+    pub(super) const NONCE: &str = "AAECAwQFBgcICQoLDA0ODw";
+    pub(super) const NOW: i64 = 1_790_000_000;
+
+    /// The Host's own signing of a response, at a fixed time so two transports sign alike.
+    pub(super) struct RingSigner {
+        pub(super) ring: Arc<permguard_host::keys::ring::Ring>,
+        pub(super) refuses: bool,
+    }
+
+    impl ResponseSigner for RingSigner {
+        fn sign(&self, payload: &[u8]) -> Result<Attestation, String> {
+            if self.refuses {
+                return Err("the ring is unavailable".to_owned());
+            }
+            let parts = permguard_host::composition::sign_jws::<
+                permguard_host::composition::DecisionResponseV1,
+            >(payload, self.ring.as_ref())
+            .map_err(|error| error.to_string())?;
+            Ok(Attestation {
+                protected: parts.protected,
+                payload: parts.payload,
+                signature: parts.signature,
+            })
+        }
+
+        fn now(&self) -> i64 {
+            NOW
+        }
+
+        fn ready(&self) -> Result<(), String> {
+            if self.refuses {
+                return Err("the ring is unavailable".to_owned());
+            }
+            Ok(())
+        }
+    }
+
+    pub(super) fn b64(part: &str) -> Vec<u8> {
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(part)
+            .expect("base64url")
+    }
+
+    /// Verifies `attestation` under `ring`'s published key, as a PEP would.
+    pub(super) fn verified(
+        attestation: &Attestation,
+        ring: &permguard_host::keys::ring::Ring,
+    ) -> Payload {
+        use permguard_core::keys::PublicSet as _;
+        let header: Value = serde_json::from_slice(&b64(&attestation.protected)).expect("JSON");
+        let kid = header["kid"].as_str().expect("a kid").to_owned();
+        assert_eq!(
+            String::from_utf8(b64(&attestation.protected)).expect("UTF-8"),
+            format!(r#"{{"alg":"EdDSA","kid":"{kid}","typ":"permguard.decision.response.v1"}}"#),
+            "the closed JCS header"
+        );
+        let key = ring
+            .public_keys()
+            .expect("published")
+            .into_iter()
+            .find(|key| key.kid == kid)
+            .expect("the key it names");
+        permguard_objects::crypto::suite::Suite::Ed25519Sha256V1
+            .verify(
+                &b64(&key.x),
+                format!("{}.{}", attestation.protected, attestation.payload).as_bytes(),
+                &b64(&attestation.signature),
+            )
+            .expect("the signature verifies");
+        let bytes = b64(&attestation.payload);
+        permguard_stream::jcs::decode_canonical(&bytes).expect("the payload is JCS");
+        let payload: Payload = serde_json::from_slice(&bytes).expect("the closed payload");
+        payload.check().expect("every form exact");
+        payload
+    }
+
+    pub(super) fn decider_signing(
+        root: &Path,
+        host: &host_log::HostStream,
+        refuses: bool,
+    ) -> Arc<Decider> {
+        decider_signing_on(root, host, &host.producer(), refuses)
+    }
+
+    /// [`decider_signing`], its log appending to `producer`: the one a test counts records on.
+    pub(super) fn decider_signing_on(
+        root: &Path,
+        host: &host_log::HostStream,
+        producer: &Arc<permguard_stream::engine::Producer<permguard_decisions::stream::Codec>>,
+        refuses: bool,
+    ) -> Arc<Decider> {
+        let log = Arc::new(host.log(producer, host_log::LOOSE));
+        Arc::new(
+            Decider::new(
+                root.to_path_buf(),
+                Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+                Metrics::none(),
+                None,
+                256,
+            )
+            .with_journal(
+                Some(log as Arc<dyn permguard_data_plane::decisions::DecisionRecorder>),
+                subjects(),
+                permguard_core::decisions::IncludeSection::default(),
+            )
+            .with_response_signing(Some(ResponseSigning {
+                signer: Arc::new(RingSigner {
+                    ring: host.attest(),
+                    refuses,
+                }),
+                validity: std::time::Duration::from_secs(300),
+                clock_skew: std::time::Duration::from_secs(30),
+            })),
+        )
+    }
+
+    /// The asker a transport hands on: the authenticated caller, the digest of what it sent.
+    fn asker(request: &wire::CheckRequest) -> permguard_data_plane::authz::decide::Asker {
+        permguard_data_plane::authz::decide::Asker::of(Some(AUDIENCE.to_owned()), request)
+    }
+
+    fn signed_ask(body: Value) -> wire::CheckRequest {
+        let mut body = body;
+        body["request_nonce"] = json!(NONCE);
+        serde_json::from_value(body).expect("a request")
+    }
+
+    #[tokio::test]
+    async fn a_signed_response_binds_the_request_the_answer_and_the_policy_state() {
+        let root = scratch("signed-response").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ], None)],
+        );
+        let host = host_log::HostStream::new("signed-response-volume");
+        let decider = decider_signing(&root, &host, false);
+        let request = signed_ask(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "request_id": "r-1",
+        }));
+        let response = decider
+            .decide_signed(&request, None, None, asker(&request))
+            .await
+            .expect("decided and signed");
+        let attestation = response.attestation.clone().expect("signed");
+        let payload = verified(&attestation, &host.attest());
+
+        assert_eq!(
+            payload.audience, AUDIENCE,
+            "the authenticated caller, exactly"
+        );
+        assert_eq!(payload.request_nonce, NONCE);
+        assert_eq!(payload.request_ids, vec![Some("r-1".to_owned())]);
+        assert_eq!(
+            payload.request_digest,
+            permguard_languages::attestation::request_digest(&request).expect("a digest")
+        );
+        assert_eq!(
+            payload.response_digest,
+            permguard_languages::attestation::response_digest(&response).expect("a digest"),
+            "the answer as sent, its attestation aside"
+        );
+        assert_eq!(payload.decision, response.decision);
+        assert_eq!(
+            Some(&payload.evidence),
+            response
+                .context
+                .as_ref()
+                .and_then(|context| context.evidence.as_ref())
+        );
+        assert_eq!(payload.policy.authority_host_id, AUTHORITY);
+        assert_eq!(payload.policy.zone_id, uuid_of("acme"));
+        assert_eq!(payload.policy.ledger_id, uuid_of("main-ledger"));
+        assert_eq!(payload.policy.reference, "main");
+        assert_eq!(payload.policy.counter, "1");
+        assert_eq!(payload.policy.profile, "default");
+        assert!(payload.policy.commit.starts_with("sha256:"));
+        assert_eq!(payload.issued_at, permguard_core::time::to_rfc3339(NOW));
+        assert_eq!(
+            payload.expires_at,
+            permguard_core::time::to_rfc3339(NOW + 300)
+        );
+
+        // A batch: one id per evaluation, in order; its evidence the last evaluation's.
+        let batch = signed_ask(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "evaluations": [{"request_id": "one"}, {}],
+        }));
+        let answered = decider
+            .decide_signed(&batch, None, None, asker(&batch))
+            .await
+            .expect("signed");
+        let payload = verified(
+            answered.attestation.as_ref().expect("signed"),
+            &host.attest(),
+        );
+        assert_eq!(payload.request_ids, vec![Some("one".to_owned()), None]);
+        assert_eq!(
+            Some(&payload.evidence),
+            answered
+                .evaluations
+                .as_ref()
+                .and_then(|evaluations| evaluations
+                    .last()
+                    .and_then(|decision| decision.context.as_ref())
+                    .and_then(|context| context.evidence.as_ref()))
+        );
+
+        // No nonce, no attestation.
+        let mut plain = request.clone();
+        plain.request_nonce = None;
+        let answered = decider
+            .decide_signed(&plain, None, None, asker(&plain))
+            .await
+            .expect("decided");
+        assert!(answered.attestation.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_signature_that_cannot_be_made_refuses_the_answer_and_never_downgrades() {
+        let root = scratch("signed-refusals").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ], None)],
+        );
+        let host = host_log::HostStream::new("signed-refusals-volume");
+        let resource = host_log::ledger(&uuid_of("acme"), &uuid_of("main-ledger"));
+        let request = signed_ask(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+        }));
+
+        // Nobody authenticated to address it to: refused before anything is recorded.
+        let producer = host.producer();
+        let decider = decider_signing_on(&root, &host, &producer, false);
+        // One decision recorded first, so a count that does not move means something.
+        let mut plain = request.clone();
+        plain.request_nonce = None;
+        decider
+            .decide_signed(&plain, None, None, Default::default())
+            .await
+            .expect("decided");
+        assert!(!host_log::records(&producer, &resource).is_empty());
+        let before = host_log::records(&producer, &resource).len();
+        let refused = decider
+            .decide_signed(
+                &request,
+                None,
+                None,
+                permguard_data_plane::authz::decide::Asker::default(),
+            )
+            .await
+            .expect_err("no audience");
+        assert_eq!(refused.code(), "response_signing_unavailable");
+        assert_eq!(host_log::records(&producer, &resource).len(), before);
+
+        // A ring that cannot sign now: refused before anything is recorded, never unsigned.
+        let failing = decider_signing_on(&root, &host, &producer, true);
+        let before = host_log::records(&producer, &resource).len();
+        let refused = failing
+            .decide_signed(&request, None, None, asker(&request))
+            .await
+            .expect_err("the ring refused");
+        assert_eq!(refused.code(), "response_signing_unavailable");
+        assert_eq!(refused.class(), permguard_core::ErrorClass::Unavailable);
+        assert_eq!(host_log::records(&producer, &resource).len(), before);
+        // No digest of what the caller sent: never recomputed from a body the transport touched.
+        let refused = decider
+            .decide_signed(
+                &request,
+                None,
+                None,
+                permguard_data_plane::authz::decide::Asker {
+                    audience: Some(AUDIENCE.to_owned()),
+                    request_digest: None,
+                },
+            )
+            .await
+            .expect_err("no digest");
+        assert_eq!(refused.code(), "response_signing_unavailable");
+
+        // A mirror pulled before it kept its head's authority signs nothing, refused unrecorded.
+        let store = permguard_control_client::store::FsStore::new(
+            permguard_data_plane::authz::store::find(&root, "acme", "main-ledger")
+                .expect("located")
+                .path,
+        );
+        let held = permguard_control_client::checkpoint::read(&store, "refs/main")
+            .expect("reads")
+            .expect("held");
+        permguard_control_client::checkpoint::write(
+            &store,
+            "refs/main",
+            &permguard_control_client::checkpoint::Checkpoint {
+                authority_host_id: None,
+                reference: None,
+                ..held.clone()
+            },
+        )
+        .expect("written");
+        let older = decider_signing_on(&root, &host, &producer, false);
+        let before = host_log::records(&producer, &resource).len();
+        let refused = older
+            .decide_signed(&request, None, None, asker(&request))
+            .await
+            .expect_err("no authority kept");
+        assert_eq!(refused.code(), "response_signing_unavailable");
+        assert_eq!(
+            host_log::records(&producer, &resource).len(),
+            before,
+            "refused before anything is decided"
+        );
+
+        // An authority the payload could not name canonically: the payload is checked whole and
+        // the answer refused rather than signed with a malformed state.
+        permguard_control_client::checkpoint::write(
+            &store,
+            "refs/main",
+            &permguard_control_client::checkpoint::Checkpoint {
+                authority_host_id: Some("NOT-A-UUID".to_owned()),
+                reference: Some("main".to_owned()),
+                ..held.clone()
+            },
+        )
+        .expect("written");
+        let tampered = decider_signing_on(&root, &host, &producer, false);
+        let refused = tampered
+            .decide_signed(&request, None, None, asker(&request))
+            .await
+            .expect_err("not exact");
+        assert_eq!(refused.code(), "response_signing_unavailable");
+    }
+
+    fn authenticated() -> Arc<permguard_core::authz::Actor> {
+        Arc::new(permguard_core::authz::Actor::Authenticated(
+            permguard_core::authz::ActorContext::new(
+                permguard_core::authz::Principal::new(AUDIENCE).expect("a principal"),
+                permguard_core::authz::Credential::Oidc,
+                None,
+            ),
+        ))
+    }
+
+    fn authenticating(
+        mut request: tonic::Request<()>,
+    ) -> Result<tonic::Request<()>, tonic::Status> {
+        request.extensions_mut().insert(authenticated());
+        Ok(request)
+    }
+
+    /// Serves `decider` over gRPC on an ephemeral port, every caller authenticated as
+    /// [`AUDIENCE`].
+    fn serve_signed(decider: Arc<Decider>, boundary: Anonymising) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listener.local_addr().expect("the address");
+        listener.set_nonblocking(true).expect("non-blocking");
+        let api = permguard_data_plane::authz::grpc::PdpApi {
+            authorization: permissive(),
+            decider,
+            disclosure: Disclosure::Full,
+            base_url: format!("http://{address}"),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
+        };
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("a runtime");
+            runtime.block_on(async move {
+                let listener = tokio::net::TcpListener::from_std(listener).expect("adopted");
+                let incoming = async_stream::stream! {
+                    loop {
+                        match listener.accept().await {
+                            Ok((stream, _)) => yield Ok(stream),
+                            Err(error) => yield Err(error),
+                        }
+                    }
+                };
+                let _ = tonic::transport::Server::builder()
+                    .add_service(
+                        permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::with_interceptor(
+                            api, boundary,
+                        ),
+                    )
+                    .serve_with_incoming(incoming)
+                    .await;
+            });
+        });
+        format!("grpc://{address}")
+    }
+
+    async fn rest(
+        decider: Arc<Decider>,
+        actor: Arc<permguard_core::authz::Actor>,
+        body: Value,
+    ) -> (StatusCode, Value) {
+        // The bare routes: the actor is the one this request carries, as an authentication
+        // boundary would have attached it.
+        let router = permguard_data_plane::authz::http::routes(http::Surface {
+            authorization: permissive(),
+            decider,
+            disclosure: Disclosure::Full,
+            base_url: "http://127.0.0.1:7443".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
+        });
+        let request = Request::builder()
+            .method("POST")
+            .uri("/access/v1/evaluation")
+            .header("content-type", "application/json")
+            .header("x-request-id", "from-the-header")
+            .extension(actor)
+            .body(Body::from(body.to_string()))
+            .expect("the request builds");
+        let response = router.oneshot(request).await.expect("answers");
+        let status = response.status();
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("the body")
+            .to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
+    /// Over REST and gRPC alike: an authenticated caller gets an attestation a PEP recomputes from
+    /// what it sent and what it received — the header's request id never part of the request
+    /// digest — and an anonymous one is refused `401` where this plane signs.
+    #[test]
+    fn both_transports_sign_what_the_caller_can_recompute_and_refuse_nobody() {
+        let root = scratch("signed-transports").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ], None)],
+        );
+        let host = host_log::HostStream::new("signed-transports-volume");
+        let decider = decider_signing(&root, &host, false);
+        let body = json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "request_nonce": NONCE,
+        });
+        let sent: wire::CheckRequest = serde_json::from_value(body.clone()).expect("a request");
+        let request_digest =
+            permguard_languages::attestation::request_digest(&sent).expect("a digest");
+        let recompute = |answer: &Value| {
+            let mut unsigned = answer.clone();
+            let attestation: Attestation =
+                serde_json::from_value(unsigned["attestation"].clone()).expect("signed");
+            unsigned
+                .as_object_mut()
+                .expect("an object")
+                .remove("attestation");
+            let payload = verified(&attestation, &host.attest());
+            assert_eq!(
+                payload.request_digest, request_digest,
+                "what the caller sent"
+            );
+            assert_eq!(
+                payload.response_digest,
+                permguard_languages::attestation::response_value_digest(&unsigned)
+                    .expect("a digest"),
+                "what the caller received"
+            );
+            assert_eq!(payload.audience, AUDIENCE);
+            payload
+        };
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
+        let (status, over_rest) =
+            runtime.block_on(rest(Arc::clone(&decider), authenticated(), body.clone()));
+        assert_eq!(status, StatusCode::OK, "{over_rest}");
+        let payload = recompute(&over_rest);
+        assert_eq!(
+            payload.request_ids,
+            vec![Some("from-the-header".to_owned())],
+            "the id the answer echoes, even from the header"
+        );
+
+        let client = permguard_control_client::pdp::client(
+            &serve_signed(Arc::clone(&decider), authenticating as Anonymising),
+            &permguard_control_client::tls::TlsOptions::default(),
+            Box::new(permguard_control_client::narrate::Silent),
+        )
+        .expect("the endpoint parses");
+        let over_grpc = client.evaluate(&body).expect("signed");
+        recompute(&over_grpc);
+
+        // A batch over gRPC, a deny and a permit: what the client rebuilds still digests as signed.
+        let mut batch = body.clone();
+        batch["evaluations"] = json!([
+            {"request_id": "denied", "action": {"name": "purge"}},
+            {}
+        ]);
+        let sent_batch: wire::CheckRequest =
+            serde_json::from_value(batch.clone()).expect("a batch");
+        let over_grpc = client.evaluate(&batch).expect("signed");
+        let mut unsigned = over_grpc.clone();
+        let attestation: Attestation =
+            serde_json::from_value(unsigned["attestation"].clone()).expect("signed");
+        unsigned
+            .as_object_mut()
+            .expect("an object")
+            .remove("attestation");
+        let payload = verified(&attestation, &host.attest());
+        assert_eq!(
+            payload.request_digest,
+            permguard_languages::attestation::request_digest(&sent_batch).expect("a digest")
+        );
+        assert_eq!(
+            payload.response_digest,
+            permguard_languages::attestation::response_value_digest(&unsigned).expect("a digest")
+        );
+        assert_eq!(payload.request_ids, vec![Some("denied".to_owned()), None]);
+        assert_eq!(
+            over_grpc["evaluations"][0]["decision"],
+            json!(false),
+            "{over_grpc}"
+        );
+
+        // Nobody authenticated over gRPC: `UNAUTHENTICATED`, as REST answers `401`.
+        let anonymous = permguard_control_client::pdp::client(
+            &serve_signed(Arc::clone(&decider), anonymous_interceptor as Anonymising),
+            &permguard_control_client::tls::TlsOptions::default(),
+            Box::new(permguard_control_client::narrate::Silent),
+        )
+        .expect("the endpoint parses");
+        let refused = anonymous
+            .evaluate(&body)
+            .expect_err("nobody to address it to");
+        assert_eq!(refused.reason, "unauthenticated", "{refused}");
+
+        let (status, refused) = runtime.block_on(rest(
+            decider,
+            Arc::new(permguard_core::authz::Actor::Anonymous),
+            body,
+        ));
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{refused}");
+        assert_eq!(refused["code"], "unauthenticated", "{refused}");
+    }
 }
