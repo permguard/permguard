@@ -3221,6 +3221,9 @@ struct Imported {
     state: std::sync::Mutex<Option<permguard_host::membership::import::State>>,
     /// Whether the consumer also lists a run of the importing Host's own, `[9; 16]`.
     own: std::sync::Mutex<bool>,
+    /// Runs holding real records, by origin and run: what a conflict or a duplicate needs.
+    #[allow(clippy::type_complexity)]
+    extra: std::sync::Mutex<Vec<([u8; 16], [u8; 16], Vec<Value>)>>,
 }
 
 const ORIGIN: [u8; 16] = [1; 16];
@@ -3241,6 +3244,14 @@ impl permguard_host::composition::StreamConsumerReads for Imported {
             })
             .into_iter()
             .collect();
+        for (producer, run, records) in self.extra.lock().expect("lock").iter() {
+            runs.push(permguard_host::composition::ConsumedRun {
+                producer: *producer,
+                run: *run,
+                acked: records.len() as u64,
+                oldest_retained: 1,
+            });
+        }
         if *self.own.lock().expect("lock") {
             runs.push(permguard_host::composition::ConsumedRun {
                 producer: [9; 16],
@@ -3260,17 +3271,33 @@ impl permguard_host::composition::StreamConsumerReads for Imported {
         Ok(None)
     }
 
-    // A run whose records the consumer no longer holds: what is read is its frontier alone.
+    // The origin's own run holds no records any more: what is read is its frontier alone. An
+    // extra run serves its records.
     fn records(
         &self,
         _: &permguard_core::authz::Resource,
-        _: &[u8; 16],
-        _: &[u8; 16],
-        _: u64,
-        _: usize,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        from: u64,
+        limit: usize,
     ) -> Result<permguard_host::composition::ConsumedPage, String> {
+        let extra = self.extra.lock().expect("lock");
+        let records = extra
+            .iter()
+            .find(|(held, named, _)| held == producer && named == run)
+            .map(|(_, _, records)| {
+                records
+                    .iter()
+                    .enumerate()
+                    .map(|(at, record)| (at as u64 + 1, record))
+                    .filter(|(seq, _)| *seq >= from)
+                    .take(limit)
+                    .map(|(seq, record)| (seq, serde_json::to_vec(record).expect("renders")))
+                    .collect()
+            })
+            .unwrap_or_default();
         Ok(permguard_host::composition::ConsumedPage {
-            records: Vec::new(),
+            records,
             low_watermark: None,
         })
     }
@@ -3444,6 +3471,447 @@ async fn an_eventual_decision_names_each_degraded_origin_for_its_own_cause() {
         assert_eq!(carried.time, "occurred_at");
         assert_eq!(carried.max_staleness_seconds, Some(60));
     }
+}
+
+/// One record another origin's stream holds, made from one this plane stored: the same
+/// occurrence `event_id` from one authenticated source, at its own position, its payload changed by
+/// `variant` (WP-6.4b).
+fn imported_record(
+    template: &Value,
+    origin: [u8; 16],
+    run: [u8; 16],
+    event_id: &str,
+    variant: Option<&str>,
+) -> Value {
+    let hex = |bytes: &[u8; 16]| {
+        bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    };
+    let mut record: permguard_events::record::Record =
+        serde_json::from_value(template.clone()).expect("a durable record deserializes");
+    record.stream.producer.id = hex(&origin);
+    record.stream.producer.instance = hex(&run);
+    record.seq = 1;
+    record.prev = permguard_events::record::GENESIS.to_owned();
+    record.event_id = event_id.to_owned();
+    record.source = Some("spiffe://acme/gateway".to_owned());
+    record.event["event_id"] = json!(event_id);
+    if let Some(variant) = variant {
+        record.event["context"]["variant"] = json!(variant);
+    }
+    record.occurrence_digest = permguard_events::record::occurrence_digest_of(&record.event)
+        .expect("the patched occurrence canonicalizes");
+    record.to_value().expect("a record value")
+}
+
+/// Every decision record the plane's journal holds.
+fn decision_records(spool: &Path) -> Vec<Value> {
+    let mut segments: Vec<PathBuf> = std::fs::read_dir(spool)
+        .expect("the decision spool can be listed")
+        .map(|entry| entry.expect("a spool entry").path())
+        .filter(|path| path.extension().and_then(std::ffi::OsStr::to_str) == Some("jsonl"))
+        .collect();
+    segments.sort();
+    segments
+        .into_iter()
+        .flat_map(|path| {
+            std::fs::read_to_string(path)
+                .expect("the segment can be read")
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).expect("the record is JSON"))
+                .collect::<Vec<_>>()
+        })
+        .filter(|record| record["kind"] == json!("decision"))
+        .collect()
+}
+
+/// This plane's Host id, as its own records carry it.
+fn own_id(plane: &Plane) -> [u8; 16] {
+    let hex = plane.streams.producer().id;
+    let mut id = [0; 16];
+    for (at, byte) in id.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&hex[at * 2..at * 2 + 2], 16).expect("a hex id");
+    }
+    id
+}
+
+/// The plane's import of `consumer`, its logical index reading the plane's own journal too.
+fn imported_over(
+    plane: &Plane,
+    consumer: &Arc<Imported>,
+) -> Arc<permguard_data_plane::temporal::imported::Imported> {
+    Arc::new(
+        permguard_data_plane::temporal::imported::Imported::new(
+            permguard_host::composition::StreamConsumer::over(
+                Arc::clone(consumer) as Arc<dyn permguard_host::composition::StreamConsumerReads>
+            ),
+            own_id(plane),
+            plane
+                .events
+                .parent()
+                .expect("the scratch root")
+                .join("planes"),
+        )
+        .expect("the floor is registered")
+        .with_local(
+            Arc::clone(&plane.streams) as Arc<dyn permguard_data_plane::temporal::imported::Local>
+        ),
+    )
+}
+
+/// The ledger's logical index, as written.
+fn logical_index(plane: &Plane) -> Value {
+    serde_json::from_slice(
+        &std::fs::read(
+            plane
+                .events
+                .parent()
+                .expect("the scratch root")
+                .join("planes")
+                .join(ZONE_ID)
+                .join(LEDGER_ID)
+                .join("indexes")
+                .join("logical.json"),
+        )
+        .expect("the logical index is written"),
+    )
+    .expect("JSON")
+}
+
+/// The origins the logical index holds a position of `event_id` for.
+fn indexed_origins(index: &Value, event_id: &str) -> Vec<String> {
+    index["entries"]
+        .as_array()
+        .expect("entries")
+        .iter()
+        .find(|entry| entry[0][1] == event_id)
+        .map(|entry| {
+            entry[1]["positions"]
+                .as_array()
+                .expect("positions")
+                .iter()
+                .map(|at| at[0].as_str().expect("an origin").to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// WP-6.4b, H-07 and F-30 (owner decision of 2026-10-21): the logical index records every
+/// position of one occurrence across origins. Equal bytes from two origins are one occurrence,
+/// both positions kept and nothing quarantined, in either mode; different bytes quarantine it — a
+/// `shared-bounded` decision whose window holds it refuses `history_conflicted`, a
+/// `shared-eventual` one decides without it, reports it and names both origins degraded.
+#[tokio::test]
+async fn a_conflicting_occurrence_refuses_a_bounded_decision_and_degrades_an_eventual_one() {
+    for (mode, conflict) in [
+        (permguard_core::config::Consistency::SharedEventual, false),
+        (permguard_core::config::Consistency::SharedEventual, true),
+        (permguard_core::config::Consistency::SharedBounded, false),
+        (permguard_core::config::Consistency::SharedBounded, true),
+    ] {
+        let tag = format!("logical-{}-{conflict}", mode.as_str());
+        let plane = plane_built(&tag, blocking(), Metrics::none(), true, |mirrors| {
+            provision(mirrors, &manifest());
+        });
+        let consumer = Arc::new(Imported::default());
+        *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+        *consumer.held.lock().expect("lock") = 3;
+        let imported = imported_over(&plane, &consumer);
+        let submitter = Arc::try_unwrap(plane.submitter)
+            .unwrap_or_else(|_| panic!("the only holder"))
+            .with_shared_mode(mode, std::time::Duration::from_secs(60))
+            .with_imported(imported);
+        let plane = Plane {
+            submitter: Arc::new(submitter),
+            ..plane
+        };
+        let router = surface(&plane);
+        let login = |at: i64| {
+            submission(
+                at,
+                "Drupe::Action::Login",
+                "request",
+                "alice",
+                json!({"user": "alice", "server": "s1"}),
+            )
+        };
+        let (status, first) = post(&router, login(1)).await;
+        assert_eq!(status, StatusCode::OK, "{tag}: {first}");
+
+        // The same occurrence, recorded by the origin and by another plane.
+        let template = plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+            .expect("the stream reads back")
+            .remove(0);
+        *consumer.extra.lock().expect("lock") = vec![
+            (
+                ORIGIN,
+                [8; 16],
+                vec![imported_record(&template, ORIGIN, [8; 16], "dup", None)],
+            ),
+            (
+                [2; 16],
+                [5; 16],
+                vec![imported_record(
+                    &template,
+                    [2; 16],
+                    [5; 16],
+                    "dup",
+                    conflict.then_some("other"),
+                )],
+            ),
+        ];
+        let (status, answered) = post(&router, login(2)).await;
+        let index = logical_index(&plane);
+        let dup = index["entries"]
+            .as_array()
+            .expect("entries")
+            .iter()
+            .find(|entry| entry[0][1] == "dup")
+            .expect("the occurrence is indexed")
+            .clone();
+        assert_eq!(
+            dup[1]["positions"].as_array().map(Vec::len),
+            Some(2),
+            "{tag}: every position kept: {dup}"
+        );
+        match (mode, conflict) {
+            (permguard_core::config::Consistency::SharedBounded, true) => {
+                assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{tag}: {answered}");
+                assert_eq!(answered["code"], "history_conflicted", "{tag}: {answered}");
+            }
+            (_, true) => {
+                assert_eq!(status, StatusCode::OK, "{tag}: {answered}");
+                assert_eq!(answered["history"]["quarantined"], 1, "{tag}: {answered}");
+                // The decision record says so as well.
+                let recorded = decision_records(&plane.decisions)
+                    .into_iter()
+                    .find(|record| record["id"] == answered["decision_id"])
+                    .expect("the decision is recorded");
+                assert_eq!(recorded["event"]["quarantined"], 1, "{tag}: {recorded}");
+                let proto = permguard_data_plane::temporal::grpc::to_proto(
+                    serde_json::from_value(answered.clone()).expect("an answer"),
+                );
+                assert_eq!(
+                    proto.history.expect("a history").quarantined,
+                    1,
+                    "{tag}: gRPC carries the count"
+                );
+                // Both origins that recorded it, the required one and the other.
+                assert_eq!(
+                    answered["history"]["degraded"],
+                    json!(["01".repeat(16), "02".repeat(16)]),
+                    "{tag}: {answered}"
+                );
+            }
+            (_, false) => {
+                assert_eq!(status, StatusCode::OK, "{tag}: {answered}");
+                assert!(
+                    answered["history"].get("quarantined").is_none(),
+                    "{tag}: equal bytes are one occurrence: {answered}"
+                );
+                assert!(dup[1].get("conflicts").is_none(), "{tag}: {dup}");
+                assert!(
+                    decision_records(&plane.decisions)
+                        .iter()
+                        .all(|record| record["event"].get("quarantined").is_none()),
+                    "{tag}: nothing quarantined is recorded as nothing"
+                );
+            }
+        }
+    }
+}
+
+/// The temporal submission of a login by `alice` at `at`, as the submitter reads it.
+fn login_request(at: i64) -> permguard_languages::temporal::SubmitRequest {
+    serde_json::from_value(submission(
+        at,
+        "Drupe::Action::Login",
+        "request",
+        "alice",
+        json!({"user": "alice", "server": "s1"}),
+    ))
+    .expect("a submission")
+}
+
+/// WP-6.4b: an occurrence another origin already recorded with other bytes is quarantined the
+/// moment this plane records it, so no decision is made about it in either mode. Its position here
+/// joins the logical index, and an index lost with the process is rebuilt from the consumer and
+/// this plane's own journal both: the conflict outlives the restart.
+#[tokio::test]
+async fn an_occurrence_another_origin_recorded_otherwise_is_not_decided_and_survives_a_rebuild() {
+    const SOURCE: &str = "spiffe://acme/gateway";
+    for mode in [
+        permguard_core::config::Consistency::SharedEventual,
+        permguard_core::config::Consistency::SharedBounded,
+    ] {
+        let tag = format!("logical-current-{}", mode.as_str());
+        let plane = plane(&tag);
+        let consumer = Arc::new(Imported::default());
+        *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+        *consumer.held.lock().expect("lock") = 3;
+        let imported = imported_over(&plane, &consumer);
+        let submitter = Arc::new(
+            Arc::try_unwrap(plane.submitter)
+                .unwrap_or_else(|_| panic!("the only holder"))
+                .with_shared_mode(mode, std::time::Duration::from_secs(60))
+                .with_imported(imported),
+        );
+        let plane = Plane { submitter, ..plane };
+        plane
+            .submitter
+            .submit(&login_request(1), SOURCE, None)
+            .await
+            .expect("decided");
+
+        // Another origin holds the next login, with other bytes, before this plane records it.
+        let template = plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+            .expect("the stream reads back")
+            .remove(0);
+        assert_eq!(template["source"], SOURCE, "{template}");
+        let next = "Drupe::Action::Login-request-2";
+        *consumer.extra.lock().expect("lock") = vec![(
+            [2; 16],
+            [5; 16],
+            vec![imported_record(
+                &template,
+                [2; 16],
+                [5; 16],
+                next,
+                Some("other"),
+            )],
+        )];
+        let refused = plane
+            .submitter
+            .submit(&login_request(2), SOURCE, None)
+            .await
+            .expect_err("a quarantined occurrence is not decided");
+        assert_eq!(refused.code(), "history_conflicted", "{tag}: {refused:?}");
+        let own = plane.streams.producer().id;
+        assert_eq!(
+            indexed_origins(&logical_index(&plane), next),
+            ["02".repeat(16), own.clone()],
+            "{tag}: this plane's position joins the index"
+        );
+
+        // The process restarts with its logical index lost.
+        std::fs::remove_file(
+            plane
+                .events
+                .parent()
+                .expect("the scratch root")
+                .join("planes")
+                .join(ZONE_ID)
+                .join(LEDGER_ID)
+                .join("indexes")
+                .join("logical.json"),
+        )
+        .expect("the index is lost");
+        let imported = imported_over(&plane, &consumer);
+        let submitter = Arc::new(
+            Arc::try_unwrap(plane.submitter)
+                .unwrap_or_else(|_| panic!("the only holder"))
+                .with_imported(imported),
+        );
+        let plane = Plane { submitter, ..plane };
+        let answered = plane
+            .submitter
+            .submit(&login_request(3), SOURCE, None)
+            .await;
+        match mode {
+            permguard_core::config::Consistency::SharedBounded => {
+                let refused = answered.expect_err("the window holds the conflict");
+                assert_eq!(refused.code(), "history_conflicted", "{tag}: {refused:?}");
+            }
+            _ => {
+                let answered =
+                    serde_json::to_value(answered.expect("decided without it")).expect("JSON");
+                assert_eq!(answered["history"]["quarantined"], 1, "{tag}: {answered}");
+                let degraded = answered["history"]["degraded"].clone();
+                assert!(
+                    degraded
+                        .as_array()
+                        .expect("degraded")
+                        .contains(&json!("02".repeat(16)))
+                        && !degraded.as_array().expect("degraded").contains(&json!(own)),
+                    "{tag}: the other origin, never this one: {answered}"
+                );
+            }
+        }
+        assert_eq!(
+            indexed_origins(&logical_index(&plane), next),
+            ["02".repeat(16), own],
+            "{tag}: rebuilt from the consumer and the journal"
+        );
+    }
+}
+
+/// WP-6.4b: a conflict with the retired pull's store is one the logical index never holds, so only
+/// the replayed window shows it. `shared-bounded` refuses on that too.
+#[tokio::test]
+async fn a_conflict_only_the_window_shows_still_refuses_a_bounded_decision() {
+    const SOURCE: &str = "spiffe://acme/gateway";
+    let plane = plane("logical-window");
+    let root = plane
+        .events
+        .parent()
+        .expect("the scratch root")
+        .to_path_buf();
+    let consumer = Arc::new(Imported::default());
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+    *consumer.held.lock().expect("lock") = 3;
+    let imports = Arc::new(permguard_data_plane::temporal::imports::Imports::new(
+        root.join("pull"),
+    ));
+    let imported = imported_over(&plane, &consumer);
+    let submitter = Arc::new(
+        Arc::try_unwrap(plane.submitter)
+            .unwrap_or_else(|_| panic!("the only holder"))
+            .with_shared_history(
+                permguard_core::config::Consistency::SharedBounded,
+                Arc::clone(&imports),
+                std::time::Duration::from_secs(60),
+            )
+            .with_imported(imported),
+    );
+    let plane = Plane { submitter, ..plane };
+    plane
+        .submitter
+        .submit(&login_request(1), SOURCE, None)
+        .await
+        .expect("decided");
+
+    // The retired pull brings another origin's copy of that login, with other bytes.
+    let template = plane
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+        .expect("the stream reads back")
+        .remove(0);
+    let event_id = template["event_id"].as_str().expect("an id").to_owned();
+    assert!(
+        imports
+            .absorb(
+                ZONE_ID,
+                LEDGER_ID,
+                &imported_record(&template, [2; 16], [5; 16], &event_id, Some("other")),
+            )
+            .expect("absorbed")
+    );
+    imports
+        .advance(ZONE_ID, LEDGER_ID, "1")
+        .expect("the pull advanced");
+
+    let refused = plane
+        .submitter
+        .submit(&login_request(2), SOURCE, None)
+        .await
+        .expect_err("a conflicted window is not decided");
+    assert_eq!(refused.code(), "history_conflicted", "{refused:?}");
 }
 
 /// WP-6.2c2b1 (owner decision of 2026-10-18): a bounded plane over the origins the member Host

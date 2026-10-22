@@ -289,6 +289,7 @@ pub fn to_proto(response: SubmitResponse) -> SubmitEventResponse {
             max_staleness_seconds: response.history.max_staleness_seconds,
             degraded: response.history.degraded,
             time: response.history.time,
+            quarantined: response.history.quarantined,
         }),
     }
 }

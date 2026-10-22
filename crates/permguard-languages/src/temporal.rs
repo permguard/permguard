@@ -565,6 +565,10 @@ pub struct HistoryScope {
     /// The time the runtime's windows range over: `occurred_at`.
     #[serde(default = "occurred_at")]
     pub time: String,
+    /// How many logical occurrences of this history a digest conflict quarantined: left out of a
+    /// `shared-eventual` decision (WP-6.4b); omitted at zero.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub quarantined: u64,
 }
 
 fn occurred_at() -> String {
@@ -589,6 +593,7 @@ impl HistoryScope {
             max_staleness_seconds: None,
             degraded: Vec::new(),
             time: occurred_at(),
+            quarantined: 0,
         }
     }
 }

@@ -162,6 +162,7 @@ pub mod pdp_temporal {
     pub const EVENT_RECORD_INVALID: &str = "event_record_invalid";
     pub const EVENT_RECORD_UNREADABLE: &str = "event_record_unreadable";
     pub const EVENT_RECOVERY_COMMIT_UNAVAILABLE: &str = "event_recovery_commit_unavailable";
+    pub const HISTORY_CONFLICTED: &str = "history_conflicted";
     pub const HISTORY_CONTRACT_INCOMPATIBLE: &str = "history_contract_incompatible";
     pub const HISTORY_INCOMPLETE: &str = "history_incomplete";
     pub const HISTORY_KEY_NOT_CANONICAL: &str = "history_key_not_canonical";
@@ -576,6 +577,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         pdp_temporal::EVENT_RECORD_INVALID,
         pdp_temporal::EVENT_RECORD_UNREADABLE,
         pdp_temporal::EVENT_RECOVERY_COMMIT_UNAVAILABLE,
+        pdp_temporal::HISTORY_CONFLICTED,
         pdp_temporal::HISTORY_CONTRACT_INCOMPATIBLE,
         pdp_temporal::HISTORY_INCOMPLETE,
         pdp_temporal::HISTORY_KEY_NOT_CANONICAL,

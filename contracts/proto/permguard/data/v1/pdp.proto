@@ -377,6 +377,9 @@ message DecisionHistory {
   repeated string degraded = 8;
   // The time the runtime's windows range over: `occurred_at`.
   string time = 9;
+  // How many logical occurrences of the history a digest conflict
+  // quarantined (WP-6.4b); zero when none.
+  uint64 quarantined = 10;
 }
 
 // One imported run of one origin, as a decision held it.

@@ -1347,6 +1347,12 @@
       "kind": "refusal",
       "class": "validation"
     },
+    "pdp_temporal.HISTORY_CONFLICTED": {
+      "code": "history_conflicted",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
     "pdp_temporal.HISTORY_CONTRACT_INCOMPATIBLE": {
       "code": "history_contract_incompatible",
       "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",

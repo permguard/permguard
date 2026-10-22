@@ -858,6 +858,11 @@
               "occurred_at"
             ],
             "description": "The time the runtime's windows ranged over."
+          },
+          "quarantined": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many logical occurrences of the history a digest conflict quarantined; omitted at zero."
           }
         },
         "required": [

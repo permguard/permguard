@@ -372,6 +372,9 @@ pub struct EventRef {
     /// The time the runtime's windows ranged over.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub time: Option<String>,
+    /// How many logical occurrences of the history a digest conflict quarantined (WP-6.4b).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub quarantined: Option<u64>,
 }
 
 /// What was asked for.

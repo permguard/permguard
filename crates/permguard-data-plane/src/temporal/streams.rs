@@ -1261,6 +1261,56 @@ fn seen(
     })
 }
 
+/// The local half of the logical index (WP-6.4b): this plane's own records, as the import reads
+/// them.
+impl super::imported::Local for Streams {
+    fn copy(
+        &self,
+        zone: &str,
+        ledger: &str,
+        source: &str,
+        event_id: &str,
+    ) -> Result<Option<serde_json::Value>, JournalError> {
+        match self.known(zone, ledger, source, event_id)? {
+            // Recorded under exactly that source: a legacy entry, or one nobody vouched for, keys by
+            // this plane's origin instead and is another occurrence.
+            Some(known) if known.source.as_deref() == Some(source) => {
+                self.record_at(zone, ledger, known.seq).map(Some)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Read under the ledger's lock, as `read_from` is. A legacy journal is read from its start
+    /// per page; only a rebuilt logical index reads it whole, once.
+    fn after(
+        &self,
+        zone: &str,
+        ledger: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<(u64, serde_json::Value)>, JournalError> {
+        let held = self.held(zone, ledger)?;
+        let held = lock(&held)?;
+        let mut records: Vec<(u64, serde_json::Value)> = match &held.legacy {
+            // A legacy record's own sequence is its local position.
+            Some(journal) if after < held.host.legacy_through() => journal
+                .read_from(after, limit)?
+                .into_iter()
+                .filter_map(|record| {
+                    let position = record.get("seq").and_then(serde_json::Value::as_u64)?;
+                    Some((position, record))
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        if records.len() < limit {
+            records.extend(held.host.read_from(after, limit - records.len())?);
+        }
+        Ok(records)
+    }
+}
+
 /// The entry of `event_id` from `source`: the Host stream's, then a legacy entry kept beside it,
 /// then the legacy journal's.
 fn known_in(

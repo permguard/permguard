@@ -347,6 +347,64 @@ fn contents(directory: &std::path::Path) -> Vec<(String, String)> {
     found
 }
 
+/// WP-6.4b: this plane's journal as the logical index reads it. Its copy of a vouched-for key is
+/// only one recorded under exactly that source, so a legacy occurrence, which no source vouched for,
+/// is never another origin's occurrence; its records come in local order with their local
+/// positions, the legacy journal's first.
+#[test]
+fn the_logical_index_reads_only_what_a_source_vouched_for_from_this_planes_journal() {
+    use permguard_data_plane::temporal::imported::Local;
+
+    let host = HostVolume::new("logical-local");
+    legacy_journal(&host.root, 2);
+    let producer = host.producer();
+    let streams = host.streams(&producer);
+    streams
+        .append(ZONE_ID, LEDGER_ID, occurrence(3, "alice"))
+        .expect("durable");
+
+    // `e-1` is held, but the legacy journal holds it sourceless: no copy of alice's `e-1`.
+    assert!(
+        streams
+            .copy(ZONE_ID, LEDGER_ID, "alice", "e-1")
+            .expect("read")
+            .is_none()
+    );
+    // `e-3` is alice's, and only alice's.
+    let copy = streams
+        .copy(ZONE_ID, LEDGER_ID, "alice", "e-3")
+        .expect("read")
+        .expect("held");
+    assert_eq!(copy["event_id"], "e-3");
+    assert_eq!(copy["stream"]["producer"]["id"], host.host_hex().as_str());
+    assert!(
+        streams
+            .copy(ZONE_ID, LEDGER_ID, "bob", "e-3")
+            .expect("read")
+            .is_none()
+    );
+
+    let after = |from: u64, limit: usize| -> Vec<(u64, String)> {
+        streams
+            .after(ZONE_ID, LEDGER_ID, from, limit)
+            .expect("read")
+            .into_iter()
+            .map(|(position, record)| (position, record["event_id"].as_str().unwrap().to_owned()))
+            .collect()
+    };
+    assert_eq!(
+        after(0, 10),
+        [
+            (1, "e-1".to_owned()),
+            (2, "e-2".to_owned()),
+            (3, "e-3".to_owned())
+        ]
+    );
+    assert_eq!(after(1, 1), [(2, "e-2".to_owned())]);
+    assert_eq!(after(2, 10), [(3, "e-3".to_owned())]);
+    assert!(after(3, 10).is_empty());
+}
+
 /// WP-6.2a (owner decision of 2026-10-18): an upgraded plane's legacy journal is history, read
 /// first and never appended to (its occurrence entries included); the Host runs' ordinals follow it, and a retry of what it holds is
 /// the stored position from any source.

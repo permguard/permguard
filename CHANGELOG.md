@@ -19,6 +19,18 @@ is cut.
 
 ### Added
 
+- **A shared history keeps a durable logical index, and a conflict is handled per consistency mode (WP-6.4b).**
+  Each ledger keeps `indexes/logical.json` under its temporal directory: per `(authenticated source, event_id)`, the digest, the event time and every position `(origin, run, seq)` that recorded it.
+  An occurrence nobody vouched for keys by its origin instead, so it never collapses another origin's.
+  The import feeds it, finding this plane's own copy of each new key, and this plane's journal is read past a saved mark for the keys another origin already holds.
+  It is pruned at the import horizon and rebuilt from the consumer and the journal when it does not read.
+  Equal bytes apply once after convergence with every position kept; different bytes quarantine the occurrence, even when only one copy falls in the window.
+  A decision whose window holds a quarantined occurrence is refused with the new code `history_conflicted` (503) under `shared-bounded`.
+  Under `shared-eventual` it is decided without it, reported in the new `history.quarantined` count, and every other origin that recorded it is named in `degraded`.
+  An occurrence another origin recorded with other bytes is itself quarantined, and no decision is made about it in either mode.
+  Idempotency is local and convergent, never exactly-once.
+  REST, gRPC and the record's schema carry `quarantined`.
+
 - **A temporal decision cites the exact vector frontier it observed (WP-6.4a).**
   The answer's `history` and the decision record's `event` reference gain optional members, first `frontier[]`: each imported run with `covered_through`, `low_watermark` and its gaps.
   They also gain `origin_set_revision`, `max_staleness_seconds`, the freshness bound in force, and `time`, `occurred_at`.

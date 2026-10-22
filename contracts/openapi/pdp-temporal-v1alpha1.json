@@ -11,6 +11,7 @@
       "post": {
         "operationId": "pdpTemporalSubmit",
         "summary": "Submit one typed occurrence.",
+        "description": "Idempotency is local and convergent, never exactly-once. One plane answers a retry of the same `(source, event_id)` and bytes as the first submission, and one with other bytes as a conflict. Across planes, a shared history applies one logical occurrence once after convergence and keeps every position that recorded it; one recorded with different bytes by two origins is quarantined. A decision whose window holds it is refused with `history_conflicted` under `shared-bounded`, and decided without it under `shared-eventual`, which reports it in `history.quarantined`. An occurrence that is itself quarantined is refused with `history_conflicted` in either mode.",
         "parameters": [
           {
             "name": "x-request-id",
@@ -94,7 +95,7 @@
             }
           },
           "503": {
-            "description": "The ledger cannot be served, or the evaluation is indeterminate.",
+            "description": "The ledger cannot be served, the evaluation is indeterminate, or a bounded shared history is incomplete, stale or conflicted.",
             "content": {
               "application/json": {
                 "schema": {
@@ -486,6 +487,12 @@
             ],
             "description": "The time the runtime's windows range over; always sent by this build, an older plane omits it.",
             "x-grpc-field": "time"
+          },
+          "quarantined": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many logical occurrences of the history a digest conflict quarantined; omitted at zero.",
+            "x-grpc-field": "quarantined"
           }
         },
         "required": [

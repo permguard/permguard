@@ -392,6 +392,7 @@
     "pdp_temporal.EVENT_TOO_LATE": "event_too_late",
     "pdp_temporal.EVENT_TYPE_UNSUPPORTED": "event_type_unsupported",
     "pdp_temporal.EVENT_VALUE_UNREPRESENTABLE": "event_value_unrepresentable",
+    "pdp_temporal.HISTORY_CONFLICTED": "history_conflicted",
     "pdp_temporal.HISTORY_CONTRACT_INCOMPATIBLE": "history_contract_incompatible",
     "pdp_temporal.HISTORY_INCOMPLETE": "history_incomplete",
     "pdp_temporal.HISTORY_KEY_NOT_CANONICAL": "history_key_not_canonical",

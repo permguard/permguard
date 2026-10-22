@@ -391,6 +391,7 @@ fn from_proto(answer: proto::SubmitEventResponse) -> Result<Value, Failure> {
             } else {
                 history.time
             },
+            quarantined: history.quarantined,
         },
     };
     if matches!(response.outcome, Outcome::Decided) != response.decision.is_some() {
@@ -508,6 +509,7 @@ mod tests {
                 max_staleness_seconds: Some(10),
                 degraded: vec!["aa".to_owned()],
                 time: String::new(),
+                quarantined: 2,
             }),
             evaluations: Vec::new(),
         }
@@ -548,6 +550,7 @@ mod tests {
         assert_eq!(history["max_staleness_seconds"], 10);
         assert_eq!(history["degraded"], serde_json::json!(["aa"]));
         assert_eq!(history["time"], "occurred_at");
+        assert_eq!(history["quarantined"], 2);
     }
 
     #[test]

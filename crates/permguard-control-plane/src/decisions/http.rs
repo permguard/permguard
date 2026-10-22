@@ -1004,6 +1004,7 @@ mod openapi {
                 max_staleness_seconds: Some(10),
                 degraded: vec!["0a".repeat(16)],
                 time: Some("occurred_at".to_owned()),
+                quarantined: Some(1),
             }),
         }));
         let decision_minimal = Body::Decision(Box::new(DecisionBody {

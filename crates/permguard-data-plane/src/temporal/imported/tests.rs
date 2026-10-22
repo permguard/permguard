@@ -381,7 +381,7 @@ fn one_logical_occurrence_applies_once_and_a_conflicting_one_is_quarantined() {
     let a = record(ORIGIN, RUN, 1, 100, "dup");
     let mut b = record([2; 16], [5; 16], 1, 100, "dup");
     // The same occurrence, recorded by another plane: one applies.
-    let (kept, quarantined) = deduplicated(vec![b.clone(), a.clone()]);
+    let (kept, quarantined) = deduplicated(vec![b.clone(), a.clone()], &Default::default());
     assert_eq!((kept.len(), quarantined), (1, 0));
     assert_eq!(
         kept[0]["stream"]["producer"]["id"],
@@ -391,12 +391,12 @@ fn one_logical_occurrence_applies_once_and_a_conflicting_one_is_quarantined() {
     // Another source's identifier is another occurrence.
     let mut other_source = b.clone();
     other_source["source"] = json!("spiffe://acme/other");
-    let (kept, _) = deduplicated(vec![a.clone(), other_source]);
+    let (kept, _) = deduplicated(vec![a.clone(), other_source], &Default::default());
     assert_eq!(kept.len(), 2);
     // Different bytes for one key: every copy left out.
     b["occurrence_digest"] = json!("sha256:other");
     let lone = record(ORIGIN, RUN, 2, 200, "lone");
-    let (kept, quarantined) = deduplicated(vec![a, b, lone]);
+    let (kept, quarantined) = deduplicated(vec![a, b, lone], &Default::default());
     assert_eq!(quarantined, 1);
     assert_eq!(ids(&kept), ["lone"]);
 }
@@ -415,10 +415,10 @@ fn an_identity_nobody_vouched_for_never_collapses_another_origins_occurrence() {
                 }
             }
         }
-        let (kept, quarantined) = deduplicated(vec![a.clone(), b.clone()]);
+        let (kept, quarantined) = deduplicated(vec![a.clone(), b.clone()], &Default::default());
         assert_eq!((kept.len(), quarantined), (2, 0), "{source:?}: per origin");
         // Within one origin the same key is still one occurrence.
-        let (kept, _) = deduplicated(vec![a.clone(), a]);
+        let (kept, _) = deduplicated(vec![a.clone(), a], &Default::default());
         assert_eq!(kept.len(), 1, "{source:?}");
     }
 }
@@ -523,6 +523,252 @@ fn a_damaged_or_ahead_index_is_rebuilt_and_a_vanished_run_forgotten() {
             .window(ZONE, LEDGER, &query(0, 400), None)
             .expect("read")
             .is_empty()
+    );
+}
+
+#[test]
+fn the_logical_index_holds_a_conflict_beyond_the_window_and_is_rebuilt_when_damaged() {
+    let consumer = Arc::new(Consumer::default());
+    let mut other = held([2; 16], [5; 16], &[100]);
+    other.records[0]["event_id"] = json!("dup");
+    other.records[0]["occurrence_digest"] = json!("sha256:other");
+    let mut first = held(ORIGIN, RUN, &[100, 300]);
+    first.records[0]["event_id"] = json!("dup");
+    consumer.runs.lock().unwrap().extend([first, other]);
+    let reader = imported("logical", &consumer);
+    let key = ("source:spiffe://acme/gateway".to_owned(), "dup".to_owned());
+
+    let known = reader.conflicting(ZONE, LEDGER).expect("caught up");
+    assert_eq!(known, [key.clone()].into());
+    let quarantined = reader
+        .quarantined(ZONE, LEDGER, "", 100, 100)
+        .expect("caught up");
+    assert_eq!(quarantined.len(), 1);
+    assert_eq!(quarantined[0].positions.len(), 2, "every position kept");
+    // One copy alone in a window is still quarantined: the index knows the other.
+    let lone = record(ORIGIN, RUN, 1, 100, "dup");
+    assert_eq!(deduplicated(vec![lone.clone()], &known), (Vec::new(), 1));
+    assert_eq!(
+        deduplicated(vec![lone], &Default::default()).0.len(),
+        1,
+        "what nobody knows to conflict applies"
+    );
+
+    // A damaged index does not read and is rebuilt from the consumer.
+    let file = super::super::host::directory(&reader.root, ZONE, LEDGER)
+        .join(super::super::logical::DIRECTORY)
+        .join(super::super::logical::FILE);
+    assert!(file.exists(), "the index is written at the catch-up");
+    std::fs::write(&file, b"not json").expect("damaged");
+    let reopened = Imported::new(
+        StreamConsumer::over(Arc::clone(&consumer) as Arc<dyn StreamConsumerReads>),
+        OWN,
+        reader.root.clone(),
+    )
+    .expect("reopened");
+    assert_eq!(
+        reopened.conflicting(ZONE, LEDGER).expect("rebuilt"),
+        [key].into()
+    );
+    assert_eq!(
+        reopened
+            .quarantined(ZONE, LEDGER, "", 0, 400)
+            .expect("caught up")[0]
+            .positions
+            .len(),
+        2
+    );
+    assert!(
+        serde_json::from_slice::<Value>(&std::fs::read(&file).expect("rewritten")).is_ok(),
+        "the rebuilt index is written back"
+    );
+
+    // Below the horizon no window reads it any more: the occurrence is forgotten, durably.
+    reopened.refresh_floors(200).expect("measured");
+    assert!(
+        reopened
+            .quarantined(ZONE, LEDGER, "", i64::MIN, i64::MAX)
+            .expect("caught up")
+            .is_empty()
+    );
+    let (index, loaded) = super::super::logical::Logical::open(&super::super::host::directory(
+        &reader.root,
+        ZONE,
+        LEDGER,
+    ));
+    assert!(loaded);
+    assert!(index.conflicting().is_empty(), "the pruning is saved");
+}
+
+/// This plane's own journal, as the logical index reads it: records at their local positions.
+#[derive(Default)]
+struct Journal(Mutex<Vec<(u64, Value)>>);
+
+impl Local for Journal {
+    fn copy(
+        &self,
+        _: &str,
+        _: &str,
+        source: &str,
+        event_id: &str,
+    ) -> Result<Option<Value>, JournalError> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, record)| record)
+            .find(|record| record["source"] == source && record["event_id"] == event_id)
+            .cloned())
+    }
+
+    fn after(
+        &self,
+        _: &str,
+        _: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<(u64, Value)>, JournalError> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(position, _)| *position > after)
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+}
+
+#[test]
+fn the_local_half_finds_this_planes_copy_whichever_arrives_first() {
+    let consumer = Arc::new(Consumer::default());
+    let journal = Arc::new(Journal::default());
+    let open = |root: Option<PathBuf>| {
+        Imported::new(
+            StreamConsumer::over(Arc::clone(&consumer) as Arc<dyn StreamConsumerReads>),
+            OWN,
+            root.unwrap_or_else(|| scratch("local-half")),
+        )
+        .expect("the floor is registered")
+        .with_local(Arc::clone(&journal) as Arc<dyn Local>)
+    };
+    let mut own_early = record(OWN, RUN, 1, 100, "early");
+    own_early["occurrence_digest"] = json!("sha256:mine");
+    let own_solo = record(OWN, RUN, 2, 100, "solo");
+    journal
+        .0
+        .lock()
+        .unwrap()
+        .extend([(1, own_early), (2, own_solo)]);
+    let reader = open(None);
+    let key = |id: &str| ("source:spiffe://acme/gateway".to_owned(), id.to_owned());
+    // Nobody else holds them: read past, nothing indexed.
+    assert!(
+        reader
+            .conflicting(ZONE, LEDGER)
+            .expect("caught up")
+            .is_empty()
+    );
+    // Another origin's copies: one of "early" with other bytes, one of "late" before this plane
+    // records it.
+    let mut theirs = held(ORIGIN, [3; 16], &[100, 100]);
+    theirs.records[0]["event_id"] = json!("early");
+    theirs.records[1]["event_id"] = json!("late");
+    theirs.records[1]["occurrence_digest"] = json!("sha256:late");
+    consumer.runs.lock().unwrap().push(theirs);
+    // This plane's copy, recorded and read past before the other origin's arrived, is found then.
+    assert_eq!(
+        reader.conflicting(ZONE, LEDGER).expect("caught up"),
+        [key("early")].into()
+    );
+    let origins = |reader: &Imported, id: &str| -> Vec<String> {
+        let held = reader.ledger(ZONE, LEDGER);
+        let held = held.lock().unwrap();
+        held.logical
+            .get(&key(id))
+            .map(|entry| entry.positions.iter().map(|at| at.0.clone()).collect())
+            .unwrap_or_default()
+    };
+    assert_eq!(origins(&reader, "early"), [hex(&ORIGIN), hex(&OWN)]);
+    assert!(
+        origins(&reader, "solo").is_empty(),
+        "what no other origin holds needs no entry"
+    );
+
+    // This plane records "late" after the other origin's copy is indexed: read past the mark.
+    let mut own_late = record(OWN, RUN, 3, 100, "late");
+    own_late["occurrence_digest"] = json!("sha256:late");
+    journal.0.lock().unwrap().push((3, own_late));
+    assert_eq!(
+        reader.conflicting(ZONE, LEDGER).expect("caught up"),
+        [key("early")].into(),
+        "equal bytes are one occurrence"
+    );
+    assert_eq!(origins(&reader, "late"), [hex(&ORIGIN), hex(&OWN)]);
+
+    // Lost, the index is rebuilt from the consumer and this plane's journal both.
+    let file = super::super::host::directory(&reader.root, ZONE, LEDGER)
+        .join(super::super::logical::DIRECTORY)
+        .join(super::super::logical::FILE);
+    std::fs::remove_file(&file).expect("lost");
+    let reopened = open(Some(reader.root.clone()));
+    assert_eq!(
+        reopened.conflicting(ZONE, LEDGER).expect("rebuilt"),
+        [key("early")].into()
+    );
+    assert_eq!(origins(&reopened, "early"), [hex(&ORIGIN), hex(&OWN)]);
+    assert_eq!(origins(&reopened, "late"), [hex(&ORIGIN), hex(&OWN)]);
+    // The floor refresh saves the local mark: a restart reads nothing of the journal again.
+    reopened.refresh_floors(0).expect("measured");
+    let (index, loaded) = super::super::logical::Logical::open(&super::super::host::directory(
+        &reader.root,
+        ZONE,
+        LEDGER,
+    ));
+    assert!(loaded);
+    assert_eq!(index.local_through(), 3);
+}
+
+#[test]
+fn a_run_indexed_past_what_the_logical_index_saved_is_read_again() {
+    let consumer = Arc::new(Consumer::default());
+    let mut first = held(ORIGIN, RUN, &[100]);
+    first.records[0]["event_id"] = json!("dup");
+    consumer.runs.lock().unwrap().push(first);
+    let reader = imported("logical-behind", &consumer);
+    assert!(
+        reader
+            .conflicting(ZONE, LEDGER)
+            .expect("caught up")
+            .is_empty()
+    );
+    let file = super::super::host::directory(&reader.root, ZONE, LEDGER)
+        .join(super::super::logical::DIRECTORY)
+        .join(super::super::logical::FILE);
+    let before = std::fs::read(&file).expect("written");
+
+    let mut other = held([2; 16], [5; 16], &[100]);
+    other.records[0]["event_id"] = json!("dup");
+    other.records[0]["occurrence_digest"] = json!("sha256:other");
+    consumer.runs.lock().unwrap().push(other);
+    let key = ("source:spiffe://acme/gateway".to_owned(), "dup".to_owned());
+    assert_eq!(
+        reader.conflicting(ZONE, LEDGER).expect("caught up"),
+        [key.clone()].into()
+    );
+    // The process stopped after the run's index was written and before the logical index was.
+    std::fs::write(&file, before).expect("the older logical index");
+    let reopened = Imported::new(
+        StreamConsumer::over(Arc::clone(&consumer) as Arc<dyn StreamConsumerReads>),
+        OWN,
+        reader.root.clone(),
+    )
+    .expect("reopened");
+    assert_eq!(
+        reopened.conflicting(ZONE, LEDGER).expect("read again"),
+        [key].into()
     );
 }
 

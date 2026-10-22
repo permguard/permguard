@@ -682,6 +682,7 @@ impl Submitter {
                     max_staleness_seconds: history.max_staleness_seconds,
                     degraded: history.degraded.clone(),
                     time: Some(history.time.clone()),
+                    quarantined: (history.quarantined > 0).then_some(history.quarantined),
                 },
             })
             .await?;
@@ -963,7 +964,6 @@ impl Submitter {
         self.metrics
             .observe(&measure::APPEND_SECONDS, &[], appending.as_secs_f64());
         self.publish_watermarks(&zone, &ledger);
-
         let mut recovering = false;
         let (sequence, instance) = match written {
             Written::Appended {
@@ -1259,16 +1259,24 @@ impl Submitter {
         // fresh enough to range over at all. Checked after the event is durable and before it is
         // decided: the record is kept either way, because losing it would change what *future*
         // decisions mean, and only the answer is withheld.
-        let history = match self.history_scope(&zone, &ledger, captured) {
-            Ok(history) => history,
-            Err(error) => {
-                // The record is durable but was deliberately not applied. Mark this history dirty
-                // now: the next event in the same history repairs the hole from the journal before
-                // it is evaluated, without waiting for a process restart.
-                self.invalidate_history(&zone, &ledger, &partition_key);
-                return Err(error);
-            }
-        };
+        // What this decision ranges over, and the occurrence's own logical key (WP-6.4b).
+        let window = window_of(&checks, &occurrence);
+        let current = super::logical::key(
+            record.source.as_deref(),
+            &record.stream.producer.id,
+            &record.event_id,
+        );
+        let history =
+            match self.history_scope(&zone, &ledger, &partition_key, captured, window, &current) {
+                Ok(history) => history,
+                Err(error) => {
+                    // The record is durable but was deliberately not applied. Mark this history dirty
+                    // now: the next event in the same history repairs the hole from the journal before
+                    // it is evaluated, without waiting for a process restart.
+                    self.invalidate_history(&zone, &ledger, &partition_key);
+                    return Err(error);
+                }
+            };
 
         // Durable, and this record's turn. Only now may an engine see it.
         let applying = Instant::now();
@@ -1900,12 +1908,15 @@ impl Submitter {
         &self,
         zone: &str,
         ledger: &str,
+        history: &str,
         captured: Option<super::imported::Shared>,
+        window: Option<(i64, i64)>,
+        current: &super::logical::Key,
     ) -> Result<HistoryScope, ApiError> {
         if let Some(imported) = &self.imported
             && self.consistency.is_shared()
         {
-            return self.host_scope(imported, zone, ledger, captured);
+            return self.host_scope(imported, zone, ledger, history, captured, window, current);
         }
         if !self.consistency.is_shared() {
             return Ok(HistoryScope::local());
@@ -2033,12 +2044,16 @@ impl Submitter {
     /// decision of 2026-10-18): freshness is this Host's age since it verified the coordinator's
     /// checkpoint, never an event's time; `shared-bounded` also wants every run the checkpoint
     /// names held through what it names, and no gap, the Host's or the HTTP pull's.
+    #[allow(clippy::too_many_arguments)]
     fn host_scope(
         &self,
         imported: &super::imported::Imported,
         zone: &str,
         ledger: &str,
+        history: &str,
         captured: Option<super::imported::Shared>,
+        window: Option<(i64, i64)>,
+        current: &super::logical::Key,
     ) -> Result<HistoryScope, ApiError> {
         let unreadable = |error: String| {
             ApiError::new(
@@ -2155,6 +2170,52 @@ impl Submitter {
             .filter(|state| !state.offset.is_empty())
             .map(|state| state.offset.clone())
             .unwrap_or_default();
+        // A digest conflict in this decision's window (WP-6.4b, owner decision of 2026-10-21): the
+        // logical occurrence is quarantined; `shared-bounded` refuses, the frontier being
+        // inconsistent, and `shared-eventual` decides without it and says so. No window is an
+        // instant that is not a canonical one, which the replay refuses on its own.
+        let quarantined = match window {
+            Some((from, until)) => imported
+                .quarantined(zone, ledger, history, from, until)
+                .map_err(|error| unreadable(error.to_string()))?,
+            None => Vec::new(),
+        };
+        if bounded && !quarantined.is_empty() {
+            return refuse(
+                permguard_core::codes::pdp_temporal::HISTORY_CONFLICTED,
+                format!(
+                    "the shared history of `{zone}/{ledger}` holds {} occurrence(s) in this \
+                     decision's window recorded with different bytes by more than one origin, and \
+                     `shared-bounded` decides only on a consistent history. The event is \
+                     recorded; the decision is withheld while a conflicting occurrence is in the \
+                     window",
+                    quarantined.len()
+                ),
+            );
+        }
+        // The occurrence itself recorded with other bytes by another origin: quarantined, it is
+        // no occurrence a decision can be about, in either mode.
+        if imported
+            .conflicting(zone, ledger)
+            .map_err(|error| unreadable(error.to_string()))?
+            .contains(current)
+        {
+            return refuse(
+                permguard_core::codes::pdp_temporal::HISTORY_CONFLICTED,
+                format!(
+                    "the occurrence `{}` is recorded with different bytes by another origin of \
+                     `{zone}/{ledger}`, so it is quarantined from shared history. The event is \
+                     recorded; no decision is made about it",
+                    current.1
+                ),
+            );
+        }
+        let own = imported.own();
+        let conflicted_origins: std::collections::BTreeSet<&str> = quarantined
+            .iter()
+            .flat_map(|entry| entry.positions.iter().map(|(origin, _, _)| origin.as_str()))
+            .filter(|origin| *origin != own)
+            .collect();
         // The required origins a `shared-eventual` decision is degraded by (WP-6.4a): those behind
         // the checkpoint or gapped, and every one of them once the checkpoint is older than the
         // bound. A `shared-bounded` decision reaching here has none: it refused above.
@@ -2178,7 +2239,12 @@ impl Submitter {
                                 .any(|gap| super::imported::hex(&gap.origin) == **origin)
                         })
                 })
-                .cloned()
+                .map(String::as_str)
+                // Every other origin that recorded a quarantined occurrence, required or not.
+                .chain(conflicted_origins)
+                .collect::<std::collections::BTreeSet<&str>>()
+                .into_iter()
+                .map(str::to_owned)
                 .collect()
         };
         Ok(HistoryScope {
@@ -2193,6 +2259,7 @@ impl Submitter {
                 .map(|state| super::imported::hex(&state.revision)),
             max_staleness_seconds: Some(self.max_staleness.as_secs()),
             degraded,
+            quarantined: quarantined.len() as u64,
             ..HistoryScope::local()
         })
     }
@@ -2555,22 +2622,12 @@ impl Submitter {
             )
         };
 
-        // The window this partition's policies can actually look back over, taken from the loaded
-        // schemas rather than from retention. `max_window` is a validation and retention ceiling —
-        // reading everything inside it because a leaf *could* ask for it is exactly the read this
-        // index exists to avoid, and the widest declared window is the widest any leaf can name.
-        let window = checks
-            .iter()
-            .map(|(_, engine, _)| engine.contract().max_window_seconds)
-            .max()
-            .unwrap_or(0);
-        let until =
-            permguard_events::index::epoch_seconds(&occurrence.occurred_at).ok_or_else(|| {
-                unreadable(
-                    "this occurrence",
-                    "its instant is not a canonical one".to_owned(),
-                )
-            })?;
+        let (from, until) = window_of(checks, occurrence).ok_or_else(|| {
+            unreadable(
+                "this occurrence",
+                "its instant is not a canonical one".to_owned(),
+            )
+        })?;
         let query = permguard_events::index::Query {
             event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
             history: history.to_owned(),
@@ -2579,7 +2636,7 @@ impl Submitter {
             // that answers that leaf and lies to the others.
             action: None,
             kind: None,
-            from: until.saturating_sub(window),
+            from,
             until,
         };
 
@@ -2616,7 +2673,31 @@ impl Submitter {
         let records = if self.consistency.is_shared() {
             // One logical occurrence applies once, whichever plane recorded it; one recorded with
             // different bytes is quarantined (WP-6.2c2b1).
-            let (records, quarantined) = super::imported::deduplicated(records);
+            // The conflicts the durable logical index knows, beyond this window (WP-6.4b).
+            let known = match &self.imported {
+                Some(imported) => imported
+                    .conflicting(zone, ledger)
+                    .map_err(|error| unreadable("the logical index", error.to_string()))?,
+                None => std::collections::BTreeSet::new(),
+            };
+            let (records, quarantined) = super::imported::deduplicated(records, &known);
+            // A conflict the window itself shows, which an index rebuilt from the consumer alone
+            // may not hold yet: `shared-bounded` still decides only on a consistent history.
+            if quarantined > 0
+                && self.consistency == permguard_core::config::Consistency::SharedBounded
+            {
+                return Err(ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::HISTORY_CONFLICTED,
+                    format!(
+                        "the shared history of `{zone}/{ledger}` holds {quarantined} \
+                         occurrence(s) in this decision's window recorded with different bytes \
+                         by more than one origin, and `shared-bounded` decides only on a \
+                         consistent history. The event is recorded; the decision is withheld \
+                         while a conflicting occurrence is in the window"
+                    ),
+                ));
+            }
             if quarantined > 0 {
                 tracing::warn!(
                     event.name = "temporal.occurrence_quarantined",
@@ -3021,6 +3102,22 @@ impl Submitter {
             );
         }
     }
+}
+
+/// The window a decision about `occurrence` reads, `[from, until]` in epoch seconds: back from the
+/// occurrence's own instant over the widest window the addressed partitions' policies declare,
+/// taken from the loaded schemas rather than from retention. `max_window` is a validation and
+/// retention ceiling — reading everything inside it because a leaf *could* ask for it is exactly
+/// the read the index exists to avoid, and the widest declared window is the widest any leaf can
+/// name. `None` when the instant is not a canonical one.
+fn window_of(checks: &[Verified<'_>], occurrence: &Occurrence) -> Option<(i64, i64)> {
+    let window = checks
+        .iter()
+        .map(|(_, engine, _)| engine.contract().max_window_seconds)
+        .max()
+        .unwrap_or(0);
+    let until = permguard_events::index::epoch_seconds(&occurrence.occurred_at)?;
+    Some((until.saturating_sub(window), until))
 }
 
 /// How long ago an instant was, in seconds, or `None` for one that never happened.

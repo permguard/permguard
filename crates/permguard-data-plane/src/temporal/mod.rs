@@ -59,6 +59,7 @@ pub mod host;
 pub mod http;
 pub mod imported;
 pub mod imports;
+pub mod logical;
 pub mod measure;
 pub mod sequencer;
 pub mod service;
@@ -190,7 +191,12 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
                     host_id,
                     config.working_dir().join(PLANE_DIRECTORY),
                 ) {
-                    Ok(imported) => submitter.with_imported(Arc::new(imported)),
+                    Ok(imported) => {
+                        // The local half of the logical index reads this plane's own journal
+                        // (WP-6.4b).
+                        let local = Arc::clone(submitter.streams()) as Arc<dyn imported::Local>;
+                        submitter.with_imported(Arc::new(imported.with_local(local)))
+                    }
                     Err(error) => {
                         unavailable(&error.to_string());
                         return None;

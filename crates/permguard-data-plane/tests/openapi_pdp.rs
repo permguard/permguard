@@ -239,6 +239,7 @@ fn test_pdp_temporal_v1alpha1_document_describes_what_the_wire_types_serialise()
         max_staleness_seconds: Some(10),
         degraded: vec!["0a".repeat(16)],
         time: permguard_core::frontier::TIME_OCCURRED_AT.to_owned(),
+        quarantined: 1,
     };
     for mode in ["local", "shared-eventual", "shared-bounded"] {
         doc.check(

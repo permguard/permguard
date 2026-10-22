@@ -69,11 +69,40 @@ struct Run {
     forgotten_below: u64,
 }
 
+/// This plane's own journal, as the logical index reads it (WP-6.4b).
+pub trait Local: Send + Sync {
+    /// This plane's own record of `(source, event_id)`, when its journal holds one recorded under
+    /// exactly that source.
+    fn copy(
+        &self,
+        zone: &str,
+        ledger: &str,
+        source: &str,
+        event_id: &str,
+    ) -> Result<Option<Value>, JournalError>;
+
+    /// This plane's own records after local position `after`, at most `limit`, with their local
+    /// positions, in local order.
+    fn after(
+        &self,
+        zone: &str,
+        ledger: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<(u64, Value)>, JournalError>;
+}
+
 /// One ledger's imported runs, by `(origin, run)`.
 struct Ledger {
+    zone: String,
+    ledger: String,
     resource: Resource,
     directory: PathBuf,
     runs: BTreeMap<([u8; 16], [u8; 16]), Run>,
+    /// The durable logical index across origins (WP-6.4b). One that did not read starts empty,
+    /// every run behind it and its local mark at zero: rebuilt from the consumer and this plane's
+    /// journal, the authorities.
+    logical: super::logical::Logical,
 }
 
 /// One ledger's imported runs, shared by the reads and the floor's measure.
@@ -107,6 +136,8 @@ pub struct Imported {
     root: PathBuf,
     floors: Arc<ImportFloors>,
     ledgers: Mutex<BTreeMap<(String, String), OpenLedger>>,
+    /// This plane's own journal, for the local half of the logical index.
+    local: Option<Arc<dyn Local>>,
 }
 
 impl Imported {
@@ -132,7 +163,19 @@ impl Imported {
             root,
             floors,
             ledgers: Mutex::new(BTreeMap::new()),
+            local: None,
         })
+    }
+
+    /// Reads this plane's own journal as well, for the local half of the logical index (WP-6.4b).
+    pub fn with_local(mut self, local: Arc<dyn Local>) -> Self {
+        self.local = Some(local);
+        self
+    }
+
+    /// This Host's id, in hex: the origin its own records carry.
+    pub fn own(&self) -> String {
+        hex(&self.host_id)
     }
 
     fn ledger(&self, zone: &str, ledger: &str) -> Arc<Mutex<Ledger>> {
@@ -140,11 +183,17 @@ impl Imported {
         Arc::clone(
             held.entry((zone.to_owned(), ledger.to_owned()))
                 .or_insert_with(|| {
+                    let (logical, _) = super::logical::Logical::open(&super::host::directory(
+                        &self.root, zone, ledger,
+                    ));
                     Arc::new(Mutex::new(Ledger {
+                        zone: zone.to_owned(),
+                        ledger: ledger.to_owned(),
                         resource: Resource::ledger("data", zone, ledger),
                         directory: super::host::directory(&self.root, zone, ledger)
                             .join(IMPORTED_DIR),
                         runs: BTreeMap::new(),
+                        logical,
                     }))
                 }),
         )
@@ -189,7 +238,15 @@ impl Imported {
                     index.reset()?;
                 }
                 let mut covered = index.covered_through();
-                if covered > run.acked {
+                // An index ahead of the consumer, or one ahead of what the logical index saved of
+                // the run — a crash between their writes, a logical index lost: read the run
+                // again from the consumer.
+                if covered > run.acked
+                    || ledger
+                        .logical
+                        .run_through(&hex(&run.producer), &hex(&run.run))
+                        < covered
+                {
                     index.reset()?;
                     covered = 0;
                 }
@@ -231,6 +288,18 @@ impl Imported {
                     };
                     // The run's own sequence: one index per run.
                     entry.seq = *seq;
+                    // Every imported position, in the logical index across origins (WP-6.4b),
+                    // and this plane's own copy of a key the index did not hold yet.
+                    let logical_key = super::logical::key_of(&value);
+                    let new = !ledger.logical.holds(&logical_key);
+                    ledger.logical.observe(&value);
+                    if new
+                        && super::logical::Logical::vouched(&logical_key)
+                        && let Some(own) =
+                            self.own_copy(&ledger.zone, &ledger.ledger, &logical_key)?
+                    {
+                        ledger.logical.observe(&own);
+                    }
                     indexed.index.stage(
                         entry,
                         Located {
@@ -247,9 +316,100 @@ impl Imported {
             if staged {
                 indexed.index.sync()?;
                 indexed.covered = next - 1;
+                ledger.logical.read_run_through(
+                    &hex(&run.producer),
+                    &hex(&run.run),
+                    indexed.covered,
+                );
             }
         }
-        Ok(())
+        // A run gone from the consumer is no mark to keep.
+        let runs: std::collections::BTreeSet<(String, String)> = ledger
+            .runs
+            .keys()
+            .map(|(origin, run)| (hex(origin), hex(run)))
+            .collect();
+        ledger.logical.keep_runs(&runs);
+        self.catch_up_local(ledger)?;
+        ledger.logical.save()
+    }
+
+    /// This plane's own copy of a vouched-for key, when its journal holds one.
+    fn own_copy(
+        &self,
+        zone: &str,
+        ledger: &str,
+        key: &super::logical::Key,
+    ) -> Result<Option<Value>, JournalError> {
+        let (Some(local), Some(source)) = (&self.local, key.0.strip_prefix("source:")) else {
+            return Ok(None);
+        };
+        local.copy(zone, ledger, source, &key.1)
+    }
+
+    /// The local half of the logical index: this plane's own records past the local mark, each
+    /// indexed when another origin already holds its key. The rest need no entry: an imported copy
+    /// arriving later finds them by `own_copy`.
+    fn catch_up_local(&self, ledger: &mut Ledger) -> Result<(), JournalError> {
+        let Some(local) = &self.local else {
+            return Ok(());
+        };
+        // A logical index rebuilt starts with its mark at zero: this plane's journal is read again
+        // from its start.
+        loop {
+            let page = local.after(
+                &ledger.zone,
+                &ledger.ledger,
+                ledger.logical.local_through(),
+                READ_PAGE,
+            )?;
+            let Some((last, _)) = page.last() else {
+                return Ok(());
+            };
+            let last = *last;
+            for (_, record) in &page {
+                if ledger.logical.holds(&super::logical::key_of(record)) {
+                    ledger.logical.observe(record);
+                }
+            }
+            ledger.logical.read_local_through(last);
+            if page.len() < READ_PAGE {
+                return Ok(());
+            }
+        }
+    }
+
+    /// The keys the ledger's logical index holds as conflicted, caught up first.
+    pub fn conflicting(
+        &self,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<std::collections::BTreeSet<super::logical::Key>, JournalError> {
+        let held = self.ledger(zone, ledger);
+        let mut held = held.lock().unwrap_or_else(PoisonError::into_inner);
+        self.catch_up(&mut held)?;
+        Ok(held.logical.conflicting())
+    }
+
+    /// Every quarantined occurrence of `history` with its event time in `[from, until]`, as the
+    /// logical index holds it once caught up.
+    pub fn quarantined(
+        &self,
+        zone: &str,
+        ledger: &str,
+        history: &str,
+        from: i64,
+        until: i64,
+    ) -> Result<Vec<super::logical::Entry>, JournalError> {
+        let held = self.ledger(zone, ledger);
+        let mut held = held.lock().unwrap_or_else(PoisonError::into_inner);
+        self.catch_up(&mut held)?;
+        Ok(held
+            .logical
+            .quarantined(history, from, until)
+            .into_iter()
+            .cloned()
+            .collect())
     }
 
     /// The imported records a temporal question needs, every imported run's index scanned.
@@ -500,6 +660,10 @@ impl Imported {
         for held in ledgers {
             let mut held = held.lock().unwrap_or_else(PoisonError::into_inner);
             self.catch_up(&mut held)?;
+            // What no loaded window reads is no longer a logical occurrence to keep (WP-6.4b); the
+            // local mark is saved with it, so a restart reads little of this plane's journal again.
+            held.logical.forget_older(horizon);
+            held.logical.flush()?;
             let runs = self.consumer.runs(&held.resource).map_err(io)?;
             let resource = held.resource.to_string();
             for run in runs.iter().filter(|run| run.producer != self.host_id) {
@@ -536,35 +700,12 @@ impl Imported {
 /// keys by its origin instead (owner decision of 2026-10-19): an identity nobody vouched for
 /// never collapses nor quarantines another origin's occurrence. Answers the records kept and how
 /// many were quarantined.
-pub fn deduplicated(mut records: Vec<Value>) -> (Vec<Value>, usize) {
+pub fn deduplicated(
+    mut records: Vec<Value>,
+    known: &std::collections::BTreeSet<super::logical::Key>,
+) -> (Vec<Value>, usize) {
     records.sort_by_key(super::imports::order_of);
-    let key_of = |record: &Value| {
-        let event_id = record
-            .get("event_id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned();
-        match record.get("source").and_then(Value::as_str) {
-            Some(source)
-                if !source.is_empty()
-                    && source != permguard_core::authz::Principal::anonymous().as_str() =>
-            {
-                (format!("source:{source}"), event_id)
-            }
-            _ => (
-                format!(
-                    "origin:{}",
-                    record
-                        .get("stream")
-                        .and_then(|stream| stream.get("producer"))
-                        .and_then(|producer| producer.get("id"))
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                ),
-                event_id,
-            ),
-        }
-    };
+    let key_of = super::logical::key_of;
     let digest_of = |record: &Value| {
         record
             .get("occurrence_digest")
@@ -573,8 +714,13 @@ pub fn deduplicated(mut records: Vec<Value>) -> (Vec<Value>, usize) {
             .to_owned()
     };
     let mut seen: BTreeMap<(String, String), String> = BTreeMap::new();
-    let mut conflicting: std::collections::BTreeSet<(String, String)> =
-        std::collections::BTreeSet::new();
+    // What the durable index already knows to conflict, beyond this window (WP-6.4b): a copy
+    // outside the window still quarantines the one inside it.
+    let mut conflicting: std::collections::BTreeSet<(String, String)> = records
+        .iter()
+        .map(key_of)
+        .filter(|key| known.contains(key))
+        .collect();
     for record in &records {
         let key = key_of(record);
         let digest = digest_of(record);
