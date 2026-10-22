@@ -139,6 +139,10 @@ message EvaluateRequest {
   // *replace with nothing*. The wire mirrors the contract rather than
   // flattening it into one shape that is wrong in one of the two places.
   map<string, PartitionInput> partition_inputs = 13;
+  // Asks for a signed response: base64url without padding, 16 to 64 bytes.
+  // Empty asks for none. A plane that cannot sign refuses rather than answer
+  // unsigned.
+  string request_nonce = 14;
 }
 
 // The two audiences of one reason.
@@ -158,6 +162,31 @@ message DecisionContext {
   // none: they decided against the type's empty input. Empty when every
   // declared input arrived.
   repeated string absent_inputs = 5;
+  // What became of this decision's record. Absent on a batch's own context.
+  Evidence evidence = 6;
+}
+
+// The evidence of one decision: the same closed object the REST answer
+// carries, its values spelled as there.
+message Evidence {
+  // `required`, `best_effort` or `disabled`.
+  string mode = 1;
+  // `durable`, `sampled_out`, `dropped` or `disabled`.
+  string status = 2;
+  // The record's id, present exactly when the status is `durable`.
+  optional string record_id = 3;
+  // Where the record sits, present exactly when the status is `durable`.
+  EvidencePosition position = 4;
+}
+
+// Where a durable record sits.
+message EvidencePosition {
+  // The Host's id, a lowercase hyphenated UUID.
+  string host_id = 1;
+  // The run, 32 lowercase hex digits.
+  string run = 2;
+  // The sequence in the run, unsigned decimal text.
+  string sequence = 3;
 }
 
 message Decision {

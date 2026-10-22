@@ -669,6 +669,11 @@ pub struct CheckRequest {
     pub options: Option<OptionsBody>,
     #[serde(default)]
     pub request_id: Option<String>,
+    /// Asks for a signed response (WP-6.6): base64url without padding, 16 to 64 bytes, unique for
+    /// the verifier's replay window. Its presence is the request; a plane that cannot sign
+    /// refuses rather than answer unsigned.
+    #[serde(default)]
+    pub request_nonce: Option<String>,
 }
 
 /// The two audiences of one reason.
@@ -700,6 +705,10 @@ pub struct DecisionContext {
     /// "it could not have".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub absent_inputs: Vec<String>,
+    /// What became of this decision's record (WP-6.6): the exact mode and status, and where the
+    /// record sits when it is durable. Absent on a batch's own context, which no record is of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<crate::attestation::Evidence>,
 }
 
 /// One decision.
@@ -720,6 +729,7 @@ fn is_empty_context(context: &Option<DecisionContext>) -> bool {
                 && context.reason_admin.is_none()
                 && context.reason_user.is_none()
                 && context.policies.is_empty()
+                && context.evidence.is_none()
         }
     }
 }
@@ -905,6 +915,14 @@ impl CheckRequest {
         // caller who sent one is asking a question about a world this contract no longer accepts,
         // and every other complaint about their payload would be beside the point.
         self.removed()?;
+
+        // A nonce asks for a signed response, and one the contract does not define asks for
+        // nothing anybody could verify (WP-6.6).
+        if let Some(nonce) = &self.request_nonce {
+            crate::attestation::nonce_bytes(nonce).map_err(|message| {
+                malformed(permguard_core::codes::common::INVALID_ARGUMENT, message)
+            })?;
+        }
 
         if self.evaluations.len() > max_evaluations {
             return Err(malformed(
@@ -1097,7 +1115,7 @@ fn missing(what: &str, index: usize) -> Malformed {
 }
 
 /// A field that is present and not just whitespace.
-fn named(value: &Option<String>) -> Option<String> {
+pub(crate) fn named(value: &Option<String>) -> Option<String> {
     value
         .as_deref()
         .map(str::trim)

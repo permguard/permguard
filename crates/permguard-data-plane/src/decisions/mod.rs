@@ -48,6 +48,13 @@ pub trait DecisionRecorder: Send + Sync {
     /// Records one decision, answering once it is durable or saying why it is not.
     fn record(&self, decided: &Decided<'_>) -> Result<Written, String>;
 
+    /// Records one decision, and says where a written record sits (WP-6.6): what a response's
+    /// evidence names, `None` where the recorder cannot name it.
+    fn record_located(
+        &self,
+        decided: &Decided<'_>,
+    ) -> Result<(Written, Option<permguard_languages::attestation::Position>), String>;
+
     /// Whether a decision that cannot be recorded must be refused.
     fn refuses_unrecorded(&self) -> bool;
 }
@@ -55,6 +62,27 @@ pub trait DecisionRecorder: Send + Sync {
 impl DecisionRecorder for Journal {
     fn record(&self, decided: &Decided<'_>) -> Result<Written, String> {
         Journal::record(self, decided).map_err(|error| error.to_string())
+    }
+
+    /// The version 1 spool's stream: its plane id and instance, as its records name them.
+    fn record_located(
+        &self,
+        decided: &Decided<'_>,
+    ) -> Result<(Written, Option<permguard_languages::attestation::Position>), String> {
+        let written = Journal::record(self, decided).map_err(|error| error.to_string())?;
+        let position = match (&written, self.stream()) {
+            // A retry answered from the journal may sit in an instance that has since ended: only
+            // a record this call wrote is named in the instance live now.
+            (Written::Recorded { seq }, Some(stream)) => {
+                Some(permguard_languages::attestation::Position {
+                    host_id: stream.id,
+                    run: stream.instance,
+                    sequence: seq.to_string(),
+                })
+            }
+            _ => None,
+        };
+        Ok((written, position))
     }
 
     fn refuses_unrecorded(&self) -> bool {

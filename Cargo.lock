@@ -2565,6 +2565,7 @@ name = "permguard-languages"
 version = "0.1.0"
 dependencies = [
  "amzn-dogwood-language",
+ "base64 0.23.1",
  "cedar-policy",
  "jsonschema 0.56.0",
  "libc",

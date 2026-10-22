@@ -64,6 +64,7 @@ pub fn request_from_proto(request: EvaluateRequest) -> Result<CheckRequest, Malf
             evaluations_semantic: semantic,
         }),
         request_id: some(request.request_id),
+        request_nonce: some(request.request_nonce),
     })
 }
 
@@ -182,6 +183,24 @@ fn context_to_proto(context: DecisionContext) -> ProtoContext {
         reason_user: context.reason_user.map(reason_to_proto),
         policies: context.policies,
         absent_inputs: context.absent_inputs,
+        evidence: context.evidence.map(evidence_to_proto),
+    }
+}
+
+/// The evidence object, its values spelled as the REST answer spells them (WP-6.6).
+fn evidence_to_proto(evidence: permguard_languages::attestation::Evidence) -> crate::v1::Evidence {
+    let spelled = |value: serde_json::Value| value.as_str().unwrap_or_default().to_owned();
+    crate::v1::Evidence {
+        mode: spelled(serde_json::to_value(evidence.mode).unwrap_or_default()),
+        status: spelled(serde_json::to_value(evidence.status).unwrap_or_default()),
+        record_id: evidence.record_id,
+        position: evidence
+            .position
+            .map(|position| crate::v1::EvidencePosition {
+                host_id: position.host_id,
+                run: position.run,
+                sequence: position.sequence,
+            }),
     }
 }
 
@@ -406,9 +425,15 @@ mod tests {
             }],
             evaluations_semantic: EvaluationsSemantic::DenyOnFirstDeny as i32,
             request_id: "abc".to_owned(),
+            request_nonce: "AAECAwQFBgcICQoLDA0ODw".to_owned(),
         };
 
         let payload = request_from_proto(proto).expect("the semantic is one this build defines");
+        // The nonce crosses as written: the digest a verifier recomputes covers it (WP-6.6).
+        assert_eq!(
+            payload.request_nonce.as_deref(),
+            Some("AAECAwQFBgcICQoLDA0ODw")
+        );
         let resolved = payload.resolve(256).expect("it is well formed");
 
         assert_eq!(resolved.zone, "acme");
@@ -466,6 +491,15 @@ mod tests {
                 }),
                 policies: vec!["01a0".to_owned()],
                 absent_inputs: vec!["guardrails".to_owned()],
+                evidence: Some(permguard_languages::attestation::Evidence::durable(
+                    permguard_languages::attestation::EvidenceMode::Required,
+                    "d1".to_owned(),
+                    permguard_languages::attestation::Position {
+                        host_id: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+                        run: "0102030405060708090a0b0c0d0e0f10".to_owned(),
+                        sequence: "7".to_owned(),
+                    },
+                )),
             }),
             evaluations: Some(vec![Decision {
                 decision: true,
@@ -481,6 +515,26 @@ mod tests {
         assert_eq!(context.id, "d1");
         assert_eq!(context.policies, vec!["01a0".to_owned()]);
         assert_eq!(context.absent_inputs, vec!["guardrails".to_owned()]);
+        // The evidence object, spelled as the REST answer spells it (WP-6.6).
+        let evidence = context.evidence.clone().expect("the evidence");
+        assert_eq!(
+            (evidence.mode.as_str(), evidence.status.as_str()),
+            ("required", "durable")
+        );
+        assert_eq!(evidence.record_id.as_deref(), Some("d1"));
+        let position = evidence.position.expect("a durable position");
+        assert_eq!(
+            (
+                position.host_id.as_str(),
+                position.run.as_str(),
+                position.sequence.as_str()
+            ),
+            (
+                "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+                "0102030405060708090a0b0c0d0e0f10",
+                "7"
+            )
+        );
         assert_eq!(
             context.reason_admin.expect("an admin reason").message,
             "denied by 01a0"

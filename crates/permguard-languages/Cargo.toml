@@ -22,6 +22,8 @@ permguard-objects.workspace = true
 permguard-events.workspace = true
 permguard-stream.workspace = true
 sha2.workspace = true
+# The `request_nonce` of a signed decision response, base64url (WP-6.6).
+base64.workspace = true
 # The official engines, pinned: what evaluates policy is exactly what was
 # reviewed and shipped — plugins are a build, not a deployment action.
 # Held at 4.11 by Dogwood, not by choice: `cedar-policy-mcp-schema-generator`, a transitive

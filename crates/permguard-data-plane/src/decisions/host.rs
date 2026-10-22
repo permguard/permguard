@@ -110,9 +110,18 @@ impl HostLog {
     /// Never touches the network: the append and the flush covering it are the Host's, on this
     /// volume. A permit sampled out writes nothing; a denial or an error is never sampled.
     pub fn record(&self, decided: &Decided<'_>) -> Result<Written, String> {
+        self.record_located(decided).map(|(written, _)| written)
+    }
+
+    /// Records one decision as [`HostLog::record`] does, and says where a written record sits:
+    /// this Host, the run and the sequence the engine gave it (WP-6.6).
+    pub fn record_located(
+        &self,
+        decided: &Decided<'_>,
+    ) -> Result<(Written, Option<permguard_languages::attestation::Position>), String> {
         if decided.permit && !keeps_permit(self.permit_rate, decided.id) {
             self.metrics.count(&measure::SAMPLED_OUT, &[]);
-            return Ok(Written::SampledOut);
+            return Ok((Written::SampledOut, None));
         }
         if decided.zone_id.is_empty() || decided.ledger_id.is_empty() {
             return Err("the decision names no zone or ledger id to record it under".to_owned());
@@ -120,7 +129,7 @@ impl HostLog {
         let resource = Resource::ledger(crate::service::PLANE, decided.zone_id, decided.ledger_id);
         let key = resource.to_string();
         if let Some(reason) = self.pressure_of(&resource, &key) {
-            return Ok(Written::Refused(reason.to_owned()));
+            return Ok((Written::Refused(reason.to_owned()), None));
         }
         // Built before the engine's lock is taken: only the position is filled in under it.
         let marker_body = marker_body(&self.epoch, &self.commitment, None);
@@ -176,7 +185,14 @@ impl HostLog {
         self.metrics
             .count(&measure::WRITTEN, &[(labels::KIND, "decision")]);
 
-        Ok(Written::Recorded { seq: receipt.seq })
+        Ok((
+            Written::Recorded { seq: receipt.seq },
+            Some(permguard_languages::attestation::Position {
+                host_id: uuid_text(&self.host_id),
+                run: hex(&receipt.run_id),
+                sequence: receipt.seq.to_string(),
+            }),
+        ))
     }
 
     /// Measures the pressure of the streams this log writes: what the decision path reads.
@@ -274,6 +290,13 @@ impl super::DecisionRecorder for HostLog {
         HostLog::record(self, decided)
     }
 
+    fn record_located(
+        &self,
+        decided: &Decided<'_>,
+    ) -> Result<(Written, Option<permguard_languages::attestation::Position>), String> {
+        HostLog::record_located(self, decided)
+    }
+
     fn refuses_unrecorded(&self) -> bool {
         true
     }
@@ -290,6 +313,21 @@ fn previous(position: &StreamPosition) -> String {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// The `host_id`, 32 hex digits, in its canonical UUID form: lowercase, hyphenated.
+fn uuid_text(host_id: &str) -> String {
+    if host_id.len() != 32 {
+        return host_id.to_owned();
+    }
+    format!(
+        "{}-{}-{}-{}-{}",
+        &host_id[..8],
+        &host_id[8..12],
+        &host_id[12..16],
+        &host_id[16..20],
+        &host_id[20..]
+    )
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {

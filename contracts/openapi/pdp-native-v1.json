@@ -95,7 +95,7 @@
             }
           },
           "503": {
-            "description": "The ledger cannot be served, or the evaluation is indeterminate.",
+            "description": "The ledger cannot be served, the evaluation is indeterminate, or a requested signature cannot be made (`response_signing_unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -196,7 +196,7 @@
             }
           },
           "503": {
-            "description": "The ledger cannot be served, or the evaluation is indeterminate.",
+            "description": "The ledger cannot be served, the evaluation is indeterminate, or a requested signature cannot be made (`response_signing_unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -355,6 +355,14 @@
               "null"
             ],
             "x-grpc-field": "request_id"
+          },
+          "request_nonce": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Asks for a signed response: base64url without padding, decoding to 16 to 64 bytes. A plane that cannot sign answers `503` `response_signing_unavailable`, never an unsigned decision.",
+            "x-grpc-field": "request_nonce"
           }
         },
         "additionalProperties": false,
@@ -641,6 +649,10 @@
               "type": "string"
             },
             "x-grpc-field": "absent_inputs"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/Evidence",
+            "x-grpc-field": "evidence"
           }
         },
         "additionalProperties": false,
@@ -827,6 +839,85 @@
         "additionalProperties": false,
         "x-grpc-message": null,
         "x-grpc-note": "gRPC carries the ceilings as the `limits` map of GetConfigurationResponse, by name."
+      },
+      "Evidence": {
+        "type": "object",
+        "description": "What became of one decision's record: closed, every member present. A durable status names the record and its position and no other status names either; `required` answers only `durable`, `disabled` only `disabled`, and only a permit is `sampled_out`. Absent on a batch's own context, which no record is of.",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "required",
+              "best_effort",
+              "disabled"
+            ],
+            "x-grpc-field": "mode"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "durable",
+              "sampled_out",
+              "dropped",
+              "disabled"
+            ],
+            "x-grpc-field": "status"
+          },
+          "record_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-grpc-field": "record_id"
+          },
+          "position": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvidencePosition"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "position"
+          }
+        },
+        "required": [
+          "mode",
+          "status",
+          "record_id",
+          "position"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Evidence"
+      },
+      "EvidencePosition": {
+        "type": "object",
+        "description": "Where a durable record sits.",
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "x-grpc-field": "host_id",
+            "description": "A lowercase hyphenated UUID."
+          },
+          "run": {
+            "type": "string",
+            "x-grpc-field": "run",
+            "description": "32 lowercase hex digits."
+          },
+          "sequence": {
+            "type": "string",
+            "x-grpc-field": "sequence",
+            "description": "Unsigned decimal text, no leading zero."
+          }
+        },
+        "required": [
+          "host_id",
+          "run",
+          "sequence"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.EvidencePosition"
       }
     }
   },

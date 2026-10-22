@@ -2008,6 +2008,65 @@ mod grpc_socket {
             "and both transports say so"
         );
     }
+
+    /// WP-6.6a: the evidence object crosses gRPC as the REST answer writes it, and a nonce is
+    /// refused over both while nothing signs.
+    #[test]
+    fn the_evidence_and_the_nonce_refusal_are_the_same_over_both_transports() {
+        let root = scratch("grpc-evidence").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ], None)],
+        );
+        let url = serve(&root);
+        let client = permguard_control_client::pdp::client(
+            &url,
+            &permguard_control_client::tls::TlsOptions::default(),
+            Box::new(permguard_control_client::narrate::Silent),
+        )
+        .expect("the endpoint parses");
+        let body = json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+        });
+        let over_grpc = client.evaluate(&body).expect("the plane answers");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
+        let over_http = |body: Value| {
+            let root = root.clone();
+            runtime.block_on(async move {
+                crate::surface::post(&root, "/access/v1/evaluation", body).await
+            })
+        };
+        let (_, http_answer, _) = over_http(body.clone());
+        assert_eq!(
+            over_grpc["context"]["evidence"],
+            json!({"mode": "disabled", "status": "disabled", "record_id": null, "position": null})
+        );
+        assert_eq!(
+            over_grpc["context"]["evidence"], http_answer["context"]["evidence"],
+            "one object, whichever transport"
+        );
+
+        let mut signed = body;
+        signed["request_nonce"] = json!("AAECAwQFBgcICQoLDA0ODw");
+        let refused = client.evaluate(&signed).expect_err("nothing signs");
+        assert_eq!(
+            (refused.class.as_str(), refused.reason.as_str()),
+            ("unavailable", "response_signing_unavailable"),
+            "{refused}"
+        );
+        let (status, http_refused, _) = over_http(signed);
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(http_refused["code"], "response_signing_unavailable");
+    }
 }
 
 /// Sixteen requests arriving on a cold ledger compile it once, not sixteen times.
@@ -3650,4 +3709,169 @@ async fn a_saturated_required_log_refuses_with_unavailable_and_every_answer_is_r
         recorded, answered,
         "every answer has its record, and nothing more"
     );
+}
+
+/// WP-6.6a: every decision says what became of its record — `disabled` with no log, `durable`
+/// with the record's id and its Host position with one, on each boxcarred evaluation and never on
+/// the batch's own context — and a request for a signed response is refused before anything is
+/// decided or recorded while nothing signs one, a nonce the contract does not define refused as
+/// what it is.
+#[tokio::test]
+async fn every_decision_names_its_evidence_and_a_nonce_is_refused_until_something_signs() {
+    use permguard_languages::attestation::{Evidence, EvidenceMode, EvidenceStatus};
+
+    let root = scratch("evidence-object").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+
+    // No log: nothing promised, and the answer says so.
+    let unlogged = decider(&root)
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("decided");
+    let evidence = unlogged
+        .context
+        .as_ref()
+        .and_then(|context| context.evidence.clone())
+        .expect("the evidence");
+    assert_eq!(evidence, Evidence::disabled());
+    evidence
+        .check(unlogged.decision)
+        .expect("as the contract allows");
+
+    // On the Host's log: the record's id, and where it sits.
+    let host = host_log::HostStream::new("evidence-object-volume");
+    let producer = host.producer();
+    let log = Arc::new(host.log(&producer, host_log::LOOSE));
+    let logged = Arc::new(
+        Decider::new(
+            root.clone(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_journal(
+            Some(Arc::clone(&log) as Arc<dyn permguard_data_plane::decisions::DecisionRecorder>),
+            subjects(),
+            permguard_core::decisions::IncludeSection::default(),
+        ),
+    );
+    let answered = logged
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("decided");
+    let context = answered.context.expect("a context");
+    let evidence = context.evidence.expect("the evidence");
+    assert_eq!(
+        (evidence.mode, evidence.status),
+        (EvidenceMode::Required, EvidenceStatus::Durable)
+    );
+    assert_eq!(
+        evidence.record_id, context.id,
+        "one id, never a second authority"
+    );
+    evidence
+        .check(answered.decision)
+        .expect("as the contract allows");
+    let position = evidence.position.expect("a durable position");
+    let host_hex = host.host_hex();
+    assert_eq!(position.host_id.replace('-', ""), host_hex);
+    let resource = host_log::ledger(&uuid_of("acme"), &uuid_of("main-ledger"));
+    let records = host_log::records(&producer, &resource);
+    let (sequence, record) = records.last().expect("the record");
+    assert_eq!(position.sequence, sequence.to_string());
+    assert_eq!(
+        record["id"],
+        json!(context.id),
+        "the position holds that record"
+    );
+    assert_eq!(record["stream"]["instance"], json!(position.run));
+
+    // A batch: each evaluation its own record, the batch none.
+    let batch: wire::CheckRequest = serde_json::from_value(json!({
+        "zone": "acme", "ledger": "main-ledger",
+        "subject": {"type": "user", "id": "alice"},
+        "resource": {"type": "document", "id": "budget"},
+        "action": {"name": "read"},
+        "evaluations": [{"request_id": "one"}, {"request_id": "two"}],
+    }))
+    .expect("a batch");
+    let answered = logged.decide(&batch, None).await.expect("decided");
+    assert!(
+        answered
+            .context
+            .as_ref()
+            .is_some_and(|context| context.evidence.is_none()),
+        "no record is of the batch"
+    );
+    let records = host_log::records(&producer, &resource);
+    let evaluations = answered.evaluations.expect("each evaluation");
+    assert_eq!(evaluations.len(), 2);
+    for decision in evaluations {
+        let evidence = decision
+            .context
+            .as_ref()
+            .and_then(|context| context.evidence.clone())
+            .expect("its evidence");
+        evidence.check(decision.decision).expect("allowed");
+        let sequence: u64 = evidence
+            .position
+            .expect("durable")
+            .sequence
+            .parse()
+            .expect("decimal");
+        let (_, record) = records
+            .iter()
+            .find(|(held, _)| *held == sequence)
+            .expect("the record at that position");
+        // Each evaluation's evidence names its own record, never its sibling's.
+        assert_eq!(record["id"], json!(evidence.record_id), "{record}");
+        assert_eq!(
+            evidence.record_id,
+            decision.context.and_then(|context| context.id)
+        );
+    }
+
+    // A nonce: refused before anything is decided or recorded.
+    let before = host_log::records(&producer, &resource).len();
+    let mut signed = ask("acme", "main-ledger", "alice", "read");
+    signed.request_nonce = Some("AAECAwQFBgcICQoLDA0ODw".to_owned());
+    let refused = logged
+        .decide(&signed, None)
+        .await
+        .expect_err("nothing signs");
+    assert_eq!(refused.code(), "response_signing_unavailable");
+    assert_eq!(refused.class(), permguard_core::ErrorClass::Unavailable);
+    assert_eq!(
+        host_log::records(&producer, &resource).len(),
+        before,
+        "nothing recorded for an answer that was never given"
+    );
+    // One the contract does not define is not a request for anything.
+    signed.request_nonce = Some("AAECAwQFBgcICQoLDA0O".to_owned());
+    let refused = logged.decide(&signed, None).await.expect_err("15 bytes");
+    assert_eq!(refused.code(), "invalid_argument");
+    assert_eq!(refused.class(), permguard_core::ErrorClass::Validation);
+
+    // Over HTTP, the same refusal with its status.
+    let (status, body, _) = surface::post(
+        &root,
+        "/access/v1/evaluation",
+        json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "request_nonce": "AAECAwQFBgcICQoLDA0ODw",
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(body["code"], "response_signing_unavailable", "{body}");
 }

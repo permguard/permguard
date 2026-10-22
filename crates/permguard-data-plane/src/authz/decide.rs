@@ -42,6 +42,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use permguard_core::{ApiError, ErrorClass, Metrics, Subject};
+use permguard_languages::attestation::{Evidence, EvidenceMode, EvidenceStatus};
 use permguard_languages::request::{Asking, PartitionTarget};
 use permguard_languages::{Query, resolve};
 use tracing::{debug, info, warn};
@@ -837,6 +838,23 @@ impl Decider {
             // bad request, not a decision.
             ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
         })?);
+        // A nonce asks for a signed answer, and this plane has nothing that signs one: refused
+        // before anything is decided or recorded, never answered unsigned (WP-6.6).
+        if request.request_nonce.is_some() {
+            self.metrics.count(
+                &super::measure::REFUSALS,
+                &[(
+                    permguard_core::metrics::labels::REASON,
+                    permguard_core::codes::pdp_native::RESPONSE_SIGNING_UNAVAILABLE,
+                )],
+            );
+            return Err(ApiError::new(
+                ErrorClass::Unavailable,
+                permguard_core::codes::pdp_native::RESPONSE_SIGNING_UNAVAILABLE,
+                "the request asks for a signed response, and this plane has no signer for one: \
+                 it answers no request for a signature unsigned",
+            ));
+        }
 
         let Loaded {
             mirror,
@@ -1054,15 +1072,17 @@ impl Decider {
 
         // Before the answer leaves: a plane told to refuse rather than decide
         // unrecorded must refuse *here*, where the answer has not gone out yet.
-        self.journal(
-            &resolved,
-            &mirror,
-            &head,
-            &evaluated,
-            trace.as_ref(),
-            started,
-        )
-        .await?;
+        let evidence = self
+            .journal(
+                &resolved,
+                &mirror,
+                &head,
+                &evaluated,
+                trace.as_ref(),
+                started,
+            )
+            .await?;
+
         self.record(&resolved, &mirror, &head, &evaluated).await;
 
         // Recorded, and only now refused: the native contract answers an indeterminate result
@@ -1117,7 +1137,18 @@ impl Decider {
             return Err(ApiError::new(class, code, message).with_internal(causes.join("; ")));
         }
 
-        let decisions: Vec<Decision> = evaluated.into_iter().map(|held| held.decision).collect();
+        // What became of each record, on the decision it is the record of (WP-6.6).
+        let decisions: Vec<Decision> = evaluated
+            .into_iter()
+            .zip(evidence)
+            .map(|(held, evidence)| {
+                let mut decision = held.decision;
+                if let Some(context) = decision.context.as_mut() {
+                    context.evidence = Some(evidence);
+                }
+                decision
+            })
+            .collect();
         // The whole request's context. A plain request has one decision, and that is its
         // context. A batch has several, and its context is derived from the verdict its semantic
         // produced — never copied from one of them.
@@ -1471,9 +1502,10 @@ impl Decider {
         evaluated: &[Evaluated],
         trace: Option<&TraceContext>,
         started: Instant,
-    ) -> Result<(), ApiError> {
+    ) -> Result<Vec<Evidence>, ApiError> {
         let Some(journal) = &self.journal else {
-            return Ok(());
+            // No log: nothing is promised, and every decision says so.
+            return Ok(evaluated.iter().map(|_| Evidence::disabled()).collect());
         };
         // Pseudonymised here, at the source, under the zone's shared key: the control plane never
         // holds a raw identifier, neither does any consumer of the log, and every replica of the
@@ -1490,6 +1522,7 @@ impl Decider {
         };
         let at = now_rfc3339();
         let latency_us = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
+        let mut evidence = Vec::with_capacity(evaluated.len());
 
         // **One record per evaluation**, not one per request. A boxcarred
         // request carries several questions about several subjects, resources
@@ -1577,10 +1610,10 @@ impl Decider {
                 event: None,
             };
 
-            self.write(Arc::clone(journal), decided).await?;
+            evidence.push(self.write(Arc::clone(journal), decided).await?);
         }
 
-        Ok(())
+        Ok(evidence)
     }
 
     /// Records one **temporal** decision, linked to the occurrence it was made about.
@@ -1646,16 +1679,24 @@ impl Decider {
             return Ok(());
         };
 
-        self.write(Arc::clone(journal), decided).await
+        self.write(Arc::clone(journal), decided).await.map(|_| ())
     }
 
-    /// Writes one record, and decides what a failure to write means.
+    /// Writes one record, decides what a failure to write means, and answers what became of the
+    /// record: the evidence its decision carries.
     async fn write(
         &self,
         journal: Arc<dyn crate::decisions::DecisionRecorder>,
         decided: OwnedDecided,
-    ) -> Result<(), ApiError> {
+    ) -> Result<Evidence, ApiError> {
         let refuses_unrecorded = journal.refuses_unrecorded();
+        // A log that refuses rather than answer unrecorded is the `required` mode; one that
+        // answers anyway promises only an attempt.
+        let mode = if refuses_unrecorded {
+            EvidenceMode::Required
+        } else {
+            EvidenceMode::BestEffort
+        };
         // The record's own id, drawn by this plane: written beside the request's id — the span every
         // record of this request runs in — it is how a log line leads to the audit record, and back.
         let decision_id = decided.id.clone();
@@ -1665,7 +1706,7 @@ impl Decider {
         // busiest one there is.
         let written = self
             .blocking
-            .run(&[], move || journal.record(&decided.borrowed()))
+            .run(&[], move || journal.record_located(&decided.borrowed()))
             .await;
         let written = match written {
             Ok(written) => Ok(written),
@@ -1681,7 +1722,7 @@ impl Decider {
         };
 
         match written {
-            Ok(Ok(crate::decisions::Written::Refused(reason))) => {
+            Ok(Ok((crate::decisions::Written::Refused(reason), _))) => {
                 warn!(
                     event.name = "authz.unrecordable",
                     component = COMPONENT,
@@ -1693,7 +1734,7 @@ impl Decider {
 
                 Err(self.unrecordable(reason.as_str()))
             }
-            Ok(Ok(_)) => {
+            Ok(Ok((written, position))) => {
                 debug!(
                     event.name = "authz.decision_recorded",
                     component = COMPONENT,
@@ -1701,7 +1742,20 @@ impl Decider {
                     "a decision was recorded"
                 );
 
-                Ok(())
+                Ok(match (written, position) {
+                    (
+                        crate::decisions::Written::Recorded { .. }
+                        | crate::decisions::Written::AlreadyRecorded { .. },
+                        Some(position),
+                    ) => Evidence::durable(mode, decision_id, position),
+                    (crate::decisions::Written::SampledOut, _) => {
+                        Evidence::unrecorded(mode, EvidenceStatus::SampledOut)
+                    }
+                    // Recorded somewhere the recorder cannot name, or in a stream that replaced
+                    // one whose records were discarded: nothing this answer can cite, said as a
+                    // loss rather than claimed durable.
+                    _ => Evidence::unrecorded(mode, EvidenceStatus::Dropped),
+                })
             }
             Ok(Err(error)) => {
                 self.journal_error(refuses_unrecorded, &decision_id, error.to_string())
@@ -1719,7 +1773,7 @@ impl Decider {
         refuses_unrecorded: bool,
         decision_id: &str,
         reason: String,
-    ) -> Result<(), ApiError> {
+    ) -> Result<Evidence, ApiError> {
         if refuses_unrecorded {
             warn!(
                 event.name = "authz.unrecordable",
@@ -1741,7 +1795,11 @@ impl Decider {
             "a decision was answered and its log record was not written"
         );
 
-        Ok(())
+        // Answered unrecorded, which only a log that answers anyway does: a counted loss.
+        Ok(Evidence::unrecorded(
+            EvidenceMode::BestEffort,
+            EvidenceStatus::Dropped,
+        ))
     }
 
     fn unrecordable(&self, reason: &str) -> ApiError {
@@ -1925,6 +1983,8 @@ impl Plan {
                     reason_user: Some(reason_user(permit)),
                     policies: outcome.determining().to_vec(),
                     absent_inputs,
+                    // Filled once the journal said what became of the record.
+                    evidence: None,
                 }),
             },
             resolution: outcome.resolution,
@@ -2073,6 +2133,8 @@ fn batch_context(
         reason_user: Some(reason_user(overall)),
         policies,
         absent_inputs,
+        // No record is of a batch: its evaluations each carry their own.
+        evidence: None,
     }
 }
 
@@ -2142,6 +2204,7 @@ mod tests {
                 reason_user: None,
                 policies: policies.iter().map(|policy| (*policy).to_owned()).collect(),
                 absent_inputs: Vec::new(),
+                evidence: None,
             }),
         };
         let batch = vec![

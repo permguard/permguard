@@ -1326,6 +1326,7 @@ fn to_proto(request: &permguard_languages::CheckRequest) -> Result<pdp::Evaluate
             .collect::<Result<Vec<pdp::Evaluation>, String>>()?,
         evaluations_semantic: semantic_of(request),
         request_id: text(&request.request_id),
+        request_nonce: text(&request.request_nonce),
     })
 }
 
@@ -1570,6 +1571,23 @@ fn context_of(context: pdp::DecisionContext) -> serde_json::Value {
                     .map(Value::String)
                     .collect(),
             ),
+        );
+    }
+    // The evidence object as the REST answer writes it: every member, `null` where it names
+    // nothing (WP-6.6).
+    if let Some(evidence) = context.evidence {
+        object.insert(
+            "evidence".to_owned(),
+            serde_json::json!({
+                "mode": evidence.mode,
+                "status": evidence.status,
+                "record_id": evidence.record_id,
+                "position": evidence.position.map(|position| serde_json::json!({
+                    "host_id": position.host_id,
+                    "run": position.run,
+                    "sequence": position.sequence,
+                })),
+            }),
         );
     }
 

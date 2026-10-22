@@ -47,6 +47,15 @@ fn context() -> DecisionContext {
         reason_user: Some(reason("not_permitted")),
         policies: vec!["policy-a".to_owned()],
         absent_inputs: vec!["guardrail".to_owned()],
+        evidence: Some(permguard_languages::attestation::Evidence::durable(
+            permguard_languages::attestation::EvidenceMode::Required,
+            "decision-1".to_owned(),
+            permguard_languages::attestation::Position {
+                host_id: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+                run: "0102030405060708090a0b0c0d0e0f10".to_owned(),
+                sequence: "7".to_owned(),
+            },
+        )),
     }
 }
 
@@ -94,6 +103,7 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
             evaluations_semantic: Some(Semantic::ExecuteAll),
         }),
         request_id: Some("req-1".to_owned()),
+        request_nonce: Some("AAECAwQFBgcICQoLDA0ODw".to_owned()),
     };
     doc.check("CheckRequest", &request);
     // The empty request is a request the plane refuses by name, not one the schema refuses.
@@ -145,6 +155,26 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
         },
     );
     doc.check("DecisionContext", &DecisionContext::default());
+    // The evidence object, every status (WP-6.6).
+    doc.check(
+        "Evidence",
+        &permguard_languages::attestation::Evidence::disabled(),
+    );
+    doc.check(
+        "Evidence",
+        &permguard_languages::attestation::Evidence::unrecorded(
+            permguard_languages::attestation::EvidenceMode::BestEffort,
+            permguard_languages::attestation::EvidenceStatus::SampledOut,
+        ),
+    );
+    doc.check(
+        "EvidencePosition",
+        &permguard_languages::attestation::Position {
+            host_id: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+            run: "0102030405060708090a0b0c0d0e0f10".to_owned(),
+            sequence: "0".to_owned(),
+        },
+    );
 
     // The discovery document, as the handler serves it: a value of the real type.
     let configuration = permguard_data_plane::authz::configuration::configuration(
@@ -182,6 +212,21 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
     assert!(!doc.accepts_json("OptionsBody", &json!({ "evaluations_semantic": "all" })));
     assert!(!doc.accepts_json("CheckResponse", &json!({ "decision": true, "extra": 1 })));
     assert!(!doc.accepts_json("CheckResponse", &json!({})));
+    // Closed, every member present.
+    assert!(!doc.accepts_json(
+        "Evidence",
+        &json!({ "mode": "disabled", "status": "disabled", "record_id": null })
+    ));
+    assert!(!doc.accepts_json(
+        "Evidence",
+        &json!({ "mode": "disabled", "status": "disabled", "record_id": null,
+                 "position": null, "extra": 1 })
+    ));
+    assert!(!doc.accepts_json(
+        "Evidence",
+        &json!({ "mode": "sometimes", "status": "disabled",
+        "record_id": null, "position": null })
+    ));
     assert!(doc.accepts_json(
         "EntityBody",
         &json!({ "properties": { "anything": [1, null] } })

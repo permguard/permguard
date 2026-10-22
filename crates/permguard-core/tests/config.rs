@@ -2062,6 +2062,43 @@ fn test_key_versions_the_coordinator_root_and_the_retired_commitment_key() {
     );
 }
 
+/// WP-6.6: `required` answers only what it recorded, so permit sampling below one is refused
+/// under it and accepted with no log.
+#[test]
+fn permit_sampling_below_one_is_refused_under_the_required_mode() {
+    let logging = [
+        (SETTING_AUDIT_PSEUDONYM_ENABLED, "true"),
+        (SETTING_AUDIT_PSEUDONYM_KEY_REF, "audit-pseudonym"),
+        (SETTING_SECRETS_COORDINATOR_ROOT_REF, "coordinator-root"),
+    ];
+    let built = |extra: &[(&'static str, &'static str)]| {
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_file(pairs(&[&logging[..], extra].concat())),
+        )
+    };
+    let error = built(&[
+        (SETTING_LOG_MODE, "required"),
+        (permguard_core::config::SETTING_LOG_SAMPLE_PERMITS, "0.5"),
+    ])
+    .expect_err("an answer with no record, under the mode that promises one");
+    assert!(
+        format!("{error:#}").contains(permguard_core::config::SETTING_LOG_SAMPLE_PERMITS),
+        "{error:#}"
+    );
+    built(&[
+        (SETTING_LOG_MODE, "required"),
+        (permguard_core::config::SETTING_LOG_SAMPLE_PERMITS, "1.0"),
+    ])
+    .expect("every permit recorded");
+    built(&[
+        (SETTING_LOG_MODE, "disabled"),
+        (permguard_core::config::SETTING_LOG_SAMPLE_PERMITS, "0.5"),
+    ])
+    .expect("no log, nothing promised");
+}
+
 /// WP-6.1: `log.mode` is `required` or `disabled`, following `log.enabled` when unset and
 /// refusing an explicit `log.enabled` that contradicts it; `best-effort`, `on_full: open` and the
 /// plane's own name are refused, each naming what replaces it.

@@ -370,7 +370,7 @@ dataPlane:
   #     mode: "required"
   #
   #     # What is written. Denies and errors are never sampled, whatever this says: a log that drops
-  #     # refusals is not an audit trail.
+  #     # refusals is not an audit trail. `required` records every answer, so below "1.0" is refused.
   #     sample: { permits: "1.0" }
   #
   #     # Caller-supplied attributes may carry personal data, so they are off by default and named

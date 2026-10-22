@@ -19,6 +19,15 @@ is cut.
 
 ### Added
 
+- **Every native decision says what became of its record, and a request for a signed response is never answered unsigned (WP-6.6a).**
+  Each decision's `context.evidence` is the closed object `{mode, status, record_id, position}`: `disabled` with no log, and with one `durable`, naming the record's id and its Host position `{host_id, run, sequence}`.
+  A boxcarred request carries it on each evaluation and not on the batch's own context; `context.id` stays and equals `record_id`.
+  `request_nonce` is accepted: base64url without padding, 16 to 64 bytes, anything else refused as `invalid_argument`.
+  Until this plane can sign, a nonce is refused before anything is decided or recorded with `503` `response_signing_unavailable`.
+  The request and response digests a signed response will bind are fixed by golden vectors.
+  Permit sampling below `1.0` is refused at start under `log.mode: required`, which answers only what it recorded.
+  REST, gRPC and the OpenAPI document carry the same members.
+
 - **A shared history keeps a durable logical index, and a conflict is handled per consistency mode (WP-6.4b).**
   Each ledger keeps `indexes/logical.json` under its temporal directory: per `(authenticated source, event_id)`, the digest, the event time and every position `(origin, run, seq)` that recorded it.
   An occurrence nobody vouched for keys by its origin instead, so it never collapses another origin's.

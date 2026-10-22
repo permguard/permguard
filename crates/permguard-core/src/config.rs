@@ -677,7 +677,8 @@ pub const SETTING_LOG_ON_FULL: &str = "PERMGUARD_DECISIONS_LOG_ON_FULL";
 /// The rate at which permits are recorded, between `0.0` and `1.0`.
 ///
 /// Denies and errors are never sampled, whatever this says: a log that drops refusals is not an
-/// audit trail.
+/// audit trail. Below `1.0` only under a mode that answers a decision it did not record, which
+/// `required` is not (WP-6.6): every answer it gives is durable.
 pub const SETTING_LOG_SAMPLE_PERMITS: &str = "PERMGUARD_DECISIONS_LOG_SAMPLE_PERMITS";
 
 /// Retired (WP-3.3): input tags are keyed by the per-ledger zone key derived from
@@ -5211,6 +5212,16 @@ produce: use `EdDSA` or `ES256`"
                      1.0"
                 );
             }
+        }
+        // `required` answers only what is durable (WP-6.6): a permit sampled out would be an
+        // answer with no record, under the mode that promises one for each.
+        if self.log_enabled && self.log_sample_permits < 1.0 {
+            anyhow::bail!(
+                "{SETTING_LOG_SAMPLE_PERMITS} is `{}` and {SETTING_LOG_MODE} is `required`, which \
+                 records every decision it answers: permit sampling needs a mode that answers \
+                 decisions it did not record, and none is available yet. Set it to `1.0`",
+                self.log_sample_permits
+            );
         }
         // Retired (WP-3.3): input tags are keyed per ledger by the zone keys the coordinator root
         // derives. A configuration still naming its own commitment key is refused, so nothing

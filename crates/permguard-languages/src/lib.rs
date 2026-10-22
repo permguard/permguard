@@ -32,6 +32,7 @@ mod dogwood;
 mod rego;
 
 pub mod artifact;
+pub mod attestation;
 pub mod descriptor;
 pub mod evaluate;
 pub mod fanout;
