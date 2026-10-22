@@ -266,6 +266,29 @@ pub fn to_proto(response: SubmitResponse) -> SubmitEventResponse {
             watermark: response.history.watermark.unwrap_or_default(),
             staleness_seconds: response.history.staleness_seconds,
             gaps: response.history.gaps,
+            frontier: response
+                .history
+                .frontier
+                .into_iter()
+                .map(|run| crate::v1::FrontierRun {
+                    origin: run.origin,
+                    run: run.run,
+                    covered_through: run.covered_through,
+                    low_watermark: run.low_watermark,
+                    gaps: run
+                        .gaps
+                        .into_iter()
+                        .map(|gap| crate::v1::FrontierGap {
+                            from: gap.from,
+                            through: gap.through,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            origin_set_revision: response.history.origin_set_revision,
+            max_staleness_seconds: response.history.max_staleness_seconds,
+            degraded: response.history.degraded,
+            time: response.history.time,
         }),
     }
 }

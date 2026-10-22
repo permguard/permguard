@@ -1569,6 +1569,9 @@ mod shipped_example {
                 answered["history"]["mode"], "local",
                 "{fixture}: {answered}"
             );
+            // WP-6.4a: a local history cites its time interpretation and no frontier.
+            assert_eq!(answered["history"]["time"], "occurred_at", "{answered}");
+            assert!(answered["history"].get("frontier").is_none(), "{answered}");
         }
     }
     /// The example's refusals, which are as much of the contract as its permits.
@@ -3216,6 +3219,8 @@ async fn a_store_changed_since_it_was_authorized_is_refused() {
 struct Imported {
     held: std::sync::Mutex<u64>,
     state: std::sync::Mutex<Option<permguard_host::membership::import::State>>,
+    /// Whether the consumer also lists a run of the importing Host's own, `[9; 16]`.
+    own: std::sync::Mutex<bool>,
 }
 
 const ORIGIN: [u8; 16] = [1; 16];
@@ -3227,7 +3232,7 @@ impl permguard_host::composition::StreamConsumerReads for Imported {
         _: &permguard_core::authz::Resource,
     ) -> Result<Vec<permguard_host::composition::ConsumedRun>, String> {
         let held = *self.held.lock().expect("lock");
-        Ok((held > 0)
+        let mut runs: Vec<permguard_host::composition::ConsumedRun> = (held > 0)
             .then_some(permguard_host::composition::ConsumedRun {
                 producer: ORIGIN,
                 run: ORIGIN_RUN,
@@ -3235,7 +3240,16 @@ impl permguard_host::composition::StreamConsumerReads for Imported {
                 oldest_retained: held + 1,
             })
             .into_iter()
-            .collect())
+            .collect();
+        if *self.own.lock().expect("lock") {
+            runs.push(permguard_host::composition::ConsumedRun {
+                producer: [9; 16],
+                run: [8; 16],
+                acked: 5,
+                oldest_retained: 6,
+            });
+        }
+        Ok(runs)
     }
 
     fn locate(
@@ -3346,6 +3360,92 @@ fn verified_import(
     }
 }
 
+/// WP-6.4a, after the review: under `shared-eventual` a required origin is degraded when its run is
+/// behind the checkpoint, when the checkpoint is older than the bound, or when it has a gap — each
+/// alone — and never otherwise; this Host's own run is never in the frontier.
+#[tokio::test]
+async fn an_eventual_decision_names_each_degraded_origin_for_its_own_cause() {
+    for (case, age, held, gaps, degraded) in [
+        ("behind", 1, 2, 0, true),
+        ("stale", 600, 3, 0, true),
+        ("gapped", 1, 3, 1, true),
+        ("whole", 1, 3, 0, false),
+        ("absent", 1, 0, 0, true),
+    ] {
+        let plane = plane(&format!("eventual-degraded-{case}"));
+        let root = plane
+            .events
+            .parent()
+            .expect("the scratch root")
+            .to_path_buf();
+        let consumer = Arc::new(Imported::default());
+        *consumer.state.lock().expect("lock") = Some(verified_import(age, 3, gaps));
+        *consumer.held.lock().expect("lock") = held;
+        *consumer.own.lock().expect("lock") = true;
+        let imported = Arc::new(
+            permguard_data_plane::temporal::imported::Imported::new(
+                permguard_host::composition::StreamConsumer::over(Arc::clone(&consumer)
+                    as Arc<dyn permguard_host::composition::StreamConsumerReads>),
+                [9; 16],
+                root.join("planes"),
+            )
+            .expect("the floor is registered"),
+        );
+        let submitter = Arc::try_unwrap(plane.submitter)
+            .unwrap_or_else(|_| panic!("the only holder"))
+            .with_shared_mode(
+                permguard_core::config::Consistency::SharedEventual,
+                std::time::Duration::from_secs(60),
+            )
+            .with_imported(imported);
+        let plane = Plane {
+            submitter: Arc::new(submitter),
+            ..plane
+        };
+        let (status, answered) = post(
+            &surface(&plane),
+            submission(
+                1,
+                "Drupe::Action::Login",
+                "request",
+                "alice",
+                json!({"user": "alice", "server": "s1"}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{case}: {answered}");
+        let history = &answered["history"];
+        if degraded {
+            assert_eq!(
+                history["degraded"],
+                json!(["01".repeat(16)]),
+                "{case}: {answered}"
+            );
+        } else {
+            assert!(history.get("degraded").is_none(), "{case}: {answered}");
+        }
+        let runs = history["frontier"].as_array().expect("a frontier");
+        assert!(
+            runs.iter().all(|run| run["origin"] != "09".repeat(16)),
+            "{case}: this Host's own run is not imported history: {answered}"
+        );
+        assert_eq!(runs.len(), 1, "{case}: {answered}");
+        assert_eq!(
+            runs[0]["covered_through"], held,
+            "{case}: what is held, and a required run held of nothing at zero: {answered}"
+        );
+        // The same answer over gRPC carries the same frontier and degraded origins.
+        let proto = permguard_data_plane::temporal::grpc::to_proto(
+            serde_json::from_value(answered.clone()).expect("an answer"),
+        );
+        let carried = proto.history.expect("a history");
+        assert_eq!(carried.frontier.len(), 1, "{case}");
+        assert_eq!(carried.degraded.len(), usize::from(degraded), "{case}");
+        assert_eq!(carried.time, "occurred_at");
+        assert_eq!(carried.max_staleness_seconds, Some(60));
+    }
+}
+
 /// WP-6.2c2b1 (owner decision of 2026-10-18): a bounded plane over the origins the member Host
 /// imports measures its freshness from the coordinator's checkpoint the Host verified, never from
 /// an event's time; it decides only when that verification is recent, the origins' runs are held
@@ -3443,6 +3543,24 @@ async fn a_bounded_plane_decides_on_imports_only_when_the_verified_checkpoint_vo
         answered["history"].get("gaps").is_none(),
         "none open: {answered}"
     );
+    // WP-6.4a: the exact vector frontier, the origin set and the bound it decided under.
+    assert_eq!(
+        answered["history"]["frontier"],
+        json!([{
+            "origin": "01".repeat(16),
+            "run": "07".repeat(16),
+            "covered_through": 3,
+            "low_watermark": 4,
+        }]),
+        "{answered}"
+    );
+    assert_eq!(answered["history"]["origin_set_revision"], "03".repeat(32));
+    assert_eq!(answered["history"]["max_staleness_seconds"], 60);
+    assert_eq!(answered["history"]["time"], "occurred_at");
+    assert!(
+        answered["history"].get("degraded").is_none(),
+        "a bounded decision is never degraded: {answered}"
+    );
 }
 
 /// WP-6.2c2b1, after the review: `shared-eventual` decides through staleness and gaps and reports
@@ -3524,6 +3642,19 @@ async fn an_eventual_plane_decides_and_reports_and_a_legacy_gap_still_bounds() {
             assert_eq!(status, StatusCode::OK, "{answered}");
             assert_eq!(answered["history"]["mode"], "shared-eventual", "{answered}");
             assert_eq!(answered["history"]["gaps"], 2, "{answered}");
+            // WP-6.4a: stale and gapped, the required origin is named degraded, and its run's
+            // hole is in the frontier.
+            assert_eq!(
+                answered["history"]["degraded"],
+                json!(["01".repeat(16)]),
+                "{answered}"
+            );
+            assert!(
+                answered["history"]["frontier"][0]["gaps"]
+                    .as_array()
+                    .is_some_and(|gaps| !gaps.is_empty()),
+                "{answered}"
+            );
             assert!(
                 answered["history"]["staleness_seconds"]
                     .as_u64()

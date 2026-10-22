@@ -217,6 +217,28 @@ fn test_pdp_temporal_v1alpha1_document_describes_what_the_wire_types_serialise()
         watermark: Some("wm-1".to_owned()),
         staleness_seconds: Some(12),
         gaps: 3,
+        // What a shared decision cites (WP-6.4a): every member, a run with a closed and an open
+        // gap.
+        frontier: vec![permguard_core::frontier::FrontierRun {
+            origin: "0a".repeat(16),
+            run: "0b".repeat(16),
+            covered_through: 9,
+            low_watermark: 2,
+            gaps: vec![
+                permguard_core::frontier::FrontierGap {
+                    from: 4,
+                    through: Some(5),
+                },
+                permguard_core::frontier::FrontierGap {
+                    from: 8,
+                    through: None,
+                },
+            ],
+        }],
+        origin_set_revision: Some("0c".repeat(32)),
+        max_staleness_seconds: Some(10),
+        degraded: vec!["0a".repeat(16)],
+        time: permguard_core::frontier::TIME_OCCURRED_AT.to_owned(),
     };
     for mode in ["local", "shared-eventual", "shared-bounded"] {
         doc.check(

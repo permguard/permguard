@@ -202,7 +202,7 @@ fn a_window_reads_the_imported_runs_it_covers_and_never_this_hosts_own() {
     );
     assert_eq!(
         ids(&imported
-            .window(ZONE, LEDGER, &query(150, 300))
+            .window(ZONE, LEDGER, &query(150, 300), None)
             .expect("read")),
         ["e-1-2", "e-1-3"]
     );
@@ -215,7 +215,7 @@ fn a_window_reads_the_imported_runs_it_covers_and_never_this_hosts_own() {
     }
     assert_eq!(
         ids(&imported
-            .window(ZONE, LEDGER, &query(350, 450))
+            .window(ZONE, LEDGER, &query(350, 450), None)
             .expect("read")),
         ["e-1-4"]
     );
@@ -229,7 +229,9 @@ fn a_window_reads_the_imported_runs_it_covers_and_never_this_hosts_own() {
     .expect("reopened");
     *consumer.reads.lock().unwrap() = 0;
     assert_eq!(
-        ids(&reopened.window(ZONE, LEDGER, &query(0, 150)).expect("read")),
+        ids(&reopened
+            .window(ZONE, LEDGER, &query(0, 150), None)
+            .expect("read")),
         ["e-1-1"]
     );
     assert_eq!(
@@ -248,7 +250,9 @@ fn what_the_consumer_pruned_leaves_the_index_and_the_floor_follows_the_horizon()
         .unwrap()
         .push(held(ORIGIN, RUN, &[100, 200, 300, 400]));
     let imported = imported("floor", &consumer);
-    imported.window(ZONE, LEDGER, &query(0, 500)).expect("read");
+    imported
+        .window(ZONE, LEDGER, &query(0, 500), None)
+        .expect("read");
     imported.refresh_floors(250).expect("measured");
     let floor = consumer.floor.lock().unwrap().clone().expect("registered");
     let resource = Resource::ledger("data", ZONE, LEDGER).to_string();
@@ -266,7 +270,9 @@ fn what_the_consumer_pruned_leaves_the_index_and_the_floor_follows_the_horizon()
     // The consumer pruned through 2: its records leave the window.
     consumer.runs.lock().unwrap()[0].run.oldest_retained = 3;
     assert_eq!(
-        ids(&imported.window(ZONE, LEDGER, &query(0, 500)).expect("read")),
+        ids(&imported
+            .window(ZONE, LEDGER, &query(0, 500), None)
+            .expect("read")),
         ["e-1-3", "e-1-4"]
     );
     imported.refresh_floors(1_000).expect("measured");
@@ -430,11 +436,15 @@ fn a_record_the_index_names_and_the_consumer_lacks_is_refused_not_read_short() {
     // Two records far apart: each read alone, nothing between them.
     *consumer.reads.lock().unwrap() = 0;
     assert_eq!(
-        ids(&reader.window(ZONE, LEDGER, &query(100, 100)).expect("read")),
+        ids(&reader
+            .window(ZONE, LEDGER, &query(100, 100), None)
+            .expect("read")),
         ["e-1-1"]
     );
     assert_eq!(
-        ids(&reader.window(ZONE, LEDGER, &query(299, 299)).expect("read")),
+        ids(&reader
+            .window(ZONE, LEDGER, &query(299, 299), None)
+            .expect("read")),
         ["e-1-200"]
     );
     assert_eq!(
@@ -444,7 +454,7 @@ fn a_record_the_index_names_and_the_consumer_lacks_is_refused_not_read_short() {
     );
     assert_eq!(
         reader
-            .window(ZONE, LEDGER, &query(100, 299))
+            .window(ZONE, LEDGER, &query(100, 299), None)
             .expect("read")
             .len(),
         200
@@ -452,7 +462,7 @@ fn a_record_the_index_names_and_the_consumer_lacks_is_refused_not_read_short() {
 
     // The consumer lost records its STATE and the index still name: refused, never read short.
     consumer.runs.lock().unwrap()[0].records.truncate(150);
-    assert!(reader.window(ZONE, LEDGER, &query(100, 299)).is_err());
+    assert!(reader.window(ZONE, LEDGER, &query(100, 299), None).is_err());
 }
 
 #[test]
@@ -466,7 +476,7 @@ fn a_damaged_or_ahead_index_is_rebuilt_and_a_vanished_run_forgotten() {
     let first = imported("rebuild", &consumer);
     assert_eq!(
         first
-            .window(ZONE, LEDGER, &query(0, 400))
+            .window(ZONE, LEDGER, &query(0, 400), None)
             .expect("read")
             .len(),
         3
@@ -487,7 +497,9 @@ fn a_damaged_or_ahead_index_is_rebuilt_and_a_vanished_run_forgotten() {
     )
     .expect("reopened");
     assert_eq!(
-        ids(&reopened.window(ZONE, LEDGER, &query(0, 400)).expect("read")),
+        ids(&reopened
+            .window(ZONE, LEDGER, &query(0, 400), None)
+            .expect("read")),
         ["e-1-1", "e-1-2", "e-1-3"],
         "rebuilt from the consumer"
     );
@@ -499,14 +511,16 @@ fn a_damaged_or_ahead_index_is_rebuilt_and_a_vanished_run_forgotten() {
         runs[0].run.acked = 2;
     }
     assert_eq!(
-        ids(&reopened.window(ZONE, LEDGER, &query(0, 400)).expect("read")),
+        ids(&reopened
+            .window(ZONE, LEDGER, &query(0, 400), None)
+            .expect("read")),
         ["e-1-1", "e-1-2"]
     );
     // The run gone from the consumer: nothing of it is read.
     consumer.runs.lock().unwrap().clear();
     assert!(
         reopened
-            .window(ZONE, LEDGER, &query(0, 400))
+            .window(ZONE, LEDGER, &query(0, 400), None)
             .expect("read")
             .is_empty()
     );
@@ -583,4 +597,43 @@ fn a_checkpoint_that_does_not_read_or_names_another_ledger_vouches_for_nothing()
     assert!(imported.shared(ZONE, LEDGER).is_err(), "another origin set");
     *consumer.state.lock().unwrap() = Some(state(signed(&ours), [3; 32]));
     assert!(imported.shared(ZONE, LEDGER).is_ok());
+}
+
+/// WP-6.4a, after the review: a replay reads no further than the frontier its decision captured —
+/// a run read through its `covered_through`, a run the frontier does not name not read — and the
+/// shared view's frontier names what the plane indexed, sorted, this Host's own run excluded.
+#[test]
+fn a_window_bound_by_a_frontier_reads_exactly_what_it_cites() {
+    let consumer = Arc::new(Consumer::default());
+    consumer.runs.lock().unwrap().extend([
+        held(ORIGIN, RUN, &[100, 200, 300]),
+        held([2; 16], [5; 16], &[150]),
+        held(OWN, [3; 16], &[120]),
+    ]);
+    let imported = imported("window-bound", &consumer);
+    let shared = imported.shared(ZONE, LEDGER).expect("the view");
+    assert_eq!(
+        shared
+            .frontier
+            .iter()
+            .map(|run| (run.origin.clone(), run.covered_through))
+            .collect::<Vec<_>>(),
+        [("01".repeat(16), 3), ("02".repeat(16), 1)],
+        "indexed, sorted, its own run left out"
+    );
+
+    let bound = [permguard_core::frontier::FrontierRun {
+        origin: "01".repeat(16),
+        run: "07".repeat(16),
+        covered_through: 2,
+        low_watermark: 1,
+        gaps: Vec::new(),
+    }];
+    assert_eq!(
+        ids(&imported
+            .window(ZONE, LEDGER, &query(0, 1000), Some(&bound))
+            .expect("read")),
+        ["e-1-1", "e-1-2"],
+        "through the cited sequence of the cited run, and no other run"
+    );
 }

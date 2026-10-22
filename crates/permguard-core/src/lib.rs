@@ -33,6 +33,7 @@ pub mod decisions;
 pub mod domains;
 pub mod error;
 pub mod fault;
+pub mod frontier;
 pub mod future;
 pub mod identity;
 pub mod keys;

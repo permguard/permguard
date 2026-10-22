@@ -366,6 +366,35 @@ message DecisionHistory {
   optional uint64 staleness_seconds = 3;
   // Recorded holes the importer could not recover from retention.
   uint64 gaps = 4;
+  // The exact vector frontier a shared decision observed (WP-6.4a); empty for
+  // a local history.
+  repeated FrontierRun frontier = 5;
+  // The revision of the origin set defining the required origins, in hex.
+  optional string origin_set_revision = 6;
+  // The freshness bound in force, in seconds.
+  optional uint64 max_staleness_seconds = 7;
+  // The required origins a `shared-eventual` decision is degraded by.
+  repeated string degraded = 8;
+  // The time the runtime's windows range over: `occurred_at`.
+  string time = 9;
+}
+
+// One imported run of one origin, as a decision held it.
+message FrontierRun {
+  // The origin Host and its run, in hex.
+  string origin = 1;
+  string run = 2;
+  // The last sequence held, contiguously, and the oldest still retained.
+  uint64 covered_through = 3;
+  uint64 low_watermark = 4;
+  // The holes recorded in the run.
+  repeated FrontierGap gaps = 5;
+}
+
+// One recorded hole: the first sequence missing and, when known, the last.
+message FrontierGap {
+  uint64 from = 1;
+  optional uint64 through = 2;
 }
 
 message GetTemporalConfigurationRequest {}

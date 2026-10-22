@@ -828,6 +828,36 @@
           "watermark": {
             "type": "string",
             "description": "The opaque import watermark the decision saw."
+          },
+          "frontier": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontierRun"
+            },
+            "description": "The exact vector frontier a shared decision observed (WP-6.4a); absent for a local one and from earlier records."
+          },
+          "origin_set_revision": {
+            "type": "string",
+            "description": "The revision of the origin set that defined the required origins, hex."
+          },
+          "max_staleness_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The freshness bound in force."
+          },
+          "degraded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The required origins a shared-eventual decision was degraded by."
+          },
+          "time": {
+            "type": "string",
+            "enum": [
+              "occurred_at"
+            ],
+            "description": "The time the runtime's windows ranged over."
           }
         },
         "required": [
@@ -1617,6 +1647,61 @@
         "additionalProperties": false,
         "x-grpc-message": null,
         "x-grpc-note": "REST-only."
+      },
+      "FrontierRun": {
+        "type": "object",
+        "description": "One imported run of one origin, as a decision held it.",
+        "properties": {
+          "origin": {
+            "type": "string"
+          },
+          "run": {
+            "type": "string"
+          },
+          "covered_through": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "low_watermark": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontierGap"
+            }
+          }
+        },
+        "required": [
+          "origin",
+          "run",
+          "covered_through",
+          "low_watermark"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "FrontierGap": {
+        "type": "object",
+        "description": "One recorded hole: the first sequence missing and, when known, the last.",
+        "properties": {
+          "from": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "through": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "from"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
       }
     }
   },

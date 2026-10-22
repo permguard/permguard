@@ -989,6 +989,21 @@ mod openapi {
                 history: Some("sha256:h1".to_owned()),
                 consistency: Some("shared-bounded".to_owned()),
                 watermark: Some("w1".to_owned()),
+                // What the decision cited (WP-6.4a), every member.
+                frontier: vec![permguard_core::frontier::FrontierRun {
+                    origin: "0a".repeat(16),
+                    run: "0b".repeat(16),
+                    covered_through: 9,
+                    low_watermark: 2,
+                    gaps: vec![permguard_core::frontier::FrontierGap {
+                        from: 4,
+                        through: Some(5),
+                    }],
+                }],
+                origin_set_revision: Some("0c".repeat(32)),
+                max_staleness_seconds: Some(10),
+                degraded: vec!["0a".repeat(16)],
+                time: Some("occurred_at".to_owned()),
             }),
         }));
         let decision_minimal = Body::Decision(Box::new(DecisionBody {

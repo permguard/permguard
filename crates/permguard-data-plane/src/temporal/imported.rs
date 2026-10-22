@@ -41,7 +41,7 @@ fn io(error: impl std::fmt::Display) -> JournalError {
     JournalError::Io(error.to_string())
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -91,6 +91,12 @@ pub struct Shared {
     pub behind: Vec<([u8; 16], [u8; 16], u64, u64)>,
     /// What the plane has indexed of every imported run: a rebuild's invalidation mark.
     pub watermark: String,
+    /// Every imported run the consumer holds, other than this Host's own, with the gaps the Host
+    /// recorded for it: the exact vector frontier a decision cites (WP-6.4a), sorted.
+    pub frontier: Vec<permguard_core::frontier::FrontierRun>,
+    /// The required origins: those the verified checkpoint names, other than this Host, in hex,
+    /// sorted.
+    pub required: Vec<String>,
 }
 
 /// The imported history this plane reads.
@@ -247,22 +253,38 @@ impl Imported {
     }
 
     /// The imported records a temporal question needs, every imported run's index scanned.
+    ///
+    /// With `bound`, no further than the frontier a decision captured (WP-6.4a, after the review):
+    /// a run it does not name is not read, and a run it names is read through its
+    /// `covered_through`, so the replay ranges over exactly what the decision cites.
     pub fn window(
         &self,
         zone: &str,
         ledger: &str,
         query: &Query,
+        bound: Option<&[permguard_core::frontier::FrontierRun]>,
     ) -> Result<Vec<Value>, JournalError> {
         let held = self.ledger(zone, ledger);
         let mut held = held.lock().unwrap_or_else(PoisonError::into_inner);
         self.catch_up(&mut held)?;
         let mut found = Vec::new();
         for ((origin, run), indexed) in &held.runs {
+            let through = match bound {
+                None => u64::MAX,
+                Some(bound) => match bound
+                    .iter()
+                    .find(|named| named.origin == hex(origin) && named.run == hex(run))
+                {
+                    Some(named) => named.covered_through,
+                    None => continue,
+                },
+            };
             let mut seqs: Vec<u64> = indexed
                 .index
                 .scan(query)
                 .into_iter()
                 .map(|located| located.seq)
+                .filter(|seq| *seq <= through)
                 .collect();
             seqs.sort_unstable();
             let mut at = 0;
@@ -344,9 +366,79 @@ impl Imported {
                 Some(read)
             }
         };
+        let runs = self.consumer.runs(&held.resource).map_err(io)?;
+        // The frontier is what the plane indexed — what a decision can read — of every imported
+        // run, and of every run the checkpoint names or a gap cites that it holds nothing of, at
+        // zero (WP-6.4a, after the review). Sorted by origin and run.
+        // `catch_up` never indexes this Host's own runs, so the index holds imported runs only.
+        let mut named: BTreeMap<([u8; 16], [u8; 16]), (u64, u64)> = held
+            .runs
+            .iter()
+            .map(|(key, indexed)| {
+                // Caught up through what it indexed, or through the last sequence below what the
+                // run still retains, which there is nothing left to read of.
+                let through = indexed
+                    .covered
+                    .max(indexed.forgotten_below.saturating_sub(1));
+                (*key, (through, indexed.forgotten_below))
+            })
+            .collect();
+        if let Some(checkpoint) = &checkpoint {
+            for origin in checkpoint
+                .origins
+                .iter()
+                .filter(|origin| origin.host_id != self.host_id)
+            {
+                for run in &origin.runs {
+                    named.entry((origin.host_id, run.run)).or_insert((0, 0));
+                }
+            }
+        }
+        if let Some(state) = &state {
+            for gap in state.gaps.iter().filter(|gap| gap.origin != self.host_id) {
+                named.entry((gap.origin, gap.run)).or_insert((0, 0));
+            }
+        }
+        let frontier: Vec<permguard_core::frontier::FrontierRun> = named
+            .into_iter()
+            .map(|((origin, run), (covered_through, low_watermark))| {
+                permguard_core::frontier::FrontierRun {
+                    origin: hex(&origin),
+                    run: hex(&run),
+                    covered_through,
+                    low_watermark,
+                    gaps: state
+                        .as_ref()
+                        .map(|state| {
+                            state
+                                .gaps
+                                .iter()
+                                .filter(|gap| gap.origin == origin && gap.run == run)
+                                .map(|gap| permguard_core::frontier::FrontierGap {
+                                    from: gap.from,
+                                    through: gap.through,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                }
+            })
+            .collect();
+        let mut required: Vec<String> = checkpoint
+            .as_ref()
+            .map(|checkpoint| {
+                checkpoint
+                    .origins
+                    .iter()
+                    .filter(|origin| origin.host_id != self.host_id)
+                    .map(|origin| hex(&origin.host_id))
+                    .collect()
+            })
+            .unwrap_or_default();
+        required.sort();
+        required.dedup();
         let mut behind = Vec::new();
         if let Some(checkpoint) = &checkpoint {
-            let runs = self.consumer.runs(&held.resource).map_err(io)?;
             for origin in checkpoint
                 .origins
                 .iter()
@@ -376,6 +468,8 @@ impl Imported {
             checkpoint,
             behind,
             watermark,
+            frontier,
+            required,
         })
     }
 

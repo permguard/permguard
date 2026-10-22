@@ -356,6 +356,22 @@ pub struct EventRef {
     /// and without it the decision cannot be reproduced.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub watermark: Option<String>,
+    /// The exact vector frontier a shared decision observed (WP-6.4a): absent for `local`, and
+    /// from every record written before it, which digests as it always did.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub frontier: Vec<permguard_core::frontier::FrontierRun>,
+    /// The revision of the origin set that defined the required origins, in hex.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub origin_set_revision: Option<String>,
+    /// The freshness bound in force, in seconds.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub max_staleness_seconds: Option<u64>,
+    /// The required origins a `shared-eventual` decision was degraded by.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub degraded: Vec<String>,
+    /// The time the runtime's windows ranged over.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub time: Option<String>,
 }
 
 /// What was asked for.
@@ -473,6 +489,40 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    /// WP-6.4a: a record written before the frontier members renders as it always did, so its
+    /// digest holds; one carrying them renders them and reads them back.
+    #[test]
+    fn an_event_reference_without_a_frontier_renders_as_before() {
+        let before = json!({
+            "event_id": "e-1",
+            "event_type": "permguard.dogwood.event.v1",
+            "instance": "i-1",
+            "sequence": 3,
+            "consistency": "local",
+        });
+        let read: EventRef = serde_json::from_value(before.clone()).expect("it reads");
+        assert_eq!(serde_json::to_value(&read).expect("it renders"), before);
+
+        let mut cited = read;
+        cited.frontier = vec![permguard_core::frontier::FrontierRun {
+            origin: "aa".to_owned(),
+            run: "bb".to_owned(),
+            covered_through: 2,
+            low_watermark: 1,
+            gaps: Vec::new(),
+        }];
+        cited.origin_set_revision = Some("cc".to_owned());
+        cited.max_staleness_seconds = Some(10);
+        cited.degraded = vec!["aa".to_owned()];
+        cited.time = Some("occurred_at".to_owned());
+        let rendered = serde_json::to_value(&cited).expect("it renders");
+        assert_eq!(rendered["frontier"][0]["covered_through"], 2);
+        assert_eq!(
+            serde_json::from_value::<EventRef>(rendered).expect("it reads back"),
+            cited
+        );
+    }
 
     fn marker(seq: u64, prev: &str) -> Record {
         Record {

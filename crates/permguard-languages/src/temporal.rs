@@ -549,6 +549,26 @@ pub struct HistoryScope {
     /// auditor reproducing it has to be able to see that.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub gaps: u64,
+    /// The exact vector frontier a shared decision observed: each imported run, how far it held
+    /// it, what it still retained and its holes (WP-6.4a); empty for `local`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub frontier: Vec<permguard_core::frontier::FrontierRun>,
+    /// The revision of the origin set that defines the required origins, in hex.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_set_revision: Option<String>,
+    /// The freshness bound in force, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_staleness_seconds: Option<u64>,
+    /// The required origins a `shared-eventual` decision is degraded by: stale, behind or gapped.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<String>,
+    /// The time the runtime's windows range over: `occurred_at`.
+    #[serde(default = "occurred_at")]
+    pub time: String,
+}
+
+fn occurred_at() -> String {
+    permguard_core::frontier::TIME_OCCURRED_AT.to_owned()
 }
 
 fn is_zero(count: &u64) -> bool {
@@ -564,6 +584,11 @@ impl HistoryScope {
             staleness_seconds: None,
             // A plane reading only its own events has nothing imported to have a hole in.
             gaps: 0,
+            frontier: Vec::new(),
+            origin_set_revision: None,
+            max_staleness_seconds: None,
+            degraded: Vec::new(),
+            time: occurred_at(),
         }
     }
 }

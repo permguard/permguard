@@ -19,6 +19,14 @@ is cut.
 
 ### Added
 
+- **A temporal decision cites the exact vector frontier it observed (WP-6.4a).**
+  The answer's `history` and the decision record's `event` reference gain optional members, first `frontier[]`: each imported run with `covered_through`, `low_watermark` and its gaps.
+  They also gain `origin_set_revision`, `max_staleness_seconds`, the freshness bound in force, and `time`, `occurred_at`.
+  Under `shared-eventual`, `degraded[]` names the required origins behind, gapped or past the bound; it is named only over the Host's import, never over the retired pull store.
+  A replay reads exactly the frontier its decision cites, captured once.
+  `watermark` and `gaps` keep their meaning, a `local` decision adds only `time`, and a record written before carries none of them and digests as it did.
+  REST, gRPC and the record's schema carry the same members.
+
 - **Dogwood's event version 2: one canonical field map the server projects (TL-5c).**
   A partition whose manifest declares `input: {type: permguard.dogwood.event.v2}` accepts occurrences carrying `fields` in place of `logged` and `request_context` (DOGWOOD-05).
   The server builds both projections per action and kind: a field the event and the action's context both declare is copied to both, so a caller can neither send two values nor omit one.

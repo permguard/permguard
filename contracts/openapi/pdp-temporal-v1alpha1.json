@@ -451,6 +451,41 @@
             "minimum": 0,
             "description": "Omitted when zero.",
             "x-grpc-field": "gaps"
+          },
+          "frontier": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontierRun"
+            },
+            "description": "The exact vector frontier a shared decision observed; omitted for a local history.",
+            "x-grpc-field": "frontier"
+          },
+          "origin_set_revision": {
+            "type": "string",
+            "description": "The revision of the origin set defining the required origins, hex.",
+            "x-grpc-field": "origin_set_revision"
+          },
+          "max_staleness_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The freshness bound in force.",
+            "x-grpc-field": "max_staleness_seconds"
+          },
+          "degraded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The required origins a shared-eventual decision is degraded by.",
+            "x-grpc-field": "degraded"
+          },
+          "time": {
+            "type": "string",
+            "enum": [
+              "occurred_at"
+            ],
+            "description": "The time the runtime's windows range over; always sent by this build, an older plane omits it.",
+            "x-grpc-field": "time"
           }
         },
         "required": [
@@ -730,6 +765,66 @@
         "additionalProperties": false,
         "x-grpc-message": "permguard.data.v1.TemporalSignerSpan",
         "x-grpc-note": "`jwk` is a JSON object in REST and the same JWK serialised as JSON bytes in the gRPC `bytes jwk` field. `from` is the REST name of from_seq."
+      },
+      "FrontierRun": {
+        "type": "object",
+        "description": "One imported run of one origin, as a decision held it.",
+        "properties": {
+          "origin": {
+            "type": "string",
+            "x-grpc-field": "origin"
+          },
+          "run": {
+            "type": "string",
+            "x-grpc-field": "run"
+          },
+          "covered_through": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "covered_through"
+          },
+          "low_watermark": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "low_watermark"
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontierGap"
+            },
+            "x-grpc-field": "gaps"
+          }
+        },
+        "required": [
+          "origin",
+          "run",
+          "covered_through",
+          "low_watermark"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.FrontierRun"
+      },
+      "FrontierGap": {
+        "type": "object",
+        "description": "One recorded hole: the first sequence missing and, when known, the last.",
+        "properties": {
+          "from": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "from"
+          },
+          "through": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "through"
+          }
+        },
+        "required": [
+          "from"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.FrontierGap"
       }
     }
   }
