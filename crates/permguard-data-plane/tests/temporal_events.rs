@@ -1280,6 +1280,85 @@ async fn grpc_and_http_answer_the_same_submission_identically() {
     }
 }
 
+/// WP-7.5b, IFACE-06: a number at the edges of the domain both transports carry exactly meets the
+/// same outcome in an occurrence submitted over REST and over gRPC: past ±2^53 — an even integer
+/// a JSON reader keeps exactly — refused `value_unrepresentable` on both, a whole number written
+/// as a decimal read as the integer it is on both, 2^53 itself carried by both.
+#[tokio::test]
+async fn a_number_at_the_edge_of_the_domain_meets_the_same_outcome_over_both_transports() {
+    use permguard_data_plane::temporal::grpc;
+    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+
+    let over_http = plane("http-numbers");
+    let over_grpc = plane("grpc-numbers");
+    let http_router = surface(&over_http);
+    let api = grpc::TemporalPdpApi {
+        submitter: Arc::clone(&over_grpc.submitter),
+        disclosure: Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
+        pdp: "test-plane".to_owned(),
+        authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+    };
+    let (first, action, kind, user) = TRACE[0];
+    let cases = [
+        ("2^54", json!(18_014_398_509_481_984_u64), true),
+        ("-(2^53 + 2)", json!(-9_007_199_254_740_994_i64), true),
+        ("2^53", json!(9_007_199_254_740_992_u64), false),
+        ("42.0", json!(42.0), false),
+    ];
+    for (index, (case, number, refused)) in cases.into_iter().enumerate() {
+        let at = first + i64::try_from(index).expect("small");
+        let mut input = input_of(at, action, kind, user);
+        input["n"] = number;
+        let body = submission(at, action, kind, user, input);
+
+        let (status, answered) = post(&http_router, body.clone()).await;
+        let over_rest = if status == StatusCode::OK {
+            "answered".to_owned()
+        } else {
+            answered["code"].as_str().unwrap_or_default().to_owned()
+        };
+        let proto = permguard_data_plane::v1::SubmitEventRequest {
+            store: Some(permguard_data_plane::v1::EventStore {
+                zone: ZONE.to_owned(),
+                ledger: LEDGER.to_owned(),
+                profile: PROFILE.to_owned(),
+            }),
+            event: Some(permguard_data_plane::v1::TypedEvent {
+                r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
+                data: Some(permguard_data_plane::authz::translate::struct_from_map(
+                    body["event"]["data"].as_object().expect("an object"),
+                )),
+            }),
+        };
+        let over_rpc = match api.submit_event(anonymous(proto)).await {
+            Ok(_) => "answered".to_owned(),
+            Err(status) => status
+                .metadata()
+                .get(permguard_core::GRPC_ERROR_CODE)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default()
+                .to_owned(),
+        };
+
+        assert_eq!(over_rest, over_rpc, "`{case}`: {answered}");
+        if refused {
+            assert_eq!(
+                over_rest,
+                permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
+                "`{case}`"
+            );
+        } else {
+            assert_ne!(
+                over_rest,
+                permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
+                "`{case}` is carried"
+            );
+        }
+    }
+}
+
 /// The shipped example, run the way its README tells a reader to run it.
 ///
 /// The files are read from `examples/dogwood-session-access` — the manifest, the policy, both

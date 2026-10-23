@@ -2357,6 +2357,167 @@ mod parity {
         assert!(refusals >= 3, "the refusals are exercised ({refusals})");
     }
 
+    /// WP-7.5b, IFACE-06: the adversarial payloads get the same answer or the same refusal over
+    /// REST and gRPC through the production client — numeric edges at and past ±2^53 (an integer
+    /// and a double), a whole number written as a decimal, an unknown member, a retired member
+    /// (the downgrade to a request shape this interface no longer reads), and a duplicated
+    /// member, which a JSON object can spell and a client value cannot (REST refuses it below).
+    #[test]
+    fn test_adversarial_payloads_get_the_same_answer_or_refusal_over_rest_and_grpc() {
+        let root = scratch("parity-adversarial").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+        );
+        let decider = decider(&root);
+        let base_url = "http://127.0.0.1:7443".to_owned();
+        let served = serve(
+            http::routes(http::Surface {
+                authorization: permissive(),
+                decider: decider.clone(),
+                disclosure: Disclosure::Full,
+                base_url: base_url.clone(),
+                describer: permguard_core::stages::Describer::detached("data-plane"),
+            }),
+            tonic::service::Routes::new(served(PdpApi {
+                authorization: permissive(),
+                decider,
+                disclosure: Disclosure::Full,
+                base_url,
+                describer: permguard_core::stages::Describer::detached("data-plane"),
+            })),
+        );
+        let over_http = pdp(&served.http);
+        let over_grpc = pdp(&served.grpc);
+        let with_context = |context: Value| {
+            let mut payload = ask("alice", "read");
+            payload["context"] = context;
+            payload
+        };
+        let exact = i64::try_from(permguard_languages::request::EXACT_INTEGER).expect("2^53");
+        let mut unknown = ask("alice", "read");
+        unknown["colour"] = json!("red");
+        let mut retired = ask("alice", "read");
+        retired["entities"] = json!([]);
+
+        let unrepresentable = Outcome::Refused {
+            class: "validation".to_owned(),
+            code: permguard_core::codes::notp::VALUE_UNREPRESENTABLE.to_owned(),
+        };
+        let cases = [
+            (
+                "an integer at 2^53",
+                with_context(json!({"n": exact})),
+                None,
+            ),
+            (
+                "an integer at -2^53",
+                with_context(json!({"n": -exact})),
+                None,
+            ),
+            (
+                "an integer past 2^53",
+                with_context(json!({"n": exact + 1})),
+                Some(unrepresentable.clone()),
+            ),
+            (
+                "an integer past -2^53, nested",
+                with_context(json!({"deep": [{"n": -exact - 1}]})),
+                Some(unrepresentable.clone()),
+            ),
+            (
+                "a double past 2^53",
+                with_context(json!({"n": 1e300})),
+                Some(unrepresentable),
+            ),
+            (
+                "a whole number written as a decimal",
+                with_context(json!({"n": 42.0})),
+                None,
+            ),
+            (
+                "an unknown member",
+                unknown,
+                Some(Outcome::Refused {
+                    class: "validation".to_owned(),
+                    code: permguard_core::codes::notp::PAYLOAD_MALFORMED.to_owned(),
+                }),
+            ),
+            (
+                "a retired member",
+                retired,
+                Some(Outcome::Refused {
+                    class: "validation".to_owned(),
+                    code: permguard_core::codes::pdp_native::FIELD_REMOVED.to_owned(),
+                }),
+            ),
+        ];
+        for (case, payload, expected) in cases {
+            let http = outcome(over_http.evaluate(&payload)).masked(&["id"]);
+            let grpc = outcome(over_grpc.evaluate(&payload)).masked(&["id"]);
+            match expected {
+                Some(refused) => assert_eq!(http, refused, "`{case}` over REST"),
+                None => assert!(
+                    matches!(&http, Outcome::Answered(answer) if answer["decision"] == json!(true)),
+                    "`{case}` is answered: {http:?}"
+                ),
+            }
+            assert_parity(case, http, grpc);
+        }
+
+        // A duplicated member has no single meaning: REST refuses it at every depth before any
+        // policy runs. A gRPC `Struct` is a map whose decoder keeps the last entry, the parity the
+        // published `grpc.transport_parity_partial` names.
+        let raw = reqwest_free_post(
+            &served.http,
+            r#"{"zone": "acme", "ledger": "main-ledger",
+                "subject": {"type": "user", "id": "alice"},
+                "resource": {"type": "document", "id": "budget"},
+                "action": {"name": "read"},
+                "context": {"n": 1, "n": 2}}"#,
+        );
+        assert_eq!(raw.0, 400, "{}", raw.1);
+        let refused: Value = serde_json::from_str(&raw.1).expect("a refusal body");
+        assert_eq!(
+            refused["code"],
+            json!(permguard_core::codes::notp::PAYLOAD_MALFORMED)
+        );
+    }
+
+    /// One raw POST to the evaluation path over a plain socket: the client cannot send a JSON
+    /// object with a duplicated member, so the bytes are written here.
+    fn reqwest_free_post(base: &str, body: &str) -> (u16, String) {
+        use std::io::{Read as _, Write as _};
+
+        let address = base.trim_start_matches("http://");
+        let mut stream = std::net::TcpStream::connect(address).expect("the plane listens");
+        write!(
+            stream,
+            "POST {} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n\
+             Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            permguard_languages::request::EVALUATION_PATH,
+            body.len()
+        )
+        .expect("the request is written");
+        let mut response = String::new();
+        stream
+            .read_to_string(&mut response)
+            .expect("the response is read");
+        let status = response
+            .split_whitespace()
+            .nth(1)
+            .and_then(|status| status.parse().ok())
+            .expect("a status line");
+        let body = response
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body.to_owned())
+            .unwrap_or_default();
+        (status, body)
+    }
+
     /// Below the client: each transport's raw status is the one its `{class, code}` maps to.
     #[tokio::test]
     async fn test_every_refusal_answers_the_status_its_class_maps_to_on_both_transports() {

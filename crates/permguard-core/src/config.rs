@@ -760,6 +760,20 @@ pub const SETTING_DATA_KEYS_ENABLED: &str = "PERMGUARD_DATA_KEYS_ENABLED";
 /// Runtime setting key for where the data plane's signing ring lives.
 pub const SETTING_DATA_KEYS_DIRECTORY: &str = "PERMGUARD_DATA_KEYS_DIRECTORY";
 
+/// Runtime setting key for the comma-separated list of planes to host in this process; absent,
+/// every plane. Defined here because whether the data plane runs decides a published relaxation
+/// (WP-7.5b).
+pub const SETTING_RUNTIME_PLANES: &str = "PERMGUARD_RUNTIME_PLANES";
+
+/// Runtime setting key for whether the data plane's gRPC listener is on. Defined here, beside
+/// the address, because whether it serves the evaluation interfaces is a published relaxation
+/// (WP-7.5b).
+pub const SETTING_DATA_GRPC_ENABLED: &str = "PERMGUARD_DATA_GRPC_ENABLED";
+
+/// Runtime setting key for the data plane's gRPC listener address: the listener exists only
+/// when it is set.
+pub const SETTING_DATA_GRPC_ADDR: &str = "PERMGUARD_DATA_GRPC_ADDR";
+
 /// Runtime setting key for whether this deployment publishes signing keys at all.
 pub const SETTING_KEYS_ENABLED: &str = "PERMGUARD_KEYS_ENABLED";
 
@@ -3208,9 +3222,45 @@ produce: use `EdDSA` or `ES256`"
         if plaintext_ring || realm_rings {
             in_force.push(Relaxation::CustodyPlaintext);
         }
+        // The Data Plane's evaluation interfaces over gRPC (WP-7.5b, IFACE-06): served with the
+        // lossless scalar subset, by a protobuf decoder that cannot see an unknown field, so
+        // their parity with REST is partial. Where the strict decoder is required they are not
+        // served at all, and nothing is relaxed.
+        if self.grpc_evaluation_served() {
+            in_force.push(Relaxation::GrpcTransportParityPartial);
+        }
         // What the Host's own state imposes rather than any setting: the identity key's custody.
         in_force.extend(self.host_relaxations.iter().copied());
         in_force
+    }
+
+    /// Whether the Data Plane serves its evaluation interfaces over gRPC (WP-7.5b): the process
+    /// hosts the data plane, its gRPC listener has an address and is not switched off, and
+    /// [`Self::grpc_evaluation_permitted`]. An enabled value that is not a boolean counts as on,
+    /// erring toward publishing; the listener refuses it at Bootstrap anyway.
+    pub fn grpc_evaluation_served(&self) -> bool {
+        let hosted = self.setting(SETTING_RUNTIME_PLANES).is_none_or(|planes| {
+            planes
+                .split(',')
+                .map(str::trim)
+                .any(|plane| plane == "data")
+        });
+        let listening = self
+            .setting(SETTING_DATA_GRPC_ADDR)
+            .is_some_and(|address| !address.trim().is_empty())
+            && !self
+                .setting(SETTING_DATA_GRPC_ENABLED)
+                .is_some_and(|enabled| matches!(parse_bool(enabled), Ok(false)));
+        hosted && listening && self.grpc_evaluation_permitted()
+    }
+
+    /// Whether the evaluation interfaces may be served over gRPC at all: not where the assurance
+    /// in force requires the strict protobuf decoder this build does not have (`regulated`, or
+    /// the control added). The one predicate the Data Plane mounts its gRPC services by.
+    pub fn grpc_evaluation_permitted(&self) -> bool {
+        !self
+            .assurance()
+            .requires(crate::assurance::Control::GrpcStrictDecoder)
     }
 
     /// Returns how long the drain may take inside [`Config::shutdown_timeout`]: intake stopped,

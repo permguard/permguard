@@ -28,7 +28,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 
-use permguard_core::{ApiError, Disclosure, ErrorClass};
+use permguard_core::{ApiError, Disclosure};
 
 use super::configuration;
 use super::decide::Decider;
@@ -77,7 +77,7 @@ async fn evaluation(
     State(surface): State<Surface>,
     permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     headers: HeaderMap,
-    body: Result<Json<CheckRequest>, axum::extract::rejection::JsonRejection>,
+    body: Result<axum::body::Bytes, axum::extract::rejection::BytesRejection>,
 ) -> Response {
     answer(&surface, &actor, &headers, body).await
 }
@@ -88,7 +88,7 @@ async fn evaluations(
     State(surface): State<Surface>,
     permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     headers: HeaderMap,
-    body: Result<Json<CheckRequest>, axum::extract::rejection::JsonRejection>,
+    body: Result<axum::body::Bytes, axum::extract::rejection::BytesRejection>,
 ) -> Response {
     answer(&surface, &actor, &headers, body).await
 }
@@ -97,7 +97,7 @@ async fn answer(
     surface: &Surface,
     actor: &permguard_core::authz::Actor,
     headers: &HeaderMap,
-    body: Result<Json<CheckRequest>, axum::extract::rejection::JsonRejection>,
+    body: Result<axum::body::Bytes, axum::extract::rejection::BytesRejection>,
 ) -> Response {
     // Bounded by the rule every surface applies: it is echoed and kept in the decision record.
     let request_id = headers
@@ -112,22 +112,13 @@ async fn answer(
         .and_then(|value| value.to_str().ok())
         .and_then(TraceContext::parse);
 
-    let Json(request) = match body {
-        Ok(body) => body,
-        Err(rejection) => {
-            // A payload that is not JSON never reaches a policy: it is a bad
-            // request, and saying which is more useful than a bare 400.
-            return with_request_id(
-                error(
-                    &ApiError::new(
-                        ErrorClass::Validation,
-                        permguard_core::codes::notp::PAYLOAD_MALFORMED,
-                        format!("the request body is not a valid payload: {rejection}"),
-                    ),
-                    surface.disclosure,
-                ),
-                request_id.as_deref(),
-            );
+    // A payload that is not JSON never reaches a policy: it is a bad request, and saying which
+    // is more useful than a bare 400. Read strictly (WP-7.5b, IFACE-06): no member named twice,
+    // and only the numbers both transports carry exactly.
+    let request = match read(headers, body) {
+        Ok(request) => request,
+        Err(failed) => {
+            return with_request_id(error(&failed, surface.disclosure), request_id.as_deref());
         }
     };
     // The shared pipeline (WP-7.5d): the actor authorized, then the native handler. The header
@@ -151,6 +142,19 @@ async fn answer(
     };
 
     with_request_id(response, request_id.as_deref())
+}
+
+/// The native request in `body`: strict JSON, in the lossless scalar domain, then the contract's
+/// closed shape.
+fn read(
+    headers: &HeaderMap,
+    body: Result<axum::body::Bytes, axum::extract::rejection::BytesRejection>,
+) -> Result<CheckRequest, ApiError> {
+    const WHAT: &str = "the request body is not a valid payload";
+    let bytes = body.map_err(|rejection| crate::body::malformed(format!("{WHAT}: {rejection}")))?;
+    let value = crate::body::lossless(crate::body::json(headers, &bytes, WHAT)?)?;
+    serde_json::from_value(value)
+        .map_err(|error| crate::body::malformed(format!("{WHAT}: {error}")))
 }
 
 /// The `permguard.api.pdp.native.v1` configuration: what this interface offers here.

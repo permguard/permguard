@@ -78,7 +78,7 @@ async fn submit(
     State(surface): State<Surface>,
     permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     headers: HeaderMap,
-    body: Result<Json<SubmitRequest>, axum::extract::rejection::JsonRejection>,
+    body: Result<axum::body::Bytes, axum::extract::rejection::BytesRejection>,
 ) -> Response {
     // Bounded by the rule every surface applies: it is echoed and kept in the decision record.
     let request_id = headers
@@ -87,20 +87,23 @@ async fn submit(
         .and_then(permguard_core::correlation::admitted)
         .map(ToOwned::to_owned);
 
-    let Json(request) = match body {
-        Ok(body) => body,
-        Err(rejection) => {
-            return with_request_id(
-                error(
-                    &ApiError::new(
-                        ErrorClass::Validation,
-                        permguard_core::codes::notp::PAYLOAD_MALFORMED,
-                        format!("the request body is not a valid submission: {rejection}"),
-                    ),
-                    surface.disclosure,
-                ),
-                request_id.as_deref(),
-            );
+    // Read strictly (WP-7.5b, IFACE-06): one JSON value, no member named twice at any level, and
+    // the numbers in the domain the gRPC binding reads — past ±2^53 refused
+    // `value_unrepresentable`, a whole number the integer it is. What the runtime cannot
+    // represent stays its own contract's (`event_value_unrepresentable`).
+    const WHAT: &str = "the request body is not a valid submission";
+    let read = body
+        .map_err(|rejection| crate::body::malformed(format!("{WHAT}: {rejection}")))
+        .and_then(|bytes| crate::body::json(&headers, &bytes, WHAT))
+        .and_then(crate::body::lossless)
+        .and_then(|value| {
+            serde_json::from_value::<SubmitRequest>(value)
+                .map_err(|error| crate::body::malformed(format!("{WHAT}: {error}")))
+        });
+    let request = match read {
+        Ok(request) => request,
+        Err(failed) => {
+            return with_request_id(error(&failed, surface.disclosure), request_id.as_deref());
         }
     };
 

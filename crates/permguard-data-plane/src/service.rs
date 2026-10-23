@@ -320,6 +320,19 @@ impl PlaneModule for DataPlaneModule {
             commit: state.commit,
             health: state.health,
         }));
+        // The evaluation interfaces over gRPC are served only where their partial parity with
+        // REST is permitted (WP-7.5b, IFACE-06): a profile that requires the strict protobuf
+        // decoder, which this build does not have, gets them over REST alone. The plane's own
+        // service above stays.
+        if !evaluation_over_grpc(context) {
+            tracing::warn!(
+                event.name = "data_plane.grpc_evaluation_disabled",
+                component = "data-plane",
+                "the evaluation interfaces are not served over gRPC: the assurance in force \
+                 requires a strict protobuf decoder, and this build has none"
+            );
+            return grpc.routes().into_axum_router();
+        }
         // The same contract as the HTTP surface, field for field: a deployment
         // picks a transport, not a set of semantics.
         grpc.add_service(PolicyDecisionPointServer::new(authz::grpc::PdpApi {
@@ -345,6 +358,13 @@ impl PlaneModule for DataPlaneModule {
 
         grpc.routes().into_axum_router()
     }
+}
+
+/// Whether this plane serves its evaluation interfaces over gRPC: not where the assurance in
+/// force requires the strict protobuf decoder (`regulated`, or the control added above
+/// `production`).
+pub(crate) fn evaluation_over_grpc(context: &PlaneContext<'_>) -> bool {
+    context.config().grpc_evaluation_permitted()
 }
 
 /// What every answer about this plane is built from.

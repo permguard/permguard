@@ -21,8 +21,7 @@ use permguard_core::{Config, TlsSettings, TlsVersion, Value};
 
 use super::{PlaneAddresses, PlaneService};
 
-/// Runtime setting key for the comma-separated list of planes to host in this process.
-pub const SETTING_RUNTIME_PLANES: &str = "PERMGUARD_RUNTIME_PLANES";
+pub use permguard_core::config::SETTING_RUNTIME_PLANES;
 
 /// The selected planes that do not gate readiness: every selected plane is required unless named
 /// here (P2, required versus optional).
@@ -73,8 +72,7 @@ pub const SETTING_DATA_HTTP_TLS_MIN_VERSION: &str = "PERMGUARD_DATA_HTTP_TLS_MIN
 pub const SETTING_DATA_HTTP_TLS_ALLOW: &str = "PERMGUARD_DATA_HTTP_TLS_ALLOW";
 pub const SETTING_DATA_HTTP_TLS_TERMINATED_UPSTREAM: &str =
     "PERMGUARD_DATA_HTTP_TLS_TERMINATED_UPSTREAM";
-pub const SETTING_DATA_GRPC_ENABLED: &str = "PERMGUARD_DATA_GRPC_ENABLED";
-pub const SETTING_DATA_GRPC_ADDR: &str = "PERMGUARD_DATA_GRPC_ADDR";
+pub use permguard_core::config::{SETTING_DATA_GRPC_ADDR, SETTING_DATA_GRPC_ENABLED};
 pub const SETTING_DATA_GRPC_TLS_ENABLED: &str = "PERMGUARD_DATA_GRPC_TLS_ENABLED";
 pub const SETTING_DATA_GRPC_TLS_CERT: &str = "PERMGUARD_DATA_GRPC_TLS_CERT";
 pub const SETTING_DATA_GRPC_TLS_KEY: &str = "PERMGUARD_DATA_GRPC_TLS_KEY";

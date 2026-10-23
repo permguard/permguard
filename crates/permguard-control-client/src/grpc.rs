@@ -1315,8 +1315,10 @@ fn request_of(
     // the transport would be two contracts with one name.
     request.removed()?;
 
+    // `to_proto` fails only on a number the transport cannot carry exactly: refused with the
+    // code both servers answer for it (WP-7.5b, IFACE-06), so the client says what REST says.
     to_proto(&request).map_err(|message| permguard_languages::Malformed {
-        code: permguard_core::codes::notp::PAYLOAD_MALFORMED,
+        code: permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
         message,
     })
 }
@@ -1669,6 +1671,8 @@ mod request_tests {
             let why = request_of(&payload(json!({"context": {"n": refused}})))
                 .expect_err("{refused} cannot cross exactly");
             assert!(why.message.contains("2^53"), "{refused}: {}", why.message);
+            // The code both servers answer for it (WP-7.5b), never a generic malformed payload.
+            assert_eq!(why.code, permguard_core::codes::notp::VALUE_UNREPRESENTABLE);
         }
 
         // `u64::MAX` and 2^64 are the pair that used to slip through: `u64::MAX as f64` rounds up

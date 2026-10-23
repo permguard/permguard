@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **REST and gRPC carry the same values, and the gap that remains is published (WP-7.5b).**
+  A REST evaluation or submission body is read strictly: a member named twice at any depth, open containers included, is refused `payload_malformed` before any policy runs.
+  Numbers travel only inside ±2^53 on both transports: REST now refuses a number past it with `value_unrepresentable` in an evaluation and in a submission, as gRPC and the client already did, and a whole number written as a decimal reaches a policy as the integer it is over both.
+  Where the Data Plane gRPC listener serves the evaluation interfaces, discovery and `host status` publish the relaxation `grpc.transport_parity_partial`: protobuf decoding drops an unknown field and keeps the last of two map entries.
+  Under `regulated`, which requires a strict protobuf decoder this build does not have, the evaluation interfaces are not served over gRPC at all; the plane's own gRPC service stays.
+
 - **Every evaluation interface goes through one pipeline (WP-7.5d).**
   The native and temporal adapters, over HTTP and gRPC, decode their request into one tagged `EvaluationRequest`, whose interface id is fixed by the question's shape and never by caller data, and hand it to `evaluation::evaluate`.
   It authorizes the actor on the exact ledger before anything is read, then answers through the handler of that interface; the temporal handler is built over the native decider, so both read the same verified snapshot and write the same decision log, and they never share a transaction.
