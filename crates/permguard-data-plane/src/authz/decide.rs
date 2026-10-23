@@ -255,9 +255,22 @@ impl Loading {
             .partitions_of(profile)
             .map_err(|refusal| self.refuse(mirror, &refusal))?;
 
+        // The interface this profile asks of each partition: its compile is keyed by it. The
+        // profile exists, `partitions_of` having found it; a key never carries an empty interface.
+        let Some(interface) = head
+            .manifest
+            .profiles
+            .get(profile)
+            .map(|declared| permguard_objects::manifest::interface_of(&declared.r#type).to_owned())
+        else {
+            return Err(self.refuse(
+                mirror,
+                &snapshot::Refusal::Unknown(format!("this ledger declares no profile `{profile}`")),
+            ));
+        };
         let mut compiled = Vec::new();
         for name in names {
-            let key = partition_key(mirror, head, &name);
+            let key = partition_key(mirror, head, &name, &interface, self.profile, &self.enabled);
             if let Some(held) = self.cache.partition(&key) {
                 self.metrics.count(
                     &super::measure::CACHE_LOOKUPS,
@@ -744,8 +757,13 @@ impl Decider {
         // Every partition the ledger declares, not only the default profile's:
         // whatever a caller asks for should already be in memory.
         let mut compiled = 0;
-        for name in head.manifest.partitions.keys() {
-            let key = partition_key(mirror, &head, name);
+        for (name, interface) in head.manifest.partitions.keys().flat_map(|name| {
+            interfaces_of(&head, name)
+                .into_iter()
+                .map(move |interface| (name, interface))
+        }) {
+            // Compiled for every interface it promises (IFACE-01).
+            let key = partition_key(mirror, &head, name, &interface, self.profile, &self.enabled);
             if self.cache.partition(&key).is_some() {
                 continue;
             }
@@ -1584,11 +1602,19 @@ struct OwnedDecided {
     event: Option<permguard_decisions::record::EventRef>,
 }
 
-/// The compiled-cache key of one partition: its ledger, its commit, its name, and the descriptor
-/// digest of the runtime that compiles it. An engine upgrade, a feature or a limit is a new key, so
-/// a program compiled by another build is never served. A partition whose runtime this build does
-/// not carry gets a key nothing is ever kept under: compiling it is refused.
-fn partition_key(mirror: &store::Mirror, head: &Head, partition: &str) -> String {
+/// The compiled-cache key of one partition (IFACE-03): its ledger, its commit, its name, the
+/// interface it is compiled for, the descriptor digest of the runtime that compiles it, the
+/// assurance profile and the enabled contracts. An engine upgrade, a feature or a limit is a new
+/// key, so a program compiled by another build is never served. A partition whose runtime this
+/// build does not carry gets a key nothing is ever kept under: compiling it is refused.
+fn partition_key(
+    mirror: &store::Mirror,
+    head: &Head,
+    partition: &str,
+    interface: &str,
+    profile: permguard_core::assurance::AssuranceProfile,
+    enabled: &permguard_languages::registry::Enabled,
+) -> String {
     let descriptor = head
         .manifest
         .partitions
@@ -1599,13 +1625,40 @@ fn partition_key(mirror: &store::Mirror, head: &Head, partition: &str) -> String
         })
         .unwrap_or("not-carried");
 
+    let options = enabled.names().collect::<Vec<_>>().join(",");
     Cache::partition_key(
         &mirror.identity.zone_id,
         &mirror.identity.ledger_id,
         &head.commit,
         partition,
-        descriptor,
+        &super::cache::Compiled {
+            interface,
+            descriptor,
+            profile: profile.as_str(),
+            options: &options,
+        },
     )
+}
+
+/// The interfaces `partition` of `head` is compiled for: those it promises, or, for a legacy
+/// partition promising none, the one its runtime implements (IFACE-01).
+fn interfaces_of(head: &Head, partition: &str) -> Vec<String> {
+    let Some(declared) = head.manifest.partitions.get(partition) else {
+        return Vec::new();
+    };
+    if !declared.interfaces.is_empty() {
+        return declared
+            .interfaces
+            .iter()
+            .map(|id| permguard_objects::manifest::interface_of(id).to_owned())
+            .collect();
+    }
+    head.manifest
+        .runtimes
+        .get(&declared.runtime)
+        .and_then(|runtime| permguard_languages::lookup::language(&runtime.language.name))
+        .map(permguard_languages::registry::implemented_interfaces)
+        .unwrap_or_default()
 }
 
 /// The record's spelling of a resolution.

@@ -1358,6 +1358,78 @@ async fn warming_compiles_every_partition_and_a_second_pass_compiles_nothing() {
     assert!(bytes > 0, "and the accounting knows what they weigh");
 }
 
+/// WP-7.5a, IFACE-03: what a warm compiled is what the first request finds. The warm keys each
+/// partition by the interfaces it promises, or its runtime's for a legacy partition promising
+/// none, and a decide by its profile's interface, the legacy spelling read as the native one:
+/// both sides name the same entry, so no request compiles again.
+#[tokio::test]
+async fn a_warmed_partition_is_what_the_first_request_finds() {
+    let root = scratch("warm-then-decide").join("mirrors");
+    let mut manifest = manifest(
+        &[("app", "cedar", false), ("gateway", "rego", false)],
+        ">=0.0.0",
+    );
+    // One partition promises its interface, the other is the legacy inference.
+    manifest
+        .partitions
+        .get_mut("gateway")
+        .expect("declared")
+        .interfaces = vec![permguard_objects::manifest::PROFILE_PDP_NATIVE_V1.to_owned()];
+    // And a profile spelled the legacy way, asking the same interface.
+    manifest.profiles.insert(
+        "legacy".to_owned(),
+        Profile {
+            r#type: permguard_objects::manifest::PROFILE_PDP_V1.to_owned(),
+            partitions: vec!["app".to_owned(), "gateway".to_owned()],
+        },
+    );
+    let mirror = provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[
+            ("app", vec![&CEDAR_READ], None),
+            ("gateway", vec![&REGO_READ], None),
+        ],
+    );
+    let registry = Arc::new(permguard_std::metrics::Registry::new());
+    let decider = Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::new(Arc::clone(&registry) as Arc<dyn Recorder>),
+        None,
+        256,
+    );
+    // The compilations the decision path made: a request that finds the warm's entry makes none.
+    let compiled = || -> f64 {
+        registry
+            .snapshot()
+            .into_iter()
+            .filter(|sample| sample.metric.name() == "permguard_authz_compilations_total")
+            .map(|sample| match sample.reading {
+                permguard_core::metrics::Reading::Value(value) => value,
+                permguard_core::metrics::Reading::Distribution { sum, .. } => sum,
+            })
+            .sum()
+    };
+    assert_eq!(decider.warm(&mirror), Warmed::Ready { compiled: 2 });
+    let warmed = compiled();
+
+    for profile in ["default", "legacy"] {
+        let mut request = ask("acme", "main-ledger", "alice", "read");
+        request.profile = Some(profile.to_owned());
+        decider.decide(&request, None).await.expect("decided");
+        assert_eq!(
+            compiled(),
+            warmed,
+            "`{profile}` found what the warm compiled, and compiled nothing of its own"
+        );
+    }
+    // Two partitions and the head the requests loaded: no partition kept twice.
+    assert_eq!(decider.cache().holdings().0, 3);
+}
+
 /// The HTTP surface, over the real router.
 mod surface {
     use super::*;

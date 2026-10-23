@@ -465,21 +465,27 @@ profiles:
         );
     }
 
-    /// WP-7.1: a partition names the interfaces it promises, in any order, sorted into the model;
-    /// a duplicate or an id that is no interface is refused where the author wrote it.
+    /// WP-7.1: a partition names the interfaces it promises, read into the model and rendered
+    /// back; a duplicate or an id that is no interface is refused where the author wrote it.
+    /// WP-7.5: and only interfaces its runtime implements, so a Cedar partition promising the
+    /// temporal interface beside the native one is refused at load.
     #[test]
     fn a_partitions_interfaces_are_read_sorted_and_refused_when_wrong() {
-        let listed = WELL_FORMED.replace(
+        let both = WELL_FORMED.replace(
             "    schema: false\n",
             "    schema: false\n    interfaces: [permguard.api.pdp.temporal.v1alpha1, permguard.api.pdp.native.v1]\n",
+        );
+        let refused = from_yaml(both.as_bytes()).expect_err("Cedar keeps no history");
+        assert!(refused.contains("does not implement"), "{refused}");
+
+        let listed = WELL_FORMED.replace(
+            "    schema: false\n",
+            "    schema: false\n    interfaces: [permguard.api.pdp.native.v1]\n",
         );
         let manifest = from_yaml(listed.as_bytes()).expect("it is well formed");
         assert_eq!(
             manifest.partitions["p"].interfaces,
-            vec![
-                "permguard.api.pdp.native.v1".to_owned(),
-                "permguard.api.pdp.temporal.v1alpha1".to_owned()
-            ]
+            vec!["permguard.api.pdp.native.v1".to_owned()]
         );
         let rendered = to_yaml(&manifest).expect("it renders");
         assert_eq!(
@@ -499,6 +505,13 @@ profiles:
             "    schema: false\n    interfaces: [permguard.api.pdp.native.v9]\n",
         );
         let refused = from_yaml(unknown.as_bytes()).expect_err("an unknown id is refused");
+        assert!(refused.contains("not an interface"), "{refused}");
+        // IFACE-08: no Trust Anchor interface to bind.
+        let trust_anchor = WELL_FORMED.replace(
+            "    schema: false\n",
+            "    schema: false\n    interfaces: [permguard.api.pdp.trust-anchor.v1]\n",
+        );
+        let refused = from_yaml(trust_anchor.as_bytes()).expect_err("not an interface");
         assert!(refused.contains("not an interface"), "{refused}");
     }
 }

@@ -230,7 +230,62 @@ pub fn check_manifest_with(
         &crate::artifact::provided_artifact_types(),
     )?;
     check_enabled(manifest, enabled)?;
+    check_partition_interfaces(manifest)?;
     check_profile_runtimes(manifest)
+}
+
+/// The evaluation interfaces `language`'s runtime implements, as its descriptor states them
+/// (WP-7.5): what a partition may promise and a profile may ask of it.
+pub fn implemented_interfaces(language: &dyn Language) -> Vec<String> {
+    crate::descriptor::Descriptor::of(language)
+        .evaluation_interfaces
+        .into_iter()
+        .map(|interface| interface.id)
+        .collect()
+}
+
+/// Refuses a partition that promises an interface its runtime does not implement (WP-7.5,
+/// IFACE-01): `partition.interfaces ⊆` the interfaces of its runtime's descriptor, by exact id.
+///
+/// Listing several interfaces promises that one policy set is valid for each, and the runtime
+/// must validate and compile it for every one. No runtime this build carries implements more
+/// than one, so a partition listing two is refused here, before any artifact could be reused for
+/// an interface it was not written for. A partition listing none is the legacy inference, which
+/// the load gate refuses from `production` (`interfaces.explicit`).
+pub fn check_partition_interfaces(
+    manifest: &Manifest,
+) -> Result<(), permguard_objects::manifest::ManifestError> {
+    for (name, partition) in &manifest.partitions {
+        if partition.interfaces.is_empty() {
+            continue;
+        }
+        let Some(runtime) = manifest.runtimes.get(&partition.runtime) else {
+            continue;
+        };
+        let Some(language) = crate::lookup::language(&runtime.language.name) else {
+            continue;
+        };
+        let implemented = implemented_interfaces(language);
+        for promised in &partition.interfaces {
+            let promised = permguard_objects::manifest::interface_of(promised);
+            if !implemented.iter().any(|id| id == promised) {
+                return Err(permguard_objects::manifest::ManifestError {
+                    detail: format!(
+                        "the partition `{name}` promises `{promised}`, which its runtime `{}` does \
+                         not implement (it implements {}): a policy set is valid only for the \
+                         interfaces its runtime answers, and no request is converted into another",
+                        language.name(),
+                        implemented
+                            .iter()
+                            .map(|id| format!("`{id}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Refuses a manifest that binds a retired interface (WP-7.4a): its detail names the id and the
@@ -326,7 +381,13 @@ pub fn check_profile_runtimes(
                 // nothing further to say about it.
                 continue;
             };
-            if language.is_temporal() == temporal {
+            // The interfaces its descriptor states, by exact id (WP-7.5): no inference from what
+            // kind of language it is.
+            let asked = permguard_objects::manifest::interface_of(&profile.r#type);
+            if implemented_interfaces(language)
+                .iter()
+                .any(|id| id == asked)
+            {
                 continue;
             }
 
@@ -912,6 +973,133 @@ mod tests {
             "{}",
             refused.detail
         );
+    }
+
+    /// WP-7.5, IFACE-01: a partition promises only interfaces its runtime's descriptor
+    /// implements, by exact id; one promising two is refused, since no runtime implements two and
+    /// an artifact written for one is never reused for another.
+    #[test]
+    fn a_partition_promises_only_what_its_runtime_implements() {
+        let promising = |language: &str, profile: &str, interfaces: &[&str]| {
+            let mut held = manifest(language, profile);
+            for partition in held.partitions.values_mut() {
+                partition.interfaces = interfaces.iter().map(|id| (*id).to_owned()).collect();
+            }
+            held
+        };
+        // What the descriptor states, exactly.
+        assert_eq!(
+            implemented_interfaces(crate::lookup::language("cedar").expect("cedar")),
+            [PROFILE_PDP_NATIVE_V1]
+        );
+        assert_eq!(
+            implemented_interfaces(crate::lookup::language("dogwood").expect("dogwood")),
+            [PROFILE_PDP_TEMPORAL_V1ALPHA1]
+        );
+        assert!(
+            check_partition_interfaces(&promising(
+                "cedar",
+                PROFILE_PDP_NATIVE_V1,
+                &[PROFILE_PDP_NATIVE_V1]
+            ))
+            .is_ok()
+        );
+        assert!(
+            check_partition_interfaces(&promising(
+                "dogwood",
+                PROFILE_PDP_TEMPORAL_V1ALPHA1,
+                &[PROFILE_PDP_TEMPORAL_V1ALPHA1]
+            ))
+            .is_ok()
+        );
+        // Another interface than the runtime's.
+        let refused = check_partition_interfaces(&promising(
+            "cedar",
+            PROFILE_PDP_NATIVE_V1,
+            &[PROFILE_PDP_TEMPORAL_V1ALPHA1],
+        ))
+        .expect_err("Cedar keeps no history");
+        assert!(
+            refused.detail.contains(PROFILE_PDP_TEMPORAL_V1ALPHA1),
+            "{}",
+            refused.detail
+        );
+        assert!(
+            refused.detail.contains("does not implement"),
+            "{}",
+            refused.detail
+        );
+        // Two interfaces: one of them is always one the runtime does not implement.
+        let both = [PROFILE_PDP_NATIVE_V1, PROFILE_PDP_TEMPORAL_V1ALPHA1];
+        assert!(
+            check_partition_interfaces(&promising("cedar", PROFILE_PDP_NATIVE_V1, &both)).is_err()
+        );
+        assert!(
+            check_partition_interfaces(&promising("dogwood", PROFILE_PDP_TEMPORAL_V1ALPHA1, &both))
+                .is_err()
+        );
+        // The whole gate says the same.
+        assert!(check_manifest(&promising("cedar", PROFILE_PDP_NATIVE_V1, &both)).is_err());
+        // A partition promising nothing is the legacy inference: not this check's to refuse.
+        assert!(
+            check_partition_interfaces(&promising("cedar", PROFILE_PDP_NATIVE_V1, &[])).is_ok()
+        );
+        // The legacy profile spelling asks the native interface of the descriptor.
+        assert!(check_manifest(&manifest("cedar", PROFILE_PDP_V1)).is_ok());
+    }
+
+    /// WP-7.5, IFACE-08, by verified absence: Trust Anchor has no evaluation interface here. The
+    /// registry serves the two evaluation interfaces and the two evidence contracts and nothing
+    /// else, refuses an id it does not hold, no runtime implements another interface, and a
+    /// manifest can bind only the registered ids.
+    #[test]
+    fn no_trust_anchor_interface_is_registered_bound_or_implemented() {
+        use permguard_core::domains::interface;
+        use permguard_core::stages::{REGISTRY, served_in};
+
+        let registered: Vec<&str> = REGISTRY.iter().map(|entry| entry.id).collect();
+        assert_eq!(
+            registered,
+            [
+                interface::PDP_NATIVE_V1,
+                interface::PDP_TEMPORAL_V1ALPHA1,
+                interface::DECISIONS_NATIVE_V1,
+                interface::EVENTS_NATIVE_V1ALPHA1,
+            ]
+        );
+        assert!(
+            registered
+                .iter()
+                .all(|id| !id.to_ascii_lowercase().contains("trust")),
+            "{registered:?}"
+        );
+        // An id nobody registered is not served: refused, never read as another.
+        let candidate = format!(
+            "{}trust-anchor.v1",
+            permguard_core::domains::capability::PDP_V1_PREFIX
+        );
+        assert!(served_in(REGISTRY, &candidate).is_err());
+        assert!(served_in(REGISTRY, "permguard.api.pdp.trust-anchor.v1").is_err());
+        // What a manifest may bind: the two evaluation interfaces, and the legacy spelling of one.
+        assert_eq!(
+            permguard_objects::manifest::INTERFACE_IDS,
+            [PROFILE_PDP_NATIVE_V1, PROFILE_PDP_TEMPORAL_V1ALPHA1]
+        );
+        assert!(
+            permguard_objects::manifest::PROFILE_TYPES
+                .iter()
+                .all(|id| !id.to_ascii_lowercase().contains("trust"))
+        );
+        // And every runtime this build carries implements one of those, nothing else.
+        for language in crate::lookup::languages() {
+            for id in implemented_interfaces(*language) {
+                assert!(
+                    permguard_objects::manifest::INTERFACE_IDS.contains(&id.as_str()),
+                    "{}: {id}",
+                    language.name()
+                );
+            }
+        }
     }
 
     /// The legacy spelling is accepted and is *never* what this build writes.

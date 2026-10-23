@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **A partition promises only the interfaces its runtime implements, and a compiled partition is keyed by everything it was compiled for (WP-7.5a).**
+  The load gate refuses a partition whose `interfaces` name one its runtime's descriptor does not implement, by exact id; no runtime implements two, so a partition listing two is refused before an artifact could serve an interface it was not written for.
+  A profile's compatibility with a partition is read from the descriptor's interfaces rather than inferred from the kind of language.
+  The compiled-partition cache key adds the interface, the assurance profile and the enabled experimental contracts to the commit, partition and descriptor, and a ledger warms every interface its partitions promise.
+  No Trust Anchor interface is registered, implemented or bindable, and a test holds that absence.
+
 - **A PEP verifies a signed decision response offline (WP-6.6c).**
   `permguard_control_client::attestation::verify` takes the request bytes sent, the response bytes received, the pinned `data.attest` keys, the expected audience, clock, advertised validity and skew, an optional exact policy state, and the PEP's outstanding nonces.
   It checks strict JSON, the closed flattened JWS in canonical base64url, the JCS header and its type, algorithm and key, the signature, the closed JCS payload, the audience, both digests recomputed, the request ids, decision and evidence against the answer, the policy state and the lifetime.

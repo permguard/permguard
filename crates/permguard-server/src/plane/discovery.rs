@@ -543,6 +543,29 @@ mod document_tests {
 
     use super::*;
 
+    /// WP-7.5a, IFACE-08: discovery links only what the stage registry serves, so no Trust
+    /// Anchor interface, nor any other id nobody registered, is ever advertised.
+    #[test]
+    fn discovery_advertises_no_interface_the_registry_does_not_serve() {
+        for id in [
+            "permguard.api.pdp.trust-anchor.v1",
+            "permguard.api.pdp.native.v2",
+            "",
+        ] {
+            assert!(
+                InterfaceLink::of(id, "http://host/x".to_owned()).is_none(),
+                "{id}"
+            );
+        }
+        for registered in permguard_core::stages::REGISTRY {
+            assert!(
+                InterfaceLink::of(registered.id, "http://host/x".to_owned()).is_some(),
+                "{}",
+                registered.id
+            );
+        }
+    }
+
     /// The process document of `config`, a lifecycle of its own beside it.
     fn document_of(config: &Config) -> String {
         server_configuration_document(config, &permguard_core::lifecycle::Lifecycle::new())
