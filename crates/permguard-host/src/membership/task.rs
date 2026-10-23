@@ -206,6 +206,9 @@ pub struct TaskContext {
     pub version: u64,
     pub epoch: u64,
     pub resource: String,
+    /// The task's signed selector, as the lease carries it (WP-7.2a): whether the session's
+    /// resource reaches below itself is the task's to say, never the handler's to assume.
+    pub selector: permguard_core::authz::Selector,
     pub member: [u8; 16],
     pub request_id: String,
     /// The task's signed limits: `max_batch_records` and `retention_seconds` are the handler's
@@ -1263,6 +1266,7 @@ impl CoordinatorTask {
             version: self.version,
             epoch: self.lease.epoch,
             resource: self.lease.resource.clone(),
+            selector: self.lease.selector.clone(),
             member: self.peer.host_id,
             request_id: message.request_id.clone(),
             limits: self.lease.limits,

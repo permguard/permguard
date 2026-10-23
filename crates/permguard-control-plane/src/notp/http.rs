@@ -414,6 +414,9 @@ mod tests {
             facade: Arc::new(facade.clone()),
         };
         let context = |resource: String| permguard_host::membership::task::TaskContext {
+            selector: permguard_core::authz::Selector::under(
+                permguard_core::authz::Resource::host(),
+            ),
             membership_id: [0x42; 16],
             task_id: "mirror".to_owned(),
             task_type: permguard_host::membership::record::TaskType::PolicyMirror,
@@ -554,6 +557,65 @@ mod tests {
                 .expect_err("names are not ids")
                 .code,
             permguard_core::codes::common::FORBIDDEN
+        );
+        // WP-7.2a: the listing names every ledger under the session's resource, by ids and names,
+        // and nothing beside it; a listing that names a ledger is refused.
+        let listing = MirrorRequest {
+            operation: MirrorOperation::ListLedgers,
+            zone: String::new(),
+            ledger: String::new(),
+            body: Vec::new(),
+        }
+        .encode()
+        .expect("it encodes");
+        let listed = permguard_notp::ListLedgersAnswer::decode(
+            &mirror.handle(&session, &listing).expect("the ledgers list"),
+        )
+        .expect("a listing");
+        assert!(listed.complete);
+        assert_eq!(
+            listed.ledgers,
+            vec![permguard_notp::ListedLedger {
+                zone_id: zone_id.clone(),
+                zone_name: zone.clone(),
+                ledger_id: ledger_id.clone(),
+                ledger_name: ledger.clone(),
+            }]
+        );
+        let none = permguard_notp::ListLedgersAnswer::decode(
+            &mirror
+                .handle(&elsewhere, &listing)
+                .expect("an empty listing"),
+        )
+        .expect("a listing");
+        assert!(none.ledgers.is_empty() && none.complete);
+        // A task whose signed selector is exact reads exactly its resource: a zone's session lists
+        // none of its ledgers and reads none of them.
+        let mut exact = context(format!("plane/control/zone/{zone_id}"));
+        exact.selector = permguard_core::authz::Selector::exactly(
+            permguard_core::authz::Resource::parse(&exact.resource).expect("a resource"),
+        );
+        let listed_exactly = permguard_notp::ListLedgersAnswer::decode(
+            &mirror.handle(&exact, &listing).expect("an exact listing"),
+        )
+        .expect("a listing");
+        assert!(
+            listed_exactly.ledgers.is_empty(),
+            "nothing below an exact selector"
+        );
+        assert_eq!(
+            mirror
+                .handle(&exact, &message(MirrorOperation::KeyRing, Vec::new()))
+                .expect_err("a ledger below an exact selector")
+                .code,
+            permguard_core::codes::common::FORBIDDEN
+        );
+        assert_eq!(
+            mirror
+                .handle(&session, &message(MirrorOperation::ListLedgers, Vec::new()))
+                .expect_err("a listing names no ledger")
+                .code,
+            permguard_core::codes::notp::BODY_REJECTED
         );
         // A message that is not one is refused as such.
         assert_eq!(

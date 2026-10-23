@@ -488,6 +488,20 @@ pub fn mirror_sources(value: &Value) -> Result<Vec<MirrorSource>> {
         .unwrap_or_default())
 }
 
+/// The `policy.mirror` tasks this plane narrows (WP-7.2a), from the `mirrors.tasks` list.
+pub fn mirror_task_selections(
+    value: &Value,
+) -> Result<Vec<permguard_core::mirrors::MirrorTaskSelection>> {
+    let section: PlaneSectionConfig =
+        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+
+    Ok(section
+        .mirrors
+        .as_ref()
+        .map(MirrorsSection::task_selections)
+        .unwrap_or_default())
+}
+
 /// Where this plane ships decision records, and what it may record of a caller.
 ///
 /// Structured, so it comes from the file rather than the layered pipeline: a
@@ -1087,6 +1101,69 @@ mod tests {
                 .expect("a plane may mirror nothing")
                 .is_empty()
         );
+    }
+
+    /// WP-7.2a: the tasks a plane narrows arrive as structured configuration, by membership and
+    /// task with their patterns and nothing else; a key the block does not define is refused, and
+    /// a task narrowed twice stops the start.
+    #[test]
+    fn the_mirrored_tasks_arrive_by_membership_and_task_with_their_patterns() {
+        let selections = mirror_task_selections(&value(
+            "mirrors:\n  tasks:\n    - membership: \"0193A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B\"\n      task: mirror\n      ledgers: [\"main\"]\n",
+        ))
+        .expect("the tasks parse");
+        assert_eq!(
+            selections,
+            vec![permguard_core::mirrors::MirrorTaskSelection {
+                membership: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+                task: "mirror".to_owned(),
+                zones: Vec::new(),
+                ledgers: vec!["main".to_owned()],
+            }]
+        );
+        assert!(
+            mirror_task_selections(&value(
+                "mirrors:\n  tasks:\n    - membership: m\n      task: t\n      url: \"https://x\"\n",
+            ))
+            .is_err(),
+            "a task names no URL: the membership binds it"
+        );
+        assert!(
+            mirror_task_selections(&value("public:\n  http: 127.0.0.1:7443\n"))
+                .expect("none")
+                .is_empty()
+        );
+
+        let twice = vec![selections[0].clone(), selections[0].clone()];
+        let config = permguard_core::Config::from_layers(
+            permguard_core::config::BuildSettings::new(
+                "0.0.0-test",
+                "2022",
+                "Nitro Agility S.r.l.",
+            ),
+            Vec::<String>::new(),
+            permguard_core::config::Layers::new(),
+        )
+        .expect("a configuration");
+        assert!(config.clone().with_mirror_task_selections(twice).is_err());
+        let mut undashed = selections[0].clone();
+        undashed.membership = "0193a1b2c3d47e5f8a9b0c1d2e3f4a5b".to_owned();
+        assert!(
+            config
+                .clone()
+                .with_mirror_task_selections(vec![undashed])
+                .is_err(),
+            "a membership id is the dashed UUID `host members list` shows"
+        );
+        let mut nameless = selections[0].clone();
+        nameless.task = String::new();
+        assert!(
+            config
+                .clone()
+                .with_mirror_task_selections(vec![nameless])
+                .is_err()
+        );
+        assert!(config.with_mirror_task_selections(selections).is_ok());
     }
 
     #[test]

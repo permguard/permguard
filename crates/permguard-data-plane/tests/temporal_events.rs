@@ -309,6 +309,8 @@ fn provision_with(
     .expect("the checkpoint is written");
 
     let identity = Identity {
+        task: None,
+        authority: None,
         zone_id: ZONE_ID.to_owned(),
         zone_name: ZONE.to_owned(),
         ledger_id: LEDGER_ID.to_owned(),
@@ -1488,6 +1490,8 @@ mod shipped_example {
         .expect("the checkpoint is written");
 
         let identity = Identity {
+            task: None,
+            authority: None,
             zone_id: ZONE_ID.to_owned(),
             zone_name: ZONE.to_owned(),
             ledger_id: LEDGER_ID.to_owned(),
@@ -2601,6 +2605,8 @@ mod adversarial_ids {
         permguard_data_plane::authz::store::record(
             &plane.mirrors.join(ZONE_ID).join(LEDGER_ID),
             &Identity {
+                task: None,
+                authority: None,
                 zone_id: ZONE_ID.to_owned(),
                 zone_name: ZONE_SPY.to_owned(),
                 ledger_id: LEDGER_ID.to_owned(),
@@ -4820,6 +4826,8 @@ mod tenant_isolation {
         permguard_data_plane::authz::store::record(
             &other,
             &Identity {
+                task: None,
+                authority: None,
                 zone_id: ZONE_ID.to_owned(),
                 zone_name: ZONE.to_owned(),
                 ledger_id: OTHER_LEDGER_ID.to_owned(),

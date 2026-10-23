@@ -701,6 +701,8 @@ mod two_planes {
         permguard_data_plane::authz::store::record(
             &path,
             &Identity {
+                task: None,
+                authority: None,
                 zone_id: format!("{ZONE}-id"),
                 zone_name: ZONE.to_owned(),
                 ledger_id: format!("{LEDGER}-id"),

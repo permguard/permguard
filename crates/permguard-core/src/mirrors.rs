@@ -106,6 +106,38 @@ pub struct MirrorsSection {
     /// half-parsed list is worse than none.
     #[serde(default)]
     servers: Vec<MirrorServerSection>,
+    /// The `policy.mirror` tasks this plane narrows (WP-7.2a). Absent, every task of this Host's
+    /// memberships is followed whole: the coordinator's signed selector already scopes it.
+    #[serde(default)]
+    tasks: Vec<MirrorTaskSection>,
+}
+
+/// One `policy.mirror` task, as the file narrows it: by its membership and task ids, with
+/// anchored zone and ledger patterns. No URL, TLS material or statement key: the membership binds
+/// those.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MirrorTaskSection {
+    /// The membership id, as `host members list` shows it.
+    membership: String,
+    /// The task id inside that membership's manifest.
+    task: String,
+    /// Zone-name patterns. Absent means every zone the task lists.
+    #[serde(default)]
+    zones: Vec<String>,
+    /// Ledger-name patterns inside a matching zone. Absent means every one.
+    #[serde(default)]
+    ledgers: Vec<String>,
+}
+
+/// One `policy.mirror` task this plane follows narrowed (WP-7.2a).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirrorTaskSelection {
+    /// The membership id, lowercase, as `host members list` shows it.
+    pub membership: String,
+    pub task: String,
+    pub zones: Vec<String>,
+    pub ledgers: Vec<String>,
 }
 
 /// One server this plane follows: an exact URL, and the patterns of what to
@@ -144,6 +176,19 @@ impl MirrorsSection {
         .into_iter()
         .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value.clone())))
         .collect()
+    }
+
+    /// The `policy.mirror` tasks this plane narrows, as declared (WP-7.2a).
+    pub fn task_selections(&self) -> Vec<MirrorTaskSelection> {
+        self.tasks
+            .iter()
+            .map(|task| MirrorTaskSelection {
+                membership: task.membership.trim().to_ascii_lowercase(),
+                task: task.task.trim().to_owned(),
+                zones: task.zones.clone(),
+                ledgers: task.ledgers.clone(),
+            })
+            .collect()
     }
 
     /// The servers this plane follows, as declared.

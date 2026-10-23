@@ -782,6 +782,15 @@ async fn side_with(
                 ship,
             )
             .and_then(|handlers| {
+                // A `policy.mirror` provider that echoes what a member's session carries
+                // (WP-7.2a).
+                handlers.register(
+                    permguard_host::membership::record::TaskType::PolicyMirror,
+                    1,
+                    Arc::new(Echo),
+                )
+            })
+            .and_then(|handlers| {
                 // The checkpoints its members export (WP-5.9).
                 handlers.register(
                     permguard_host::membership::record::TaskType::AuditCheckpoints,
@@ -2691,6 +2700,7 @@ async fn the_coordinator_refuses_a_checkpoint_it_cannot_verify() {
         time: Arc::clone(&coordinator.host.time),
     };
     let context = |member_host: [u8; 16]| TaskContext {
+        selector: permguard_core::authz::Selector::under(permguard_core::authz::Resource::host()),
         membership_id,
         task_id: "checkpoints".to_owned(),
         task_type: TaskType::AuditCheckpoints,
@@ -2913,4 +2923,138 @@ async fn retention_waits_for_every_required_task_exporting_a_trail() {
             .await
             .expect("stops");
     }
+}
+
+/// WP-7.2a: the member side of `policy.mirror`. A member lists the tasks of its active
+/// memberships, the coordinator as their authority, and opens a session on one whose messages the
+/// coordinator's handler answers in turn, each under its own request id; the coordinator, which
+/// never dials, lists none.
+#[tokio::test]
+async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
+    use permguard_host::api::members::{ApproveMember, CreateInvite, SyncMembership, TaskView};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("mirror-tasks");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        // The ring a `policy.mirror` manifest pins: what the member verifies head statements
+        // under.
+        "control.attest",
+        Capabilities::default()
+            .declare(TaskType::PolicyMirror, Role::Coordinator)
+            .declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default()
+            .declare(TaskType::PolicyMirror, Role::Member)
+            .declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let mirror_view = TaskView {
+        task_id: "mirror".to_owned(),
+        task_type: "policy.mirror".to_owned(),
+        selector: "plane/control/*".to_owned(),
+        resource_types: vec!["ledger".to_owned()],
+        ..decisions()
+    };
+    let shipping = TaskView {
+        selector: "plane/control/*".to_owned(),
+        ..decisions()
+    };
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/control/*".to_owned(),
+                // A task of another type beside it: the member side of `policy.mirror` lists
+                // only its own.
+                tasks: vec![mirror_view.clone(), shipping.clone()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    // The member asks for exactly what it was invited to: the mirror task over the control plane.
+    let mut joining = join_of(&coordinator, &invited, "join");
+    joining.requested = permguard_host::api::members::NarrowView {
+        selector: "plane/control/*".to_owned(),
+        tasks: vec![mirror_view.clone(), shipping.clone()],
+    };
+    let id = member
+        .api
+        .join_membership(&admin(), joining)
+        .await
+        .expect("joined")
+        .membership_id;
+    let pending = coordinator.api.member(&admin(), &id).expect("enrolled");
+    coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &id,
+            ApproveMember {
+                request_id: "approve".to_owned(),
+                expected_revision: pending.revision,
+                narrow: None,
+                lease_policy: None,
+                assurance: None,
+            },
+        )
+        .await
+        .expect("approved");
+    member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: "sync".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+
+    let tasks = member.api.mirror_tasks();
+    assert_eq!(tasks.len(), 1, "{tasks:?}");
+    let task = &tasks[0];
+    assert_eq!(task.membership_id, only_membership(&member));
+    assert_eq!(task.task_id, "mirror");
+    assert_eq!(task.coordinator, coordinator.host.identity.host_id());
+    assert_eq!(task.resource, "plane/control");
+    assert!(task.required);
+    assert!(task.revision >= 1);
+    assert_eq!(task.max_body_bytes, 1 << 20);
+    assert!(
+        coordinator.api.mirror_tasks().is_empty(),
+        "the coordinator never dials: it holds no member side of its own membership"
+    );
+
+    let mut session = member
+        .api
+        .open_mirror(task)
+        .await
+        .expect("the session opens");
+    assert_eq!(
+        session.call(b"first".to_vec()).await.expect("answered"),
+        b"echo:first".to_vec()
+    );
+    assert_eq!(
+        session.call(b"second".to_vec()).await.expect("answered"),
+        b"echo:second".to_vec(),
+        "each message its own request id: never answered from the replay window as the first"
+    );
 }

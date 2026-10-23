@@ -42,9 +42,34 @@ pub fn report(
     let held = store::mirrors(root);
     for source in sources {
         let requirement = requirement(source);
-        match satisfied(source, expire_after, outcome, &held) {
+        match satisfied(
+            source.url(),
+            |identity| source.follows(identity),
+            expire_after,
+            outcome,
+            &held,
+        ) {
             Ok(()) => health.satisfy(&requirement),
             Err(reason) if source.required() || health.phase().accepts_work() => {
+                health.wait(&requirement, reason, now);
+            }
+            Err(_) => {}
+        }
+    }
+    // The coordinators of this Host's `policy.mirror` tasks (WP-7.2a): required when one of
+    // their signed tasks is, their mirrors the ones under their authority.
+    for (key, required) in &outcome.coordinators {
+        let requirement = format!("mirrors:{key}");
+        let authority = key.strip_prefix("host:").unwrap_or(key);
+        match satisfied(
+            key,
+            |identity| identity.authority.as_deref() == Some(authority),
+            expire_after,
+            outcome,
+            &held,
+        ) {
+            Ok(()) => health.satisfy(&requirement),
+            Err(reason) if *required || health.phase().accepts_work() => {
                 health.wait(&requirement, reason, now);
             }
             Err(_) => {}
@@ -54,15 +79,13 @@ pub fn report(
 
 /// Whether `source` is satisfied, or why not, in the terms an operator would fix it in.
 fn satisfied(
-    source: &Source,
+    key: &str,
+    follows: impl Fn(&store::Identity) -> bool,
     expire_after: Option<Duration>,
     outcome: &Outcome,
     held: &[store::Mirror],
 ) -> Result<(), String> {
-    let this_round = outcome
-        .sources
-        .iter()
-        .find(|reported| reported.url == source.url());
+    let this_round = outcome.sources.iter().find(|reported| reported.url == key);
     if this_round.is_some_and(super::round::SourceOutcome::succeeded) {
         return Ok(());
     }
@@ -70,7 +93,7 @@ fn satisfied(
     // No successful round: what the volume holds decides, and only verified checkpoints count.
     let matching: Vec<&store::Mirror> = held
         .iter()
-        .filter(|mirror| source.follows(&mirror.identity))
+        .filter(|mirror| follows(&mirror.identity))
         .collect();
     let round = match this_round {
         Some(reported) if !reported.answered => "the server did not answer".to_owned(),
@@ -184,6 +207,8 @@ mod tests {
         store::record(
             &path,
             &store::Identity {
+                task: None,
+                authority: None,
                 zone_id: format!("{zone}-id"),
                 zone_name: zone.to_owned(),
                 ledger_id: format!("{ledger}-id"),
@@ -435,5 +460,137 @@ mod tests {
             .lifecycle()
             .component("data")
             .is_some_and(|data| data.degraded.is_empty())
+    }
+
+    /// WP-7.2a: a coordinator whose task is required keeps the plane in load until a round from it
+    /// succeeds or the volume holds a fresh mirror under its authority; one with optional tasks
+    /// only is never awaited.
+    #[test]
+    fn a_required_task_waits_for_its_coordinator_and_an_optional_one_does_not() {
+        let authority = "11111111111111111111111111111111";
+        let key = format!("host:{authority}");
+        let down = |required: bool| Outcome {
+            unreachable: 1,
+            sources: vec![super::super::round::SourceOutcome {
+                url: key.clone(),
+                answered: false,
+                failed: 0,
+            }],
+            coordinators: vec![(key.clone(), required)],
+            ..Outcome::default()
+        };
+
+        let root = scratch("task-required");
+        let (health, plane) = plane_in_load();
+        report(&plane, &[], &root, None, &down(true), SystemTime::now());
+        health.lifecycle().settle("data");
+        let data = health.lifecycle().component("data").expect("listed");
+        assert_eq!(
+            data.state.as_str(),
+            "load",
+            "a required coordinator is awaited"
+        );
+
+        let root = scratch("task-optional");
+        let (health, plane) = plane_in_load();
+        report(&plane, &[], &root, None, &down(false), SystemTime::now());
+        health.lifecycle().settle("data");
+        assert_ne!(
+            health
+                .lifecycle()
+                .component("data")
+                .expect("listed")
+                .state
+                .as_str(),
+            "load",
+            "an optional coordinator is never awaited"
+        );
+
+        // A fresh mirror under its authority satisfies it while it is down; one under another
+        // authority does not.
+        let root = scratch("task-fresh");
+        for (owner, zone) in [
+            (authority, "acme"),
+            ("22222222222222222222222222222222", "other"),
+        ] {
+            let path = root.join(owner).join(format!("{zone}-id")).join("main-id");
+            std::fs::create_dir_all(&path).expect("the mirror directory is created");
+            store::record(
+                &path,
+                &store::Identity {
+                    task: None,
+                    authority: Some(owner.to_owned()),
+                    zone_id: format!("{zone}-id"),
+                    zone_name: zone.to_owned(),
+                    ledger_id: "main-id".to_owned(),
+                    ledger_name: "main".to_owned(),
+                    server: format!("host:{owner}"),
+                },
+            )
+            .expect("the identity is written");
+            store::touch_synced(&path);
+        }
+        let (health, plane) = plane_in_load();
+        report(
+            &plane,
+            &[],
+            &root,
+            Some(Duration::from_secs(600)),
+            &down(true),
+            SystemTime::now(),
+        );
+        health.lifecycle().settle("data");
+        assert_ne!(
+            health
+                .lifecycle()
+                .component("data")
+                .expect("listed")
+                .state
+                .as_str(),
+            "load",
+            "its own fresh mirror satisfies it"
+        );
+
+        // Another authority's fresh mirror alone does not.
+        let elsewhere = scratch("task-elsewhere");
+        let path = elsewhere
+            .join("22222222222222222222222222222222")
+            .join("acme-id")
+            .join("main-id");
+        std::fs::create_dir_all(&path).expect("the mirror directory is created");
+        store::record(
+            &path,
+            &store::Identity {
+                task: None,
+                authority: Some("22222222222222222222222222222222".to_owned()),
+                zone_id: "acme-id".to_owned(),
+                zone_name: "acme".to_owned(),
+                ledger_id: "main-id".to_owned(),
+                ledger_name: "main".to_owned(),
+                server: "host:22222222222222222222222222222222".to_owned(),
+            },
+        )
+        .expect("the identity is written");
+        store::touch_synced(&path);
+        let (health, plane) = plane_in_load();
+        report(
+            &plane,
+            &[],
+            &elsewhere,
+            Some(Duration::from_secs(600)),
+            &down(true),
+            SystemTime::now(),
+        );
+        health.lifecycle().settle("data");
+        assert_eq!(
+            health
+                .lifecycle()
+                .component("data")
+                .expect("listed")
+                .state
+                .as_str(),
+            "load",
+            "another coordinator's mirror is not this one's"
+        );
     }
 }

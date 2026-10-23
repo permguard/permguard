@@ -107,6 +107,20 @@ impl Loading {
         ledger: &str,
         profile: &str,
     ) -> Result<Loaded, ApiError> {
+        let contested = store::contested(root, zone, ledger);
+        if !contested.is_empty() {
+            self.metrics.count(
+                &super::measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, "ledger_contested")],
+            );
+            warn!(
+                event.name = "authz.ledger_contested",
+                component = COMPONENT,
+                mirrors = contested.join(", ").as_str(),
+                "two mirrors answer to the ledger a request named: neither is served"
+            );
+            return Err(contested_ledger(zone, ledger));
+        }
         let mirror = store::find(root, zone, ledger).ok_or_else(|| {
             self.metrics.count(
                 &super::measure::REFUSALS,
@@ -1737,6 +1751,19 @@ fn native_question(
         "partition_inputs": serde_json::to_value(&*query.partition_inputs).ok(),
         "asserted_principal": asserted_principal,
     })
+}
+
+/// The refusal of a ledger two mirrors answer to (WP-7.2a): two authorities, or a configured URL
+/// and a membership, claim one name, and no list order chooses whose policy decides.
+pub(crate) fn contested_ledger(zone: &str, ledger: &str) -> ApiError {
+    ApiError::new(
+        ErrorClass::Unavailable,
+        permguard_core::codes::common::UNAVAILABLE,
+        format!(
+            "more than one mirror answers to `{zone}/{ledger}`: neither is served until one of \
+             them is no longer followed"
+        ),
+    )
 }
 
 /// The record's spelling of a resolution.

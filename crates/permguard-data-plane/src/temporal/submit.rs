@@ -3330,6 +3330,9 @@ fn permguard_data_plane_mirror_of(
     zone: &str,
     ledger: &str,
 ) -> Result<crate::authz::store::Mirror, ApiError> {
+    if !crate::authz::store::contested(root, zone, ledger).is_empty() {
+        return Err(crate::authz::decide::contested_ledger(zone, ledger));
+    }
     crate::authz::store::find(root, zone, ledger).ok_or_else(|| {
         ApiError::new(
             ErrorClass::NotFound,

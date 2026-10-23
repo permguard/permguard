@@ -25,7 +25,9 @@ pub mod pull;
 pub mod push;
 
 pub use codec::{ExpectedRef, MAX_REQUEST_ID_BYTES, TransferId, WireError, is_request_id};
-pub use mirror::{MirrorOperation, MirrorRequest};
+pub use mirror::{
+    ListLedgersAnswer, ListedLedger, MAX_LISTED_LEDGERS, MirrorOperation, MirrorRequest,
+};
 pub use pull::{
     FetchObjectsRequest, FetchObjectsResponse, GetRefRequest, GetRefResponse, NegotiatePullRequest,
     NegotiatePullResponse,

@@ -211,6 +211,7 @@ fn fixture(tag: &str) -> Fixture {
 
 fn context(resource: &str) -> TaskContext {
     TaskContext {
+        selector: permguard_core::authz::Selector::under(permguard_core::authz::Resource::host()),
         membership_id: [0x19; 16],
         task_id: "import".to_owned(),
         task_type: TaskType::EventsImport,

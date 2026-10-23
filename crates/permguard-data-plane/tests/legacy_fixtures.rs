@@ -53,6 +53,7 @@ fn copy_dir(from: &Path, to: &Path) {
 
 fn mirror() -> Mirror {
     Mirror {
+        authority: None,
         zone_id: "zone-a".to_owned(),
         ledger_id: "ledger-a".to_owned(),
     }

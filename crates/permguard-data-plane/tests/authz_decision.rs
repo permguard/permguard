@@ -325,6 +325,8 @@ fn provision(
     .expect("the checkpoint is written");
 
     let identity = Identity {
+        task: None,
+        authority: None,
         zone_id: uuid_of(zone),
         zone_name: zone.to_owned(),
         ledger_id: uuid_of(ledger),
@@ -1310,6 +1312,8 @@ async fn a_ledger_with_no_history_is_unavailable_not_a_deny() {
     permguard_data_plane::authz::store::record(
         &path,
         &Identity {
+            task: None,
+            authority: None,
             zone_id: uuid_of("acme"),
             zone_name: "acme".to_owned(),
             ledger_id: uuid_of("main-ledger"),
@@ -2651,6 +2655,8 @@ mod adversarial_ids {
         permguard_data_plane::authz::store::record(
             &mirror.path,
             &Identity {
+                task: None,
+                authority: None,
                 zone_id: uuid_of("acme"),
                 zone_name: ZONE.to_owned(),
                 ledger_id: uuid_of("main"),
@@ -4250,6 +4256,57 @@ async fn one_pipeline_authorizes_then_answers_each_question_by_its_own_interface
     };
     assert_eq!(refused.code(), permguard_core::codes::common::UNAVAILABLE);
     assert_eq!(refused.class(), permguard_core::ErrorClass::Unavailable);
+}
+
+/// WP-7.2a: a ledger two mirrors answer to — a configured URL's and a coordinator's — is refused
+/// `unavailable`, naming the contest, never answered from whichever directory lists first and
+/// never mistaken for one this plane does not mirror.
+#[tokio::test]
+async fn a_ledger_two_mirrors_answer_to_is_refused_as_contested() {
+    fn copy(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).expect("the copy's directory");
+        for entry in std::fs::read_dir(from).expect("the source lists").flatten() {
+            let target = to.join(entry.file_name());
+            if entry.path().is_dir() {
+                copy(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), &target).expect("a file copies");
+            }
+        }
+    }
+
+    let root = scratch("contested-ledger").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let first = decider(&root);
+    first
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("one mirror answers");
+
+    let authority = "11111111111111111111111111111111";
+    copy(
+        &root.join(uuid_of("acme")).join(uuid_of("main-ledger")),
+        &root
+            .join(authority)
+            .join(uuid_of("acme"))
+            .join(uuid_of("main-ledger")),
+    );
+    let refused = decider(&root)
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect_err("two mirrors answer");
+    assert_eq!(refused.class(), permguard_core::ErrorClass::Unavailable);
+    assert_eq!(refused.code(), permguard_core::codes::common::UNAVAILABLE);
+    assert!(
+        refused.to_string().contains("more than one mirror"),
+        "{refused}"
+    );
 }
 
 /// WP-6.6a: every decision says what became of its record — `disabled` with no log, `durable`

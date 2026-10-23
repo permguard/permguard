@@ -95,6 +95,14 @@ pub(crate) fn authorization(
     )
 }
 
+/// The member side of `policy.mirror` (WP-7.2a): the tasks this Host holds and a session on
+/// each, when the Host holds memberships.
+pub(crate) fn mirror_tasks(
+    context: &PlaneContext<'_>,
+) -> Option<Arc<dyn permguard_host::composition::MirrorTasks>> {
+    registration(context)?.mirror_tasks()
+}
+
 /// The audit handle, when an audit recorder is composed.
 pub(crate) fn audit(context: &PlaneContext<'_>) -> Option<Audit> {
     registration(context)?

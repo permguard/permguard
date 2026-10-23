@@ -2366,7 +2366,11 @@ impl App {
             host = host.ring(permguard_host::composition::DATA_ATTEST, keys);
         }
         if let Some(api) = serving {
-            host = host.memberships(api);
+            // The member side of `policy.mirror` too (WP-7.2a): the Data Plane's mirror round
+            // opens its task sessions through it.
+            host = host
+                .mirror_tasks(Arc::clone(&api) as Arc<dyn permguard_host::composition::MirrorTasks>)
+                .memberships(api);
         }
         let host = host.build();
         // Every selected Plane registers before any service starts, so its state opens with its

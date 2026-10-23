@@ -1425,6 +1425,7 @@ pub struct Config {
     mirrors_stale_after: Option<Duration>,
     mirrors_expire_after: Option<Duration>,
     mirror_sources: Vec<crate::mirrors::MirrorSource>,
+    mirror_task_selections: Vec<crate::mirrors::MirrorTaskSelection>,
     otel_enabled: bool,
     otel_endpoint: String,
     otel_sample_rate: f64,
@@ -1618,6 +1619,7 @@ impl Default for Config {
             mirrors_stale_after: None,
             mirrors_expire_after: None,
             mirror_sources: Vec::new(),
+            mirror_task_selections: Vec::new(),
             otel_enabled: false,
             otel_endpoint: DEFAULT_OTEL_ENDPOINT.to_owned(),
             otel_sample_rate: DEFAULT_OTEL_SAMPLE_RATE,
@@ -1770,6 +1772,46 @@ impl Config {
         self.mirror_sources = sources.into_iter().collect();
         for source in &self.mirror_sources {
             crate::mirrors::check_source(source)?;
+        }
+
+        Ok(self)
+    }
+
+    /// Attaches the `policy.mirror` tasks this plane narrows (WP-7.2a), as the file declared them:
+    /// each names a membership and a task, and a selection naming either twice is refused.
+    pub fn with_mirror_task_selections(
+        mut self,
+        selections: impl IntoIterator<Item = crate::mirrors::MirrorTaskSelection>,
+    ) -> Result<Self> {
+        self.mirror_task_selections = selections.into_iter().collect();
+        let mut seen = std::collections::BTreeSet::new();
+        for selection in &self.mirror_task_selections {
+            if selection.membership.is_empty() || selection.task.is_empty() {
+                anyhow::bail!("a mirrored task names its membership and its task");
+            }
+            let dashed = selection.membership.len() == 36
+                && selection
+                    .membership
+                    .char_indices()
+                    .all(|(at, held)| match at {
+                        8 | 13 | 18 | 23 => held == '-',
+                        _ => held.is_ascii_hexdigit(),
+                    });
+            if !dashed {
+                anyhow::bail!(
+                    "the mirrored task `{}` names the membership `{}`: write its id as `host \
+                     members list` shows it, a dashed UUID",
+                    selection.task,
+                    selection.membership
+                );
+            }
+            if !seen.insert((selection.membership.clone(), selection.task.clone())) {
+                anyhow::bail!(
+                    "the task `{}` of membership `{}` is narrowed twice",
+                    selection.task,
+                    selection.membership
+                );
+            }
         }
 
         Ok(self)
@@ -3890,6 +3932,12 @@ produce: use `EdDSA` or `ES256`"
     /// How old it may grow before the plane refuses to answer from it. `None` means no bound.
     pub fn mirrors_expire_after(&self) -> Option<Duration> {
         self.mirrors_expire_after
+    }
+
+    /// The `policy.mirror` tasks this plane narrows, as the configuration file declared them
+    /// (WP-7.2a): empty, every task of this Host's memberships is followed whole.
+    pub fn mirror_task_selections(&self) -> &[crate::mirrors::MirrorTaskSelection] {
+        &self.mirror_task_selections
     }
 
     /// The servers this plane follows, and the zone and ledger patterns of

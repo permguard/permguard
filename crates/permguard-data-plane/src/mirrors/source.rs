@@ -128,6 +128,83 @@ impl Patterns {
     }
 }
 
+/// How the file narrows the `policy.mirror` tasks this plane follows (WP-7.2a): empty, every task
+/// of this Host's memberships is followed whole, its signed selector being the scope.
+#[derive(Debug, Clone, Default)]
+pub struct TaskSelections {
+    selections: Vec<TaskSelection>,
+}
+
+#[derive(Debug, Clone)]
+struct TaskSelection {
+    membership: String,
+    task: String,
+    zones: Patterns,
+    ledgers: Patterns,
+}
+
+impl TaskSelections {
+    /// Compiles the declared narrowing, refusing a broken pattern at startup.
+    pub fn compile(inputs: &[permguard_core::mirrors::MirrorTaskSelection]) -> Result<Self> {
+        Ok(Self {
+            selections: inputs
+                .iter()
+                .map(|input| {
+                    Ok(TaskSelection {
+                        membership: input.membership.clone(),
+                        task: input.task.clone(),
+                        zones: Patterns::compile(&input.zones, "zone")?,
+                        ledgers: Patterns::compile(&input.ledgers, "ledger")?,
+                    })
+                })
+                .collect::<Result<_>>()?,
+        })
+    }
+
+    /// Whether the task `task` of membership `membership` is followed at all.
+    pub fn follows_task(&self, membership: &[u8; 16], task: &str) -> bool {
+        self.selections.is_empty() || self.selection(membership, task).is_some()
+    }
+
+    /// Whether a ledger the task lists, by its names, is followed.
+    pub fn follows(&self, membership: &[u8; 16], task: &str, zone: &str, ledger: &str) -> bool {
+        if self.selections.is_empty() {
+            return true;
+        }
+        self.selection(membership, task).is_some_and(|selection| {
+            selection.zones.matches(zone) && selection.ledgers.matches(ledger)
+        })
+    }
+
+    /// Warns of every narrowing that names no task this Host holds: a mistyped id follows
+    /// nothing, and says so rather than staying silent.
+    pub fn report_unmatched(&self, held: &[permguard_host::composition::MirrorTask]) {
+        for selection in &self.selections {
+            let matched = held.iter().any(|task| {
+                permguard_host::identity::record::uuid_text(&task.membership_id)
+                    == selection.membership
+                    && task.task_id == selection.task
+            });
+            if !matched {
+                tracing::warn!(
+                    event.name = "sync.task_unmatched",
+                    component = "data-plane",
+                    membership = selection.membership.as_str(),
+                    task = selection.task.as_str(),
+                    "`mirrors.tasks` names a task no active membership of this Host holds"
+                );
+            }
+        }
+    }
+
+    fn selection(&self, membership: &[u8; 16], task: &str) -> Option<&TaskSelection> {
+        let membership = permguard_host::identity::record::uuid_text(membership);
+        self.selections
+            .iter()
+            .find(|selection| selection.membership == membership && selection.task == task)
+    }
+}
+
 /// Compiles every declared source, or refuses the lot.
 pub fn compile(inputs: &[MirrorSource], workdir: &Path) -> Result<Vec<Source>> {
     let sources: Vec<Source> = inputs

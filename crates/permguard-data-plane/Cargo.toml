@@ -38,6 +38,8 @@ permguard-decisions.workspace = true
 # The durable event journal and the record contract the temporal interface writes.
 permguard-events.workspace = true
 permguard-stream.workspace = true
+# The `policy.mirror` task messages a mirror round carries over its session (WP-7.2a).
+permguard-notp.workspace = true
 # The randomness the shipping backoff's jitter comes from: a deterministic jitter is no jitter
 # once every plane in a fleet runs the same build.
 ring.workspace = true

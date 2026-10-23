@@ -201,6 +201,8 @@ mod tests {
         store::record(
             &path,
             &store::Identity {
+                task: None,
+                authority: None,
                 zone_id: format!("{zone}-id"),
                 zone_name: zone.to_owned(),
                 ledger_id: format!("{ledger}-id"),

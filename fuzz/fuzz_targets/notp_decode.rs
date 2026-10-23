@@ -6,7 +6,7 @@
 use libfuzzer_sys::fuzz_target;
 use permguard_notp::{
     CommitPushRequest, CommitPushResponse, FetchObjectsRequest, FetchObjectsResponse,
-    GetRefRequest, GetRefResponse, MirrorRequest, NegotiatePullRequest, NegotiatePullResponse,
+    GetRefRequest, GetRefResponse, ListLedgersAnswer, MirrorRequest, NegotiatePullRequest, NegotiatePullResponse,
     NegotiatePushRequest, NegotiatePushResponse, UploadObjectsRequest, UploadObjectsResponse,
 };
 use permguard_objects::refstate::RefState;
@@ -25,6 +25,7 @@ fuzz_target!(|data: &[u8]| {
     let _ = GetRefResponse::decode(data);
     let _ = GetRefRequest::decode(data);
     let _ = MirrorRequest::decode(data);
+    let _ = ListLedgersAnswer::decode(data);
     // A ref state that decodes encodes back to the same bytes: the digest is taken over them.
     if let Ok(state) = RefState::decode(data) {
         assert_eq!(state.encode().ok().as_deref(), Some(data));

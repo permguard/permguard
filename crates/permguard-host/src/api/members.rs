@@ -2296,6 +2296,76 @@ impl HostApi {
             .await
     }
 
+    /// The `policy.mirror` tasks of every active membership this Host holds as a member, from
+    /// the manifests in force (WP-7.2a): what a Data Plane mirror round snapshots.
+    pub fn mirror_tasks(&self) -> Vec<crate::composition::MirrorTask> {
+        let Ok(memberships) = self.memberships() else {
+            return Vec::new();
+        };
+        let mut tasks = Vec::new();
+        for (membership_id, held) in memberships.store.memberships() {
+            if held.role != crate::membership::record::Role::Member
+                || held.status != crate::membership::record::Status::Active
+            {
+                continue;
+            }
+            let Some((manifest, ..)) = &held.manifest else {
+                continue;
+            };
+            for task in &manifest.tasks {
+                if task.task_type != crate::membership::record::TaskType::PolicyMirror {
+                    continue;
+                }
+                tasks.push(crate::composition::MirrorTask {
+                    membership_id,
+                    task_id: task.task_id.clone(),
+                    coordinator: held.request.coordinator.host_id,
+                    revision: manifest.epoch,
+                    resource: task.selector.prefix().to_string(),
+                    required: task.required,
+                    max_body_bytes: task.limits.max_body_bytes,
+                });
+            }
+        }
+        tasks
+    }
+
+    /// Opens a `policy.mirror` task session for `task` (WP-7.2a): the lease verified under the
+    /// coordinator's pin, bound to the connection, and kept; the session carries the mirror
+    /// round's reads.
+    pub async fn open_mirror(
+        &self,
+        task: &crate::composition::MirrorTask,
+    ) -> Result<Box<dyn crate::composition::MirrorSession>, crate::composition::MirrorRefusal> {
+        let refused = |refusal: Refusal| match refusal {
+            Refusal::Api(error) | Refusal::Conflict { error, .. } => {
+                crate::composition::MirrorRefusal {
+                    code: error.code().to_owned(),
+                    reason: error.to_string(),
+                }
+            }
+            Refusal::Denied(denial) => crate::composition::MirrorRefusal {
+                code: denial.code().to_owned(),
+                reason: denial.message().to_owned(),
+            },
+        };
+        let (memberships, connector) = self.member_side().map_err(refused)?;
+        let member = self
+            .acting_member(memberships, connector)
+            .map_err(refused)?;
+        let held = member
+            .open_task(
+                crate::operations::journal::Initiator::System("host".to_owned()),
+                &task.membership_id,
+                &task.task_id,
+                &task.resource,
+                Vec::new(),
+            )
+            .await
+            .map_err(mirror_refusal)?;
+        Ok(Box::new(MirrorHeld { task: held }))
+    }
+
     /// Imports what this Host's `events.import` tasks have due (WP-6.2c2a): the server's periodic
     /// pass. Nothing without a consumer composed for it.
     pub async fn import_due(&self) -> usize {
@@ -2648,3 +2718,50 @@ impl HostApi {
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+/// What a `policy.mirror` request is numbered by: the coordinator's replay window answers a request
+/// id it saw with the answer it gave, so each is used once in this incarnation, the boot id naming
+/// the incarnation.
+static MIRROR_REQUEST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// An open `policy.mirror` session, as the member holds it (WP-7.2a).
+struct MirrorHeld {
+    task: crate::membership::member::MemberTask,
+}
+
+impl crate::composition::MirrorSession for MirrorHeld {
+    fn call(
+        &mut self,
+        body: Vec<u8>,
+    ) -> permguard_core::BoxFuture<'_, Result<Vec<u8>, crate::composition::MirrorRefusal>> {
+        Box::pin(async move {
+            let request_id = format!(
+                "mirror-{}-{}",
+                self.task
+                    .lease
+                    .member_boot_id
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>(),
+                MIRROR_REQUEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+            );
+            self.task
+                .send(&request_id, body)
+                .await
+                .map_err(mirror_refusal)
+        })
+    }
+}
+
+/// A membership error as a mirror refusal: the coordinator's code when it answered one.
+fn mirror_refusal(error: crate::membership::MembershipError) -> crate::composition::MirrorRefusal {
+    match error {
+        crate::membership::MembershipError::Remote { code, reason } => {
+            crate::composition::MirrorRefusal { code, reason }
+        }
+        other => crate::composition::MirrorRefusal {
+            code: codes::common::UNAVAILABLE.to_owned(),
+            reason: other.to_string(),
+        },
+    }
+}

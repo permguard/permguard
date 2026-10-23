@@ -2937,6 +2937,7 @@ fn the_handler_reports_a_fork_and_defers_a_store_failure() {
         pins: Arc::new(Pinned(pin_of(&host))),
     };
     let context = TaskContext {
+        selector: permguard_core::authz::Selector::under(permguard_core::authz::Resource::host()),
         membership_id: MEMBERSHIP,
         task_id: "decisions".to_owned(),
         task_type: TaskType::DecisionsShip,

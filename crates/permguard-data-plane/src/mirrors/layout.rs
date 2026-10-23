@@ -5,7 +5,16 @@
 //!
 //! ```text
 //! <volume>/data/mirrors/<zone-id>/<ledger-id>/{FORMAT, objects/, refs/<ref>, LEDGER}
+//! <volume>/data/mirrors/<authority-host>/<zone-id>/<ledger-id>/...      (WP-7.2a)
 //! ```
+//!
+//! A ledger mirrored over a `policy.mirror` membership task lives under its authority, the
+//! coordinator Host that serves it: its identity is `(authority_host_id, zone_id, ledger_id)`, and
+//! two coordinators claiming one pair of ids land in two directories rather than one. An authority
+//! is the 32 lowercase hex digits of a Host id, a zone a UUID with its dashes (the catalog mints
+//! them so), so the two depths never read as each other; a server minting 32-hex zone ids would
+//! be misread, and none of this product does. A ledger mirrored from a configured URL keeps the first shape until
+//! that path is removed (WP-7.7): the dual-reader boundary.
 //!
 //! The same shape the control plane keeps its own ledgers in, on purpose: an
 //! operator who has seen one directory has seen both. Identities, not names,
@@ -19,6 +28,9 @@ use anyhow::{Context, Result};
 /// One mirror this plane keeps: which ledger it is, and where it lives.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Mirror {
+    /// The coordinator Host that serves it, as 32 lowercase hex digits: `None` for a mirror of a
+    /// configured URL.
+    pub authority: Option<String>,
     pub zone_id: String,
     pub ledger_id: String,
 }
@@ -26,13 +38,34 @@ pub struct Mirror {
 impl Mirror {
     /// Where this mirror lives under the mirrors root.
     pub fn path(&self, root: &Path) -> PathBuf {
-        root.join(&self.zone_id).join(&self.ledger_id)
+        match &self.authority {
+            Some(authority) => root.join(authority),
+            None => root.to_path_buf(),
+        }
+        .join(&self.zone_id)
+        .join(&self.ledger_id)
     }
 
     /// How it reads in a log line or an audit record.
     pub fn label(&self) -> String {
-        format!("{}/{}", self.zone_id, self.ledger_id)
+        match &self.authority {
+            Some(authority) => format!("{authority}/{}/{}", self.zone_id, self.ledger_id),
+            None => format!("{}/{}", self.zone_id, self.ledger_id),
+        }
     }
+}
+
+/// Whether a directory name is an authority's: a Host id, 32 lowercase hex digits.
+pub fn is_authority(name: &str) -> bool {
+    name.len() == 32
+        && name
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// A Host id as the directory of its mirrors.
+pub fn authority_name(host_id: &[u8; 16]) -> String {
+    host_id.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Every mirror currently on disk, whether or not it is still wanted.
@@ -53,28 +86,49 @@ pub fn on_disk(root: &Path) -> Result<Vec<Mirror>> {
         if !zone.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
             continue;
         }
-        let zone_id = zone.file_name().to_string_lossy().into_owned();
-        let ledgers = match std::fs::read_dir(zone.path()) {
-            Ok(entries) => entries,
-            Err(_) => continue,
-        };
-        for ledger in ledgers.flatten() {
-            if !ledger
-                .file_type()
-                .map(|kind| kind.is_dir())
-                .unwrap_or(false)
-            {
+        let name = zone.file_name().to_string_lossy().into_owned();
+        if is_authority(&name) {
+            let Ok(zones) = std::fs::read_dir(zone.path()) else {
                 continue;
+            };
+            for held in zones.flatten() {
+                if held.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                    ledgers_in(
+                        &held.path(),
+                        Some(&name),
+                        &held.file_name().to_string_lossy(),
+                        &mut found,
+                    );
+                }
             }
-            found.push(Mirror {
-                zone_id: zone_id.clone(),
-                ledger_id: ledger.file_name().to_string_lossy().into_owned(),
-            });
+        } else {
+            ledgers_in(&zone.path(), None, &name, &mut found);
         }
     }
 
     found.sort();
     Ok(found)
+}
+
+/// The mirrors of one zone directory.
+fn ledgers_in(zone: &Path, authority: Option<&str>, zone_id: &str, found: &mut Vec<Mirror>) {
+    let Ok(ledgers) = std::fs::read_dir(zone) else {
+        return;
+    };
+    for ledger in ledgers.flatten() {
+        if !ledger
+            .file_type()
+            .map(|kind| kind.is_dir())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        found.push(Mirror {
+            authority: authority.map(ToOwned::to_owned),
+            zone_id: zone_id.to_owned(),
+            ledger_id: ledger.file_name().to_string_lossy().into_owned(),
+        });
+    }
 }
 
 /// Removes a mirror the configuration no longer follows — or whose ledger the
@@ -127,10 +181,15 @@ pub fn remove(root: &Path, mirror: &Mirror) -> Result<()> {
     std::fs::remove_dir_all(&resolved)
         .with_context(|| format!("removing {}", resolved.display()))?;
 
-    // A zone directory left empty is noise on the volume; removing it is
-    // best-effort and never an error — another mirror may have just landed.
+    // A zone directory left empty is noise on the volume, and so is an authority's; removing them
+    // is best-effort and never an error — another mirror may have just landed.
     if let Some(zone) = resolved.parent() {
         let _ = std::fs::remove_dir(zone);
+        if mirror.authority.is_some()
+            && let Some(authority) = zone.parent()
+        {
+            let _ = std::fs::remove_dir(authority);
+        }
     }
 
     Ok(())
@@ -188,6 +247,7 @@ mod tests {
 
     fn plant(root: &Path, zone: &str, ledger: &str) -> Mirror {
         let mirror = Mirror {
+            authority: None,
             zone_id: zone.to_owned(),
             ledger_id: ledger.to_owned(),
         };
@@ -246,6 +306,7 @@ mod tests {
     fn what_does_not_look_like_a_mirror_is_never_removed() {
         let root = scratch("refuse");
         let stranger = Mirror {
+            authority: None,
             zone_id: "z-1".to_owned(),
             ledger_id: "somebody-elses-data".to_owned(),
         };
@@ -266,6 +327,7 @@ mod tests {
         // and nothing in it.
         let root = scratch("empty");
         let mirror = Mirror {
+            authority: None,
             zone_id: "z-1".to_owned(),
             ledger_id: "l-1".to_owned(),
         };

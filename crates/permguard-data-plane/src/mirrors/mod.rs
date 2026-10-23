@@ -16,7 +16,7 @@
 //! | Setting | Default | What it guarantees |
 //! | --- | --- | --- |
 //! | `mirrors.interval` | 30s | how often a round *starts*, not how long it takes |
-//! | `mirrors.jitter` | 0.1 | the spread that stops every replica waking at the same instant: each round waits `interval ± (interval × jitter)/2`, drawn again every round |
+//! | `mirrors.jitter` | 0.1 | the spread that stops every replica waking at the same instant: each round waits `interval × (1 + jitter × u)`, `u ∈ [-1, 1]` from the CSPRNG, drawn again every round |
 //! | `mirrors.timeout` | 2m | **per ledger**: a ledger that exceeds it is abandoned for this round |
 //! | `mirrors.parallelism` | 4 | how many ledgers are mirrored at once |
 //!
@@ -40,6 +40,7 @@ pub mod measure;
 pub mod readiness;
 pub mod round;
 pub mod source;
+pub mod task;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -101,7 +102,11 @@ impl PlaneTask for MirrorService {
     fn start<'a>(&'a self, context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let config = context.config();
-            if !config.mirrors_enabled() || config.mirror_sources().is_empty() {
+            // The tasks of this Host's memberships come and go with them: a Host that holds any
+            // runs the round, which snapshots them every time (WP-7.2a).
+            let tasks = crate::handles::mirror_tasks(context);
+            if !config.mirrors_enabled() || (config.mirror_sources().is_empty() && tasks.is_none())
+            {
                 info!(
                     event.name = "sync.disabled",
                     component = COMPONENT,
@@ -138,8 +143,11 @@ impl PlaneTask for MirrorService {
                 .map_err(|error| anyhow!("preparing {}: {error}", root.display()))?;
 
             let interval = self.tick.unwrap_or_else(|| config.mirrors_interval());
+            let selections = source::TaskSelections::compile(config.mirror_task_selections())?;
             let context_for_round = Arc::new(round::Context {
                 sources,
+                tasks,
+                selections,
                 root,
                 // The same decider both surfaces answer from: a ledger that
                 // arrives here is checked and compiled once, and the first
@@ -294,25 +302,40 @@ fn service_reason(outcome: &round::Outcome) -> Option<String> {
 /// Spreads the wait, so replicas of this plane do not all wake at once and
 /// ask one control plane for everything at the same instant.
 ///
-/// The wait is drawn from `interval ± (interval × fraction) / 2` — so `0.1`
-/// means ±5% of the interval — and it is drawn **again for every round**, not
-/// once at startup: a fleet that happened to align on its first tick does not
-/// stay aligned.
+/// The wait is `interval × (1 + fraction × u)` with `u ∈ [-1, 1]` drawn from the operating
+/// system's CSPRNG (F-20): `0.1` means ±10% of the interval, both halves reached. It is drawn
+/// **again for every round** and per Host, not once at startup: a fleet that happened to align
+/// on its first tick does not stay aligned, and a fleet running one build shares no sequence.
 fn with_jitter(interval: Duration, fraction: f64) -> Duration {
+    jittered(interval, fraction, uniform())
+}
+
+/// The wait for one draw `u ∈ [-1, 1]`, never below a tenth of a second.
+fn jittered(interval: Duration, fraction: f64, u: f64) -> Duration {
     if fraction <= 0.0 {
         return interval;
     }
-    // No random-number dependency for something this small: the nanoseconds
-    // of the clock are as unpredictable as this needs to be, and they cost
-    // nothing.
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|since| since.subsec_nanos())
-        .unwrap_or(0);
-    let spread = interval.as_secs_f64() * fraction;
-    let offset = spread * (f64::from(nanos) / f64::from(u32::MAX)) - spread / 2.0;
+    let factor = 1.0 + fraction * u.clamp(-1.0, 1.0);
 
-    Duration::from_secs_f64((interval.as_secs_f64() + offset).max(0.1))
+    Duration::from_secs_f64((interval.as_secs_f64() * factor).max(0.1))
+}
+
+/// One independent `u ∈ [-1, 1]` from the operating system's CSPRNG; `0`, the interval itself,
+/// when it gives none, and said.
+fn uniform() -> f64 {
+    use ring::rand::SecureRandom as _;
+
+    let mut bytes = [0u8; 4];
+    if ring::rand::SystemRandom::new().fill(&mut bytes).is_err() {
+        warn!(
+            event.name = "sync.jitter_unavailable",
+            component = COMPONENT,
+            "the operating system gave no randomness: this round waits the bare interval"
+        );
+        return 0.0;
+    }
+
+    2.0 * f64::from(u32::from_be_bytes(bytes)) / f64::from(u32::MAX) - 1.0
 }
 
 /// Puts one round on the trail and in the log.
@@ -363,16 +386,38 @@ mod tests {
         assert_eq!(with_jitter(interval, 0.0), interval);
     }
 
+    /// F-20: the wait is `interval × (1 + jitter × u)` over the whole of `u ∈ [-1, 1]`, and the
+    /// draws reach both halves.
     #[test]
-    fn jitter_stays_inside_its_fraction() {
+    fn jitter_spreads_the_whole_fraction_over_both_halves() {
         let interval = Duration::from_secs(30);
-        for _ in 0..64 {
-            let waited = with_jitter(interval, 0.1).as_secs_f64();
+        assert_eq!(jittered(interval, 0.1, -1.0), Duration::from_secs(27));
+        assert_eq!(jittered(interval, 0.1, 1.0), Duration::from_secs(33));
+        assert_eq!(jittered(interval, 0.1, 0.0), interval);
+        assert_eq!(
+            jittered(interval, 0.1, 7.0),
+            Duration::from_secs(33),
+            "a draw outside [-1, 1] is held to it"
+        );
+
+        let (mut below, mut above) = (0, 0);
+        for _ in 0..256 {
+            let waited = with_jitter(interval, 0.1);
             assert!(
-                (27.0..=33.0).contains(&waited),
-                "a tenth of thirty seconds is ±1.5s, got {waited}"
+                (Duration::from_secs(27)..=Duration::from_secs(33)).contains(&waited),
+                "a tenth of thirty seconds is ±3s, got {waited:?}"
             );
+            if waited < interval {
+                below += 1;
+            }
+            if waited > interval {
+                above += 1;
+            }
         }
+        assert!(
+            below > 32 && above > 32,
+            "both halves are drawn: {below} below, {above} above"
+        );
     }
 
     #[test]

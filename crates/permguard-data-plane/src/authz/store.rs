@@ -37,6 +37,14 @@ pub struct Identity {
     pub ledger_name: String,
     /// The server this mirror came from — what the audit record names.
     pub server: String,
+    /// The coordinator Host that serves it, as 32 lowercase hex digits (WP-7.2a): absent for a
+    /// mirror of a configured URL, and in an identity written before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority: Option<String>,
+    /// The `policy.mirror` task that listed it, `<membership-id>/<task-id>` (WP-7.2a): only that
+    /// task's complete listing is evidence it is no longer served. Absent for a URL's mirror.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
 }
 
 /// The file that carries it, inside the mirror.
@@ -128,24 +136,24 @@ pub fn identity_of(mirror_path: &Path) -> Option<Identity> {
 /// is not this loop, and either way it is not something to serve from.
 pub fn mirrors(root: &Path) -> Vec<Mirror> {
     let mut held = Vec::new();
-    let Ok(zones) = std::fs::read_dir(root) else {
+    let Ok(entries) = std::fs::read_dir(root) else {
         return held;
     };
-    for zone in zones.flatten() {
-        if !zone.path().is_dir() {
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
             continue;
         }
-        let Ok(ledgers) = std::fs::read_dir(zone.path()) else {
-            continue;
-        };
-        for ledger in ledgers.flatten() {
-            let path = ledger.path();
-            if !path.is_dir() {
+        // An authority's directory holds zones (WP-7.2a); any other is a zone of a configured
+        // URL's mirrors.
+        if crate::mirrors::layout::is_authority(&entry.file_name().to_string_lossy()) {
+            let Ok(zones) = std::fs::read_dir(entry.path()) else {
                 continue;
+            };
+            for zone in zones.flatten() {
+                identified_in(&zone.path(), &mut held);
             }
-            if let Some(identity) = identity_of(&path) {
-                held.push(Mirror { path, identity });
-            }
+        } else {
+            identified_in(&entry.path(), &mut held);
         }
     }
     held.sort_by(|left, right| left.path.cmp(&right.path));
@@ -153,11 +161,72 @@ pub fn mirrors(root: &Path) -> Vec<Mirror> {
     held
 }
 
+/// The mirrors of one zone directory that carry their identity.
+fn identified_in(zone: &Path, held: &mut Vec<Mirror>) {
+    if !zone.is_dir() {
+        return;
+    }
+    let Ok(ledgers) = std::fs::read_dir(zone) else {
+        return;
+    };
+    for ledger in ledgers.flatten() {
+        let path = ledger.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if let Some(identity) = identity_of(&path) {
+            held.push(Mirror { path, identity });
+        }
+    }
+}
+
 /// The mirror a request names, if this plane holds it.
-pub fn find(root: &Path, zone: &str, ledger: &str) -> Option<Mirror> {
-    mirrors(root)
+/// The mirrors that answer to `zone`/`ledger` when more than one does (WP-7.2a): empty when one
+/// or none does. What a refusal names, so a contested ledger is not mistaken for one this plane
+/// never mirrored.
+pub fn contested(root: &Path, zone: &str, ledger: &str) -> Vec<String> {
+    let answering: Vec<String> = mirrors(root)
         .into_iter()
-        .find(|mirror| mirror.answers_to(zone, ledger))
+        .filter(|mirror| mirror.answers_to(zone, ledger))
+        .map(|mirror| mirror.path.display().to_string())
+        .collect();
+    if answering.len() > 1 {
+        answering
+    } else {
+        Vec::new()
+    }
+}
+
+/// Every pair of names more than one mirror answers to (WP-7.2a): `(zone, ledger)` by name, with
+/// the mirrors that claim it. What a round reports, so a contest is seen before a request is
+/// refused over it.
+pub fn contests(root: &Path) -> Vec<((String, String), Vec<String>)> {
+    let mut by_name: std::collections::BTreeMap<(String, String), Vec<String>> =
+        std::collections::BTreeMap::new();
+    for mirror in mirrors(root) {
+        by_name
+            .entry((
+                mirror.identity.zone_name.clone(),
+                mirror.identity.ledger_name.clone(),
+            ))
+            .or_default()
+            .push(mirror.log_id());
+    }
+    by_name
+        .into_iter()
+        .filter(|(_, claimants)| claimants.len() > 1)
+        .collect()
+}
+
+pub fn find(root: &Path, zone: &str, ledger: &str) -> Option<Mirror> {
+    // Exactly one, or none: two mirrors answering to the same names — two authorities, or a
+    // configured URL and a membership, claiming one ledger — are never told apart by the order a
+    // directory lists them in (WP-7.2a). Neither is served until one of them goes.
+    let mut answering = mirrors(root)
+        .into_iter()
+        .filter(|mirror| mirror.answers_to(zone, ledger));
+    let first = answering.next()?;
+    answering.next().is_none().then_some(first)
 }
 
 #[cfg(test)]
@@ -179,6 +248,8 @@ mod tests {
 
     fn identity(zone: &str, ledger: &str) -> Identity {
         Identity {
+            task: None,
+            authority: None,
             zone_id: format!("{zone}-id"),
             zone_name: zone.to_owned(),
             ledger_id: format!("{ledger}-id"),

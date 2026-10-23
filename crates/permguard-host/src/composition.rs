@@ -39,7 +39,7 @@ use std::sync::Arc;
 use permguard_core::keys::Signature;
 use permguard_core::keys::{Jwk, KeyId, KeyManager, SigningRing};
 use permguard_core::server::AuditRecorder;
-use permguard_core::{AuditError, AuditEvent, Subject};
+use permguard_core::{AuditError, AuditEvent, BoxFuture, Subject};
 
 use crate::time::TimeGuard;
 use permguard_core::authz::Resource;
@@ -325,6 +325,7 @@ pub struct Host {
     >,
     hub: Option<Arc<crate::membership::watch::Hub>>,
     memberships: Option<Arc<dyn ServingMembers>>,
+    mirror_tasks: Option<Arc<dyn MirrorTasks>>,
     holds: Option<Arc<crate::holds::HoldStore>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
@@ -353,6 +354,7 @@ pub struct HostBuilder {
     >,
     hub: Option<Arc<crate::membership::watch::Hub>>,
     memberships: Option<Arc<dyn ServingMembers>>,
+    mirror_tasks: Option<Arc<dyn MirrorTasks>>,
     holds: Option<Arc<crate::holds::HoldStore>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
@@ -445,6 +447,12 @@ impl HostBuilder {
         self
     }
 
+    /// The member side of `policy.mirror` (WP-7.2a): handed to the Plane that consumes it.
+    pub fn mirror_tasks(mut self, tasks: Arc<dyn MirrorTasks>) -> Self {
+        self.mirror_tasks = Some(tasks);
+        self
+    }
+
     /// The volume's holds (WP-7.3c): handed to a Plane that declared it reads them.
     pub fn holds(mut self, holds: Arc<crate::holds::HoldStore>) -> Self {
         self.holds = Some(holds);
@@ -464,6 +472,7 @@ impl HostBuilder {
             task_slots: self.task_slots,
             hub: self.hub,
             memberships: self.memberships,
+            mirror_tasks: self.mirror_tasks,
             holds: self.holds,
             streams: self.streams,
             rings: self.rings,
@@ -704,6 +713,15 @@ impl Host {
                 })
                 .then(|| self.memberships.clone())
                 .flatten(),
+            mirror_tasks: declaration
+                .tasks
+                .iter()
+                .any(|contract| {
+                    contract.task_type == crate::membership::record::TaskType::PolicyMirror
+                        && contract.role == crate::membership::record::ContractRole::Consumer
+                })
+                .then(|| self.mirror_tasks.clone())
+                .flatten(),
             holds: declaration
                 .reads_holds
                 .then(|| self.holds.clone())
@@ -740,6 +758,7 @@ pub struct Registration {
     authorization: Arc<Authorization>,
     time: Arc<TimeGuard>,
     memberships: Option<Arc<dyn ServingMembers>>,
+    mirror_tasks: Option<Arc<dyn MirrorTasks>>,
     holds: Option<Arc<crate::holds::HoldStore>>,
 }
 
@@ -760,6 +779,67 @@ pub trait ServingMembers: Send + Sync {
     ) -> Result<crate::membership::import::OriginSet, String> {
         let _ = resource;
         Ok(crate::membership::import::OriginSet::default())
+    }
+}
+
+/// One `policy.mirror` task this Host holds as a member, as a mirror round snapshots it (WP-7.2a).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirrorTask {
+    pub membership_id: [u8; 16],
+    pub task_id: String,
+    /// The coordinator: the authority of every ledger the task serves.
+    pub coordinator: [u8; 16],
+    /// The epoch of the manifest the task was read from: the task's revision.
+    pub revision: u64,
+    /// The resource the task's selector covers, which a session reads under.
+    pub resource: String,
+    /// Whether the coordinator marked the task required: what the plane's readiness waits for.
+    pub required: bool,
+    /// The largest message the signed task lets a session carry.
+    pub max_body_bytes: u64,
+}
+
+/// A refusal on a `policy.mirror` session: the stable code, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirrorRefusal {
+    pub code: String,
+    pub reason: String,
+}
+
+impl std::fmt::Display for MirrorRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.reason)
+    }
+}
+
+/// An open `policy.mirror` task session (WP-7.2a): one message, one answer, in order.
+pub trait MirrorSession: Send {
+    fn call(&mut self, body: Vec<u8>) -> BoxFuture<'_, Result<Vec<u8>, MirrorRefusal>>;
+}
+
+/// The member side of `policy.mirror` (WP-7.2a): the tasks this Host holds, and a session on
+/// one. The member opens every session; the coordinator never dials.
+pub trait MirrorTasks: Send + Sync {
+    /// The active `policy.mirror` tasks of every membership this Host holds as a member.
+    fn mirror_tasks(&self) -> Vec<MirrorTask>;
+
+    /// Opens a task session over `task`'s resource, its lease verified and kept.
+    fn open_mirror<'a>(
+        &'a self,
+        task: &'a MirrorTask,
+    ) -> BoxFuture<'a, Result<Box<dyn MirrorSession>, MirrorRefusal>>;
+}
+
+impl MirrorTasks for crate::api::HostApi {
+    fn mirror_tasks(&self) -> Vec<MirrorTask> {
+        crate::api::HostApi::mirror_tasks(self)
+    }
+
+    fn open_mirror<'a>(
+        &'a self,
+        task: &'a MirrorTask,
+    ) -> BoxFuture<'a, Result<Box<dyn MirrorSession>, MirrorRefusal>> {
+        Box::pin(crate::api::HostApi::open_mirror(self, task))
     }
 }
 
@@ -950,6 +1030,12 @@ impl Registration {
     /// Host that composes none.
     pub fn holds(&self) -> Option<Arc<crate::holds::HoldStore>> {
         self.holds.clone()
+    }
+
+    /// The member side of `policy.mirror` (WP-7.2a): `None` for a Plane that does not consume
+    /// it, or a Host that holds no memberships.
+    pub fn mirror_tasks(&self) -> Option<Arc<dyn MirrorTasks>> {
+        self.mirror_tasks.clone()
     }
 
     /// The members serving `resource` (WP-4.4): empty for a Plane that does not provide
@@ -2361,6 +2447,9 @@ mod tests {
     /// A task context of `resource`, for the deferred handler's tests.
     fn task_context(resource: &str) -> crate::membership::task::TaskContext {
         crate::membership::task::TaskContext {
+            selector: permguard_core::authz::Selector::under(
+                permguard_core::authz::Resource::host(),
+            ),
             membership_id: [1; 16],
             task_id: "mirror".to_owned(),
             task_type: crate::membership::record::TaskType::PolicyMirror,
@@ -2434,6 +2523,56 @@ mod tests {
                 .serve_task(TaskType::PolicyMirror, 1, Arc::new(Echo))
                 .is_err(),
             "the slot is filled once"
+        );
+    }
+
+    /// WP-7.2a: the member side of `policy.mirror` goes to the Plane that consumes it, and to no
+    /// other: not the provider, not a Plane that declared neither side.
+    #[test]
+    fn the_member_side_of_policy_mirror_is_granted_to_its_consumer_only() {
+        use crate::membership::record::TaskType;
+
+        struct NoTasks;
+
+        impl MirrorTasks for NoTasks {
+            fn mirror_tasks(&self) -> Vec<MirrorTask> {
+                Vec::new()
+            }
+
+            fn open_mirror<'a>(
+                &'a self,
+                _task: &'a MirrorTask,
+            ) -> BoxFuture<'a, Result<Box<dyn MirrorSession>, MirrorRefusal>> {
+                Box::pin(std::future::ready(Err(MirrorRefusal {
+                    code: "unavailable".to_owned(),
+                    reason: "none".to_owned(),
+                })))
+            }
+        }
+
+        let host = Host::builder().mirror_tasks(Arc::new(NoTasks)).build();
+        let consumer = host
+            .register(Declaration::new("data").uses_task(TaskType::PolicyMirror, 1))
+            .expect("registers");
+        assert!(consumer.mirror_tasks().is_some());
+        let provider = host
+            .register(Declaration::new("control").handles_task(TaskType::PolicyMirror, 1))
+            .expect("registers");
+        assert!(
+            provider.mirror_tasks().is_none(),
+            "the provider never dials"
+        );
+        let bystander = host
+            .register(Declaration::new("other").uses_task(TaskType::DecisionsShip, 1))
+            .expect("registers");
+        assert!(bystander.mirror_tasks().is_none());
+        let unconsumed = Host::builder()
+            .build()
+            .register(Declaration::new("data").uses_task(TaskType::PolicyMirror, 1))
+            .expect("registers");
+        assert!(
+            unconsumed.mirror_tasks().is_none(),
+            "a Host holding no memberships hands out none"
         );
     }
 

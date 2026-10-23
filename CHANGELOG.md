@@ -19,6 +19,15 @@ is cut.
 
 ### Added
 
+- **A Data Plane mirrors the ledgers of its `policy.mirror` memberships over their task sessions (WP-7.2a).**
+  With `mirrors.enabled`, every active `policy.mirror` task of the Host's memberships is followed: each round the member opens a session to the coordinator, lists the ledgers the task covers through the new `list_ledgers` operation, and pulls each over that session, with the same verification and checkpoint a configured URL gets and no URL, TLS root or statement key of its own.
+  `mirrors.tasks` may narrow them by membership and task id with anchored zone and ledger patterns.
+  A ledger mirrored over a membership lives under its coordinator, `mirrors/<authority-host>/<zone>/<ledger>`, so two coordinators claiming one pair of ids never share a directory.
+  A request naming a ledger two mirrors answer to is refused `unavailable`, and every round reports the contest; a coordinator reads below a session's resource only where the task's signed selector reaches below it.
+  A coordinator is one source however many tasks reach it, required when one of its signed tasks is, even one `mirrors.tasks` leaves out; a task's mirror is removed only by that task's complete listing.
+  The rounds now wait `interval × (1 + jitter × u)`, `u` drawn in `[-1, 1]` from the operating system's CSPRNG, the full jitter in both directions.
+  Configured URL sources keep working unchanged until their removal (WP-7.7).
+
 - **REST and gRPC carry the same values, and the gap that remains is published (WP-7.5b).**
   A REST evaluation or submission body is read strictly: a member named twice at any depth, open containers included, is refused `payload_malformed` before any policy runs.
   Numbers travel only inside ±2^53 on both transports: REST now refuses a number past it with `value_unrepresentable` in an evaluation and in a submission, as gRPC and the client already did, and a whole number written as a decimal reaches a policy as the integer it is over both.

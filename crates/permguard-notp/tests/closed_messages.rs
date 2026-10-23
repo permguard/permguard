@@ -211,6 +211,7 @@ fn test_request_and_transfer_ids_are_held_to_their_form() {
 
 /// WP-7.12: a `policy.mirror` message names one of the four reads and its ledger; each round
 /// trips, an operation outside them is refused, and the key ring is asked with an empty body.
+/// WP-7.2a: the fifth, the listing, names no ledger and carries no body.
 #[test]
 fn test_a_mirror_message_names_one_of_its_reads() {
     for operation in [
@@ -218,12 +219,17 @@ fn test_a_mirror_message_names_one_of_its_reads() {
         MirrorOperation::NegotiatePull,
         MirrorOperation::FetchObjects,
         MirrorOperation::KeyRing,
+        MirrorOperation::ListLedgers,
     ] {
+        let listing = operation == MirrorOperation::ListLedgers;
         let message = MirrorRequest {
             operation,
-            zone: "zone".to_owned(),
-            ledger: "ledger".to_owned(),
-            body: if operation == MirrorOperation::KeyRing {
+            zone: if listing { "" } else { "zone" }.to_owned(),
+            ledger: if listing { "" } else { "ledger" }.to_owned(),
+            body: if matches!(
+                operation,
+                MirrorOperation::KeyRing | MirrorOperation::ListLedgers
+            ) {
                 Vec::new()
             } else {
                 vec![0xa0]
@@ -235,7 +241,7 @@ fn test_a_mirror_message_names_one_of_its_reads() {
         );
     }
     let outside = cbor::encode(&Value::Map(vec![
-        (Value::Int(1), Value::Int(5)),
+        (Value::Int(1), Value::Int(6)),
         (Value::Int(2), Value::Text("zone".to_owned())),
         (Value::Int(3), Value::Text("ledger".to_owned())),
         (Value::Int(4), Value::Bytes(Vec::new())),
@@ -249,4 +255,57 @@ fn test_a_mirror_message_names_one_of_its_reads() {
         body: vec![1],
     };
     assert!(MirrorRequest::decode(&keys_with_body.encode().expect("encodes")).is_err());
+    for (zone, ledger, body) in [
+        ("zone", "", vec![]),
+        ("", "ledger", vec![]),
+        ("", "", vec![1]),
+    ] {
+        let listing = MirrorRequest {
+            operation: MirrorOperation::ListLedgers,
+            zone: zone.to_owned(),
+            ledger: ledger.to_owned(),
+            body,
+        };
+        assert!(
+            MirrorRequest::decode(&listing.encode().expect("encodes")).is_err(),
+            "a listing names nothing"
+        );
+    }
+}
+
+/// WP-7.2a: a listing round trips, sorted and each ledger once, and says whether it is complete;
+/// an unsorted or repeated listing, or one past the bound, is refused.
+#[test]
+fn test_a_ledger_listing_is_sorted_bounded_and_says_whether_it_is_complete() {
+    use permguard_notp::{ListLedgersAnswer, ListedLedger, MAX_LISTED_LEDGERS};
+
+    let ledger = |zone: &str, ledger: &str| ListedLedger {
+        zone_id: zone.to_owned(),
+        zone_name: format!("{zone}-name"),
+        ledger_id: ledger.to_owned(),
+        ledger_name: format!("{ledger}-name"),
+    };
+    for complete in [true, false] {
+        let answer = ListLedgersAnswer {
+            ledgers: vec![ledger("a", "1"), ledger("a", "2"), ledger("b", "1")],
+            complete,
+        };
+        assert_eq!(
+            ListLedgersAnswer::decode(&answer.encode().expect("encodes")).expect("decodes"),
+            answer
+        );
+    }
+    for ledgers in [
+        vec![ledger("b", "1"), ledger("a", "1")],
+        vec![ledger("a", "1"), ledger("a", "1")],
+        (0..=MAX_LISTED_LEDGERS)
+            .map(|at| ledger("a", &format!("{at:06}")))
+            .collect(),
+    ] {
+        let answer = ListLedgersAnswer {
+            ledgers,
+            complete: true,
+        };
+        assert!(ListLedgersAnswer::decode(&answer.encode().expect("encodes")).is_err());
+    }
 }

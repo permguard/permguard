@@ -186,6 +186,8 @@ fn context(
         required: true,
     };
     Arc::new(round::Context {
+        tasks: None,
+        selections: Default::default(),
         // This suite is about mirroring; the decision path has its own.
         decider: None,
         sources: source::compile(std::slice::from_ref(&declared), root)
@@ -337,6 +339,8 @@ async fn a_ledger_two_servers_both_claim_is_left_alone_rather_than_taken_by_the_
     let root = volume.join("mirrors");
     let sources = vec![declared(&one.url, &[], &[]), declared(&two.url, &[], &[])];
     let outcome = round::run(Arc::new(round::Context {
+        tasks: None,
+        selections: Default::default(),
         decider: None,
         sources: source::compile(&sources, &root).expect("the patterns compile"),
         root: root.clone(),
@@ -348,18 +352,24 @@ async fn a_ledger_two_servers_both_claim_is_left_alone_rather_than_taken_by_the_
     }))
     .await;
 
-    // Identities are minted per control plane, so two independent planes do
-    // not normally collide — which is the point: the plane mirrors both, and
-    // `contested` stays at zero unless the identities really are the same.
-    assert_eq!(
-        outcome.contested, 0,
-        "different identities are not a conflict"
+    // Identities are minted per control plane, so two independent planes do not collide on ids:
+    // the plane mirrors both. Their names do collide, and a request by name answered from
+    // whichever directory lists first would be the list order choosing (WP-7.2a): the name is
+    // contested and reported, while each ledger stays reachable by its own ids.
+    let held = layout::on_disk(&root).expect("lists");
+    assert_eq!(held.len(), 2, "both are followed");
+    assert_eq!(outcome.contested, 1, "the shared name is reported");
+    assert!(
+        permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_none(),
+        "neither answers to the shared name"
     );
-    assert_eq!(
-        layout::on_disk(&root).expect("lists").len(),
-        2,
-        "and both are followed"
-    );
+    for mirror in &held {
+        assert!(
+            permguard_data_plane::authz::store::find(&root, &mirror.zone_id, &mirror.ledger_id)
+                .is_some(),
+            "each answers to its ids"
+        );
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -381,6 +391,8 @@ async fn one_unreachable_server_does_not_cost_another_server_its_mirrors() {
         ];
         let root = volume.join("mirrors");
         let outcome = round::run(Arc::new(round::Context {
+            tasks: None,
+            selections: Default::default(),
             decider: None,
             sources: source::compile(&both, &root).expect("the patterns compile"),
             root: root.clone(),
@@ -405,6 +417,8 @@ async fn one_unreachable_server_does_not_cost_another_server_its_mirrors() {
     let root = volume.join("mirrors");
     let before = layout::on_disk(&root).expect("lists");
     let outcome = round::run(Arc::new(round::Context {
+        tasks: None,
+        selections: Default::default(),
         decider: None,
         sources: source::compile(&sources, &root).expect("the patterns compile"),
         root: root.clone(),
@@ -451,8 +465,647 @@ fn a_mirror_of_an_empty_ledger_is_not_a_failure() {
     // A mirror of it holds nothing and must not read as a failure — otherwise
     // every freshly created ledger would page somebody.
     let mirror = Mirror {
+        authority: None,
         zone_id: "z-1".to_owned(),
         ledger_id: "l-1".to_owned(),
     };
     assert_eq!(mirror.label(), "z-1/l-1");
+}
+
+/// WP-7.2a: a `policy.mirror` task stand-in. Its session decodes each real `MirrorRequest` and
+/// answers it from the control plane at `url`, so what this suite drives is the round, the
+/// listing, the authority-qualified layout and the pull over a task session; the provider's own
+/// handler has its tests in the control plane.
+mod tasks {
+    use std::sync::{Arc, Mutex};
+
+    use permguard_control_client::remote::Remote as _;
+    use permguard_control_client::{AnyRemote, TlsOptions};
+    use permguard_core::BoxFuture;
+    use permguard_host::composition::{MirrorRefusal, MirrorSession, MirrorTask, MirrorTasks};
+    use permguard_notp::{
+        FetchObjectsRequest, GetRefRequest, GetRefResponse, ListLedgersAnswer, ListedLedger,
+        MirrorOperation, MirrorRequest, NegotiatePullRequest,
+    };
+
+    /// The tasks a Host holds, the URL that answers each coordinator, and what was asked.
+    pub struct Held {
+        pub tasks: Vec<MirrorTask>,
+        pub url: String,
+        /// The coordinators that refuse every session.
+        pub silent: Vec<[u8; 16]>,
+        /// Every operation a session carried, by task id.
+        pub asked: Arc<Mutex<Vec<(String, MirrorOperation)>>>,
+        /// The ledger names a task's listing is cut to, by task id; a task absent lists every one.
+        pub only: Vec<(String, Vec<String>)>,
+        /// Whether listings say they are not complete.
+        pub incomplete: bool,
+        /// The tasks whose listings alone say they are not complete.
+        pub partial: Vec<String>,
+    }
+
+    impl MirrorTasks for Held {
+        fn mirror_tasks(&self) -> Vec<MirrorTask> {
+            self.tasks.clone()
+        }
+
+        fn open_mirror<'a>(
+            &'a self,
+            task: &'a MirrorTask,
+        ) -> BoxFuture<'a, Result<Box<dyn MirrorSession>, MirrorRefusal>> {
+            let opened: Result<Box<dyn MirrorSession>, MirrorRefusal> =
+                if self.silent.contains(&task.coordinator) {
+                    Err(MirrorRefusal {
+                        code: permguard_core::codes::common::UNAVAILABLE.to_owned(),
+                        reason: "the coordinator did not answer".to_owned(),
+                    })
+                } else {
+                    Ok(Box::new(Session {
+                        url: self.url.clone(),
+                        task: task.task_id.clone(),
+                        asked: Arc::clone(&self.asked),
+                        only: self
+                            .only
+                            .iter()
+                            .find(|(id, _)| *id == task.task_id)
+                            .map(|(_, names)| names.clone()),
+                        incomplete: self.incomplete || self.partial.contains(&task.task_id),
+                    }))
+                };
+            Box::pin(std::future::ready(opened))
+        }
+    }
+
+    struct Session {
+        url: String,
+        task: String,
+        asked: Arc<Mutex<Vec<(String, MirrorOperation)>>>,
+        only: Option<Vec<String>>,
+        incomplete: bool,
+    }
+
+    impl MirrorSession for Session {
+        fn call(&mut self, body: Vec<u8>) -> BoxFuture<'_, Result<Vec<u8>, MirrorRefusal>> {
+            let url = self.url.clone();
+            let task = self.task.clone();
+            let asked = Arc::clone(&self.asked);
+            let only = self.only.clone();
+            let incomplete = self.incomplete;
+            Box::pin(async move {
+                tokio::task::spawn_blocking(move || {
+                    answer(&url, &task, &asked, &body, only.as_deref(), incomplete)
+                })
+                .await
+                .expect("the answer is computed")
+            })
+        }
+    }
+
+    fn refused(code: &str, reason: String) -> MirrorRefusal {
+        MirrorRefusal {
+            code: code.to_owned(),
+            reason,
+        }
+    }
+
+    fn answer(
+        url: &str,
+        task: &str,
+        asked: &Mutex<Vec<(String, MirrorOperation)>>,
+        body: &[u8],
+        only: Option<&[String]>,
+        incomplete: bool,
+    ) -> Result<Vec<u8>, MirrorRefusal> {
+        let request = MirrorRequest::decode(body)
+            .map_err(|error| refused("body_rejected", error.to_string()))?;
+        asked
+            .lock()
+            .expect("the log")
+            .push((task.to_owned(), request.operation));
+        let failed = |error: String| refused("notp_failed", error);
+        if request.operation == MirrorOperation::ListLedgers {
+            let catalog = permguard_control_client::catalog::client(
+                url,
+                &TlsOptions::default(),
+                Box::new(permguard_control_client::narrate::Silent),
+            )
+            .map_err(failed)?;
+            let mut ledgers = Vec::new();
+            for zone in catalog
+                .list_zones(None, None)
+                .map_err(|f| failed(f.detail))?
+            {
+                for ledger in catalog
+                    .list_ledgers(&zone.id, None, None)
+                    .map_err(|f| failed(f.detail))?
+                {
+                    if only.is_some_and(|names| !names.contains(&ledger.name)) {
+                        continue;
+                    }
+                    ledgers.push(ListedLedger {
+                        zone_id: zone.id.clone(),
+                        zone_name: zone.name.clone(),
+                        ledger_id: ledger.id,
+                        ledger_name: ledger.name,
+                    });
+                }
+            }
+            ledgers.sort_by(|left, right| {
+                (&left.zone_id, &left.ledger_id).cmp(&(&right.zone_id, &right.ledger_id))
+            });
+            return ListLedgersAnswer {
+                ledgers,
+                complete: !incomplete,
+            }
+            .encode()
+            .map_err(|error| failed(error.to_string()));
+        }
+        let remote = AnyRemote::connect(
+            url,
+            &TlsOptions::default(),
+            Box::new(permguard_control_client::narrate::Silent),
+        )
+        .map_err(failed)?;
+        remote.bind(&request.zone, &request.ledger);
+        let not_found = |error: String| {
+            if error.contains("not_found") {
+                refused(permguard_core::codes::common::NOT_FOUND, error)
+            } else {
+                failed(error)
+            }
+        };
+        match request.operation {
+            MirrorOperation::KeyRing => remote.keyring().map_err(failed),
+            MirrorOperation::GetRef => {
+                let asked = GetRefRequest::decode(&request.body)
+                    .map_err(|error| failed(error.to_string()))?;
+                let held = remote
+                    .get_ref(&asked.r#ref)
+                    .map_err(failed)?
+                    .ok_or_else(|| {
+                        refused(permguard_core::codes::common::NOT_FOUND, "no ref".into())
+                    })?;
+                GetRefResponse {
+                    head: permguard_objects::digest::Digest::parse(&held.head)
+                        .map_err(|_| failed("a head".into()))?,
+                    counter: held.counter,
+                    statement: held.statement,
+                    ref_digest: permguard_objects::digest::Digest::parse(&held.ref_digest)
+                        .map_err(|_| failed("a digest".into()))?,
+                }
+                .encode()
+                .map_err(|error| failed(error.to_string()))
+            }
+            MirrorOperation::NegotiatePull => {
+                let asked = NegotiatePullRequest::decode(&request.body)
+                    .map_err(|error| failed(error.to_string()))?;
+                remote
+                    .negotiate_pull(&asked)
+                    .map_err(not_found)?
+                    .encode()
+                    .map_err(|error| failed(error.to_string()))
+            }
+            MirrorOperation::FetchObjects => {
+                let asked = FetchObjectsRequest::decode(&request.body)
+                    .map_err(|error| failed(error.to_string()))?;
+                remote
+                    .fetch(&asked)
+                    .map_err(failed)?
+                    .encode()
+                    .map_err(|error| failed(error.to_string()))
+            }
+            MirrorOperation::ListLedgers => unreachable!("answered above"),
+        }
+    }
+
+    /// One `policy.mirror` task of `coordinator`.
+    pub fn task(coordinator: [u8; 16], membership: u8, id: &str, required: bool) -> MirrorTask {
+        MirrorTask {
+            membership_id: [membership; 16],
+            task_id: id.to_owned(),
+            coordinator,
+            revision: 1,
+            resource: "plane/control".to_owned(),
+            required,
+            max_body_bytes: 1 << 24,
+        }
+    }
+}
+
+fn over_tasks(root: &std::path::Path, held: tasks::Held) -> Arc<round::Context> {
+    Arc::new(round::Context {
+        tasks: Some(Arc::new(held)),
+        selections: Default::default(),
+        decider: None,
+        sources: Vec::new(),
+        root: root.to_path_buf(),
+        deadline: Duration::from_secs(30),
+        stale_after: None,
+        parallelism: 2,
+        permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
+        metrics: Metrics::none(),
+    })
+}
+
+/// WP-7.2a, F-16: a Host's `policy.mirror` tasks are mirrored over their sessions, under the
+/// coordinator's authority: listed by the session, named in their identity, attributed to one
+/// source however many tasks of one coordinator name a ledger, and read over the session rather
+/// than any URL.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_membership_task_is_mirrored_under_its_authority_over_its_session() {
+    let volume = scratch("over-tasks");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger", "staging"]);
+    let root = volume.join("mirrors");
+    let coordinator = [0x11; 16];
+    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+    let outcome = round::run(over_tasks(
+        &root,
+        tasks::Held {
+            // Two memberships of one coordinator: one source (F-16).
+            tasks: vec![
+                tasks::task(coordinator, 1, "mirror", true),
+                tasks::task(coordinator, 2, "mirror-again", false),
+            ],
+            url: url.clone(),
+            silent: Vec::new(),
+            asked: Arc::clone(&asked),
+            only: Vec::new(),
+            incomplete: false,
+            partial: Vec::new(),
+        },
+    ))
+    .await;
+
+    assert_eq!((outcome.unreachable, outcome.failed), (0, 0), "{outcome:?}");
+    assert_eq!(outcome.contested, 0, "one coordinator is one source");
+    let authority = layout::authority_name(&coordinator);
+    assert_eq!(
+        outcome.coordinators,
+        vec![(round::source_key(&authority), true)],
+        "one source, required because one of its tasks is"
+    );
+    let held = layout::on_disk(&root).expect("the mirrors list");
+    assert_eq!(held.len(), 2, "{held:?}");
+    for mirror in &held {
+        assert_eq!(mirror.authority.as_deref(), Some(authority.as_str()));
+        assert!(mirror.path(&root).starts_with(root.join(&authority)));
+        let identity = permguard_data_plane::authz::store::identity_of(&mirror.path(&root))
+            .expect("the identity is recorded");
+        assert_eq!(identity.authority.as_deref(), Some(authority.as_str()));
+        assert_eq!(identity.server, round::source_key(&authority));
+    }
+    let found = permguard_data_plane::authz::store::find(&root, "acme", "main-ledger")
+        .expect("served by name");
+    assert_eq!(
+        found.identity.authority.as_deref(),
+        Some(authority.as_str())
+    );
+
+    // Every read went over a session: the listings, then a negotiation per ledger.
+    let asked = asked.lock().expect("the log").clone();
+    let operations: Vec<_> = asked.iter().map(|(_, operation)| *operation).collect();
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|operation| **operation == permguard_notp::MirrorOperation::ListLedgers)
+            .count(),
+        2,
+        "each task listed once: {asked:?}"
+    );
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|operation| **operation == permguard_notp::MirrorOperation::NegotiatePull)
+            .count(),
+        2,
+        "each ledger negotiated once, over one of the sessions: {asked:?}"
+    );
+}
+
+/// WP-7.2a: a coordinator whose session cannot be opened is unreachable for the round, and costs
+/// nothing it already serves.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_coordinator_that_does_not_answer_costs_none_of_its_mirrors() {
+    let volume = scratch("silent-coordinator");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger"]);
+    let root = volume.join("mirrors");
+    let coordinator = [0x11; 16];
+    let held = |silent: Vec<[u8; 16]>| tasks::Held {
+        tasks: vec![tasks::task(coordinator, 1, "mirror", true)],
+        url: url.clone(),
+        silent,
+        asked: Arc::new(std::sync::Mutex::new(Vec::new())),
+        only: Vec::new(),
+        incomplete: false,
+        partial: Vec::new(),
+    };
+
+    round::run(over_tasks(&root, held(Vec::new()))).await;
+    let before = layout::on_disk(&root).expect("lists");
+    assert_eq!(before.len(), 1);
+
+    let outcome = round::run(over_tasks(&root, held(vec![coordinator]))).await;
+    assert_eq!(outcome.unreachable, 1);
+    assert_eq!(outcome.reaped, 0, "nothing is removed on its account");
+    assert_eq!(layout::on_disk(&root).expect("lists"), before);
+    let reported = outcome
+        .sources
+        .iter()
+        .find(|source| source.url == round::source_key(&layout::authority_name(&coordinator)))
+        .expect("the coordinator is reported");
+    assert!(!reported.answered && !reported.succeeded());
+}
+
+/// WP-7.2a: the same ledger from a configured URL and from a membership lands in two directories,
+/// and a request naming it is answered from neither: no list order picks whose policy is served.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ledger_both_a_url_and_a_task_offer_is_served_from_neither() {
+    let volume = scratch("url-and-task");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger"]);
+    let root = volume.join("mirrors");
+
+    round::run(context(&url, &root, &[], &[])).await;
+    assert!(
+        permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_some(),
+        "one mirror answers"
+    );
+    round::run(over_tasks(
+        &root,
+        tasks::Held {
+            tasks: vec![tasks::task([0x11; 16], 1, "mirror", true)],
+            url: url.clone(),
+            silent: Vec::new(),
+            asked: Arc::new(std::sync::Mutex::new(Vec::new())),
+            only: Vec::new(),
+            incomplete: false,
+            partial: Vec::new(),
+        },
+    ))
+    .await;
+    assert_eq!(layout::on_disk(&root).expect("lists").len(), 2);
+    assert!(
+        permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_none(),
+        "two mirrors answer to one name: neither is chosen"
+    );
+    assert_eq!(
+        permguard_data_plane::authz::store::contested(&root, "acme", "main-ledger").len(),
+        2,
+        "and the refusal can say why"
+    );
+    let outcome = round::run(context(&url, &root, &[], &[])).await;
+    assert_eq!(outcome.contested, 1, "every round says so");
+}
+
+/// WP-7.2a: the file narrows the tasks it follows by membership and task ids with anchored
+/// patterns; a task it does not name is neither opened nor listed.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_file_narrows_the_tasks_followed_by_membership_task_and_pattern() {
+    let volume = scratch("narrowed-tasks");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger", "staging"]);
+    let root = volume.join("mirrors");
+    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let selections =
+        source::TaskSelections::compile(&[permguard_core::mirrors::MirrorTaskSelection {
+            membership: permguard_host::identity::record::uuid_text(&[1; 16]),
+            task: "mirror".to_owned(),
+            zones: vec!["acme".to_owned()],
+            ledgers: vec!["main-ledger".to_owned()],
+        }])
+        .expect("the patterns compile");
+
+    let outcome = round::run(Arc::new(round::Context {
+        tasks: Some(Arc::new(tasks::Held {
+            tasks: vec![
+                tasks::task([0x11; 16], 1, "mirror", true),
+                tasks::task([0x22; 16], 2, "elsewhere", true),
+            ],
+            url: url.clone(),
+            silent: Vec::new(),
+            asked: Arc::clone(&asked),
+            only: Vec::new(),
+            incomplete: false,
+            partial: Vec::new(),
+        })),
+        selections,
+        decider: None,
+        sources: Vec::new(),
+        root: root.clone(),
+        deadline: Duration::from_secs(30),
+        stale_after: None,
+        parallelism: 2,
+        permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
+        metrics: Metrics::none(),
+    }))
+    .await;
+
+    assert_eq!((outcome.unreachable, outcome.failed), (0, 0), "{outcome:?}");
+    let held = layout::on_disk(&root).expect("lists");
+    assert_eq!(held.len(), 1, "only `acme/main-ledger`: {held:?}");
+    assert_eq!(
+        outcome.coordinators,
+        vec![
+            (
+                round::source_key(&layout::authority_name(&[0x11; 16])),
+                true
+            ),
+            (
+                round::source_key(&layout::authority_name(&[0x22; 16])),
+                true
+            ),
+        ],
+        "the task the file leaves out is not followed, and still counts for readiness: it is \
+         required by its signed manifest"
+    );
+    assert!(
+        asked
+            .lock()
+            .expect("the log")
+            .iter()
+            .all(|(task, _)| task == "mirror"),
+        "nothing was asked over the task left out"
+    );
+}
+
+fn held_by(
+    url: &str,
+    tasks: Vec<permguard_host::composition::MirrorTask>,
+    only: Vec<(&str, Vec<&str>)>,
+    incomplete: bool,
+) -> tasks::Held {
+    tasks::Held {
+        tasks,
+        url: url.to_owned(),
+        silent: Vec::new(),
+        asked: Arc::new(std::sync::Mutex::new(Vec::new())),
+        only: only
+            .into_iter()
+            .map(|(task, names)| {
+                (
+                    task.to_owned(),
+                    names.into_iter().map(ToOwned::to_owned).collect(),
+                )
+            })
+            .collect(),
+        incomplete,
+        partial: Vec::new(),
+    }
+}
+
+/// WP-7.2a: a ledger gone from its task's complete listing is removed from under its authority,
+/// and the directories it leaves empty go with it; one gone from an incomplete listing stays, the
+/// listing proving nothing absent.
+#[tokio::test(flavor = "multi_thread")]
+async fn only_a_complete_listing_of_its_own_task_removes_a_task_mirror() {
+    let volume = scratch("task-reap");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger", "staging"]);
+    let root = volume.join("mirrors");
+    let coordinator = [0x11; 16];
+    let authority = layout::authority_name(&coordinator);
+    let task = || vec![tasks::task(coordinator, 1, "mirror", true)];
+
+    round::run(over_tasks(&root, held_by(&url, task(), Vec::new(), false))).await;
+    assert_eq!(layout::on_disk(&root).expect("lists").len(), 2);
+
+    // Cut short: `staging` is missing from a listing that says it is not whole.
+    let outcome = round::run(over_tasks(
+        &root,
+        held_by(&url, task(), vec![("mirror", vec!["main-ledger"])], true),
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 0, "an incomplete listing removes nothing");
+    let reported = outcome
+        .sources
+        .iter()
+        .find(|source| source.url == round::source_key(&authority))
+        .expect("reported");
+    assert!(
+        !reported.answered,
+        "an incomplete listing is no answer for reaping"
+    );
+    assert_eq!(layout::on_disk(&root).expect("lists").len(), 2);
+
+    // Whole, and without `staging`: it goes.
+    let outcome = round::run(over_tasks(
+        &root,
+        held_by(&url, task(), vec![("mirror", vec!["main-ledger"])], false),
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 1);
+    let reported = outcome
+        .sources
+        .iter()
+        .find(|source| source.url == round::source_key(&authority))
+        .expect("reported");
+    assert!(reported.answered && reported.succeeded());
+    assert_eq!(layout::on_disk(&root).expect("lists").len(), 1);
+
+    // Whole and empty: the last one goes, and the authority's directory with its zone.
+    let outcome = round::run(over_tasks(
+        &root,
+        held_by(&url, task(), vec![("mirror", Vec::new())], false),
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 1);
+    assert!(layout::on_disk(&root).expect("lists").is_empty());
+    assert!(
+        !root.join(&authority).exists(),
+        "nothing of the authority is left"
+    );
+}
+
+/// WP-7.2a: a mirror is its own task's to remove. A task this round does not list — its
+/// membership suspended — removes nothing, however whole another task of the same coordinator
+/// lists.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_suspended_task_costs_none_of_its_mirrors_to_another_task_of_its_coordinator() {
+    let volume = scratch("task-suspended");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger", "staging"]);
+    let root = volume.join("mirrors");
+    let coordinator = [0x11; 16];
+
+    // Membership 1's task lists `main-ledger`, membership 2's `staging`.
+    round::run(over_tasks(
+        &root,
+        held_by(
+            &url,
+            vec![
+                tasks::task(coordinator, 1, "first", true),
+                tasks::task(coordinator, 2, "second", true),
+            ],
+            vec![("first", vec!["main-ledger"]), ("second", vec!["staging"])],
+            false,
+        ),
+    ))
+    .await;
+    assert_eq!(layout::on_disk(&root).expect("lists").len(), 2);
+
+    // Membership 2 suspended: its task is not held this round, and membership 1's lists whole.
+    let outcome = round::run(over_tasks(
+        &root,
+        held_by(
+            &url,
+            vec![tasks::task(coordinator, 1, "first", true)],
+            vec![("first", vec!["main-ledger"])],
+            false,
+        ),
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 0, "`staging` is its own task's to remove");
+    assert_eq!(layout::on_disk(&root).expect("lists").len(), 2);
+}
+
+/// WP-7.2a: a task listing whole removes what it no longer lists, even while another task of the
+/// same coordinator lists only in part: each task's mirrors are its own to remove.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_whole_task_reaps_its_own_while_a_sibling_task_lists_in_part() {
+    let volume = scratch("task-sibling");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger", "staging"]);
+    let root = volume.join("mirrors");
+    let coordinator = [0x11; 16];
+    let both = || {
+        vec![
+            tasks::task(coordinator, 1, "first", true),
+            tasks::task(coordinator, 2, "second", true),
+        ]
+    };
+
+    round::run(over_tasks(
+        &root,
+        held_by(
+            &url,
+            both(),
+            vec![("first", vec!["main-ledger"]), ("second", vec!["staging"])],
+            false,
+        ),
+    ))
+    .await;
+    assert_eq!(layout::on_disk(&root).expect("lists").len(), 2);
+
+    // `first` lists whole and without `main-ledger`; `second` lists only in part.
+    let mut held = held_by(
+        &url,
+        both(),
+        vec![("first", Vec::new()), ("second", vec!["staging"])],
+        false,
+    );
+    held.partial = vec!["second".to_owned()];
+    let outcome = round::run(over_tasks(&root, held)).await;
+    assert_eq!(outcome.reaped, 1, "`first` removes what it no longer lists");
+    let left = layout::on_disk(&root).expect("lists");
+    assert_eq!(left.len(), 1, "`second`'s mirror stays: {left:?}");
 }
