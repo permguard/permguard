@@ -115,6 +115,7 @@ fn every_core_setting_renders_under_the_defaults() {
             SETTING_LIMITS_PEER_EXEMPT,
             SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
             SETTING_MIRRORS_EXPIRE_AFTER,
+            SETTING_MIRRORS_REVOCATION_OBJECTIVE,
             SETTING_MIRRORS_STALE_AFTER,
             SETTING_PUBLIC_GRPC_ADDR,
             SETTING_PUBLIC_HTTP_ADDR,

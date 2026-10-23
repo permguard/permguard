@@ -245,6 +245,70 @@ mod tests {
         );
     }
 
+    /// F-17 (WP-7.2d): two coordinators name a ledger alike; the gate resolves the names as the
+    /// decision path does — to nothing while contested, to the aliased authority's ids once an
+    /// alias names it — so a grant on one authority's ledger never admits a request the other's
+    /// would answer.
+    #[test]
+    fn the_gate_resolves_an_alias_as_the_decision_path_does() {
+        let held = |tag: &str, alias: Option<&str>| {
+            let root = scratch(tag);
+            for authority in ["a", "b"] {
+                let hex = authority.repeat(32);
+                let path = root
+                    .join(&hex)
+                    .join(format!("{authority}-zone"))
+                    .join(format!("{authority}-ledger"));
+                std::fs::create_dir_all(&path).expect("created");
+                store::record(
+                    &path,
+                    &store::Identity {
+                        task: Some(format!("m/{authority}")),
+                        authority: Some(hex.clone()),
+                        zone_id: format!("{authority}-zone"),
+                        zone_name: "acme".to_owned(),
+                        ledger_id: format!("{authority}-ledger"),
+                        ledger_name: "main".to_owned(),
+                        server: format!("host:{hex}"),
+                    },
+                )
+                .expect("recorded");
+            }
+            store::assign_aliases(
+                &root,
+                alias
+                    .map(|authority| store::Alias {
+                        zone: "acme".to_owned(),
+                        ledger: "main".to_owned(),
+                        authority: authority.repeat(32),
+                    })
+                    .into_iter()
+                    .collect(),
+            );
+            root
+        };
+        let on_b = Authorization::public_only(&[PublicGrant::new(
+            &[operations::DECISION_EVALUATE],
+            Selector::parse("plane/data/zone/b-zone/ledger/b-ledger").expect("a selector"),
+        )]);
+        let ask =
+            |root: &Path| evaluation(&on_b, &Actor::Anonymous, root, Some("acme"), Some("main"));
+
+        assert_eq!(
+            located(&held("alias-none", None), "acme", "main"),
+            None,
+            "contested"
+        );
+        assert_eq!(
+            ask(&held("alias-b", Some("b"))).expect("admitted"),
+            Some(("b-zone".to_owned(), "b-ledger".to_owned()))
+        );
+        assert!(
+            ask(&held("alias-a", Some("a"))).is_err(),
+            "the grant on the other authority's ledger admits nothing"
+        );
+    }
+
     #[test]
     fn f21_nobody_is_401_and_a_public_grant_on_the_exact_ledger_admits_anonymous() {
         let root = scratch("f21");

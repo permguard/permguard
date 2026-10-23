@@ -379,3 +379,68 @@ fn a_shared_mode_needs_no_pull_keys_and_naming_them_is_refused() {
         .expect_err("a ledger named twice");
     assert!(twice.to_string().contains("more than once"), "{twice}");
 }
+
+/// WP-7.2d (F-17): the aliases the configuration assigns are the ones the plane's lookups resolve
+/// through — the gate, the decision path and the round all ask `store` — from the moment its
+/// decider exists.
+#[test]
+fn the_configured_aliases_are_what_the_plane_resolves_through() {
+    let volume = std::env::temp_dir().join(format!("pg-module-aliases-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&volume);
+    std::fs::create_dir_all(&volume).expect("the volume");
+    let config = Config::from_layers(
+        permguard_server::plane::build_settings("0.0.0-test"),
+        vec![permguard_server::plane::SETTING_RUNTIME_PLANES],
+        permguard_core::config::Layers {
+            file: [(
+                permguard_core::config::SETTING_WORKING_DIR.to_owned(),
+                volume.display().to_string(),
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        },
+    )
+    .expect("the test configuration builds")
+    .with_mirror_aliases(vec![permguard_core::mirrors::MirrorAlias {
+        zone: "acme".to_owned(),
+        ledger: "main".to_owned(),
+        authority: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb".to_owned(),
+    }])
+    .expect("one alias");
+    let root = config.mirrors_directory();
+    for authority in ["a", "b"] {
+        let hex = authority.repeat(32);
+        let path = root.join(&hex).join("zone-id").join("ledger-id");
+        std::fs::create_dir_all(&path).expect("the mirror");
+        permguard_data_plane::authz::store::record(
+            &path,
+            &permguard_data_plane::authz::store::Identity {
+                zone_id: "zone-id".to_owned(),
+                zone_name: "acme".to_owned(),
+                ledger_id: "ledger-id".to_owned(),
+                ledger_name: "main".to_owned(),
+                server: format!("host:{hex}"),
+                authority: Some(hex.clone()),
+                task: Some(format!("m/{authority}")),
+            },
+        )
+        .expect("the identity");
+    }
+    assert!(
+        permguard_data_plane::authz::store::find(&root, "acme", "main").is_none(),
+        "contested until the plane assigns its aliases"
+    );
+
+    let storage = MemoryStorage::new();
+    let audit = RecordingAuditSink::new();
+    let server = ServerContext::new(identity(), &config, &storage, &audit);
+    let context = PlaneContext::new(&server, "data");
+    let _decider = permguard_data_plane::authz::decider(&context);
+    let found = permguard_data_plane::authz::store::find(&root, "acme", "main")
+        .expect("the alias resolves the pair");
+    assert_eq!(
+        found.identity.authority.as_deref(),
+        Some("b".repeat(32).as_str())
+    );
+}

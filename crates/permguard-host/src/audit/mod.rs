@@ -411,6 +411,10 @@ pub const REGISTRY: &[ActionSchema] = &[
     // The Data Plane: decisions and mirrors.
     action("authz.decision", Class::Access, DATA),
     action("ledger.synchronized", Class::Operations, DATA),
+    // A mirror's reap candidacy (WP-7.2d): its task no longer lists it, lists it again, or it went.
+    action("mirror.tombstoned", Class::Operations, DATA),
+    action("mirror.restored", Class::Operations, DATA),
+    action("mirror.reaped", Class::Operations, DATA),
     // The engine itself: the mark a gap in an access trail leaves, in that trail.
     ActionSchema {
         action: "audit.access_dropped",

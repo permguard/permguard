@@ -49,8 +49,8 @@ use serde::Deserialize;
 
 use crate::config::{
     SETTING_MIRRORS_ENABLED, SETTING_MIRRORS_EXPIRE_AFTER, SETTING_MIRRORS_INTERVAL,
-    SETTING_MIRRORS_JITTER, SETTING_MIRRORS_PARALLELISM, SETTING_MIRRORS_STALE_AFTER,
-    SETTING_MIRRORS_TIMEOUT,
+    SETTING_MIRRORS_JITTER, SETTING_MIRRORS_PARALLELISM, SETTING_MIRRORS_REAP_GRACE,
+    SETTING_MIRRORS_REVOCATION_OBJECTIVE, SETTING_MIRRORS_STALE_AFTER, SETTING_MIRRORS_TIMEOUT,
 };
 
 /// One server to follow, as the configuration file declares it.
@@ -101,6 +101,12 @@ pub struct MirrorsSection {
     /// mirror (`503`). Absent or `0s`: no bound.
     #[serde(default)]
     expire_after: Option<String>,
+    /// How long a membership mirror no longer listed is kept before it is reaped (WP-7.2d).
+    #[serde(default)]
+    reap_grace: Option<String>,
+    /// The revocation propagation objective this deployment declares (WP-7.2d).
+    #[serde(default)]
+    revocation_objective: Option<String>,
     /// The servers to follow. A list, not a flat setting: an array of servers
     /// with their patterns has no sensible single-variable form, and a
     /// half-parsed list is worse than none.
@@ -110,6 +116,32 @@ pub struct MirrorsSection {
     /// memberships is followed whole: the coordinator's signed selector already scopes it.
     #[serde(default)]
     tasks: Vec<MirrorTaskSection>,
+    /// The aliases this plane assigns (WP-7.2d, F-17): a pair of names two coordinators both
+    /// answer to is refused until one of these says which authority it means.
+    #[serde(default)]
+    aliases: Vec<MirrorAliasSection>,
+}
+
+/// One alias, as the file assigns it.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MirrorAliasSection {
+    /// The zone a request names, by name or id.
+    zone: String,
+    /// The ledger a request names, by name or id.
+    ledger: String,
+    /// The coordinator Host whose ledger it resolves to, as `host peers list` shows its id.
+    authority: String,
+}
+
+/// An alias (WP-7.2d, F-17): the pair of names a request uses, resolved to the ledger one
+/// authority serves under them, and to nothing else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirrorAlias {
+    pub zone: String,
+    pub ledger: String,
+    /// The coordinator Host, a lowercase dashed UUID.
+    pub authority: String,
 }
 
 /// One `policy.mirror` task, as the file narrows it: by its membership and task ids, with
@@ -172,6 +204,11 @@ impl MirrorsSection {
             (SETTING_MIRRORS_JITTER, self.jitter.as_ref()),
             (SETTING_MIRRORS_STALE_AFTER, self.stale_after.as_ref()),
             (SETTING_MIRRORS_EXPIRE_AFTER, self.expire_after.as_ref()),
+            (SETTING_MIRRORS_REAP_GRACE, self.reap_grace.as_ref()),
+            (
+                SETTING_MIRRORS_REVOCATION_OBJECTIVE,
+                self.revocation_objective.as_ref(),
+            ),
         ]
         .into_iter()
         .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value.clone())))
@@ -187,6 +224,18 @@ impl MirrorsSection {
                 task: task.task.trim().to_owned(),
                 zones: task.zones.clone(),
                 ledgers: task.ledgers.clone(),
+            })
+            .collect()
+    }
+
+    /// The aliases this plane assigns, as declared (WP-7.2d).
+    pub fn aliases(&self) -> Vec<MirrorAlias> {
+        self.aliases
+            .iter()
+            .map(|alias| MirrorAlias {
+                zone: alias.zone.trim().to_owned(),
+                ledger: alias.ledger.trim().to_owned(),
+                authority: alias.authority.trim().to_ascii_lowercase(),
             })
             .collect()
     }
@@ -262,6 +311,29 @@ pub fn check_source(input: &MirrorSource) -> Result<()> {
     Ok(())
 }
 
+/// Checks one alias for shape, at startup: both names, and the authority as a dashed UUID.
+pub fn check_alias(alias: &MirrorAlias) -> Result<()> {
+    if alias.zone.is_empty() || alias.ledger.is_empty() {
+        bail!("an alias names its zone and its ledger");
+    }
+    let dashed = alias.authority.len() == 36
+        && alias.authority.char_indices().all(|(at, held)| match at {
+            8 | 13 | 18 | 23 => held == '-',
+            _ => held.is_ascii_hexdigit() && !held.is_ascii_uppercase(),
+        });
+    if !dashed {
+        bail!(
+            "the alias `{}/{}` names the authority `{}`: write the coordinator Host's id as a \
+             dashed UUID",
+            alias.zone,
+            alias.ledger,
+            alias.authority
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -276,6 +348,82 @@ mod tests {
             ledgers: Vec::new(),
             required: true,
         }
+    }
+
+    /// WP-7.2d: the scalars travel as settings, the aliases as a structure, each checked.
+    #[test]
+    fn the_reap_grace_the_objective_and_the_aliases_are_read() {
+        let section: MirrorsSection = serde_norway::from_str(
+            "reap_grace: \"10m\"\nrevocation_objective: \"2m\"\naliases:\n  - zone: acme\n    ledger: main\n    authority: \" 0A1B2C3D-0000-4000-8000-00000000000F \"\n",
+        )
+        .expect("the section parses");
+        assert_eq!(
+            section.settings(),
+            vec![
+                (SETTING_MIRRORS_REAP_GRACE.to_owned(), "10m".to_owned()),
+                (
+                    SETTING_MIRRORS_REVOCATION_OBJECTIVE.to_owned(),
+                    "2m".to_owned()
+                ),
+            ]
+        );
+        let aliases = section.aliases();
+        assert_eq!(
+            aliases,
+            vec![MirrorAlias {
+                zone: "acme".into(),
+                ledger: "main".into(),
+                authority: "0a1b2c3d-0000-4000-8000-00000000000f".into(),
+            }]
+        );
+        check_alias(&aliases[0]).expect("well shaped");
+        for (zone, ledger, authority, expected) in [
+            (
+                "",
+                "main",
+                "0a1b2c3d-0000-4000-8000-00000000000f",
+                "names its zone",
+            ),
+            (
+                "acme",
+                "",
+                "0a1b2c3d-0000-4000-8000-00000000000f",
+                "names its zone",
+            ),
+            (
+                "acme",
+                "main",
+                "0a1b2c3d00004000800000000000000f",
+                "dashed UUID",
+            ),
+            (
+                "acme",
+                "main",
+                "0A1B2C3D-0000-4000-8000-00000000000F",
+                "dashed UUID",
+            ),
+            (
+                "acme",
+                "main",
+                "0a1b2c3d-0000-4000-8000-00000000000g",
+                "dashed UUID",
+            ),
+        ] {
+            let error = check_alias(&MirrorAlias {
+                zone: zone.into(),
+                ledger: ledger.into(),
+                authority: authority.into(),
+            })
+            .expect_err(authority);
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+        assert!(
+            serde_norway::from_str::<MirrorsSection>(
+                "aliases:\n  - zone: acme\n    ledger: main\n    authority: x\n    url: y\n"
+            )
+            .is_err(),
+            "an alias is closed"
+        );
     }
 
     #[test]

@@ -84,6 +84,17 @@ fn decision_budget(config: &permguard_core::Config) -> std::time::Duration {
 }
 
 pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
+    // The aliases every lookup under the configured root resolves through (WP-7.2d, F-17),
+    // assigned on every call rather than once, so the configuration asked about is the one in force.
+    store::assign_aliases(
+        &context.config().mirrors_directory(),
+        context
+            .config()
+            .mirror_aliases()
+            .iter()
+            .map(store::Alias::from_config)
+            .collect(),
+    );
     Arc::clone(DECIDER.get_or_init(|| {
         let config = context.config();
         let root: PathBuf = config.mirrors_directory();
@@ -142,6 +153,7 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
                 config.log_include().clone(),
             )
             .with_expiry(config.mirrors_expire_after())
+            .with_staleness(config.mirrors_stale_after())
             // A little under the transport's own request timeout, so the work stops before the
             // answer is abandoned rather than after it — the gap is what makes the difference
             // between a plane that sheds load and one that accumulates it.

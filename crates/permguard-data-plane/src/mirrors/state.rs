@@ -5,6 +5,8 @@
 //! `3-data-plane/3-data-plane-mirrors-notp.md`, atomic checkpoint).
 //!
 //! ```text
+//! FORMAT              the mirror's layout version, a storage view written with its first switch
+//!                     (WP-7.2d); a mirror of another layout is refused, never read as this one
 //! objects/            land first: immutable, content-addressed, harmless when unreferenced
 //! journal.cborseq     one canonical item per advance — the append is the switch
 //!   {1 v, 2 revision, 3 authority, 4 zone, 5 ledger, 6 ref, 7 head, 8 counter, 9 ref_digest,
@@ -23,7 +25,7 @@ use std::path::Path;
 
 use permguard_control_client::checkpoint::{self, Checkpoint};
 use permguard_control_client::store::FsStore;
-use permguard_host::storage::{Dir, sequence, write};
+use permguard_host::storage::{Dir, format, sequence, write};
 use permguard_objects::cbor::{self, Value};
 use permguard_objects::digest::Digest;
 
@@ -33,6 +35,10 @@ pub const JOURNAL: &str = "journal.cborseq";
 pub const VERIFIED: &str = "VERIFIED.cose";
 /// The state in force without its two signed artifacts.
 pub const CHECKPOINT: &str = "CHECKPOINT.cbor";
+/// The mirror's layout version (WP-7.2d).
+pub const FORMAT: &str = "FORMAT";
+/// The layout this build writes and reads.
+const LAYOUT: u64 = 1;
 /// The JSON checkpoint the pull and the decision path read.
 const REFS_MAIN: &str = "refs/main";
 /// The largest item the journal reads: a head statement and a binding are each a few hundred
@@ -206,6 +212,23 @@ fn storage(error: impl std::fmt::Display) -> String {
     format!("the mirror's state: {error}")
 }
 
+/// Checks the mirror's layout is this build's, writing it when `create` and it names none.
+fn layout(dir: &Dir, create: bool) -> Result<(), String> {
+    match write::read_view(dir, FORMAT, format::VIEW).map_err(storage)? {
+        Some(body) if body == LAYOUT.to_be_bytes() => Ok(()),
+        Some(body) => Err(format!(
+            "the mirror's layout is {}, which this build does not read",
+            <[u8; 8]>::try_from(body.as_slice())
+                .map(|version| u64::from_be_bytes(version).to_string())
+                .unwrap_or_else(|_| "unreadable".to_owned())
+        )),
+        None if create => {
+            write::replace_view(dir, FORMAT, format::VIEW, &LAYOUT.to_be_bytes()).map_err(storage)
+        }
+        None => Ok(()),
+    }
+}
+
 /// Switches `mirror` to `state`: the journal item appended and flushed, then the views. A state
 /// that only re-verifies the one in force — every member but `verified_at` the same — appends
 /// nothing, so a mirror that does not move does not grow its journal every round; how recently it
@@ -215,6 +238,7 @@ fn storage(error: impl std::fmt::Display) -> String {
 /// latest [`KEPT_ITEMS`] with the new one last; that replacement is then the switch.
 pub fn commit(mirror: &Path, state: &MirrorState) -> Result<(), String> {
     let dir = Dir::open(mirror).map_err(storage)?;
+    layout(&dir, true)?;
     let journal = if dir.exists(JOURNAL).map_err(storage)? {
         sequence::recover(&dir, JOURNAL, MAX_ITEM).map_err(storage)?
     } else {
@@ -248,6 +272,7 @@ pub fn commit(mirror: &Path, state: &MirrorState) -> Result<(), String> {
 /// from it wherever they differ. `None` for a mirror that has never switched.
 pub fn recover(mirror: &Path) -> Result<Option<MirrorState>, String> {
     let dir = Dir::open(mirror).map_err(storage)?;
+    layout(&dir, false)?;
     if !dir.exists(JOURNAL).map_err(storage)? {
         return Ok(None);
     }
@@ -258,6 +283,19 @@ pub fn recover(mirror: &Path) -> Result<Option<MirrorState>, String> {
     let state = MirrorState::decode(last)?;
     materialize(mirror, &dir, &state)?;
     Ok(Some(state))
+}
+
+/// The state in force, read only (WP-7.2d): the last whole item, nothing cut and no view
+/// written — what a reader beside a switch in flight may call, where [`recover`] would cut that
+/// switch's item as torn.
+pub fn peek(mirror: &Path) -> Result<Option<MirrorState>, String> {
+    let dir = Dir::open(mirror).map_err(storage)?;
+    layout(&dir, false)?;
+    if !dir.exists(JOURNAL).map_err(storage)? {
+        return Ok(None);
+    }
+    let journal = sequence::read(&dir, JOURNAL, MAX_ITEM).map_err(storage)?;
+    journal.items.last().map(MirrorState::decode).transpose()
 }
 
 /// Writes each view of `state` that does not already hold it.
@@ -509,6 +547,58 @@ mod tests {
             state(2).verified,
             "the view is the journal's again"
         );
+    }
+
+    /// WP-7.2d: a peek reads the state in force and changes nothing: a torn tail stays as it is,
+    /// for the switch that may still be writing it, and no view is rewritten.
+    #[test]
+    fn a_peek_reads_the_state_in_force_and_writes_nothing() {
+        let mirror = scratch("peek");
+        assert_eq!(peek(&mirror).expect("reads"), None);
+        commit(&mirror, &state(1)).expect("switched");
+        commit(&mirror, &state(2)).expect("switched again");
+        let mut torn = std::fs::read(mirror.join(JOURNAL)).expect("the journal");
+        torn.extend_from_slice(&state(3).encode().expect("encodes")[..20]);
+        std::fs::write(mirror.join(JOURNAL), &torn).expect("a torn write");
+        std::fs::write(mirror.join(VERIFIED), b"behind").expect("a view behind");
+
+        assert_eq!(
+            peek(&mirror).expect("reads"),
+            Some(state(2)),
+            "the last whole item"
+        );
+        assert_eq!(
+            std::fs::read(mirror.join(JOURNAL)).expect("the journal"),
+            torn,
+            "nothing cut"
+        );
+        assert_eq!(
+            std::fs::read(mirror.join(VERIFIED)).expect("a view"),
+            b"behind",
+            "no view rewritten"
+        );
+    }
+
+    /// WP-7.2d: the first switch writes the mirror's layout version; a mirror of another layout is
+    /// refused by both the switch and the recovery, its journal left untouched.
+    #[test]
+    fn a_mirror_of_another_layout_is_refused() {
+        let mirror = scratch("layout");
+        commit(&mirror, &state(1)).expect("switched");
+        let dir = Dir::open(&mirror).expect("opens");
+        assert_eq!(
+            write::read_view(&dir, FORMAT, format::VIEW).expect("reads"),
+            Some(LAYOUT.to_be_bytes().to_vec())
+        );
+        write::replace_view(&dir, FORMAT, format::VIEW, &2u64.to_be_bytes()).expect("written");
+        let refused = recover(&mirror).expect_err("another layout");
+        assert!(refused.contains("layout is 2"), "{refused}");
+        let refused = commit(&mirror, &state(2)).expect_err("another layout");
+        assert!(refused.contains("layout is 2"), "{refused}");
+        assert_eq!(recover_items(&mirror), 1, "nothing appended");
+        write::replace_view(&dir, FORMAT, format::VIEW, b"one").expect("written");
+        let refused = recover(&mirror).expect_err("not a layout");
+        assert!(refused.contains("layout is unreadable"), "{refused}");
     }
 
     /// WP-7.2c: a JSON checkpoint ahead of the journal is never rewritten backwards.

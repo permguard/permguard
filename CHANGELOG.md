@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **Membership mirrors are reaped only after a grace, settle name contests through aliases, alarm when stale during an outage, and report their progress (WP-7.2d).**
+  A ledger its task's complete listing no longer names is tombstoned (`TOMBSTONE`) and still served, and removed only by a later complete listing at least `mirrors.reap_grace` (default one hour) after the first; a listing that names it again restores it, and each step is audited (`mirror.tombstoned`, `mirror.restored`, `mirror.reaped`).
+  Two coordinators serving a ledger under one name stay refused until `mirrors.aliases` names the authority the names mean; the gate, the decision path and the round all resolve through it, and an alias whose authority holds nothing serves nothing.
+  Every round measures every held mirror, a coordinator that did not answer included, and alarms on each past `mirrors.stale_after`, naming its task and whether it is required (`permguard_sync_mirrors_stale`); every request answered from such a mirror is counted (`permguard_authz_stale_served_total`).
+  `mirrors.revocation_objective` declares how soon a revocation must arrive, and a configuration whose polling bound `interval × (1 + jitter)` cannot meet it is refused.
+  After every round each task reports its mirrors' state, counter, head and verification time on its own session, as member-reported `policy.mirror` progress.
 - **A membership mirror switches through one journal, and wakes on ref hints (WP-7.2c).**
   A mirror over a `policy.mirror` task appends one item to its `journal.cborseq` for each verified advance — the task's revision, authority, zone, ledger, ref, head, counter, ref digest, ring epoch and set, the verification time, the closure digest, the exact signed statement and ring binding — and that append is the switch.
   `VERIFIED.cose`, `RING-BINDING.cose`, `CHECKPOINT.cbor` and the checkpoint the decision path reads are views written after it and rewritten from it whenever a crash left them behind; a mirror that does not move appends nothing.

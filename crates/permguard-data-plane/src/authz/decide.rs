@@ -180,6 +180,23 @@ impl Loading {
             ));
         }
 
+        // Staleness, on every request (WP-7.2d, F-14): still answered, and counted, so a
+        // dashboard sees how many decisions a stale mirror is making.
+        if let Some(bound) = self.stale_after
+            && let Some(age) = store::synced_age(&mirror.path)
+            && age >= bound
+        {
+            self.metrics.count(&super::measure::STALE_SERVED, &[]);
+            debug!(
+                event.name = "authz.ledger_stale",
+                component = COMPONENT,
+                ledger = mirror.log_id().as_str(),
+                age.seconds = age.as_secs(),
+                bound.seconds = bound.as_secs(),
+                "answering from a mirror past the deployment's staleness bound"
+            );
+        }
+
         let head = self.head(&mirror)?;
 
         // A commit this engine already refused is refused again without
@@ -452,6 +469,7 @@ struct Loading {
     cache: Arc<Cache>,
     metrics: Metrics,
     expire_after: Option<std::time::Duration>,
+    stale_after: Option<std::time::Duration>,
     enabled: permguard_languages::registry::Enabled,
     profile: permguard_core::assurance::AssuranceProfile,
     supervisors: Arc<permguard_languages::worker::Supervisors>,
@@ -492,6 +510,9 @@ pub struct Decider {
     /// How old a mirror's last verified synchronization may grow before this
     /// plane refuses to answer from it. `None`: no bound.
     expire_after: Option<std::time::Duration>,
+    /// How old it may grow before an answer from it is counted as stale (WP-7.2d). `None`: no
+    /// bound.
+    stale_after: Option<std::time::Duration>,
     /// How long one decision may spend deciding. `None`: no bound, which is what a decider built
     /// for a test that is about something else wants.
     budget: Option<std::time::Duration>,
@@ -554,6 +575,7 @@ impl Decider {
             include: permguard_core::decisions::IncludeSection::default(),
             subjects: None,
             expire_after: None,
+            stale_after: None,
             budget: None,
             // Everything this build carries, unless a deployment says otherwise. A decider built
             // by a test is about something else, and should see what was compiled in.
@@ -616,6 +638,7 @@ impl Decider {
             cache: Arc::clone(&self.cache),
             metrics: self.metrics.clone(),
             expire_after: self.expire_after,
+            stale_after: self.stale_after,
             enabled: self.enabled.clone(),
             profile: self.profile,
             supervisors: Arc::clone(&self.supervisors),
@@ -670,6 +693,14 @@ impl Decider {
     /// the one thing a deployment that set this bound said it would not do.
     pub fn with_expiry(mut self, expire_after: Option<std::time::Duration>) -> Self {
         self.expire_after = expire_after;
+
+        self
+    }
+
+    /// The staleness bound every request checks (WP-7.2d, F-14): an answer from a mirror past it
+    /// is still given, and counted, the alarm being the round's.
+    pub fn with_staleness(mut self, stale_after: Option<std::time::Duration>) -> Self {
+        self.stale_after = stale_after;
 
         self
     }
@@ -1761,7 +1792,8 @@ pub(crate) fn contested_ledger(zone: &str, ledger: &str) -> ApiError {
         permguard_core::codes::common::UNAVAILABLE,
         format!(
             "more than one mirror answers to `{zone}/{ledger}`: neither is served until one of \
-             them is no longer followed"
+             them is no longer followed, or an alias in `mirrors.aliases` names the authority it \
+             means"
         ),
     )
 }

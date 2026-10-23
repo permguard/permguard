@@ -1485,6 +1485,59 @@ fn test_a_mirror_cannot_expire_before_it_is_stale() {
     );
 }
 
+/// WP-7.2d: the reap grace defaults to an hour and may be `0s`; the revocation objective is
+/// absent by default, and one the polling bound `interval × (1 + jitter)` cannot meet is refused.
+#[test]
+fn test_the_reap_grace_and_the_revocation_objective() {
+    let default = config(&[], &[], &[]);
+    assert_eq!(
+        default.mirrors_reap_grace(),
+        std::time::Duration::from_secs(3600)
+    );
+    assert_eq!(default.mirrors_revocation_objective(), None);
+    let zero = config(&[("PERMGUARD_MIRRORS_REAP_GRACE", "0s")], &[], &[]);
+    assert_eq!(zero.mirrors_reap_grace(), std::time::Duration::ZERO);
+
+    // 30s with a jitter of 0.1 polls within 33s: met at 33s, refused at 32s.
+    let met = config(
+        &[
+            ("PERMGUARD_MIRRORS_INTERVAL", "30s"),
+            ("PERMGUARD_MIRRORS_JITTER", "0.1"),
+            ("PERMGUARD_MIRRORS_REVOCATION_OBJECTIVE", "33s"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(
+        met.mirrors_revocation_objective(),
+        Some(std::time::Duration::from_secs(33))
+    );
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_file(pairs(&[
+            ("PERMGUARD_MIRRORS_INTERVAL", "30s"),
+            ("PERMGUARD_MIRRORS_JITTER", "0.1"),
+            ("PERMGUARD_MIRRORS_REVOCATION_OBJECTIVE", "32s"),
+        ])),
+    )
+    .expect_err("polling cannot meet it");
+    assert!(
+        format!("{refused:#}").contains("PERMGUARD_MIRRORS_REVOCATION_OBJECTIVE"),
+        "{refused:#}"
+    );
+    let none = config(
+        &[("PERMGUARD_MIRRORS_REVOCATION_OBJECTIVE", "0s")],
+        &[],
+        &[],
+    );
+    assert_eq!(
+        none.mirrors_revocation_objective(),
+        None,
+        "0s declares none"
+    );
+}
+
 /// Durations are read in the units the settings are actually written in.
 ///
 /// The `ms` case is the one that mattered: [`DEFAULT_EVENTS_GROUP_COMMIT_DELAY`] is five

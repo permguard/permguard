@@ -3074,6 +3074,43 @@ async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
         b"echo:second".to_vec(),
         "each message its own request id: never answered from the replay window as the first"
     );
+    // The task's progress on the session (WP-7.2d): the coordinator keeps the member's report.
+    session
+        .report(vec![permguard_host::membership::record::ProgressResource {
+            resource: "plane/control/zone/zone/ledger/ledger".to_owned(),
+            state: "verified".to_owned(),
+            frontier: Some("3".to_owned()),
+            checkpoint_digest: None,
+            verified_at: Some(1_700_000_000),
+            reason: None,
+        }])
+        .await
+        .expect("the coordinator keeps the report");
+    let reported = coordinator
+        .api
+        .member(&admin(), &id)
+        .expect("read")
+        .task_progress
+        .into_iter()
+        .find(|task| task.task_id == "mirror")
+        .and_then(|task| task.member_reported)
+        .expect("a report");
+    assert_eq!(reported.resources.len(), 1);
+    assert_eq!(
+        reported.resources[0].resource,
+        "plane/control/zone/zone/ledger/ledger"
+    );
+    assert_eq!(reported.resources[0].state, "verified");
+    assert_eq!(reported.resources[0].frontier.as_deref(), Some("3"));
+    assert_eq!(
+        reported.manifest_epoch, task.revision,
+        "the session's epoch"
+    );
+    assert!(
+        !reported.reported_at.starts_with("1970"),
+        "dated by the member's clock: {}",
+        reported.reported_at
+    );
     // And a watch over the task (WP-7.2c): the coordinator takes it on a session of its own.
     member
         .api

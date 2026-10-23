@@ -2407,7 +2407,11 @@ impl HostApi {
                     held.peer(),
                 )
             });
-        Ok(Box::new(MirrorHeld { task: held, ring }))
+        Ok(Box::new(MirrorHeld {
+            task: held,
+            ring,
+            time: Arc::clone(&self.time),
+        }))
     }
 
     /// Imports what this Host's `events.import` tasks have due (WP-6.2c2a): the server's periodic
@@ -2772,11 +2776,36 @@ static MIRROR_REQUEST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::Ato
 struct MirrorHeld {
     task: crate::membership::member::MemberTask,
     ring: Option<crate::composition::PinnedRing>,
+    /// The Host's guarded clock, what a progress report is dated by (WP-2.12).
+    time: Arc<crate::time::TimeGuard>,
 }
 
 impl crate::composition::MirrorSession for MirrorHeld {
     fn ring(&self) -> Option<crate::composition::PinnedRing> {
         self.ring.clone()
+    }
+
+    fn report(
+        &mut self,
+        resources: Vec<crate::membership::record::ProgressResource>,
+    ) -> permguard_core::BoxFuture<'_, Result<(), crate::composition::MirrorRefusal>> {
+        Box::pin(async move {
+            let lease = &self.task.lease;
+            let progress = crate::membership::record::TaskProgress {
+                membership_id: lease.membership_id,
+                task_id: lease.task_id.clone(),
+                manifest_epoch: lease.epoch,
+                member_boot_id: lease.member_boot_id,
+                report_seq: crate::membership::member::next_report_seq(),
+                reported_at: self.time.now_secs(),
+                resources,
+            };
+            self.task
+                .report(&progress)
+                .await
+                .map(|_| ())
+                .map_err(mirror_refusal)
+        })
     }
 
     fn call(

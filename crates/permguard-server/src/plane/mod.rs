@@ -676,6 +676,7 @@ impl PlaneServer {
                     let config = config.with_mirror_sources(settings::mirror_sources(value)?)?;
                     let config = config
                         .with_mirror_task_selections(settings::mirror_task_selections(value)?)?;
+                    let config = config.with_mirror_aliases(settings::mirror_aliases(value)?)?;
                     // The subscriptions this plane imports history from: a list of three-part
                     // entries, so it travels here rather than through the setting layers.
                     let config = config.with_pull_ledgers(settings::pull_ledgers(value)?);

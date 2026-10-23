@@ -262,6 +262,13 @@ mod tests {
     }
 
     impl MirrorSession for Scripted {
+        fn report(
+            &mut self,
+            _resources: Vec<permguard_host::membership::record::ProgressResource>,
+        ) -> permguard_core::BoxFuture<'_, Result<(), MirrorRefusal>> {
+            Box::pin(std::future::ready(Ok(())))
+        }
+
         fn ring(&self) -> Option<PinnedRing> {
             None
         }
@@ -725,14 +732,28 @@ mod tests {
     struct OneTask {
         ring: PinnedRing,
         answer: std::sync::Arc<Mutex<Answer>>,
+        reported: Reported,
     }
 
     struct Answering {
         ring: PinnedRing,
         answer: std::sync::Arc<Mutex<Answer>>,
+        reported: Reported,
     }
 
+    /// Every progress report the sessions carried (WP-7.2d).
+    type Reported =
+        std::sync::Arc<Mutex<Vec<Vec<permguard_host::membership::record::ProgressResource>>>>;
+
     impl MirrorSession for Answering {
+        fn report(
+            &mut self,
+            resources: Vec<permguard_host::membership::record::ProgressResource>,
+        ) -> permguard_core::BoxFuture<'_, Result<(), MirrorRefusal>> {
+            self.reported.lock().expect("the log").push(resources);
+            Box::pin(std::future::ready(Ok(())))
+        }
+
         fn ring(&self) -> Option<PinnedRing> {
             Some(self.ring.clone())
         }
@@ -800,6 +821,7 @@ mod tests {
             Box::pin(std::future::ready(Ok(Box::new(Answering {
                 ring: self.ring.clone(),
                 answer: std::sync::Arc::clone(&self.answer),
+                reported: std::sync::Arc::clone(&self.reported),
             })
                 as Box<dyn MirrorSession>)))
         }
@@ -826,11 +848,13 @@ mod tests {
             objects.clone(),
         )));
         let root = scratch("round-journal");
+        let reported: Reported = Default::default();
         let context = std::sync::Arc::new(super::super::round::Context {
             sources: Vec::new(),
             tasks: Some(std::sync::Arc::new(OneTask {
                 ring: ring.clone(),
                 answer: std::sync::Arc::clone(&answer),
+                reported: std::sync::Arc::clone(&reported),
             })),
             selections: Default::default(),
             root: root.clone(),
@@ -838,6 +862,7 @@ mod tests {
             deadline: std::time::Duration::from_secs(30),
             parallelism: 1,
             stale_after: None,
+            reap_grace: std::time::Duration::ZERO,
             permits: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
             metrics: permguard_core::Metrics::none(),
         });
@@ -853,6 +878,18 @@ mod tests {
             .expect("switched");
         assert_eq!(state.revision, 5);
         assert_eq!(state.authority, COORDINATOR);
+        // WP-7.2d: the task's progress, on its session, names the mirror as verified.
+        assert_eq!(
+            *reported.lock().expect("the log"),
+            vec![vec![permguard_host::membership::record::ProgressResource {
+                resource: "plane/control/zone/zone-id/ledger/ledger-id".to_owned(),
+                state: super::super::progress::VERIFIED.to_owned(),
+                frontier: Some(state.counter.to_string()),
+                checkpoint_digest: Some(head.clone()),
+                verified_at: Some(state.verified_at),
+                reason: None,
+            }]]
+        );
         assert_eq!(state.head, head);
         assert_eq!(state.ring_epoch, ring.epoch);
         assert_eq!(state.verified, signed);

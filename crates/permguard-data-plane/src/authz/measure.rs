@@ -49,6 +49,13 @@ pub const REFUSALS: Metric = Metric::counter(
     "Authorization requests refused before a decision, by reason.",
 );
 
+/// Requests answered from a mirror past the deployment's staleness bound (`mirrors.stale_after`),
+/// checked on every request (WP-7.2d, F-14): still decided, refusal being `mirrors.expire_after`'s.
+pub const STALE_SERVED: Metric = Metric::counter(
+    "permguard_authz_stale_served_total",
+    "Authorization requests answered from a mirror past its staleness bound.",
+);
+
 /// How long one whole request took — evaluations, cache lookups and all.
 pub const REQUEST_SECONDS: Metric = Metric::histogram(
     "permguard_authz_request_seconds",

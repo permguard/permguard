@@ -48,6 +48,12 @@ pub const SHIPPED: &str = "shipped";
 /// The progress reports this process sent: the coordinator numbers them per incarnation.
 static REPORT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// The next progress report's number in this incarnation, shared by every task this process
+/// reports on (WP-7.2d).
+pub(crate) fn next_report_seq() -> u64 {
+    REPORT_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+}
+
 pub mod import;
 
 /// The coordinator a member reaches: where, and the pin it is accepted by.
@@ -1113,7 +1119,7 @@ impl Member<'_> {
             task_id: subscription.task_id.to_owned(),
             manifest_epoch: session.lease.epoch,
             member_boot_id: self.identity.boot_id(),
-            report_seq: REPORT_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1,
+            report_seq: next_report_seq(),
             reported_at: self.time.now_secs(),
             resources: vec![resource],
         };

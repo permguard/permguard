@@ -98,13 +98,26 @@ dataPlane:
   #   interval: "30s"        # how often a round STARTS; a tick that finds the previous one working is skipped
   #   timeout: "2m"          # per ledger: one that exceeds it is abandoned for this round, not forever
   #   parallelism: "4"       # how many ledgers are mirrored at once
-  #   jitter: "0.1"          # each round waits interval ± (interval × jitter)/2, drawn again
+  #   jitter: "0.1"          # each round waits interval × (1 + jitter × u), u drawn in [-1, 1]
   #                          # every round — so replicas do not wake together, and do not re-align
   #   stale_after: "0s"      # how old the last verified sync may grow before this plane alarms;
   #                          # "0s" or absent: no bound. Still served — the alarm is the point.
   #   expire_after: "0s"     # how old it may grow before this plane refuses to answer from the
   #                          # mirror (503). A revocation that matters makes "indefinitely" wrong;
   #                          # a flaky link makes "minutes" wrong — this is the deployment's number.
+  #   reap_grace: "1h"       # a membership mirror its task no longer lists is a reap candidate,
+  #                          # still served; it goes only when a later complete listing, at least
+  #                          # this long after the first, still leaves it out ("0s": the next one)
+  #   revocation_objective: "0s"
+  #                          # how soon a revocation must reach this plane; polling, what a
+  #                          # lost watch falls back to, must meet it: interval × (1 + jitter)
+  #                          # above it refuses the configuration. "0s" or absent: none declared
+  #   aliases:               # two coordinators serving a ledger under one name are refused until
+  #                          # an alias says which authority the names mean — never list order
+  #                          # (by name or by id, as requests name the ledger: one entry each)
+  #     - zone: "acme"
+  #       ledger: "main-ledger"
+  #       authority: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"  # the coordinator Host's id
   #   servers:
   #     - url: "http://control-plane:6443"    # everything this server lists: no zones, no ledgers
   #     - url: "https://control.acme.com"     # narrowed, and reached over TLS

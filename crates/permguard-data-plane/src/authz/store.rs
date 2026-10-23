@@ -180,18 +180,81 @@ fn identified_in(zone: &Path, held: &mut Vec<Mirror>) {
     }
 }
 
-/// The mirror a request names, if this plane holds it.
-/// The mirrors that answer to `zone`/`ledger` when more than one does (WP-7.2a): empty when one
-/// or none does. What a refusal names, so a contested ledger is not mistaken for one this plane
-/// never mirrored.
-pub fn contested(root: &Path, zone: &str, ledger: &str) -> Vec<String> {
-    let answering: Vec<String> = mirrors(root)
+/// An alias the configuration assigns (WP-7.2d, F-17): the pair of names a request uses, and the
+/// one authority whose mirror they resolve to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Alias {
+    pub zone: String,
+    pub ledger: String,
+    /// The coordinator Host, as the 32 lowercase hex digits its mirrors live under.
+    pub authority: String,
+}
+
+impl Alias {
+    /// The alias as the configuration declares it, its dashed authority as its directory names it.
+    pub fn from_config(alias: &permguard_core::mirrors::MirrorAlias) -> Self {
+        Self {
+            zone: alias.zone.clone(),
+            ledger: alias.ledger.clone(),
+            authority: alias.authority.replace('-', ""),
+        }
+    }
+}
+
+type Assigned = std::sync::RwLock<std::collections::BTreeMap<PathBuf, Vec<Alias>>>;
+
+/// The aliases each mirrors root resolves through, assigned once by the plane that serves it: the
+/// gate, the decision path, the temporal path and the round all resolve names here, so none of
+/// them can answer from another ledger than the one the others authorized.
+fn assigned() -> &'static Assigned {
+    static ASSIGNED: std::sync::OnceLock<Assigned> = std::sync::OnceLock::new();
+    ASSIGNED.get_or_init(Default::default)
+}
+
+/// Assigns `aliases` to the mirrors under `root` (WP-7.2d).
+pub fn assign_aliases(root: &Path, aliases: Vec<Alias>) {
+    assigned()
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(root.to_path_buf(), aliases);
+}
+
+/// The alias `root` assigns to the pair a request named, if any.
+fn alias_of(root: &Path, zone: &str, ledger: &str) -> Option<Alias> {
+    assigned()
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(root)?
+        .iter()
+        .find(|alias| alias.zone == zone && alias.ledger == ledger)
+        .cloned()
+}
+
+/// The mirrors that answer to `zone`/`ledger`: every mirror answering to the names, or, where an
+/// alias assigns the pair, only the one under its authority — never another claimant.
+fn answering(root: &Path, zone: &str, ledger: &str) -> Vec<Mirror> {
+    let alias = alias_of(root, zone, ledger);
+    mirrors(root)
         .into_iter()
         .filter(|mirror| mirror.answers_to(zone, ledger))
-        .map(|mirror| mirror.path.display().to_string())
-        .collect();
+        .filter(|mirror| {
+            alias.as_ref().is_none_or(|alias| {
+                mirror.identity.authority.as_deref() == Some(alias.authority.as_str())
+            })
+        })
+        .collect()
+}
+
+/// The mirrors that answer to `zone`/`ledger` when more than one does (WP-7.2a): empty when one
+/// or none does. What a refusal names, so a contested ledger is not mistaken for one this plane
+/// never mirrored. An alias settles the pair it assigns (WP-7.2d).
+pub fn contested(root: &Path, zone: &str, ledger: &str) -> Vec<String> {
+    let answering = answering(root, zone, ledger);
     if answering.len() > 1 {
         answering
+            .into_iter()
+            .map(|mirror| mirror.path.display().to_string())
+            .collect()
     } else {
         Vec::new()
     }
@@ -204,13 +267,17 @@ pub fn contests(root: &Path) -> Vec<((String, String), Vec<String>)> {
     let mut by_name: std::collections::BTreeMap<(String, String), Vec<String>> =
         std::collections::BTreeMap::new();
     for mirror in mirrors(root) {
-        by_name
-            .entry((
-                mirror.identity.zone_name.clone(),
-                mirror.identity.ledger_name.clone(),
-            ))
-            .or_default()
-            .push(mirror.log_id());
+        let names = (
+            mirror.identity.zone_name.clone(),
+            mirror.identity.ledger_name.clone(),
+        );
+        // A pair an alias assigns is claimed only under its authority (WP-7.2d).
+        if let Some(alias) = alias_of(root, &names.0, &names.1)
+            && mirror.identity.authority.as_deref() != Some(alias.authority.as_str())
+        {
+            continue;
+        }
+        by_name.entry(names).or_default().push(mirror.log_id());
     }
     by_name
         .into_iter()
@@ -218,13 +285,13 @@ pub fn contests(root: &Path) -> Vec<((String, String), Vec<String>)> {
         .collect()
 }
 
+/// The mirror a request names, if this plane holds it.
 pub fn find(root: &Path, zone: &str, ledger: &str) -> Option<Mirror> {
     // Exactly one, or none: two mirrors answering to the same names — two authorities, or a
     // configured URL and a membership, claiming one ledger — are never told apart by the order a
-    // directory lists them in (WP-7.2a). Neither is served until one of them goes.
-    let mut answering = mirrors(root)
-        .into_iter()
-        .filter(|mirror| mirror.answers_to(zone, ledger));
+    // directory lists them in (WP-7.2a). Neither is served until one of them goes, or an alias
+    // says which authority the names mean (WP-7.2d).
+    let mut answering = answering(root, zone, ledger).into_iter();
     let first = answering.next()?;
     answering.next().is_none().then_some(first)
 }
@@ -303,6 +370,22 @@ mod tests {
             mirrors(&root)[0].display_name(),
             "acme/main-ledger",
             "labels read as a person wrote them"
+        );
+    }
+
+    /// WP-7.2d: an alias as the file declares it names its authority as its mirrors live under.
+    #[test]
+    fn an_alias_from_the_file_names_the_authority_as_its_directory() {
+        let alias = Alias::from_config(&permguard_core::mirrors::MirrorAlias {
+            zone: "acme".to_owned(),
+            ledger: "main".to_owned(),
+            authority: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+        });
+        assert_eq!(alias.authority, "0193a1b2c3d47e5f8a9b0c1d2e3f4a5b");
+        assert!(crate::mirrors::layout::is_authority(&alias.authority));
+        assert_eq!(
+            (alias.zone.as_str(), alias.ledger.as_str()),
+            ("acme", "main")
         );
     }
 }

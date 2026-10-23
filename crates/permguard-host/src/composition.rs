@@ -834,6 +834,14 @@ pub trait MirrorSession: Send {
     /// when the manifest in force pins none, its statement is not held, or the binding does not
     /// verify.
     fn ring(&self) -> Option<PinnedRing>;
+
+    /// Reports `resources`, one per ledger the task mirrors, as this session's task progress
+    /// (WP-7.2d, `policy.mirror` progress): one bounded snapshot, numbered in this incarnation,
+    /// which the coordinator keeps as member-reported state.
+    fn report(
+        &mut self,
+        resources: Vec<crate::membership::record::ProgressResource>,
+    ) -> BoxFuture<'_, Result<(), MirrorRefusal>>;
 }
 
 /// A `policy.mirror` watch (WP-7.2c, `WatchRefs`): the hints the coordinator sends as refs move.

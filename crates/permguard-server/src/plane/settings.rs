@@ -502,6 +502,18 @@ pub fn mirror_task_selections(
         .unwrap_or_default())
 }
 
+/// The aliases this plane assigns (WP-7.2d, F-17), as `dataPlane.mirrors.aliases` declares them.
+pub fn mirror_aliases(value: &Value) -> Result<Vec<permguard_core::mirrors::MirrorAlias>> {
+    let section: PlaneSectionConfig =
+        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+
+    Ok(section
+        .mirrors
+        .as_ref()
+        .map(MirrorsSection::aliases)
+        .unwrap_or_default())
+}
+
 /// Where this plane ships decision records, and what it may record of a caller.
 ///
 /// Structured, so it comes from the file rather than the layered pipeline: a
@@ -1164,6 +1176,52 @@ mod tests {
                 .is_err()
         );
         assert!(config.with_mirror_task_selections(selections).is_ok());
+    }
+
+    /// WP-7.2d (F-17): the aliases come from the file, and one pair assigned twice, or an
+    /// authority that is not a dashed UUID, refuses the configuration.
+    #[test]
+    fn mirror_aliases_come_from_the_file_and_a_pair_is_assigned_once() {
+        let aliases = mirror_aliases(&value(
+            "mirrors:\n  aliases:\n    - zone: acme\n      ledger: main\n      authority: 0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b\n",
+        ))
+        .expect("the aliases parse");
+        assert_eq!(
+            aliases,
+            vec![permguard_core::mirrors::MirrorAlias {
+                zone: "acme".to_owned(),
+                ledger: "main".to_owned(),
+                authority: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+            }]
+        );
+        assert!(
+            mirror_aliases(&value("public:\n  http: 127.0.0.1:7443\n"))
+                .expect("none")
+                .is_empty()
+        );
+        let config = permguard_core::Config::from_layers(
+            permguard_core::config::BuildSettings::new(
+                "0.0.0-test",
+                "2022",
+                "Nitro Agility S.r.l.",
+            ),
+            Vec::<String>::new(),
+            permguard_core::config::Layers::new(),
+        )
+        .expect("a configuration");
+        let twice = vec![aliases[0].clone(), aliases[0].clone()];
+        let refused = config
+            .clone()
+            .with_mirror_aliases(twice)
+            .expect_err("one pair, two aliases");
+        assert!(refused.to_string().contains("assigned twice"), "{refused}");
+        let mut undashed = aliases[0].clone();
+        undashed.authority = "0193a1b2c3d47e5f8a9b0c1d2e3f4a5b".to_owned();
+        assert!(config.clone().with_mirror_aliases(vec![undashed]).is_err());
+        let held = config
+            .with_mirror_aliases(aliases.clone())
+            .expect("one alias");
+        assert_eq!(held.mirror_aliases(), aliases.as_slice());
     }
 
     #[test]

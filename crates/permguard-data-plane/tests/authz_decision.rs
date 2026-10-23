@@ -4311,6 +4311,193 @@ async fn a_ledger_two_mirrors_answer_to_is_refused_as_contested() {
     );
 }
 
+/// F-14 (WP-7.2d): every request checks the staleness bound; an answer from a mirror past it is
+/// still given, and counted, a fresh one is not.
+#[tokio::test]
+async fn every_request_from_a_stale_mirror_is_answered_and_counted() {
+    let root = scratch("stale-served").join("mirrors");
+    let mirror = provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    permguard_data_plane::authz::store::touch_synced(&mirror.path);
+    let registry = Arc::new(permguard_std::metrics::Registry::new());
+    let decider = Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::new(Arc::clone(&registry) as Arc<dyn Recorder>),
+        None,
+        256,
+    )
+    .with_staleness(Some(std::time::Duration::from_secs(3600)));
+    let counted = || -> f64 {
+        registry
+            .snapshot()
+            .into_iter()
+            .filter(|sample| sample.metric.name() == "permguard_authz_stale_served_total")
+            .map(|sample| match sample.reading {
+                permguard_core::metrics::Reading::Value(value) => value,
+                permguard_core::metrics::Reading::Distribution { sum, .. } => sum,
+            })
+            .sum()
+    };
+    let alice = ask("acme", "main-ledger", "alice", "read");
+
+    assert!(
+        decider
+            .decide(&alice, None)
+            .await
+            .expect("decided")
+            .decision
+    );
+    assert_eq!(counted(), 0.0, "fresh");
+    std::fs::File::options()
+        .write(true)
+        .open(
+            mirror
+                .path
+                .join(permguard_data_plane::authz::store::SYNCED_FILE),
+        )
+        .expect("the marker")
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3601))
+        .expect("aged");
+    for times in [1.0, 2.0] {
+        assert!(
+            decider
+                .decide(&alice, None)
+                .await
+                .expect("still decided")
+                .decision,
+            "stale is answered"
+        );
+        assert_eq!(counted(), times, "every request is counted");
+    }
+}
+
+/// F-17 (WP-7.2d): two coordinators serve a ledger under one name; both are mirrored, each under
+/// its authority, and the name is refused until an alias says which authority it means — then
+/// only that authority's policy decides, never the other's and never by order; an alias to an
+/// authority that holds nothing under the names serves nothing.
+#[tokio::test]
+async fn two_coordinators_with_one_name_are_refused_until_an_alias_names_one() {
+    use permguard_data_plane::authz::store::{self, Alias};
+
+    let staging = scratch("one-name-staging");
+    let root = scratch("one-name").join("mirrors");
+    let (permits, denies) = (
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    );
+    for (authority, policies) in [(permits, vec![&CEDAR_READ]), (denies, vec![&CEDAR_NOT_BOB])] {
+        let held = provision(
+            &staging.join(authority),
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", policies, None)],
+        );
+        let target = root
+            .join(authority)
+            .join(uuid_of("acme"))
+            .join(uuid_of("main-ledger"));
+        std::fs::create_dir_all(target.parent().expect("a zone")).expect("the zone");
+        std::fs::rename(&held.path, &target).expect("moved under its authority");
+        store::record(
+            &target,
+            &Identity {
+                authority: Some(authority.to_owned()),
+                task: Some(format!("membership/{authority}")),
+                server: format!("host:{authority}"),
+                ..held.identity
+            },
+        )
+        .expect("the identity");
+    }
+    let alice = ask("acme", "main-ledger", "alice", "read");
+
+    store::assign_aliases(&root, Vec::new());
+    let refused = decider(&root)
+        .decide(&alice, None)
+        .await
+        .expect_err("two authorities answer to one name");
+    assert_eq!(refused.code(), permguard_core::codes::common::UNAVAILABLE);
+    assert!(store::find(&root, "acme", "main-ledger").is_none());
+    assert_eq!(store::contested(&root, "acme", "main-ledger").len(), 2);
+    assert_eq!(
+        store::contests(&root).len(),
+        1,
+        "the round sees the contest"
+    );
+
+    let alias = |authority: &str| Alias {
+        zone: "acme".to_owned(),
+        ledger: "main-ledger".to_owned(),
+        authority: authority.to_owned(),
+    };
+    store::assign_aliases(&root, vec![alias(permits)]);
+    assert!(
+        decider(&root)
+            .decide(&alice, None)
+            .await
+            .expect("decided")
+            .decision,
+        "the permitting authority's policy decides"
+    );
+    assert!(
+        store::contests(&root).is_empty(),
+        "the alias settles the pair"
+    );
+    assert_eq!(
+        store::find(&root, "acme", "main-ledger")
+            .expect("one")
+            .identity
+            .authority
+            .as_deref(),
+        Some(permits)
+    );
+
+    store::assign_aliases(&root, vec![alias(denies)]);
+    assert!(
+        !decider(&root)
+            .decide(&alice, None)
+            .await
+            .expect("decided")
+            .decision,
+        "the other authority's policy decides, never the first by order"
+    );
+
+    store::assign_aliases(&root, vec![alias("cccccccccccccccccccccccccccccccc")]);
+    let refused = decider(&root)
+        .decide(&alice, None)
+        .await
+        .expect_err("the named authority holds nothing under the names");
+    assert_eq!(
+        refused.code(),
+        permguard_core::codes::pdp_native::LEDGER_NOT_SERVED
+    );
+    // The pair the alias does not assign is still contested.
+    store::assign_aliases(
+        &root,
+        vec![Alias {
+            ledger: "other-ledger".to_owned(),
+            ..alias(permits)
+        }],
+    );
+    assert_eq!(store::contested(&root, "acme", "main-ledger").len(), 2);
+    // Nor does one of another zone, for the same ledger name.
+    store::assign_aliases(
+        &root,
+        vec![Alias {
+            zone: "other-zone".to_owned(),
+            ..alias(permits)
+        }],
+    );
+    assert_eq!(store::contested(&root, "acme", "main-ledger").len(), 2);
+}
+
 /// WP-6.6a: every decision says what became of its record — `disabled` with no log, `durable`
 /// with the record's id and its Host position with one, on each boxcarred evaluation and never on
 /// the batch's own context — and a request for a signed response is refused before anything is

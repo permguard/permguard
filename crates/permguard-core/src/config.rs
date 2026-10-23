@@ -395,8 +395,9 @@ pub const SETTING_MIRRORS_PARALLELISM: &str = "PERMGUARD_MIRRORS_PARALLELISM";
 
 /// The fraction of the interval spread randomly across ticks, `0.0`..=`0.5`.
 ///
-/// Each round waits `interval ± (interval × jitter) / 2`, drawn again every round — so `0.1` means
-/// ±5% of the interval, and a fleet that happens to align on its first tick does not stay aligned.
+/// Each round waits `interval × (1 + jitter × u)`, `u` drawn in `[-1, 1]` again every round (F-20)
+/// — so `0.1` means ±10% of the interval, and a fleet that happens to align on its first tick does
+/// not stay aligned.
 ///
 /// Without it, every replica of a plane wakes at the same instant and asks one control plane for
 /// everything at once — the thundering herd that turns a rollout into an incident.
@@ -417,6 +418,17 @@ pub const SETTING_MIRRORS_STALE_AFTER: &str = "PERMGUARD_MIRRORS_STALE_AFTER";
 /// The right number is a risk decision nobody can make centrally — a revocation that matters makes
 /// "indefinitely" wrong, and a flaky link makes "minutes" wrong. Unset (or `0s`) means no bound.
 pub const SETTING_MIRRORS_EXPIRE_AFTER: &str = "PERMGUARD_MIRRORS_EXPIRE_AFTER";
+
+/// How long a membership mirror its task's complete listing no longer names is kept before it is
+/// reaped (WP-7.2d): the absence must be seen again, by a later complete listing at least this
+/// long after the first. `0s` still needs the two listings.
+pub const SETTING_MIRRORS_REAP_GRACE: &str = "PERMGUARD_MIRRORS_REAP_GRACE";
+
+/// The revocation propagation objective this deployment declares (WP-7.2d): how soon a revocation
+/// reaches this plane. With a watch it is the time a round takes to verify and checkpoint; without
+/// one — a watch can always be lost — the polling bound `interval × (1 + jitter)`, which must
+/// therefore not exceed it. Unset (or `0s`) declares none.
+pub const SETTING_MIRRORS_REVOCATION_OBJECTIVE: &str = "PERMGUARD_MIRRORS_REVOCATION_OBJECTIVE";
 
 /// Runtime setting keys for the store's own maintenance: reclaiming objects nothing references.
 ///
@@ -954,6 +966,7 @@ const DEFAULT_MIRRORS_INTERVAL: Duration = Duration::from_secs(30);
 const DEFAULT_MIRRORS_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULT_MIRRORS_PARALLELISM: usize = 4;
 const DEFAULT_MIRRORS_JITTER: f64 = 0.1;
+const DEFAULT_MIRRORS_REAP_GRACE: Duration = Duration::from_secs(3600);
 
 /// Maintenance defaults: sweep four times a day, and never touch anything younger than a day.
 /// The interval is about how promptly space returns; the grace period is about correctness, and it
@@ -1424,8 +1437,11 @@ pub struct Config {
     mirrors_jitter: f64,
     mirrors_stale_after: Option<Duration>,
     mirrors_expire_after: Option<Duration>,
+    mirrors_reap_grace: Duration,
+    mirrors_revocation_objective: Option<Duration>,
     mirror_sources: Vec<crate::mirrors::MirrorSource>,
     mirror_task_selections: Vec<crate::mirrors::MirrorTaskSelection>,
+    mirror_aliases: Vec<crate::mirrors::MirrorAlias>,
     otel_enabled: bool,
     otel_endpoint: String,
     otel_sample_rate: f64,
@@ -1618,8 +1634,11 @@ impl Default for Config {
             mirrors_jitter: DEFAULT_MIRRORS_JITTER,
             mirrors_stale_after: None,
             mirrors_expire_after: None,
+            mirrors_reap_grace: DEFAULT_MIRRORS_REAP_GRACE,
+            mirrors_revocation_objective: None,
             mirror_sources: Vec::new(),
             mirror_task_selections: Vec::new(),
+            mirror_aliases: Vec::new(),
             otel_enabled: false,
             otel_endpoint: DEFAULT_OTEL_ENDPOINT.to_owned(),
             otel_sample_rate: DEFAULT_OTEL_SAMPLE_RATE,
@@ -1810,6 +1829,29 @@ impl Config {
                     "the task `{}` of membership `{}` is narrowed twice",
                     selection.task,
                     selection.membership
+                );
+            }
+        }
+
+        Ok(self)
+    }
+
+    /// Attaches the aliases the file assigns (WP-7.2d, F-17): each pair of names resolves to one
+    /// authority, a dashed UUID; a pair assigned twice is refused, since no order may choose.
+    pub fn with_mirror_aliases(
+        mut self,
+        aliases: impl IntoIterator<Item = crate::mirrors::MirrorAlias>,
+    ) -> Result<Self> {
+        self.mirror_aliases = aliases.into_iter().collect();
+        let mut seen = std::collections::BTreeSet::new();
+        for alias in &self.mirror_aliases {
+            crate::mirrors::check_alias(alias)?;
+            if !seen.insert((alias.zone.clone(), alias.ledger.clone())) {
+                anyhow::bail!(
+                    "the alias `{}/{}` is assigned twice: an alias names one ledger, and no order \
+                     chooses between two",
+                    alias.zone,
+                    alias.ledger
                 );
             }
         }
@@ -3934,6 +3976,22 @@ produce: use `EdDSA` or `ES256`"
         self.mirrors_expire_after
     }
 
+    /// How long a membership mirror no longer listed is kept before it is reaped (WP-7.2d).
+    pub fn mirrors_reap_grace(&self) -> Duration {
+        self.mirrors_reap_grace
+    }
+
+    /// The revocation propagation objective this deployment declares (WP-7.2d). `None`: none.
+    pub fn mirrors_revocation_objective(&self) -> Option<Duration> {
+        self.mirrors_revocation_objective
+    }
+
+    /// The aliases the configuration file assigns (WP-7.2d, F-17): each names the one authority a
+    /// pair of names resolves to.
+    pub fn mirror_aliases(&self) -> &[crate::mirrors::MirrorAlias] {
+        &self.mirror_aliases
+    }
+
     /// The `policy.mirror` tasks this plane narrows, as the configuration file declared them
     /// (WP-7.2a): empty, every task of this Host's memberships is followed whole.
     pub fn mirror_task_selections(&self) -> &[crate::mirrors::MirrorTaskSelection] {
@@ -4438,6 +4496,8 @@ produce: use `EdDSA` or `ES256`"
             SETTING_MIRRORS_JITTER => n(self.mirrors_jitter),
             SETTING_MIRRORS_STALE_AFTER => self.mirrors_stale_after.and_then(d),
             SETTING_MIRRORS_EXPIRE_AFTER => self.mirrors_expire_after.and_then(d),
+            SETTING_MIRRORS_REAP_GRACE => d(self.mirrors_reap_grace),
+            SETTING_MIRRORS_REVOCATION_OBJECTIVE => self.mirrors_revocation_objective.and_then(d),
             SETTING_GC_ENABLED => b(self.gc_enabled),
             SETTING_GC_INTERVAL => d(self.gc_interval),
             SETTING_GC_GRACE => d(self.gc_grace),
@@ -5602,6 +5662,32 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
+        if let Some(value) = settings.get(SETTING_MIRRORS_REAP_GRACE) {
+            self.mirrors_reap_grace = parse_duration_allow_zero(value)
+                .with_context(|| format!("reading {SETTING_MIRRORS_REAP_GRACE}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_MIRRORS_REVOCATION_OBJECTIVE) {
+            let objective = parse_duration_allow_zero(value)
+                .with_context(|| format!("reading {SETTING_MIRRORS_REVOCATION_OBJECTIVE}"))?;
+            self.mirrors_revocation_objective = (!objective.is_zero()).then_some(objective);
+        }
+
+        // A watch can always be lost, and polling is then what bounds revocation: a declared
+        // objective the polling bound cannot meet is a promise this plane would not keep.
+        if let Some(objective) = self.mirrors_revocation_objective {
+            let polling = self.mirrors_interval.mul_f64(1.0 + self.mirrors_jitter);
+            if polling > objective {
+                anyhow::bail!(
+                    "reading {SETTING_MIRRORS_REVOCATION_OBJECTIVE}: the objective is {}s, and \
+                     polling — what a lost watch falls back to — may take {}s (`interval × (1 + \
+                     jitter)`): shorten the interval or declare the objective it can meet",
+                    objective.as_secs_f64(),
+                    polling.as_secs_f64()
+                );
+            }
+        }
+
         if let Some(value) = settings.get(SETTING_OTEL_ENABLED) {
             self.otel_enabled =
                 parse_bool(value).with_context(|| format!("reading {SETTING_OTEL_ENABLED}"))?;
@@ -6206,6 +6292,8 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_MIRRORS_INTERVAL,
     SETTING_MIRRORS_JITTER,
     SETTING_MIRRORS_PARALLELISM,
+    SETTING_MIRRORS_REAP_GRACE,
+    SETTING_MIRRORS_REVOCATION_OBJECTIVE,
     SETTING_MIRRORS_STALE_AFTER,
     SETTING_MIRRORS_TIMEOUT,
     SETTING_NOTP_COMPRESSION,

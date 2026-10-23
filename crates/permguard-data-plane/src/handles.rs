@@ -33,7 +33,13 @@ pub struct DataPlaneAudit;
 
 impl AuditSchema for DataPlaneAudit {
     const NAME: &'static str = "data-plane.v1";
-    const ACTIONS: &'static [&'static str] = &["authz.decision", "ledger.synchronized"];
+    const ACTIONS: &'static [&'static str] = &[
+        "authz.decision",
+        "ledger.synchronized",
+        "mirror.tombstoned",
+        "mirror.restored",
+        "mirror.reaped",
+    ];
 }
 
 /// This plane's audit handle.
@@ -236,6 +242,10 @@ mod tests {
                 .find(|schema| schema.action == *action)
                 .unwrap_or_else(|| panic!("`{action}` is not registered with the Host"));
             assert_eq!(schema.root, DATA, "{action}");
+        }
+        // What a round records of a reap candidacy (WP-7.2d) is the schema's.
+        for action in ["mirror.tombstoned", "mirror.restored", "mirror.reaped"] {
+            assert!(DataPlaneAudit::ACTIONS.contains(&action), "{action}");
         }
     }
 }

@@ -195,6 +195,7 @@ fn context(
         root: root.to_path_buf(),
         deadline: Duration::from_secs(30),
         stale_after: None,
+        reap_grace: std::time::Duration::ZERO,
         parallelism: 2,
         permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         metrics: Metrics::none(),
@@ -346,6 +347,7 @@ async fn a_ledger_two_servers_both_claim_is_left_alone_rather_than_taken_by_the_
         root: root.clone(),
         deadline: Duration::from_secs(30),
         stale_after: None,
+        reap_grace: std::time::Duration::ZERO,
         parallelism: 2,
         permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         metrics: Metrics::none(),
@@ -398,6 +400,7 @@ async fn one_unreachable_server_does_not_cost_another_server_its_mirrors() {
             root: root.clone(),
             deadline: Duration::from_secs(30),
             stale_after: None,
+            reap_grace: std::time::Duration::ZERO,
             parallelism: 2,
             permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
             metrics: Metrics::none(),
@@ -424,6 +427,7 @@ async fn one_unreachable_server_does_not_cost_another_server_its_mirrors() {
         root: root.clone(),
         deadline: Duration::from_secs(30),
         stale_after: None,
+        reap_grace: std::time::Duration::ZERO,
         parallelism: 2,
         permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         metrics: Metrics::none(),
@@ -483,12 +487,17 @@ mod tasks {
     use permguard_control_client::{AnyRemote, TlsOptions};
     use permguard_core::BoxFuture;
     use permguard_host::composition::{MirrorRefusal, MirrorSession, MirrorTask, MirrorTasks};
+    pub use permguard_host::membership::record::ProgressResource;
+
+    /// Every progress report a session carried, by task id (WP-7.2d).
+    pub type Reported = Arc<Mutex<Vec<(String, Vec<ProgressResource>)>>>;
     use permguard_notp::{
         FetchObjectsRequest, GetRefRequest, GetRefResponse, ListLedgersAnswer, ListedLedger,
         MirrorOperation, MirrorRequest, NegotiatePullRequest,
     };
 
     /// The tasks a Host holds, the URL that answers each coordinator, and what was asked.
+    #[derive(Clone)]
     pub struct Held {
         pub tasks: Vec<MirrorTask>,
         pub url: String,
@@ -504,6 +513,10 @@ mod tasks {
         pub partial: Vec<String>,
         /// The tasks whose sessions name no pinned ring.
         pub unpinned: Vec<String>,
+        /// Every progress report a session carried, by task id (WP-7.2d).
+        pub reported: Reported,
+        /// How long every read (not a listing) stalls before it is answered.
+        pub slow: Option<std::time::Duration>,
     }
 
     impl MirrorTasks for Held {
@@ -552,6 +565,8 @@ mod tasks {
                             .map(|(_, names)| names.clone()),
                         incomplete: self.incomplete || self.partial.contains(&task.task_id),
                         unpinned: self.unpinned.contains(&task.task_id),
+                        reported: Arc::clone(&self.reported),
+                        slow: self.slow,
                     }))
                 };
             Box::pin(std::future::ready(opened))
@@ -565,9 +580,22 @@ mod tasks {
         only: Option<Vec<String>>,
         incomplete: bool,
         unpinned: bool,
+        reported: Reported,
+        slow: Option<std::time::Duration>,
     }
 
     impl MirrorSession for Session {
+        fn report(
+            &mut self,
+            resources: Vec<ProgressResource>,
+        ) -> BoxFuture<'_, Result<(), MirrorRefusal>> {
+            self.reported
+                .lock()
+                .expect("the log")
+                .push((self.task.clone(), resources));
+            Box::pin(std::future::ready(Ok(())))
+        }
+
         fn ring(&self) -> Option<permguard_host::composition::PinnedRing> {
             // The ledgers of these tests hold no history yet: nothing is verified under it.
             (!self.unpinned).then(|| permguard_host::composition::PinnedRing {
@@ -584,7 +612,14 @@ mod tasks {
             let asked = Arc::clone(&self.asked);
             let only = self.only.clone();
             let incomplete = self.incomplete;
+            let stall = self.slow.filter(|_| {
+                MirrorRequest::decode(&body)
+                    .is_ok_and(|request| request.operation != MirrorOperation::ListLedgers)
+            });
             Box::pin(async move {
+                if let Some(stall) = stall {
+                    tokio::time::sleep(stall).await;
+                }
                 tokio::task::spawn_blocking(move || {
                     answer(&url, &task, &asked, &body, only.as_deref(), incomplete)
                 })
@@ -726,6 +761,25 @@ mod tasks {
 }
 
 fn over_tasks(root: &std::path::Path, held: tasks::Held) -> Arc<round::Context> {
+    over_tasks_with_grace(root, held, Duration::ZERO)
+}
+
+/// [`over_tasks`], its reap grace `grace`.
+fn over_tasks_with_grace(
+    root: &std::path::Path,
+    held: tasks::Held,
+    grace: Duration,
+) -> Arc<round::Context> {
+    over_tasks_with(root, held, grace, None)
+}
+
+/// [`over_tasks`], its reap grace `grace` and its staleness bound `stale_after`.
+fn over_tasks_with(
+    root: &std::path::Path,
+    held: tasks::Held,
+    grace: Duration,
+    stale_after: Option<Duration>,
+) -> Arc<round::Context> {
     Arc::new(round::Context {
         tasks: Some(Arc::new(held)),
         selections: Default::default(),
@@ -733,7 +787,8 @@ fn over_tasks(root: &std::path::Path, held: tasks::Held) -> Arc<round::Context> 
         sources: Vec::new(),
         root: root.to_path_buf(),
         deadline: Duration::from_secs(30),
-        stale_after: None,
+        stale_after,
+        reap_grace: grace,
         parallelism: 2,
         permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         metrics: Metrics::none(),
@@ -769,6 +824,8 @@ async fn a_membership_task_is_mirrored_under_its_authority_over_its_session() {
             incomplete: false,
             partial: Vec::new(),
             unpinned: Vec::new(),
+            reported: Default::default(),
+            slow: None,
         },
     ))
     .await;
@@ -838,6 +895,8 @@ async fn a_coordinator_that_does_not_answer_costs_none_of_its_mirrors() {
         incomplete: false,
         partial: Vec::new(),
         unpinned: Vec::new(),
+        reported: Default::default(),
+        slow: None,
     };
 
     round::run(over_tasks(&root, held(Vec::new()))).await;
@@ -882,6 +941,8 @@ async fn a_ledger_both_a_url_and_a_task_offer_is_served_from_neither() {
             incomplete: false,
             partial: Vec::new(),
             unpinned: Vec::new(),
+            reported: Default::default(),
+            slow: None,
         },
     ))
     .await;
@@ -931,6 +992,8 @@ async fn the_file_narrows_the_tasks_followed_by_membership_task_and_pattern() {
             incomplete: false,
             partial: Vec::new(),
             unpinned: Vec::new(),
+            reported: Default::default(),
+            slow: None,
         })),
         selections,
         decider: None,
@@ -938,6 +1001,7 @@ async fn the_file_narrows_the_tasks_followed_by_membership_task_and_pattern() {
         root: root.clone(),
         deadline: Duration::from_secs(30),
         stale_after: None,
+        reap_grace: std::time::Duration::ZERO,
         parallelism: 2,
         permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         metrics: Metrics::none(),
@@ -995,12 +1059,15 @@ fn held_by(
         incomplete,
         partial: Vec::new(),
         unpinned: Vec::new(),
+        reported: Default::default(),
+        slow: None,
     }
 }
 
-/// WP-7.2a: a ledger gone from its task's complete listing is removed from under its authority,
-/// and the directories it leaves empty go with it; one gone from an incomplete listing stays, the
-/// listing proving nothing absent.
+/// WP-7.2a, WP-7.2d: a ledger gone from its task's complete listing is tombstoned, and removed
+/// from under its authority by the next complete listing without it, the directories it leaves
+/// empty going with it; one gone from an incomplete listing stays, the listing proving nothing
+/// absent.
 #[tokio::test(flavor = "multi_thread")]
 async fn only_a_complete_listing_of_its_own_task_removes_a_task_mirror() {
     let volume = scratch("task-reap");
@@ -1033,13 +1100,39 @@ async fn only_a_complete_listing_of_its_own_task_removes_a_task_mirror() {
     );
     assert_eq!(layout::on_disk(&root).expect("lists").len(), 2);
 
-    // Whole, and without `staging`: it goes.
+    // Whole, and without `staging`: a candidate, still on the volume.
+    let staging = layout::on_disk(&root)
+        .expect("lists")
+        .into_iter()
+        .find(|mirror| {
+            permguard_data_plane::authz::store::identity_of(&mirror.path(&root))
+                .is_some_and(|identity| identity.ledger_name == "staging")
+        })
+        .expect("staging");
+    let outcome = round::run(over_tasks(
+        &root,
+        held_by(&url, task(), vec![("mirror", vec!["main-ledger"])], false),
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 0, "one complete listing removes nothing");
+    assert_eq!(
+        outcome.candidacy,
+        vec![("mirror.tombstoned", staging.label())]
+    );
+    assert!(
+        staging
+            .path(&root)
+            .join(permguard_data_plane::mirrors::tombstone::TOMBSTONE)
+            .exists()
+    );
+    // The second, the grace past: it goes.
     let outcome = round::run(over_tasks(
         &root,
         held_by(&url, task(), vec![("mirror", vec!["main-ledger"])], false),
     ))
     .await;
     assert_eq!(outcome.reaped, 1);
+    assert_eq!(outcome.candidacy, vec![("mirror.reaped", staging.label())]);
     let reported = outcome
         .sources
         .iter()
@@ -1048,13 +1141,15 @@ async fn only_a_complete_listing_of_its_own_task_removes_a_task_mirror() {
     assert!(reported.answered && reported.succeeded());
     assert_eq!(layout::on_disk(&root).expect("lists").len(), 1);
 
-    // Whole and empty: the last one goes, and the authority's directory with its zone.
-    let outcome = round::run(over_tasks(
-        &root,
-        held_by(&url, task(), vec![("mirror", Vec::new())], false),
-    ))
-    .await;
-    assert_eq!(outcome.reaped, 1);
+    // Whole and empty, twice: the last one goes, and the authority's directory with its zone.
+    for reaped in [0, 1] {
+        let outcome = round::run(over_tasks(
+            &root,
+            held_by(&url, task(), vec![("mirror", Vec::new())], false),
+        ))
+        .await;
+        assert_eq!(outcome.reaped, reaped);
+    }
     assert!(layout::on_disk(&root).expect("lists").is_empty());
     assert!(
         !root.join(&authority).exists(),
@@ -1142,10 +1237,215 @@ async fn a_whole_task_reaps_its_own_while_a_sibling_task_lists_in_part() {
         false,
     );
     held.partial = vec!["second".to_owned()];
+    let again = held.clone();
     let outcome = round::run(over_tasks(&root, held)).await;
+    assert_eq!(outcome.reaped, 0, "a candidate first");
+    let outcome = round::run(over_tasks(&root, again)).await;
     assert_eq!(outcome.reaped, 1, "`first` removes what it no longer lists");
     let left = layout::on_disk(&root).expect("lists");
     assert_eq!(left.len(), 1, "`second`'s mirror stays: {left:?}");
+}
+
+/// WP-7.2d: a candidate is kept while its grace runs, however many complete listings leave it out,
+/// keeps serving, and a listing that names it again ends its candidacy; the grace is counted from
+/// the first absence, never restarted by a later one.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reap_candidate_waits_out_its_grace_and_a_listing_restores_it() {
+    let volume = scratch("task-grace");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger", "staging"]);
+    let root = volume.join("mirrors");
+    let task = || vec![tasks::task([0x11; 16], 1, "mirror", true)];
+    let hour = Duration::from_secs(3600);
+
+    round::run(over_tasks_with_grace(
+        &root,
+        held_by(&url, task(), Vec::new(), false),
+        hour,
+    ))
+    .await;
+    let staging = layout::on_disk(&root)
+        .expect("lists")
+        .into_iter()
+        .find(|mirror| {
+            permguard_data_plane::authz::store::identity_of(&mirror.path(&root))
+                .is_some_and(|identity| identity.ledger_name == "staging")
+        })
+        .expect("staging");
+    let without = || held_by(&url, task(), vec![("mirror", vec!["main-ledger"])], false);
+
+    for candidacy in [vec![("mirror.tombstoned", staging.label())], Vec::new()] {
+        let outcome = round::run(over_tasks_with_grace(&root, without(), hour)).await;
+        assert_eq!(outcome.reaped, 0, "within its grace");
+        assert_eq!(outcome.candidacy, candidacy);
+    }
+    let tombstone = permguard_data_plane::mirrors::tombstone::read(&staging.path(&root))
+        .expect("reads")
+        .expect("a candidate");
+    assert_eq!(tombstone.revision, 1);
+    assert!(tombstone.task.ends_with("/mirror"), "{tombstone:?}");
+    assert!(
+        permguard_data_plane::authz::store::find(&root, "acme", "staging").is_some(),
+        "a candidate is still served"
+    );
+
+    // Named again: no longer a candidate.
+    let outcome = round::run(over_tasks_with_grace(
+        &root,
+        held_by(&url, task(), Vec::new(), false),
+        hour,
+    ))
+    .await;
+    assert_eq!(
+        outcome.candidacy,
+        vec![("mirror.restored", staging.label())]
+    );
+    assert_eq!(
+        permguard_data_plane::mirrors::tombstone::read(&staging.path(&root)).expect("reads"),
+        None
+    );
+
+    // A first absence an hour and more ago: the next complete listing without it reaps it.
+    permguard_data_plane::mirrors::tombstone::write(
+        &staging.path(&root),
+        &permguard_data_plane::mirrors::tombstone::Tombstone {
+            first_absent_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("after the epoch")
+                .as_secs()
+                - 3601,
+            ..tombstone
+        },
+    )
+    .expect("written");
+    let outcome = round::run(over_tasks_with_grace(&root, without(), hour)).await;
+    assert_eq!(outcome.reaped, 1);
+    assert_eq!(outcome.candidacy, vec![("mirror.reaped", staging.label())]);
+}
+
+/// Regression over the task session (round, per-ledger timeout and concurrency): a ledger whose
+/// reads stall past the deadline is abandoned for the round, which ends without waiting for it,
+/// and its permit stays with the work that is still running until that work ends — the permit is
+/// never released by the wait.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stalled_ledger_is_abandoned_at_its_deadline_and_its_permit_stays_with_the_work() {
+    let volume = scratch("stalled");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger"]);
+    let root = volume.join("mirrors");
+    let mut held = held_by(
+        &url,
+        vec![tasks::task([0x11; 16], 1, "mirror", true)],
+        Vec::new(),
+        false,
+    );
+    held.slow = Some(Duration::from_millis(1500));
+    let mut context = Arc::try_unwrap(over_tasks(&root, held)).unwrap_or_else(|_| panic!("one"));
+    context.deadline = Duration::from_millis(200);
+    context.permits = Arc::new(tokio::sync::Semaphore::new(1));
+    let permits = Arc::clone(&context.permits);
+
+    let started = std::time::Instant::now();
+    let outcome = round::run(Arc::new(context)).await;
+    assert!(
+        started.elapsed() < Duration::from_millis(1400),
+        "the round ended at the deadline, not with the stall: {:?}",
+        started.elapsed()
+    );
+    assert_eq!(outcome.failed, 1, "{outcome:?}");
+    assert_eq!(
+        permits.available_permits(),
+        0,
+        "the abandoned work still holds its permit"
+    );
+    tokio::time::timeout(Duration::from_secs(20), async {
+        while permits.available_permits() == 0 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("the work ends, and its permit with it");
+}
+
+/// F-14 (WP-7.2d): cut the coordinator; staleness grows from the last verified synchronization of
+/// every mirror it served, and the alarm fires at the bound for each, named required with its
+/// task — the round that reached nothing still measures what it holds.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cut_coordinator_leaves_its_mirrors_alarmed_stale_at_the_bound() {
+    let volume = scratch("stale-outage");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger"]);
+    let root = volume.join("mirrors");
+    let coordinator = [0x11; 16];
+    let bound = Some(Duration::from_secs(3600));
+    let task = || vec![tasks::task(coordinator, 1, "mirror", true)];
+
+    let outcome = round::run(over_tasks_with(
+        &root,
+        held_by(&url, task(), Vec::new(), false),
+        Duration::ZERO,
+        bound,
+    ))
+    .await;
+    assert!(outcome.stale.is_empty(), "just verified: {outcome:?}");
+    let mirror = layout::on_disk(&root).expect("lists").remove(0);
+
+    // The coordinator is cut, and its last verified synchronization grows past the bound.
+    let mut cut = held_by(&url, task(), Vec::new(), false);
+    cut.silent = vec![coordinator];
+    let within = round::run(over_tasks_with(&root, cut.clone(), Duration::ZERO, bound)).await;
+    assert_eq!(within.unreachable, 1);
+    assert!(within.stale.is_empty(), "within the bound: {within:?}");
+    std::fs::File::options()
+        .write(true)
+        .open(
+            mirror
+                .path(&root)
+                .join(permguard_data_plane::authz::store::SYNCED_FILE),
+        )
+        .expect("the marker")
+        .set_modified(std::time::SystemTime::now() - Duration::from_secs(3601))
+        .expect("aged");
+    use permguard_core::Recorder as _;
+    let registry = Arc::new(permguard_std::metrics::Registry::new());
+    let mut measured = Arc::try_unwrap(over_tasks_with(&root, cut.clone(), Duration::ZERO, bound))
+        .unwrap_or_else(|_| panic!("one owner"));
+    measured.metrics = Metrics::new(Arc::clone(&registry) as Arc<dyn permguard_core::Recorder>);
+    let past = round::run(Arc::new(measured)).await;
+    assert_eq!(past.unreachable, 1);
+    assert_eq!(
+        past.stale,
+        vec![(mirror.label(), true)],
+        "the alarm, required"
+    );
+    let gauge: Vec<f64> = registry
+        .snapshot()
+        .into_iter()
+        .filter(|sample| sample.metric.name() == "permguard_sync_mirrors_stale")
+        .map(|sample| match sample.reading {
+            permguard_core::metrics::Reading::Value(value) => value,
+            permguard_core::metrics::Reading::Distribution { sum, .. } => sum,
+        })
+        .collect();
+    assert_eq!(gauge, vec![1.0], "the gauge the alarm is written against");
+
+    // The same mirror of a task that is not required is alarmed, and named so.
+    let mut optional = cut;
+    optional.tasks = vec![tasks::task(coordinator, 1, "mirror", false)];
+    let past = round::run(over_tasks_with(&root, optional, Duration::ZERO, bound)).await;
+    assert_eq!(past.stale, vec![(mirror.label(), false)]);
+    // No bound, no alarm.
+    let unbounded = round::run(over_tasks_with(
+        &root,
+        held_by(&url, task(), Vec::new(), false),
+        Duration::ZERO,
+        None,
+    ))
+    .await;
+    assert!(unbounded.stale.is_empty());
 }
 
 /// WP-7.2b: a task whose membership pins no `control.attest` set has nothing its statements could

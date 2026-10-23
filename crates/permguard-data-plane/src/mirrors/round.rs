@@ -67,6 +67,12 @@ pub struct Outcome {
     /// The coordinators this round's `policy.mirror` tasks named, by source key, and whether any
     /// of their tasks is required (WP-7.2a): what readiness waits for.
     pub coordinators: Vec<(String, bool)>,
+    /// What became of reap candidates this round, each `(action, mirror)`, the mirror by its label
+    /// (WP-7.2d): `mirror.tombstoned`, `mirror.restored` or `mirror.reaped`, for the audit trail.
+    pub candidacy: Vec<(&'static str, String)>,
+    /// The mirrors past the staleness bound at the end of the round, by label, and whether the
+    /// task or server they come from is required (WP-7.2d, F-14).
+    pub stale: Vec<(String, bool)>,
 }
 
 /// One server's part in a round.
@@ -123,6 +129,8 @@ pub struct Context {
     /// The deployment's staleness bound, when it set one: a mirror whose last
     /// verified synchronization is older than this is alarmed on, per round.
     pub stale_after: Option<Duration>,
+    /// How long a task mirror its task no longer lists is kept before it is reaped (WP-7.2d).
+    pub reap_grace: Duration,
     /// The bound on work that is **physically** outstanding.
     ///
     /// A deadline abandons a mirror logically; the blocking task it started
@@ -145,9 +153,19 @@ pub async fn run(context: Arc<Context>) -> Outcome {
     let mut outcome = Outcome::default();
     let mut served: Vec<Served> = Vec::new();
     let mut answered = Vec::new();
-    // The tasks whose listing was complete this round, as `<membership-id>/<task-id>`: the only
-    // evidence a task mirror is no longer served (WP-7.2a).
-    let mut listed_whole: Vec<String> = Vec::new();
+    // The tasks whose listing was complete this round, as `<membership-id>/<task-id>` with their
+    // revision: the only evidence a task mirror is no longer served (WP-7.2a).
+    let mut listed_whole: Vec<(String, u64)> = Vec::new();
+    // The session of every task listed this round: what its progress is reported on (WP-7.2d).
+    let mut sessions = Vec::new();
+    // What the staleness alarm names as required: the required tasks this Host holds, whether
+    // their coordinator answered or not, and the required configured servers (WP-7.2d).
+    let mut required: std::collections::BTreeSet<String> = context
+        .sources
+        .iter()
+        .filter(|source| source.required())
+        .map(|source| source.url().to_owned())
+        .collect();
 
     for source in &context.sources {
         match discover(source).await {
@@ -183,6 +201,7 @@ pub async fn run(context: Arc<Context>) -> Outcome {
     if let Some(tasks) = &context.tasks {
         let held = tasks.mirror_tasks();
         context.selections.report_unmatched(&held);
+        required.extend(held.iter().filter(|task| task.required).map(task_label));
         // A required task the file leaves out still counts for readiness: the signed manifest
         // says what the plane waits for, not a local file (WP-7.2a).
         let left_out: Vec<(String, bool)> = held
@@ -206,8 +225,14 @@ pub async fn run(context: Arc<Context>) -> Outcome {
         for coordinator in by_coordinator(followed) {
             let key = coordinator.key();
             match listed(tasks.as_ref(), &coordinator, &context.selections).await {
-                Ok((found, complete, whole)) => {
+                Ok(Listed {
+                    found,
+                    complete,
+                    whole,
+                    sessions: opened,
+                }) => {
                     listed_whole.extend(whole);
+                    sessions.extend(opened);
                     debug!(
                         event.name = "sync.discovered",
                         component = COMPONENT,
@@ -282,7 +307,9 @@ pub async fn run(context: Arc<Context>) -> Outcome {
 
     // Reap, but only what a server that *answered this round* no longer wants.
     if !answered.is_empty() || !listed_whole.is_empty() {
-        outcome.reaped = reap(&context, &wanted, &answered, &listed_whole);
+        let (reaped, candidacy) = reap(&context, &wanted, &answered, &listed_whole);
+        outcome.reaped = reaped;
+        outcome.candidacy = candidacy;
     }
     // Two mirrors answering to one name are refused at the decision path: said here too, every
     // round, so the contest is seen before a request is refused over it (WP-7.2a).
@@ -295,9 +322,18 @@ pub async fn run(context: Arc<Context>) -> Outcome {
             ledger = ledger.as_str(),
             mirrors = claimants.join(", ").as_str(),
             "more than one mirror answers to this ledger's names: neither is served until one of \
-             them is no longer followed"
+             them is no longer followed, or an alias names the authority it means"
         );
     }
+    outcome.stale = staleness(&context, &required);
+    // What each task's mirrors came to, on its own session (WP-7.2d).
+    super::progress::report(
+        &context.root,
+        &sessions,
+        context.stale_after,
+        context.deadline,
+    )
+    .await;
     let urls = context.sources.iter().map(|source| source.url().to_owned());
     let coordinators = outcome
         .coordinators
@@ -554,10 +590,11 @@ async fn listed(
     tasks: &dyn permguard_host::composition::MirrorTasks,
     coordinator: &Coordinator,
     selections: &super::source::TaskSelections,
-) -> Result<(Vec<Served>, bool, Vec<String>), String> {
+) -> Result<Listed, String> {
     let mut found = Vec::new();
     let mut complete = true;
     let mut whole = Vec::new();
+    let mut sessions = Vec::new();
     for task in &coordinator.tasks {
         let session = tasks
             .open_mirror(task)
@@ -580,11 +617,12 @@ async fn listed(
             ));
         };
         let session: super::task::Shared = Arc::new(tokio::sync::Mutex::new(session));
+        sessions.push((task.clone(), Arc::clone(&session)));
         let listing = super::task::list(&session, task).await?;
         complete &= listing.complete;
         let label = task_label(task);
         if listing.complete {
-            whole.push(label.clone());
+            whole.push((label.clone(), task.revision));
         }
         for ledger in listing.ledgers {
             if !selections.follows(
@@ -621,7 +659,21 @@ async fn listed(
             });
         }
     }
-    Ok((found, complete, whole))
+    Ok(Listed {
+        found,
+        complete,
+        whole,
+        sessions,
+    })
+}
+
+/// What a coordinator's tasks listed: the ledgers, whether every listing was complete, the tasks
+/// that listed whole with their revisions, and the session of each task, for its progress.
+struct Listed {
+    found: Vec<Served>,
+    complete: bool,
+    whole: Vec<(String, u64)>,
+    sessions: Vec<(permguard_host::composition::MirrorTask, super::task::Shared)>,
 }
 
 /// How a task names the mirrors it listed: `<membership-id>/<task-id>`.
@@ -856,7 +908,6 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
                 error = %error,
                 "the mirror did not advance; what it already holds is still served"
             );
-            report_age(context, &mirror_path, mirror, server);
 
             Attempt::Failed
         }
@@ -873,44 +924,65 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
                 deadline.seconds = context.deadline.as_secs(),
                 "the mirror ran out of its deadline and is abandoned for this round"
             );
-            report_age(context, &mirror_path, mirror, server);
 
             Attempt::Failed
         }
     }
 }
 
-/// Publishes how stale a mirror actually is, and alarms when it crossed the
-/// deployment's bound.
-///
-/// Only a failed round grows the age — a successful one just reset it — so
-/// this is where the gauge earns its name: without it, a plane cut off from
-/// its control plane would report an age of zero forever, which is the exact
-/// number a page must never be written against.
-fn report_age(context: &Context, mirror_path: &std::path::Path, mirror: &Mirror, server: &str) {
-    let Some(age) = crate::authz::store::synced_age(mirror_path) else {
-        return;
+/// Publishes how stale every held mirror is, and alarms on each past the deployment's bound
+/// (WP-7.2d, F-14): the mirrors this round could not reach included, which is the point — a plane
+/// cut off from its coordinator still measures what it holds, from its last verified
+/// synchronization, and the alarm names each ledger, its task or server, and whether that is
+/// required. Answers the stale mirrors by label.
+fn staleness(
+    context: &Context,
+    required: &std::collections::BTreeSet<String>,
+) -> Vec<(String, bool)> {
+    let mut stale = Vec::new();
+    let Ok(present) = layout::on_disk(&context.root) else {
+        return stale;
     };
-    context.metrics.set_aggregated(
-        &measure::MIRROR_AGE,
-        permguard_core::Aggregate::Max,
-        &mirror_key(mirror),
-        age.as_secs_f64(),
-    );
-    if let Some(bound) = context.stale_after
-        && age >= bound
-    {
+    for mirror in present {
+        let path = mirror.path(&context.root);
+        let Some(age) = crate::authz::store::synced_age(&path) else {
+            continue;
+        };
+        context.metrics.set_aggregated(
+            &measure::MIRROR_AGE,
+            permguard_core::Aggregate::Max,
+            &mirror_key(&mirror),
+            age.as_secs_f64(),
+        );
+        let Some(bound) = context.stale_after else {
+            continue;
+        };
+        if age < bound {
+            continue;
+        }
+        let identity = crate::authz::store::identity_of(&path);
+        let source = identity
+            .as_ref()
+            .map(|held| held.task.clone().unwrap_or_else(|| held.server.clone()))
+            .unwrap_or_default();
+        let is_required = required.contains(&source);
         warn!(
             event.name = "sync.mirror_stale",
             component = COMPONENT,
-            server = server,
             ledger = mirror.label().as_str(),
+            source = source.as_str(),
+            required = is_required,
             age.seconds = age.as_secs(),
             bound.seconds = bound.as_secs(),
             "this mirror is older than the deployment's staleness bound: it is still served, and \
              this line is the alarm"
         );
+        stale.push((mirror.label(), is_required));
     }
+    context
+        .metrics
+        .set(&measure::MIRRORS_STALE, &[], stale.len() as f64);
+    stale
 }
 
 /// Reads a mirrored ledger for serving: the load gate, then the compile, into
@@ -974,19 +1046,50 @@ fn is_empty_ledger(error: &str) -> bool {
     error.contains("not_found") || error.contains("NotFound") || error.contains("no ref")
 }
 
-/// Removes mirrors on disk that no answering server wants any more.
+/// Removes mirrors on disk that no answering server wants any more, and what became of each
+/// task mirror's candidacy (WP-7.2d).
 fn reap(
     context: &Context,
     wanted: &[Mirror],
     answered: &[String],
-    listed_whole: &[String],
-) -> usize {
+    listed_whole: &[(String, u64)],
+) -> (usize, Vec<(&'static str, String)>) {
+    let mut candidacy = Vec::new();
     let Ok(present) = layout::on_disk(&context.root) else {
-        return 0;
+        return (0, candidacy);
     };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or_default();
     let mut removed = 0;
     for mirror in present {
+        let path = mirror.path(&context.root);
         if wanted.contains(&mirror) {
+            // Listed again: a candidacy ends, and the mirror was never touched (WP-7.2d). Only a
+            // task mirror is ever a candidate.
+            if mirror.authority.is_none() {
+                continue;
+            }
+            match super::tombstone::clear(&path) {
+                Ok(true) => {
+                    info!(
+                        event.name = "sync.mirror_restored",
+                        component = COMPONENT,
+                        ledger = mirror.label().as_str(),
+                        "its task lists the mirror again: it is no longer a reap candidate"
+                    );
+                    candidacy.push(("mirror.restored", mirror.label()));
+                }
+                Ok(false) => {}
+                Err(error) => warn!(
+                    event.name = "sync.tombstone_unremovable",
+                    component = COMPONENT,
+                    ledger = mirror.label().as_str(),
+                    error = error.as_str(),
+                    "the tombstone of a listed mirror could not be removed"
+                ),
+            }
             continue;
         }
         // Absence is only evidence of deletion when the observation was
@@ -997,29 +1100,31 @@ fn reap(
         // Without this, a partition towards one of several control planes
         // would delete that control plane's policies from this plane, which is
         // exactly the failure the unreachable-server rule exists to prevent.
-        let identity = crate::authz::store::identity_of(&mirror.path(&context.root));
+        let identity = crate::authz::store::identity_of(&path);
         // A task's mirror is attributed to that task, not to its coordinator: another task of
         // the same coordinator listing whole says nothing of it, and a task this round did not
         // list — its membership suspended, its listing cut short — removes nothing (WP-7.2a).
         // Its own task's whole listing is the evidence, and the only one: what another task of
         // the coordinator listed, whole or not, decides nothing about it.
         let task_whole = match identity.as_ref().and_then(|held| held.task.as_ref()) {
-            Some(task) if !listed_whole.iter().any(|whole| whole == task) => {
-                debug!(
-                    event.name = "sync.reap_skipped",
-                    component = COMPONENT,
-                    ledger = mirror.label().as_str(),
-                    task = task.as_str(),
-                    "the task that listed it did not list whole this round: nothing is removed"
-                );
-                continue;
-            }
-            Some(_) => true,
-            None => false,
+            Some(task) => match listed_whole.iter().find(|(whole, _)| whole == task) {
+                Some((_, revision)) => Some((task.clone(), *revision)),
+                None => {
+                    debug!(
+                        event.name = "sync.reap_skipped",
+                        component = COMPONENT,
+                        ledger = mirror.label().as_str(),
+                        task = task.as_str(),
+                        "the task that listed it did not list whole this round: nothing is removed"
+                    );
+                    continue;
+                }
+            },
+            None => None,
         };
         let source = identity.map(|identity| identity.server);
         match &source {
-            _ if task_whole => {}
+            _ if task_whole.is_some() => {}
             Some(server) if answered.iter().any(|answered| answered == server) => {}
             Some(server) => {
                 debug!(
@@ -1048,6 +1153,63 @@ fn reap(
                 continue;
             }
         }
+        // A task mirror goes only on a second complete listing without it, the grace after the
+        // first: the first writes its tombstone and the mirror keeps serving (WP-7.2d). A URL
+        // mirror keeps its immediate reap until WP-7.7 removes it.
+        if let Some((task, revision)) = task_whole {
+            let first = match super::tombstone::read(&path) {
+                Ok(Some(tombstone)) => Some(tombstone.first_absent_at),
+                Ok(None) => None,
+                Err(error) => {
+                    // Unreadable: the candidacy starts again, never shortened.
+                    warn!(
+                        event.name = "sync.tombstone_unreadable",
+                        component = COMPONENT,
+                        ledger = mirror.label().as_str(),
+                        error = error.as_str(),
+                        "the mirror's tombstone could not be read: its grace starts again"
+                    );
+                    None
+                }
+            };
+            let Some(first) = first else {
+                let tombstone = super::tombstone::Tombstone {
+                    first_absent_at: now,
+                    task,
+                    revision,
+                };
+                match super::tombstone::write(&path, &tombstone) {
+                    Ok(()) => {
+                        info!(
+                            event.name = "sync.mirror_tombstoned",
+                            component = COMPONENT,
+                            ledger = mirror.label().as_str(),
+                            grace.seconds = context.reap_grace.as_secs(),
+                            "its task no longer lists the mirror: it is a reap candidate, and \
+                             still served"
+                        );
+                        candidacy.push(("mirror.tombstoned", mirror.label()));
+                    }
+                    Err(error) => warn!(
+                        event.name = "sync.reap_refused",
+                        component = COMPONENT,
+                        ledger = mirror.label().as_str(),
+                        error = error.as_str(),
+                        "the mirror's tombstone could not be written: it was left in place"
+                    ),
+                }
+                continue;
+            };
+            if now.saturating_sub(first) < context.reap_grace.as_secs() {
+                debug!(
+                    event.name = "sync.reap_deferred",
+                    component = COMPONENT,
+                    ledger = mirror.label().as_str(),
+                    "the mirror is a reap candidate within its grace"
+                );
+                continue;
+            }
+        }
         match layout::remove(&context.root, &mirror) {
             Ok(()) => {
                 removed += 1;
@@ -1061,6 +1223,7 @@ fn reap(
                     ledger = mirror.label().as_str(),
                     "the mirror is no longer followed and was removed"
                 );
+                candidacy.push(("mirror.reaped", mirror.label()));
             }
             Err(error) => warn!(
                 event.name = "sync.reap_refused",
@@ -1071,7 +1234,7 @@ fn reap(
             ),
         }
     }
-    removed
+    (removed, candidacy)
 }
 
 /// Refreshes the holdings gauges: how many mirrors, in how many zones, and

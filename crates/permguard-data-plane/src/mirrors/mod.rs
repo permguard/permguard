@@ -38,13 +38,14 @@
 pub mod hints;
 pub mod layout;
 pub mod measure;
+pub mod progress;
 pub mod readiness;
 pub mod round;
 pub mod source;
 pub mod state;
 pub mod task;
+pub mod tombstone;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -158,6 +159,7 @@ impl PlaneTask for MirrorService {
                 deadline: config.mirrors_timeout(),
                 parallelism: config.mirrors_parallelism(),
                 stale_after: config.mirrors_stale_after(),
+                reap_grace: config.mirrors_reap_grace(),
                 // One pool for the life of the plane, not one per round: work
                 // abandoned by one round is still outstanding during the next,
                 // and a pool rebuilt every round would forget that.
@@ -195,7 +197,6 @@ impl PlaneTask for MirrorService {
             report(&recorder, outcome).await;
 
             let (stop, mut stopped) = watch::channel(false);
-            let working = Arc::new(AtomicBool::new(false));
             // What wakes a round before its tick: a ref hint, or a watch that ended (WP-7.2c,
             // F-19). Every task the plane follows is watched while the plane runs.
             let wake = Arc::new(tokio::sync::Notify::new());
@@ -221,23 +222,24 @@ impl PlaneTask for MirrorService {
                         break;
                     }
                     last_round = tokio::time::Instant::now();
-                    // Rounds never overlap. A tick that finds the
-                    // previous round still working is skipped and
-                    // counted — a slow server slows the cadence, it
-                    // does not build a backlog.
-                    if working.swap(true, Ordering::SeqCst) {
-                        context_for_round
-                            .metrics
-                            .count(&measure::ROUNDS, &[(labels::OUTCOME, "skipped")]);
+                    // Rounds never overlap: the next wait starts when this round ends. Every tick
+                    // a round outlasts is skipped and counted — a slow server slows the cadence,
+                    // it does not build a backlog.
+                    let outcome = round::run(Arc::clone(&context_for_round)).await;
+                    let skipped = skipped_ticks(last_round.elapsed(), interval);
+                    if skipped > 0 {
+                        context_for_round.metrics.add(
+                            &measure::ROUNDS,
+                            &[(labels::OUTCOME, "skipped")],
+                            skipped as f64,
+                        );
                         debug!(
                             event.name = "sync.round_skipped",
                             component = COMPONENT,
-                            "the previous round is still working"
+                            ticks = skipped,
+                            "the round outlasted its interval: the ticks it covered are skipped"
                         );
-                        continue;
                     }
-                    let outcome = round::run(Arc::clone(&context_for_round)).await;
-                    working.store(false, Ordering::SeqCst);
                     readiness::report(
                         &health,
                         &context_for_round.sources,
@@ -315,6 +317,14 @@ fn service_reason(outcome: &round::Outcome) -> Option<String> {
             outcome.unreachable
         )
     })
+}
+
+/// How many ticks of `interval` a round that took `took` outlasted: the ones it skipped.
+fn skipped_ticks(took: Duration, interval: Duration) -> u64 {
+    if interval.is_zero() {
+        return 0;
+    }
+    (took.as_nanos() / interval.as_nanos()) as u64
 }
 
 /// The least time between two rounds when a hint wakes the second one.
@@ -399,23 +409,64 @@ async fn report(recorder: &Option<crate::handles::Audit>, outcome: round::Outcom
         "a synchronization round finished"
     );
 
-    let Some(recorder) = recorder else {
-        return;
-    };
+    if let Some(recorder) = recorder {
+        audited(recorder, &outcome).await;
+    }
+}
+
+/// Where a round's audit records go: the plane's audit handle, or a test's log.
+trait Records: Sync {
+    fn record_on<'a>(
+        &'a self,
+        action: &'a str,
+        target: &'a str,
+    ) -> BoxFuture<'a, std::result::Result<(), String>>;
+}
+
+impl Records for crate::handles::Audit {
+    fn record_on<'a>(
+        &'a self,
+        action: &'a str,
+        target: &'a str,
+    ) -> BoxFuture<'a, std::result::Result<(), String>> {
+        Box::pin(async move {
+            permguard_host::composition::AuditHandle::record_on(
+                self,
+                action,
+                Subject::System(COMPONENT),
+                target,
+            )
+            .await
+            .map_err(|error| error.to_string())
+        })
+    }
+}
+
+/// Records the round, then each reap candidacy on its own record: a mirror tombstoned, restored
+/// or reaped (WP-7.2d).
+async fn audited(recorder: &dyn Records, outcome: &round::Outcome) {
     let target = format!(
         "{} synchronized, {} blocked, {} failed, {} reaped, {} servers unreachable",
         outcome.synchronized, outcome.blocked, outcome.failed, outcome.reaped, outcome.unreachable
     );
-    if let Err(error) = recorder
-        .record_on("ledger.synchronized", Subject::System(COMPONENT), &target)
-        .await
-    {
+    if let Err(error) = recorder.record_on("ledger.synchronized", &target).await {
         warn!(
             event.name = "sync.audit_failed",
             component = COMPONENT,
             error = %error,
             "the round happened and its audit record did not"
         );
+    }
+    for (action, mirror) in &outcome.candidacy {
+        if let Err(error) = recorder.record_on(action, mirror).await {
+            warn!(
+                event.name = "sync.audit_failed",
+                component = COMPONENT,
+                error = %error,
+                action = *action,
+                "a reap candidacy changed and its audit record did not"
+            );
+        }
     }
 }
 
@@ -521,5 +572,69 @@ mod tests {
         let (next, waited) = waiting.await.expect("the wait ends");
         assert!(!next, "a stop during the spacing");
         assert!(waited < spacing, "{waited:?}");
+    }
+
+    /// WP-7.2d: a round is recorded, and each reap candidacy on a record of its own naming the
+    /// mirror.
+    #[tokio::test]
+    async fn a_round_records_each_reap_candidacy() {
+        #[derive(Default)]
+        struct Log(std::sync::Mutex<Vec<(String, String)>>);
+        impl Records for Log {
+            fn record_on<'a>(
+                &'a self,
+                action: &'a str,
+                target: &'a str,
+            ) -> BoxFuture<'a, std::result::Result<(), String>> {
+                self.0
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push((action.to_owned(), target.to_owned()));
+                Box::pin(std::future::ready(Ok(())))
+            }
+        }
+        let log = Log::default();
+        let outcome = round::Outcome {
+            reaped: 1,
+            candidacy: vec![
+                ("mirror.tombstoned", "a/z/l1".to_owned()),
+                ("mirror.restored", "a/z/l2".to_owned()),
+                ("mirror.reaped", "a/z/l3".to_owned()),
+            ],
+            ..Default::default()
+        };
+        audited(&log, &outcome).await;
+        let recorded = log
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let actions: Vec<(&str, &str)> = recorded
+            .iter()
+            .map(|(action, target)| (action.as_str(), target.as_str()))
+            .collect();
+        assert_eq!(
+            actions,
+            vec![
+                (
+                    "ledger.synchronized",
+                    "0 synchronized, 0 blocked, 0 failed, 1 reaped, 0 servers unreachable"
+                ),
+                ("mirror.tombstoned", "a/z/l1"),
+                ("mirror.restored", "a/z/l2"),
+                ("mirror.reaped", "a/z/l3"),
+            ]
+        );
+    }
+
+    /// The skipped ticks are the ones a round outlasted: none within the interval, one per whole
+    /// interval past it.
+    #[test]
+    fn a_round_skips_every_tick_it_outlasts() {
+        let interval = Duration::from_secs(30);
+        assert_eq!(skipped_ticks(Duration::from_secs(29), interval), 0);
+        assert_eq!(skipped_ticks(Duration::from_secs(30), interval), 1);
+        assert_eq!(skipped_ticks(Duration::from_secs(95), interval), 3);
+        assert_eq!(skipped_ticks(Duration::from_secs(95), Duration::ZERO), 0);
     }
 }

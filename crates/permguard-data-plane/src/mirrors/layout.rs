@@ -345,4 +345,68 @@ mod tests {
         // The object (5 bytes) plus the FORMAT pin (2).
         assert_eq!(size_of(&root, &mirror), 7);
     }
+
+    /// Two mirrors holding one object hold it each in their own store: content-addressed, never
+    /// hard-linked, so removing one mirror leaves the other's object whole.
+    #[test]
+    fn mirrors_sharing_an_object_hold_it_apart() {
+        use permguard_control_client::objects;
+        use permguard_control_client::store::FsStore;
+
+        let root = scratch("shared-object");
+        let mirrors: Vec<Mirror> = ["one", "two"]
+            .into_iter()
+            .map(|ledger| Mirror {
+                authority: Some("a".repeat(32)),
+                zone_id: "zone".to_owned(),
+                ledger_id: ledger.to_owned(),
+            })
+            .collect();
+        let mut digests = Vec::new();
+        for mirror in &mirrors {
+            let path = mirror.path(&root);
+            std::fs::create_dir_all(&path).expect("the mirror");
+            std::fs::write(path.join(crate::authz::store::IDENTITY_FILE), b"{}").expect("marked");
+            digests.push(
+                objects::put(&FsStore::new(&path), "objects", b"one shared object")
+                    .expect("stored"),
+            );
+        }
+        assert_eq!(digests[0], digests[1], "one content, one address");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            let mut held = Vec::new();
+            for mirror in &mirrors {
+                for entry in walk(&mirror.path(&root).join("objects")) {
+                    held.push(std::fs::metadata(&entry).expect("the object").nlink());
+                }
+            }
+            assert_eq!(held, vec![1, 1], "each its own file, none linked");
+        }
+        remove(&root, &mirrors[0]).expect("removed");
+        assert_eq!(
+            objects::get(
+                &FsStore::new(mirrors[1].path(&root)),
+                "objects",
+                &digests[1]
+            )
+            .expect("reads"),
+            Some(b"one shared object".to_vec()),
+            "the other mirror's object is whole"
+        );
+    }
+
+    /// The regular files below `path`.
+    fn walk(path: &Path) -> Vec<PathBuf> {
+        let mut files = Vec::new();
+        for entry in std::fs::read_dir(path).expect("lists").flatten() {
+            if entry.path().is_dir() {
+                files.extend(walk(&entry.path()));
+            } else {
+                files.push(entry.path());
+            }
+        }
+        files
+    }
 }
