@@ -35,11 +35,13 @@
 //! A compromised or confused server can make this plane *stale*. It cannot
 //! make it serve policy nobody signed.
 
+pub mod hints;
 pub mod layout;
 pub mod measure;
 pub mod readiness;
 pub mod round;
 pub mod source;
+pub mod state;
 pub mod task;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -194,48 +196,64 @@ impl PlaneTask for MirrorService {
 
             let (stop, mut stopped) = watch::channel(false);
             let working = Arc::new(AtomicBool::new(false));
+            // What wakes a round before its tick: a ref hint, or a watch that ended (WP-7.2c,
+            // F-19). Every task the plane follows is watched while the plane runs.
+            let wake = Arc::new(tokio::sync::Notify::new());
+            if let Some(tasks) = context_for_round.tasks.clone() {
+                tokio::spawn(hints::run(
+                    Arc::new(hints::Watching {
+                        tasks,
+                        selections: context_for_round.selections.clone(),
+                        root: context_for_round.root.clone(),
+                        wake: Arc::clone(&wake),
+                        retry: interval,
+                    }),
+                    stopped.clone(),
+                ));
+            }
 
             let task = tokio::spawn(async move {
+                let mut last_round = tokio::time::Instant::now();
                 loop {
                     let wait = with_jitter(interval, jitter);
-                    tokio::select! {
-                        _ = tokio::time::sleep(wait) => {
-                            // Rounds never overlap. A tick that finds the
-                            // previous round still working is skipped and
-                            // counted — a slow server slows the cadence, it
-                            // does not build a backlog.
-                            if working.swap(true, Ordering::SeqCst) {
-                                context_for_round
-                                    .metrics
-                                    .count(&measure::ROUNDS, &[(labels::OUTCOME, "skipped")]);
-                                debug!(
-                                    event.name = "sync.round_skipped",
-                                    component = COMPONENT,
-                                    "the previous round is still working"
-                                );
-                                continue;
-                            }
-                            let outcome = round::run(Arc::clone(&context_for_round)).await;
-                            working.store(false, Ordering::SeqCst);
-                            readiness::report(
-                                &health,
-                                &context_for_round.sources,
-                                &context_for_round.root,
-                                expire_after,
-                                &outcome,
-                                std::time::SystemTime::now(),
-                            );
-                            health.service(
-                                name,
-                                service_state(&outcome),
-                                outcome.label_success().then(std::time::SystemTime::now),
-                                Some(std::time::SystemTime::now() + with_jitter(interval, jitter)),
-                                service_reason(&outcome),
-                            );
-                            report(&recorder, outcome).await;
-                        }
-                        _ = stopped.changed() => break,
+                    let spacing = HINT_SPACING.min(interval);
+                    if !next_round(wait, spacing, last_round, &wake, &mut stopped).await {
+                        break;
                     }
+                    last_round = tokio::time::Instant::now();
+                    // Rounds never overlap. A tick that finds the
+                    // previous round still working is skipped and
+                    // counted — a slow server slows the cadence, it
+                    // does not build a backlog.
+                    if working.swap(true, Ordering::SeqCst) {
+                        context_for_round
+                            .metrics
+                            .count(&measure::ROUNDS, &[(labels::OUTCOME, "skipped")]);
+                        debug!(
+                            event.name = "sync.round_skipped",
+                            component = COMPONENT,
+                            "the previous round is still working"
+                        );
+                        continue;
+                    }
+                    let outcome = round::run(Arc::clone(&context_for_round)).await;
+                    working.store(false, Ordering::SeqCst);
+                    readiness::report(
+                        &health,
+                        &context_for_round.sources,
+                        &context_for_round.root,
+                        expire_after,
+                        &outcome,
+                        std::time::SystemTime::now(),
+                    );
+                    health.service(
+                        name,
+                        service_state(&outcome),
+                        outcome.label_success().then(std::time::SystemTime::now),
+                        Some(std::time::SystemTime::now() + with_jitter(interval, jitter)),
+                        service_reason(&outcome),
+                    );
+                    report(&recorder, outcome).await;
                 }
             });
 
@@ -297,6 +315,31 @@ fn service_reason(outcome: &round::Outcome) -> Option<String> {
             outcome.unreachable
         )
     })
+}
+
+/// The least time between two rounds when a hint wakes the second one.
+const HINT_SPACING: Duration = Duration::from_secs(1);
+
+/// Waits for the next round: `wait` passing, or a wake, which still lets `spacing` pass since
+/// `last_round` began. `false` when the service stops meanwhile.
+///
+/// A hinted round is an ordinary one: it negotiates, verifies and checkpoints like any other.
+/// The spacing keeps a coordinator that hints in a burst from driving rounds back to back.
+async fn next_round(
+    wait: Duration,
+    spacing: Duration,
+    last_round: tokio::time::Instant,
+    wake: &tokio::sync::Notify,
+    stopped: &mut watch::Receiver<bool>,
+) -> bool {
+    tokio::select! {
+        _ = tokio::time::sleep(wait) => true,
+        _ = wake.notified() => tokio::select! {
+            _ = tokio::time::sleep_until(last_round + spacing) => true,
+            _ = stopped.changed() => false,
+        },
+        _ = stopped.changed() => false,
+    }
 }
 
 /// Spreads the wait, so replicas of this plane do not all wake at once and
@@ -423,5 +466,60 @@ mod tests {
     #[test]
     fn a_wait_is_never_zero_however_the_numbers_fall() {
         assert!(with_jitter(Duration::from_millis(1), 0.5) >= Duration::from_millis(100));
+    }
+
+    /// WP-7.2c: a hint wakes the round before its tick, but never sooner than the spacing after
+    /// the last one; without a hint the tick decides.
+    #[tokio::test(start_paused = true)]
+    async fn a_hint_wakes_the_round_no_sooner_than_its_spacing() {
+        use tokio::time::Instant;
+        let wake = tokio::sync::Notify::new();
+        let (_stop, mut stopped) = watch::channel(false);
+        let (wait, spacing) = (Duration::from_secs(30), Duration::from_secs(1));
+
+        let begun = Instant::now();
+        assert!(next_round(wait, spacing, begun, &wake, &mut stopped).await);
+        assert_eq!(begun.elapsed(), wait, "no hint: the tick");
+
+        let last = Instant::now();
+        wake.notify_one();
+        assert!(next_round(wait, spacing, last, &wake, &mut stopped).await);
+        assert_eq!(last.elapsed(), spacing, "a hint at once: the spacing");
+
+        let last = Instant::now();
+        tokio::time::advance(Duration::from_secs(5)).await;
+        wake.notify_one();
+        let hinted = Instant::now();
+        assert!(next_round(wait, spacing, last, &wake, &mut stopped).await);
+        assert_eq!(
+            hinted.elapsed(),
+            Duration::ZERO,
+            "a hint past the spacing: now"
+        );
+    }
+
+    /// WP-7.2c: a stop ends the wait, a hinted one in its spacing included.
+    #[tokio::test(start_paused = true)]
+    async fn a_stop_ends_the_wait_for_the_next_round() {
+        use tokio::time::Instant;
+        let (wait, spacing) = (Duration::from_secs(30), Duration::from_secs(60));
+        let (stop, mut stopped) = watch::channel(false);
+        let _ = stop.send(true);
+        let wake = tokio::sync::Notify::new();
+        assert!(!next_round(wait, spacing, Instant::now(), &wake, &mut stopped).await);
+
+        let (stop, mut stopped) = watch::channel(false);
+        let waiting = tokio::spawn(async move {
+            let wake = tokio::sync::Notify::new();
+            wake.notify_one();
+            let begun = Instant::now();
+            let next = next_round(wait, spacing, begun, &wake, &mut stopped).await;
+            (next, begun.elapsed())
+        });
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        let _ = stop.send(true);
+        let (next, waited) = waiting.await.expect("the wait ends");
+        assert!(!next, "a stop during the spacing");
+        assert!(waited < spacing, "{waited:?}");
     }
 }

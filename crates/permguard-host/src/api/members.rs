@@ -2330,13 +2330,24 @@ impl HostApi {
         tasks
     }
 
-    /// Opens a `policy.mirror` task session for `task` (WP-7.2a): the lease verified under the
-    /// coordinator's pin, bound to the connection, and kept; the session carries the mirror
-    /// round's reads.
-    pub async fn open_mirror(
+    /// Opens a `policy.mirror` task session for `task` and turns it into a watch from
+    /// `positions` (WP-7.2c, `WatchRefs`): the coordinator answers at once, then sends the hints
+    /// of refs that move past them, and heartbeats.
+    pub async fn watch_mirror(
         &self,
         task: &crate::composition::MirrorTask,
-    ) -> Result<Box<dyn crate::composition::MirrorSession>, crate::composition::MirrorRefusal> {
+        positions: Vec<(String, u64)>,
+    ) -> Result<Box<dyn crate::composition::MirrorWatch>, crate::composition::MirrorRefusal> {
+        let mut held = self.member_task(task).await?;
+        held.watch(positions).await.map_err(mirror_refusal)?;
+        Ok(Box::new(MirrorWatching { task: held }))
+    }
+
+    /// A member task session over `task`'s resource, its lease verified and kept.
+    async fn member_task(
+        &self,
+        task: &crate::composition::MirrorTask,
+    ) -> Result<crate::membership::member::MemberTask, crate::composition::MirrorRefusal> {
         let refused = |refusal: Refusal| match refusal {
             Refusal::Api(error) | Refusal::Conflict { error, .. } => {
                 crate::composition::MirrorRefusal {
@@ -2353,7 +2364,7 @@ impl HostApi {
         let member = self
             .acting_member(memberships, connector)
             .map_err(refused)?;
-        let held = member
+        member
             .open_task(
                 crate::operations::journal::Initiator::System("host".to_owned()),
                 &task.membership_id,
@@ -2362,7 +2373,23 @@ impl HostApi {
                 Vec::new(),
             )
             .await
-            .map_err(mirror_refusal)?;
+            .map_err(mirror_refusal)
+    }
+
+    /// Opens a `policy.mirror` task session for `task` (WP-7.2a): the lease verified under the
+    /// coordinator's pin, bound to the connection, and kept; the session carries the mirror
+    /// round's reads.
+    pub async fn open_mirror(
+        &self,
+        task: &crate::composition::MirrorTask,
+    ) -> Result<Box<dyn crate::composition::MirrorSession>, crate::composition::MirrorRefusal> {
+        let held = self.member_task(task).await?;
+        let memberships = self
+            .memberships()
+            .map_err(|_| crate::composition::MirrorRefusal {
+                code: codes::common::UNAVAILABLE.to_owned(),
+                reason: "no membership store is open on this process".to_owned(),
+            })?;
         // The `control.attest` set of the manifest in force once the session opened — a revision
         // the coordinator issued at it already accepted — its binding verified under the
         // coordinator's identity the session just proved (WP-7.2b).
@@ -2770,6 +2797,32 @@ impl crate::composition::MirrorSession for MirrorHeld {
             self.task
                 .send(&request_id, body)
                 .await
+                .map_err(mirror_refusal)
+        })
+    }
+}
+
+/// A `policy.mirror` session turned into a watch (WP-7.2c).
+struct MirrorWatching {
+    task: crate::membership::member::MemberTask,
+}
+
+impl crate::composition::MirrorWatch for MirrorWatching {
+    fn next(
+        &mut self,
+    ) -> permguard_core::BoxFuture<'_, Result<Vec<(String, u64)>, crate::composition::MirrorRefusal>>
+    {
+        Box::pin(async move {
+            self.task
+                .next_event()
+                .await
+                .map(|event| {
+                    event
+                        .hints
+                        .into_iter()
+                        .map(|hint| (hint.key, hint.counter))
+                        .collect()
+                })
                 .map_err(mirror_refusal)
         })
     }

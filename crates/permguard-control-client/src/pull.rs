@@ -48,6 +48,10 @@ pub struct VerifiedHead {
     pub ring_epoch: u64,
     /// The digest of that ring's key set at that epoch (WP-7.2b).
     pub key_set_digest: Digest,
+    /// The signed head statement, exactly as it verified (WP-7.2c).
+    pub statement: Vec<u8>,
+    /// Every object reachable from the head, sorted: the closure proved whole (WP-7.2c).
+    pub closure: Vec<Digest>,
     /// How many objects actually crossed the wire.
     pub fetched: usize,
 }
@@ -184,7 +188,7 @@ pub fn fetch_closure_expecting(
 
     // The whole closure must be present and hash-verified.
     let head = statement.digest.clone();
-    walk_local(store, objects_root, &head)?;
+    let closure = walk_local(store, objects_root, &head)?;
 
     Ok(VerifiedHead {
         head,
@@ -194,6 +198,8 @@ pub fn fetch_closure_expecting(
         reference: tracked.r#ref.clone(),
         ring_epoch: statement.ring_epoch,
         key_set_digest: statement.key_set_digest,
+        statement: negotiated.statement.clone(),
+        closure: closure.into_iter().collect(),
         fetched,
     })
 }
@@ -325,6 +331,8 @@ mod tests {
             reference: "main".to_owned(),
             ring_epoch: 2,
             key_set_digest: Digest::compute(b"set"),
+            statement: Vec::new(),
+            closure: Vec::new(),
             fetched: 0,
         };
         commit_checkpoint(&store, "refs/main", &verified).expect("written");

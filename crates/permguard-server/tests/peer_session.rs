@@ -3074,4 +3074,10 @@ async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
         b"echo:second".to_vec(),
         "each message its own request id: never answered from the replay window as the first"
     );
+    // And a watch over the task (WP-7.2c): the coordinator takes it on a session of its own.
+    member
+        .api
+        .watch_mirror(task, vec![("zone/ledger/main".to_owned(), 0)])
+        .await
+        .expect("the watch opens");
 }

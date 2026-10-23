@@ -35,6 +35,9 @@
 pub mod digest {
     /// A ring's public-set digest.
     pub const KEY_SET: &str = "permguard.key-set.v1\n";
+    /// The closure a mirror verified, as its checkpoint names it: the sorted digests of every
+    /// object reachable from the head (WP-7.2c).
+    pub const MIRROR_CLOSURE: &str = "permguard.mirror.closure.v1\n";
     /// An audit record.
     pub const AUDIT_RECORD: &str = "permguard.audit.record.v1\n";
     /// An audit pseudonym.
@@ -364,6 +367,7 @@ pub mod kdf {
 pub fn all() -> Vec<(&'static str, &'static str)> {
     vec![
         ("digest.KEY_SET", digest::KEY_SET),
+        ("digest.MIRROR_CLOSURE", digest::MIRROR_CLOSURE),
         ("digest.AUDIT_RECORD", digest::AUDIT_RECORD),
         ("digest.AUDIT_PSEUDONYM", digest::AUDIT_PSEUDONYM),
         ("digest.AUDIT_CHECKPOINT", digest::AUDIT_CHECKPOINT),

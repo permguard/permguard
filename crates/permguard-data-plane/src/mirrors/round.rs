@@ -483,6 +483,8 @@ pub enum Via {
         max_body_bytes: u64,
         ring: permguard_host::composition::PinnedRing,
         coordinator: [u8; 16],
+        /// The task's revision: the epoch of the manifest it was read from (WP-7.2c).
+        revision: u64,
     },
 }
 
@@ -614,6 +616,7 @@ async fn listed(
                     max_body_bytes: task.max_body_bytes,
                     ring: ring.clone(),
                     coordinator: task.coordinator,
+                    revision: task.revision,
                 },
             });
         }
@@ -717,16 +720,23 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
                     Box::new(permguard_control_client::narrate::Silent),
                 )?;
                 remote.bind(&tracked.zone_id, &tracked.ledger_id);
-                pull::fetch_closure(&store, "objects", "refs/main", &remote, &tracked)?
+                let verified =
+                    pull::fetch_closure(&store, "objects", "refs/main", &remote, &tracked)?;
+                pull::commit_checkpoint(&store, "refs/main", &verified)?;
+                verified
             }
             // The same pull and verification, its reads on the task's session (WP-7.2a), its
-            // statements verified under the membership's pinned `control.attest` set (WP-7.2b).
+            // statements verified under the membership's pinned `control.attest` set (WP-7.2b),
+            // switched through the mirror's journal (WP-7.2c).
             Via::Task {
                 session,
                 max_body_bytes,
                 ring,
                 coordinator,
+                revision,
             } => {
+                // The state in force first: views a crash left behind the journal are rewritten.
+                super::state::recover(&path)?;
                 let remote = super::task::TaskRemote::new(
                     session,
                     runtime,
@@ -735,10 +745,33 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
                     max_body_bytes,
                     &ring,
                 );
-                super::task::verified_pull(&store, &tracked, &remote, &ring, coordinator)?
+                let verified =
+                    super::task::verified_pull(&store, &tracked, &remote, &ring, coordinator)?;
+                super::state::commit(
+                    &path,
+                    &super::state::MirrorState {
+                        revision,
+                        authority: verified.authority_host_id,
+                        zone: tracked.zone_id.clone(),
+                        ledger: tracked.ledger_id.clone(),
+                        reference: verified.reference.clone(),
+                        head: verified.head.clone(),
+                        counter: verified.counter,
+                        ref_digest: verified.ref_digest.clone(),
+                        ring_epoch: verified.ring_epoch,
+                        key_set_digest: ring.key_set_digest,
+                        verified_at: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|since| since.as_secs())
+                            .unwrap_or_default(),
+                        closure_digest: super::state::closure_digest(&verified.closure),
+                        verified: verified.statement.clone(),
+                        ring_binding: ring.binding.clone(),
+                    },
+                )?;
+                verified
             }
         };
-        pull::commit_checkpoint(&store, "refs/main", &verified)?;
         Ok((verified.counter, verified.fetched))
     });
 

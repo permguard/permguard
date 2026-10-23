@@ -54,8 +54,8 @@ pub const RING_BINDING: &str = "RING-BINDING.cose";
 /// Pulls one ledger over its task session (WP-7.2b), the same pull a URL mirror runs bound to
 /// the membership: the ring never goes back nor forks at one epoch, checked before anything is
 /// fetched; the statement verifies under the pinned `control.attest` keys only, names the task's
-/// coordinator as its authority and the pin's epoch and key-set digest; the binding it verified
-/// under is kept. The checkpoint is the caller's to advance.
+/// coordinator as its authority and the pin's epoch and key-set digest. The switch, the binding
+/// with it, is the caller's, through the mirror's journal (WP-7.2c).
 pub fn verified_pull(
     store: &dyn permguard_control_client::store::Store,
     tracked: &permguard_control_client::pull::TrackedRef,
@@ -78,10 +78,6 @@ pub fn verified_pull(
         tracked,
         Some(&expected),
     )?;
-    // Written when it changes, never every round.
-    if store.read(RING_BINDING)?.as_deref() != Some(ring.binding.as_slice()) {
-        store.write(RING_BINDING, &ring.binding)?;
-    }
     Ok(verified)
 }
 
@@ -599,7 +595,8 @@ mod tests {
             .expect("signed")
             .encode()
             .expect("encoded");
-        let (remote, _) = remote_with(1 << 20, &ring, serving(signed, statement, objects));
+        let signed_bytes = signed.clone();
+        let (remote, _) = remote_with(1 << 20, &ring, serving(signed, statement, objects.clone()));
         let root = scratch("pinned");
         let store = permguard_control_client::FsStore::new(&root);
 
@@ -607,9 +604,14 @@ mod tests {
             verified_pull(&store, &tracked(), &remote, &ring, COORDINATOR).expect("verified");
         assert_eq!(verified.head, head);
         assert_eq!(
-            store.read(RING_BINDING).expect("reads").as_deref(),
-            Some(ring.binding.as_slice()),
-            "the binding it verified under is kept"
+            verified.statement, signed_bytes,
+            "the exact statement it verified"
+        );
+        let mut closure: Vec<Digest> = objects.iter().map(|bytes| Digest::compute(bytes)).collect();
+        closure.sort();
+        assert_eq!(
+            verified.closure, closure,
+            "every object of the closure, sorted"
         );
     }
 
@@ -716,5 +718,182 @@ mod tests {
             assert!(refused.contains(case), "{case}: {refused}");
             assert!(carried.lock().expect("the log").is_empty(), "{case}");
         }
+    }
+
+    /// The member side of one `policy.mirror` task whose session lists `ledger-id` and serves
+    /// `answer`, under `ring`.
+    struct OneTask {
+        ring: PinnedRing,
+        answer: std::sync::Arc<Mutex<Answer>>,
+    }
+
+    struct Answering {
+        ring: PinnedRing,
+        answer: std::sync::Arc<Mutex<Answer>>,
+    }
+
+    impl MirrorSession for Answering {
+        fn ring(&self) -> Option<PinnedRing> {
+            Some(self.ring.clone())
+        }
+
+        fn call(
+            &mut self,
+            body: Vec<u8>,
+        ) -> permguard_core::BoxFuture<'_, Result<Vec<u8>, MirrorRefusal>> {
+            let request = MirrorRequest::decode(&body).expect("a mirror message");
+            let answered = if request.operation == MirrorOperation::ListLedgers {
+                Ok(ListLedgersAnswer {
+                    ledgers: vec![permguard_notp::ListedLedger {
+                        zone_id: "zone-id".into(),
+                        zone_name: "acme".into(),
+                        ledger_id: "ledger-id".into(),
+                        ledger_name: "main-ledger".into(),
+                    }],
+                    complete: true,
+                }
+                .encode()
+                .expect("it encodes"))
+            } else {
+                (self.answer.lock().expect("the script"))(&request)
+            };
+            Box::pin(std::future::ready(answered))
+        }
+    }
+
+    impl permguard_host::composition::MirrorTasks for OneTask {
+        fn watch_mirror<'a>(
+            &'a self,
+            _task: &'a permguard_host::composition::MirrorTask,
+            _positions: Vec<(String, u64)>,
+        ) -> permguard_core::BoxFuture<
+            'a,
+            Result<
+                Box<dyn permguard_host::composition::MirrorWatch>,
+                permguard_host::composition::MirrorRefusal,
+            >,
+        > {
+            Box::pin(std::future::ready(Err(
+                permguard_host::composition::MirrorRefusal {
+                    code: "unavailable".to_owned(),
+                    reason: "this stand-in watches nothing".to_owned(),
+                },
+            )))
+        }
+
+        fn mirror_tasks(&self) -> Vec<permguard_host::composition::MirrorTask> {
+            vec![permguard_host::composition::MirrorTask {
+                membership_id: [1; 16],
+                task_id: "mirror".into(),
+                coordinator: COORDINATOR,
+                revision: 5,
+                resource: "plane/control".into(),
+                required: true,
+                max_body_bytes: 1 << 20,
+            }]
+        }
+
+        fn open_mirror<'a>(
+            &'a self,
+            _task: &'a permguard_host::composition::MirrorTask,
+        ) -> permguard_core::BoxFuture<'a, Result<Box<dyn MirrorSession>, MirrorRefusal>> {
+            Box::pin(std::future::ready(Ok(Box::new(Answering {
+                ring: self.ring.clone(),
+                answer: std::sync::Arc::clone(&self.answer),
+            })
+                as Box<dyn MirrorSession>)))
+        }
+    }
+
+    /// WP-7.2c: a round over a task pulls a verified head and switches the mirror through its
+    /// journal: one item naming the task's revision, the coordinator, the head, the ring and the
+    /// closure, with the exact statement and binding as its views; a second round over the same
+    /// head appends nothing.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_round_over_a_task_switches_the_mirror_through_its_journal() {
+        let key = keypair(1);
+        let ring = pinned(&key);
+        let (objects, head) = closure();
+        let set = Digest::from_raw(ring.key_set_digest);
+        let statement = statement(&head, COORDINATOR, ring.epoch, &set);
+        let signed = SignedHead::sign(&statement, &key, b"pinned")
+            .expect("signed")
+            .encode()
+            .expect("encoded");
+        let answer = std::sync::Arc::new(Mutex::new(serving(
+            signed.clone(),
+            statement,
+            objects.clone(),
+        )));
+        let root = scratch("round-journal");
+        let context = std::sync::Arc::new(super::super::round::Context {
+            sources: Vec::new(),
+            tasks: Some(std::sync::Arc::new(OneTask {
+                ring: ring.clone(),
+                answer: std::sync::Arc::clone(&answer),
+            })),
+            selections: Default::default(),
+            root: root.clone(),
+            decider: None,
+            deadline: std::time::Duration::from_secs(30),
+            parallelism: 1,
+            stale_after: None,
+            permits: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
+            metrics: permguard_core::Metrics::none(),
+        });
+
+        let outcome = super::super::round::run(std::sync::Arc::clone(&context)).await;
+        assert_eq!((outcome.failed, outcome.unreachable), (0, 0), "{outcome:?}");
+        let mirror = root
+            .join(super::super::layout::authority_name(&COORDINATOR))
+            .join("zone-id")
+            .join("ledger-id");
+        let state = super::super::state::recover(&mirror)
+            .expect("reads")
+            .expect("switched");
+        assert_eq!(state.revision, 5);
+        assert_eq!(state.authority, COORDINATOR);
+        assert_eq!(state.head, head);
+        assert_eq!(state.ring_epoch, ring.epoch);
+        assert_eq!(state.verified, signed);
+        assert_eq!(state.ring_binding, ring.binding);
+        let mut digests: Vec<Digest> = objects.iter().map(|bytes| Digest::compute(bytes)).collect();
+        digests.sort();
+        assert_eq!(
+            state.closure_digest,
+            super::super::state::closure_digest(&digests)
+        );
+        assert_eq!(
+            std::fs::read(mirror.join(super::super::state::VERIFIED)).expect("a view"),
+            signed
+        );
+        assert_eq!(
+            std::fs::read(mirror.join(RING_BINDING)).expect("a view"),
+            ring.binding
+        );
+        assert_eq!(
+            std::fs::read(mirror.join(super::super::state::CHECKPOINT)).expect("a view"),
+            state.checkpoint().expect("encodes")
+        );
+        let json = permguard_control_client::checkpoint::read(
+            &permguard_control_client::store::FsStore::new(&mirror),
+            "refs/main",
+        )
+        .expect("reads")
+        .expect("a view");
+        assert_eq!(
+            (json.counter, json.head),
+            (state.counter, state.head.to_string())
+        );
+
+        super::super::round::run(context).await;
+        let items = permguard_host::storage::sequence::read(
+            &permguard_host::storage::Dir::open(&mirror).expect("opens"),
+            super::super::state::JOURNAL,
+            1 << 20,
+        )
+        .expect("reads")
+        .items;
+        assert_eq!(items.len(), 1, "the same head again appends nothing");
     }
 }

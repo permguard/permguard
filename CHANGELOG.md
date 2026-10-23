@@ -19,6 +19,13 @@ is cut.
 
 ### Added
 
+- **A membership mirror switches through one journal, and wakes on ref hints (WP-7.2c).**
+  A mirror over a `policy.mirror` task appends one item to its `journal.cborseq` for each verified advance — the task's revision, authority, zone, ledger, ref, head, counter, ref digest, ring epoch and set, the verification time, the closure digest, the exact signed statement and ring binding — and that append is the switch.
+  `VERIFIED.cose`, `RING-BINDING.cose`, `CHECKPOINT.cbor` and the checkpoint the decision path reads are views written after it and rewritten from it whenever a crash left them behind; a mirror that does not move appends nothing.
+  The journal stays bounded, rewritten atomically past 64 items with the latest 16, and a checkpoint found ahead of it is refused rather than rewound.
+  Each task the plane follows is watched: a ref hint from the coordinator runs the ordinary round at once, and a watch that is lost, overflows or goes silent runs one too before it reopens, so revocation reaches the plane in the time a round takes rather than the polling interval.
+  Hinted rounds keep at least one second between them.
+
 - **A membership mirror trusts only the `control.attest` set its membership pins (WP-7.2b).**
   A ledger mirrored over a `policy.mirror` task verifies its head statement under the coordinator's `control.attest` keys the membership's signed manifest pins, never a key ring fetched from the coordinator; a task whose membership pins none is not mirrored.
   The statement must name the task's coordinator as its authority and the pinned set's epoch and key-set digest.

@@ -507,6 +507,25 @@ mod tasks {
     }
 
     impl MirrorTasks for Held {
+        fn watch_mirror<'a>(
+            &'a self,
+            _task: &'a permguard_host::composition::MirrorTask,
+            _positions: Vec<(String, u64)>,
+        ) -> permguard_core::BoxFuture<
+            'a,
+            Result<
+                Box<dyn permguard_host::composition::MirrorWatch>,
+                permguard_host::composition::MirrorRefusal,
+            >,
+        > {
+            Box::pin(std::future::ready(Err(
+                permguard_host::composition::MirrorRefusal {
+                    code: "unavailable".to_owned(),
+                    reason: "this stand-in watches nothing".to_owned(),
+                },
+            )))
+        }
+
         fn mirror_tasks(&self) -> Vec<MirrorTask> {
             self.tasks.clone()
         }

@@ -836,6 +836,14 @@ pub trait MirrorSession: Send {
     fn ring(&self) -> Option<PinnedRing>;
 }
 
+/// A `policy.mirror` watch (WP-7.2c, `WatchRefs`): the hints the coordinator sends as refs move.
+pub trait MirrorWatch: Send {
+    /// The next hints, each `(zone_id/ledger_id/ref, counter)` of a ref that moved past what the
+    /// member holds; none for a heartbeat. A refusal ends the watch: lost, overflowed, fenced or
+    /// silent past its bound.
+    fn next(&mut self) -> BoxFuture<'_, Result<Vec<(String, u64)>, MirrorRefusal>>;
+}
+
 /// The member side of `policy.mirror` (WP-7.2a): the tasks this Host holds, and a session on
 /// one. The member opens every session; the coordinator never dials.
 pub trait MirrorTasks: Send + Sync {
@@ -847,6 +855,14 @@ pub trait MirrorTasks: Send + Sync {
         &'a self,
         task: &'a MirrorTask,
     ) -> BoxFuture<'a, Result<Box<dyn MirrorSession>, MirrorRefusal>>;
+
+    /// Opens a session over `task`'s resource and turns it into a watch from `positions`, the
+    /// counter held per `zone_id/ledger_id/ref` (WP-7.2c).
+    fn watch_mirror<'a>(
+        &'a self,
+        task: &'a MirrorTask,
+        positions: Vec<(String, u64)>,
+    ) -> BoxFuture<'a, Result<Box<dyn MirrorWatch>, MirrorRefusal>>;
 }
 
 impl MirrorTasks for crate::api::HostApi {
@@ -859,6 +875,14 @@ impl MirrorTasks for crate::api::HostApi {
         task: &'a MirrorTask,
     ) -> BoxFuture<'a, Result<Box<dyn MirrorSession>, MirrorRefusal>> {
         Box::pin(crate::api::HostApi::open_mirror(self, task))
+    }
+
+    fn watch_mirror<'a>(
+        &'a self,
+        task: &'a MirrorTask,
+        positions: Vec<(String, u64)>,
+    ) -> BoxFuture<'a, Result<Box<dyn MirrorWatch>, MirrorRefusal>> {
+        Box::pin(crate::api::HostApi::watch_mirror(self, task, positions))
     }
 }
 
@@ -2562,6 +2586,17 @@ mod tests {
                 &'a self,
                 _task: &'a MirrorTask,
             ) -> BoxFuture<'a, Result<Box<dyn MirrorSession>, MirrorRefusal>> {
+                Box::pin(std::future::ready(Err(MirrorRefusal {
+                    code: "unavailable".to_owned(),
+                    reason: "none".to_owned(),
+                })))
+            }
+
+            fn watch_mirror<'a>(
+                &'a self,
+                _task: &'a MirrorTask,
+                _positions: Vec<(String, u64)>,
+            ) -> BoxFuture<'a, Result<Box<dyn MirrorWatch>, MirrorRefusal>> {
                 Box::pin(std::future::ready(Err(MirrorRefusal {
                     code: "unavailable".to_owned(),
                     reason: "none".to_owned(),
