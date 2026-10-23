@@ -4409,6 +4409,32 @@ mod signed_response {
         let over_grpc = client.evaluate(&body).expect("signed");
         recompute(&over_grpc);
 
+        // And the verifier a PEP runs, on what each transport actually delivered (WP-6.6c).
+        let keys = {
+            use permguard_core::keys::PublicSet as _;
+            host.attest().public_keys().expect("published")
+        };
+        let pep_verifies = |answer: &Value| {
+            let mut nonces = permguard_control_client::attestation::Outstanding::default();
+            nonces.issue(NONCE);
+            permguard_control_client::attestation::verify(
+                &serde_json::to_vec(&body).unwrap(),
+                &serde_json::to_vec(answer).unwrap(),
+                &keys,
+                &permguard_control_client::attestation::Expectation {
+                    audience: AUDIENCE,
+                    now: NOW + 10,
+                    validity_seconds: 300,
+                    clock_skew_seconds: 30,
+                    policy: None,
+                },
+                &mut nonces,
+            )
+            .unwrap_or_else(|refusal| panic!("{refusal}: {answer}"))
+        };
+        assert_eq!(pep_verifies(&over_rest).policy.authority_host_id, AUTHORITY);
+        assert_eq!(pep_verifies(&over_grpc).policy.authority_host_id, AUTHORITY);
+
         // A batch over gRPC, a deny and a permit: what the client rebuilds still digests as signed.
         let mut batch = body.clone();
         batch["evaluations"] = json!([

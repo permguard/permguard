@@ -19,6 +19,13 @@ is cut.
 
 ### Added
 
+- **A PEP verifies a signed decision response offline (WP-6.6c).**
+  `permguard_control_client::attestation::verify` takes the request bytes sent, the response bytes received, the pinned `data.attest` keys, the expected audience, clock, advertised validity and skew, an optional exact policy state, and the PEP's outstanding nonces.
+  It checks strict JSON, the closed flattened JWS in canonical base64url, the JCS header and its type, algorithm and key, the signature, the closed JCS payload, the audience, both digests recomputed, the request ids, decision and evidence against the answer, the policy state and the lifetime.
+  The nonce is spent only once everything verified, so a forged response cannot burn a genuine one and a replay is refused.
+  A failure names the binding and never becomes a deny.
+  A golden vector under RFC 8032's published test key is frozen in `contracts/vectors/signed-response.json`, and every binding altered alone is refused by name.
+
 - **A native decision response is signed on request under the plane's `data.attest` ring (WP-6.6b).**
   A request carrying `request_nonce` from an authenticated caller is answered with a top-level `attestation`, a flattened JWS of type `permguard.decision.response.v1`; gRPC carries the same three values in its `Attestation` message.
   Its protected header is the closed JCS `{alg, kid, typ}`, and its closed payload binds the request digest, the nonce, the request ids, the caller's authenticated principal as `audience`, the exact policy state, the decision, the response digest, the evidence and a lifetime.

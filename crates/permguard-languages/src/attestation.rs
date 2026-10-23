@@ -497,6 +497,21 @@ impl Payload {
     }
 }
 
+/// Reads one JSON text strictly: one value, no member named twice at any level (WP-6.6c).
+pub fn strict_json(bytes: &[u8]) -> Result<Value, String> {
+    permguard_stream::jcs::parse_strict(bytes).map_err(|error| format!("{error:?}"))
+}
+
+/// The JCS bytes of `value` (WP-6.6c).
+pub fn jcs(value: &Value) -> Result<Vec<u8>, String> {
+    permguard_stream::jcs::canonicalize(value).map_err(|error| format!("{error:?}"))
+}
+
+/// Reads bytes that must already be the JCS form of their value (WP-6.6c).
+pub fn canonical_json(bytes: &[u8]) -> Result<Value, String> {
+    permguard_stream::jcs::decode_canonical(bytes).map_err(|error| format!("{error:?}"))
+}
+
 /// A whole-second UTC instant, `YYYY-MM-DDTHH:MM:SSZ`, in epoch seconds.
 pub fn instant(text: &str, name: &str) -> Result<i64, String> {
     let well_formed = text.len() == 20

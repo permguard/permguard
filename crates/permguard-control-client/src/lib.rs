@@ -37,6 +37,7 @@
 /// tune a transfer.
 pub const MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 
+pub mod attestation;
 pub mod catalog;
 pub mod checkpoint;
 pub mod connect;

@@ -49,6 +49,10 @@ The head statement moved here from `evidence.json`: its target form replaces tod
 `plan.json` freezes a destructive operation's plan records (WP-3.9): a key revocation's plan body and digest, the plan receipt naming it, COSE_Sign1 `permguard.operation.plan.v1`, and a second operator's approval, COSE_Sign1 `permguard.operation.approval.v1`, both under a `host.operations` key.
 `plan.py` computes them under the owner decisions of 2026-10-11, the `host.operations` key the RFC 8032 section 7.1 test 2 key; `crates/permguard-host/tests/plan_vectors.rs` reproduces them, verifies both envelopes with the published key and refuses each in the other's place.
 
+`signed-response.json` freezes signed native decision responses (WP-6.6): a single answer and a batch, each with the request sent, the response received with its `attestation`, and the payload the attestation decodes to, under a `data.attest` key, the RFC 8032 section 7.1 test 1 key.
+Beside them: the audience, the clock, the advertised validity and skew, and the exact policy state a PEP expects.
+`signed_response.py` computes them under the decisions of 2026-10-22 recorded in `status.md`; `crates/permguard-control-client/src/attestation/tests.rs` reproduces each payload and signature and verifies both responses with the verifier a PEP uses.
+
 ## How the values were computed
 
 `generate.py` computes every value with Python's standard library and the `cryptography` package, from the published rules, without calling the Rust codecs.
