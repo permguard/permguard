@@ -166,6 +166,10 @@ fn stream(instance: &str, count: u64) -> Vec<Value> {
                 context: None,
                 latency_us: 143,
                 event: None,
+                interface: None,
+                actor: None,
+                question: None,
+                descriptors: None,
             }))
         };
         let value = Record {

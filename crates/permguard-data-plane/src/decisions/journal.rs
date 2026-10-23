@@ -120,6 +120,14 @@ pub struct Decided<'a> {
     pub latency_us: u64,
     /// The occurrence this decision was made about, for a temporal one.
     pub event: Option<permguard_decisions::record::EventRef>,
+    /// The exact interface the question was asked through (IFACE-05).
+    pub interface: Option<String>,
+    /// Who asked, as the transport authenticated them, already pseudonymised (IFACE-04).
+    pub actor: Option<(String, String)>,
+    /// The canonical question, for the commitment: never written in clear.
+    pub question: Option<Value>,
+    /// Each partition of the profile and its runtime's descriptor digest.
+    pub descriptors: std::collections::BTreeMap<String, String>,
 }
 
 /// The members that say *what* was decided, as opposed to the occasion of
@@ -135,7 +143,11 @@ pub struct Decided<'a> {
 /// and the last two are correlation the caller chose; none of them changes what
 /// was asked or what was answered. The context itself is still covered, because
 /// `inputs` commits to the whole of it.
-const DECIDES: [&str; 10] = [
+///
+/// The evidence binding of IFACE-04 and IFACE-05 is part of it: the same handle under another
+/// interface, another actor, another question or another runtime is another decision. A record
+/// written before those members carries none, and its identity is what it always was.
+const DECIDES: [&str; 14] = [
     "id",
     "store",
     "subject",
@@ -146,6 +158,10 @@ const DECIDES: [&str; 10] = [
     "decision",
     "policies",
     "reason",
+    "interface",
+    "actor",
+    "question",
+    "descriptors",
 ];
 
 /// How a decision record names the logical write it is.
@@ -1112,6 +1128,17 @@ pub(super) fn decision_body(epoch: &Epoch, commitment: &Commitment, decided: &De
         context: normalized_map(decided.included_context.clone()),
         latency_us: decided.latency_us,
         event: decided.event.clone(),
+        interface: decided.interface.clone(),
+        actor: decided.actor.as_ref().map(|actor| party(actor, None)),
+        // Committed as `inputs` are, under the same key and with the same caveat: without the
+        // ledger's key it reads `unavailable`. `commit_to` normalises first, so canonicalising
+        // cannot fail and the member is never silently dropped.
+        question: commit_to(
+            commitment,
+            decided.scope.as_ref(),
+            decided.question.as_ref(),
+        ),
+        descriptors: (!decided.descriptors.is_empty()).then(|| decided.descriptors.clone()),
     }))
 }
 

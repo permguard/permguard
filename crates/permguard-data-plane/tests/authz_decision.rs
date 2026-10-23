@@ -3361,6 +3361,10 @@ mod host_log {
             request_id: None,
             latency_us: 12,
             event: None,
+            interface: None,
+            actor: None,
+            question: None,
+            descriptors: Default::default(),
         }
     }
 
@@ -3793,6 +3797,218 @@ async fn a_saturated_required_log_refuses_with_unavailable_and_every_answer_is_r
         recorded, answered,
         "every answer has its record, and nothing more"
     );
+}
+
+/// WP-7.5c, IFACE-04 and IFACE-05: a record binds the interface, the authenticated actor apart
+/// from the principal the caller asserted, a keyed commitment to the question and the descriptor
+/// of each partition. Another actor is another actor and the same question; another assertion is
+/// another question from the same actor; neither identifier is in the record in clear; and a
+/// request no transport authenticated records no actor rather than the assertion as one.
+#[tokio::test]
+async fn a_record_binds_its_interface_its_actor_apart_from_the_asserted_principal_and_its_question()
+{
+    use permguard_data_plane::authz::decide::Asker;
+
+    let root = scratch("evidence-binding").join("mirrors");
+    let mut manifest = manifest(
+        &[("app", "cedar", false), ("gateway", "rego", false)],
+        ">=0.0.0",
+    );
+    // A profile built from one of the two partitions: its records name that one runtime only.
+    manifest.profiles.insert(
+        "narrow".to_owned(),
+        Profile {
+            r#type: permguard_objects::manifest::PROFILE_PDP_NATIVE_V1.to_owned(),
+            partitions: vec!["app".to_owned()],
+        },
+    );
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[
+            ("app", vec![&CEDAR_READ], None),
+            ("gateway", vec![&REGO_READ], None),
+        ],
+    );
+    let host = host_log::HostStream::new("evidence-binding-volume");
+    let producer = host.producer();
+    let log = Arc::new(host.log(&producer, host_log::LOOSE));
+    let decider = Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::none(),
+        None,
+        256,
+    )
+    .with_journal(
+        Some(Arc::clone(&log) as Arc<dyn permguard_data_plane::decisions::DecisionRecorder>),
+        subjects(),
+        permguard_core::decisions::IncludeSection::default(),
+    );
+    let about = |subject: &str, principal: &str| -> wire::CheckRequest {
+        serde_json::from_value(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": subject},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "principal": {"type": "user", "id": principal},
+        }))
+        .expect("a request")
+    };
+    let asserting = |principal: &str| about("alice", principal);
+    let acting = |actor: &str| Asker {
+        actor: Some(actor.to_owned()),
+        ..Asker::default()
+    };
+    for (request, asker) in [
+        (asserting("mallory"), acting("spiffe://acme/pep")),
+        (asserting("mallory"), acting("spiffe://acme/other-pep")),
+        (asserting("trent"), acting("spiffe://acme/pep")),
+        (asserting("mallory"), Asker::default()),
+        (about("carol", "mallory"), acting("spiffe://acme/pep")),
+        (
+            {
+                let mut narrow = asserting("mallory");
+                narrow.profile = Some("narrow".to_owned());
+                narrow
+            },
+            acting("spiffe://acme/pep"),
+        ),
+    ] {
+        decider
+            .decide_signed(&request, None, None, asker)
+            .await
+            .expect("decided");
+    }
+
+    let resource = host_log::ledger(&uuid_of("acme"), &uuid_of("main-ledger"));
+    let records: Vec<Value> = host_log::records(&producer, &resource)
+        .into_iter()
+        .map(|(_, record)| record)
+        .filter(|record| record["kind"] == json!("decision"))
+        .collect();
+    let [
+        pep,
+        other_pep,
+        other_assertion,
+        unauthenticated,
+        other_subject,
+        narrow,
+    ] = records.as_slice()
+    else {
+        panic!("six decisions, six records: {records:?}");
+    };
+    let digest = |language: &str| {
+        permguard_languages::descriptor::descriptor_digest(language).expect("carried")
+    };
+
+    for record in &records {
+        assert_eq!(
+            record["interface"],
+            json!(permguard_core::domains::interface::PDP_NATIVE_V1),
+            "{record}"
+        );
+        let profile = if record == narrow {
+            json!({"app": digest("cedar")})
+        } else {
+            json!({"app": digest("cedar"), "gateway": digest("rego")})
+        };
+        assert_eq!(
+            record["descriptors"], profile,
+            "each partition of the profile, and only those: {record}"
+        );
+        assert!(
+            record["question"]
+                .as_str()
+                .is_some_and(|question| question.starts_with("hmac-sha256:")
+                    && !question.ends_with(":unavailable")),
+            "a keyed commitment: {record}"
+        );
+        let rendered = record.to_string();
+        for clear in ["mallory", "trent", "carol", "spiffe://acme"] {
+            assert!(!rendered.contains(clear), "`{clear}` in clear: {record}");
+        }
+    }
+    assert_eq!(pep["actor"]["type"], json!("Actor"), "{pep}");
+    assert!(pep["actor"]["id"].is_string(), "{pep}");
+    assert_ne!(
+        pep["actor"]["id"], pep["principal"]["id"],
+        "the actor is never the assertion"
+    );
+    assert_ne!(pep["actor"], other_pep["actor"], "another actor");
+    assert_eq!(
+        pep["question"], other_pep["question"],
+        "the same question, whoever asked it"
+    );
+    assert_eq!(pep["actor"], other_assertion["actor"], "the same actor");
+    assert_ne!(
+        pep["question"], other_assertion["question"],
+        "another assertion is another question"
+    );
+    assert_ne!(pep["principal"], other_assertion["principal"]);
+    assert!(
+        unauthenticated.get("actor").is_none(),
+        "no transport authenticated it, and the assertion is not made the actor: {unauthenticated}"
+    );
+    assert_eq!(unauthenticated["principal"], pep["principal"]);
+    assert_eq!(
+        unauthenticated["question"], pep["question"],
+        "the question is what was asked, not who asked it"
+    );
+    assert_ne!(
+        other_subject["question"], pep["question"],
+        "another subject is another question"
+    );
+    assert_ne!(
+        narrow["question"], pep["question"],
+        "the same evaluation of another profile is another question"
+    );
+}
+
+/// WP-7.5c, IFACE-04: the transport hands on the principal it authorized the request as on every
+/// request, a signature asked for or not, the reserved anonymous one included, and nothing for a
+/// credential no rule maps; the body's `principal` never becomes it.
+#[test]
+fn the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_assertion() {
+    use permguard_core::authz::{Actor, ActorContext, Credential, Principal};
+    use permguard_data_plane::authz::signing::asker;
+
+    let mut asked = json!({
+        "zone": "acme", "ledger": "main-ledger",
+        "subject": {"type": "user", "id": "alice"},
+        "resource": {"type": "document", "id": "budget"},
+        "action": {"name": "read"},
+        "principal": {"type": "user", "id": "mallory"},
+    });
+    let plain: wire::CheckRequest = serde_json::from_value(asked.clone()).expect("a request");
+    asked["request_nonce"] = json!("AAECAwQFBgcICQoLDA0ODw");
+    let nonced: wire::CheckRequest = serde_json::from_value(asked).expect("a request");
+    let authenticated = Actor::Authenticated(ActorContext::new(
+        Principal::new("spiffe://acme/pep").expect("a principal"),
+        Credential::SanUri,
+        Some("the PEP".to_owned()),
+    ));
+
+    for request in [&plain, &nonced] {
+        let handed = asker(&authenticated, request, None).expect("handed on");
+        assert_eq!(handed.actor.as_deref(), Some("spiffe://acme/pep"));
+        let handed = asker(&Actor::Anonymous, request, None).expect("handed on");
+        assert_eq!(
+            handed.actor.as_deref(),
+            Some(Principal::anonymous().as_str())
+        );
+        let handed = asker(
+            &Actor::Unmapped {
+                reason: "an unknown certificate".to_owned(),
+            },
+            request,
+            None,
+        )
+        .expect("handed on");
+        assert_eq!(handed.actor, None, "no rule maps it: no actor");
+    }
 }
 
 /// WP-6.6a: every decision says what became of its record — `disabled` with no log, `durable`
@@ -4258,6 +4474,7 @@ mod signed_response {
                 permguard_data_plane::authz::decide::Asker {
                     audience: Some(AUDIENCE.to_owned()),
                     request_digest: None,
+                    actor: None,
                 },
             )
             .await

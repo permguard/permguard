@@ -243,6 +243,10 @@ fn decided<'a>(id: &'a str, zone: &'a str, permit: bool) -> Decided<'a> {
         request_id: None,
         latency_us: 143,
         event: None,
+        interface: None,
+        actor: None,
+        question: None,
+        descriptors: Default::default(),
     }
 }
 

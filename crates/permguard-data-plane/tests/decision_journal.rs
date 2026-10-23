@@ -95,6 +95,10 @@ fn decided(id: &str, permit: bool) -> Decided<'_> {
         request_id: Some("lab-1".to_owned()),
         latency_us: 143,
         event: None,
+        interface: None,
+        actor: None,
+        question: None,
+        descriptors: Default::default(),
     }
 }
 
@@ -770,6 +774,75 @@ fn one_decision_id_reused_for_a_different_answer_is_refused() {
         .filter(|record| record["kind"] == json!("decision"))
         .count();
     assert_eq!(decisions, 1, "the conflicting record was not appended");
+}
+
+/// WP-7.5c, IFACE-05: the evidence binding is part of a decision's identity. The same handle
+/// asked through another interface, by another actor, about another question or under another
+/// runtime is another decision, refused rather than written as a retry of the first; the same
+/// binding again is the retry.
+#[test]
+fn one_decision_id_under_another_evidence_binding_is_refused() {
+    let bound = |id| {
+        let mut decided = decided(id, true);
+        decided.interface = Some(permguard_core::domains::interface::PDP_NATIVE_V1.to_owned());
+        decided.actor = Some(("Actor".to_owned(), "v1:a1c7".to_owned()));
+        decided.question = Some(json!({"subject": {"type": "User", "id": "alice"}}));
+        decided.descriptors =
+            std::collections::BTreeMap::from([("app".to_owned(), "sha256:d1".to_owned())]);
+        decided
+    };
+    let journal = journal("binding-conflict", "1.0", WhenFull::Open, bounds());
+    journal.record(&bound("d-bound")).expect("the first lands");
+    journal
+        .record(&bound("d-bound"))
+        .expect("the same binding again is the retry");
+
+    type Vary = fn(&mut Decided<'_>);
+    let variants: [(&str, Vary); 4] = [
+        ("interface", |decided| {
+            decided.interface =
+                Some(permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1.to_owned());
+        }),
+        ("actor", |decided| {
+            decided.actor = Some(("Actor".to_owned(), "v1:b2d8".to_owned()));
+        }),
+        ("question", |decided| {
+            decided.question = Some(json!({"subject": {"type": "User", "id": "bob"}}));
+        }),
+        ("descriptors", |decided| {
+            decided.descriptors =
+                std::collections::BTreeMap::from([("app".to_owned(), "sha256:d2".to_owned())]);
+        }),
+    ];
+    for (member, vary) in variants {
+        let mut other = bound("d-bound");
+        vary(&mut other);
+        let refused = journal
+            .record(&other)
+            .expect_err("another binding under the same identity is refused");
+        assert!(
+            refused.to_string().contains("d-bound"),
+            "{member}: the refusal names the identity: {refused}"
+        );
+    }
+
+    let decisions = everything(&journal)
+        .into_iter()
+        .filter(|record| record["kind"] == json!("decision"))
+        .collect::<Vec<_>>();
+    assert_eq!(decisions.len(), 1, "one record: {decisions:?}");
+    let record = &decisions[0];
+    assert_eq!(
+        record["interface"],
+        json!(permguard_core::domains::interface::PDP_NATIVE_V1)
+    );
+    assert_eq!(record["actor"], json!({"type": "Actor", "id": "v1:a1c7"}));
+    assert_eq!(record["descriptors"], json!({"app": "sha256:d1"}));
+    let question = record["question"].as_str().expect("a commitment");
+    assert!(
+        question.starts_with("hmac-sha256:v1:") && !question.contains("alice"),
+        "committed under the input key, never in clear: {question}"
+    );
 }
 
 /// WP-6.1, owner decision of 2026-10-16: a version 1 spool an upgraded plane left is opened for

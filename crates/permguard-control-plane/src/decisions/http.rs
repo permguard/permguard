@@ -1006,6 +1006,14 @@ mod openapi {
                 time: Some("occurred_at".to_owned()),
                 quarantined: Some(1),
             }),
+            // The evidence binding (IFACE-04, IFACE-05), every member.
+            interface: Some(permguard_core::domains::interface::PDP_NATIVE_V1.to_owned()),
+            actor: Some(party("Actor", "pseudo:v1:a1c7", false)),
+            question: Some(format!("hmac-sha256:v1:{}", "c".repeat(64))),
+            descriptors: Some(BTreeMap::from([(
+                "app".to_owned(),
+                format!("sha256:{}", "d".repeat(64)),
+            )])),
         }));
         let decision_minimal = Body::Decision(Box::new(DecisionBody {
             id: "id-3".to_owned(),
@@ -1030,6 +1038,10 @@ mod openapi {
             context: None,
             latency_us: 12,
             event: None,
+            interface: None,
+            actor: None,
+            question: None,
+            descriptors: None,
         }));
         let marker_minimal = Body::Marker(Box::new(MarkerBody {
             predecessor: Some(Predecessor {

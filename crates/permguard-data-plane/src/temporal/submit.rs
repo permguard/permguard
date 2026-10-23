@@ -684,6 +684,7 @@ impl Submitter {
                     time: Some(history.time.clone()),
                     quarantined: (history.quarantined > 0).then_some(history.quarantined),
                 },
+                actor: Some(source),
             })
             .await?;
 

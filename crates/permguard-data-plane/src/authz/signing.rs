@@ -90,8 +90,16 @@ pub fn asker(
     request: &permguard_languages::CheckRequest,
     signing: Option<&ResponseSigning>,
 ) -> Result<super::decide::Asker, permguard_core::AccessDenial> {
+    // The record names who asked whether or not a signature is asked for (IFACE-04).
+    let acting = actor
+        .principal()
+        .ok()
+        .map(|principal| principal.as_str().to_owned());
     if request.request_nonce.is_none() {
-        return Ok(super::decide::Asker::default());
+        return Ok(super::decide::Asker {
+            actor: acting,
+            ..super::decide::Asker::default()
+        });
     }
     let audience = match actor {
         permguard_core::authz::Actor::Authenticated(context) => {
@@ -104,5 +112,8 @@ pub fn asker(
             "a signed response is addressed to an authenticated caller, and this request has none",
         ));
     }
-    Ok(super::decide::Asker::of(audience, request))
+    Ok(super::decide::Asker {
+        actor: acting,
+        ..super::decide::Asker::of(audience, request)
+    })
 }

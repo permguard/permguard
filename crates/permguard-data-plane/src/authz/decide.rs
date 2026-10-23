@@ -257,11 +257,10 @@ impl Loading {
 
         // The interface this profile asks of each partition: its compile is keyed by it. The
         // profile exists, `partitions_of` having found it; a key never carries an empty interface.
-        let Some(interface) = head
-            .manifest
-            .profiles
-            .get(profile)
-            .map(|declared| permguard_objects::manifest::interface_of(&declared.r#type).to_owned())
+        let Some(interface) =
+            head.manifest.profiles.get(profile).map(|declared| {
+                permguard_objects::manifest::interface_of(&declared.r#type).to_owned()
+            })
         else {
             return Err(self.refuse(
                 mirror,
@@ -425,6 +424,9 @@ pub struct TemporalDecision<'a> {
     pub latency_us: u64,
     /// Where the occurrence this decision was made about sits.
     pub event: permguard_decisions::record::EventRef,
+    /// The principal the submission authenticated as (IFACE-04): the source the occurrence is
+    /// recorded under, never a value of the payload.
+    pub actor: Option<&'a str>,
 }
 
 /// The half of a decider that loading needs.
@@ -878,6 +880,9 @@ impl Decider {
         // The decision's own clock, which the log records: how long the plane
         // took, separate from how long the transport took.
         let started = Instant::now();
+        // Who asked, as the transport authenticated them: the record's actor (IFACE-04), kept
+        // apart from the request's `principal`, which is only what the caller asserted.
+        let actor = asker.actor.clone();
         // Shared, never copied. The plan below runs on a blocking thread and needs the request to
         // outlive this frame; cloning it copied every evaluation's subject, resource and context
         // a second time, on top of the entity stores the contract already shares.
@@ -1161,6 +1166,7 @@ impl Decider {
                 &head,
                 &evaluated,
                 trace.as_ref(),
+                actor.as_deref(),
                 started,
             )
             .await?;
@@ -1526,6 +1532,10 @@ pub struct Asker {
     pub audience: Option<String>,
     /// The request digest, taken before a header filled anything in.
     pub request_digest: Option<String>,
+    /// The principal the transport authorized the request as, the reserved anonymous one
+    /// included: what the decision record names as its actor (IFACE-04), whether or not a
+    /// signature is asked for. `None` where no transport authenticated the request.
+    pub actor: Option<String>,
 }
 
 impl Asker {
@@ -1536,6 +1546,7 @@ impl Asker {
         Self {
             audience,
             request_digest: permguard_languages::attestation::request_digest(request).ok(),
+            actor: None,
         }
     }
 }
@@ -1600,6 +1611,12 @@ struct OwnedDecided {
     latency_us: u64,
     /// The occurrence this decision was made about, for a temporal one.
     event: Option<permguard_decisions::record::EventRef>,
+    /// The evidence binding (IFACE-04, IFACE-05): the interface, the pseudonymised actor, the
+    /// canonical question to commit to, and the descriptor of each partition of the profile.
+    interface: String,
+    actor: Option<(String, String)>,
+    question: serde_json::Value,
+    descriptors: std::collections::BTreeMap<String, String>,
 }
 
 /// The compiled-cache key of one partition (IFACE-03): its ledger, its commit, its name, the
@@ -1615,15 +1632,7 @@ fn partition_key(
     profile: permguard_core::assurance::AssuranceProfile,
     enabled: &permguard_languages::registry::Enabled,
 ) -> String {
-    let descriptor = head
-        .manifest
-        .partitions
-        .get(partition)
-        .and_then(|declared| head.manifest.runtimes.get(&declared.runtime))
-        .and_then(|runtime| {
-            permguard_languages::descriptor::descriptor_digest(&runtime.language.name)
-        })
-        .unwrap_or("not-carried");
+    let descriptor = descriptor_of(head, partition).unwrap_or("not-carried");
 
     let options = enabled.names().collect::<Vec<_>>().join(",");
     Cache::partition_key(
@@ -1659,6 +1668,75 @@ fn interfaces_of(head: &Head, partition: &str) -> Vec<String> {
         .and_then(|runtime| permguard_languages::lookup::language(&runtime.language.name))
         .map(permguard_languages::registry::implemented_interfaces)
         .unwrap_or_default()
+}
+
+/// The descriptor digest of the runtime `partition` of `head` names, when this build carries it.
+fn descriptor_of(head: &Head, partition: &str) -> Option<&'static str> {
+    head.manifest
+        .partitions
+        .get(partition)
+        .and_then(|declared| head.manifest.runtimes.get(&declared.runtime))
+        .and_then(|runtime| {
+            permguard_languages::descriptor::descriptor_digest(&runtime.language.name)
+        })
+}
+
+/// Each partition of `profile`, with the descriptor digest of the runtime that evaluated it: the
+/// semantics a record was decided under (IFACE-05).
+///
+/// A partition whose runtime this build does not carry is left out rather than named
+/// `not-carried`: the load gate refuses such a partition, so no decision is recorded under it.
+fn descriptors_of(head: &Head, profile: &str) -> std::collections::BTreeMap<String, String> {
+    head.manifest
+        .profiles
+        .get(profile)
+        .map(|declared| {
+            declared
+                .partitions
+                .iter()
+                .filter_map(|partition| {
+                    descriptor_of(head, partition)
+                        .map(|digest| (partition.clone(), digest.to_owned()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The store a question was asked of, by its immutable ids.
+fn store_of(mirror: &store::Mirror, profile: &str) -> serde_json::Value {
+    serde_json::json!({
+        "zone_id": mirror.identity.zone_id,
+        "ledger_id": mirror.identity.ledger_id,
+        "profile": profile,
+    })
+}
+
+/// One native evaluation as the canonical question the record commits to (IFACE-05): the
+/// interface, the store, and what was asked, the asserted principal apart from the actor.
+fn native_question(
+    mirror: &store::Mirror,
+    profile: &str,
+    query: &Asking,
+    asserted_principal: Option<&str>,
+) -> serde_json::Value {
+    let entity = |entity: &permguard_languages::Entity| {
+        serde_json::json!({
+            "type": entity.kind,
+            "id": entity.id,
+            "properties": entity.properties,
+        })
+    };
+    serde_json::json!({
+        "interface": permguard_core::domains::interface::PDP_NATIVE_V1,
+        "store": store_of(mirror, profile),
+        "subject": entity(&query.subject),
+        "resource": entity(&query.resource),
+        "action": {"name": query.action.name, "properties": query.action.properties},
+        "context": query.context,
+        "partition_inputs": serde_json::to_value(&*query.partition_inputs).ok(),
+        "asserted_principal": asserted_principal,
+    })
 }
 
 /// The record's spelling of a resolution.
@@ -1734,6 +1812,10 @@ impl OwnedDecided {
             request_id: self.request_id.clone(),
             latency_us: self.latency_us,
             event: self.event.clone(),
+            interface: Some(self.interface.clone()),
+            actor: self.actor.clone(),
+            question: Some(self.question.clone()),
+            descriptors: self.descriptors.clone(),
         }
     }
 }
@@ -1750,6 +1832,7 @@ impl Decider {
     /// deployment that said it would rather not decide than decide unrecorded
     /// gets exactly that, `unavailable` before the answer leaves. Answering
     /// anyway and writing a warning would make the setting a comment.
+    #[allow(clippy::too_many_arguments)]
     async fn journal(
         &self,
         resolved: &Resolved,
@@ -1757,6 +1840,7 @@ impl Decider {
         head: &Head,
         evaluated: &[Evaluated],
         trace: Option<&TraceContext>,
+        actor: Option<&str>,
         started: Instant,
     ) -> Result<Vec<Evidence>, ApiError> {
         let Some(journal) = &self.journal else {
@@ -1779,6 +1863,11 @@ impl Decider {
         let at = now_rfc3339();
         let latency_us = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
         let mut evidence = Vec::with_capacity(evaluated.len());
+        let actor = match actor {
+            Some(principal) => Some(("Actor".to_owned(), token("actor", principal)?)),
+            None => None,
+        };
+        let descriptors = descriptors_of(head, &resolved.profile);
 
         // **One record per evaluation**, not one per request. A boxcarred
         // request carries several questions about several subjects, resources
@@ -1864,6 +1953,15 @@ impl Decider {
                 // A stateless decision was made about a request, not about an occurrence. Left
                 // absent rather than filled with something that stands in for one.
                 event: None,
+                interface: permguard_core::domains::interface::PDP_NATIVE_V1.to_owned(),
+                actor: actor.clone(),
+                question: native_question(
+                    mirror,
+                    &resolved.profile,
+                    &query,
+                    resolved.principal.as_deref(),
+                ),
+                descriptors: descriptors.clone(),
             };
 
             evidence.push(self.write(Arc::clone(journal), decided).await?);
@@ -1930,6 +2028,22 @@ impl Decider {
             request_id: at.request_id.map(ToOwned::to_owned),
             latency_us: at.latency_us,
             event: Some(at.event.clone()),
+            interface: permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1.to_owned(),
+            actor: match at.actor {
+                Some(principal) => Some(("Actor".to_owned(), token("actor", principal)?)),
+                None => None,
+            },
+            question: serde_json::json!({
+                "interface": permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1,
+                "store": store_of(at.mirror, at.profile),
+                "event_id": at.event.event_id,
+                "event_type": at.event.event_type,
+                "subject": {"type": at.subject.0, "id": at.subject.1},
+                "resource": {"type": at.resource.0, "id": at.resource.1},
+                "action": at.action,
+                "event": at.context,
+            }),
+            descriptors: descriptors_of(at.head, at.profile),
         };
         let Some(journal) = &self.journal else {
             return Ok(());

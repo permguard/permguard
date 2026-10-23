@@ -972,6 +972,25 @@
           },
           "event": {
             "$ref": "#/components/schemas/EventRef"
+          },
+          "interface": {
+            "type": "string",
+            "description": "The exact evaluation interface id the question was asked through (IFACE-05). Added to version 1 as a member: a record written before carries none of `interface`, `actor`, `question` and `descriptors`."
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Party",
+            "description": "Who asked, as the transport authenticated them (IFACE-04): type `Actor`, the authorization principal pseudonymised. Never the request's `principal`, which is an unauthenticated assertion. Absent where no transport authenticated the request."
+          },
+          "question": {
+            "type": "string",
+            "description": "A keyed commitment (`hmac-sha256:<key version>:<hex>`, the input key) to the JCS of the interface, the store ids and profile, and the one evaluation asked."
+          },
+          "descriptors": {
+            "type": "object",
+            "description": "Each partition of the profile, mapped to the descriptor digest of the runtime that evaluated it.",
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         },
         "required": [

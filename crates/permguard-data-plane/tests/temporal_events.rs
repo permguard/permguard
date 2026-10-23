@@ -2833,6 +2833,55 @@ when { Boom::Fail(context.input.document).ok == true };
             record["event"]["event_id"].is_string(),
             "linked to the occurrence it was made about: {record}"
         );
+        // The evidence binding (WP-7.5c, IFACE-04, IFACE-05): the temporal interface, the source
+        // the submission authenticated as, pseudonymised, a keyed commitment to the question, and
+        // the runtime each partition of the profile was evaluated by.
+        assert_eq!(
+            record["interface"],
+            json!(permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1),
+            "{record}"
+        );
+        assert_eq!(record["actor"]["type"], json!("Actor"), "{record}");
+        assert!(
+            record["actor"]["id"]
+                .as_str()
+                .is_some_and(|id| id.len() > 32
+                    && id.split_once(':').is_some_and(|(_, tag)| tag.len() == 32
+                        && tag.bytes().all(|byte| byte.is_ascii_hexdigit()))),
+            "the actor is pseudonymised: {record}"
+        );
+        assert_ne!(
+            record["actor"]["id"], record["subject"]["id"],
+            "the source that submitted, not the occurrence's principal: {record}"
+        );
+        // Submitted with no credential: the source is the reserved anonymous principal, and the
+        // actor is exactly its pseudonym under the zone's key.
+        let zone = permguard_host::secrets::parse_uuid(ZONE_ID).expect("a UUID");
+        let anonymous = subjects()
+            .expect("the zone's pseudonyms")
+            .pseudonym(
+                &zone,
+                "actor",
+                permguard_core::authz::Principal::anonymous().as_str(),
+            )
+            .expect("a pseudonym");
+        assert_eq!(record["actor"]["id"], json!(anonymous), "{record}");
+        assert!(
+            record["question"]
+                .as_str()
+                .is_some_and(|question| question.starts_with("hmac-sha256:")
+                    && !question.ends_with(":unavailable")),
+            "{record}"
+        );
+        assert!(
+            record["descriptors"]
+                .as_object()
+                .is_some_and(|descriptors| !descriptors.is_empty()
+                    && descriptors.values().all(|digest| digest
+                        .as_str()
+                        .is_some_and(|digest| digest.starts_with("sha256:")))),
+            "{record}"
+        );
     }
 
     /// Under minimal disclosure the engines' own words stay inside: every reason keeps its code

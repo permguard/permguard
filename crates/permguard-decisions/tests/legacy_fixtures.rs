@@ -117,6 +117,10 @@ fn body(seq: u64) -> Body {
         context: None,
         latency_us: 143,
         event: None,
+        interface: None,
+        actor: None,
+        question: None,
+        descriptors: None,
     }))
 }
 

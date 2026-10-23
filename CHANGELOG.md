@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **A decision record names its interface, its authenticated actor apart from the asserted principal, its question and its runtimes (WP-7.5c).**
+  Version 1 decision records gain four optional members, inside the record digest and its logical identity: `interface`, the exact evaluation interface; `actor`, the principal the transport authenticated the request as, pseudonymised like `subject`; `question`, a keyed commitment to the interface, the store and the one evaluation asked; and `descriptors`, each partition of the profile with its runtime's descriptor digest.
+  The request's `principal` stays the member of that name and is only what the caller asserted: it is never recorded as the actor, and a request no transport authenticated records no actor.
+  Temporal decisions record the source the submission authenticated as.
+  A record written before carries none of the four members and digests as it always did.
+
 - **A partition promises only the interfaces its runtime implements, and a compiled partition is keyed by everything it was compiled for (WP-7.5a).**
   The load gate refuses a partition whose `interfaces` name one its runtime's descriptor does not implement, by exact id; no runtime implements two, so a partition listing two is refused before an artifact could serve an interface it was not written for.
   A profile's compatibility with a partition is read from the descriptor's interfaces rather than inferred from the kind of language.

@@ -324,6 +324,24 @@ pub struct DecisionBody {
     /// without matching timestamps and hoping.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub event: Option<EventRef>,
+    /// The exact evaluation interface the question was asked through (IFACE-05).
+    ///
+    /// Added to version 1 as a member, like `outcome`, with the three below: a record written
+    /// before carries none of them and digests as it always did.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub interface: Option<String>,
+    /// Who asked, as the transport authenticated them (IFACE-04): type `Actor`, the authorization
+    /// principal pseudonymised. Never the request's `principal`, which is an assertion and stays
+    /// the member of that name. Absent where no transport authenticated the request.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub actor: Option<Party>,
+    /// A keyed commitment to the canonical question: the interface, the store and the one
+    /// evaluation that was asked.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub question: Option<String>,
+    /// Each partition of the profile, with the descriptor digest of the runtime that evaluated it.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub descriptors: Option<std::collections::BTreeMap<String, String>>,
 }
 
 /// The occurrence a temporal decision was made about, and where it sits.
