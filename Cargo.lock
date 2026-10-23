@@ -2490,6 +2490,7 @@ dependencies = [
  "permguard-events",
  "permguard-host",
  "permguard-languages",
+ "permguard-notp",
  "permguard-objects",
  "permguard-server",
  "permguard-std",
