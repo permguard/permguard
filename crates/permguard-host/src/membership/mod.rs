@@ -787,6 +787,41 @@ pub fn statement_matches(statement: &RingStatement, pin: &RingPin) -> Result<(),
     Ok(())
 }
 
+/// The coordinator `control.attest` set a manifest pins and the held statement of it (WP-7.2b):
+/// the pin in force, never a retiring one, and the statement that matches it, whatever else is
+/// held beside it.
+pub fn pinned_control_attest<'a>(
+    pins: &'a [RingPin],
+    statements: &'a [RingStatement],
+) -> Option<(&'a RingPin, &'a RingStatement)> {
+    let pin = pins.iter().find(|pin| {
+        pin.owner == Role::Coordinator && pin.ring == CONTROL_ATTEST && !pin.retiring
+    })?;
+    let statement = statements
+        .iter()
+        .find(|statement| statement_matches(statement, pin).is_ok())?;
+    Some((pin, statement))
+}
+
+/// [`pinned_control_attest`], its binding verified under `coordinator`, the identity a session
+/// just proved (WP-7.2b): the set, epoch and keys a mirror's statements verify under, or `None`
+/// when the manifest pins none, its statement is not held, or the binding is not the
+/// coordinator's.
+pub fn verified_control_attest(
+    pins: &[RingPin],
+    statements: &[RingStatement],
+    coordinator: &identity::Verified,
+) -> Option<crate::composition::PinnedRing> {
+    let (pin, statement) = pinned_control_attest(pins, statements)?;
+    verify_statement(statement, coordinator, None).ok()?;
+    Some(crate::composition::PinnedRing {
+        epoch: pin.epoch,
+        key_set_digest: pin.key_set_digest,
+        binding: pin.binding.clone(),
+        keys: statement.keys.clone(),
+    })
+}
+
 /// The public key a JWK of `suite` holds.
 fn public_of(text: &str) -> Option<(String, Suite, Vec<u8>)> {
     use base64::Engine as _;

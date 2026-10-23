@@ -502,6 +502,8 @@ mod tasks {
         pub incomplete: bool,
         /// The tasks whose listings alone say they are not complete.
         pub partial: Vec<String>,
+        /// The tasks whose sessions name no pinned ring.
+        pub unpinned: Vec<String>,
     }
 
     impl MirrorTasks for Held {
@@ -530,6 +532,7 @@ mod tasks {
                             .find(|(id, _)| *id == task.task_id)
                             .map(|(_, names)| names.clone()),
                         incomplete: self.incomplete || self.partial.contains(&task.task_id),
+                        unpinned: self.unpinned.contains(&task.task_id),
                     }))
                 };
             Box::pin(std::future::ready(opened))
@@ -542,9 +545,20 @@ mod tasks {
         asked: Arc<Mutex<Vec<(String, MirrorOperation)>>>,
         only: Option<Vec<String>>,
         incomplete: bool,
+        unpinned: bool,
     }
 
     impl MirrorSession for Session {
+        fn ring(&self) -> Option<permguard_host::composition::PinnedRing> {
+            // The ledgers of these tests hold no history yet: nothing is verified under it.
+            (!self.unpinned).then(|| permguard_host::composition::PinnedRing {
+                epoch: 1,
+                key_set_digest: [3; 32],
+                binding: b"binding".to_vec(),
+                keys: Vec::new(),
+            })
+        }
+
         fn call(&mut self, body: Vec<u8>) -> BoxFuture<'_, Result<Vec<u8>, MirrorRefusal>> {
             let url = self.url.clone();
             let task = self.task.clone();
@@ -735,6 +749,7 @@ async fn a_membership_task_is_mirrored_under_its_authority_over_its_session() {
             only: Vec::new(),
             incomplete: false,
             partial: Vec::new(),
+            unpinned: Vec::new(),
         },
     ))
     .await;
@@ -803,6 +818,7 @@ async fn a_coordinator_that_does_not_answer_costs_none_of_its_mirrors() {
         only: Vec::new(),
         incomplete: false,
         partial: Vec::new(),
+        unpinned: Vec::new(),
     };
 
     round::run(over_tasks(&root, held(Vec::new()))).await;
@@ -846,6 +862,7 @@ async fn a_ledger_both_a_url_and_a_task_offer_is_served_from_neither() {
             only: Vec::new(),
             incomplete: false,
             partial: Vec::new(),
+            unpinned: Vec::new(),
         },
     ))
     .await;
@@ -894,6 +911,7 @@ async fn the_file_narrows_the_tasks_followed_by_membership_task_and_pattern() {
             only: Vec::new(),
             incomplete: false,
             partial: Vec::new(),
+            unpinned: Vec::new(),
         })),
         selections,
         decider: None,
@@ -957,6 +975,7 @@ fn held_by(
             .collect(),
         incomplete,
         partial: Vec::new(),
+        unpinned: Vec::new(),
     }
 }
 
@@ -1108,4 +1127,29 @@ async fn a_whole_task_reaps_its_own_while_a_sibling_task_lists_in_part() {
     assert_eq!(outcome.reaped, 1, "`first` removes what it no longer lists");
     let left = layout::on_disk(&root).expect("lists");
     assert_eq!(left.len(), 1, "`second`'s mirror stays: {left:?}");
+}
+
+/// WP-7.2b: a task whose membership pins no `control.attest` set has nothing its statements could
+/// verify under: its coordinator fails the round, and none of its ledgers is mirrored.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_task_whose_membership_pins_no_ring_is_not_mirrored() {
+    let volume = scratch("unpinned");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger"]);
+    let root = volume.join("mirrors");
+    let mut held = held_by(
+        &url,
+        vec![tasks::task([0x11; 16], 1, "mirror", true)],
+        Vec::new(),
+        false,
+    );
+    held.unpinned = vec!["mirror".to_owned()];
+
+    let outcome = round::run(over_tasks(&root, held)).await;
+    assert_eq!(
+        outcome.unreachable, 1,
+        "the coordinator failed: {outcome:?}"
+    );
+    assert!(layout::on_disk(&root).expect("lists").is_empty());
 }

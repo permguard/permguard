@@ -27,6 +27,13 @@ pub struct Checkpoint {
     /// The ref the statement signed, as the tracked ref names it (WP-6.6b).
     #[serde(default, rename = "ref", skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,
+    /// The epoch of the ring the accepted statement was signed under (WP-7.2b): what ring
+    /// continuity is checked against. Absent in a checkpoint written before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ring_epoch: Option<u64>,
+    /// The digest of that ring's key set, as `sha256:<hex>` (WP-7.2b).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_set_digest: Option<String>,
 }
 
 /// Reads the checkpoint at `path`, `None` when nothing was accepted yet.

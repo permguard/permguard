@@ -3048,6 +3048,23 @@ async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
         .open_mirror(task)
         .await
         .expect("the session opens");
+    // The coordinator's `control.attest` set the manifest pins, its binding verified under the
+    // coordinator's identity the session proved (WP-7.2b): every key one of that ring's.
+    let ring = session
+        .ring()
+        .expect("the membership pins the coordinator's ring");
+    assert!(ring.epoch >= 1);
+    assert!(!ring.binding.is_empty());
+    assert!(!ring.keys.is_empty());
+    for key in &ring.keys {
+        let jwk: serde_json::Value = serde_json::from_str(key).expect("a JWK");
+        assert!(
+            jwk["kid"]
+                .as_str()
+                .is_some_and(|kid| kid.starts_with("control.attest:")),
+            "{jwk}"
+        );
+    }
     assert_eq!(
         session.call(b"first".to_vec()).await.expect("answered"),
         b"echo:first".to_vec()

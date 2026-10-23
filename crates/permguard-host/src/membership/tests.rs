@@ -2384,3 +2384,63 @@ fn approval_refuses_a_version_the_provider_did_not_register() {
         Err(MembershipError::Widened(_))
     ));
 }
+
+/// WP-7.2b: the `control.attest` set a mirror verifies under is the coordinator's pin in force,
+/// never a retiring one nor a member's, with the held statement that matches it, whatever else is
+/// held beside it.
+#[test]
+fn the_control_attest_pin_in_force_is_chosen_with_its_matching_statement() {
+    let c = Host::new("pin-pick");
+    let held = c.statement(CONTROL_ATTEST);
+    let pin = |owner: Role, retiring: bool, epoch: u64| RingPin {
+        owner,
+        ring: CONTROL_ATTEST.to_owned(),
+        epoch,
+        key_set_digest: super::keys_digest(&held).expect("a digest"),
+        binding: held.binding.clone(),
+        retiring,
+    };
+    let current = pin(Role::Coordinator, false, held.epoch);
+    let retiring = pin(Role::Coordinator, true, held.epoch + 1);
+    let other = c.statement(HOST_OPERATIONS);
+    let statements = vec![other.clone(), held.clone()];
+
+    let pins = vec![retiring.clone(), current.clone()];
+    let (chosen, statement) =
+        super::pinned_control_attest(&pins, &statements).expect("the pin in force");
+    assert_eq!(chosen, &current, "never the retiring pin");
+    assert_eq!(
+        statement, &held,
+        "the statement that matches, not the first held"
+    );
+
+    assert!(super::pinned_control_attest(&[retiring], &statements).is_none());
+    assert!(
+        super::pinned_control_attest(&[pin(Role::Member, false, held.epoch)], &statements)
+            .is_none(),
+        "a member's pin is not the coordinator's"
+    );
+    assert!(
+        super::pinned_control_attest(std::slice::from_ref(&current), &[other]).is_none(),
+        "no statement of the pinned set held"
+    );
+
+    // Verified under the coordinator's identity, and under no other Host's.
+    let ring =
+        super::verified_control_attest(std::slice::from_ref(&current), &statements, &c.verified())
+            .expect("the coordinator's binding");
+    assert_eq!(
+        (ring.epoch, ring.key_set_digest, ring.binding.clone()),
+        (
+            current.epoch,
+            current.key_set_digest,
+            current.binding.clone()
+        )
+    );
+    assert_eq!(ring.keys, held.keys);
+    let stranger = Host::new("pin-pick-stranger");
+    assert!(
+        super::verified_control_attest(&[current], &statements, &stranger.verified()).is_none(),
+        "a binding is the coordinator's or nothing"
+    );
+}

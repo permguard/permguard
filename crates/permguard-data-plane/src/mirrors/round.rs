@@ -475,10 +475,14 @@ pub struct Served {
 pub enum Via {
     /// The configured URL in `Served::server`, with that source's TLS.
     Url,
-    /// A `policy.mirror` task session (WP-7.2a), and the task's bound on a message.
+    /// A `policy.mirror` task session (WP-7.2a), the task's bound on a message, the
+    /// `control.attest` set its membership pins and the coordinator the statements must name
+    /// (WP-7.2b).
     Task {
         session: super::task::Shared,
         max_body_bytes: u64,
+        ring: permguard_host::composition::PinnedRing,
+        coordinator: [u8; 16],
     },
 }
 
@@ -557,6 +561,22 @@ async fn listed(
             .open_mirror(task)
             .await
             .map_err(|refusal| format!("opening task `{}`: {refusal}", task.task_id))?;
+        // The set the membership pins as the session opened, its binding verified under the
+        // coordinator's identity: a task without one has nothing its statements could verify
+        // under, and none of its ledgers is mirrored (WP-7.2b).
+        let Some(ring) = session.ring() else {
+            warn!(
+                event.name = "sync.task_unpinned",
+                component = COMPONENT,
+                task = task.task_id.as_str(),
+                "the membership pins no coordinator `control.attest` set this Host can verify: \
+                 none of the task's ledgers is mirrored"
+            );
+            return Err(format!(
+                "task `{}`: its membership pins no verifiable coordinator `control.attest` set",
+                task.task_id
+            ));
+        };
         let session: super::task::Shared = Arc::new(tokio::sync::Mutex::new(session));
         let listing = super::task::list(&session, task).await?;
         complete &= listing.complete;
@@ -592,6 +612,8 @@ async fn listed(
                 via: Via::Task {
                     session: Arc::clone(&session),
                     max_body_bytes: task.max_body_bytes,
+                    ring: ring.clone(),
+                    coordinator: task.coordinator,
                 },
             });
         }
@@ -697,10 +719,13 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
                 remote.bind(&tracked.zone_id, &tracked.ledger_id);
                 pull::fetch_closure(&store, "objects", "refs/main", &remote, &tracked)?
             }
-            // The same pull and verification, its reads on the task's session (WP-7.2a).
+            // The same pull and verification, its reads on the task's session (WP-7.2a), its
+            // statements verified under the membership's pinned `control.attest` set (WP-7.2b).
             Via::Task {
                 session,
                 max_body_bytes,
+                ring,
+                coordinator,
             } => {
                 let remote = super::task::TaskRemote::new(
                     session,
@@ -708,8 +733,9 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
                     &tracked.zone_id,
                     &tracked.ledger_id,
                     max_body_bytes,
+                    &ring,
                 );
-                pull::fetch_closure(&store, "objects", "refs/main", &remote, &tracked)?
+                super::task::verified_pull(&store, &tracked, &remote, &ring, coordinator)?
             }
         };
         pull::commit_checkpoint(&store, "refs/main", &verified)?;

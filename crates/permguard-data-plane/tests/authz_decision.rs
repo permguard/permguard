@@ -320,6 +320,8 @@ fn provision(
             // The Host and ref the head statement vouched for (WP-6.6b).
             authority_host_id: Some(AUTHORITY.to_owned()),
             reference: Some("main".to_owned()),
+            ring_epoch: None,
+            key_set_digest: None,
         },
     )
     .expect("the checkpoint is written");

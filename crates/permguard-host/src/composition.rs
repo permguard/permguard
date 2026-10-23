@@ -799,6 +799,18 @@ pub struct MirrorTask {
     pub max_body_bytes: u64,
 }
 
+/// A `control.attest` set as a membership pins it (WP-7.2b): its epoch, the digest of its keys,
+/// the identity-signed binding the pin names, and the keys, each the RFC 7517 JSON the statement
+/// carries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinnedRing {
+    pub epoch: u64,
+    pub key_set_digest: [u8; 32],
+    /// The exact `COSE_Sign1` binding of the set under the coordinator's identity.
+    pub binding: Vec<u8>,
+    pub keys: Vec<String>,
+}
+
 /// A refusal on a `policy.mirror` session: the stable code, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MirrorRefusal {
@@ -815,6 +827,13 @@ impl std::fmt::Display for MirrorRefusal {
 /// An open `policy.mirror` task session (WP-7.2a): one message, one answer, in order.
 pub trait MirrorSession: Send {
     fn call(&mut self, body: Vec<u8>) -> BoxFuture<'_, Result<Vec<u8>, MirrorRefusal>>;
+
+    /// The coordinator's `control.attest` set the membership pins as the session opened, its
+    /// binding verified under the coordinator's identity the session proved (WP-7.2b): what the
+    /// ledgers' head statements verify under, never a ring the coordinator hands over. `None`
+    /// when the manifest in force pins none, its statement is not held, or the binding does not
+    /// verify.
+    fn ring(&self) -> Option<PinnedRing>;
 }
 
 /// The member side of `policy.mirror` (WP-7.2a): the tasks this Host holds, and a session on

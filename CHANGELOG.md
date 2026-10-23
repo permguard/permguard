@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **A membership mirror trusts only the `control.attest` set its membership pins (WP-7.2b).**
+  A ledger mirrored over a `policy.mirror` task verifies its head statement under the coordinator's `control.attest` keys the membership's signed manifest pins, never a key ring fetched from the coordinator; a task whose membership pins none is not mirrored.
+  The statement must name the task's coordinator as its authority and the pinned set's epoch and key-set digest.
+  The ring never goes back: a pin below the epoch a mirror was verified under is ring rollback, another set at the same epoch equivocation, and either refuses the mirror's advance before anything is fetched.
+  The checkpoint keeps the ring's epoch and key-set digest, and the mirror keeps the pinned binding in `RING-BINDING.cose`.
+
 - **A Data Plane mirrors the ledgers of its `policy.mirror` memberships over their task sessions (WP-7.2a).**
   With `mirrors.enabled`, every active `policy.mirror` task of the Host's memberships is followed: each round the member opens a session to the coordinator, lists the ledgers the task covers through the new `list_ledgers` operation, and pulls each over that session, with the same verification and checkpoint a configured URL gets and no URL, TLS root or statement key of its own.
   `mirrors.tasks` may narrow them by membership and task id with anchored zone and ledger patterns.

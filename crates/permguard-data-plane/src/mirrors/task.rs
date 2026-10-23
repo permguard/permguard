@@ -47,6 +47,44 @@ pub async fn list(session: &Shared, task: &MirrorTask) -> Result<ListLedgersAnsw
     ListLedgersAnswer::decode(&answer).map_err(|error| format!("the listing: {error}"))
 }
 
+/// Where a task mirror keeps the identity-signed binding of the `control.attest` set its
+/// statements verified under (WP-7.2b).
+pub const RING_BINDING: &str = "RING-BINDING.cose";
+
+/// Pulls one ledger over its task session (WP-7.2b), the same pull a URL mirror runs bound to
+/// the membership: the ring never goes back nor forks at one epoch, checked before anything is
+/// fetched; the statement verifies under the pinned `control.attest` keys only, names the task's
+/// coordinator as its authority and the pin's epoch and key-set digest; the binding it verified
+/// under is kept. The checkpoint is the caller's to advance.
+pub fn verified_pull(
+    store: &dyn permguard_control_client::store::Store,
+    tracked: &permguard_control_client::pull::TrackedRef,
+    remote: &TaskRemote,
+    ring: &permguard_host::composition::PinnedRing,
+    coordinator: [u8; 16],
+) -> Result<permguard_control_client::pull::VerifiedHead, String> {
+    use permguard_control_client::pull;
+
+    let expected = pull::Expected {
+        authority_host_id: coordinator,
+        ring_epoch: ring.epoch,
+        key_set_digest: permguard_objects::digest::Digest::from_raw(ring.key_set_digest),
+    };
+    let verified = pull::fetch_closure_expecting(
+        store,
+        "objects",
+        "refs/main",
+        remote,
+        tracked,
+        Some(&expected),
+    )?;
+    // Written when it changes, never every round.
+    if store.read(RING_BINDING)?.as_deref() != Some(ring.binding.as_slice()) {
+        store.write(RING_BINDING, &ring.binding)?;
+    }
+    Ok(verified)
+}
+
 /// The reads of one ledger over a task session, for the pull a URL mirror runs.
 pub struct TaskRemote {
     session: Shared,
@@ -55,6 +93,8 @@ pub struct TaskRemote {
     ledger_id: String,
     /// The signed task's bound on a message: a read larger than it is never sent.
     max_body_bytes: u64,
+    /// The JWKS document of the membership's pinned `control.attest` set (WP-7.2b).
+    keys: Vec<u8>,
 }
 
 impl TaskRemote {
@@ -68,13 +108,22 @@ impl TaskRemote {
         zone_id: &str,
         ledger_id: &str,
         max_body_bytes: u64,
+        ring: &permguard_host::composition::PinnedRing,
     ) -> Self {
+        // The pinned keys as the JWKS document the statement verification reads; a key that is not
+        // JSON is left out, and what it signed does not verify.
+        let keys: Vec<serde_json::Value> = ring
+            .keys
+            .iter()
+            .filter_map(|key| serde_json::from_str(key).ok())
+            .collect();
         Self {
             session,
             runtime,
             zone_id: zone_id.to_owned(),
             ledger_id: ledger_id.to_owned(),
             max_body_bytes,
+            keys: serde_json::to_vec(&serde_json::json!({ "keys": keys })).unwrap_or_default(),
         }
     }
 
@@ -129,9 +178,10 @@ impl Remote for TaskRemote {
         }
     }
 
+    /// The membership's pinned `control.attest` keys (WP-7.2b): never a ring the coordinator
+    /// hands over the session, which could name any key it likes.
     fn keyring(&self) -> Result<Vec<u8>, String> {
-        self.call(MirrorOperation::KeyRing, Vec::new())
-            .map_err(|refused| refused.detail)
+        Ok(self.keys.clone())
     }
 
     fn get_ref(&self, r#ref: &str) -> Result<Option<RefAnswer>, String> {
@@ -196,18 +246,30 @@ mod tests {
 
     use std::sync::Mutex;
 
-    use permguard_host::composition::MirrorRefusal;
+    use base64::Engine as _;
+    use permguard_control_client::pull::TrackedRef;
+    use permguard_control_client::store::Store as _;
+    use permguard_host::composition::{MirrorRefusal, PinnedRing};
     use permguard_objects::digest::Digest;
+    use permguard_objects::object::{Blob, Commit, Tree};
+    use permguard_objects::statement::{HeadStatement, SignedHead};
+    use ring::signature::{Ed25519KeyPair, KeyPair as _};
 
     use super::*;
+
+    type Answer = Box<dyn Fn(&MirrorRequest) -> Result<Vec<u8>, MirrorRefusal> + Send>;
 
     /// A session answering from a script, keeping every message it carried.
     struct Scripted {
         carried: Arc<Mutex<Vec<MirrorRequest>>>,
-        answer: fn(&MirrorRequest) -> Result<Vec<u8>, MirrorRefusal>,
+        answer: Answer,
     }
 
     impl MirrorSession for Scripted {
+        fn ring(&self) -> Option<PinnedRing> {
+            None
+        }
+
         fn call(
             &mut self,
             body: Vec<u8>,
@@ -219,11 +281,109 @@ mod tests {
         }
     }
 
-    fn head() -> Digest {
-        Digest::compute(b"head")
+    fn keypair(seed: u8) -> Ed25519KeyPair {
+        Ed25519KeyPair::from_seed_unchecked(&[seed; 32]).expect("a key")
     }
 
-    fn answer(request: &MirrorRequest) -> Result<Vec<u8>, MirrorRefusal> {
+    fn jwk(kid: &str, key: &Ed25519KeyPair) -> String {
+        let x = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(key.public_key().as_ref());
+        format!(
+            r#"{{"kid":"{kid}","kty":"OKP","crv":"Ed25519","x":"{x}","alg":"EdDSA","use":"sig"}}"#
+        )
+    }
+
+    const COORDINATOR: [u8; 16] = [0x11; 16];
+
+    /// The membership's pin: `key` at epoch 2.
+    fn pinned(key: &Ed25519KeyPair) -> PinnedRing {
+        PinnedRing {
+            epoch: 2,
+            key_set_digest: *Digest::compute(b"the pinned set").raw(),
+            binding: b"the binding".to_vec(),
+            keys: vec![jwk("pinned", key)],
+        }
+    }
+
+    /// A one-commit closure: its objects and its head.
+    fn closure() -> (Vec<Vec<u8>>, Digest) {
+        let manifest = Blob {
+            media_type: "application/vnd.permguard.policy.cedar".into(),
+            data: b"permit(principal, action, resource);".to_vec(),
+        }
+        .encode()
+        .expect("a blob");
+        let tree = Tree {
+            entries: Vec::new(),
+        }
+        .encode()
+        .expect("a tree");
+        let commit = Commit {
+            tree: Digest::compute(&tree),
+            manifest: Digest::compute(&manifest),
+            predecessors: Vec::new(),
+            author: "test".into(),
+            author_at: 1_700_000_000,
+            message: "first".into(),
+        }
+        .encode()
+        .expect("a commit");
+        let head = Digest::compute(&commit);
+        (vec![commit, tree, manifest], head)
+    }
+
+    /// The statement of `head` as the coordinator would sign it, every binding field given.
+    fn statement(head: &Digest, authority: [u8; 16], epoch: u64, set: &Digest) -> HeadStatement {
+        HeadStatement {
+            zone: "zone-id".into(),
+            ledger: "ledger-id".into(),
+            r#ref: "main".into(),
+            digest: head.clone(),
+            counter: 1,
+            signed_at: 1_700_000_000,
+            authority_host_id: authority,
+            ref_digest: Digest::compute(b"ref state"),
+            ring_epoch: epoch,
+            key_set_digest: set.clone(),
+        }
+    }
+
+    /// A session that negotiates `signed` and serves `objects`, never anything else.
+    fn serving(signed: Vec<u8>, statement: HeadStatement, objects: Vec<Vec<u8>>) -> Answer {
+        Box::new(move |request: &MirrorRequest| {
+            let encoded = match request.operation {
+                MirrorOperation::NegotiatePull => NegotiatePullResponse {
+                    head: statement.digest.clone(),
+                    counter: statement.counter,
+                    statement: signed.clone(),
+                    missing: objects.iter().map(|bytes| Digest::compute(bytes)).collect(),
+                    max_batch_bytes: 1 << 20,
+                    max_batch_objects: 64,
+                    compression: None,
+                    transfer_id: [7; 16],
+                    ref_digest: statement.ref_digest.clone(),
+                    expiry: 60,
+                }
+                .encode(),
+                MirrorOperation::FetchObjects => {
+                    let asked = FetchObjectsRequest::decode(&request.body).expect("a fetch");
+                    FetchObjectsResponse {
+                        objects: objects
+                            .iter()
+                            .filter(|bytes| asked.digests.contains(&Digest::compute(bytes)))
+                            .cloned()
+                            .collect(),
+                        compression: None,
+                        expiry: 60,
+                    }
+                    .encode()
+                }
+                other => panic!("a task pull never asks {other:?}"),
+            };
+            Ok(encoded.expect("it encodes"))
+        })
+    }
+
+    fn answer_basic(request: &MirrorRequest) -> Result<Vec<u8>, MirrorRefusal> {
         let encoded = match request.operation {
             MirrorOperation::GetRef => {
                 let asked = GetRefRequest::decode(&request.body).expect("a ref read");
@@ -234,7 +394,7 @@ mod tests {
                     });
                 }
                 GetRefResponse {
-                    head: head(),
+                    head: Digest::compute(b"head"),
                     counter: 3,
                     statement: vec![1, 2, 3],
                     ref_digest: Digest::compute(b"ref"),
@@ -242,10 +402,10 @@ mod tests {
                 .encode()
             }
             MirrorOperation::NegotiatePull => NegotiatePullResponse {
-                head: head(),
+                head: Digest::compute(b"head"),
                 counter: 3,
                 statement: vec![1, 2, 3],
-                missing: vec![head()],
+                missing: vec![Digest::compute(b"head")],
                 max_batch_bytes: 1024,
                 max_batch_objects: 8,
                 compression: None,
@@ -260,7 +420,7 @@ mod tests {
                 expiry: 60,
             }
             .encode(),
-            MirrorOperation::KeyRing => return Ok(br#"{"keys":[]}"#.to_vec()),
+            MirrorOperation::KeyRing => panic!("a task mirror never asks the session for keys"),
             MirrorOperation::ListLedgers => ListLedgersAnswer {
                 ledgers: Vec::new(),
                 complete: true,
@@ -270,7 +430,11 @@ mod tests {
         Ok(encoded.expect("it encodes"))
     }
 
-    fn remote(max_body_bytes: u64) -> (TaskRemote, Arc<Mutex<Vec<MirrorRequest>>>) {
+    fn remote_with(
+        max_body_bytes: u64,
+        ring: &PinnedRing,
+        answer: Answer,
+    ) -> (TaskRemote, Arc<Mutex<Vec<MirrorRequest>>>) {
         let carried = Arc::new(Mutex::new(Vec::new()));
         let session: Shared = Arc::new(tokio::sync::Mutex::new(Box::new(Scripted {
             carried: Arc::clone(&carried),
@@ -283,22 +447,31 @@ mod tests {
         // The runtime outlives the remote: this test drives it from its own thread.
         std::mem::forget(runtime);
         (
-            TaskRemote::new(session, handle, "zone-id", "ledger-id", max_body_bytes),
+            TaskRemote::new(
+                session,
+                handle,
+                "zone-id",
+                "ledger-id",
+                max_body_bytes,
+                ring,
+            ),
             carried,
         )
     }
 
+    fn remote(max_body_bytes: u64) -> (TaskRemote, Arc<Mutex<Vec<MirrorRequest>>>) {
+        remote_with(max_body_bytes, &pinned(&keypair(1)), Box::new(answer_basic))
+    }
+
     /// WP-7.2a: every read names its ledger by id and travels as its own operation; an absent ref
-    /// is an absent ref, and a mirror's session never pushes.
+    /// is an absent ref, and a mirror's session never pushes. WP-7.2b: the keys are the pinned
+    /// set, never asked of the session.
     #[test]
     fn each_read_travels_as_its_operation_and_names_its_ledger() {
         let (remote, carried) = remote(1 << 20);
 
         let advertised = remote.get_ref("main").expect("read").expect("a ref");
-        assert_eq!(
-            (advertised.head, advertised.counter),
-            (head().to_string(), 3)
-        );
+        assert_eq!(advertised.counter, 3);
         assert!(
             remote.get_ref("other").expect("read").is_none(),
             "not found is absent"
@@ -311,19 +484,18 @@ mod tests {
                 checkpoint: None,
             })
             .expect("negotiated");
-        assert_eq!(negotiated.missing, vec![head()]);
+        assert_eq!(negotiated.missing, vec![Digest::compute(b"head")]);
         let fetched = remote
             .fetch(&FetchObjectsRequest {
-                digests: vec![head()],
+                digests: vec![Digest::compute(b"head")],
                 accept_compression: None,
                 transfer_id: [7; 16],
             })
             .expect("fetched");
         assert_eq!(fetched.objects, vec![b"object".to_vec()]);
-        assert_eq!(
-            remote.keyring().expect("the ring"),
-            br#"{"keys":[]}"#.to_vec()
-        );
+        let keys: serde_json::Value =
+            serde_json::from_slice(&remote.keyring().expect("the ring")).expect("a JWKS");
+        assert_eq!(keys["keys"][0]["kid"], serde_json::json!("pinned"));
 
         let carried = carried.lock().expect("the log").clone();
         assert_eq!(
@@ -336,8 +508,8 @@ mod tests {
                 MirrorOperation::GetRef,
                 MirrorOperation::NegotiatePull,
                 MirrorOperation::FetchObjects,
-                MirrorOperation::KeyRing,
-            ]
+            ],
+            "the keys never travelled"
         );
         assert!(
             carried
@@ -357,7 +529,7 @@ mod tests {
                 .commit_push(&CommitPushRequest {
                     r#ref: "main".to_owned(),
                     transfer_id: [1; 16],
-                    new_head: head(),
+                    new_head: Digest::compute(b"head"),
                     expected_ref: None,
                     request_id: "r".to_owned(),
                 })
@@ -366,42 +538,183 @@ mod tests {
         );
     }
 
-    /// WP-7.2a: a read exactly as large as the signed task allows a message is sent.
+    /// WP-7.2a: a read exactly as large as the signed task allows a message is sent; one byte
+    /// more is never sent.
     #[test]
-    fn a_read_at_the_task_bound_is_sent() {
+    fn a_read_is_sent_up_to_the_task_bound_and_never_past_it() {
         let exact = MirrorRequest {
-            operation: MirrorOperation::KeyRing,
+            operation: MirrorOperation::GetRef,
             zone: "zone-id".to_owned(),
             ledger: "ledger-id".to_owned(),
-            body: Vec::new(),
+            body: GetRefRequest {
+                r#ref: "main".into(),
+            }
+            .encode()
+            .expect("it encodes"),
         }
         .encode()
         .expect("it encodes")
         .len() as u64;
         let (at, carried) = remote(exact);
-        at.keyring().expect("at the bound");
+        at.get_ref("main").expect("at the bound").expect("a ref");
         assert_eq!(carried.lock().expect("the log").len(), 1);
         let (below, carried) = remote(exact - 1);
-        assert!(below.keyring().is_err(), "one byte past the bound");
-        assert!(carried.lock().expect("the log").is_empty());
-    }
-
-    /// WP-7.2a: a read larger than the signed task allows a message is never sent.
-    #[test]
-    fn a_read_beyond_the_task_bound_is_never_sent() {
-        let (remote, carried) = remote(16);
-        let refused = remote
-            .negotiate_pull(&NegotiatePullRequest {
-                r#ref: "main".into(),
-                at: None,
-                have: vec![head(); 4],
-                checkpoint: None,
-            })
-            .expect_err("beyond the bound");
+        let refused = below.get_ref("main").expect_err("one byte past the bound");
         assert!(refused.contains("the task allows"), "{refused}");
         assert!(
             carried.lock().expect("the log").is_empty(),
             "nothing went out"
         );
+    }
+
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "pg-task-pull-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("the scratch directory");
+        dir
+    }
+
+    fn tracked() -> TrackedRef {
+        TrackedRef {
+            zone_id: "zone-id".into(),
+            ledger_id: "ledger-id".into(),
+            r#ref: "main".into(),
+        }
+    }
+
+    /// WP-7.2b: a statement signed under the pinned set, naming the task's coordinator and the
+    /// pin's epoch and set, pulls the closure and keeps the binding.
+    #[test]
+    fn a_statement_under_the_pinned_set_and_its_coordinator_pulls() {
+        let key = keypair(1);
+        let ring = pinned(&key);
+        let (objects, head) = closure();
+        let set = Digest::from_raw(ring.key_set_digest);
+        let statement = statement(&head, COORDINATOR, ring.epoch, &set);
+        let signed = SignedHead::sign(&statement, &key, b"pinned")
+            .expect("signed")
+            .encode()
+            .expect("encoded");
+        let (remote, _) = remote_with(1 << 20, &ring, serving(signed, statement, objects));
+        let root = scratch("pinned");
+        let store = permguard_control_client::FsStore::new(&root);
+
+        let verified =
+            verified_pull(&store, &tracked(), &remote, &ring, COORDINATOR).expect("verified");
+        assert_eq!(verified.head, head);
+        assert_eq!(
+            store.read(RING_BINDING).expect("reads").as_deref(),
+            Some(ring.binding.as_slice()),
+            "the binding it verified under is kept"
+        );
+    }
+
+    /// WP-7.2b: whatever the session would say of keys, a statement is refused when it is signed
+    /// by a key the membership does not pin, names another authority, or names another epoch or
+    /// set than the pin; nothing is kept of it.
+    #[test]
+    fn a_statement_outside_the_pin_or_its_coordinator_is_refused() {
+        let key = keypair(1);
+        let stranger = keypair(9);
+        let ring = pinned(&key);
+        let (objects, head) = closure();
+        let set = Digest::from_raw(ring.key_set_digest);
+        let cases: [(&str, &Ed25519KeyPair, HeadStatement, &str); 4] = [
+            (
+                "a key the membership does not pin",
+                &stranger,
+                statement(&head, COORDINATOR, ring.epoch, &set),
+                "",
+            ),
+            (
+                "another authority",
+                &key,
+                statement(&head, [0x22; 16], ring.epoch, &set),
+                "another authority",
+            ),
+            (
+                "another epoch",
+                &key,
+                statement(&head, COORDINATOR, ring.epoch + 1, &set),
+                "another `control.attest` set",
+            ),
+            (
+                "another set",
+                &key,
+                statement(&head, COORDINATOR, ring.epoch, &Digest::compute(b"other")),
+                "another `control.attest` set",
+            ),
+        ];
+        for (case, signer, statement, says) in cases {
+            let signed = SignedHead::sign(&statement, signer, b"pinned")
+                .expect("signed")
+                .encode()
+                .expect("encoded");
+            let (remote, carried) =
+                remote_with(1 << 20, &ring, serving(signed, statement, objects.clone()));
+            let root = scratch(&case.replace(' ', "-"));
+            let store = permguard_control_client::FsStore::new(&root);
+            let refused =
+                verified_pull(&store, &tracked(), &remote, &ring, COORDINATOR).expect_err(case);
+            assert!(refused.contains(says), "{case}: {refused}");
+            // Refused before a byte of policy crossed: no fetch, no object, no binding.
+            assert!(
+                carried
+                    .lock()
+                    .expect("the log")
+                    .iter()
+                    .all(|request| request.operation != MirrorOperation::FetchObjects),
+                "{case}: nothing was fetched"
+            );
+            assert!(!root.join("objects").exists(), "{case}: no object landed");
+            assert!(
+                store.read(RING_BINDING).expect("reads").is_none(),
+                "{case}: nothing is kept"
+            );
+        }
+    }
+
+    /// WP-7.2b: a pin below the epoch a mirror was verified under, or another set at that epoch,
+    /// is refused before anything is asked of the session.
+    #[test]
+    fn a_ring_rollback_or_fork_is_refused_before_anything_is_fetched() {
+        let key = keypair(1);
+        let ring = pinned(&key);
+        for (case, epoch, set) in [
+            (
+                "rollback",
+                ring.epoch + 1,
+                Digest::from_raw(ring.key_set_digest),
+            ),
+            ("equivocation", ring.epoch, Digest::compute(b"another set")),
+        ] {
+            let root = scratch(case);
+            let store = permguard_control_client::FsStore::new(&root);
+            permguard_control_client::checkpoint::write(
+                &store,
+                "refs/main",
+                &permguard_control_client::checkpoint::Checkpoint {
+                    head: Digest::compute(b"held").to_string(),
+                    counter: 1,
+                    ring_epoch: Some(epoch),
+                    key_set_digest: Some(set.to_string()),
+                    ..Default::default()
+                },
+            )
+            .expect("held");
+            let (remote, carried) = remote_with(
+                1 << 20,
+                &ring,
+                Box::new(|_: &MirrorRequest| panic!("nothing is asked")),
+            );
+            let refused =
+                verified_pull(&store, &tracked(), &remote, &ring, COORDINATOR).expect_err(case);
+            assert!(refused.contains(case), "{case}: {refused}");
+            assert!(carried.lock().expect("the log").is_empty(), "{case}");
+        }
     }
 }

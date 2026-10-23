@@ -2363,7 +2363,24 @@ impl HostApi {
             )
             .await
             .map_err(mirror_refusal)?;
-        Ok(Box::new(MirrorHeld { task: held }))
+        // The `control.attest` set of the manifest in force once the session opened — a revision
+        // the coordinator issued at it already accepted — its binding verified under the
+        // coordinator's identity the session just proved (WP-7.2b).
+        let ring = memberships
+            .store
+            .membership(&task.membership_id)
+            .and_then(|membership| {
+                let (manifest, ..) = membership.manifest?;
+                let statements = memberships
+                    .store
+                    .statements_held(&task.membership_id, manifest.epoch);
+                crate::membership::verified_control_attest(
+                    &manifest.ring_pins,
+                    &statements,
+                    held.peer(),
+                )
+            });
+        Ok(Box::new(MirrorHeld { task: held, ring }))
     }
 
     /// Imports what this Host's `events.import` tasks have due (WP-6.2c2a): the server's periodic
@@ -2727,9 +2744,14 @@ static MIRROR_REQUEST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::Ato
 /// An open `policy.mirror` session, as the member holds it (WP-7.2a).
 struct MirrorHeld {
     task: crate::membership::member::MemberTask,
+    ring: Option<crate::composition::PinnedRing>,
 }
 
 impl crate::composition::MirrorSession for MirrorHeld {
+    fn ring(&self) -> Option<crate::composition::PinnedRing> {
+        self.ring.clone()
+    }
+
     fn call(
         &mut self,
         body: Vec<u8>,
