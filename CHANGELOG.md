@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **Every evaluation interface goes through one pipeline (WP-7.5d).**
+  The native and temporal adapters, over HTTP and gRPC, decode their request into one tagged `EvaluationRequest`, whose interface id is fixed by the question's shape and never by caller data, and hand it to `evaluation::evaluate`.
+  It authorizes the actor on the exact ledger before anything is read, then answers through the handler of that interface; the temporal handler is built over the native decider, so both read the same verified snapshot and write the same decision log, and they never share a transaction.
+  A question of an interface the surface holds no handler for is refused `unavailable`.
+  What each transport answers is unchanged.
+
 - **A decision record names its interface, its authenticated actor apart from the asserted principal, its question and its runtimes (WP-7.5c).**
   Version 1 decision records gain four optional members, inside the record digest and its logical identity: `interface`, the exact evaluation interface; `actor`, the principal the transport authenticated the request as, pseudonymised like `subject`; `question`, a keyed commitment to the interface, the store and the one evaluation asked; and `descriptors`, each partition of the profile with its runtime's descriptor digest.
   The request's `principal` stays the member of that name and is only what the caller asserted: it is never recorded as the actor, and a request no transport authenticated records no actor.

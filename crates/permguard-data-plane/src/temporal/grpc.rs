@@ -62,20 +62,28 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
             )
         })?;
 
-        // Authorization before anything is read or written, as over HTTP (WP-6.2a).
-        let (source, authorized) =
-            super::gate(&self.authorization, &actor, self.submitter.root(), &wire)
-                .map_err(|denial| crate::authz::gate::grpc_denial(&denial))?;
-        match self
-            .submitter
-            .submit(&wire, &source, authorized.as_ref())
-            .await
-        {
-            Ok(answered) => Ok(Response::new(to_proto(super::submit::disclosed(
-                answered,
+        // The shared pipeline (WP-7.5d), as over HTTP: authorization before anything is read or
+        // written (WP-6.2a), then the temporal handler.
+        let services = crate::evaluation::Services {
+            authorization: &self.authorization,
+            decider: self.submitter.decider(),
+            submitter: Some(&self.submitter),
+        };
+        let asked = crate::evaluation::EvaluationRequest::temporal(wire);
+        match crate::evaluation::evaluate(&services, &actor, asked).await {
+            Ok(crate::evaluation::Answer::Temporal(answered)) => Ok(Response::new(to_proto(
+                super::submit::disclosed(*answered, self.disclosure),
+            ))),
+            Ok(crate::evaluation::Answer::Native(_)) => Err(status_of(
+                &crate::evaluation::mismatched("temporal gRPC"),
                 self.disclosure,
-            )))),
-            Err(failed) => Err(status_of(&failed, self.disclosure)),
+            )),
+            Err(crate::evaluation::Refused::Denied(denial)) => {
+                Err(crate::authz::gate::grpc_denial(&denial))
+            }
+            Err(crate::evaluation::Refused::Failed(failed)) => {
+                Err(status_of(&failed, self.disclosure))
+            }
         }
     }
 

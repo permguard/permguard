@@ -153,37 +153,34 @@ impl PdpApi {
             .get("traceparent")
             .and_then(|value| value.to_str().ok())
             .and_then(super::wire::TraceContext::parse);
-        let mut wire =
-            translate::request_from_proto(request.into_inner()).map_err(|malformed| {
-                status_of(
-                    &ApiError::new(ErrorClass::Validation, malformed.code, malformed.message),
-                    self.disclosure,
-                )
-            })?;
-        // What a signed response binds, taken before the metadata touches the body (WP-6.6b).
-        let asker = super::signing::asker(&actor, &wire, self.decider.response_signing())
-            .map_err(|denial| super::gate::grpc_denial(&denial))?;
-        if wire.request_id.is_none() {
-            wire.request_id = carried;
-        }
-
-        // Authorization before evaluation, and before the mirror is looked up (WP-2.4, P8).
-        let authorized = super::gate::evaluation(
-            &self.authorization,
-            &actor,
-            self.decider.root(),
-            wire.zone.as_deref(),
-            wire.ledger.as_deref(),
-        )
-        .map_err(|denial| super::gate::grpc_denial(&denial))?;
-
-        match self
-            .decider
-            .decide_signed(&wire, trace, authorized.as_ref(), asker)
-            .await
-        {
-            Ok(answered) => Ok(Response::new(translate::response_to_proto(answered))),
-            Err(failed) => Err(status_of(&failed, self.disclosure)),
+        let wire = translate::request_from_proto(request.into_inner()).map_err(|malformed| {
+            status_of(
+                &ApiError::new(ErrorClass::Validation, malformed.code, malformed.message),
+                self.disclosure,
+            )
+        })?;
+        // The shared pipeline (WP-7.5d), as over HTTP: the actor authorized, then the native
+        // handler; the metadata's request id fills a body that carries none.
+        let services = crate::evaluation::Services {
+            authorization: &self.authorization,
+            decider: &self.decider,
+            submitter: None,
+        };
+        let asked = crate::evaluation::EvaluationRequest::native(wire, carried, trace);
+        match crate::evaluation::evaluate(&services, &actor, asked).await {
+            Ok(crate::evaluation::Answer::Native(answered)) => {
+                Ok(Response::new(translate::response_to_proto(*answered)))
+            }
+            Ok(crate::evaluation::Answer::Temporal(_)) => Err(status_of(
+                &crate::evaluation::mismatched("native gRPC"),
+                self.disclosure,
+            )),
+            Err(crate::evaluation::Refused::Denied(denial)) => {
+                Err(super::gate::grpc_denial(&denial))
+            }
+            Err(crate::evaluation::Refused::Failed(failed)) => {
+                Err(status_of(&failed, self.disclosure))
+            }
         }
     }
 }

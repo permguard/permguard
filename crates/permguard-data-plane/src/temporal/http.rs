@@ -104,34 +104,27 @@ async fn submit(
         }
     };
 
-    // Authorization before anything is read or written, and the source the occurrence is
-    // recorded under: the principal the gate authorized (WP-6.2a).
-    let caller = super::gate(
-        &surface.authorization,
-        &actor,
-        surface.submitter.root(),
-        &request,
-    );
-    let (source, authorized) = match caller {
-        Ok(caller) => caller,
-        Err(denial) => {
-            return with_request_id(
-                crate::authz::gate::http_denial(&denial),
-                request_id.as_deref(),
-            );
-        }
+    // The shared pipeline (WP-7.5d): authorization before anything is read or written, the
+    // source the occurrence is recorded under being the principal the gate authorized (WP-6.2a),
+    // then the temporal handler.
+    let services = crate::evaluation::Services {
+        authorization: &surface.authorization,
+        decider: surface.submitter.decider(),
+        submitter: Some(&surface.submitter),
     };
-    let response = match surface
-        .submitter
-        .submit(&request, &source, authorized.as_ref())
-        .await
-    {
-        Ok(answered) => (
+    let asked = crate::evaluation::EvaluationRequest::temporal(request);
+    let response = match crate::evaluation::evaluate(&services, &actor, asked).await {
+        Ok(crate::evaluation::Answer::Temporal(answered)) => (
             StatusCode::OK,
-            Json(super::submit::disclosed(answered, surface.disclosure)),
+            Json(super::submit::disclosed(*answered, surface.disclosure)),
         )
             .into_response(),
-        Err(failed) => error(&failed, surface.disclosure),
+        Ok(crate::evaluation::Answer::Native(_)) => error(
+            &crate::evaluation::mismatched("temporal HTTP"),
+            surface.disclosure,
+        ),
+        Err(crate::evaluation::Refused::Denied(denial)) => crate::authz::gate::http_denial(&denial),
+        Err(crate::evaluation::Refused::Failed(failed)) => error(&failed, surface.disclosure),
     };
 
     with_request_id(response, request_id.as_deref())

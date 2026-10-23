@@ -4011,6 +4011,86 @@ fn the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_as
     }
 }
 
+/// WP-7.5d, IFACE-02: every interface goes through one pipeline. A native question is answered
+/// by the native handler; a credential no rule maps is denied before any mirror is read; and a
+/// question of an interface the surface does not serve is refused, never answered by another
+/// interface's handler.
+#[tokio::test]
+async fn one_pipeline_authorizes_then_answers_each_question_by_its_own_interface() {
+    use permguard_data_plane::evaluation::{
+        Answer, EvaluationRequest, Refused, Services, evaluate,
+    };
+
+    let root = scratch("one-pipeline").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let decider = decider(&root);
+    let authorization = permissive();
+    let services = Services {
+        authorization: &authorization,
+        decider: &decider,
+        submitter: None,
+    };
+
+    let answered = evaluate(
+        &services,
+        &permguard_core::authz::Actor::Anonymous,
+        EvaluationRequest::native(
+            ask("acme", "main-ledger", "alice", "read"),
+            Some("r-transport".to_owned()),
+            None,
+        ),
+    )
+    .await
+    .expect("answered");
+    let Answer::Native(answered) = answered else {
+        panic!("a native question is answered natively");
+    };
+    assert!(answered.decision, "the policy permits alice to read");
+    assert_eq!(
+        answered.request_id.as_deref(),
+        Some("r-transport"),
+        "the transport's id fills a body that carries none"
+    );
+
+    let denied = evaluate(
+        &services,
+        &permguard_core::authz::Actor::Unmapped {
+            reason: "an unknown certificate".to_owned(),
+        },
+        EvaluationRequest::native(ask("acme", "main-ledger", "alice", "read"), None, None),
+    )
+    .await
+    .expect_err("an unmapped credential is denied");
+    assert!(
+        matches!(denied, Refused::Denied(_)),
+        "denied by the gate, not failed by a handler: {denied:?}"
+    );
+
+    let refused = evaluate(
+        &services,
+        &permguard_core::authz::Actor::Anonymous,
+        EvaluationRequest::temporal(
+            serde_json::from_value(json!({
+                "store": {"zone": "acme", "ledger": "main-ledger"},
+            }))
+            .expect("a submission"),
+        ),
+    )
+    .await
+    .expect_err("this surface serves no temporal handler");
+    let Refused::Failed(refused) = refused else {
+        panic!("refused by the pipeline, not denied: {refused:?}");
+    };
+    assert_eq!(refused.code(), permguard_core::codes::common::UNAVAILABLE);
+    assert_eq!(refused.class(), permguard_core::ErrorClass::Unavailable);
+}
+
 /// WP-6.6a: every decision says what became of its record — `disabled` with no log, `durable`
 /// with the record's id and its Host position with one, on each boxcarred evaluation and never on
 /// the batch's own context — and a request for a signed response is refused before anything is

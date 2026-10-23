@@ -112,7 +112,7 @@ async fn answer(
         .and_then(|value| value.to_str().ok())
         .and_then(TraceContext::parse);
 
-    let Json(mut request) = match body {
+    let Json(request) = match body {
         Ok(body) => body,
         Err(rejection) => {
             // A payload that is not JSON never reaches a policy: it is a bad
@@ -130,41 +130,24 @@ async fn answer(
             );
         }
     };
-    // What a signed response binds, taken before the header below touches the body (WP-6.6b).
-    let asker = match super::signing::asker(actor, &request, surface.decider.response_signing()) {
-        Ok(asker) => asker,
-        Err(denial) => {
-            return with_request_id(super::gate::http_denial(&denial), request_id.as_deref());
-        }
+    // The shared pipeline (WP-7.5d): the actor authorized, then the native handler. The header
+    // is the transport's way of naming the request; the body's own id wins.
+    let services = crate::evaluation::Services {
+        authorization: &surface.authorization,
+        decider: &surface.decider,
+        submitter: None,
     };
-    // The header is the transport's way of saying it; the body is the
-    // profile's. Either does, and the body wins because it is the one a
-    // boxcarred evaluation can carry per entry.
-    if request.request_id.is_none() {
-        request.request_id = request_id.clone();
-    }
-
-    // Authorization before evaluation, and before the mirror is looked up (WP-2.4, P8).
-    let authorized = match super::gate::evaluation(
-        &surface.authorization,
-        actor,
-        surface.decider.root(),
-        request.zone.as_deref(),
-        request.ledger.as_deref(),
-    ) {
-        Ok(authorized) => authorized,
-        Err(denial) => {
-            return with_request_id(super::gate::http_denial(&denial), request_id.as_deref());
+    let asked = crate::evaluation::EvaluationRequest::native(request, request_id.clone(), trace);
+    let response = match crate::evaluation::evaluate(&services, actor, asked).await {
+        Ok(crate::evaluation::Answer::Native(answered)) => {
+            (StatusCode::OK, Json(*answered)).into_response()
         }
-    };
-
-    let response = match surface
-        .decider
-        .decide_signed(&request, trace, authorized.as_ref(), asker)
-        .await
-    {
-        Ok(answered) => (StatusCode::OK, Json(answered)).into_response(),
-        Err(failed) => error(&failed, surface.disclosure),
+        Ok(crate::evaluation::Answer::Temporal(_)) => error(
+            &crate::evaluation::mismatched("native HTTP"),
+            surface.disclosure,
+        ),
+        Err(crate::evaluation::Refused::Denied(denial)) => super::gate::http_denial(&denial),
+        Err(crate::evaluation::Refused::Failed(failed)) => error(&failed, surface.disclosure),
     };
 
     with_request_id(response, request_id.as_deref())

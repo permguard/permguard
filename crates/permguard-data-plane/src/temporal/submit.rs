@@ -426,6 +426,12 @@ impl Submitter {
         &self.streams
     }
 
+    /// The decider whose services this submitter shares: the verified snapshot, the scheduler
+    /// and the decision log (WP-7.5d).
+    pub fn decider(&self) -> &Decider {
+        &self.decider
+    }
+
     /// Where the mirrors this plane decides against are, for the gate's resolution of names.
     pub fn root(&self) -> &std::path::Path {
         self.decider.root()
