@@ -68,6 +68,7 @@ mod tests {
             disclosure: Disclosure::Full,
             audit_refusals: false,
             metrics: Metrics::none(),
+            exports: None,
         }
     }
 

@@ -454,6 +454,94 @@ pub trait Catalog {
         ledger: &str,
         expected_revision: u64,
     ) -> Result<Ledger, Failure>;
+    /// Exports a ledger (WP-7.10): the signed archive of a zone holding it alone.
+    fn export_ledger(&self, zone: &str, ledger: &str) -> Result<Export, Failure>;
+    /// Exports every ledger of a zone (WP-7.10).
+    fn export_zone(&self, zone: &str) -> Result<Export, Failure>;
+}
+
+/// An export (WP-7.10): the archive, a canonical CBOR map `{1 manifest, 2 bundle}` whose manifest
+/// the source Host signed under `host.operations`, and what it binds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Export {
+    #[serde(skip)]
+    pub archive: Vec<u8>,
+    pub zone_id: String,
+    pub bundle_digest: String,
+    pub bundle_bytes: u64,
+    /// Seconds since the Unix epoch.
+    pub exported_at: u64,
+    pub ledgers: Vec<ExportedLedger>,
+}
+
+/// One ledger an export holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportedLedger {
+    pub id: String,
+    pub name: String,
+    pub refs: u64,
+    pub objects: u64,
+    pub statements: u64,
+}
+
+/// An export as REST answers it: the archive base64url.
+#[derive(Deserialize)]
+struct ExportWire {
+    archive: String,
+    zone_id: String,
+    bundle_digest: String,
+    bundle_bytes: u64,
+    exported_at: u64,
+    ledgers: Vec<ExportedLedger>,
+}
+
+/// `POST <path>` with the closed empty body an export takes.
+fn export(client: &Client, endpoint: &Endpoint, path: &str) -> Result<Export, Failure> {
+    use base64::Engine as _;
+    let wire: ExportWire = call(client, endpoint, "POST", path, Some("{}"))?;
+    let archive = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(&wire.archive)
+        .map_err(|error| Failure {
+            class: "internal".to_owned(),
+            reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
+            detail: format!("the archive is not base64url: {error}"),
+            usage: false,
+        })?;
+    Ok(Export {
+        archive,
+        zone_id: wire.zone_id,
+        bundle_digest: wire.bundle_digest,
+        bundle_bytes: wire.bundle_bytes,
+        exported_at: wire.exported_at,
+        ledgers: wire.ledgers,
+    })
+}
+
+/// Exports a ledger over HTTP.
+pub fn export_ledger(
+    client: &Client,
+    endpoint: &Endpoint,
+    zone: &str,
+    ledger: &str,
+) -> Result<Export, Failure> {
+    export(
+        client,
+        endpoint,
+        &format!(
+            "/v1/zones/{}/ledgers/{}/export",
+            crate::encode::value(zone),
+            crate::encode::value(ledger)
+        ),
+    )
+}
+
+/// Exports a zone over HTTP.
+pub fn export_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<Export, Failure> {
+    export(
+        client,
+        endpoint,
+        &format!("/v1/zones/{}/export", crate::encode::value(zone)),
+    )
 }
 
 /// The catalog over HTTP.
@@ -546,6 +634,14 @@ impl Catalog for HttpCatalog {
             "archive",
             expected_revision,
         )
+    }
+
+    fn export_ledger(&self, zone: &str, ledger: &str) -> Result<Export, Failure> {
+        export_ledger(&self.client, &self.endpoint, zone, ledger)
+    }
+
+    fn export_zone(&self, zone: &str) -> Result<Export, Failure> {
+        export_zone(&self.client, &self.endpoint, zone)
     }
 
     fn restore_ledger(

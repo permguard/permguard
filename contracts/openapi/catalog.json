@@ -1304,6 +1304,236 @@
           "expected_revision": "expected_revision"
         }
       }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/export": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        },
+        {
+          "name": "ledger",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A ledger by name or by id.",
+          "x-grpc-field": "ledger"
+        }
+      ],
+      "post": {
+        "operationId": "exportLedger",
+        "summary": "Export a ledger",
+        "description": "Under `catalog.read` on the ledger (WP-7.10): the archive of a zone holding that ledger alone, a canonical CBOR map {1 manifest, 2 bundle} whose manifest is the COSE_Sign1 `permguard.ledger.export.v1` the Host signs under `host.operations`, binding the source Host, the refs, the counts and the bundle's digest; the bundle carries every object a ref reaches and every head statement as stored. Audited `ledger.exported`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The archive, base64url, and what its manifest binds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A body that is not a closed JSON `ExportBody` (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A ledger's store could not be read (`internal`), or the export was made and its audit record could not be written (`mutation_unrecorded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The archive would pass what one message carries, or the Host composes no `host.operations` signer for this plane (`unavailable`): nothing was signed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ExportLedger",
+        "x-grpc-body": {}
+      }
+    },
+    "/v1/zones/{zone}/export": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        }
+      ],
+      "post": {
+        "operationId": "exportZone",
+        "summary": "Export a zone",
+        "description": "Under `catalog.read` on the zone (WP-7.10): the archive of every ledger of the zone, as `exportLedger` answers one. Audited `zone.exported`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The archive, base64url, and what its manifest binds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A body that is not a closed JSON `ExportBody` (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A ledger's store could not be read (`internal`), or the export was made and its audit record could not be written (`mutation_unrecorded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The archive would pass what one message carries, or the Host composes no `host.operations` signer for this plane (`unavailable`): nothing was signed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ExportZone",
+        "x-grpc-body": {}
+      }
     }
   },
   "components": {
@@ -1679,6 +1909,108 @@
         "description": "The body of an archive or a restore, closed.",
         "x-grpc-message": null,
         "x-grpc-note": "gRPC carries `request_id` and `expected_revision` as fields of ArchiveLedgerRequest and RestoreLedgerRequest, no standalone message."
+      },
+      "ExportBody": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "The body of an export: nothing, closed, so a cross-site form cannot make one.",
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC carries the zone and the ledger as fields of ExportLedgerRequest and ExportZoneRequest, no standalone message."
+      },
+      "ExportedLedger": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ledger's id at the source.",
+            "x-grpc-field": "id"
+          },
+          "name": {
+            "type": "string",
+            "description": "Its name.",
+            "x-grpc-field": "name"
+          },
+          "refs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many refs the manifest binds.",
+            "x-grpc-field": "refs"
+          },
+          "objects": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many objects of its closure the bundle carries.",
+            "x-grpc-field": "objects"
+          },
+          "statements": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many head statements the bundle carries.",
+            "x-grpc-field": "statements"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "refs",
+          "objects",
+          "statements"
+        ],
+        "additionalProperties": false,
+        "description": "One ledger an export holds.",
+        "x-grpc-message": "permguard.control.v1.ExportedLedger"
+      },
+      "ExportView": {
+        "type": "object",
+        "properties": {
+          "archive": {
+            "type": "string",
+            "description": "The archive: a canonical CBOR map {1 manifest, 2 bundle}, base64url without padding; bytes on gRPC.",
+            "x-grpc-field": "archive"
+          },
+          "zone_id": {
+            "type": "string",
+            "description": "The zone's id at the source.",
+            "x-grpc-field": "zone_id"
+          },
+          "bundle_digest": {
+            "type": "string",
+            "description": "`sha256:` over `permguard.ledger.export.bundle.v1\\n` and the bundle, as the manifest binds it.",
+            "x-grpc-field": "bundle_digest"
+          },
+          "bundle_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The bundle's size.",
+            "x-grpc-field": "bundle_bytes"
+          },
+          "exported_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds since the Unix epoch.",
+            "x-grpc-field": "exported_at"
+          },
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportedLedger"
+            },
+            "description": "Every ledger the archive holds.",
+            "x-grpc-field": "ledgers"
+          }
+        },
+        "required": [
+          "archive",
+          "zone_id",
+          "bundle_digest",
+          "bundle_bytes",
+          "exported_at",
+          "ledgers"
+        ],
+        "additionalProperties": false,
+        "description": "An export.",
+        "x-grpc-message": "permguard.control.v1.ExportResponse"
       }
     }
   },

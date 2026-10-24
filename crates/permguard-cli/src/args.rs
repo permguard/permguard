@@ -1043,6 +1043,18 @@ pub enum ZonesAction {
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
         expected_revision: Option<u64>,
     },
+    /// Export every ledger of a zone: the signed archive the plane's Host answers, written to a
+    /// new file.
+    #[command(
+        after_help = "Examples:\n  permguard zones export delivery --out delivery.export\n  permguard zones export delivery --out delivery.export -o json"
+    )]
+    Export {
+        /// The zone, by name or id.
+        zone: String,
+        /// Where the archive is written: a new file, readable by its owner only.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -1131,6 +1143,20 @@ pub enum LedgersAction {
         /// Another revision on the server refuses the change as `revision_conflict`.
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
         expected_revision: Option<u64>,
+    },
+    /// Export a ledger: the signed archive the plane's Host answers, written to a new file.
+    #[command(
+        after_help = "Examples:\n  permguard ledgers export --zone delivery release-pipeline --out release.export\n  permguard ledgers export --zone delivery release-pipeline --out release.export -o json"
+    )]
+    Export {
+        /// The zone, by name or id.
+        #[arg(long, alias = "zone-id")]
+        zone: String,
+        /// The ledger, by name or id.
+        ledger: String,
+        /// Where the archive is written: a new file, readable by its owner only.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
     },
     /// Delete a ledger.
     #[command(

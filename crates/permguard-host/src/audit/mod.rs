@@ -397,6 +397,9 @@ pub const REGISTRY: &[ActionSchema] = &[
     action("ledger.create.refused", Class::Security, CONTROL),
     action("ledger.rename.refused", Class::Security, CONTROL),
     action("ledger.delete.refused", Class::Security, CONTROL),
+    // An export: what left the plane, signed under `host.operations` (WP-7.10).
+    action("ledger.exported", Class::Security, CONTROL),
+    action("zone.exported", Class::Security, CONTROL),
     action("ledger.archive.refused", Class::Security, CONTROL),
     action("ledger.restore.refused", Class::Security, CONTROL),
     // A catalog mutation (WP-7.3a, owner decision of 2026-10-20): the phases of one mutation

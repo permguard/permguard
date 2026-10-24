@@ -1319,6 +1319,51 @@ pub struct Verdict {
     pub grown: Vec<String>,
 }
 
+/// The payload of `envelope`, a COSE_Sign1 of `protected_type` by the `host.operations` key it
+/// names, as the keys bundle `verified` holds it, a revoked key refused (WP-7.8, WP-7.10).
+/// `remedy` says how to get a bundle holding the key, when this one does not.
+pub fn operations_payload(
+    verified: &crate::keys::bundle::Verified,
+    envelope: &[u8],
+    protected_type: &str,
+    remedy: &str,
+) -> Result<Vec<u8>, String> {
+    use crate::keys::bundle;
+
+    let envelope = Sign1::decode(envelope).map_err(|error| format!("the manifest: {error}"))?;
+    let header = envelope
+        .header()
+        .map_err(|error| format!("the manifest: {error}"))?;
+    let kid = String::from_utf8(header.kid.clone())
+        .map_err(|_| "the manifest's kid is not text".to_owned())?;
+    let revoked = verified.items.iter().any(|item| {
+        matches!(item, bundle::Item::Revocation { ring, kid: revoked, .. }
+            if ring == HOST_OPERATIONS && *revoked == kid)
+    });
+    if revoked {
+        return Err(format!("the manifest's key `{kid}` is revoked"));
+    }
+    let (suite, public_key) = verified
+        .items
+        .iter()
+        .find_map(|item| match item {
+            bundle::Item::Key {
+                ring,
+                kid: held,
+                jwk,
+                ..
+            } if ring == HOST_OPERATIONS && *held == kid => serde_json::from_str::<Jwk>(jwk)
+                .ok()
+                .and_then(|jwk| bundle::public_of(&jwk)),
+            _ => None,
+        })
+        .ok_or_else(|| format!("the bundle holds no `{HOST_OPERATIONS}` key `{kid}`: {remedy}"))?;
+    envelope
+        .verify(suite, &public_key, protected_type)
+        .map(<[u8]>::to_vec)
+        .map_err(|error| format!("the manifest's signature: {error}"))
+}
+
 /// Verifies the snapshot at `volume` offline (WP-7.8), from nothing in the snapshot but its files:
 ///
 /// 1. the keys bundle the operator kept, verified from the identity `pin` for resource `host`;
@@ -1346,42 +1391,13 @@ pub fn verify(
     }
     let verified = bundle::verify(bundle_manifest, bundle_items, pin, "host")
         .map_err(|error| format!("the verification bundle: {error}"))?;
-    let envelope = Sign1::decode(manifest).map_err(|error| format!("the manifest: {error}"))?;
-    let header = envelope
-        .header()
-        .map_err(|error| format!("the manifest: {error}"))?;
-    let kid = String::from_utf8(header.kid.clone())
-        .map_err(|_| "the manifest's kid is not text".to_owned())?;
-    let revoked = verified.items.iter().any(|item| {
-        matches!(item, bundle::Item::Revocation { ring, kid: revoked, .. }
-            if ring == HOST_OPERATIONS && *revoked == kid)
-    });
-    if revoked {
-        return Err(format!("the manifest's key `{kid}` is revoked"));
-    }
-    let (suite, public_key) = verified
-        .items
-        .iter()
-        .find_map(|item| match item {
-            bundle::Item::Key {
-                ring,
-                kid: held,
-                jwk,
-                ..
-            } if ring == HOST_OPERATIONS && *held == kid => serde_json::from_str::<Jwk>(jwk)
-                .ok()
-                .and_then(|jwk| bundle::public_of(&jwk)),
-            _ => None,
-        })
-        .ok_or_else(|| {
-            format!(
-                "the bundle holds no `{HOST_OPERATIONS}` key `{kid}`: export it after the prepare"
-            )
-        })?;
-    let payload = envelope
-        .verify(suite, &public_key, protected::SNAPSHOT_MANIFEST)
-        .map_err(|error| format!("the manifest's signature: {error}"))?;
-    let manifest = SnapshotManifest::decode(payload)?;
+    let payload = operations_payload(
+        &verified,
+        manifest,
+        protected::SNAPSHOT_MANIFEST,
+        "export it after the prepare",
+    )?;
+    let manifest = SnapshotManifest::decode(&payload)?;
     if manifest.host_id != verified.identity.host_id {
         return Err("the manifest names another Host than the bundle".to_owned());
     }

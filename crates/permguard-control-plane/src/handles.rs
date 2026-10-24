@@ -7,6 +7,7 @@
 //! | --------------------------------- | ------------------------------- | -------------------------------- |
 //! | signs `HeadStatementV1`           | `Signer<HeadStatementV1>`       | NOTP head statements, the JWKS   |
 //! | signs `ImportCheckpointV1`        | `Signer<ImportCheckpointV1>`    | `events.import` checkpoints      |
+//! | signs `LedgerExportV1`            | `Signer<LedgerExportV1>`        | ledger and zone export manifests |
 //! | reads the public set of `data.attest` | `PublicKeys`                | verifying a local producer       |
 //! | audit schema [`ControlPlaneAudit`] | `AuditHandle<ControlPlaneAudit>` | catalog, NOTP, GC                |
 //! | task contracts (WP-4.4)           | none                            | approval's task capability       |
@@ -19,7 +20,7 @@ use permguard_core::PlaneContext;
 use permguard_core::keys::PublicSet;
 use permguard_host::composition::{
     AuditHandle, AuditSchema, DATA_ATTEST, Declaration, HeadStatementV1, ImportCheckpointV1,
-    Registration, Signer,
+    LedgerExportV1, Registration, Signer,
 };
 
 use crate::service::PLANE;
@@ -42,6 +43,8 @@ impl AuditSchema for ControlPlaneAudit {
         "ledger.create.refused",
         "ledger.rename.refused",
         "ledger.delete.refused",
+        "ledger.exported",
+        "zone.exported",
         "notp.push.negotiate.refused",
         "notp.upload.refused",
         "notp.push.commit.refused",
@@ -62,6 +65,8 @@ pub(crate) fn declaration() -> Declaration {
         .signs::<HeadStatementV1>()
         // The observation checkpoints of `events.import` (WP-6.2c1).
         .signs::<ImportCheckpointV1>()
+        // The manifest of an export, signed by the Host under `host.operations` (WP-7.10).
+        .signs::<LedgerExportV1>()
         .reads_public_keys(DATA_ATTEST)
         .audits::<ControlPlaneAudit>()
         .mutates(crate::store::REFS_DOMAIN)
@@ -244,6 +249,14 @@ pub(crate) fn head_signer(context: &PlaneContext<'_>) -> Option<Signer<HeadState
         .flatten()
 }
 
+/// The export manifest signer, when the Host composes `host.operations` for this plane (WP-7.10).
+pub(crate) fn export_signer(context: &PlaneContext<'_>) -> Option<Signer<LedgerExportV1>> {
+    registration(context)?
+        .signer::<LedgerExportV1>()
+        .ok()
+        .flatten()
+}
+
 /// The `events.import` checkpoint signer, when the plane's signing ring is composed (WP-6.2c1).
 pub(crate) fn import_signer(context: &PlaneContext<'_>) -> Option<Signer<ImportCheckpointV1>> {
     registration(context)?
@@ -254,7 +267,7 @@ pub(crate) fn import_signer(context: &PlaneContext<'_>) -> Option<Signer<ImportC
 
 /// A ring a test holds itself.
 #[cfg(test)]
-type TestRing = Arc<dyn permguard_core::KeyManager>;
+pub(crate) type TestRing = Arc<dyn permguard_core::KeyManager>;
 
 /// A test's ring that keeps no epoch, given one: epoch 1, the set digest over its published
 /// keys. A head statement binds a ring's epoch and set (WP-7.1), and a ring that names none
@@ -331,6 +344,20 @@ pub(crate) fn ring_for_tests(root: &std::path::Path) -> TestRing {
     keys.maintain()
         .unwrap_or_else(|error| unreachable!("the ring activates: {error}"));
     keys
+}
+
+/// An export manifest signer over `keys`, composed as the Host's `host.operations`, for a test
+/// that holds a ring of its own (WP-7.10).
+#[cfg(test)]
+pub(crate) fn export_signer_for_tests(keys: TestRing) -> Signer<LedgerExportV1> {
+    let keys: TestRing = Arc::new(EpochOne(keys));
+    permguard_host::composition::Host::builder()
+        .ring(permguard_host::composition::HOST_OPERATIONS, keys)
+        .build()
+        .register(Declaration::new(PLANE).signs::<LedgerExportV1>())
+        .ok()
+        .and_then(|registration| registration.signer::<LedgerExportV1>().ok().flatten())
+        .unwrap_or_else(|| unreachable!("a declared signer over a composed ring"))
 }
 
 /// An `events.import` checkpoint signer over `keys`, for a test that holds a ring of its own.

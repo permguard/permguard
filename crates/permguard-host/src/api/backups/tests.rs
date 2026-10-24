@@ -674,3 +674,118 @@ async fn a_prepare_that_outlasts_its_barrier_is_aborted() {
     assert_eq!(listed[0].state, "aborted");
     grant(&api, "after").await.expect("mutations go on");
 }
+
+/// WP-7.10: an export manifest signed by the Host under `host.operations` verifies from the
+/// source Host's keys bundle and identity pin; a wrong pin, a changed manifest, a manifest of
+/// another protected type, or one under a revoked key is refused.
+#[tokio::test]
+async fn an_export_manifest_verifies_from_the_sources_bundle_and_pin() {
+    use crate::api::keys::{PlanKeyRevoke, RotateRing, RunKeyRevoke};
+    use crate::composition::Payload as _;
+    use crate::exports::{self, ExportedLedger, Manifest};
+
+    let (api, _root, _) = backed("export-verify", None);
+    let host_id = api.keys.identity().expect("the identity").host_id();
+    let held = Manifest {
+        host_id,
+        exported_at: 1_800_000_000,
+        zone_id: "zone-id".to_owned(),
+        zone_name: "delivery".to_owned(),
+        ledgers: vec![ExportedLedger {
+            id: "ledger-id".to_owned(),
+            name: "release".to_owned(),
+            default_ref: "main".to_owned(),
+            refs: Vec::new(),
+            objects: 0,
+            statements: 0,
+        }],
+        bundle_digest: exports::bundle_digest(b""),
+        bundle_bytes: 0,
+    };
+    let ring = api.keys.ring(HOST_OPERATIONS).expect("the operations ring");
+    let envelope = held.sign_with(ring.as_ref()).expect("signed");
+    let (bundle_manifest, items, pin) = bundle(&api);
+
+    let verified = exports::verify(&envelope, &bundle_manifest, &items, &pin).expect("it verifies");
+    assert_eq!(verified.manifest, held);
+    assert_eq!(verified.host_id, host_id);
+
+    assert!(exports::verify(&envelope, &bundle_manifest, &items, "not-the-pin").is_err());
+    let mut forged = envelope.clone();
+    let last = forged.len() - 1;
+    forged[last] ^= 0x01;
+    assert!(exports::verify(&forged, &bundle_manifest, &items, &pin).is_err());
+    let snapshot = crate::operations::backup::sign(ring, &manifest_for(host_id)).expect("signed");
+    let refused = exports::verify(&snapshot, &bundle_manifest, &items, &pin)
+        .expect_err("another protected type");
+    assert!(refused.contains("signature"), "{refused}");
+    let mut stranger = held.clone();
+    stranger.host_id = [9; 16];
+    let other = stranger.sign_with(ring.as_ref()).expect("signed");
+    let refused =
+        exports::verify(&other, &bundle_manifest, &items, &pin).expect_err("another Host");
+    assert!(refused.contains("another Host"), "{refused}");
+
+    let kid = String::from_utf8(
+        Sign1::decode(&envelope)
+            .expect("an envelope")
+            .header()
+            .expect("a header")
+            .kid,
+    )
+    .expect("text");
+    let epoch = api.ring(HOST_OPERATIONS).expect("the ring").epoch;
+    api.rotate_ring(
+        &admin(),
+        HOST_OPERATIONS,
+        RotateRing {
+            request_id: "rotate".to_owned(),
+            expected_epoch: epoch.expect("an epoch"),
+        },
+    )
+    .await
+    .expect("rotated");
+    let planned = api
+        .plan_key_revoke(
+            &admin(),
+            HOST_OPERATIONS,
+            PlanKeyRevoke {
+                request_id: "plan".to_owned(),
+                kid,
+                reason: "compromise".to_owned(),
+                compromised_at: Some("2026-10-08T10:00:00Z".to_owned()),
+                expected_epoch: None,
+            },
+        )
+        .await
+        .expect("planned");
+    api.run_key_revoke(
+        &admin(),
+        HOST_OPERATIONS,
+        RunKeyRevoke {
+            request_id: "run".to_owned(),
+            receipt: planned.receipt,
+        },
+    )
+    .await
+    .expect("revoked");
+    let (bundle_manifest, items, pin) = bundle(&api);
+    let refused =
+        exports::verify(&envelope, &bundle_manifest, &items, &pin).expect_err("a revoked key");
+    assert!(refused.contains("revoked"), "{refused}");
+}
+
+/// A snapshot manifest of `host_id`, signed under the same ring as an export.
+fn manifest_for(host_id: [u8; 16]) -> SnapshotManifest {
+    SnapshotManifest {
+        operation_id: [1; 16],
+        volume_id: [2; 16],
+        host_id,
+        revisions: std::collections::BTreeMap::new(),
+        roots: Vec::new(),
+        at: 1_800_000_000,
+        inventory_digest: [5; 32],
+        recovery_key_id: None,
+        encryption_profile: None,
+    }
+}

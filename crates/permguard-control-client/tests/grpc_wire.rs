@@ -253,6 +253,34 @@ impl ZoneCatalog for FakePlane {
         }))
     }
 
+    async fn export_ledger(
+        &self,
+        request: Request<proto::ExportLedgerRequest>,
+    ) -> Result<Response<proto::ExportResponse>, Status> {
+        let asked = request.into_inner();
+        Ok(Response::new(proto::ExportResponse {
+            archive: vec![0xa0],
+            zone_id: asked.zone,
+            bundle_digest: format!("sha256:{}", "00".repeat(32)),
+            bundle_bytes: 1,
+            exported_at: 1_800_000_000,
+            ledgers: vec![proto::ExportedLedger {
+                id: "l-1".to_owned(),
+                name: asked.ledger,
+                refs: 1,
+                objects: 2,
+                statements: 1,
+            }],
+        }))
+    }
+
+    async fn export_zone(
+        &self,
+        _request: Request<proto::ExportZoneRequest>,
+    ) -> Result<Response<proto::ExportResponse>, Status> {
+        Err(Status::unimplemented("not in this fake"))
+    }
+
     async fn delete_ledger(
         &self,
         _request: Request<proto::DeleteLedgerRequest>,

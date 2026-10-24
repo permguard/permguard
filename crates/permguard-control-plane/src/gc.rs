@@ -582,10 +582,18 @@ pub fn sweep_once(store: &FileObjectStore, grace: Duration) -> Result<Swept> {
 /// object a ref names and the store does not hold — stops the sweep for this
 /// ledger rather than being walked around: a store that cannot be fully read
 /// is not a store to delete from.
-fn reachable(store: &FileObjectStore) -> Result<BTreeSet<Digest>> {
+pub(crate) fn reachable(store: &FileObjectStore) -> Result<BTreeSet<Digest>> {
     let refs = store.list_refs().map_err(|error| anyhow!("{error}"))?;
+    reachable_from(store, refs.into_iter().map(|(_, state)| state.head))
+}
+
+/// Everything `heads` reach in `store`; a hole in the closure is an error, as for [`reachable`].
+pub(crate) fn reachable_from(
+    store: &FileObjectStore,
+    heads: impl IntoIterator<Item = Digest>,
+) -> Result<BTreeSet<Digest>> {
     let mut reached = BTreeSet::new();
-    let mut queue: Vec<Digest> = refs.into_iter().map(|(_, state)| state.head).collect();
+    let mut queue: Vec<Digest> = heads.into_iter().collect();
 
     while let Some(digest) = queue.pop() {
         if !reached.insert(digest.clone()) {

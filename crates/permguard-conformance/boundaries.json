@@ -1259,6 +1259,26 @@
       "limit": "`operations::backup::MAX_MANIFEST_BYTES` for the manifest envelope, the keys bundle's own bounds, and inventory items of at most `MAX_ITEM` bytes read from the snapshot, checked before anything is parsed: a snapshot an offline verification is handed (WP-7.8)",
       "enforced_at_decoder": true,
       "fuzz": "snapshot_manifest"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/exports.rs",
+      "item": "Manifest::decode",
+      "entry": "permguard_host::exports::Manifest::decode",
+      "max_input_bytes": 1048576,
+      "limit": "`exports::MAX_MANIFEST_BYTES`, checked by the decoder before it parses: an export manifest's payload, from an archive an operator hands an import (WP-7.10)",
+      "enforced_at_decoder": true,
+      "fuzz": "export_manifest"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/exports.rs",
+      "item": "verify",
+      "entry": "permguard_host::exports::verify",
+      "max_input_bytes": 1114112,
+      "limit": "`exports::MAX_MANIFEST_BYTES` and 64 KiB of envelope for the manifest, and the keys bundle's own bounds, checked before anything is parsed: an archive and a bundle an import is handed (WP-7.10)",
+      "enforced_at_decoder": true,
+      "fuzz": "export_manifest"
     }
   ],
   "trusted": [

@@ -68,6 +68,7 @@
     "digest.MEMBERSHIP_JOURNAL": "permguard.membership.journal.v1\n",
     "digest.MIRROR_CLOSURE": "permguard.mirror.closure.v1\n",
     "digest.SNAPSHOT_INVENTORY": "permguard.snapshot.inventory.v1\n",
+    "digest.LEDGER_EXPORT_BUNDLE": "permguard.ledger.export.bundle.v1\n",
     "digest.STREAM_RUN": "permguard.stream.run.v1\n",
     "digest.MEMBERSHIP_ZONE_TRANSCRIPT": "permguard.membership.zone-transcript.v1\n",
     "digest.MEMBERSHIP_APPRAISAL_POLICY": "permguard.membership.appraisal-policy.v1\n",

@@ -86,6 +86,10 @@ service ZoneCatalog {
   // An archived ledger stays readable, pulled and mirrored, and refuses a push (WP-7.3b).
   rpc ArchiveLedger(ArchiveLedgerRequest) returns (LedgerResponse);
   rpc RestoreLedger(RestoreLedgerRequest) returns (LedgerResponse);
+  // The signed archive of one ledger, or of every ledger of a zone, under `catalog.read`
+  // (WP-7.10): one message, refused `unavailable` past the transport's ceiling.
+  rpc ExportLedger(ExportLedgerRequest) returns (ExportResponse);
+  rpc ExportZone(ExportZoneRequest) returns (ExportResponse);
 }
 
 message Zone {
@@ -220,6 +224,34 @@ message RestoreLedgerRequest {
   string ledger = 2;
   string request_id = 3;
   uint64 expected_revision = 4;
+}
+
+message ExportLedgerRequest {
+  string zone = 1;
+  string ledger = 2;
+}
+
+message ExportZoneRequest { string zone = 1; }
+
+// One ledger an export holds.
+message ExportedLedger {
+  string id = 1;
+  string name = 2;
+  uint64 refs = 3;
+  uint64 objects = 4;
+  uint64 statements = 5;
+}
+
+// An export: the archive, a canonical CBOR map {1 manifest, 2 bundle} whose manifest is the
+// COSE_Sign1 `permguard.ledger.export.v1` under the Host's `host.operations`, and what it binds.
+message ExportResponse {
+  bytes archive = 1;
+  string zone_id = 2;
+  string bundle_digest = 3;
+  uint64 bundle_bytes = 4;
+  // Seconds since the Unix epoch.
+  uint64 exported_at = 5;
+  repeated ExportedLedger ledgers = 6;
 }
 
 message LedgerResponse { Ledger ledger = 1; }

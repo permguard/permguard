@@ -364,6 +364,7 @@ impl PlaneModule for ControlPlaneModule {
                     authorization: crate::handles::authorization(context),
                     host: crate::handles::registration(context),
                     mutations: catalog_mutations(context, catalog),
+                    exports: exports_of(context),
                 };
                 // The holdings gauges start truthful, not at zero.
                 facade.refresh_holdings();
@@ -432,6 +433,7 @@ impl PlaneModule for ControlPlaneModule {
                 authorization: crate::handles::authorization(context),
                 host: crate::handles::registration(context),
                 mutations: catalog_mutations(context, catalog),
+                exports: exports_of(context),
             }));
         }
 
@@ -1140,6 +1142,25 @@ fn load_keys_from(config: &permguard_core::Config, paths: &[String]) -> Vec<perm
     }
 
     keys
+}
+
+/// What exports a zone or a ledger (WP-7.10): `None` without the Host's `host.operations` signer
+/// or a Host identity to name as the source authority.
+fn exports_of(
+    context: &PlaneContext<'_>,
+) -> Option<std::sync::Arc<crate::catalog::exports::Exports>> {
+    let signer = crate::handles::export_signer(context)?;
+    let authority = crate::handles::host_id(context)?;
+    let config = context.config();
+    // The archive travels base64url in a JSON body and as bytes in a gRPC message: three quarters
+    // of the ceiling both share.
+    let max_bytes = grpc_message_ceiling(config) / 4 * 3;
+    Some(std::sync::Arc::new(crate::catalog::exports::Exports::new(
+        config.zones_directory(),
+        signer,
+        authority,
+        max_bytes,
+    )))
 }
 
 fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {

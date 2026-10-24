@@ -190,6 +190,22 @@ fn rest() -> Router {
         .route("/v1/zones", get(json(zones.to_owned())))
         .route("/v1/zones/acme/ledgers", get(json(ledgers.to_owned())))
         .route(
+            "/v1/zones/acme/ledgers/main-ledger/export",
+            post(|| async {
+                use base64::Engine as _;
+                let answer = exported();
+                let body = serde_json::json!({
+                    "archive": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&answer.archive),
+                    "zone_id": answer.zone_id,
+                    "bundle_digest": answer.bundle_digest,
+                    "bundle_bytes": answer.bundle_bytes,
+                    "exported_at": answer.exported_at,
+                    "ledgers": [{"id": "l-1", "name": "main-ledger", "refs": 1, "objects": 4, "statements": 1}],
+                });
+                ([("content-type", "application/json")], body.to_string())
+            }),
+        )
+        .route(
             "/.well-known/server-configuration",
             get(json(DISCOVERY.to_owned())),
         )
@@ -404,7 +420,47 @@ impl ZoneCatalog for Plane {
     ) -> Result<Response<proto::LedgerResponse>, Status> {
         unserved()
     }
+
+    async fn export_ledger(
+        &self,
+        request: Request<proto::ExportLedgerRequest>,
+    ) -> Result<Response<proto::ExportResponse>, Status> {
+        let request = request.into_inner();
+        assert_eq!(
+            (request.zone.as_str(), request.ledger.as_str()),
+            ("acme", "main-ledger")
+        );
+        Ok(Response::new(exported()))
+    }
+
+    async fn export_zone(
+        &self,
+        _request: Request<proto::ExportZoneRequest>,
+    ) -> Result<Response<proto::ExportResponse>, Status> {
+        unserved()
+    }
 }
+
+/// What the fake answers an export: an archive of a few bytes, and what it binds.
+fn exported() -> proto::ExportResponse {
+    proto::ExportResponse {
+        archive: ARCHIVE.to_vec(),
+        zone_id: "z-1".to_owned(),
+        bundle_digest: format!("sha256:{}", "ab".repeat(32)),
+        bundle_bytes: 3,
+        exported_at: 1_800_000_000,
+        ledgers: vec![proto::ExportedLedger {
+            id: "l-1".to_owned(),
+            name: "main-ledger".to_owned(),
+            refs: 1,
+            objects: 4,
+            statements: 1,
+        }],
+    }
+}
+
+/// The archive bytes the fake answers.
+const ARCHIVE: &[u8] = &[0xa2, 0x01, 0x40, 0x02, 0x40, 0xff];
 
 #[tonic::async_trait]
 impl PolicyDecisionPoint for Plane {
@@ -745,6 +801,59 @@ fn every_network_command_answers_the_same_over_https_and_grpcs() {
         let expected = if name == "test --remote" { 2 } else { 0 };
         assert_eq!(https.0, Some(expected), "{name}: {} {}", https.2, https.1);
     }
+}
+
+/// WP-7.10: `ledgers export` writes the archive the plane answers, byte for byte, to a new file
+/// only its owner reads, and reports what it binds alike on both transports; a file already there
+/// is refused.
+#[test]
+fn a_ledger_export_writes_the_archive_on_both_transports() {
+    let dir = scratch("export");
+    let pki = pki(&dir);
+    let address = serve(rest().merge(grpc()), &pki, Seen::default());
+    let mut reports = Vec::new();
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        let file = dir.join(format!("{scheme}.export"));
+        let args = [
+            "-o",
+            "json",
+            "--tls-ca-file",
+            &pki.authority.display().to_string(),
+            "ledgers",
+            "export",
+            "--zone",
+            "acme",
+            "main-ledger",
+            "--out",
+            &file.display().to_string(),
+            "--control-endpoint",
+            &endpoint,
+        ];
+        let output = cli(&dir, &args);
+        assert!(output.status.success(), "{scheme}: {output:?}");
+        assert_eq!(std::fs::read(&file).expect("written"), ARCHIVE, "{scheme}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&file)
+                .expect("written")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "{scheme}: the owner's alone");
+        }
+        let mut report: Value = serde_json::from_slice(&output.stdout).expect("JSON");
+        assert_eq!(report["ledgers"][0]["objects"], 4, "{scheme}");
+        report["path"] = Value::Null;
+        reports.push(report);
+        let again = cli(&dir, &args);
+        assert!(
+            !again.status.success(),
+            "{scheme}: an existing file is kept"
+        );
+        assert_eq!(std::fs::read(&file).expect("kept"), ARCHIVE);
+    }
+    assert_eq!(reports[0], reports[1], "the transports report alike");
 }
 
 #[test]

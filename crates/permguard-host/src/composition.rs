@@ -59,8 +59,12 @@ impl RingId {
 pub const CONTROL_ATTEST: RingId = RingId("control.attest");
 /// The ring the Data Plane signs its evidence with.
 pub const DATA_ATTEST: RingId = RingId("data.attest");
-/// The Host's own operations ring: it seals the audit trail, and no Plane is handed it.
+/// The Host's own operations ring: it seals the audit trail, and no Plane is handed it. A Plane
+/// may sign under it only [`LedgerExportV1`], whose payload the Host writes (WP-7.10).
 pub const HOST_OPERATIONS: RingId = RingId("host.operations");
+
+/// The Plane artifacts allowed on [`HOST_OPERATIONS`]: each a payload the Host writes.
+const OPERATIONS_ARTIFACTS: &[&str] = &[permguard_core::domains::protected::LEDGER_EXPORT];
 
 /// An artifact a Plane may sign: its protected type and the ring that signs it.
 pub trait Artifact: 'static {
@@ -86,6 +90,18 @@ impl Artifact for HeadStatementV1 {
 /// The coordinator's observation checkpoint of an `events.import` resource, signed by the Control
 /// Plane that provides the task (WP-6.2c1).
 pub struct ImportCheckpointV1;
+
+/// A ledger or zone export's manifest (WP-7.10): a COSE_Sign1 under `host.operations` whose
+/// payload, [`crate::exports::Manifest`], is the Host's to encode, the one Plane artifact on that
+/// ring.
+pub struct LedgerExportV1;
+
+impl Artifact for LedgerExportV1 {
+    const TYPE: &'static str = permguard_core::domains::protected::LEDGER_EXPORT;
+    const RING: RingId = HOST_OPERATIONS;
+    /// `exported_at` is what an importer reads the archive's age by.
+    const TIME_SENSITIVE: bool = true;
+}
 
 impl Artifact for ImportCheckpointV1 {
     const TYPE: &'static str = permguard_core::domains::protected::EVENT_IMPORT_CHECKPOINT;
@@ -510,6 +526,16 @@ impl Host {
             .iter()
             .find(|(artifact, _)| HOST_RESERVED.contains(artifact))
         {
+            return Err(CompositionError::Reserved {
+                plane,
+                artifact: (*artifact).to_owned(),
+            });
+        }
+        // `host.operations` is the Host's: a Plane signs under it only a payload the Host writes
+        // (WP-7.10).
+        if let Some((artifact, _)) = declaration.signers.iter().find(|(artifact, ring)| {
+            *ring == HOST_OPERATIONS && !OPERATIONS_ARTIFACTS.contains(artifact)
+        }) {
             return Err(CompositionError::Reserved {
                 plane,
                 artifact: (*artifact).to_owned(),
@@ -1297,6 +1323,56 @@ impl Payload for permguard_objects::statement::HeadStatement {
 
 /// An import checkpoint is the payload of [`ImportCheckpointV1`]: a COSE_Sign1 under the ring's
 /// active key, binding the ring's epoch and key set, refused when the ring moved mid-signature.
+impl sealed::Sealed for crate::exports::Manifest {}
+
+/// An export manifest is the payload of [`LedgerExportV1`]: a COSE_Sign1 under the ring's active
+/// key, refused when the key rotated mid-signature.
+impl Payload for crate::exports::Manifest {
+    type Artifact = LedgerExportV1;
+    type Signed = Vec<u8>;
+
+    fn sign_with(&self, keys: &dyn SigningRing) -> permguard_core::keys::Result<Vec<u8>> {
+        let set = keys.key_set()?;
+        let suite = permguard_objects::crypto::suite::Suite::from_jws_alg(set.algorithm)
+            .ok_or_else(|| {
+                permguard_core::KeyError::backend(format!(
+                    "the ring signs with `{}`, no suite of an export manifest",
+                    set.algorithm
+                ))
+            })?;
+        let payload = self.encode().map_err(|error| {
+            permguard_core::KeyError::backend(format!("encoding the export manifest: {error}"))
+        })?;
+        let kid = keys.active_key_id()?;
+        let failed = std::cell::RefCell::new(None::<permguard_core::KeyError>);
+        let signed = permguard_objects::cose::Sign1::sign_with(
+            suite,
+            LedgerExportV1::TYPE,
+            kid.as_str().as_bytes(),
+            payload,
+            |bytes| {
+                let signature = keys.sign(bytes).map_err(|error| {
+                    let detail = error.to_string();
+                    *failed.borrow_mut() = Some(error);
+                    detail
+                })?;
+                if signature.key_id() != &kid {
+                    return Err("the signing key rotated mid-signature".to_owned());
+                }
+                Ok(signature.bytes().to_vec())
+            },
+        )
+        .map_err(|error| {
+            failed.take().unwrap_or_else(|| {
+                permguard_core::KeyError::backend(format!("signing the export manifest: {error}"))
+            })
+        })?;
+        signed.encode().map_err(|error| {
+            permguard_core::KeyError::backend(format!("encoding the export manifest: {error}"))
+        })
+    }
+}
+
 impl sealed::Sealed for crate::membership::import::Checkpoint {}
 
 impl Payload for crate::membership::import::Checkpoint {
@@ -2903,6 +2979,37 @@ mod tests {
             sign_jws::<DecisionBatchV1>(b"{}", &Es256),
             Err(JwsError::Algorithm(found)) if found == "ES256"
         ));
+    }
+
+    /// WP-7.10: a Plane signs under `host.operations` only the export manifest, whose payload the
+    /// Host writes; any other artifact on that ring is refused at registration.
+    #[test]
+    fn a_plane_signs_under_host_operations_only_an_export_manifest() {
+        struct Sealer;
+        impl Artifact for Sealer {
+            const TYPE: &'static str = "test.operations.sealer";
+            const RING: RingId = HOST_OPERATIONS;
+            const TIME_SENSITIVE: bool = false;
+        }
+        let refused = host()
+            .register(Declaration::new("control").signs::<Sealer>())
+            .expect_err("another artifact on host.operations");
+        assert!(
+            matches!(&refused, CompositionError::Reserved { artifact, .. } if artifact == Sealer::TYPE),
+            "{refused}"
+        );
+
+        let registration = host()
+            .register(Declaration::new("control").signs::<LedgerExportV1>())
+            .expect("registers");
+        // The capability, never the ring: what it signs is the Host's payload (signed for real in
+        // `api::backups::tests::an_export_manifest_verifies_from_the_sources_bundle_and_pin`).
+        assert!(
+            registration
+                .signer::<LedgerExportV1>()
+                .expect("declared")
+                .is_some()
+        );
     }
 
     #[test]

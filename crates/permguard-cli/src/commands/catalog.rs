@@ -138,8 +138,16 @@ pub fn catalog_command(
                     trace,
                 )?;
             }
+            ZonesAction::Export { zone, out } => {
+                let export = backend.export_zone(&zone).map_err(failed)?;
+                written(&out, &export, globals, trace)?;
+            }
         },
         CatalogAction::Ledgers(action) => match action {
+            LedgersAction::Export { zone, ledger, out } => {
+                let export = backend.export_ledger(&zone, &ledger).map_err(failed)?;
+                written(&out, &export, globals, trace)?;
+            }
             LedgersAction::Create { zone, name } => {
                 let ledger = backend.create_ledger(&zone, &name).map_err(failed)?;
 
@@ -270,4 +278,68 @@ pub fn catalog_command(
     }
 
     Ok(ExitCode::from(EXIT_READY))
+}
+
+/// What an export reports: where the archive went and what it binds.
+#[derive(serde::Serialize)]
+struct ExportReport<'a> {
+    path: String,
+    #[serde(flatten)]
+    export: &'a catalog::Export,
+}
+
+impl crate::output::Report for ExportReport<'_> {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        writeln!(out, "Exported to {}", self.path)?;
+        writeln!(out, "zone_id        {}", self.export.zone_id)?;
+        writeln!(out, "bundle digest  {}", self.export.bundle_digest)?;
+        writeln!(out, "bundle bytes   {}", self.export.bundle_bytes)?;
+        for ledger in &self.export.ledgers {
+            writeln!(
+                out,
+                "  {} {:<24} {} ref(s), {} object(s), {} statement(s)",
+                ledger.id, ledger.name, ledger.refs, ledger.objects, ledger.statements
+            )?;
+        }
+        Ok(())
+    }
+}
+
+/// Writes `export`'s archive to the new file `output`, readable by its owner only, and reports
+/// it (WP-7.10).
+fn written(
+    output: &std::path::Path,
+    export: &catalog::Export,
+    globals: &Globals,
+    trace: &Trace,
+) -> Result<(), Failure> {
+    use std::io::Write as _;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(output)
+        .map_err(|error| Failure::usage(format!("--out {}: {error}", output.display())))?;
+    if let Err(error) = file.write_all(&export.archive) {
+        // A partial archive is not left where a retry would be refused for it.
+        drop(file);
+        let _ = std::fs::remove_file(output);
+        return Err(Failure::unavailable(format!(
+            "writing {}: {error}",
+            output.display()
+        )));
+    }
+    render(
+        &ExportReport {
+            path: output.display().to_string(),
+            export,
+        },
+        globals.output,
+        trace,
+    )?;
+    Ok(())
 }

@@ -110,6 +110,7 @@ mod window_tests {
     }
 }
 
+pub(crate) mod exports;
 pub(crate) mod grpc;
 pub(crate) mod http;
 pub(crate) mod ledgers;
@@ -159,6 +160,9 @@ pub(crate) struct CatalogFacade {
     /// The Host's security-mutation transaction every catalog mutation runs in (WP-7.3a); `None`
     /// when the Host composes none, and then every mutation is refused `unavailable`.
     pub(crate) mutations: Option<permguard_host::composition::MutationHandle>,
+    /// What exports a zone or a ledger (WP-7.10); `None` when the Host composes no
+    /// `host.operations` signer, and then every export is refused `unavailable`.
+    pub(crate) exports: Option<Arc<exports::Exports>>,
 }
 
 /// The domain of the catalog's mutations (WP-7.3a): what recovery asks of zones and ledgers.

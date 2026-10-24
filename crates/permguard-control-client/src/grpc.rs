@@ -466,6 +466,39 @@ impl crate::catalog::Catalog for GrpcAdmin {
     ) -> Result<Ledger, CatalogFailure> {
         GrpcAdmin::restore_ledger(self, zone, ledger, expected_revision)
     }
+
+    fn export_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<crate::catalog::Export, CatalogFailure> {
+        let mut client = self.catalog();
+        let answer = self
+            .0
+            .call(
+                "ExportLedger",
+                client.export_ledger(proto::ExportLedgerRequest {
+                    zone: zone.to_owned(),
+                    ledger: ledger.to_owned(),
+                }),
+            )
+            .map_err(Self::failure)?;
+        Ok(Self::export(answer))
+    }
+
+    fn export_zone(&self, zone: &str) -> Result<crate::catalog::Export, CatalogFailure> {
+        let mut client = self.catalog();
+        let answer = self
+            .0
+            .call(
+                "ExportZone",
+                client.export_zone(proto::ExportZoneRequest {
+                    zone: zone.to_owned(),
+                }),
+            )
+            .map_err(Self::failure)?;
+        Ok(Self::export(answer))
+    }
 }
 
 /// The refusal a gRPC status carries, as every client here reports it (TC-1): the class and
@@ -517,10 +550,34 @@ pub(crate) fn failure_of(status: tonic::Status) -> CatalogFailure {
 impl GrpcAdmin {
     fn catalog(&self) -> proto::zone_catalog_client::ZoneCatalogClient<AuthChannel> {
         proto::zone_catalog_client::ZoneCatalogClient::new(self.0.channel.clone())
+            // An export's archive is as large as the server lets one message be (WP-7.10): the
+            // same ceiling REST reads under.
+            .max_decoding_message_size(crate::MAX_RESPONSE_BYTES as usize)
     }
 
     fn failure(status: tonic::Status) -> CatalogFailure {
         failure_of(status)
+    }
+
+    fn export(answer: proto::ExportResponse) -> crate::catalog::Export {
+        crate::catalog::Export {
+            archive: answer.archive,
+            zone_id: answer.zone_id,
+            bundle_digest: answer.bundle_digest,
+            bundle_bytes: answer.bundle_bytes,
+            exported_at: answer.exported_at,
+            ledgers: answer
+                .ledgers
+                .into_iter()
+                .map(|ledger| crate::catalog::ExportedLedger {
+                    id: ledger.id,
+                    name: ledger.name,
+                    refs: ledger.refs,
+                    objects: ledger.objects,
+                    statements: ledger.statements,
+                })
+                .collect(),
+        }
     }
 
     fn zone(answer: proto::ZoneResponse) -> Result<Zone, CatalogFailure> {

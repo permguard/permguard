@@ -213,3 +213,10 @@ path = "fuzz_targets/snapshot_manifest.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "export_manifest"
+path = "fuzz_targets/export_manifest.rs"
+test = false
+doc = false
+bench = false

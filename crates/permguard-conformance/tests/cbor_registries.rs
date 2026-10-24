@@ -38,7 +38,7 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 20] = [
+const REGISTRIES: [&str; 21] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
@@ -49,6 +49,7 @@ const REGISTRIES: [&str; 20] = [
     "keys.json",
     "keys-bundle.json",
     "layout.json",
+    "ledger-export.json",
     "manifest.json",
     "membership.json",
     "mutation.json",
@@ -694,6 +695,64 @@ fn grant_samples() -> Vec<Sample> {
             .expect("the transition encodes"),
             &["transition.operation_id"],
             Some(Box::new(|bytes: &[u8]| verdict(Transition::decode(bytes)))),
+        ),
+    ]
+}
+
+fn ledger_export_samples() -> Vec<Sample> {
+    use permguard_host::exports::{ExportedLedger, ExportedRef, Manifest, bundle_digest};
+
+    let entry = |pairs: Vec<(Value, Value)>| {
+        permguard_objects::cbor::encode(&Value::Map(pairs)).expect("encodes")
+    };
+    let object = entry(vec![
+        (Value::Int(1), Value::Int(0)),
+        (Value::Int(2), Value::Int(1)),
+        (Value::Int(3), Value::Bytes(b"an object".to_vec())),
+    ]);
+    let statement = entry(vec![
+        (Value::Int(1), Value::Int(0)),
+        (Value::Int(2), Value::Int(2)),
+        (Value::Int(3), Value::Bytes(b"a statement".to_vec())),
+        (Value::Int(4), Value::Text("main".to_owned())),
+    ]);
+    let manifest = Manifest {
+        host_id: HOST_ID,
+        exported_at: 1_800_000_000,
+        zone_id: "zone-id".to_owned(),
+        zone_name: "delivery".to_owned(),
+        ledgers: vec![ExportedLedger {
+            id: "ledger-id".to_owned(),
+            name: "release".to_owned(),
+            default_ref: "main".to_owned(),
+            refs: vec![ExportedRef {
+                name: "main".to_owned(),
+                counter: 2,
+                head: Digest::compute(b"a head"),
+            }],
+            objects: 1,
+            statements: 1,
+        }],
+        bundle_digest: bundle_digest(b"the bundle"),
+        bundle_bytes: 10,
+    };
+    vec![
+        sample(
+            "export_archive",
+            entry(vec![
+                (Value::Int(1), Value::Bytes(b"a COSE_Sign1".to_vec())),
+                (Value::Int(2), Value::Bytes(b"a bundle".to_vec())),
+            ]),
+            &[],
+            None,
+        ),
+        sample("bundle_entry", object, &[], None),
+        sample("bundle_entry", statement, &["bundle_entry.ref"], None),
+        sample(
+            "export_manifest",
+            manifest.encode().expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Manifest::decode(bytes)))),
         ),
     ]
 }
@@ -2998,6 +3057,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "mutation.json" => mutation_samples(),
         "identity.json" => identity_samples(),
         "restore.json" => restore_samples(),
+        "ledger-export.json" => ledger_export_samples(),
         "session.json" => session_samples(),
         "stream.json" => stream_samples(),
         "keys.json" => keys_samples(),

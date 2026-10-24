@@ -12,7 +12,7 @@ use crate::v1;
 use crate::v1::zone_catalog_server::ZoneCatalog;
 use crate::wire;
 
-use super::{CatalogFacade, ledgers, zones};
+use super::{CatalogFacade, exports, ledgers, zones};
 
 fn wire_zone(zone: permguard_core::Zone) -> v1::Zone {
     v1::Zone {
@@ -52,6 +52,29 @@ fn wire_ledger(ledger: permguard_core::Ledger) -> v1::Ledger {
 }
 
 type Answer<T> = Result<Response<T>, Status>;
+
+/// An export as gRPC answers it: what REST answers, the archive as bytes.
+fn wire_export(exported: exports::Exported) -> v1::ExportResponse {
+    let manifest = exported.manifest;
+    v1::ExportResponse {
+        archive: exported.archive,
+        zone_id: manifest.zone_id,
+        bundle_digest: manifest.bundle_digest.to_string(),
+        bundle_bytes: manifest.bundle_bytes,
+        exported_at: manifest.exported_at,
+        ledgers: manifest
+            .ledgers
+            .into_iter()
+            .map(|ledger| v1::ExportedLedger {
+                refs: ledger.refs.len() as u64,
+                id: ledger.id,
+                name: ledger.name,
+                objects: ledger.objects,
+                statements: ledger.statements,
+            })
+            .collect(),
+    }
+}
 
 impl CatalogFacade {
     /// Shapes a domain refusal the one way every rpc does.
@@ -247,6 +270,30 @@ impl ZoneCatalog for CatalogFacade {
         }))
     }
 
+    async fn export_ledger(
+        &self,
+        request: Request<v1::ExportLedgerRequest>,
+    ) -> Answer<v1::ExportResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let request = request.into_inner();
+        let exported = exports::ledger(self, &actor, &request.zone, &request.ledger)
+            .await
+            .map_err(|error| self.refuse(error))?;
+        Ok(Response::new(wire_export(exported)))
+    }
+
+    async fn export_zone(
+        &self,
+        request: Request<v1::ExportZoneRequest>,
+    ) -> Answer<v1::ExportResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let request = request.into_inner();
+        let exported = exports::zone(self, &actor, &request.zone)
+            .await
+            .map_err(|error| self.refuse(error))?;
+        Ok(Response::new(wire_export(exported)))
+    }
+
     async fn archive_ledger(
         &self,
         request: Request<v1::ArchiveLedgerRequest>,
@@ -345,6 +392,7 @@ mod tests {
             disclosure: Disclosure::Minimal,
             audit_refusals: false,
             metrics: permguard_core::Metrics::none(),
+            exports: None,
         };
         fn request<T>(inner: T) -> Request<T> {
             let mut request = Request::new(inner);
@@ -434,6 +482,7 @@ mod tests {
             disclosure: Disclosure::Minimal,
             audit_refusals: false,
             metrics: permguard_core::Metrics::none(),
+            exports: None,
         };
         fn anonymous<T>(inner: T) -> Request<T> {
             let mut request = Request::new(inner);
@@ -490,6 +539,7 @@ mod tests {
             disclosure: Disclosure::Minimal,
             audit_refusals: false,
             metrics: permguard_core::Metrics::none(),
+            exports: None,
         };
         let create = |principal: &str, name: &str| {
             let mut request = Request::new(v1::CreateZoneRequest {
@@ -569,6 +619,7 @@ mod tests {
             audit_refusals: false,
             metrics: permguard_core::Metrics::none(),
             authorization: Arc::new(Authorization::new(store, &[])),
+            exports: None,
         };
 
         // Nobody: UNAUTHENTICATED, with the code as metadata and no class.

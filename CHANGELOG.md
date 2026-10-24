@@ -19,6 +19,10 @@ is cut.
 
 ### Added
 
+- **A ledger or a zone is exported as a signed archive (WP-7.10a).**
+  `permguard ledgers export --zone <zone> <ledger> --out <file>` and `permguard zones export <zone> --out <file>`, over REST (`POST /v1/zones/{zone}/ledgers/{ledger}/export`, `POST /v1/zones/{zone}/export`) and gRPC (`ExportLedger`, `ExportZone`), under `catalog.read`, write a canonical CBOR archive to a new file only its owner reads.
+  The bundle carries every object a ref reaches and every head statement byte for byte; the manifest, a COSE_Sign1 `permguard.ledger.export.v1`, is signed by the Host under `host.operations` — the one artifact a Plane may have signed on that ring, its payload written by the Host — and binds the source Host, every ledger's refs and counts, and the bundle's digest.
+  An importer verifies it from the source Host's keys bundle and identity pin; an archive past what one message carries is refused before anything is signed.
 - **A producer keeps acknowledged batches for a declared retention (WP-7.9b).**
   `operations.streams.acknowledged_retention` (`PERMGUARD_STREAM_ACKNOWLEDGED_RETENTION`, default `0s`) keeps each batch that long after every required coordinator acknowledged it, so a coordinator restored from a snapshot is resent what it lost: set it to the coordinators' snapshot interval plus their recovery time.
   Each run's acknowledgement keeps when it reached its value, a few coalesced points per run; an acknowledgement from before the setting ages from the first pass that sees it.

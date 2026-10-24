@@ -18,7 +18,7 @@ use serde::Deserialize;
 use permguard_core::{ApiError, ErrorClass, codes};
 use permguard_transport::ActorOf;
 
-use super::{CatalogFacade, ledgers, zones};
+use super::{CatalogFacade, exports, ledgers, zones};
 use crate::wire;
 
 /// The routes the control plane answers about its catalog.
@@ -45,6 +45,11 @@ pub(crate) fn routes(facade: CatalogFacade) -> Router {
             "/v1/zones/{zone}/ledgers/{ledger}/restore",
             post(restore_ledger),
         )
+        .route(
+            "/v1/zones/{zone}/ledgers/{ledger}/export",
+            post(export_ledger),
+        )
+        .route("/v1/zones/{zone}/export", post(export_zone))
         .with_state(facade)
 }
 
@@ -353,6 +358,44 @@ async fn rename_ledger(
     answer(&facade, StatusCode::OK, outcome)
 }
 
+/// What an export carries (WP-7.10): nothing, in a closed JSON body, so a cross-site form cannot
+/// make one.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExportBody {}
+
+async fn export_ledger(
+    State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
+    Path((zone, ledger)): Path<(String, String)>,
+    request: Request,
+) -> Response {
+    if let Err(refusal) = closed::<ExportBody>(request, &facade, "an export").await {
+        return *refusal;
+    }
+    let outcome = exports::ledger(&facade, &actor, &zone, &ledger)
+        .await
+        .map(|exported| exported.view());
+
+    answer(&facade, StatusCode::OK, outcome)
+}
+
+async fn export_zone(
+    State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
+    Path(zone): Path<String>,
+    request: Request,
+) -> Response {
+    if let Err(refusal) = closed::<ExportBody>(request, &facade, "an export").await {
+        return *refusal;
+    }
+    let outcome = exports::zone(&facade, &actor, &zone)
+        .await
+        .map(|exported| exported.view());
+
+    answer(&facade, StatusCode::OK, outcome)
+}
+
 async fn archive_ledger(
     State(facade): State<CatalogFacade>,
     ActorOf(actor): ActorOf,
@@ -446,6 +489,7 @@ mod tests {
             disclosure,
             audit_refusals: false,
             metrics: permguard_core::metrics::Metrics::none(),
+            exports: None,
         })
     }
 
@@ -651,6 +695,7 @@ mod tests {
             disclosure: Disclosure::Minimal,
             audit_refusals: true,
             metrics: permguard_core::metrics::Metrics::none(),
+            exports: None,
         });
 
         // A success, then the same name again: the success is the transaction's record, not this
@@ -736,6 +781,7 @@ mod tests {
             disclosure: Disclosure::Minimal,
             audit_refusals: false,
             metrics: permguard_core::metrics::Metrics::none(),
+            exports: None,
         })
     }
 
@@ -775,6 +821,7 @@ mod tests {
             disclosure: Disclosure::Minimal,
             audit_refusals: false,
             metrics: permguard_core::metrics::Metrics::none(),
+            exports: None,
         });
         engine
             .quiesce(
@@ -1019,6 +1066,139 @@ mod tests {
         );
     }
 
+    /// WP-7.10: `POST …/export` answers the archive and what it binds under the caller's
+    /// `catalog.read`; without the Host's signer it is `503 unavailable`, and a body that is not
+    /// a closed JSON `{}` is refused before anything is read.
+    #[tokio::test]
+    async fn a_ledger_and_a_zone_are_exported_over_http() {
+        use base64::Engine as _;
+
+        let fixture = super::super::exports::tests::fixture("http", 1 << 20);
+        let facade = |exports: Option<Arc<super::super::exports::Exports>>| CatalogFacade {
+            host: None,
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+            mutations: None,
+            catalog: Arc::clone(&fixture.catalog) as Arc<dyn permguard_core::Catalog>,
+            recorder: None,
+            disclosure: Disclosure::Minimal,
+            audit_refusals: false,
+            metrics: permguard_core::metrics::Metrics::none(),
+            exports,
+        };
+        let base = format!(
+            "/v1/zones/{}/ledgers/{}",
+            fixture.zone.id, fixture.ledger.id
+        );
+        let unsigned = routes(facade(None));
+        let (status, answer) = send(&unsigned, "POST", &format!("{base}/export"), Some("{}")).await;
+        assert_eq!(status, 503, "{answer}");
+
+        let routes = routes(facade(Some(Arc::new(fixture.exports))));
+        let (status, answer) = send(&routes, "POST", &format!("{base}/export"), Some("{}")).await;
+        assert_eq!(status, 200, "{answer}");
+        let view: serde_json::Value = serde_json::from_str(&answer).expect("JSON");
+        let archive = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(view["archive"].as_str().expect("an archive"))
+            .expect("base64url");
+        assert!(matches!(
+            permguard_objects::cbor::decode_canonical(&archive),
+            Ok(permguard_objects::cbor::Value::Map(_))
+        ));
+        assert_eq!(view["ledgers"][0]["objects"], 4);
+        let (status, zone) = send(
+            &routes,
+            "POST",
+            &format!("/v1/zones/{}/export", fixture.zone.id),
+            Some("{}"),
+        )
+        .await;
+        assert_eq!(status, 200, "{zone}");
+        let zone: serde_json::Value = serde_json::from_str(&zone).expect("JSON");
+        assert_eq!(zone["ledgers"].as_array().map(Vec::len), Some(1));
+
+        for body in [None, Some(r#"{"ledger":"x"}"#), Some("not json")] {
+            let (status, answer) = send(&routes, "POST", &format!("{base}/export"), body).await;
+            assert_eq!(status, 400, "{body:?}: {answer}");
+        }
+    }
+
+    /// WP-7.10, after the review: an export needs `catalog.read` on what it carries. A grant on
+    /// the zone node alone exports no ledger of it, the zone included; a grant on one ledger
+    /// exports that ledger and not its zone; a grant over the zone's ledgers exports the zone;
+    /// another operation's grant exports nothing.
+    #[tokio::test]
+    async fn an_export_needs_catalog_read_on_every_ledger_it_carries() {
+        use permguard_core::authz::{
+            Actor, ActorContext, Credential, Principal, Selector as Granted, operations,
+        };
+        use permguard_host::authz::PublicGrant;
+
+        use super::super::exports;
+
+        let fixture = exports::tests::fixture("http-authz", 1 << 20);
+        let (zone, ledger) = (fixture.zone.id.clone(), fixture.ledger.id.clone());
+        let shared = Arc::new(fixture.exports);
+        let actor = Actor::Authenticated(ActorContext::new(
+            Principal::new("spiffe://acme/operator").expect("a principal"),
+            Credential::SanUri,
+            None,
+        ));
+        let facade = |operation: &'static str, selector: String| CatalogFacade {
+            host: None,
+            authorization: Arc::new(permguard_host::composition::Authorization::public_only(&[
+                PublicGrant::new(&[operation], Granted::parse(&selector).expect("a selector")),
+            ])),
+            mutations: None,
+            catalog: Arc::clone(&fixture.catalog) as Arc<dyn permguard_core::Catalog>,
+            recorder: None,
+            disclosure: Disclosure::Minimal,
+            audit_refusals: false,
+            metrics: permguard_core::metrics::Metrics::none(),
+            exports: Some(Arc::clone(&shared)),
+        };
+        let status = |refused: wire::Refusal| match refused {
+            wire::Refusal::Api(error) => error.http_status(),
+            wire::Refusal::Denied(denial) => denial.http_status(),
+        };
+
+        let node = facade(
+            operations::CATALOG_READ,
+            format!("plane/control/zone/{zone}"),
+        );
+        let refused = exports::zone(&node, &actor, &zone)
+            .await
+            .expect_err("the node alone");
+        assert_eq!(status(refused), 403);
+        let refused = exports::ledger(&node, &actor, &zone, &ledger)
+            .await
+            .expect_err("the node alone");
+        assert_eq!(status(refused), 403);
+
+        let one = facade(
+            operations::CATALOG_READ,
+            format!("plane/control/zone/{zone}/ledger/{ledger}"),
+        );
+        exports::ledger(&one, &actor, &zone, &ledger)
+            .await
+            .expect("that ledger");
+        let refused = exports::zone(&one, &actor, &zone)
+            .await
+            .expect_err("a ledger's grant is not the zone's");
+        assert_eq!(status(refused), 403);
+
+        let whole = facade(operations::CATALOG_READ, "plane/control/*".to_owned());
+        let exported = exports::zone(&whole, &actor, &zone)
+            .await
+            .expect("the zone");
+        assert_eq!(exported.manifest.ledgers.len(), 1);
+
+        let writer = facade(operations::CATALOG_WRITE, "plane/control/*".to_owned());
+        let refused = exports::zone(&writer, &actor, &zone)
+            .await
+            .expect_err("another operation's grant");
+        assert_eq!(status(refused), 403);
+    }
+
     /// WP-7.3a: a Host that composes no mutation transaction refuses every change `503`
     /// `unavailable`, and still answers reads.
     #[tokio::test]
@@ -1033,6 +1213,7 @@ mod tests {
             disclosure: Disclosure::Minimal,
             audit_refusals: false,
             metrics: permguard_core::metrics::Metrics::none(),
+            exports: None,
         });
         let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         assert_eq!(status, 503, "{body}");
@@ -1599,6 +1780,20 @@ mod tests {
             .create_ledger(&Selector::parse("delivery"), "policies")
             .expect("a ledger is created");
 
+        // An export's body, closed and empty, and its answer (WP-7.10).
+        let sent = serde_json::json!({});
+        serde_json::from_value::<ExportBody>(sent.clone()).expect("an export body parses");
+        doc.check_json("ExportBody", &sent);
+        let refused = serde_json::json!({"ledger": "x"});
+        assert!(!doc.accepts_json("ExportBody", &refused));
+        assert!(serde_json::from_value::<ExportBody>(refused).is_err());
+        let fixture = super::super::exports::tests::fixture("openapi", 1 << 20);
+        let exported = fixture
+            .exports
+            .archive(&fixture.zone, std::slice::from_ref(&fixture.ledger))
+            .expect("exported");
+        doc.check("ExportView", &exported.view());
+
         doc.check("Zone", &zone);
         doc.check("Ledger", &ledger);
         // `GetLedger`'s answer: the ledger with a member serving it, every optional member
@@ -1675,6 +1870,7 @@ mod tests {
             disclosure: Disclosure::Minimal,
             audit_refusals: false,
             metrics: permguard_core::metrics::Metrics::none(),
+            exports: None,
         });
         let (_, created) = send(
             &routes,

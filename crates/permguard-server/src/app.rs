@@ -1976,6 +1976,7 @@ impl App {
             },
         ));
         let keys: Option<Arc<dyn KeyManager>> = keys.map(|ring| ring as Arc<dyn KeyManager>);
+        let operations_ring = keys.clone();
 
         // Every issuer this deployment hosts, each with its own keys and trail, built once here. A
         // plain single-issuer server has none and this is the empty registry.
@@ -2408,6 +2409,11 @@ impl App {
                     ZonePurpose::AuditPseudonym,
                     coordinator,
                 ));
+        }
+        // The Host's own ring, for the one Plane artifact on it whose payload the Host writes, an
+        // export manifest (WP-7.10): the composition refuses any other.
+        if let Some(keys) = operations_ring {
+            host = host.ring(permguard_host::composition::HOST_OPERATIONS, keys);
         }
         if let Some(keys) = control_signing_keys {
             let keys: Arc<dyn KeyManager> = keys;
