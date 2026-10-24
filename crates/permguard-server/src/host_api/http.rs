@@ -123,6 +123,10 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/status", get(status))
         .route("/host/v1/config/effective", get(effective_config))
         .route("/host/v1/config/revisions", get(config_revisions))
+        .route("/host/v1/backup/prepare", post(prepare_backup))
+        .route("/host/v1/backup/finalize", post(finalize_backup))
+        .route("/host/v1/backup/abort", post(abort_backup))
+        .route("/host/v1/backups", get(list_backups))
         .with_state(Served { api, disclosure })
 }
 
@@ -670,6 +674,52 @@ async fn approve_plan(
         StatusCode::OK,
         served.api.approve_plan(&actor, &id, approve).await,
     )
+}
+
+/// Runs `call` on the facade off the async workers (WP-7.8): the backup calls read the whole
+/// volume or wait on a prepare that does. A call that panicked is `internal`.
+async fn blocking<T: serde::Serialize + Send + 'static>(
+    served: &Served,
+    call: impl FnOnce(&HostApi) -> Result<T, Refusal> + Send + 'static,
+) -> Response {
+    let api = Arc::clone(&served.api);
+    match tokio::task::spawn_blocking(move || call(&api)).await {
+        Ok(answered) => answer(served, StatusCode::OK, answered),
+        Err(error) => served.refuse(&Refusal::new(
+            ErrorClass::Internal,
+            codes::common::INTERNAL,
+            format!("the call did not finish: {error}"),
+        )),
+    }
+}
+
+/// `POST /host/v1/backup/prepare` (WP-7.8).
+async fn prepare_backup(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(prepare): Closed<permguard_host::api::backups::PrepareBackup>,
+) -> Response {
+    blocking(&served, move |api| api.prepare_backup(&actor, prepare)).await
+}
+
+async fn finalize_backup(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(finalize): Closed<permguard_host::api::backups::FinalizeBackup>,
+) -> Response {
+    blocking(&served, move |api| api.finalize_backup(&actor, finalize)).await
+}
+
+async fn abort_backup(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(abort): Closed<permguard_host::api::backups::AbortBackup>,
+) -> Response {
+    blocking(&served, move |api| api.abort_backup(&actor, abort)).await
+}
+
+async fn list_backups(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    blocking(&served, move |api| api.list_backups(&actor)).await
 }
 
 async fn list_members(

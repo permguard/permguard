@@ -1919,6 +1919,30 @@ impl App {
         mutations
             .recover(&permguard_host::membership::Memberships(&members))
             .context("recovering the membership mutations a crash left open")?;
+        // The volume's backups (WP-7.8): a prepare a restart cut short is aborted, and recorded.
+        // Recovery first: an ending a crash left open is judged on its own write, then what is
+        // still prepared is cut.
+        let backups =
+            permguard_host::operations::backup::Backups::open(&volume).with_context(|| {
+                format!("opening the backups on {}", volume.host().path().display())
+            })?;
+        mutations
+            .recover(&backups)
+            .context("recovering the backup mutations a crash left open")?;
+        let cut = backups
+            .cut(time.now_secs())
+            .context("aborting the backups a restart cut short")?;
+        if !cut.is_empty() {
+            let recorded = backups.record_cut(&mutations, &cut, time.now_secs());
+            tracing::warn!(
+                event.name = "host.backup_cut",
+                component = "server",
+                backups = cut.len(),
+                recorded,
+                "a restart cut a prepared backup short: it is aborted"
+            );
+        }
+        let backups = Arc::new(backups);
         let _ = retention_members.set(Arc::clone(&members));
         // Retention deletes a day of an exported trail only once its seal is acknowledged
         // (WP-5.9, owner decision).
@@ -2236,6 +2260,12 @@ impl App {
                 Some(reads) => api.with_streams(reads),
                 None => api,
             };
+            // The application-consistent snapshot's barrier (WP-7.8).
+            let api = api.with_backups(
+                Arc::clone(&backups),
+                config.backup_recovery_key_id().map(str::to_owned),
+                config.backup_encryption_profile().map(str::to_owned),
+            );
             let api = Arc::new(api);
             serving = Some(Arc::clone(&api));
             context = context.with_host_handles(api);

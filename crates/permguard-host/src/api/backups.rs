@@ -97,7 +97,7 @@ pub struct BackupEnded {
     /// `finalized` or `aborted`.
     pub state: String,
     /// The snapshot it bound, when finalized.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub snapshot_id: Option<String>,
     pub receipt: Receipt,
 }
@@ -110,13 +110,13 @@ pub struct BackupView {
     pub at: String,
     /// `prepared`, `finalized` or `aborted`.
     pub state: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub snapshot_id: Option<String>,
     /// When it was finalized or aborted, RFC 3339.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub ended_at: Option<String>,
     /// Its signed manifest, COSE_Sign1 `permguard.snapshot.manifest.v1` in base64url.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub manifest: Option<String>,
 }
 

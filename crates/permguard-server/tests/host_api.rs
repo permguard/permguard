@@ -82,6 +82,10 @@ const MINTED: &[&str] = &[
     "record",
     // And the `keys export` document of each facade's own operations ring.
     "verification_keys",
+    // The backups each facade prepared (WP-7.8): their operation, barrier and end.
+    "backup",
+    "expires_at",
+    "ended_at",
 ];
 
 fn scratch(tag: &str) -> PathBuf {
@@ -245,6 +249,9 @@ fn facade(tag: &str) -> Arc<HostApi> {
             .expect("an operations record");
     }
     // The volume stays claimed for the life of the test process: the store holds its directory.
+    // The volume's backups (WP-7.8), opened while the volume is claimed.
+    let backups =
+        permguard_host::operations::backup::Backups::open(&volume).expect("the backups open");
     std::mem::forget(volume);
     Arc::new(
         HostApi::new(Composition {
@@ -310,7 +317,8 @@ fn facade(tag: &str) -> Arc<HostApi> {
                 importing: None,
             })),
         })
-        .with_streams(Arc::new(FixedStreams)),
+        .with_streams(Arc::new(FixedStreams))
+        .with_backups(Arc::new(backups), None, None),
     )
 }
 
@@ -1782,6 +1790,90 @@ impl Transport {
         }
     }
 
+    async fn prepare_backup(&self, who: Option<&str>) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest("POST", "/host/v1/backup/prepare", who, Some(json!({})))
+                    .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .prepare_backup(Self::grpc_request(
+                        who,
+                        host_v1::PrepareBackupRequest::default(),
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn finalize_backup(&self, who: Option<&str>, token: &str, snapshot_id: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    "/host/v1/backup/finalize",
+                    who,
+                    Some(json!({"token": token, "snapshot_id": snapshot_id})),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .finalize_backup(Self::grpc_request(
+                        who,
+                        host_v1::FinalizeBackupRequest {
+                            token: token.to_owned(),
+                            snapshot_id: snapshot_id.to_owned(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn abort_backup(&self, who: Option<&str>, token: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    "/host/v1/backup/abort",
+                    who,
+                    Some(json!({"token": token})),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .abort_backup(Self::grpc_request(
+                        who,
+                        host_v1::AbortBackupRequest {
+                            token: token.to_owned(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn list_backups(&self, who: Option<&str>) -> Outcome {
+        match self {
+            Self::Rest(_) => self.rest("GET", "/host/v1/backups", who, None).await,
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .list_backups(Self::grpc_request(
+                        who,
+                        host_v1::ListBackupsRequest::default(),
+                    ))
+                    .await,
+            ),
+        }
+    }
+
     async fn rotate_identity(
         &self,
         who: Option<&str>,
@@ -2167,6 +2259,67 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         "read the configuration revisions",
         transport.config_revisions(admin).await,
     ));
+    // The application-consistent snapshot (WP-7.8): a prepare, a mutation held, a token no
+    // backup answers to, the finalize, the list, a prepare aborted.
+    steps.push((
+        "list the backups as a stranger",
+        transport.list_backups(Some(STRANGER)).await,
+    ));
+    let prepared = transport.prepare_backup(admin).await;
+    let token = member(&prepared, &["token"]).to_owned();
+    // Masked in the parity comparison, so asserted here on each transport: a manifest that is a
+    // COSE_Sign1, and an RFC 3339 deadline.
+    let manifest = {
+        use base64::Engine as _;
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(member(&prepared, &["manifest"]))
+            .expect("a base64url manifest")
+    };
+    // An untagged COSE_Sign1: an array of four, its protected header a byte string first.
+    assert_eq!(manifest[0], 0x84, "a COSE_Sign1");
+    assert_eq!(manifest[1] & 0xe0, 0x40, "its protected header");
+    assert!(
+        chrono_like(member(&prepared, &["expires_at"])),
+        "an RFC 3339 deadline: {prepared:?}"
+    );
+    steps.push(("prepare a backup", prepared));
+    steps.push((
+        "prepare a second backup",
+        transport.prepare_backup(admin).await,
+    ));
+    steps.push((
+        "create a grant under the barrier",
+        transport
+            .create_grant(
+                admin,
+                "barrier",
+                "spiffe://acme/held",
+                operations::CATALOG_READ,
+                None,
+            )
+            .await,
+    ));
+    steps.push((
+        "finalize with another token",
+        transport
+            .finalize_backup(
+                admin,
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "snap-1",
+            )
+            .await,
+    ));
+    steps.push((
+        "finalize the backup",
+        transport.finalize_backup(admin, &token, "snap-1").await,
+    ));
+    let second = transport.prepare_backup(admin).await;
+    let second_token = member(&second, &["token"]).to_owned();
+    steps.push((
+        "abort a backup",
+        transport.abort_backup(admin, &second_token).await,
+    ));
+    steps.push(("list the backups", transport.list_backups(admin).await));
     steps.push((
         "read the identity",
         transport.identity_document(admin).await,
@@ -2472,6 +2625,10 @@ fn schema_of(case: &str) -> &'static str {
         "read the status" => "HostStatus",
         "read the effective configuration" => "EffectiveConfig",
         "read the configuration revisions" => "ConfigRevisions",
+        "prepare a backup" => "BackupPrepared",
+        "finalize the backup" => "BackupEnded",
+        "abort a backup" => "BackupAborted",
+        "list the backups" => "BackupList",
         "read the identity" | "read the identity after its rotation" => "HostIdentity",
         "rotate the identity" => "IdentityRotated",
         "read the ring bindings" => "RingBindings",
@@ -2672,6 +2829,23 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
     assert_eq!(
         refused("list the plans as a stranger"),
         (String::new(), common::FORBIDDEN.to_owned())
+    );
+    // The backup's refusals (WP-7.8).
+    assert_eq!(
+        refused("list the backups as a stranger"),
+        (String::new(), common::FORBIDDEN.to_owned())
+    );
+    assert_eq!(
+        refused("prepare a second backup"),
+        ("conflict".to_owned(), common::CONFLICT.to_owned())
+    );
+    assert_eq!(
+        refused("create a grant under the barrier"),
+        ("unavailable".to_owned(), common::UNAVAILABLE.to_owned())
+    );
+    assert_eq!(
+        refused("finalize with another token"),
+        ("not_found".to_owned(), common::NOT_FOUND.to_owned())
     );
     assert_eq!(
         refused("read the audit records of an unknown class"),
@@ -3219,4 +3393,20 @@ async fn the_listener_is_a_no_op_without_an_address_and_refuses_to_start_without
         .await
         .expect_err("plain TLS is for loopback development only");
     assert!(format!("{refused:#}").contains("client_ca"), "{refused:#}");
+}
+
+/// Whether `text` reads as an RFC 3339 UTC second, as every Host API time is written.
+fn chrono_like(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    text.len() == 20
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[10] == b'T'
+        && bytes[13] == b':'
+        && bytes[16] == b':'
+        && bytes[19] == b'Z'
+        && text
+            .chars()
+            .enumerate()
+            .all(|(at, held)| [4, 7, 10, 13, 16, 19].contains(&at) || held.is_ascii_digit())
 }

@@ -7,6 +7,337 @@
     "description": "The Host listener (WP-2.5): `/host/v1` over TLS on `admin.addr`, and `permguard.host.v1` on the same port, one facade behind both. Every route authorizes with the Host's grants; every mutation carries a request id, may state the revision it expects, and answers a receipt. Identity, membership, evidence and the key and configuration mutations arrive with their packages; this document describes what this build serves."
   },
   "paths": {
+    "/host/v1/backup/prepare": {
+      "post": {
+        "operationId": "prepareBackup",
+        "summary": "Prepare an application-consistent backup",
+        "description": "Under `backup.manage` on the Host (WP-7.8). Raises the barrier: every new operation of the mutation transaction — grants, keys, memberships, the catalog, the refs, the collections — is refused `unavailable` until the backup is finalized, aborted, or its barrier expires after ten minutes; reads and decisions go on. Records `host.backup.prepared`, writes the inventory of every file below `host/`, `data/` and `operations/` and the COSE_Sign1 `permguard.snapshot.manifest.v1` under `host.operations`, flushes the roots and answers the token once. A client that disconnects before the answer leaves the backup prepared and its token unread: the barrier then holds until it expires.",
+        "requestBody": {
+          "required": true,
+          "description": "Nothing but the call.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareBackupBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The signed manifest, the token and the receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupPrepared"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A backup is already prepared (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The prepare could not finish (`internal`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host keeps no backups, no `host.operations` ring or no open identity, operations still running did not end in time, the inventory outlasted the barrier, or the record could not be written (`unavailable`); the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/PrepareBackup"
+      }
+    },
+    "/host/v1/backup/finalize": {
+      "post": {
+        "operationId": "finalizeBackup",
+        "summary": "Finalize a backup",
+        "description": "Under `backup.manage` on the Host (WP-7.8). Binds the storage driver's snapshot id to the backup the token names, records `host.backup.finalized` and lowers the barrier; the token is spent.",
+        "requestBody": {
+          "required": true,
+          "description": "The token and the snapshot id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeBackupBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The backup, its state and the receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupEnded"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, or the snapshot id is not 1 to 512 printable characters (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No prepared backup answers to the token: another, spent or expired (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host keeps no backups, or the record could not be written (`unavailable`); the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/FinalizeBackup"
+      }
+    },
+    "/host/v1/backup/abort": {
+      "post": {
+        "operationId": "abortBackup",
+        "summary": "Abort a backup",
+        "description": "Under `backup.manage` on the Host (WP-7.8). Ends the backup the token names, records `host.backup.aborted` and lowers the barrier; a barrier that expires is aborted by the Host itself.",
+        "requestBody": {
+          "required": true,
+          "description": "The token.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AbortBackupBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The backup, its state and the receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupAborted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No prepared backup answers to the token: another, spent or expired (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host keeps no backups, or the record could not be written (`unavailable`); the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/AbortBackup"
+      }
+    },
+    "/host/v1/backups": {
+      "get": {
+        "operationId": "listBackups",
+        "summary": "The backups this Host knows",
+        "description": "Under `backup.read` on the Host (WP-7.8): every backup, newest first, with its state, snapshot id and signed manifest.",
+        "responses": {
+          "200": {
+            "description": "The backups, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host keeps no backups, or they cannot be read (`unavailable`); the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/ListBackups"
+      }
+    },
     "/host/v1/identity": {
       "get": {
         "operationId": "getHostIdentity",
@@ -4857,6 +5188,251 @@
   },
   "components": {
     "schemas": {
+      "PrepareBackupBody": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "`POST /host/v1/backup/prepare`: nothing but the call.",
+        "x-grpc-message": "permguard.host.v1.PrepareBackupRequest"
+      },
+      "BackupPrepared": {
+        "type": "object",
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "description": "The backup: the prepare's operation, 32 hex characters.",
+            "x-grpc-field": "operation_id"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The COSE_Sign1 `permguard.snapshot.manifest.v1` under `host.operations`, base64url.",
+            "x-grpc-field": "manifest"
+          },
+          "token": {
+            "type": "string",
+            "description": "The snapshot token, base64url: answered here once, presented to finalize or abort; the Host keeps its digest only.",
+            "x-grpc-field": "token"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "When the barrier aborts by itself, RFC 3339.",
+            "x-grpc-field": "expires_at"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The prepare's receipt.",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": [
+          "operation_id",
+          "manifest",
+          "token",
+          "expires_at",
+          "receipt"
+        ],
+        "additionalProperties": false,
+        "description": "What a prepare answers.",
+        "x-grpc-message": "permguard.host.v1.PrepareBackupResponse"
+      },
+      "FinalizeBackupBody": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The token the prepare answered.",
+            "x-grpc-field": "token"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "description": "The storage driver's id of the snapshot it took: 1 to 512 printable characters.",
+            "x-grpc-field": "snapshot_id"
+          }
+        },
+        "required": [
+          "token",
+          "snapshot_id"
+        ],
+        "additionalProperties": false,
+        "description": "`POST /host/v1/backup/finalize`.",
+        "x-grpc-message": "permguard.host.v1.FinalizeBackupRequest"
+      },
+      "AbortBackupBody": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The token the prepare answered.",
+            "x-grpc-field": "token"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false,
+        "description": "`POST /host/v1/backup/abort`.",
+        "x-grpc-message": "permguard.host.v1.AbortBackupRequest"
+      },
+      "BackupEnded": {
+        "type": "object",
+        "properties": {
+          "backup": {
+            "type": "string",
+            "description": "The backup it ended, the prepare's operation.",
+            "x-grpc-field": "backup"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "finalized",
+              "aborted"
+            ],
+            "description": "How it ended.",
+            "x-grpc-field": "state"
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The snapshot it bound; `null` for an abort.",
+            "x-grpc-field": "snapshot_id"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The ending's own receipt.",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": [
+          "backup",
+          "state",
+          "snapshot_id",
+          "receipt"
+        ],
+        "additionalProperties": false,
+        "description": "What a finalize answers.",
+        "x-grpc-message": "permguard.host.v1.FinalizeBackupResponse"
+      },
+      "BackupAborted": {
+        "type": "object",
+        "properties": {
+          "backup": {
+            "type": "string",
+            "description": "The backup it ended, the prepare's operation.",
+            "x-grpc-field": "backup"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "aborted"
+            ],
+            "description": "How it ended.",
+            "x-grpc-field": "state"
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Always `null`: an abort binds no snapshot.",
+            "x-grpc-field": "snapshot_id"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The ending's own receipt.",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": [
+          "backup",
+          "state",
+          "snapshot_id",
+          "receipt"
+        ],
+        "additionalProperties": false,
+        "description": "What an abort answers.",
+        "x-grpc-message": "permguard.host.v1.AbortBackupResponse"
+      },
+      "Backup": {
+        "type": "object",
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "description": "The backup, 32 hex characters.",
+            "x-grpc-field": "operation_id"
+          },
+          "at": {
+            "type": "string",
+            "description": "When it was prepared, RFC 3339.",
+            "x-grpc-field": "at"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "prepared",
+              "finalized",
+              "aborted"
+            ],
+            "description": "Where it stands.",
+            "x-grpc-field": "state"
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The snapshot it bound once finalized; `null` otherwise.",
+            "x-grpc-field": "snapshot_id"
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When it was finalized or aborted, RFC 3339; `null` while prepared.",
+            "x-grpc-field": "ended_at"
+          },
+          "manifest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its signed manifest, base64url; `null` when none was written.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "operation_id",
+          "at",
+          "state",
+          "snapshot_id",
+          "ended_at",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "One backup a Host knows.",
+        "x-grpc-message": "permguard.host.v1.Backup"
+      },
+      "BackupList": {
+        "type": "object",
+        "properties": {
+          "backups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Backup"
+            },
+            "description": "Newest first.",
+            "x-grpc-field": "backups"
+          }
+        },
+        "required": [
+          "backups"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/backups` answers: the known snapshot manifests.",
+        "x-grpc-message": "permguard.host.v1.ListBackupsResponse"
+      },
       "HostWireError": {
         "type": "object",
         "properties": {

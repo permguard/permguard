@@ -187,6 +187,14 @@ const SHAPED: &[&str] = &[
     "ListStreamAnchorsRequest",
     "ListStreamAnchorsResponse",
     "StreamAnchor",
+    // The application-consistent snapshot (WP-7.8).
+    "PrepareBackupResponse",
+    "FinalizeBackupRequest",
+    "FinalizeBackupResponse",
+    "AbortBackupRequest",
+    "AbortBackupResponse",
+    "ListBackupsResponse",
+    "Backup",
 ];
 
 /// Every message outside [`SHAPED`] is empty: no field number is assigned ahead of the contract.

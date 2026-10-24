@@ -684,23 +684,29 @@ fn same(left: &[u8; 32], right: &[u8; 32]) -> bool {
 }
 
 impl Backups {
-    /// Opens `host/backups/` on `volume`. A backup still `prepared` was cut short by a restart,
-    /// whose barrier went with the process: it is recorded `aborted`, and answered so the caller
-    /// can audit it.
-    pub fn open(volume: &Volume, now: u64) -> Result<(Self, Vec<String>), StorageError> {
+    /// Opens `host/backups/` on `volume`, changing nothing: the transaction's recovery meets its
+    /// operations before [`Backups::cut`] judges what a restart left prepared.
+    pub fn open(volume: &Volume) -> Result<Self, StorageError> {
         let dir = volume.host().subdir(DIRECTORY, true)?;
         dir.sweep_temps()?;
-        let backups = Self {
+        Ok(Self {
             root: volume.root().to_path_buf(),
             volume_id: volume.id(),
             dir,
             held: Mutex::new(None),
             lifetime: LIFETIME,
             timer: std::sync::atomic::AtomicBool::new(false),
-        };
+        })
+    }
+
+    /// A backup still `prepared` after recovery was cut short by a restart, whose barrier went
+    /// with the process: it is recorded `aborted`, and answered so the caller audits it. Called
+    /// after `Mutations::recover`, so an ending a crash left open is judged on the state its own
+    /// write left, never on this one.
+    pub fn cut(&self, now: u64) -> Result<Vec<String>, StorageError> {
         let mut cut = Vec::new();
-        for name in backups.dir.subdirs()? {
-            let operation = backups.dir.subdir(&name, false)?;
+        for name in self.dir.subdirs()? {
+            let operation = self.dir.subdir(&name, false)?;
             let Some(state) = read_state(&operation)? else {
                 continue;
             };
@@ -716,7 +722,67 @@ impl Backups {
                 cut.push(name);
             }
         }
-        Ok((backups, cut))
+        Ok(cut)
+    }
+
+    /// Records, through the transaction, the abort of every backup a restart cut short — `cut`, as
+    /// [`Backups::cut`] answered it — so the trail says how each ended. Answers how many were
+    /// recorded; one that cannot be is logged, its state already `aborted` on the volume.
+    pub fn record_cut(&self, mutations: &Mutations, cut: &[String], now: u64) -> usize {
+        let mut recorded = 0;
+        for name in cut {
+            let operation = match self.dir.subdir(name, false) {
+                Ok(operation) => operation,
+                Err(error) => {
+                    tracing::warn!(
+                        event.name = "host.backup_cut_unrecorded",
+                        component = "host",
+                        backup = name.as_str(),
+                        error = %error,
+                        "a backup a restart cut short is aborted and its record could not be written"
+                    );
+                    continue;
+                }
+            };
+            let revision = mutations.order();
+            let answered = mutations.run(
+                Begin {
+                    domain: DOMAIN,
+                    operation: ABORT,
+                    action: ABORTED_ACTION,
+                    initiator: Initiator::System("backup".to_owned()),
+                    request: None,
+                    target: Some(name.clone()),
+                },
+                |applying| {
+                    write_state(
+                        &operation,
+                        &State {
+                            state: ABORTED.to_owned(),
+                            at: now,
+                            snapshot_id: None,
+                        },
+                    )
+                    .map(|()| Applied {
+                        revision,
+                        target: Some(name.clone()),
+                        value: applying.operation_id().to_string(),
+                    })
+                    .map_err(|error| Failure::Indeterminate(storage(error)))
+                },
+            );
+            match answered {
+                Ok(_) => recorded += 1,
+                Err(error) => tracing::warn!(
+                    event.name = "host.backup_cut_unrecorded",
+                    component = "host",
+                    backup = name.as_str(),
+                    error = %error,
+                    "a backup a restart cut short is aborted and its record could not be written"
+                ),
+            }
+        }
+        recorded
     }
 
     /// This store with barriers lasting `lifetime`: for a test that watches one expire.
@@ -1080,20 +1146,28 @@ impl Backups {
             .map(|held| held.expires_at)
     }
 
-    /// Every backup this Host knows, newest first.
+    /// Every backup this Host knows, newest first, the transaction's order telling apart two of one
+    /// second.
     pub fn list(&self) -> Result<Vec<Listed>, String> {
         let mut listed = Vec::new();
+        let mut ordered = Vec::new();
         for name in self.dir.subdirs().map_err(storage)? {
             let operation = self.dir.subdir(&name, false).map_err(storage)?;
             let Some(state) = read_state(&operation).map_err(storage)? else {
                 continue;
             };
             let manifest = operation.read(MANIFEST).map_err(storage)?;
-            let at = manifest
+            let read = manifest
                 .as_deref()
                 .and_then(|bytes| Sign1::decode(bytes).ok())
-                .and_then(|envelope| SnapshotManifest::decode(envelope.payload_unverified()).ok())
-                .map_or(state.at, |manifest| manifest.at);
+                .and_then(|envelope| SnapshotManifest::decode(envelope.payload_unverified()).ok());
+            let at = read.as_ref().map_or(state.at, |manifest| manifest.at);
+            // The transaction's order at the prepare: what tells two backups of one second apart.
+            let order = read
+                .as_ref()
+                .and_then(|manifest| manifest.revisions.get("mutations").copied())
+                .unwrap_or_default();
+            ordered.push(order);
             listed.push(Listed {
                 operation_id: name,
                 at,
@@ -1103,10 +1177,15 @@ impl Backups {
                 manifest,
             });
         }
-        listed.sort_by(|left, right| {
-            (right.at, &right.operation_id).cmp(&(left.at, &left.operation_id))
+        let mut paired: Vec<(u64, Listed)> = ordered.into_iter().zip(listed).collect();
+        paired.sort_by(|(left_order, left), (right_order, right)| {
+            (right.at, right_order, &right.operation_id).cmp(&(
+                left.at,
+                left_order,
+                &left.operation_id,
+            ))
         });
-        Ok(listed)
+        Ok(paired.into_iter().map(|(_, listed)| listed).collect())
     }
 }
 
@@ -1524,7 +1603,8 @@ mod tests {
     fn a_backup_a_restart_cut_short_is_recorded_aborted() {
         let root = scratch("restart");
         let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-        let (backups, cut) = Backups::open(&volume, 10).expect("opens");
+        let backups = Backups::open(&volume).expect("opens");
+        let cut = backups.cut(10).expect("cut");
         assert!(cut.is_empty());
         for (name, state) in [("a".repeat(32), PREPARED), ("b".repeat(32), FINALIZED)] {
             let dir = backups.dir.subdir(&name, true).expect("a backup");
@@ -1539,7 +1619,8 @@ mod tests {
             .expect("written");
         }
         drop(backups);
-        let (backups, cut) = Backups::open(&volume, 20).expect("reopens");
+        let backups = Backups::open(&volume).expect("reopens");
+        let cut = backups.cut(20).expect("cut");
         assert_eq!(cut, vec!["a".repeat(32)]);
         let listed = backups.list().expect("listed");
         let states: Vec<(&str, &str, Option<u64>)> = listed
@@ -1664,7 +1745,7 @@ mod tests {
             std::sync::Arc::new(crate::time::TimeGuard::system(Duration::from_secs(30))),
         )
         .expect("the transaction");
-        let (backups, _) = Backups::open(&volume, 1).expect("opens");
+        let backups = Backups::open(&volume).expect("opens");
         let held = OperationId::from_bytes([0xaa; 16]);
         let name = held.to_string();
         let dir = backups.dir.subdir(&name, true).expect("a backup");
@@ -1743,5 +1824,76 @@ mod tests {
             read_state(&dir).expect("reads").expect("a state").state,
             ABORTED
         );
+    }
+
+    /// WP-7.8b review: a finalize a crash left between its intent and its write is failed by
+    /// recovery, never reconciled as applied, because recovery runs before the cut; then the backup
+    /// still prepared is cut to `aborted`, and the abort recorded.
+    #[test]
+    fn an_ending_a_crash_left_open_is_failed_before_the_cut() {
+        use crate::operations::mutation::Projection;
+
+        struct Silent;
+        impl Projection for Silent {
+            fn project(&self, _: &permguard_core::AuditEvent<'_>) -> Result<(), String> {
+                Ok(())
+            }
+        }
+        let root = scratch("crash-ending");
+        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+        let open = || {
+            Mutations::open(
+                &volume,
+                std::sync::Arc::new(Silent),
+                std::sync::Arc::new(crate::time::TimeGuard::system(Duration::from_secs(30))),
+            )
+            .expect("the transaction")
+        };
+        let backup = OperationId::from_bytes([0xaa; 16]).to_string();
+        {
+            let mutations = open();
+            let backups = Backups::open(&volume).expect("opens");
+            let dir = backups.dir.subdir(&backup, true).expect("a backup");
+            write_state(
+                &dir,
+                &State {
+                    state: PREPARED.to_owned(),
+                    at: 1,
+                    snapshot_id: None,
+                },
+            )
+            .expect("prepared");
+            // The finalize's intent is written; its own write never lands, as a crash would leave it.
+            let interrupted = mutations.run(
+                Begin {
+                    domain: DOMAIN,
+                    operation: FINALIZE,
+                    action: FINALIZED_ACTION,
+                    initiator: Initiator::System("test".to_owned()),
+                    request: None,
+                    target: Some(backup.clone()),
+                },
+                |_| -> Result<Applied<String>, Failure<String>> {
+                    Err(Failure::Indeterminate("the process died".to_owned()))
+                },
+            );
+            assert!(interrupted.is_err());
+        }
+        let mutations = open();
+        let backups = Backups::open(&volume).expect("reopens");
+        let recovered = mutations.recover(&backups).expect("recovered");
+        assert!(
+            recovered.reconciled.is_empty(),
+            "never reconciled as applied"
+        );
+        assert_eq!(recovered.failed.len(), 1, "the finalize is failed");
+        assert_eq!(backups.cut(5).expect("cut"), vec![backup.clone()]);
+        assert_eq!(
+            backups.record_cut(&mutations, std::slice::from_ref(&backup), 5),
+            1
+        );
+        let listed = backups.list().expect("listed");
+        assert_eq!(listed[0].state, ABORTED);
+        assert_eq!(listed[0].snapshot_id, None);
     }
 }

@@ -28,9 +28,13 @@ fn backed(tag: &str, lifetime: Option<Duration>) -> (HostApi, std::path::PathBuf
         vec![HOST_OPERATIONS, crate::keys::ring::DATA_ATTEST],
         Arc::clone(&trail),
     );
-    let (backups, cut) =
-        Backups::open(&volume, crate::authz::store::now()).expect("the backups open");
-    assert!(cut.is_empty());
+    let backups = Backups::open(&volume).expect("the backups open");
+    assert!(
+        backups
+            .cut(crate::authz::store::now())
+            .expect("cut")
+            .is_empty()
+    );
     let backups = match lifetime {
         Some(lifetime) => backups.with_lifetime(lifetime),
         None => backups,

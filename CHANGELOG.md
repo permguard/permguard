@@ -19,6 +19,9 @@ is cut.
 
 ### Added
 
+- **The backup barrier is served on the Host API (WP-7.8b).**
+  `POST /host/v1/backup/prepare`, `finalize` and `abort` under `backup.manage`, and `GET /host/v1/backups` under `backup.read`, answer alike over REST and `permguard.host.v1.OperationsService`, described in `host.json` and the proto.
+  The server opens the volume's backups at start, recovers their operations with the transaction, and records the abort of a prepare a restart cut short; `operations.backup.recovery_key_id` and `encryption_profile` reach every manifest.
 - **A mirror whose ledger or zone a legal or incident hold names is never reaped (WP-7.2 follow-up).**
   The Data Plane reads the Host's holds (WP-7.3c); a mirror its task no longer lists stays a candidate while a hold in force names it, and a plane handed no hold store reaps nothing.
 - **The Host prepares an application-consistent backup of its volume (WP-7.8a).**

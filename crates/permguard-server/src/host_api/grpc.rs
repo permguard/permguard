@@ -40,6 +40,23 @@ impl Served {
     fn refuse(&self, refusal: Refusal) -> Status {
         wire::grpc_refusal(&refusal, self.disclosure)
     }
+
+    /// Runs `call` on the facade off the async workers (WP-7.8), refusing as any call does; a
+    /// call that panicked is `internal`, with the class and code every refusal carries.
+    async fn blocking<T: Send + 'static>(
+        &self,
+        call: impl FnOnce(&HostApi) -> Result<T, Refusal> + Send + 'static,
+    ) -> Result<T, Status> {
+        let api = Arc::clone(&self.api);
+        match tokio::task::spawn_blocking(move || call(&api)).await {
+            Ok(answered) => answered.map_err(|refusal| self.refuse(refusal)),
+            Err(error) => Err(self.refuse(Refusal::new(
+                permguard_core::ErrorClass::Internal,
+                permguard_core::codes::common::INTERNAL,
+                format!("the call did not finish: {error}"),
+            ))),
+        }
+    }
 }
 
 fn unimplemented(what: &str) -> Status {
@@ -749,32 +766,89 @@ impl OperationsService for Served {
         }))
     }
 
+    /// `POST /host/v1/backup/prepare` (WP-7.8): the inventory reads the whole volume, so it runs
+    /// off the async workers, as every backup call does — each may wait on a prepare in progress.
     async fn prepare_backup(
         &self,
-        _request: Request<v1::PrepareBackupRequest>,
+        request: Request<v1::PrepareBackupRequest>,
     ) -> Answer<v1::PrepareBackupResponse> {
-        Err(unimplemented("backups"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let prepared = self
+            .blocking(move |api| api.prepare_backup(&actor, api::backups::PrepareBackup {}))
+            .await?;
+        Ok(Response::new(v1::PrepareBackupResponse {
+            operation_id: prepared.operation_id,
+            manifest: prepared.manifest,
+            token: prepared.token,
+            expires_at: prepared.expires_at,
+            receipt: Some(receipt(prepared.receipt)),
+        }))
     }
 
     async fn finalize_backup(
         &self,
-        _request: Request<v1::FinalizeBackupRequest>,
+        request: Request<v1::FinalizeBackupRequest>,
     ) -> Answer<v1::FinalizeBackupResponse> {
-        Err(unimplemented("backups"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let ended = self
+            .blocking(move |api| {
+                api.finalize_backup(
+                    &actor,
+                    api::backups::FinalizeBackup {
+                        token: asked.token,
+                        snapshot_id: asked.snapshot_id,
+                    },
+                )
+            })
+            .await?;
+        Ok(Response::new(v1::FinalizeBackupResponse {
+            backup: ended.backup,
+            state: ended.state,
+            snapshot_id: ended.snapshot_id,
+            receipt: Some(receipt(ended.receipt)),
+        }))
     }
 
     async fn abort_backup(
         &self,
-        _request: Request<v1::AbortBackupRequest>,
+        request: Request<v1::AbortBackupRequest>,
     ) -> Answer<v1::AbortBackupResponse> {
-        Err(unimplemented("backups"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let ended = self
+            .blocking(move |api| {
+                api.abort_backup(&actor, api::backups::AbortBackup { token: asked.token })
+            })
+            .await?;
+        Ok(Response::new(v1::AbortBackupResponse {
+            backup: ended.backup,
+            state: ended.state,
+            snapshot_id: ended.snapshot_id,
+            receipt: Some(receipt(ended.receipt)),
+        }))
     }
 
     async fn list_backups(
         &self,
-        _request: Request<v1::ListBackupsRequest>,
+        request: Request<v1::ListBackupsRequest>,
     ) -> Answer<v1::ListBackupsResponse> {
-        Err(unimplemented("backups"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let listed = self.blocking(move |api| api.list_backups(&actor)).await?;
+        Ok(Response::new(v1::ListBackupsResponse {
+            backups: listed
+                .backups
+                .into_iter()
+                .map(|backup| v1::Backup {
+                    operation_id: backup.operation_id,
+                    at: backup.at,
+                    state: backup.state,
+                    snapshot_id: backup.snapshot_id,
+                    ended_at: backup.ended_at,
+                    manifest: backup.manifest,
+                })
+                .collect(),
+        }))
     }
 
     async fn plan_gc(&self, _request: Request<v1::PlanGcRequest>) -> Answer<v1::PlanGcResponse> {

@@ -1325,14 +1325,64 @@ message ConfigRevision {
   string at = 5;
   string by = 6;
 }
+// `POST /host/v1/backup/prepare` (WP-7.8): nothing but the call.
 message PrepareBackupRequest {}
-message PrepareBackupResponse {}
-message FinalizeBackupRequest {}
-message FinalizeBackupResponse {}
-message AbortBackupRequest {}
-message AbortBackupResponse {}
+message PrepareBackupResponse {
+  // The backup: the prepare's operation.
+  string operation_id = 1;
+  // The COSE_Sign1 `permguard.snapshot.manifest.v1`, base64url.
+  string manifest = 2;
+  // The snapshot token, base64url, answered here once.
+  string token = 3;
+  // When the barrier aborts by itself, RFC 3339.
+  string expires_at = 4;
+  Receipt receipt = 5;
+}
+// `POST /host/v1/backup/finalize`.
+message FinalizeBackupRequest {
+  string token = 1;
+  // The storage driver's id of the snapshot it took.
+  string snapshot_id = 2;
+}
+// What a finalize or an abort answers.
+message FinalizeBackupResponse {
+  // The backup it ended.
+  string backup = 1;
+  // `finalized`.
+  string state = 2;
+  optional string snapshot_id = 3;
+  Receipt receipt = 4;
+}
+// `POST /host/v1/backup/abort`.
+message AbortBackupRequest {
+  string token = 1;
+}
+message AbortBackupResponse {
+  string backup = 1;
+  // `aborted`.
+  string state = 2;
+  optional string snapshot_id = 3;
+  Receipt receipt = 4;
+}
+// `GET /host/v1/backups`.
 message ListBackupsRequest {}
-message ListBackupsResponse {}
+message ListBackupsResponse {
+  // Newest first.
+  repeated Backup backups = 1;
+}
+// One backup a Host knows.
+message Backup {
+  string operation_id = 1;
+  // When it was prepared, RFC 3339.
+  string at = 2;
+  // `prepared`, `finalized` or `aborted`.
+  string state = 3;
+  optional string snapshot_id = 4;
+  // When it was finalized or aborted, RFC 3339.
+  optional string ended_at = 5;
+  // Its signed manifest, base64url.
+  optional string manifest = 6;
+}
 message PlanGcRequest {}
 message PlanGcResponse {}
 message RunGcRequest {}
