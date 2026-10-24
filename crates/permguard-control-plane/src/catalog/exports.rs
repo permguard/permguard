@@ -271,7 +271,7 @@ impl Exports {
             // may attest a later head, which an importer finds against the manifest's.
             let mut statements = 0u64;
             for named in &ledger.refs {
-                if let Some(envelope) = store.read_signature(&named.name).map_err(internal)?.filter(|_| false) {
+                if let Some(envelope) = store.read_signature(&named.name).map_err(internal)? {
                     held = self.within(held, envelope.len() + named.name.len() + ENTRY_FRAMING)?;
                     statements += 1;
                     entries.push(Value::Map(vec![
@@ -306,7 +306,7 @@ impl Exports {
         .map_err(internal)?;
         // The budget counted the manifest and every entry's framing: this cannot pass it.
         if archive.len() > self.max_bytes {
-            return Err(self.too_large(archive.len()));
+            return Err(self.too_large(archive.len(), "it was signed and is not answered"));
         }
         Ok(Exported { archive, manifest })
     }
@@ -315,15 +315,15 @@ impl Exports {
     fn within(&self, held: usize, more: usize) -> Result<usize, ApiError> {
         let held = held.saturating_add(more);
         if held > self.max_bytes {
-            return Err(self.too_large(held));
+            return Err(self.too_large(held, "nothing was signed"));
         }
         Ok(held)
     }
 
-    fn too_large(&self, bytes: usize) -> ApiError {
+    fn too_large(&self, bytes: usize, outcome: &str) -> ApiError {
         unavailable(format!(
-            "the archive would take more than {bytes} bytes, past the {} one message carries: \
-             export the ledgers one at a time; a paged export is not served yet",
+            "the archive would take more than {bytes} bytes, past the {} one message carries, so \
+             {outcome}: export the ledgers one at a time; a paged export is not served yet",
             self.max_bytes
         ))
     }
@@ -573,7 +573,7 @@ pub(crate) mod tests {
         assert!(
             refused
                 .disclosed_message(permguard_core::Disclosure::Full)
-                .contains("paged export"),
+                .contains("nothing was signed"),
             "{refused:?}"
         );
     }
