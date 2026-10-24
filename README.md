@@ -7,7 +7,7 @@
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
 <p align="center">
-  <img src="assets/readme/hero.png" alt="Permguard. Policy as code. Decisions as evidence. Authorization policy, versioned like code and shipped like code." width="820">
+  <img src="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/hero.png" alt="Permguard. Policy as code. Decisions as evidence. Authorization policy, versioned like code and shipped like code." width="820">
 </p>
 
 <p align="center">
@@ -27,8 +27,8 @@ Every answer names the exact policies and commit that decided it, and can be kep
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/flow-dark.png">
-    <img src="assets/readme/flow-light.png" alt="Five steps. Author: Cedar and Rego, tested offline with permguard test. Publish: content-addressed, under a signed head, with permguard apply. Mirror: the Data Plane verifies it first, over NOTP. Decide: near the workload, failing closed, with permguard check. Prove: every answer names its policies, with permguard decisions. Author once, decide close to the workload." width="820">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/flow-dark.png">
+    <img src="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/flow-light.png" alt="Five steps. Author: Cedar and Rego, tested offline with permguard test. Publish: content-addressed, under a signed head, with permguard apply. Mirror: the Data Plane verifies it first, over NOTP. Decide: near the workload, failing closed, with permguard check. Prove: every answer names its policies, with permguard decisions. Author once, decide close to the workload." width="820">
   </picture>
 </p>
 
@@ -41,8 +41,8 @@ When nothing permits, the answer is deny, and every answer leaves evidence you c
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/server-dark.png">
-    <img src="assets/readme/server-light.png" alt="A Permguard Server is one Host and zero or more planes. The Host, on 5443 for discovery, health and metrics and 5444 for the Host API over TLS, owns identity, authorization, keys, audit, membership, streams, storage and lifecycle. Through typed, least-privilege handles it serves the Control Plane on 6443, which publishes, the Data Plane on 7443, which decides, and the Trust Plane on 8443, which will continue authority and is in development. Deploy all-in-one, one process with every enabled plane, or split by plane, one Host per plane with its own volume." width="820">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/server-dark.png">
+    <img src="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/server-light.png" alt="A Permguard Server is one Host and zero or more planes. The Host, on 5443 for discovery, health and metrics and 5444 for the Host API over TLS, owns identity, authorization, keys, audit, membership, streams, storage and lifecycle. Through typed, least-privilege handles it serves the Control Plane on 6443, which publishes, the Data Plane on 7443, which decides, and the Trust Plane on 8443, which will continue authority and is in development. Deploy all-in-one, one process with every enabled plane, or split by plane, one Host per plane with its own volume." width="820">
   </picture>
 </p>
 
@@ -83,8 +83,8 @@ A Data Plane that mirrors from another Server reaches its Control Plane through 
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/where-dark.png">
-    <img src="assets/readme/where-light.png" alt="Three places to decide. The Permguard Data Plane, as a sidecar or remote service over HTTP and gRPC, the secure default. Your own data plane, embedded or at the edge, consuming the same signed ledger over NOTP and verifying it before use. Offline in the CLI, with permguard test and no server. One signed ledger, the same engines, the same answer." width="820">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/where-dark.png">
+    <img src="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/where-light.png" alt="Three places to decide. The Permguard Data Plane, as a sidecar or remote service over HTTP and gRPC, the secure default. Your own data plane, embedded or at the edge, consuming the same signed ledger over NOTP and verifying it before use. Offline in the CLI, with permguard test and no server. One signed ledger, the same engines, the same answer." width="820">
   </picture>
 </p>
 
