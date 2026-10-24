@@ -206,3 +206,10 @@ path = "fuzz_targets/stream_engine.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "snapshot_manifest"
+path = "fuzz_targets/snapshot_manifest.rs"
+test = false
+doc = false
+bench = false

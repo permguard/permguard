@@ -335,6 +335,13 @@ pub const SETTING_AUDIT_CHECKPOINTS_MAX_LAG: &str = "PERMGUARD_AUDIT_CHECKPOINTS
 /// Runtime setting key for how long a read cursor is valid after it is issued (WP-5.5, owner
 /// decision of 2026-10-16).
 pub const SETTING_STREAM_CURSOR_TTL: &str = "PERMGUARD_STREAM_CURSOR_TTL";
+/// The non-secret id of the recovery key the deployment encrypts its backups under, bound in every
+/// snapshot manifest (WP-7.8, `8-architecture-storage-operations.md` permissions and encryption).
+/// Unset: the manifest names none.
+pub const SETTING_BACKUP_RECOVERY_KEY_ID: &str = "PERMGUARD_BACKUP_RECOVERY_KEY_ID";
+/// The encryption profile of the deployment's backups, bound in every snapshot manifest beside the
+/// recovery-key id (WP-7.8). Unset: the manifest names none.
+pub const SETTING_BACKUP_ENCRYPTION_PROFILE: &str = "PERMGUARD_BACKUP_ENCRYPTION_PROFILE";
 /// Whether refused operations are recorded in the audit trail as well as the log.
 ///
 /// Off by default: the trail records what changed the world, and a caller's mistakes change
@@ -1455,6 +1462,8 @@ pub struct Config {
     audit_retention_security: Option<Duration>,
     audit_checkpoints_max_lag: Duration,
     stream_cursor_ttl: Duration,
+    backup_recovery_key_id: Option<String>,
+    backup_encryption_profile: Option<String>,
     audit_pseudonym_enabled: bool,
     audit_pseudonym_key_ref: Option<SecretRef>,
     audit_pseudonym_key_version: String,
@@ -1652,6 +1661,8 @@ impl Default for Config {
             audit_retention_security: None,
             audit_checkpoints_max_lag: DEFAULT_AUDIT_CHECKPOINTS_MAX_LAG,
             stream_cursor_ttl: DEFAULT_STREAM_CURSOR_TTL,
+            backup_recovery_key_id: None,
+            backup_encryption_profile: None,
             audit_pseudonym_enabled: false,
             audit_pseudonym_key_ref: None,
             audit_pseudonym_key_version: DEFAULT_KEY_VERSION.to_owned(),
@@ -3491,6 +3502,16 @@ produce: use `EdDSA` or `ES256`"
         self.stream_cursor_ttl
     }
 
+    /// The recovery-key id every snapshot manifest binds (WP-7.8). `None`: none declared.
+    pub fn backup_recovery_key_id(&self) -> Option<&str> {
+        self.backup_recovery_key_id.as_deref()
+    }
+
+    /// The backup encryption profile every snapshot manifest binds (WP-7.8). `None`: none.
+    pub fn backup_encryption_profile(&self) -> Option<&str> {
+        self.backup_encryption_profile.as_deref()
+    }
+
     /// Returns the largest NOTP transfer batch, in bytes.
     pub fn notp_max_batch_bytes(&self) -> u64 {
         self.notp_max_batch_bytes
@@ -4481,6 +4502,8 @@ produce: use `EdDSA` or `ES256`"
             SETTING_AUDIT_RETENTION_SECURITY => self.audit_retention_security.and_then(d),
             SETTING_AUDIT_CHECKPOINTS_MAX_LAG => d(self.audit_checkpoints_max_lag),
             SETTING_STREAM_CURSOR_TTL => d(self.stream_cursor_ttl),
+            SETTING_BACKUP_RECOVERY_KEY_ID => self.backup_recovery_key_id.clone(),
+            SETTING_BACKUP_ENCRYPTION_PROFILE => self.backup_encryption_profile.clone(),
             SETTING_AUDIT_REFUSALS => b(self.audit_refusals),
             SETTING_NOTP_MAX_BATCH_BYTES => n(self.notp_max_batch_bytes),
             SETTING_NOTP_MAX_BATCH_OBJECTS => n(self.notp_max_batch_objects),
@@ -5770,6 +5793,21 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
+        for (key, held) in [
+            (
+                SETTING_BACKUP_RECOVERY_KEY_ID,
+                &mut self.backup_recovery_key_id,
+            ),
+            (
+                SETTING_BACKUP_ENCRYPTION_PROFILE,
+                &mut self.backup_encryption_profile,
+            ),
+        ] {
+            if let Some(value) = settings.get(key) {
+                *held = Some(backup_label(key, value)?);
+            }
+        }
+
         if let Some(value) = settings.get(SETTING_STREAM_CURSOR_TTL) {
             self.stream_cursor_ttl = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_STREAM_CURSOR_TTL}"))?;
@@ -6042,6 +6080,20 @@ pub(crate) fn parse_duration(value: &str) -> Result<Duration> {
         .ok_or_else(|| anyhow!("`{value}` is longer than any deployment outlives"))
 }
 
+/// A non-secret backup label (WP-7.8): a recovery-key id or an encryption profile, as a manifest
+/// binds it — 1 to 256 bytes of letters, digits and `.`, `_`, `:`, `/`, `-`.
+fn backup_label(key: &str, value: &str) -> Result<String> {
+    let value = value.trim();
+    let allowed = |held: char| held.is_ascii_alphanumeric() || "._:/-".contains(held);
+    if value.is_empty() || value.len() > 256 || !value.chars().all(allowed) {
+        bail!(
+            "reading {key}: `{value}` is not a label of 1 to 256 letters, digits, `.`, `_`, `:`, \
+             `/` or `-`"
+        );
+    }
+    Ok(value.to_owned())
+}
+
 fn parse_duration_allow_zero(value: &str) -> Result<Duration> {
     let trimmed = value.trim();
     if matches!(
@@ -6193,6 +6245,8 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_AUDIT_RETENTION_SECURITY,
     SETTING_AUDIT_CHECKPOINTS_MAX_LAG,
     SETTING_STREAM_CURSOR_TTL,
+    SETTING_BACKUP_RECOVERY_KEY_ID,
+    SETTING_BACKUP_ENCRYPTION_PROFILE,
     SETTING_AUDIT_SINK,
     SETTING_AUTHZ_CACHE_BYTES,
     SETTING_AUTHZ_CACHE_PARTITIONS,

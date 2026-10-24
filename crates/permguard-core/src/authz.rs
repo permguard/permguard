@@ -81,6 +81,11 @@ pub mod operations {
     /// Read the decision and event evidence the Control Plane serves, on the exact ledger
     /// (WP-6.3c, `1-control-plane.md` plane public API).
     pub const EVIDENCE_READ: &str = "evidence.read";
+    /// Prepare, finalize and abort an application-consistent backup of the Host's volume
+    /// (WP-7.8, `5-command-line/2-command-line-commands.md` backup).
+    pub const BACKUP_MANAGE: &str = "backup.manage";
+    /// List the snapshot manifests the Host knows (WP-7.8).
+    pub const BACKUP_READ: &str = "backup.read";
 
     /// Every registered operation.
     pub const ALL: &[&str] = &[
@@ -101,6 +106,8 @@ pub mod operations {
         AUDIT_READ,
         STREAMS_READ,
         EVIDENCE_READ,
+        BACKUP_MANAGE,
+        BACKUP_READ,
     ];
 
     /// Whether `operation` is registered.
@@ -719,6 +726,24 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    /// WP-7.8: the backup operations are registered, once each, as the command table names them.
+    #[test]
+    fn the_backup_operations_are_registered() {
+        for (operation, name) in [
+            (operations::BACKUP_MANAGE, "backup.manage"),
+            (operations::BACKUP_READ, "backup.read"),
+        ] {
+            assert_eq!(operation, name);
+            assert_eq!(
+                operations::ALL
+                    .iter()
+                    .filter(|held| **held == operation)
+                    .count(),
+                1
+            );
+        }
     }
 
     fn principal(name: &str) -> Principal {

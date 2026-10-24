@@ -739,6 +739,58 @@ mod tests {
         })
     }
 
+    /// WP-7.8: under a backup barrier a catalog change is refused `unavailable`, nothing written;
+    /// once the barrier is lowered the same request succeeds.
+    #[tokio::test]
+    async fn a_backup_barrier_holds_a_catalog_change() {
+        let root = scratch("barrier");
+        let trail = Arc::new(Trail::default());
+        let catalog: Arc<dyn permguard_core::Catalog> =
+            Arc::new(FileCatalog::new(root.join("catalog")));
+        let volume = permguard_host::storage::volume::Volume::claim(
+            &root.join("host"),
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("the volume");
+        let engine = Arc::new(
+            permguard_host::operations::mutation::Mutations::open(
+                &volume,
+                Arc::clone(&trail) as Arc<dyn permguard_host::operations::mutation::Projection>,
+                Arc::new(permguard_host::time::TimeGuard::system(
+                    std::time::Duration::from_secs(30),
+                )),
+            )
+            .expect("the transaction"),
+        );
+        let mutations = permguard_host::composition::MutationHandle::new(
+            Arc::clone(&engine),
+            crate::catalog::CATALOG_DOMAIN,
+        );
+        let routes = routes(CatalogFacade {
+            host: None,
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+            mutations: super::super::recovered(mutations, &catalog),
+            catalog: Arc::clone(&catalog),
+            recorder: None,
+            disclosure: Disclosure::Minimal,
+            audit_refusals: false,
+            metrics: permguard_core::metrics::Metrics::none(),
+        });
+        engine
+            .quiesce(
+                std::time::Instant::now() + std::time::Duration::from_secs(60),
+                std::time::Duration::from_secs(1),
+            )
+            .expect("the barrier");
+        let (status, refused) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        assert_eq!(status, 503, "{refused}");
+        assert!(refused.contains("\"unavailable\""), "{refused}");
+        assert!(refused.contains("backup"), "{refused}");
+        engine.release();
+        let (status, created) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        assert_eq!(status, 201, "{created}");
+    }
+
     /// WP-7.3a, owner decisions of 2026-10-20: a create, a rename and a delete are each an
     /// operation of the WP-3.6 transaction, an intent then an applied record under the phased
     /// `catalog.*` action, its target the record; the store keeps the operation id, the wire never

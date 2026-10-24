@@ -578,6 +578,13 @@ impl CatalogFacade {
             )
             .with_internal(detail)
             .into(),
+            // A backup barrier (WP-7.8): the same request succeeds once the backup ends.
+            MutationError::Quiesced(detail) => ApiError::new(
+                ErrorClass::Unavailable,
+                codes::common::UNAVAILABLE,
+                format!("{detail}; nothing was changed"),
+            )
+            .into(),
         }
     }
 

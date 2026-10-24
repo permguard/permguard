@@ -1239,6 +1239,26 @@
       "limit": "the Host CLI's `read_json` reads through `confirm::read_bytes` with a one-MiB ceiling before decoding invitation handoffs, pin stores, task lists, narrowing and assurance results",
       "enforced_at_decoder": false,
       "fuzz": "host_cli_json"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/operations/backup.rs",
+      "item": "SnapshotManifest::decode",
+      "entry": "permguard_host::operations::backup::SnapshotManifest::decode",
+      "max_input_bytes": 65536,
+      "limit": "`operations::backup::MAX_MANIFEST_BYTES`, checked by the decoder before it parses: a snapshot manifest's payload, from the Host's own backups or from the manifest file an operator hands an offline verification (WP-7.8)",
+      "enforced_at_decoder": true,
+      "fuzz": "snapshot_manifest"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/operations/backup.rs",
+      "item": "verify",
+      "entry": "permguard_host::operations::backup::verify",
+      "max_input_bytes": 65536,
+      "limit": "`operations::backup::MAX_MANIFEST_BYTES` for the manifest envelope, the keys bundle's own bounds, and inventory items of at most `MAX_ITEM` bytes read from the snapshot, checked before anything is parsed: a snapshot an offline verification is handed (WP-7.8)",
+      "enforced_at_decoder": true,
+      "fuzz": "snapshot_manifest"
     }
   ],
   "trusted": [
@@ -1566,6 +1586,11 @@
       "source": "crates/permguard-host/src/holds.rs",
       "item": "HoldStore::open",
       "reason": "the holds' own directory on the Host's volume, written by this process or the offline CLI under the volume's lock; a hold that does not read is refused, never skipped"
+    },
+    {
+      "source": "crates/permguard-host/src/operations/backup.rs",
+      "item": "Backups::open",
+      "reason": "the backups' own state views, written by this Host through the storage library under its volume lock"
     }
   ]
 }

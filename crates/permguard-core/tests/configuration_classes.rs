@@ -98,6 +98,8 @@ fn every_core_setting_renders_under_the_defaults() {
             SETTING_AUDIT_PSEUDONYM_KEY_REF,
             // Unset is the default: `security` days kept for ever (WP-3.7).
             SETTING_AUDIT_RETENTION_SECURITY,
+            SETTING_BACKUP_ENCRYPTION_PROFILE,
+            SETTING_BACKUP_RECOVERY_KEY_ID,
             SETTING_HOST_IDENTITY_SUITE,
             SETTING_HOST_IDENTITY_WITNESS,
             SETTING_HOST_PEERS,

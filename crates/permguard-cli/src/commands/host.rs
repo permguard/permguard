@@ -321,9 +321,9 @@ fn hold_mutation_refused(error: MutationError<permguard_host::holds::HoldError>)
     match error {
         MutationError::Refused(error) => hold_refused(error),
         MutationError::RequestIdReused(detail) => Failure::usage(detail),
-        other @ (MutationError::AuditUnavailable(_) | MutationError::Unavailable(_)) => {
-            Failure::unavailable(other)
-        }
+        other @ (MutationError::AuditUnavailable(_)
+        | MutationError::Unavailable(_)
+        | MutationError::Quiesced(_)) => Failure::unavailable(other),
         other @ (MutationError::Unrecorded(_) | MutationError::Indeterminate(_)) => {
             Failure::internal(other)
         }
@@ -414,9 +414,9 @@ fn refused(error: MutationError<AuthzError>) -> Failure {
     match error {
         MutationError::Refused(error) => failure(error),
         MutationError::RequestIdReused(detail) => Failure::usage(detail),
-        other @ (MutationError::AuditUnavailable(_) | MutationError::Unavailable(_)) => {
-            Failure::unavailable(other)
-        }
+        other @ (MutationError::AuditUnavailable(_)
+        | MutationError::Unavailable(_)
+        | MutationError::Quiesced(_)) => Failure::unavailable(other),
         other @ (MutationError::Unrecorded(_) | MutationError::Indeterminate(_)) => {
             Failure::internal(other)
         }

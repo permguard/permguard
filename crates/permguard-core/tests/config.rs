@@ -1538,6 +1538,39 @@ fn test_the_reap_grace_and_the_revocation_objective() {
     );
 }
 
+/// WP-7.8: the backup labels are absent by default, read trimmed from the file's
+/// `operations.backup` or the environment, and refused when not a label.
+#[test]
+fn test_the_backup_labels_are_read_and_bounded() {
+    let unset = config(&[], &[], &[]);
+    assert_eq!(unset.backup_recovery_key_id(), None);
+    assert_eq!(unset.backup_encryption_profile(), None);
+    let set = config(
+        &[
+            (
+                "PERMGUARD_BACKUP_RECOVERY_KEY_ID",
+                " kms:backups/recovery-1 ",
+            ),
+            ("PERMGUARD_BACKUP_ENCRYPTION_PROFILE", "aes-256-gcm"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(set.backup_recovery_key_id(), Some("kms:backups/recovery-1"));
+    assert_eq!(set.backup_encryption_profile(), Some("aes-256-gcm"));
+    for refused in ["a key with spaces", "k\u{e8}y", &"x".repeat(257)] {
+        assert!(
+            Config::from_layers(
+                build_settings(),
+                NO_DECLARED,
+                Layers::new().with_file(pairs(&[("PERMGUARD_BACKUP_RECOVERY_KEY_ID", refused)])),
+            )
+            .is_err(),
+            "`{refused}`"
+        );
+    }
+}
+
 /// Durations are read in the units the settings are actually written in.
 ///
 /// The `ms` case is the one that mattered: [`DEFAULT_EVENTS_GROUP_COMMIT_DELAY`] is five

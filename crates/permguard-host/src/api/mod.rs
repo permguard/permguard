@@ -22,6 +22,7 @@
 //! of the state.
 
 pub mod audit;
+pub mod backups;
 pub mod bounds;
 pub mod config;
 pub mod grants;
@@ -262,6 +263,10 @@ pub struct HostApi {
     audit: Option<Arc<crate::audit::Engine>>,
     /// The stream engine's reads (WP-5.7a), given once the server composed the engine.
     streams: Option<Arc<dyn streams::StreamReads>>,
+    /// The application-consistent snapshots (WP-7.8), given once the server opened them.
+    backups: Option<Arc<crate::operations::backup::Backups>>,
+    /// The recovery-key id and encryption profile every snapshot manifest binds.
+    backup_labels: (Option<String>, Option<String>),
 }
 
 impl std::fmt::Debug for HostApi {
@@ -294,7 +299,22 @@ impl HostApi {
             memberships: composition.memberships,
             audit: composition.audit,
             streams: None,
+            backups: None,
+            backup_labels: (None, None),
         }
+    }
+
+    /// This facade serving the volume's backups (WP-7.8), binding `recovery_key_id` and
+    /// `encryption_profile` in every manifest.
+    pub fn with_backups(
+        mut self,
+        backups: Arc<crate::operations::backup::Backups>,
+        recovery_key_id: Option<String>,
+        encryption_profile: Option<String>,
+    ) -> Self {
+        self.backups = Some(backups);
+        self.backup_labels = (recovery_key_id, encryption_profile);
+        self
     }
 
     /// This facade reading the Host's streams through `streams` (WP-5.7a).
@@ -556,6 +576,12 @@ fn refusal_of_mutation(operation: &str, error: MutationError<Refusal>) -> Refusa
             )
             .with_internal(detail),
         ),
+        // A backup barrier (WP-7.8): the same request succeeds once the backup ends.
+        MutationError::Quiesced(detail) => Refusal::Api(ApiError::new(
+            ErrorClass::Unavailable,
+            codes::common::UNAVAILABLE,
+            format!("{detail}; nothing was applied"),
+        )),
     }
 }
 

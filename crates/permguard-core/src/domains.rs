@@ -38,6 +38,9 @@ pub mod digest {
     /// The closure a mirror verified, as its checkpoint names it: the sorted digests of every
     /// object reachable from the head (WP-7.2c).
     pub const MIRROR_CLOSURE: &str = "permguard.mirror.closure.v1\n";
+    /// A snapshot's inventory, and each of its roots: the files the snapshot manifest binds
+    /// (WP-7.8).
+    pub const SNAPSHOT_INVENTORY: &str = "permguard.snapshot.inventory.v1\n";
     /// An audit record.
     pub const AUDIT_RECORD: &str = "permguard.audit.record.v1\n";
     /// An audit pseudonym.
@@ -368,6 +371,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
     vec![
         ("digest.KEY_SET", digest::KEY_SET),
         ("digest.MIRROR_CLOSURE", digest::MIRROR_CLOSURE),
+        ("digest.SNAPSHOT_INVENTORY", digest::SNAPSHOT_INVENTORY),
         ("digest.AUDIT_RECORD", digest::AUDIT_RECORD),
         ("digest.AUDIT_PSEUDONYM", digest::AUDIT_PSEUDONYM),
         ("digest.AUDIT_CHECKPOINT", digest::AUDIT_CHECKPOINT),

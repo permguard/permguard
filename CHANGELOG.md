@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **The Host prepares an application-consistent backup of its volume (WP-7.8a).**
+  `backup.prepare` raises a barrier in the mutation transaction: every new mutation — grants, keys, memberships, the catalog, the refs, the collections — is refused `unavailable` until the backup is finalized, aborted, or its barrier expires after ten minutes, while reads and decisions go on.
+  It answers a COSE_Sign1 `permguard.snapshot.manifest.v1` under `host.operations`, binding the volume, the Host, the mutation revision, every file below `host/`, `data/` and `operations/` through a signed inventory, and the recovery-key id and encryption profile when `operations.backup` declares them, with a token answered once.
+  `backup::verify` checks a snapshot offline against that manifest and the keys bundle kept outside it: application-consistent when every file matches, journals allowed to have grown, and crash-consistent only, with each difference, when a file changed, went missing or appeared.
+  Writers outside the mutation transaction — the audit trail, the stream engine, the decision spool, the mirrors — are not paused, so a snapshot taken while they replace a view verifies as crash-consistent.
+  The grants `backup.manage` and `backup.read` are registered; the routes reach the wire in WP-7.8b.
 - **Membership mirrors are reaped only after a grace, settle name contests through aliases, alarm when stale during an outage, and report their progress (WP-7.2d).**
   A ledger its task's complete listing no longer names is tombstoned (`TOMBSTONE`) and still served, and removed only by a later complete listing at least `mirrors.reap_grace` (default one hour) after the first; a listing that names it again restores it, and each step is audited (`mirror.tombstoned`, `mirror.restored`, `mirror.reaped`).
   Two coordinators serving a ledger under one name stay refused until `mirrors.aliases` names the authority the names mean; the gate, the decision path and the round all resolve through it, and an alias whose authority holds nothing serves nothing.

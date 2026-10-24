@@ -801,6 +801,12 @@ pub(crate) fn api_error(error: EngineError) -> ApiError {
             "the mutation journal is unavailable: nothing was applied",
         )
         .with_internal(detail),
+        // A backup barrier (WP-7.8): the push succeeds once the backup ends.
+        EngineError::Quiesced { detail } => ApiError::new(
+            ErrorClass::Unavailable,
+            permguard_core::codes::common::UNAVAILABLE,
+            format!("{detail}; nothing was applied"),
+        ),
         EngineError::NotFound { what } => ApiError::new(
             ErrorClass::NotFound,
             permguard_core::codes::common::NOT_FOUND,

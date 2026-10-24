@@ -757,3 +757,160 @@ fn a_torn_final_entry_is_cut_at_open() {
     assert!(std::fs::read(path).expect("read").is_empty(), "and folded");
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// WP-7.8: a backup barrier waits for the operation already applying, then refuses every new
+/// operation of another domain `unavailable` — nothing written for it — while its own domain still
+/// runs; lowered, or expired, mutations resume.
+#[test]
+fn a_backup_barrier_waits_for_what_runs_and_refuses_what_is_new() {
+    let root = scratch("barrier");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let trail = Arc::new(Trail::default());
+    let engine = open(&volume, &trail, &time);
+    let ledger = Ledger::default();
+    let (entered, inside) = std::sync::mpsc::channel();
+    let (release, wait) = std::sync::mpsc::channel::<()>();
+    std::thread::scope(|scope| {
+        // Owned here: a failing assertion drops it, the waiting operation wakes and ends, and the
+        // test fails rather than hangs.
+        let release = release;
+        let (engine, ledger) = (&engine, &ledger);
+        let applying = scope.spawn(move || {
+            engine.run(begin(Some("r1"), "d1"), |applying| {
+                entered.send(()).expect("the test listens");
+                wait.recv().expect("the test releases");
+                Ok::<_, Failure<String>>(ledger.apply(applying, "z1"))
+            })
+        });
+        inside.recv().expect("the first is applying");
+        let quiescing = scope.spawn(move || {
+            engine.quiesce(
+                Instant::now() + Duration::from_secs(60),
+                Duration::from_secs(30),
+            )
+        });
+        // The barrier is up and still waiting: a new operation is refused at once.
+        while !engine.quiesced() {
+            std::thread::yield_now();
+        }
+        assert!(
+            !quiescing.is_finished(),
+            "it waits for the operation applying"
+        );
+        let refused = engine.run(
+            begin(Some("r2"), "d2"),
+            // Never applied; were it, the test fails on what it answers rather than hanging here.
+            |_| -> Result<Applied<String>, Failure<String>> {
+                Err(Failure::Refused("applied under the barrier".to_owned()))
+            },
+        );
+        // Released before anything is asserted, so a failing assertion never leaves the
+        // operation applying waiting forever.
+        release.send(()).expect("released");
+        assert!(
+            matches!(&refused, Err(MutationError::Quiesced(detail)) if detail.contains("backup")),
+            "{refused:?}"
+        );
+        assert!(
+            applying.join().expect("answers").is_ok(),
+            "what ran ends applied"
+        );
+        quiescing
+            .join()
+            .expect("answers")
+            .expect("the barrier is raised once it ended");
+    });
+    let intents = entries(&volume)
+        .iter()
+        .filter(|entry| matches!(entry, Entry::Intent(_)))
+        .count();
+    assert_eq!(intents, 1, "the refused operation left no intent");
+    // Its own domain runs behind the barrier.
+    let foreign = Begin {
+        domain: BARRIER_DOMAIN,
+        ..begin(None, "d3")
+    };
+    assert!(
+        matches!(
+            engine.run(foreign, |_| -> Result<Applied<String>, Failure<String>> {
+                panic!("never applied")
+            }),
+            Err(MutationError::Quiesced(_))
+        ),
+        "the backup's domain lets through its own operations only"
+    );
+    let own = Begin {
+        domain: BARRIER_DOMAIN,
+        operation: BARRIER_OPERATIONS[1],
+        ..begin(None, "d3")
+    };
+    engine
+        .run(own, |applying| {
+            Ok::<_, Failure<String>>(ledger.apply(applying, "backup"))
+        })
+        .expect("the backup's own operation runs");
+    // A second barrier while one holds is refused.
+    assert!(
+        engine
+            .quiesce(Instant::now() + Duration::from_secs(1), Duration::ZERO)
+            .is_err()
+    );
+    engine.release();
+    assert!(!engine.quiesced());
+    engine
+        .run(begin(Some("r4"), "d4"), |applying| {
+            Ok::<_, Failure<String>>(ledger.apply(applying, "z4"))
+        })
+        .expect("mutations resume");
+    // An expired barrier refuses nothing.
+    engine
+        .quiesce(Instant::now() + Duration::from_millis(50), Duration::ZERO)
+        .expect("raised");
+    std::thread::sleep(Duration::from_millis(80));
+    assert!(!engine.quiesced());
+    engine
+        .run(begin(Some("r5"), "d5"), |applying| {
+            Ok::<_, Failure<String>>(ledger.apply(applying, "z5"))
+        })
+        .expect("past its deadline the barrier refuses nothing");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// WP-7.8: a barrier that cannot drain within its wait is lowered and refused.
+#[test]
+fn a_barrier_that_cannot_drain_is_lowered() {
+    let root = scratch("barrier-drain");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let trail = Arc::new(Trail::default());
+    let engine = open(&volume, &trail, &time);
+    let ledger = Ledger::default();
+    let (entered, inside) = std::sync::mpsc::channel();
+    let (release, wait) = std::sync::mpsc::channel::<()>();
+    std::thread::scope(|scope| {
+        // Owned here: a failing assertion drops it, the waiting operation wakes and ends, and the
+        // test fails rather than hangs.
+        let release = release;
+        let (engine, ledger) = (&engine, &ledger);
+        let applying = scope.spawn(move || {
+            engine.run(begin(Some("r1"), "d1"), |applying| {
+                entered.send(()).expect("the test listens");
+                wait.recv().expect("the test releases");
+                Ok::<_, Failure<String>>(ledger.apply(applying, "z1"))
+            })
+        });
+        inside.recv().expect("applying");
+        let refused = engine.quiesce(
+            Instant::now() + Duration::from_secs(60),
+            Duration::from_millis(50),
+        );
+        let lowered = !engine.quiesced();
+        release.send(()).expect("released");
+        let refused = refused.expect_err("it never drained");
+        assert!(refused.contains("still running"), "{refused}");
+        assert!(lowered, "lowered again");
+        applying.join().expect("answers").expect("applied");
+    });
+    let _ = std::fs::remove_dir_all(root);
+}

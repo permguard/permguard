@@ -29,10 +29,11 @@ use crate::config::{
     SETTING_AUDIT_DIRECTORY, SETTING_AUDIT_PSEUDONYM_ENABLED, SETTING_AUDIT_PSEUDONYM_KEY_REF,
     SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS, SETTING_AUDIT_RETENTION,
     SETTING_AUDIT_RETENTION_SECURITY, SETTING_AUDIT_SINK, SETTING_AUTOGENERATE,
-    SETTING_DEVELOPMENT_MODE, SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS,
-    SETTING_HOST_PEERS, SETTING_ISSUER, SETTING_KEYS_CUSTODY, SETTING_KEYS_DIRECTORY,
-    SETTING_KEYS_ENABLED, SETTING_KEYS_IDENTITY_CUSTODY, SETTING_KEYS_KEK_PROVIDER,
-    SETTING_KEYS_KEK_REF, SETTING_KEYS_KEK_VERSION, SETTING_KEYS_KMS_ADDRESS, SETTING_KEYS_KMS_CA,
+    SETTING_BACKUP_ENCRYPTION_PROFILE, SETTING_BACKUP_RECOVERY_KEY_ID, SETTING_DEVELOPMENT_MODE,
+    SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS, SETTING_HOST_PEERS, SETTING_ISSUER,
+    SETTING_KEYS_CUSTODY, SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED,
+    SETTING_KEYS_IDENTITY_CUSTODY, SETTING_KEYS_KEK_PROVIDER, SETTING_KEYS_KEK_REF,
+    SETTING_KEYS_KEK_VERSION, SETTING_KEYS_KMS_ADDRESS, SETTING_KEYS_KMS_CA,
     SETTING_KEYS_KMS_MOUNT, SETTING_KEYS_KMS_TOKEN_REF, SETTING_KEYS_MAINTENANCE_INTERVAL,
     SETTING_KEYS_OPERATIONS_CUSTODY, SETTING_KEYS_PKCS11_MODULE, SETTING_KEYS_PKCS11_PIN_REF,
     SETTING_KEYS_PKCS11_TOKEN_LABEL, SETTING_KEYS_PREVIOUS_KEK_REF,
@@ -676,6 +677,21 @@ struct OperationsSection {
     /// The Host's evidence streams (WP-5.5).
     #[serde(default)]
     streams: StreamsSection,
+    /// What every snapshot manifest binds of the deployment's backups (WP-7.8).
+    #[serde(default)]
+    backup: BackupSection,
+}
+
+/// What every snapshot manifest binds of the deployment's backups (WP-7.8): non-secret labels.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BackupSection {
+    /// The id of the recovery key backups are encrypted under.
+    #[serde(default)]
+    recovery_key_id: Option<String>,
+    /// The backups' encryption profile.
+    #[serde(default)]
+    encryption_profile: Option<String>,
 }
 
 /// The Host's evidence streams (WP-5.5).
@@ -1384,6 +1400,14 @@ impl ConfigFile {
             (
                 SETTING_STREAM_CURSOR_TTL,
                 self.operations.streams.cursor_ttl.as_ref(),
+            ),
+            (
+                SETTING_BACKUP_RECOVERY_KEY_ID,
+                self.operations.backup.recovery_key_id.as_ref(),
+            ),
+            (
+                SETTING_BACKUP_ENCRYPTION_PROFILE,
+                self.operations.backup.encryption_profile.as_ref(),
             ),
             (SETTING_KEYS_ENABLED, self.operations.keys.enabled.as_ref()),
             (

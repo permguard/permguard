@@ -167,6 +167,10 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.grant.revoke_planned", HOST),
     mutation("host.grant.revoked", HOST),
     mutation("host.grant.expired", HOST),
+    // An application-consistent snapshot (WP-7.8): its prepare, and how it ended.
+    mutation("host.backup.prepared", HOST),
+    mutation("host.backup.finalized", HOST),
+    mutation("host.backup.aborted", HOST),
     mutation("host.hold.added", HOST),
     mutation("host.hold.released", HOST),
     // An approval of a plan (WP-3.9): a mutation of the plan's domain.

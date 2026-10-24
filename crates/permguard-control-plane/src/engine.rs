@@ -76,6 +76,9 @@ pub enum EngineError {
     AuditUnavailable { detail: String },
     /// The mutation journal could not be written: nothing was applied.
     MutationsUnavailable { detail: String },
+    /// A backup barrier holds new mutations (WP-7.8): nothing was applied, and the push succeeds
+    /// once the backup ends.
+    Quiesced { detail: String },
     /// Nothing answers: an absent ref, an absent object.
     NotFound { what: String },
     /// A quota refused the work.
@@ -105,6 +108,7 @@ impl std::fmt::Display for EngineError {
             EngineError::MutationsUnavailable { detail } => {
                 write!(f, "the mutation journal is unavailable: {detail}")
             }
+            EngineError::Quiesced { detail } => write!(f, "{detail}"),
             EngineError::NotFound { what } => write!(f, "not found: {what}"),
             EngineError::Unavailable { message } => write!(f, "refused by quota: {message}"),
             EngineError::SigningUnavailable { message } => {
@@ -737,6 +741,7 @@ impl Engine<'_> {
             Err(MutationError::Unavailable(detail)) => {
                 Err(EngineError::MutationsUnavailable { detail })
             }
+            Err(MutationError::Quiesced(detail)) => Err(EngineError::Quiesced { detail }),
         }
     }
 
