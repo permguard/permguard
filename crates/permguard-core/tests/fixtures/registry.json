@@ -443,6 +443,7 @@
     "stream.OFFSET_EXPIRED": "offset_expired",
     "stream.OFFSET_INVALID": "offset_invalid",
     "stream.OUT_OF_ORDER": "out_of_order",
+    "stream.PRODUCER_GAP": "producer_gap",
     "stream.QUEUE_FULL": "queue_full",
     "stream.QUOTA_EXHAUSTED": "quota_exhausted",
     "stream.SCOPE_MISMATCH": "scope_mismatch",

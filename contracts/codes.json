@@ -1624,6 +1624,11 @@
       "contract": "6-contracts/5-contract-stream-common.md",
       "kind": "ack"
     },
+    "stream.PRODUCER_GAP": {
+      "code": "producer_gap",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
     "stream.QUEUE_FULL": {
       "code": "queue_full",
       "contract": "6-contracts/3-contract-evidence-decisions.md",

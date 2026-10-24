@@ -1893,6 +1893,9 @@ pub struct Subscribed<'a> {
     /// The task's selector: a stream it covers whose run is not fenced by this subscription rolls
     /// over to one that is (WP-6.1).
     pub selector: &'a permguard_core::authz::Selector,
+    /// The coordinator boot id of the session it ships on, `None` outside one (WP-7.9b): an
+    /// answer below the acknowledgement under another incarnation is a restored coordinator's.
+    pub coordinator_boot_id: Option<[u8; 16]>,
 }
 
 /// A message the engine has ready to ship, and what it ships.

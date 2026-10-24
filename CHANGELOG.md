@@ -19,6 +19,9 @@ is cut.
 
 ### Added
 
+- **A producer resends to a coordinator restored from a snapshot (WP-7.9b).**
+  Each run's acknowledgement records the coordinator boot id it was answered under; the first answer below it under a new incarnation rewinds that run and resends the retained sealed batches byte for byte from the coordinator's `expected_seq`, logged `host.stream.coordinator_restored`.
+  Under the same incarnation an answer below the acknowledgement still stops the subscription `ack_behind`; a position below what the producer already deleted stops it with the new code `producer_gap`, logged `host.stream.producer_gap`, nothing reconstructed.
 - **A snapshot is restored offline in one of three modes (WP-7.9a).**
   `permguard restore plan --volume <dir> --mode dr|forensic|clone --reason <text> --out <file>` requires the previous owner fenced by `volume claim`, a claim generation above the one the snapshot's last start recorded, then scans every journal and object tree, opens the identity and every ring through `--server-config`, and writes a mode-0600 plan receipt; `restore run --mode <mode> --confirm-file <file>` requires the same volume, mode and claim, scans again and transitions.
   `dr` keeps the Host and starts a new incarnation of it; `forensic` is never served — the server refuses to start on it, the offline commands that write refuse it, and no later restore but a forensic one runs on it; `clone` runs the offline emergency reset and makes a new Host.

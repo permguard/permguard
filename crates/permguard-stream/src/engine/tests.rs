@@ -3343,6 +3343,7 @@ fn subscribed(task_id: &str, required: bool, epoch: u64) -> Subscribed<'_> {
         required,
         epoch,
         selector: &NO_STREAM,
+        coordinator_boot_id: None,
     }
 }
 
@@ -6658,4 +6659,414 @@ fn a_consumer_keeps_an_unmeasured_run_and_prunes_a_measured_one_to_its_floor() {
         4,
         "the last whole batch at or below the floor"
     );
+}
+
+/// A coordinator's consumer of the test stream at `boot`'s incarnation: the subscription as the
+/// member's ship pass names it in a session (WP-7.9b).
+fn under(boot: u8) -> Subscribed<'static> {
+    Subscribed {
+        coordinator_boot_id: Some([boot; 16]),
+        ..subscribed("decisions", true, 1)
+    }
+}
+
+/// Six records sealed two a batch, the first batch shipped and acknowledged under incarnation 1,
+/// deleted when `prune_first`, the coordinator's consumer copied aside as its snapshot, then the
+/// rest shipped: the producer, its run, the snapshot of the consumer and where it lives.
+fn drilled(host: &Host, prune_first: bool) -> (Producer<Text>, [u8; 16], PathBuf, PathBuf) {
+    let consumer = consumer_on(host);
+    let (producer, run) = streaming(host, 6);
+    for _ in 0..3 {
+        sealed(producer.seal(&ledger(1), 2).expect("sealed"));
+    }
+    let resource = ledger(1).to_string();
+    let before = under(1);
+    producer.due(&before).expect("due");
+    let first = producer
+        .next(&before, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let (answer, _) = ingest(&consumer, host, &first.body).expect("ingested");
+    assert!(
+        producer
+            .answered(
+                &before,
+                &resource,
+                &first,
+                &answer.encode().expect("encodes")
+            )
+            .expect("answered")
+    );
+    if prune_first {
+        gc(&producer);
+    }
+    let live = consumer_run_dir(host, host, &run)
+        .parent()
+        .expect("the producer's directory")
+        .to_path_buf();
+    let snapshot = host.root.join("consumer-snapshot");
+    copy_tree(&live, &snapshot);
+    assert!(
+        pump(&producer, &consumer, host, &before, vec![pin_of(host)], 1)
+            .iter()
+            .all(|outcome| *outcome == Outcome::Ok)
+    );
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        6
+    );
+    (producer, run, snapshot, live)
+}
+
+/// The coordinator's consumer put back from `snapshot`, as a restore of its volume does.
+fn restore_consumer(host: &Host, snapshot: &Path, live: &Path) -> Consumer<Text> {
+    std::fs::remove_dir_all(live).expect("the live consumer is gone");
+    copy_tree(snapshot, live);
+    consumer_on(host)
+}
+
+/// WP-7.9b, the restore drill: a coordinator restored from a snapshot answers the first session
+/// of its new incarnation from its restored position; the producer rewinds that run and resends
+/// the retained batches byte for byte until the coordinator holds everything again. Below the
+/// acknowledgement under the same incarnation is still `ack_behind`.
+#[test]
+fn a_restored_coordinator_is_resent_from_its_restored_position() {
+    let host = Host::new("drill");
+    let (producer, run, snapshot, live) = drilled(&host, false);
+    let batches = host
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run));
+    let kept: Vec<Vec<u8>> = ["3-4.jws", "5-6.jws"]
+        .iter()
+        .map(|name| std::fs::read(batches.join(name)).expect("retained"))
+        .collect();
+    let consumer = restore_consumer(&host, &snapshot, &live);
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        2
+    );
+    producer
+        .append(&ledger(1), &"r6".to_owned())
+        .expect("appended");
+
+    let after = under(2);
+    let resource = ledger(1).to_string();
+    let mut outcomes = Vec::new();
+    let mut resent = Vec::new();
+    while let Some(shipment) = producer.next(&after, &resource, 448 * 1024).expect("next") {
+        resent.push(shipment.body.clone());
+        let (answer, _) = ingest(&consumer, &host, &shipment.body).expect("ingested");
+        outcomes.push(answer.outcome);
+        if !producer
+            .answered(
+                &after,
+                &resource,
+                &shipment,
+                &answer.encode().expect("encodes"),
+            )
+            .expect("answered")
+        {
+            break;
+        }
+    }
+    // The batch past its position first, then everything from it, then the new batch.
+    assert_eq!(outcomes.first(), Some(&Outcome::OutOfOrder));
+    assert!(outcomes[1..].iter().all(|outcome| *outcome == Outcome::Ok));
+    assert_eq!(resent[1], ship_of(&host, &kept[0]), "byte for byte");
+    assert_eq!(resent[2], ship_of(&host, &kept[1]), "byte for byte");
+    let held = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(held.state, SubscriptionState::Active);
+    assert_eq!(held.acked(&run), 7);
+    assert_eq!(held.boot(&run), Some([2; 16]));
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        7
+    );
+
+    // The same incarnation answering below what it acknowledged lost records: an incident.
+    producer
+        .append(&ledger(1), &"r7".to_owned())
+        .expect("appended");
+    let shipment = producer
+        .next(&after, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let behind = Answer {
+        outcome: Outcome::OutOfOrder,
+        acked: 3,
+        expected_seq: Some(4),
+    }
+    .encode()
+    .expect("encodes");
+    assert!(
+        !producer
+            .answered(&after, &resource, &shipment, &behind)
+            .expect("answered")
+    );
+    let held = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(
+        held.state,
+        SubscriptionState::Stopped {
+            reason: permguard_core::codes::stream::ACK_BEHIND.to_owned()
+        }
+    );
+    assert_eq!(held.acked(&run), 7);
+}
+
+/// WP-7.9b: a coordinator restored below what the producer already deleted is a durable
+/// producer gap: the subscription stops `producer_gap`, its acknowledgement kept, nothing resent
+/// or reconstructed; the coordinator stays at its restored position.
+#[test]
+fn a_coordinator_restored_below_a_deleted_prefix_is_a_producer_gap() {
+    let host = Host::new("drill-gap");
+    let (producer, run, snapshot, live) = drilled(&host, false);
+    gc(&producer);
+    let batches = host
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run));
+    assert!(
+        !batches.join("3-4.jws").exists(),
+        "deleted once acknowledged"
+    );
+    let consumer = restore_consumer(&host, &snapshot, &live);
+    producer
+        .append(&ledger(1), &"r6".to_owned())
+        .expect("appended");
+    let outcomes = pump(
+        &producer,
+        &consumer,
+        &host,
+        &under(2),
+        vec![pin_of(&host)],
+        1,
+    );
+    assert_eq!(outcomes, vec![Outcome::OutOfOrder]);
+    let held = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(
+        held.state,
+        SubscriptionState::Stopped {
+            reason: permguard_core::codes::stream::PRODUCER_GAP.to_owned()
+        }
+    );
+    assert_eq!(held.acked(&run), 6);
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        2
+    );
+}
+
+/// WP-7.9b: a coordinator restored exactly at what the producer deleted needs nothing deleted:
+/// it is resent from the first retained batch.
+#[test]
+fn a_coordinator_restored_at_the_deleted_edge_is_resent() {
+    let host = Host::new("drill-edge");
+    let (producer, run, snapshot, live) = drilled(&host, true);
+    let batches = host
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run));
+    assert!(!batches.join("1-2.jws").exists(), "the first batch went");
+    let consumer = restore_consumer(&host, &snapshot, &live);
+    producer
+        .append(&ledger(1), &"r6".to_owned())
+        .expect("appended");
+    let outcomes = pump(
+        &producer,
+        &consumer,
+        &host,
+        &under(2),
+        vec![pin_of(&host)],
+        1,
+    );
+    assert_eq!(outcomes.first(), Some(&Outcome::OutOfOrder));
+    assert!(outcomes[1..].iter().all(|outcome| *outcome == Outcome::Ok));
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        7
+    );
+}
+
+/// WP-7.9b, after the review: a coordinator restored before a run it had acknowledged whole is
+/// probed for that run in the first session of its new incarnation; what it lost of the earlier
+/// run and of the later one is resent, and both runs end acknowledged by the restored consumer.
+#[test]
+fn a_restored_coordinator_is_probed_for_the_runs_it_had_acknowledged_whole() {
+    let host = Host::new("drill-runs");
+    let (producer, first, snapshot, live) = drilled(&host, false);
+    let successor = producer
+        .rollover(&ledger(1), Some(fence(1)))
+        .expect("rolled over")
+        .run_id;
+    for at in 6..8 {
+        producer
+            .append(&ledger(1), &format!("r{at}"))
+            .expect("appended");
+    }
+    {
+        let consumer = consumer_on(&host);
+        assert!(
+            pump(
+                &producer,
+                &consumer,
+                &host,
+                &under(1),
+                vec![pin_of(&host)],
+                1
+            )
+            .iter()
+            .all(|outcome| *outcome == Outcome::Ok)
+        );
+        assert_eq!(
+            consumer
+                .acked(&ledger(1), host.identity.host_id(), successor)
+                .expect("acked"),
+            2
+        );
+    }
+    let consumer = restore_consumer(&host, &snapshot, &live);
+    producer
+        .append(&ledger(1), &"r8".to_owned())
+        .expect("appended");
+    let outcomes = pump(
+        &producer,
+        &consumer,
+        &host,
+        &under(2),
+        vec![pin_of(&host)],
+        1,
+    );
+    assert!(
+        outcomes.contains(&Outcome::OutOfOrder),
+        "the probe found the loss: {outcomes:?}"
+    );
+    let held = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(held.state, SubscriptionState::Active);
+    assert_eq!(
+        (held.boot(&first), held.boot(&successor)),
+        (Some([2; 16]), Some([2; 16]))
+    );
+    let acked = |run: [u8; 16]| {
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked")
+    };
+    assert_eq!((acked(first), acked(successor)), (6, 3));
+    // Probed once: nothing more is due under that incarnation.
+    assert!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &under(2),
+            vec![pin_of(&host)],
+            1
+        )
+        .is_empty()
+    );
+}
+
+/// WP-7.9b, after the review: an answer that states no position, `unverifiable`, records no
+/// incarnation: once the subscription resumes, the restored coordinator's first position is
+/// still read as a restore and resent from, never as `ack_behind`.
+#[test]
+fn an_unverifiable_first_answer_leaves_the_restore_to_the_next() {
+    let host = Host::new("drill-unverifiable");
+    let (producer, run, snapshot, live) = drilled(&host, false);
+    let consumer = restore_consumer(&host, &snapshot, &live);
+    producer
+        .append(&ledger(1), &"r6".to_owned())
+        .expect("appended");
+    let resource = ledger(1).to_string();
+    let after = under(2);
+    let shipment = producer
+        .next(&after, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let unverifiable = Answer {
+        outcome: Outcome::Unverifiable,
+        acked: 2,
+        expected_seq: None,
+    }
+    .encode()
+    .expect("encodes");
+    assert!(
+        !producer
+            .answered(&after, &resource, &shipment, &unverifiable)
+            .expect("answered")
+    );
+    let held = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(held.state, SubscriptionState::Paused { epoch: 1 });
+    assert_eq!(held.boot(&run), Some([1; 16]));
+    let resumed = Subscribed {
+        epoch: 2,
+        ..under(2)
+    };
+    producer.due(&resumed).expect("due");
+    let outcomes = pump(
+        &producer,
+        &consumer,
+        &host,
+        &resumed,
+        vec![pin_of(&host)],
+        1,
+    );
+    assert_eq!(outcomes.first(), Some(&Outcome::OutOfOrder));
+    let held = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(held.state, SubscriptionState::Active);
+    assert_eq!(held.acked(&run), 7);
+}
+
+/// WP-7.9b, after the review: a subscription grown past what its decoder reads is refused when
+/// it would be written, never written unreadable.
+#[test]
+fn a_subscription_past_its_bound_is_never_written() {
+    let mut subscription = Subscription {
+        membership_id: MEMBERSHIP,
+        task_id: "decisions".to_owned(),
+        required: true,
+        runs: Vec::new(),
+        boots: Vec::new(),
+        state: SubscriptionState::Active,
+    };
+    for at in 0..4096_u32 {
+        let mut run = [0_u8; 16];
+        run[..4].copy_from_slice(&at.to_be_bytes());
+        subscription.runs.push((run, u64::from(at)));
+        subscription.boots.push((run, [9; 16]));
+    }
+    assert!(subscription.encode().is_err());
+    subscription.runs.truncate(8);
+    subscription.boots.truncate(8);
+    let bytes = subscription.encode().expect("within its bound");
+    assert_eq!(Subscription::decode(&bytes).expect("reads"), subscription);
 }

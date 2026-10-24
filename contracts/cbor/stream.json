@@ -137,14 +137,15 @@
         { "label": 4, "name": "runs", "type": "array<map:subscription_run>", "occurs": "required", "note": "the acknowledgement per run, each run once" },
         { "label": 5, "name": "state", "type": "uint", "occurs": "required", "note": "0 active, 1 paused on `unverifiable`, 2 stopped" },
         { "label": 6, "name": "paused_epoch", "type": "uint", "occurs": "optional", "note": "with state 1 only: the membership epoch it paused at" },
-        { "label": 7, "name": "reason", "type": "text", "occurs": "optional", "note": "with state 2 only: `fork`, `gone`, `closed` or `ack_ahead`; at most 64 KiB in all" }
+        { "label": 7, "name": "reason", "type": "text", "occurs": "optional", "note": "with state 2 only: `fork`, `gone`, `closed`, `ack_ahead`, `ack_behind`, `unshippable` or `producer_gap`; at most 64 KiB in all" }
       ]
     },
     "subscription_run": {
       "keys": "int",
       "fields": [
         { "label": 1, "name": "run", "type": "bytes", "occurs": "required", "note": "16 bytes" },
-        { "label": 2, "name": "acked", "type": "uint", "occurs": "required", "note": "the highest contiguous sequence the consumer acknowledged" }
+        { "label": 2, "name": "acked", "type": "uint", "occurs": "required", "note": "the highest contiguous sequence the consumer acknowledged" },
+        { "label": 3, "name": "coordinator_boot_id", "type": "bytes", "occurs": "optional", "note": "16 bytes: the coordinator incarnation the acknowledgement was last answered under (WP-7.9b); absent on a run answered before" }
       ]
     },
     "pruned_mark": {

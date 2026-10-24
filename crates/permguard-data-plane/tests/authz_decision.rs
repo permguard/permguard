@@ -3492,6 +3492,7 @@ mod host_log {
             required: true,
             epoch: 1,
             selector,
+            coordinator_boot_id: None,
         }
     }
 

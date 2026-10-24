@@ -911,6 +911,7 @@ impl Member<'_> {
                     required: task.required,
                     epoch: manifest.epoch,
                     selector: &task.selector,
+                    coordinator_boot_id: None,
                 })?;
             }
         }
@@ -978,6 +979,7 @@ impl Member<'_> {
                     required: task.required,
                     epoch: manifest.epoch,
                     selector: &task.selector,
+                    coordinator_boot_id: None,
                 };
                 let resources = match engine.due(&subscription) {
                     Ok(resources) => resources,
@@ -1034,9 +1036,10 @@ impl Member<'_> {
             .await?;
         let max_bytes = session.lease.limits.max_body_bytes;
         // The lease's epoch: a revision the session took is the one a pause is set at (after the
-        // review).
+        // review); its coordinator boot id tells a restored coordinator (WP-7.9b).
         let subscription = &crate::composition::Subscribed {
             epoch: session.lease.epoch,
+            coordinator_boot_id: Some(session.lease.coordinator_boot_id),
             ..*subscription
         };
         // A stream an incomplete drain left behind is reported to the coordinator (WP-5.8).

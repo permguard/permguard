@@ -1834,6 +1834,8 @@ struct Shipping {
     shipped: std::sync::Mutex<bool>,
     answers: std::sync::Mutex<Vec<(String, Vec<u8>)>>,
     retained: std::sync::Mutex<Vec<Vec<String>>>,
+    /// The coordinator boot id each answer was handed back under.
+    boots: std::sync::Mutex<Vec<Option<[u8; 16]>>>,
 }
 
 impl crate::composition::StreamShipping for Shipping {
@@ -1877,11 +1879,15 @@ impl crate::composition::StreamShipping for Shipping {
 
     fn answered(
         &self,
-        _: &crate::composition::Subscribed<'_>,
+        subscription: &crate::composition::Subscribed<'_>,
         _: &str,
         shipment: &crate::composition::Shipment,
         answer: &[u8],
     ) -> Result<bool, String> {
+        self.boots
+            .lock()
+            .expect("lock")
+            .push(subscription.coordinator_boot_id);
         self.answers
             .lock()
             .expect("lock")
@@ -1917,6 +1923,11 @@ async fn the_ship_pass_sends_what_the_engine_has_due_and_hands_back_the_answers(
     assert_eq!(
         engine.answers.lock().expect("lock").clone(),
         vec![("ship-1".to_owned(), b"echo:batch".to_vec())]
+    );
+    // Each answer names the coordinator incarnation the session's lease named (WP-7.9b).
+    assert_eq!(
+        engine.boots.lock().expect("lock").clone(),
+        vec![Some(c.host.identity.boot_id())]
     );
     assert!(
         engine

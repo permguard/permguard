@@ -6,7 +6,7 @@
 //! ```text
 //! producer/<sha256(resource)>/<producer-host>/
 //! ├── subscriptions/<membership>-<task>.cbor   {1 membership, 2 task, 3 required,
-//! │                                             4 [{1 run, 2 acked}], 5 state,
+//! │                                             4 [{1 run, 2 acked, 3? boot}], 5 state,
 //! │                                             6? paused_epoch, 7? reason}
 //! └── batches/<run>/PRUNED                     {1 through}: the batch files deleted
 //! ```
@@ -19,6 +19,13 @@
 //! from `expected_seq`, `unverifiable` pauses it until the membership's epoch moves, `fork` and
 //! `gone` stop it, an ack beyond what the producer holds stops it as `ack_ahead`; a deferral backs
 //! it off, from one second to five minutes with full jitter, in memory.
+//!
+//! A coordinator restored from a snapshot (WP-7.9b) answers under a new boot id with what it held
+//! then. Each run's acknowledgement keeps the boot id of the incarnation that answered it: the
+//! first answer below it under another rewinds the run and resends from the coordinator's
+//! position, or stops the subscription `producer_gap` when that position was already deleted;
+//! a complete run acknowledged under an earlier incarnation is probed once, its last retained
+//! batch sent again. A stream is probed in its next session, once it has something to ship.
 
 use std::sync::PoisonError;
 
@@ -72,6 +79,10 @@ pub struct Subscription {
     pub required: bool,
     /// The highest contiguous sequence the consumer acknowledged, per run, in run order.
     pub runs: Vec<([u8; 16], u64)>,
+    /// The coordinator boot id each run's acknowledgement was last answered under (WP-7.9b):
+    /// what tells a restored coordinator from one that lost acknowledged records. A run answered
+    /// before it was recorded has none.
+    pub boots: Vec<([u8; 16], [u8; 16])>,
     pub state: SubscriptionState,
 }
 
@@ -82,7 +93,28 @@ impl Subscription {
             task_id: subscribed.task_id.to_owned(),
             required: subscribed.required,
             runs: Vec::new(),
+            boots: Vec::new(),
             state: SubscriptionState::Active,
+        }
+    }
+
+    /// The coordinator boot id `run`'s acknowledgement was last answered under.
+    pub fn boot(&self, run: &[u8; 16]) -> Option<[u8; 16]> {
+        self.boots
+            .iter()
+            .find(|(held, _)| held == run)
+            .map(|(_, boot)| *boot)
+    }
+
+    /// Records `boot` for `run`, which then has an acknowledgement, if only of nothing: a boot is
+    /// kept with its run.
+    fn set_boot(&mut self, run: [u8; 16], boot: [u8; 16]) {
+        if !self.runs.iter().any(|(held, _)| *held == run) {
+            self.runs.push((run, 0));
+        }
+        match self.boots.iter_mut().find(|(held, _)| *held == run) {
+            Some(held) => held.1 = boot,
+            None => self.boots.push((run, boot)),
         }
     }
 
@@ -104,10 +136,14 @@ impl Subscription {
     pub fn encode(&self) -> Result<Vec<u8>, StreamError> {
         let mut runs = Vec::new();
         for (run, acked) in &self.runs {
-            runs.push(Value::Map(vec![
+            let mut pairs = vec![
                 (Value::Int(1), Value::Bytes(run.to_vec())),
                 (Value::Int(2), uint(*acked)?),
-            ]));
+            ];
+            if let Some(boot) = self.boot(run) {
+                pairs.push((Value::Int(3), Value::Bytes(boot.to_vec())));
+            }
+            runs.push(Value::Map(pairs));
         }
         let mut pairs = vec![
             (1, Value::Bytes(self.membership_id.to_vec())),
@@ -126,7 +162,15 @@ impl Subscription {
                 pairs.push((7, Value::Text(reason.clone())));
             }
         }
-        encode(pairs)
+        let bytes = encode(pairs)?;
+        // What `decode` would refuse is never written: the subscription stays readable.
+        if bytes.len() > MAX_SUBSCRIPTION_BYTES {
+            return Err(StreamError::Invalid(format!(
+                "a subscription of {} runs is out of its bound of {MAX_SUBSCRIPTION_BYTES} bytes",
+                self.runs.len()
+            )));
+        }
+        Ok(bytes)
     }
 
     // conformance: boundary
@@ -145,11 +189,19 @@ impl Subscription {
             ));
         };
         let mut runs: Vec<([u8; 16], u64)> = Vec::new();
+        let mut boots: Vec<([u8; 16], [u8; 16])> = Vec::new();
         for value in map.array(4)? {
             let mut run = Map::of(value, "a subscription's run")?;
             let id: [u8; 16] = run.fixed(1)?;
             let acked = run.uint(2)?;
+            let boot = run
+                .optional_bytes(3)?
+                .map(|bytes| super::super::codec::fixed::<16>(bytes, "a run's coordinator boot id"))
+                .transpose()?;
             run.finish()?;
+            if let Some(boot) = boot {
+                boots.push((id, boot));
+            }
             if runs.iter().any(|(held, _)| *held == id) {
                 return Err(StreamError::Invalid(
                     "a subscription names a run twice".to_owned(),
@@ -178,6 +230,7 @@ impl Subscription {
             task_id,
             required,
             runs,
+            boots,
             state,
         })
     }
@@ -188,6 +241,26 @@ impl Subscription {
 pub struct PressureBounds {
     pub max_bytes: u64,
     pub max_age_secs: u64,
+}
+
+/// The retained batch file of `run` holding `seq`, sealing nothing: what a probe sends again.
+fn retained_holding(
+    physical: &Physical,
+    run: &[u8; 16],
+    seq: u64,
+) -> Result<Option<Vec<u8>>, StreamError> {
+    let dir = physical
+        .writer()
+        .dir
+        .subdir(BATCHES, true)?
+        .subdir(&hex(run), true)?;
+    match batches_of(&dir)?
+        .into_iter()
+        .find(|(first, last, _)| (*first..=*last).contains(&seq))
+    {
+        Some((_, _, name)) => Ok(dir.read(&name)?),
+        None => Ok(None),
+    }
 }
 
 /// The subscriptions directory of a producer stream.
@@ -837,10 +910,29 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
         if subscription.state != SubscriptionState::Active {
             return Ok(None);
         }
-        // The oldest run of the membership the subscription has not acknowledged through.
-        let Some((run, ..)) = runs.iter().find(|(run, fence, last, _)| {
-            *fence == Some(subscribed.membership_id) && subscription.acked(run) < *last
-        }) else {
+        // The oldest run of the membership the subscription has not acknowledged through, or a
+        // complete one acknowledged under an earlier incarnation of the coordinator, probed with
+        // its last retained batch (WP-7.9b).
+        let mut chosen = None;
+        for (run, fence, last, _) in &runs {
+            if *fence != Some(subscribed.membership_id) {
+                continue;
+            }
+            let acked = subscription.acked(run);
+            if acked < *last {
+                chosen = Some((run, None));
+                break;
+            }
+            let earlier = matches!(
+                (subscribed.coordinator_boot_id, subscription.boot(run)),
+                (Some(now), Some(before)) if now != before
+            );
+            if earlier && let Some(probe) = retained_holding(&physical, run, acked).map_err(wrap)? {
+                chosen = Some((run, Some(probe)));
+                break;
+            }
+        }
+        let Some((run, probe)) = chosen else {
             return Ok(None);
         };
         let statement = permguard_host::membership::statement_of(signer)
@@ -850,12 +942,18 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
         let budget = usize::try_from(max_bytes)
             .unwrap_or(usize::MAX)
             .saturating_sub(statement.len() + SHIP_OVERHEAD_BYTES);
-        let seq = subscription.acked(run) + 1;
-        let Some(batch) = self
-            .batch_holding(&physical, resource, *run, seq, budget)
-            .map_err(wrap)?
-        else {
-            return Ok(None);
+        let batch = match probe {
+            Some(batch) => batch,
+            None => {
+                let seq = subscription.acked(run) + 1;
+                let Some(batch) = self
+                    .batch_holding(&physical, resource, *run, seq, budget)
+                    .map_err(wrap)?
+                else {
+                    return Ok(None);
+                };
+                batch
+            }
         };
         let envelope = SealedBatch::decode(&batch)
             .and_then(|batch| batch.envelope_unverified())
@@ -917,12 +1015,66 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
                     .map_err(wrap)?
                     .unwrap_or_else(|| Subscription::new(subscribed));
             let held = subscription.acked(&shipment.run);
+            // A coordinator restored from a snapshot answers under a new boot id with what it
+            // held then (WP-7.9b): the first answer below the ack under another incarnation.
+            let restored = match (
+                subscribed.coordinator_boot_id,
+                subscription.boot(&shipment.run),
+            ) {
+                (Some(now), Some(before)) => now != before,
+                _ => false,
+            };
+            let deleted = if restored && answer.acked < held {
+                let run_dir = writer
+                    .dir
+                    .subdir(BATCHES, true)
+                    .and_then(|dir| dir.subdir(&hex(&shipment.run), true))
+                    .map_err(|error| error.to_string())?;
+                pruned_of(&run_dir).map_err(wrap)?
+            } else {
+                0
+            };
             let go_on = match answer.outcome {
                 Outcome::Ok | Outcome::OutOfOrder if answer.acked > sealed => {
                     subscription.state = SubscriptionState::Stopped {
                         reason: codes::stream::ACK_AHEAD.to_owned(),
                     };
                     false
+                }
+                // Restored below what was deleted: a durable producer gap, nothing reconstructed;
+                // the ack stays where it was.
+                Outcome::Ok | Outcome::OutOfOrder
+                    if restored && answer.acked < held && answer.acked < deleted =>
+                {
+                    tracing::warn!(
+                        event.name = "host.stream.producer_gap",
+                        component = "host",
+                        stream = %resource,
+                        run = %hex(&shipment.run),
+                        restored = answer.acked,
+                        deleted,
+                        "a restored coordinator needs records this producer already deleted: the \
+                         subscription stops"
+                    );
+                    subscription.state = SubscriptionState::Stopped {
+                        reason: codes::stream::PRODUCER_GAP.to_owned(),
+                    };
+                    false
+                }
+                // Restored: resent from the coordinator's position, byte for byte.
+                Outcome::Ok | Outcome::OutOfOrder if restored && answer.acked < held => {
+                    tracing::warn!(
+                        event.name = "host.stream.coordinator_restored",
+                        component = "host",
+                        stream = %resource,
+                        run = %hex(&shipment.run),
+                        acked = held,
+                        restored = answer.acked,
+                        "the coordinator answers from a restored snapshot: resending from its \
+                         position"
+                    );
+                    subscription.set_acked(shipment.run, answer.acked);
+                    true
                 }
                 // A consumer acknowledging less than it had lost acknowledged records: an
                 // incident, never a resend; the ack never moves backwards (after the review).
@@ -959,6 +1111,13 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
                     false
                 }
             };
+            // An answer that states a position names the incarnation that gave it; one that does
+            // not, `unverifiable` above all, leaves the next its chance to be read as a restore.
+            if let Some(boot) = subscribed.coordinator_boot_id
+                && matches!(answer.outcome, Outcome::Ok | Outcome::OutOfOrder)
+            {
+                subscription.set_boot(shipment.run, boot);
+            }
             keep_subscription(&writer.dir, &subscription).map_err(wrap)?;
             go_on
         };
