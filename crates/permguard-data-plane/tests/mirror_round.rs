@@ -196,6 +196,7 @@ fn context(
         deadline: Duration::from_secs(30),
         stale_after: None,
         reap_grace: std::time::Duration::ZERO,
+        holds: Default::default(),
         parallelism: 2,
         permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         metrics: Metrics::none(),
@@ -348,6 +349,7 @@ async fn a_ledger_two_servers_both_claim_is_left_alone_rather_than_taken_by_the_
         deadline: Duration::from_secs(30),
         stale_after: None,
         reap_grace: std::time::Duration::ZERO,
+        holds: Default::default(),
         parallelism: 2,
         permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         metrics: Metrics::none(),
@@ -401,6 +403,7 @@ async fn one_unreachable_server_does_not_cost_another_server_its_mirrors() {
             deadline: Duration::from_secs(30),
             stale_after: None,
             reap_grace: std::time::Duration::ZERO,
+            holds: Default::default(),
             parallelism: 2,
             permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
             metrics: Metrics::none(),
@@ -428,6 +431,7 @@ async fn one_unreachable_server_does_not_cost_another_server_its_mirrors() {
         deadline: Duration::from_secs(30),
         stale_after: None,
         reap_grace: std::time::Duration::ZERO,
+        holds: Default::default(),
         parallelism: 2,
         permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         metrics: Metrics::none(),
@@ -789,6 +793,7 @@ fn over_tasks_with(
         deadline: Duration::from_secs(30),
         stale_after,
         reap_grace: grace,
+        holds: Default::default(),
         parallelism: 2,
         permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         metrics: Metrics::none(),
@@ -1002,6 +1007,7 @@ async fn the_file_narrows_the_tasks_followed_by_membership_task_and_pattern() {
         deadline: Duration::from_secs(30),
         stale_after: None,
         reap_grace: std::time::Duration::ZERO,
+        holds: Default::default(),
         parallelism: 2,
         permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         metrics: Metrics::none(),
@@ -1471,4 +1477,85 @@ async fn a_task_whose_membership_pins_no_ring_is_not_mirrored() {
         "the coordinator failed: {outcome:?}"
     );
     assert!(layout::on_disk(&root).expect("lists").is_empty());
+}
+
+/// WP-7.2 follow-up (WP-7.3c holds): a mirror whose ledger a hold in force names is never reaped,
+/// however long its task leaves it out; released, the next complete listing reaps it; a plane
+/// handed no hold store reaps nothing, since what a hold keeps is never guessed.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_held_ledger_keeps_its_mirror() {
+    use permguard_host::holds::{Deadline, HoldStore, NewHold};
+    use permguard_host::operations::journal::Initiator;
+
+    let volume = scratch("held");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger", "staging"]);
+    let root = volume.join("mirrors");
+    let task = || vec![tasks::task([0x11; 16], 1, "mirror", true)];
+    round::run(over_tasks(&root, held_by(&url, task(), Vec::new(), false))).await;
+    let staging = layout::on_disk(&root)
+        .expect("lists")
+        .into_iter()
+        .find(|mirror| {
+            permguard_data_plane::authz::store::identity_of(&mirror.path(&root))
+                .is_some_and(|identity| identity.ledger_name == "staging")
+        })
+        .expect("staging");
+
+    let host = scratch("held-host");
+    let claimed = permguard_host::storage::volume::Volume::claim(
+        &host,
+        permguard_core::assurance::AssuranceProfile::Development,
+    )
+    .expect("the Host's volume");
+    let store = Arc::new(HoldStore::open(&claimed).expect("the holds"));
+    let mutations = permguard_host::operations::mutation::Mutations::open_offline(&claimed, "test")
+        .expect("the transaction");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after the epoch")
+        .as_secs();
+    let hold = permguard_host::holds::add(
+        &mutations,
+        &store,
+        Initiator::System("test".to_owned()),
+        NewHold {
+            resource: format!(
+                "plane/control/zone/{}/ledger/{}",
+                staging.zone_id, staging.ledger_id
+            ),
+            owner: "legal".to_owned(),
+            reason: "litigation".to_owned(),
+            deadline: Deadline::Review(now + 3600),
+        },
+        now,
+    )
+    .expect("held");
+    let with = |holds: round::Holds| {
+        let mut context = Arc::try_unwrap(over_tasks(
+            &root,
+            held_by(&url, task(), vec![("mirror", vec!["main-ledger"])], false),
+        ))
+        .unwrap_or_else(|_| panic!("one owner"));
+        context.holds = holds;
+        Arc::new(context)
+    };
+    for _ in 0..3 {
+        let outcome = round::run(with(round::Holds::Store(Arc::clone(&store)))).await;
+        assert_eq!(outcome.reaped, 0, "held: {outcome:?}");
+    }
+    assert!(staging.path(&root).exists());
+    let outcome = round::run(with(round::Holds::Unavailable)).await;
+    assert_eq!(outcome.reaped, 0, "no hold store, nothing removed");
+    permguard_host::holds::release(
+        &mutations,
+        &store,
+        Initiator::System("test".to_owned()),
+        &hold.id,
+    )
+    .expect("released");
+    let outcome = round::run(with(round::Holds::Store(store))).await;
+    assert_eq!(outcome.reaped, 1, "released: {outcome:?}");
+    assert!(!staging.path(&root).exists());
 }

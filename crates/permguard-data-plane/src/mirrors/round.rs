@@ -111,6 +111,29 @@ impl Outcome {
     }
 }
 
+/// The Host's legal and incident holds as the reap reads them (WP-7.3c).
+#[derive(Clone, Default)]
+pub enum Holds {
+    /// No Host registered this plane: nothing is held.
+    #[default]
+    None,
+    /// The Host's hold store.
+    Store(Arc<permguard_host::holds::HoldStore>),
+    /// The plane reads holds and was handed none: nothing is reaped, since what a hold keeps is
+    /// never guessed.
+    Unavailable,
+}
+
+impl std::fmt::Debug for Holds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::None => "None",
+            Self::Store(_) => "Store",
+            Self::Unavailable => "Unavailable",
+        })
+    }
+}
+
 /// Everything a round needs, resolved once at start.
 pub struct Context {
     pub sources: Vec<Source>,
@@ -131,6 +154,8 @@ pub struct Context {
     pub stale_after: Option<Duration>,
     /// How long a task mirror its task no longer lists is kept before it is reaped (WP-7.2d).
     pub reap_grace: Duration,
+    /// The Host's holds: a mirror whose ledger or zone a hold in force names is never reaped.
+    pub holds: Holds,
     /// The bound on work that is **physically** outstanding.
     ///
     /// A deadline abandons a mirror logically; the blocking task it started
@@ -1206,6 +1231,36 @@ fn reap(
                     component = COMPONENT,
                     ledger = mirror.label().as_str(),
                     "the mirror is a reap candidate within its grace"
+                );
+                continue;
+            }
+        }
+        // A hold keeps the ledger: the mirror stays, a candidate, until the hold goes (WP-7.3c).
+        let held = match &context.holds {
+            Holds::None => Ok(false),
+            Holds::Store(store) => store
+                .keeps(&mirror.zone_id, &mirror.ledger_id, now)
+                .map_err(|error| error.to_string()),
+            Holds::Unavailable => Err("this plane was handed no hold store".to_owned()),
+        };
+        match held {
+            Ok(false) => {}
+            Ok(true) => {
+                info!(
+                    event.name = "sync.reap_held",
+                    component = COMPONENT,
+                    ledger = mirror.label().as_str(),
+                    "a hold keeps this ledger: the mirror stays"
+                );
+                continue;
+            }
+            Err(error) => {
+                warn!(
+                    event.name = "sync.reap_refused",
+                    component = COMPONENT,
+                    ledger = mirror.label().as_str(),
+                    error = error.as_str(),
+                    "the holds could not be read: nothing is removed"
                 );
                 continue;
             }

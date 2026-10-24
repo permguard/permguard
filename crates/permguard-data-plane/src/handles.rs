@@ -59,6 +59,8 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
         .signs::<EventBatchV1>()
         .signs::<permguard_host::composition::DecisionResponseV1>()
         .audits::<DataPlaneAudit>()
+        // A mirror a hold names is never reaped (WP-7.2 follow-up, WP-7.3c).
+        .reads_holds()
         .uses_task(TaskType::PolicyMirror, 1)
         .handles_task(TaskType::DecisionsShip, 1)
         .handles_task(TaskType::EventsShip, 1);
@@ -88,6 +90,18 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
 
 fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
     context.handles::<Registration>()
+}
+
+/// The Host's holds (WP-7.3c), for the mirrors' reap: none for a plane no Host registered, which
+/// has no holds to keep; unavailable for a registered plane handed none, which then reaps nothing.
+pub(crate) fn holds(context: &PlaneContext<'_>) -> crate::mirrors::round::Holds {
+    match registration(context) {
+        None => crate::mirrors::round::Holds::None,
+        Some(registration) => registration.holds().map_or(
+            crate::mirrors::round::Holds::Unavailable,
+            crate::mirrors::round::Holds::Store,
+        ),
+    }
 }
 
 /// The Host's authorization, which every route of this plane decides with (WP-2.4). A plane the

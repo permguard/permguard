@@ -19,6 +19,8 @@ is cut.
 
 ### Added
 
+- **A mirror whose ledger or zone a legal or incident hold names is never reaped (WP-7.2 follow-up).**
+  The Data Plane reads the Host's holds (WP-7.3c); a mirror its task no longer lists stays a candidate while a hold in force names it, and a plane handed no hold store reaps nothing.
 - **The Host prepares an application-consistent backup of its volume (WP-7.8a).**
   `backup.prepare` raises a barrier in the mutation transaction: every new mutation — grants, keys, memberships, the catalog, the refs, the collections — is refused `unavailable` until the backup is finalized, aborted, or its barrier expires after ten minutes, while reads and decisions go on.
   It answers a COSE_Sign1 `permguard.snapshot.manifest.v1` under `host.operations`, binding the volume, the Host, the mutation revision, every file below `host/`, `data/` and `operations/` through a signed inventory, and the recovery-key id and encryption profile when `operations.backup` declares them, with a token answered once.

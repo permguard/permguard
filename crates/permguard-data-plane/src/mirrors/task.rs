@@ -863,6 +863,7 @@ mod tests {
             parallelism: 1,
             stale_after: None,
             reap_grace: std::time::Duration::ZERO,
+            holds: Default::default(),
             permits: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
             metrics: permguard_core::Metrics::none(),
         });

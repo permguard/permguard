@@ -160,6 +160,7 @@ impl PlaneTask for MirrorService {
                 parallelism: config.mirrors_parallelism(),
                 stale_after: config.mirrors_stale_after(),
                 reap_grace: config.mirrors_reap_grace(),
+                holds: crate::handles::holds(context),
                 // One pool for the life of the plane, not one per round: work
                 // abandoned by one round is still outstanding during the next,
                 // and a pool rebuilt every round would forget that.
