@@ -18,7 +18,7 @@ use serde::Deserialize;
 use permguard_core::{ApiError, ErrorClass, codes};
 use permguard_transport::ActorOf;
 
-use super::{CatalogFacade, exports, ledgers, zones};
+use super::{CatalogFacade, exports, imports, ledgers, zones};
 use crate::wire;
 
 /// The routes the control plane answers about its catalog.
@@ -50,6 +50,7 @@ pub(crate) fn routes(facade: CatalogFacade) -> Router {
             post(export_ledger),
         )
         .route("/v1/zones/{zone}/export", post(export_zone))
+        .route("/v1/zones/{zone}/import", post(import))
         .with_state(facade)
 }
 
@@ -392,6 +393,94 @@ async fn export_zone(
     let outcome = exports::zone(&facade, &actor, &zone)
         .await
         .map(|exported| exported.view());
+
+    answer(&facade, StatusCode::OK, outcome)
+}
+
+/// The source Host's keys bundle an import verifies an archive from: the bundle's manifest and
+/// items, base64url, as the Host API's key bundle answers them.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BundleBody {
+    manifest: String,
+    items: Vec<String>,
+}
+
+/// What an import carries (WP-7.10), closed.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImportBody {
+    request_id: String,
+    mode: String,
+    #[serde(default)]
+    name: Option<String>,
+    /// The archive, base64url.
+    archive: String,
+    bundle: BundleBody,
+    /// The source Host's identity pin.
+    pin: String,
+}
+
+fn base64url(value: &str, what: &str) -> Result<Vec<u8>, ApiError> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|error| {
+            ApiError::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                format!("`{what}` is not base64url: {error}"),
+            )
+        })
+}
+
+async fn import(
+    State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
+    Path(zone): Path<String>,
+    request: Request,
+) -> Response {
+    let body = match closed::<ImportBody>(request, &facade, "an import").await {
+        Ok(body) => body,
+        Err(refusal) => return *refusal,
+    };
+    let decoded = (|| {
+        let mode = imports::Mode::parse(&body.mode).ok_or_else(|| {
+            ApiError::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                "`mode` is `archive` or `re-home`",
+            )
+        })?;
+        let archive = base64url(&body.archive, "archive")?;
+        let manifest = base64url(&body.bundle.manifest, "bundle.manifest")?;
+        let items = body
+            .bundle
+            .items
+            .iter()
+            .map(|item| base64url(item, "bundle.items"))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok::<_, ApiError>((mode, archive, manifest, items))
+    })();
+    let (mode, archive, manifest, items) = match decoded {
+        Ok(decoded) => decoded,
+        Err(error) => return wire::http_error(&error, facade.disclosure),
+    };
+    let outcome = imports::import(
+        &facade,
+        &actor,
+        &zone,
+        imports::Request {
+            mode,
+            name: body.name.as_deref(),
+            request_id: &body.request_id,
+            archive: &archive,
+            bundle_manifest: &manifest,
+            bundle_items: &items,
+            pin: &body.pin,
+        },
+    )
+    .await;
 
     answer(&facade, StatusCode::OK, outcome)
 }
@@ -1199,6 +1288,44 @@ mod tests {
         assert_eq!(status(refused), 403);
     }
 
+    /// WP-7.10: `POST …/import` refuses a body that is not a closed `ImportBody`, a mode it does
+    /// not know and a value that is not base64url before anything is read; without the plane's
+    /// transfer of ledgers it is `503`.
+    #[tokio::test]
+    async fn an_import_body_is_checked_before_anything_is_read() {
+        let fixture = super::super::exports::tests::fixture("http-import", 1 << 20);
+        let facade = |exports: Option<Arc<super::super::exports::Exports>>| CatalogFacade {
+            host: None,
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+            mutations: None,
+            catalog: Arc::clone(&fixture.catalog) as Arc<dyn permguard_core::Catalog>,
+            recorder: None,
+            disclosure: Disclosure::Minimal,
+            audit_refusals: false,
+            metrics: permguard_core::metrics::Metrics::none(),
+            exports,
+        };
+        let path = format!("/v1/zones/{}/import", fixture.zone.id);
+        let body = |mode: &str, archive: &str| {
+            format!(
+                r#"{{"request_id":"r","mode":"{mode}","archive":"{archive}","bundle":{{"manifest":"oA","items":[]}},"pin":"p"}}"#
+            )
+        };
+        let served = routes(facade(Some(Arc::new(fixture.exports))));
+        for (sent, code) in [
+            (body("copy", "oA"), 400),
+            (body("re-home", "not base64!"), 400),
+            (r#"{"request_id":"r"}"#.to_owned(), 400),
+            (body("re-home", "oA"), 400),
+        ] {
+            let (status, answer) = send(&served, "POST", &path, Some(&sent)).await;
+            assert_eq!(status, code, "{sent}: {answer}");
+        }
+        let unserved = routes(facade(None));
+        let (status, answer) = send(&unserved, "POST", &path, Some(&body("re-home", "oA"))).await;
+        assert_eq!(status, 503, "{answer}");
+    }
+
     /// WP-7.3a: a Host that composes no mutation transaction refuses every change `503`
     /// `unavailable`, and still answers reads.
     #[tokio::test]
@@ -1793,6 +1920,83 @@ mod tests {
             .archive(&fixture.zone, std::slice::from_ref(&fixture.ledger))
             .expect("exported");
         doc.check("ExportView", &exported.view());
+
+        // An import's body, closed, and its answer in both modes (WP-7.10).
+        let sent = serde_json::json!({
+            "request_id": "r-1",
+            "mode": "re-home",
+            "name": "release",
+            "archive": "oA",
+            "bundle": {"manifest": "oA", "items": ["oA"]},
+            "pin": "sha256:ab",
+        });
+        serde_json::from_value::<ImportBody>(sent.clone()).expect("an import body parses");
+        doc.check_json("ImportBody", &sent);
+        doc.check_json("BundleBody", &sent["bundle"]);
+        for refused in [
+            serde_json::json!({"request_id": "r", "mode": "archive", "archive": "oA", "pin": "p"}),
+            serde_json::json!({"request_id": "r", "mode": "archive", "archive": "oA", "bundle": {"manifest": "oA", "items": []}, "pin": "p", "extra": 1}),
+            serde_json::json!({"request_id": "r", "mode": "archive", "archive": "oA", "bundle": {"manifest": "oA"}, "pin": "p"}),
+        ] {
+            assert!(!doc.accepts_json("ImportBody", &refused), "{refused}");
+            assert!(
+                serde_json::from_value::<ImportBody>(refused.clone()).is_err(),
+                "{refused}"
+            );
+        }
+        let provenance = permguard_core::Provenance {
+            manifest_digest: format!("sha256:{}", "ab".repeat(32)),
+            source_host_id: "07".repeat(16),
+            source_zone_id: "zone".to_owned(),
+            source_ledger_id: "ledger".to_owned(),
+            exported_at: 1_800_000_000,
+        };
+        doc.check("Provenance", &provenance);
+        let rehomed = permguard_core::Ledger {
+            provenance: Some(provenance),
+            ..fixture.ledger.clone()
+        };
+        doc.check("Ledger", &rehomed);
+        let record = super::super::imports::ArchiveRecord {
+            id: "a-1".to_owned(),
+            name: "evidence".to_owned(),
+            imported_at: 1_800_000_100,
+            manifest_digest: format!("sha256:{}", "ab".repeat(32)),
+            source_host_id: "07".repeat(16),
+            source_zone_id: "zone".to_owned(),
+            source_zone_name: "delivery".to_owned(),
+            ledgers: vec![super::super::imports::ArchivedLedger {
+                id: "ledger".to_owned(),
+                name: "release".to_owned(),
+                refs: 1,
+                objects: 4,
+                statements: 1,
+            }],
+        };
+        doc.check("ArchivedLedger", &record.ledgers[0]);
+        doc.check("ArchiveRecord", &record);
+        doc.check(
+            "ImportView",
+            &super::super::imports::Imported {
+                mode: "archive",
+                manifest_digest: record.manifest_digest.clone(),
+                source_host_id: record.source_host_id.clone(),
+                source_zone_id: record.source_zone_id.clone(),
+                archive: Some(record.clone()),
+                ledgers: Vec::new(),
+            },
+        );
+        doc.check(
+            "ImportView",
+            &super::super::imports::Imported {
+                mode: "re-home",
+                manifest_digest: record.manifest_digest.clone(),
+                source_host_id: record.source_host_id.clone(),
+                source_zone_id: record.source_zone_id.clone(),
+                archive: None,
+                ledgers: vec![rehomed],
+            },
+        );
 
         doc.check("Zone", &zone);
         doc.check("Ledger", &ledger);

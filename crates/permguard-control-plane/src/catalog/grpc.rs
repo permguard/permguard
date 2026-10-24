@@ -6,13 +6,14 @@
 //! Each method converts the request's fields, calls the same domain function HTTP calls, and shapes
 //! the answer through [`crate::wire`]. The only knowledge of its own is the protobuf field layout.
 
+use permguard_core::{ApiError, ErrorClass, codes};
 use tonic::{Request, Response, Status};
 
 use crate::v1;
 use crate::v1::zone_catalog_server::ZoneCatalog;
 use crate::wire;
 
-use super::{CatalogFacade, exports, ledgers, zones};
+use super::{CatalogFacade, exports, imports, ledgers, zones};
 
 fn wire_zone(zone: permguard_core::Zone) -> v1::Zone {
     v1::Zone {
@@ -48,6 +49,13 @@ fn wire_ledger(ledger: permguard_core::Ledger) -> v1::Ledger {
         serving_members: Vec::new(),
         revision: ledger.revision,
         state: ledger.state.as_str().to_owned(),
+        provenance: ledger.provenance.map(|provenance| v1::LedgerProvenance {
+            manifest_digest: provenance.manifest_digest,
+            source_host_id: provenance.source_host_id,
+            source_zone_id: provenance.source_zone_id,
+            source_ledger_id: provenance.source_ledger_id,
+            exported_at: provenance.exported_at,
+        }),
     }
 }
 
@@ -280,6 +288,64 @@ impl ZoneCatalog for CatalogFacade {
             .await
             .map_err(|error| self.refuse(error))?;
         Ok(Response::new(wire_export(exported)))
+    }
+
+    async fn import(&self, request: Request<v1::ImportRequest>) -> Answer<v1::ImportResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let request = request.into_inner();
+        let mode = imports::Mode::parse(&request.mode).ok_or_else(|| {
+            self.refuse(
+                ApiError::new(
+                    ErrorClass::Validation,
+                    codes::common::INVALID_ARGUMENT,
+                    "`mode` is `archive` or `re-home`",
+                )
+                .into(),
+            )
+        })?;
+        let imported = imports::import(
+            self,
+            &actor,
+            &request.zone,
+            imports::Request {
+                mode,
+                name: (!request.name.is_empty()).then_some(request.name.as_str()),
+                request_id: &request.request_id,
+                archive: &request.archive,
+                bundle_manifest: &request.bundle_manifest,
+                bundle_items: &request.bundle_items,
+                pin: &request.pin,
+            },
+        )
+        .await
+        .map_err(|error| self.refuse(error))?;
+        Ok(Response::new(v1::ImportResponse {
+            mode: imported.mode.to_owned(),
+            manifest_digest: imported.manifest_digest,
+            source_host_id: imported.source_host_id,
+            source_zone_id: imported.source_zone_id,
+            archive: imported.archive.map(|record| v1::ArchiveRecord {
+                id: record.id,
+                name: record.name,
+                imported_at: record.imported_at,
+                manifest_digest: record.manifest_digest,
+                source_host_id: record.source_host_id,
+                source_zone_id: record.source_zone_id,
+                source_zone_name: record.source_zone_name,
+                ledgers: record
+                    .ledgers
+                    .into_iter()
+                    .map(|ledger| v1::ExportedLedger {
+                        id: ledger.id,
+                        name: ledger.name,
+                        refs: ledger.refs,
+                        objects: ledger.objects,
+                        statements: ledger.statements,
+                    })
+                    .collect(),
+            }),
+            ledgers: imported.ledgers.into_iter().map(wire_ledger).collect(),
+        }))
     }
 
     async fn export_zone(

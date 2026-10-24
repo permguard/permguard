@@ -486,6 +486,68 @@ impl crate::catalog::Catalog for GrpcAdmin {
         Ok(Self::export(answer))
     }
 
+    fn import(
+        &self,
+        zone: &str,
+        request: &crate::catalog::ImportRequest,
+    ) -> Result<crate::catalog::Imported, CatalogFailure> {
+        let mut client = self.catalog();
+        let answer = self
+            .0
+            .call(
+                "Import",
+                client.import(proto::ImportRequest {
+                    zone: zone.to_owned(),
+                    request_id: crate::catalog::request_id()?,
+                    mode: request.mode.clone(),
+                    name: request.name.clone().unwrap_or_default(),
+                    archive: request.archive.clone(),
+                    bundle_manifest: request.bundle_manifest.clone(),
+                    bundle_items: request.bundle_items.clone(),
+                    pin: request.pin.clone(),
+                }),
+            )
+            .map_err(Self::failure)?;
+        let ledger = |ledger: proto::Ledger| Ledger {
+            id: ledger.id,
+            zone_id: ledger.zone_id,
+            name: ledger.name,
+            default_ref: ledger.default_ref,
+            created_at: ledger.created_at,
+            updated_at: ledger.updated_at,
+            revision: ledger.revision,
+            state: active_unless_said(ledger.state),
+            provenance: ledger.provenance.map(provenance_of),
+        };
+        Ok(crate::catalog::Imported {
+            mode: answer.mode,
+            manifest_digest: answer.manifest_digest,
+            source_host_id: answer.source_host_id,
+            source_zone_id: answer.source_zone_id,
+            archive: answer.archive.map(|record| crate::catalog::ArchiveRecord {
+                id: record.id,
+                name: record.name,
+                imported_at: record.imported_at,
+                manifest_digest: record.manifest_digest,
+                source_host_id: record.source_host_id,
+                source_zone_id: record.source_zone_id,
+                source_zone_name: record.source_zone_name,
+                ledgers: record
+                    .ledgers
+                    .into_iter()
+                    .map(|ledger| crate::catalog::ExportedLedger {
+                        id: ledger.id,
+                        name: ledger.name,
+                        refs: ledger.refs,
+                        objects: ledger.objects,
+                        statements: ledger.statements,
+                    })
+                    .collect(),
+            }),
+            ledgers: answer.ledgers.into_iter().map(ledger).collect(),
+        })
+    }
+
     fn export_zone(&self, zone: &str) -> Result<crate::catalog::Export, CatalogFailure> {
         let mut client = self.catalog();
         let answer = self
@@ -612,6 +674,7 @@ impl GrpcAdmin {
             updated_at: ledger.updated_at,
             revision: ledger.revision,
             state: active_unless_said(ledger.state),
+            provenance: ledger.provenance.map(provenance_of),
         })
     }
 
@@ -751,6 +814,7 @@ impl GrpcAdmin {
                 updated_at: ledger.updated_at,
                 revision: ledger.revision,
                 state: active_unless_said(ledger.state),
+                provenance: ledger.provenance.map(provenance_of),
             })
             .collect())
     }
@@ -867,6 +931,17 @@ impl GrpcAdmin {
 
 /// A ledger's state as gRPC carries it: a server older than states sends none, which reads as
 /// `active`, as it does over REST (WP-7.3b).
+/// A re-homed ledger's provenance as the wire carries it (WP-7.10).
+fn provenance_of(provenance: proto::LedgerProvenance) -> permguard_core::Provenance {
+    permguard_core::Provenance {
+        manifest_digest: provenance.manifest_digest,
+        source_host_id: provenance.source_host_id,
+        source_zone_id: provenance.source_zone_id,
+        source_ledger_id: provenance.source_ledger_id,
+        exported_at: provenance.exported_at,
+    }
+}
+
 fn active_unless_said(state: String) -> String {
     if state.is_empty() {
         "active".to_owned()

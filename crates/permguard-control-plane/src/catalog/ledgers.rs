@@ -59,6 +59,38 @@ pub(crate) async fn create(
         .map(Ledger::public)
 }
 
+/// Creates a re-homed ledger in `zone` (WP-7.10): a create's transaction, the record carrying the
+/// provenance of the export it was imported from. The import checked its authorization, its
+/// archive and its name.
+pub(crate) async fn create_rehomed(
+    facade: &CatalogFacade,
+    actor: &Actor,
+    zone: &permguard_core::Zone,
+    name: &str,
+    provenance: &permguard_core::Provenance,
+    change: super::Change<'_>,
+) -> Result<Ledger, Refusal> {
+    let zone_id = Selector::Id(zone.id.clone());
+    facade
+        .mutate(
+            actor,
+            super::LEDGER_CREATE,
+            change,
+            super::target::new_ledger(&zone.id),
+            |write| {
+                facade.catalog.create_ledger_with(
+                    &zone_id,
+                    name,
+                    &Write {
+                        provenance: Some(provenance),
+                        ..*write
+                    },
+                )
+            },
+        )
+        .await
+}
+
 /// The ledgers of a zone the caller may read, windowed: a grant on one ledger is enough to name
 /// the zone and see that ledger, and no other.
 pub(crate) fn list(

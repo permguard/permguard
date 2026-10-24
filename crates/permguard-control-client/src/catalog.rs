@@ -51,6 +51,9 @@ pub struct Ledger {
     /// `active` or `archived` (WP-7.3b): an archived ledger is read and takes no push.
     #[serde(default = "active")]
     pub state: String,
+    /// A re-homed ledger's provenance (WP-7.10).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<permguard_core::Provenance>,
 }
 
 /// What the server says when it refuses: the shape every Permguard API shares.
@@ -458,6 +461,79 @@ pub trait Catalog {
     fn export_ledger(&self, zone: &str, ledger: &str) -> Result<Export, Failure>;
     /// Exports every ledger of a zone (WP-7.10).
     fn export_zone(&self, zone: &str) -> Result<Export, Failure>;
+    /// Imports an archive into `zone` (WP-7.10).
+    fn import(&self, zone: &str, request: &ImportRequest) -> Result<Imported, Failure>;
+}
+
+/// What an import hands the plane (WP-7.10).
+#[derive(Debug, Clone)]
+pub struct ImportRequest {
+    /// `archive` or `re-home`.
+    pub mode: String,
+    /// The archive's name, or the one ledger's of a one-ledger archive re-homed.
+    pub name: Option<String>,
+    pub archive: Vec<u8>,
+    /// The source Host's keys bundle: its manifest and items.
+    pub bundle_manifest: Vec<u8>,
+    pub bundle_items: Vec<Vec<u8>>,
+    /// The source Host's identity pin.
+    pub pin: String,
+}
+
+/// An archive kept as foreign evidence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchiveRecord {
+    pub id: String,
+    pub name: String,
+    pub imported_at: u64,
+    pub manifest_digest: String,
+    pub source_host_id: String,
+    pub source_zone_id: String,
+    pub source_zone_name: String,
+    pub ledgers: Vec<ExportedLedger>,
+}
+
+/// What an import landed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Imported {
+    pub mode: String,
+    pub manifest_digest: String,
+    pub source_host_id: String,
+    pub source_zone_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive: Option<ArchiveRecord>,
+    pub ledgers: Vec<Ledger>,
+}
+
+/// Imports an archive over HTTP.
+pub fn import(
+    client: &Client,
+    endpoint: &Endpoint,
+    zone: &str,
+    request: &ImportRequest,
+) -> Result<Imported, Failure> {
+    use base64::Engine as _;
+    let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+    let mut body = serde_json::json!({
+        "request_id": request_id()?,
+        "mode": request.mode,
+        "archive": b64(&request.archive),
+        "bundle": {
+            "manifest": b64(&request.bundle_manifest),
+            "items": request.bundle_items.iter().map(|item| b64(item)).collect::<Vec<_>>(),
+        },
+        "pin": request.pin,
+    });
+    if let Some(name) = &request.name {
+        body["name"] = serde_json::Value::String(name.clone());
+    }
+    call(
+        client,
+        endpoint,
+        "POST",
+        &format!("/v1/zones/{}/import", crate::encode::value(zone)),
+        Some(&body.to_string()),
+    )
 }
 
 /// An export (WP-7.10): the archive, a canonical CBOR map `{1 manifest, 2 bundle}` whose manifest
@@ -642,6 +718,10 @@ impl Catalog for HttpCatalog {
 
     fn export_zone(&self, zone: &str) -> Result<Export, Failure> {
         export_zone(&self.client, &self.endpoint, zone)
+    }
+
+    fn import(&self, zone: &str, request: &ImportRequest) -> Result<Imported, Failure> {
+        import(&self.client, &self.endpoint, zone, request)
     }
 
     fn restore_ledger(

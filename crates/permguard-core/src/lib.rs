@@ -64,7 +64,9 @@ pub use audit::{
     AuditDestination, AuditEvent, AuditOutcome, AuditPhase, AuditSink, Fact, Sensitivity, Subject,
 };
 pub use authz::NoRules;
-pub use catalog::{Catalog, CatalogError, Ledger, LedgerState, Selector, Tombstone, Zone};
+pub use catalog::{
+    Catalog, CatalogError, Ledger, LedgerState, Provenance, Selector, Tombstone, Zone,
+};
 pub use config::{BuildSettings, Config, Layers};
 pub use config_file::ConfigFile;
 pub use config_section::{AnyConfigSection, ConfigSection};

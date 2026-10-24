@@ -173,6 +173,7 @@ fn a_record_starts_at_revision_1_and_moves_by_one() {
             &Write {
                 expected_revision: None,
                 operation: Some("op-1"),
+                provenance: None,
             },
         )
         .expect("created");
@@ -187,6 +188,7 @@ fn a_record_starts_at_revision_1_and_moves_by_one() {
             &Write {
                 expected_revision: Some(1),
                 operation: Some("op-2"),
+                provenance: None,
             },
         )
         .expect("renamed");
@@ -206,6 +208,7 @@ fn a_record_starts_at_revision_1_and_moves_by_one() {
             &Write {
                 expected_revision: Some(1),
                 operation: Some("op-3"),
+                provenance: None,
             },
         )
         .expect("renamed");
@@ -240,6 +243,7 @@ fn a_stale_revision_is_a_conflict_and_changes_nothing() {
     let stale = Write {
         expected_revision: Some(7),
         operation: Some("op-x"),
+        provenance: None,
     };
     let zone_id = Selector::Id(zone.id.clone());
     let ledger_id = Selector::Id(ledger.id.clone());
@@ -344,6 +348,7 @@ fn a_deleted_ledger_leaves_a_tombstone_and_its_directory() {
             &Write {
                 expected_revision: Some(1),
                 operation: Some("op-delete"),
+                provenance: None,
             },
         )
         .expect("deleted");
@@ -451,6 +456,7 @@ fn a_ledger_is_archived_and_restored_in_the_store() {
     let at = |revision| Write {
         expected_revision: Some(revision),
         operation: None,
+        provenance: None,
     };
 
     let archived = catalog
@@ -524,6 +530,7 @@ fn a_tombstone_an_interrupted_delete_left_leaves_the_record_live() {
             &Write {
                 expected_revision: Some(1),
                 operation: Some("op-delete"),
+                provenance: None,
             },
         )
         .expect("deleted");

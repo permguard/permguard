@@ -45,6 +45,7 @@ impl AuditSchema for ControlPlaneAudit {
         "ledger.delete.refused",
         "ledger.exported",
         "zone.exported",
+        "zone.archive_imported",
         "notp.push.negotiate.refused",
         "notp.upload.refused",
         "notp.push.commit.refused",

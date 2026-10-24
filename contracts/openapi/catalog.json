@@ -1534,6 +1534,134 @@
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ExportZone",
         "x-grpc-body": {}
       }
+    },
+    "/v1/zones/{zone}/import": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        }
+      ],
+      "post": {
+        "operationId": "importArchive",
+        "summary": "Import an archive",
+        "description": "Under `catalog.write` and `policy.push` on the zone (WP-7.10): an archive another Host exported, verified whole from that Host's keys bundle and identity pin before anything is written. `archive` keeps it verbatim as foreign evidence under a name, never served; `re-home` creates a new ledger per source ledger, its provenance in its record, its objects landed and no ref: it serves once an operator pushes a head. Nothing an import writes replaces anything.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the import landed: the archive kept, or the ledgers created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A body that is not a closed JSON `ImportBody`, a mode that is neither `archive` nor `re-home`, a value that is not base64url, or an archive that does not verify or hold together (`invalid_argument`): nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the zone's name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The zone keeps an archive or holds a ledger of a name the import would take (`name_taken`), or a request id already used for another change (`request_id_reused`). A re-home of several ledgers that meets a name taken after its check, or a crash, stops after some, never replacing anything: the same `request_id` resumes it within the replay window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store could not be written (`internal`), or the import was made and its audit record could not be written (`mutation_unrecorded`): retry with the same `request_id`, which resumes a re-home stopped after some ledgers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This plane composes no transfer of ledgers, or the Host composes no mutation transaction (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/Import",
+        "x-grpc-body": {
+          "request_id": "request_id",
+          "mode": "mode",
+          "name": "name",
+          "archive": "archive",
+          "bundle_manifest": "bundle",
+          "bundle_items": "bundle",
+          "pin": "pin"
+        }
+      }
     }
   },
   "components": {
@@ -1665,6 +1793,11 @@
             ],
             "description": "`archived` is read, pulled and mirrored and refuses a push (`409 ledger_archived`); `active` takes pushes (WP-7.3b).",
             "x-grpc-field": "state"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance",
+            "description": "A re-homed ledger's provenance, set at its creation and never changed; absent on a ledger created here (WP-7.10).",
+            "x-grpc-field": "provenance"
           }
         },
         "required": [
@@ -2011,6 +2144,273 @@
         "additionalProperties": false,
         "description": "An export.",
         "x-grpc-message": "permguard.control.v1.ExportResponse"
+      },
+      "BundleBody": {
+        "type": "object",
+        "properties": {
+          "manifest": {
+            "type": "string",
+            "description": "The keys bundle's manifest, base64url."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its items, base64url, every page joined."
+          }
+        },
+        "required": [
+          "manifest",
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "The source Host's keys bundle, as the Host API's key bundle answers it.",
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC carries the manifest and the items as `bundle_manifest` and `bundle_items` of ImportRequest, bytes."
+      },
+      "ImportBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The import's request id, repeated by a retry."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "archive",
+              "re-home"
+            ],
+            "description": "`archive` keeps the archive as foreign evidence; `re-home` creates new ledgers."
+          },
+          "name": {
+            "type": "string",
+            "description": "The archive's name, or the one ledger's of a one-ledger archive re-homed."
+          },
+          "archive": {
+            "type": "string",
+            "description": "The archive an export answered, base64url."
+          },
+          "bundle": {
+            "$ref": "#/components/schemas/BundleBody"
+          },
+          "pin": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The source Host's identity pin."
+          }
+        },
+        "required": [
+          "request_id",
+          "mode",
+          "archive",
+          "bundle",
+          "pin"
+        ],
+        "additionalProperties": false,
+        "description": "The body of an import, closed.",
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC carries these as fields of ImportRequest, the archive and the bundle's manifest and items as bytes."
+      },
+      "ArchivedLedger": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ledger's id at the source.",
+            "x-grpc-field": "id"
+          },
+          "name": {
+            "type": "string",
+            "description": "Its name.",
+            "x-grpc-field": "name"
+          },
+          "refs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many refs the manifest binds.",
+            "x-grpc-field": "refs"
+          },
+          "objects": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many objects of its closure the bundle carries.",
+            "x-grpc-field": "objects"
+          },
+          "statements": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many head statements the bundle carries.",
+            "x-grpc-field": "statements"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "refs",
+          "objects",
+          "statements"
+        ],
+        "additionalProperties": false,
+        "description": "One ledger an archive kept as evidence holds, by its source identity.",
+        "x-grpc-message": "permguard.control.v1.ExportedLedger"
+      },
+      "ArchiveRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The archive's id in the zone.",
+            "x-grpc-field": "id"
+          },
+          "name": {
+            "type": "string",
+            "description": "Its name, unique among the zone's archives.",
+            "x-grpc-field": "name"
+          },
+          "imported_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds since the Unix epoch.",
+            "x-grpc-field": "imported_at"
+          },
+          "manifest_digest": {
+            "type": "string",
+            "description": "`sha256:` over the manifest's COSE_Sign1 bytes.",
+            "x-grpc-field": "manifest_digest"
+          },
+          "source_host_id": {
+            "type": "string",
+            "description": "The source Host, 32 lowercase hex characters.",
+            "x-grpc-field": "source_host_id"
+          },
+          "source_zone_id": {
+            "type": "string",
+            "description": "The zone's id at the source.",
+            "x-grpc-field": "source_zone_id"
+          },
+          "source_zone_name": {
+            "type": "string",
+            "description": "Its name at the source.",
+            "x-grpc-field": "source_zone_name"
+          },
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArchivedLedger"
+            },
+            "description": "Every ledger the archive holds.",
+            "x-grpc-field": "ledgers"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "imported_at",
+          "manifest_digest",
+          "source_host_id",
+          "source_zone_id",
+          "source_zone_name",
+          "ledgers"
+        ],
+        "additionalProperties": false,
+        "description": "An archive kept as foreign evidence: never a ledger, never served.",
+        "x-grpc-message": "permguard.control.v1.ArchiveRecord"
+      },
+      "ImportView": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "archive",
+              "re-home"
+            ],
+            "description": "The import's mode.",
+            "x-grpc-field": "mode"
+          },
+          "manifest_digest": {
+            "type": "string",
+            "description": "`sha256:` over the manifest's COSE_Sign1 bytes.",
+            "x-grpc-field": "manifest_digest"
+          },
+          "source_host_id": {
+            "type": "string",
+            "description": "The source Host.",
+            "x-grpc-field": "source_host_id"
+          },
+          "source_zone_id": {
+            "type": "string",
+            "description": "The zone's id at the source.",
+            "x-grpc-field": "source_zone_id"
+          },
+          "archive": {
+            "$ref": "#/components/schemas/ArchiveRecord",
+            "description": "For an `archive` import: the archive kept.",
+            "x-grpc-field": "archive"
+          },
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ledger"
+            },
+            "description": "For a `re-home` import: the ledgers created, each with its provenance.",
+            "x-grpc-field": "ledgers"
+          }
+        },
+        "required": [
+          "mode",
+          "manifest_digest",
+          "source_host_id",
+          "source_zone_id",
+          "ledgers"
+        ],
+        "additionalProperties": false,
+        "description": "An import.",
+        "x-grpc-message": "permguard.control.v1.ImportResponse"
+      },
+      "Provenance": {
+        "type": "object",
+        "properties": {
+          "manifest_digest": {
+            "type": "string",
+            "description": "`sha256:` over the export manifest's COSE_Sign1 bytes.",
+            "x-grpc-field": "manifest_digest"
+          },
+          "source_host_id": {
+            "type": "string",
+            "description": "The source Host, 32 lowercase hex characters.",
+            "x-grpc-field": "source_host_id"
+          },
+          "source_zone_id": {
+            "type": "string",
+            "description": "The zone's id at the source.",
+            "x-grpc-field": "source_zone_id"
+          },
+          "source_ledger_id": {
+            "type": "string",
+            "description": "The ledger's id at the source.",
+            "x-grpc-field": "source_ledger_id"
+          },
+          "exported_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "When the source exported it, seconds since the Unix epoch.",
+            "x-grpc-field": "exported_at"
+          }
+        },
+        "required": [
+          "manifest_digest",
+          "source_host_id",
+          "source_zone_id",
+          "source_ledger_id",
+          "exported_at"
+        ],
+        "additionalProperties": false,
+        "description": "The export a re-homed ledger was imported from (WP-7.10).",
+        "x-grpc-message": "permguard.control.v1.LedgerProvenance"
       }
     }
   },

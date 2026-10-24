@@ -138,12 +138,39 @@ pub fn catalog_command(
                     trace,
                 )?;
             }
+            ZonesAction::Import {
+                file,
+                target,
+                mode,
+                bundle,
+                pin,
+            } => {
+                let request = import_request(&file, mode, None, &bundle, pin)?;
+                let imported = backend.import(&target, &request).map_err(failed)?;
+                render(&ImportReport(&imported), globals.output, trace)?;
+            }
             ZonesAction::Export { zone, out } => {
                 let export = backend.export_zone(&zone).map_err(failed)?;
                 written(&out, &export, globals, trace)?;
             }
         },
         CatalogAction::Ledgers(action) => match action {
+            LedgersAction::Import {
+                file,
+                target,
+                mode,
+                bundle,
+                pin,
+            } => {
+                let Some((zone, name)) = target.split_once('/') else {
+                    return Err(Failure::usage(format!(
+                        "--as {target}: name the zone and the ledger, `<zone>/<name>`"
+                    )));
+                };
+                let request = import_request(&file, mode, Some(name.to_owned()), &bundle, pin)?;
+                let imported = backend.import(zone, &request).map_err(failed)?;
+                render(&ImportReport(&imported), globals.output, trace)?;
+            }
             LedgersAction::Export { zone, ledger, out } => {
                 let export = backend.export_ledger(&zone, &ledger).map_err(failed)?;
                 written(&out, &export, globals, trace)?;
@@ -342,4 +369,87 @@ fn written(
         trace,
     )?;
     Ok(())
+}
+
+/// The keys bundle file an import reads (WP-7.10): the source Host's bundle, base64url.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BundleFile {
+    manifest: String,
+    items: Vec<String>,
+}
+
+/// What `import` hands the plane: the archive file, the bundle file decoded, the pin.
+fn import_request(
+    file: &std::path::Path,
+    mode: String,
+    name: Option<String>,
+    bundle: &std::path::Path,
+    pin: String,
+) -> Result<catalog::ImportRequest, Failure> {
+    use base64::Engine as _;
+    let read = |path: &std::path::Path| {
+        std::fs::read(path).map_err(|error| Failure::usage(format!("{}: {error}", path.display())))
+    };
+    let archive = read(file)?;
+    let held: BundleFile = serde_json::from_slice(&read(bundle)?).map_err(|error| {
+        Failure::usage(format!(
+            "--bundle {}: not a keys bundle file: {error}",
+            bundle.display()
+        ))
+    })?;
+    let decode = |value: &str| {
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(value)
+            .map_err(|error| {
+                Failure::usage(format!(
+                    "--bundle {}: a value is not base64url: {error}",
+                    bundle.display()
+                ))
+            })
+    };
+    Ok(catalog::ImportRequest {
+        mode,
+        name,
+        archive,
+        bundle_manifest: decode(&held.manifest)?,
+        bundle_items: held
+            .items
+            .iter()
+            .map(|item| decode(item))
+            .collect::<Result<_, _>>()?,
+        pin,
+    })
+}
+
+/// What an import reports.
+#[derive(serde::Serialize)]
+#[serde(transparent)]
+struct ImportReport<'a>(&'a catalog::Imported);
+
+impl crate::output::Report for ImportReport<'_> {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        let imported = self.0;
+        writeln!(out, "Imported ({})", imported.mode)?;
+        writeln!(out, "manifest digest  {}", imported.manifest_digest)?;
+        writeln!(out, "source host      {}", imported.source_host_id)?;
+        writeln!(out, "source zone      {}", imported.source_zone_id)?;
+        if let Some(archive) = &imported.archive {
+            writeln!(out, "archive          {} ({})", archive.name, archive.id)?;
+            writeln!(
+                out,
+                "Kept as foreign evidence: never a ledger of this Host, never served."
+            )?;
+        }
+        for ledger in &imported.ledgers {
+            writeln!(out, "  ledger {} {}", ledger.id, ledger.name)?;
+        }
+        if !imported.ledgers.is_empty() {
+            writeln!(
+                out,
+                "Re-homed: each ledger serves once you push its head (`permguard apply`)."
+            )?;
+        }
+        Ok(())
+    }
 }

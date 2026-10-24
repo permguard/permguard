@@ -89,6 +89,24 @@ pub struct Ledger {
     /// Whether the ledger takes pushes (WP-7.3b): a record written before reads as active.
     #[serde(default)]
     pub state: LedgerState,
+    /// Where a re-homed ledger came from (WP-7.10): the export it was imported from, recorded at
+    /// its creation and never changed. Absent on a ledger created here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Provenance>,
+}
+
+/// The export a re-homed ledger was imported from (WP-7.10): its genesis names the source, never
+/// the source's authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Provenance {
+    /// `sha256:` over the export manifest's COSE_Sign1 bytes.
+    pub manifest_digest: String,
+    /// The source Host, 32 lowercase hex characters.
+    pub source_host_id: String,
+    pub source_zone_id: String,
+    pub source_ledger_id: String,
+    /// When the source exported it, seconds since the Unix epoch.
+    pub exported_at: u64,
 }
 
 /// A ledger's state (WP-7.3b, owner decision of 2026-10-21): an archived ledger stays readable,
@@ -150,6 +168,8 @@ fn first_revision() -> u64 {
 pub struct Write<'a> {
     pub expected_revision: Option<u64>,
     pub operation: Option<&'a str>,
+    /// For a create: the provenance of a re-homed ledger (WP-7.10).
+    pub provenance: Option<&'a Provenance>,
 }
 
 impl Write<'_> {

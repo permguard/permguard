@@ -101,6 +101,7 @@ fn ledger(id: &str, zone_id: &str, name: &str) -> proto::Ledger {
         default_ref: "main".into(),
         revision: 1,
         state: "active".into(),
+        provenance: None,
     }
 }
 
@@ -278,6 +279,13 @@ impl ZoneCatalog for FakePlane {
         &self,
         _request: Request<proto::ExportZoneRequest>,
     ) -> Result<Response<proto::ExportResponse>, Status> {
+        Err(Status::unimplemented("not in this fake"))
+    }
+
+    async fn import(
+        &self,
+        _request: Request<proto::ImportRequest>,
+    ) -> Result<Response<proto::ImportResponse>, Status> {
         Err(Status::unimplemented("not in this fake"))
     }
 

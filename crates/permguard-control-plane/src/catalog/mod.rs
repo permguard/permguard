@@ -113,6 +113,7 @@ mod window_tests {
 pub(crate) mod exports;
 pub(crate) mod grpc;
 pub(crate) mod http;
+pub(crate) mod imports;
 pub(crate) mod ledgers;
 mod parity;
 pub(crate) mod serving;
@@ -524,6 +525,7 @@ impl CatalogFacade {
                 match apply(&permguard_core::catalog::Write {
                     expected_revision: None,
                     operation: Some(&operation_id),
+                    provenance: None,
                 }) {
                     Ok(value) => Ok(Applied {
                         revision: value.revision(),

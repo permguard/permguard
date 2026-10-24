@@ -19,6 +19,10 @@ is cut.
 
 ### Added
 
+- **An exported archive is imported into another Host (WP-7.10b).**
+  `permguard ledgers import <file> --as <zone>/<name>` and `permguard zones import <file> --as <zone>`, with `--mode archive|re-home`, the source Host's keys bundle (`--bundle`) and identity pin (`--pin`), reach `POST /v1/zones/{zone}/import` and gRPC `Import` under `catalog.write` and `policy.push`.
+  The archive is verified whole before anything is written: the manifest from the bundle and pin, the bundle's digest, every object canonical, each ledger's objects exactly what its refs reach, every statement on a ref the manifest names, the counts.
+  `archive` keeps it verbatim as foreign evidence under `<zone>/archives/`, never a ledger and never served; `re-home` creates new ledgers whose catalog record carries their provenance, lands their objects and copies no ref nor head statement, so a ledger serves once an operator pushes a head; a name already taken is refused and nothing is overwritten.
 - **A ledger or a zone is exported as a signed archive (WP-7.10a).**
   `permguard ledgers export --zone <zone> <ledger> --out <file>` and `permguard zones export <zone> --out <file>`, over REST (`POST /v1/zones/{zone}/ledgers/{ledger}/export`, `POST /v1/zones/{zone}/export`) and gRPC (`ExportLedger`, `ExportZone`), under `catalog.read`, write a canonical CBOR archive to a new file only its owner reads.
   The bundle carries every object a ref reaches and every head statement byte for byte; the manifest, a COSE_Sign1 `permguard.ledger.export.v1`, is signed by the Host under `host.operations` — the one artifact a Plane may have signed on that ring, its payload written by the Host — and binds the source Host, every ledger's refs and counts, and the bundle's digest.

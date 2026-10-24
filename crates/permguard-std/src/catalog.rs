@@ -552,6 +552,7 @@ impl Catalog for FileCatalog {
             revision: FIRST_REVISION,
             operation: write.operation.map(str::to_owned),
             state: LedgerState::Active,
+            provenance: write.provenance.cloned(),
         };
 
         // Born with its own directory: the address of whatever a ledger will hold is part of

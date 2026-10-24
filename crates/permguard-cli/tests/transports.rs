@@ -171,6 +171,7 @@ fn ledger() -> proto::Ledger {
         default_ref: "main".into(),
         revision: 1,
         state: "active".into(),
+        provenance: None,
     }
 }
 
@@ -189,6 +190,38 @@ fn rest() -> Router {
     Router::new()
         .route("/v1/zones", get(json(zones.to_owned())))
         .route("/v1/zones/acme/ledgers", get(json(ledgers.to_owned())))
+        .route(
+            "/v1/zones/acme/import",
+            post(|body: String| async move {
+                use base64::Engine as _;
+                let sent: Value = serde_json::from_str(&body).expect("JSON");
+                let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+                assert_eq!(sent["mode"], "re-home");
+                assert_eq!(sent["name"], "copy");
+                assert_eq!(sent["pin"], "sha256:pin");
+                assert_eq!(sent["archive"], b64(ARCHIVE));
+                assert_eq!(sent["bundle"]["manifest"], b64(b"bundle"));
+                assert_eq!(sent["bundle"]["items"][0], b64(b"item"));
+                let answer = serde_json::json!({
+                    "mode": "re-home",
+                    "manifest_digest": format!("sha256:{}", "cd".repeat(32)),
+                    "source_host_id": "07".repeat(16),
+                    "source_zone_id": "z-src",
+                    "ledgers": [{
+                        "id": "l-1", "zone_id": "z-1", "name": "copy", "default_ref": "main",
+                        "created_at": 1, "updated_at": 1, "revision": 1, "state": "active",
+                        "provenance": {
+                            "manifest_digest": format!("sha256:{}", "cd".repeat(32)),
+                            "source_host_id": "07".repeat(16),
+                            "source_zone_id": "z-src",
+                            "source_ledger_id": "l-src",
+                            "exported_at": 1_800_000_000u64,
+                        }
+                    }],
+                });
+                ([("content-type", "application/json")], answer.to_string())
+            }),
+        )
         .route(
             "/v1/zones/acme/ledgers/main-ledger/export",
             post(|| async {
@@ -438,6 +471,43 @@ impl ZoneCatalog for Plane {
         _request: Request<proto::ExportZoneRequest>,
     ) -> Result<Response<proto::ExportResponse>, Status> {
         unserved()
+    }
+
+    async fn import(
+        &self,
+        request: Request<proto::ImportRequest>,
+    ) -> Result<Response<proto::ImportResponse>, Status> {
+        let request = request.into_inner();
+        assert_eq!(
+            (
+                request.zone.as_str(),
+                request.mode.as_str(),
+                request.name.as_str(),
+                request.pin.as_str()
+            ),
+            ("acme", "re-home", "copy", "sha256:pin")
+        );
+        assert_eq!(request.archive, ARCHIVE);
+        assert_eq!(request.bundle_manifest, b"bundle".to_vec());
+        assert_eq!(request.bundle_items, vec![b"item".to_vec()]);
+        Ok(Response::new(proto::ImportResponse {
+            mode: "re-home".to_owned(),
+            manifest_digest: format!("sha256:{}", "cd".repeat(32)),
+            source_host_id: "07".repeat(16),
+            source_zone_id: "z-src".to_owned(),
+            archive: None,
+            ledgers: vec![proto::Ledger {
+                name: "copy".to_owned(),
+                provenance: Some(proto::LedgerProvenance {
+                    manifest_digest: format!("sha256:{}", "cd".repeat(32)),
+                    source_host_id: "07".repeat(16),
+                    source_zone_id: "z-src".to_owned(),
+                    source_ledger_id: "l-src".to_owned(),
+                    exported_at: 1_800_000_000,
+                }),
+                ..ledger()
+            }],
+        }))
     }
 }
 
@@ -854,6 +924,68 @@ fn a_ledger_export_writes_the_archive_on_both_transports() {
         assert_eq!(std::fs::read(&file).expect("kept"), ARCHIVE);
     }
     assert_eq!(reports[0], reports[1], "the transports report alike");
+}
+
+/// WP-7.10: `ledgers import` hands the plane the archive, the keys bundle file decoded and the
+/// pin, alike on both transports, and reports the ledger re-homed with its provenance; an `--as`
+/// naming no zone is refused before anything is read.
+#[test]
+fn a_ledger_import_hands_the_archive_and_the_bundle_on_both_transports() {
+    use base64::Engine as _;
+    let dir = scratch("import");
+    let pki = pki(&dir);
+    let address = serve(rest().merge(grpc()), &pki, Seen::default());
+    let archive = dir.join("release.export");
+    std::fs::write(&archive, ARCHIVE).expect("written");
+    let bundle = dir.join("source.bundle");
+    let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+    std::fs::write(
+        &bundle,
+        serde_json::json!({"manifest": b64(b"bundle"), "items": [b64(b"item")]}).to_string(),
+    )
+    .expect("written");
+    let run = |scheme: &str, target: &str| {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        cli(
+            &dir,
+            &[
+                "-o",
+                "json",
+                "--tls-ca-file",
+                &pki.authority.display().to_string(),
+                "ledgers",
+                "import",
+                &archive.display().to_string(),
+                "--as",
+                target,
+                "--mode",
+                "re-home",
+                "--bundle",
+                &bundle.display().to_string(),
+                "--pin",
+                "sha256:pin",
+                "--control-endpoint",
+                &endpoint,
+            ],
+        )
+    };
+    let mut reports = Vec::new();
+    for scheme in ["https", "grpcs"] {
+        let output = run(scheme, "acme/copy");
+        assert!(output.status.success(), "{scheme}: {output:?}");
+        let report: Value = serde_json::from_slice(&output.stdout).expect("JSON");
+        assert_eq!(
+            report["ledgers"][0]["provenance"]["source_ledger_id"], "l-src",
+            "{scheme}"
+        );
+        reports.push(report);
+    }
+    assert_eq!(
+        reports[0]["ledgers"][0]["provenance"],
+        reports[1]["ledgers"][0]["provenance"]
+    );
+    let refused = run("https", "copy");
+    assert_eq!(refused.status.code(), Some(64), "{refused:?}");
 }
 
 #[test]

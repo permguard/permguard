@@ -1043,6 +1043,29 @@ pub enum ZonesAction {
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
         expected_revision: Option<u64>,
     },
+    /// Import an archive another Host exported into an existing zone: every ledger of it, under
+    /// its name at the source.
+    #[command(
+        after_help = "Examples:\n  permguard zones import delivery.export --as delivery --mode re-home --bundle source.bundle --pin sha256:…\n  permguard zones import delivery.export --as evidence --mode archive --bundle source.bundle --pin sha256:…"
+    )]
+    Import {
+        /// The archive file an export wrote.
+        file: PathBuf,
+        /// The zone to import into, by name or id: it exists.
+        #[arg(long = "as", value_name = "ZONE")]
+        target: String,
+        /// `archive` keeps the archive as foreign evidence, never served; `re-home` creates new
+        /// ledgers under this Host, serving once an operator pushes a head.
+        #[arg(long, value_parser = ["archive", "re-home"])]
+        mode: String,
+        /// The source Host's keys bundle: a JSON file `{"manifest": "<base64url>", "items":
+        /// ["<base64url>", …]}`, the pages its Host API answers joined.
+        #[arg(long, value_name = "FILE")]
+        bundle: PathBuf,
+        /// The source Host's identity pin.
+        #[arg(long)]
+        pin: String,
+    },
     /// Export every ledger of a zone: the signed archive the plane's Host answers, written to a
     /// new file.
     #[command(
@@ -1143,6 +1166,29 @@ pub enum LedgersAction {
         /// Another revision on the server refuses the change as `revision_conflict`.
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
         expected_revision: Option<u64>,
+    },
+    /// Import a one-ledger archive another Host exported, as `<zone>/<name>`: the zone exists, the
+    /// name is free.
+    #[command(
+        after_help = "Examples:\n  permguard ledgers import release.export --as delivery/release --mode re-home --bundle source.bundle --pin sha256:…\n  permguard ledgers import release.export --as delivery/release-2026 --mode archive --bundle source.bundle --pin sha256:…"
+    )]
+    Import {
+        /// The archive file an export wrote.
+        file: PathBuf,
+        /// Where it lands, `<zone>/<name>`: the ledger re-homed, or the archive kept.
+        #[arg(long = "as", value_name = "ZONE/NAME")]
+        target: String,
+        /// `archive` keeps the archive as foreign evidence, never served; `re-home` creates new
+        /// ledgers under this Host, serving once an operator pushes a head.
+        #[arg(long, value_parser = ["archive", "re-home"])]
+        mode: String,
+        /// The source Host's keys bundle: a JSON file `{"manifest": "<base64url>", "items":
+        /// ["<base64url>", …]}`, the pages its Host API answers joined.
+        #[arg(long, value_name = "FILE")]
+        bundle: PathBuf,
+        /// The source Host's identity pin.
+        #[arg(long)]
+        pin: String,
     },
     /// Export a ledger: the signed archive the plane's Host answers, written to a new file.
     #[command(

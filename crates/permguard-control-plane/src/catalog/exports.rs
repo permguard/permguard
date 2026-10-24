@@ -51,6 +51,8 @@ pub(crate) struct Exports {
     max_bytes: usize,
     /// One export at a time: the memory bound is per export.
     running: std::sync::Mutex<()>,
+    /// One import at a time: a name checked free stays free until the import lands.
+    pub(crate) importing: tokio::sync::Mutex<()>,
 }
 
 impl Exports {
@@ -66,7 +68,13 @@ impl Exports {
             authority,
             max_bytes,
             running: std::sync::Mutex::new(()),
+            importing: tokio::sync::Mutex::new(()),
         }
+    }
+
+    /// `<volume>/data/zones`: every ledger's store, and every zone's archives.
+    pub(crate) fn zones_root(&self) -> &std::path::Path {
+        &self.zones_root
     }
 }
 
@@ -268,7 +276,8 @@ impl Exports {
                 ]));
             }
             // A head statement is a cache the store replaces with its ref: one read after the refs
-            // may attest a later head, which an importer finds against the manifest's.
+            // may attest a later head. Statements travel as evidence, counted, never the
+            // importer's authority (WP-7.10).
             let mut statements = 0u64;
             for named in &ledger.refs {
                 if let Some(envelope) = store.read_signature(&named.name).map_err(internal)? {
@@ -350,7 +359,7 @@ pub(crate) mod tests {
         pub(crate) exports: Exports,
         pub(crate) zone: Zone,
         pub(crate) ledger: Ledger,
-        ring: crate::handles::TestRing,
+        pub(crate) ring: crate::handles::TestRing,
         reached: std::collections::BTreeSet<Digest>,
         orphan: Digest,
         head: Digest,
