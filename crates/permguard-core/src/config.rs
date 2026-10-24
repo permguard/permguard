@@ -335,6 +335,10 @@ pub const SETTING_AUDIT_CHECKPOINTS_MAX_LAG: &str = "PERMGUARD_AUDIT_CHECKPOINTS
 /// Runtime setting key for how long a read cursor is valid after it is issued (WP-5.5, owner
 /// decision of 2026-10-16).
 pub const SETTING_STREAM_CURSOR_TTL: &str = "PERMGUARD_STREAM_CURSOR_TTL";
+/// Runtime setting key for how long a producer keeps a batch after every required coordinator
+/// acknowledged it (WP-7.9b): the coordinators' snapshot interval plus their recovery time, so a
+/// coordinator restored from a snapshot is resent what it lost. `0s` deletes at once.
+pub const SETTING_STREAM_ACKNOWLEDGED_RETENTION: &str = "PERMGUARD_STREAM_ACKNOWLEDGED_RETENTION";
 /// The non-secret id of the recovery key the deployment encrypts its backups under, bound in every
 /// snapshot manifest (WP-7.8, `8-architecture-storage-operations.md` permissions and encryption).
 /// Unset: the manifest names none.
@@ -1462,6 +1466,7 @@ pub struct Config {
     audit_retention_security: Option<Duration>,
     audit_checkpoints_max_lag: Duration,
     stream_cursor_ttl: Duration,
+    stream_acknowledged_retention: Duration,
     backup_recovery_key_id: Option<String>,
     backup_encryption_profile: Option<String>,
     audit_pseudonym_enabled: bool,
@@ -1661,6 +1666,7 @@ impl Default for Config {
             audit_retention_security: None,
             audit_checkpoints_max_lag: DEFAULT_AUDIT_CHECKPOINTS_MAX_LAG,
             stream_cursor_ttl: DEFAULT_STREAM_CURSOR_TTL,
+            stream_acknowledged_retention: Duration::ZERO,
             backup_recovery_key_id: None,
             backup_encryption_profile: None,
             audit_pseudonym_enabled: false,
@@ -3502,6 +3508,12 @@ produce: use `EdDSA` or `ES256`"
         self.stream_cursor_ttl
     }
 
+    /// Returns how long a producer keeps a batch after every required coordinator acknowledged
+    /// it (WP-7.9b); zero deletes at once.
+    pub fn stream_acknowledged_retention(&self) -> Duration {
+        self.stream_acknowledged_retention
+    }
+
     /// The recovery-key id every snapshot manifest binds (WP-7.8). `None`: none declared.
     pub fn backup_recovery_key_id(&self) -> Option<&str> {
         self.backup_recovery_key_id.as_deref()
@@ -4502,6 +4514,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_AUDIT_RETENTION_SECURITY => self.audit_retention_security.and_then(d),
             SETTING_AUDIT_CHECKPOINTS_MAX_LAG => d(self.audit_checkpoints_max_lag),
             SETTING_STREAM_CURSOR_TTL => d(self.stream_cursor_ttl),
+            SETTING_STREAM_ACKNOWLEDGED_RETENTION => d(self.stream_acknowledged_retention),
             SETTING_BACKUP_RECOVERY_KEY_ID => self.backup_recovery_key_id.clone(),
             SETTING_BACKUP_ENCRYPTION_PROFILE => self.backup_encryption_profile.clone(),
             SETTING_AUDIT_REFUSALS => b(self.audit_refusals),
@@ -5820,6 +5833,11 @@ produce: use `EdDSA` or `ES256`"
             }
         }
 
+        if let Some(value) = settings.get(SETTING_STREAM_ACKNOWLEDGED_RETENTION) {
+            self.stream_acknowledged_retention = parse_duration_allow_zero(value)
+                .with_context(|| format!("reading {SETTING_STREAM_ACKNOWLEDGED_RETENTION}"))?;
+        }
+
         if let Some(value) = settings.get(SETTING_AUDIT_CHECKPOINTS_MAX_LAG) {
             self.audit_checkpoints_max_lag = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_AUDIT_CHECKPOINTS_MAX_LAG}"))?;
@@ -6245,6 +6263,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_AUDIT_RETENTION_SECURITY,
     SETTING_AUDIT_CHECKPOINTS_MAX_LAG,
     SETTING_STREAM_CURSOR_TTL,
+    SETTING_STREAM_ACKNOWLEDGED_RETENTION,
     SETTING_BACKUP_RECOVERY_KEY_ID,
     SETTING_BACKUP_ENCRYPTION_PROFILE,
     SETTING_AUDIT_SINK,

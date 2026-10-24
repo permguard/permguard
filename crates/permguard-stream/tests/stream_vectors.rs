@@ -336,6 +336,7 @@ fn the_subscriptions_are_the_bytes_the_independent_generator_computed() {
                 required: true,
                 runs: vec![(run, 2)],
                 boots: Vec::new(),
+                points: Vec::new(),
                 state: SubscriptionState::Active,
             },
         ),
@@ -347,6 +348,7 @@ fn the_subscriptions_are_the_bytes_the_independent_generator_computed() {
                 required: false,
                 runs: Vec::new(),
                 boots: Vec::new(),
+                points: Vec::new(),
                 state: SubscriptionState::Paused { epoch: 4 },
             },
         ),
@@ -358,6 +360,7 @@ fn the_subscriptions_are_the_bytes_the_independent_generator_computed() {
                 required: true,
                 runs: Vec::new(),
                 boots: Vec::new(),
+                points: Vec::new(),
                 state: SubscriptionState::Stopped {
                     reason: "fork".to_owned(),
                 },

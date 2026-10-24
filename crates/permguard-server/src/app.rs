@@ -1218,7 +1218,9 @@ impl App {
 
     /// The stream engine of this Host on `volume`, the decision log and the event journal
     /// registered on it as producers (WP-5.1, owner decision), sealing their batches under
-    /// `data_attest` when the Host holds it (WP-5.2).
+    /// `data_attest` when the Host holds it (WP-5.2), each batch kept `acknowledged_retention`
+    /// after its coordinators acknowledged it (WP-7.9b).
+    #[allow(clippy::too_many_arguments)]
     fn stream_engine(
         &self,
         volume: &permguard_host::storage::volume::Volume,
@@ -1227,6 +1229,7 @@ impl App {
         data_attest: Option<&Arc<permguard_host::keys::ring::Ring>>,
         time: &Arc<permguard_host::time::TimeGuard>,
         members: &Arc<std::sync::OnceLock<Arc<permguard_host::membership::Store>>>,
+        acknowledged_retention: std::time::Duration,
     ) -> Result<StreamParts, permguard_stream::engine::StreamError> {
         let engine = permguard_stream::engine::Streams::open(
             volume,
@@ -1250,6 +1253,10 @@ impl App {
             decisions = decisions.with_signer(Arc::clone(ring))?;
             events = events.with_signer(Arc::clone(ring))?;
         }
+        // Each batch kept after its coordinators acknowledged it, so one restored from a
+        // snapshot is resent what it lost (WP-7.9b).
+        decisions = decisions.with_acknowledged_retention(acknowledged_retention);
+        events = events.with_acknowledged_retention(acknowledged_retention);
         // Their consumers, what this Host ingests as a coordinator over `decisions.ship` and
         // `events.ship` (WP-5.3), kept as long as the task shipping them says (WP-5.6b).
         let retention = |task| {
@@ -1907,6 +1914,7 @@ impl App {
                         data_signing_keys.as_ref(),
                         &time,
                         &retention_members,
+                        config.stream_acknowledged_retention(),
                     )
                     .map_err(|error| anyhow::anyhow!("{error}"))
                     .context("opening the stream engine")?;

@@ -2147,6 +2147,7 @@ fn stream_samples() -> Vec<Sample> {
                 required: true,
                 runs: vec![([3; 16], 4), ([6; 16], 1)],
                 boots: Vec::new(),
+                points: Vec::new(),
                 state: SubscriptionState::Active,
             }
             .encode()
@@ -2164,6 +2165,7 @@ fn stream_samples() -> Vec<Sample> {
                 required: false,
                 runs: Vec::new(),
                 boots: Vec::new(),
+                points: Vec::new(),
                 state: SubscriptionState::Paused { epoch: 2 },
             }
             .encode()
@@ -2181,6 +2183,7 @@ fn stream_samples() -> Vec<Sample> {
                 required: true,
                 runs: Vec::new(),
                 boots: Vec::new(),
+                points: Vec::new(),
                 state: SubscriptionState::Stopped {
                     reason: "fork".to_owned(),
                 },
@@ -2201,11 +2204,15 @@ fn stream_samples() -> Vec<Sample> {
                 required: true,
                 runs: vec![([3; 16], 4)],
                 boots: vec![([3; 16], HOST_ID)],
+                points: vec![([3; 16], vec![(2, 1_800_000_000), (4, 1_800_000_600)])],
                 state: SubscriptionState::Active,
             }
             .encode()
             .expect("encodes"),
-            &["subscription_run.coordinator_boot_id"],
+            &[
+                "subscription_run.coordinator_boot_id",
+                "subscription_run.points",
+            ],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(Subscription::decode(bytes))
             })),

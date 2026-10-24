@@ -7056,6 +7056,7 @@ fn a_subscription_past_its_bound_is_never_written() {
         required: true,
         runs: Vec::new(),
         boots: Vec::new(),
+        points: Vec::new(),
         state: SubscriptionState::Active,
     };
     for at in 0..4096_u32 {
@@ -7069,4 +7070,240 @@ fn a_subscription_past_its_bound_is_never_written() {
     subscription.boots.truncate(8);
     let bytes = subscription.encode().expect("within its bound");
     assert_eq!(Subscription::decode(&bytes).expect("reads"), subscription);
+}
+
+/// A producer on `host` keeping each batch `retention` after it is acknowledged, streaming four
+/// records on `ledger(1)` under the test fence (WP-7.9b).
+fn retaining(host: &Host, retention: Duration) -> (Producer<Text>, [u8; 16]) {
+    let producer = host.sealer().with_acknowledged_retention(retention);
+    let run = producer
+        .open_run(&ledger(1), Some(fence(1)))
+        .expect("opened")
+        .run_id;
+    for at in 0..4 {
+        producer
+            .append(&ledger(1), &format!("r{at}"))
+            .expect("appended");
+    }
+    (producer, run)
+}
+
+/// Moves `host`'s clock `secs` forward, wall and monotonic alike.
+fn elapse(
+    wall: &permguard_host::time::ManualClock,
+    mono: &permguard_host::time::ManualMonotonic,
+    secs: u64,
+) {
+    wall.jump(i64::try_from(secs).expect("in range"));
+    mono.advance(Duration::from_secs(secs));
+}
+
+/// WP-7.9b, the retention floor: a batch every required subscription acknowledged is kept the
+/// acknowledged retention after the acknowledgement, then deleted; without one it goes at once.
+#[test]
+fn an_acknowledged_batch_is_kept_the_retention_then_deleted() {
+    let (host, wall, mono) = manual_host("retention");
+    let consumer = consumer_on(&host);
+    let (producer, run) = retaining(&host, Duration::from_secs(3600));
+    let shipping = subscribed("decisions", true, 1);
+    producer.due(&shipping).expect("due");
+    assert!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &shipping,
+            vec![pin_of(&host)],
+            1
+        )
+        .iter()
+        .all(|outcome| *outcome == Outcome::Ok)
+    );
+    let held = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(held.points(&run).len(), 1, "the acknowledgement's time");
+    let batch = host
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run))
+        .join("1-4.jws");
+    gc(&producer);
+    assert!(batch.exists(), "acknowledged just now");
+    elapse(&wall, &mono, 3599);
+    gc(&producer);
+    assert!(batch.exists(), "within the retention");
+    elapse(&wall, &mono, 1);
+    gc(&producer);
+    assert!(!batch.exists(), "the retention elapsed");
+}
+
+/// WP-7.9b: an acknowledgement recorded before the retention was set has no time: the first pass
+/// stamps it, and it is kept the retention from there.
+#[test]
+fn an_acknowledgement_from_before_the_retention_ages_from_the_first_pass() {
+    let (host, wall, mono) = manual_host("retention-late");
+    let consumer = consumer_on(&host);
+    let (producer, run) = retaining(&host, Duration::ZERO);
+    let shipping = subscribed("decisions", true, 1);
+    producer.due(&shipping).expect("due");
+    pump(
+        &producer,
+        &consumer,
+        &host,
+        &shipping,
+        vec![pin_of(&host)],
+        1,
+    );
+    let unstamped = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert!(unstamped.points(&run).is_empty(), "no retention, no time");
+    drop(producer);
+    let producer = host
+        .sealer()
+        .with_acknowledged_retention(Duration::from_secs(600));
+    let batch = host
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run))
+        .join("1-4.jws");
+    gc(&producer);
+    assert!(batch.exists(), "stamped, not deleted");
+    let stamped = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(stamped.points(&run).len(), 1);
+    elapse(&wall, &mono, 601);
+    gc(&producer);
+    assert!(!batch.exists(), "aged from the stamp");
+}
+
+/// WP-7.9b: the points an acknowledgement keeps stay few however often it moves, and every
+/// sequence they call deletable at a time was acknowledged by then.
+#[test]
+fn acknowledgement_points_stay_few_and_never_overstate() {
+    let retention = 1600_u64;
+    let mut subscription = Subscription::new(&subscribed("decisions", true, 1));
+    let run = [4_u8; 16];
+    let start = 1_800_000_000_u64;
+    let mut truth = Vec::new();
+    for second in 0..4 * retention {
+        let acked = second + 1;
+        subscription.runs = vec![(run, acked)];
+        subscription.note_acked(run, start + second, retention);
+        truth.push((acked, start + second));
+        assert!(subscription.points(&run).len() <= 18, "at {second}");
+    }
+    let now = start + 4 * retention - 1;
+    for back in [0, 1, 99, 100, retention / 2, retention, retention + 1] {
+        let cutoff = now - back;
+        let claimed = subscription.acked_by(&run, cutoff);
+        let true_at = truth
+            .iter()
+            .filter(|(_, at)| *at <= cutoff)
+            .map(|(acked, _)| *acked)
+            .max()
+            .unwrap_or(0);
+        assert!(claimed <= true_at, "at {back}: {claimed} > {true_at}");
+    }
+    // At the retention's edge it keeps what it must: no further back than a sixteenth.
+    let edge = subscription.acked_by(&run, now - retention);
+    let true_edge = now - retention - start + 1;
+    assert!(
+        true_edge - edge <= retention / 16 + 1,
+        "{edge} vs {true_edge}"
+    );
+    // A restore lowering it drops the points above.
+    subscription.runs = vec![(run, 10)];
+    subscription.note_acked(run, now + 1, retention);
+    assert!(
+        subscription
+            .points(&run)
+            .iter()
+            .all(|(acked, _)| *acked <= 10)
+    );
+}
+
+/// WP-7.9b: a run's acknowledgement points are read only oldest first and rising, as they are
+/// written.
+#[test]
+fn acknowledgement_points_out_of_order_are_refused() {
+    let mut subscription = Subscription::new(&subscribed("decisions", true, 1));
+    let run = [5_u8; 16];
+    subscription.runs = vec![(run, 9)];
+    for points in [
+        vec![(4, 100), (2, 200)],
+        vec![(2, 200), (4, 100)],
+        vec![(2, 100), (2, 200)],
+    ] {
+        subscription.points = vec![(run, points)];
+        let bytes = subscription.encode().expect("encodes");
+        assert!(Subscription::decode(&bytes).is_err());
+    }
+    subscription.points = vec![(run, vec![(2, 100), (4, 100), (9, 300)])];
+    let bytes = subscription.encode().expect("encodes");
+    assert_eq!(Subscription::decode(&bytes).expect("reads"), subscription);
+}
+
+/// WP-7.9b: with two required subscriptions a batch is kept the retention after the later of
+/// their acknowledgements.
+#[test]
+fn the_retention_runs_from_the_last_required_acknowledgement() {
+    let (host, wall, mono) = manual_host("retention-two");
+    let consumer = consumer_on(&host);
+    let (producer, run) = retaining(&host, Duration::from_secs(3600));
+    let first = subscribed("decisions", true, 1);
+    let second = subscribed("decisions-copy", true, 1);
+    producer.due(&first).expect("due");
+    producer.due(&second).expect("due");
+    pump(&producer, &consumer, &host, &first, vec![pin_of(&host)], 1);
+    elapse(&wall, &mono, 1800);
+    pump(&producer, &consumer, &host, &second, vec![pin_of(&host)], 1);
+    let batch = host
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run))
+        .join("1-4.jws");
+    elapse(&wall, &mono, 1801);
+    gc(&producer);
+    assert!(
+        batch.exists(),
+        "the second acknowledged it 1801 seconds ago"
+    );
+    elapse(&wall, &mono, 1800);
+    gc(&producer);
+    assert!(!batch.exists(), "both past the retention");
+}
+
+/// WP-7.9b, after the review: a wall clock stepped back within the skew the guard accepts never
+/// writes points the decoder refuses, and a run no longer answered collapses to one point once
+/// the retention elapsed.
+#[test]
+fn acknowledgement_points_survive_a_clock_stepped_back_and_collapse_when_idle() {
+    let retention = 1600_u64;
+    let mut subscription = Subscription::new(&subscribed("decisions", true, 1));
+    let run = [6_u8; 16];
+    subscription.runs = vec![(run, 3)];
+    assert!(subscription.note_acked(run, 1_800_000_100, retention));
+    subscription.runs = vec![(run, 5)];
+    assert!(subscription.note_acked(run, 1_800_000_095, retention));
+    let bytes = subscription.encode().expect("encodes");
+    assert_eq!(Subscription::decode(&bytes).expect("reads"), subscription);
+    assert_eq!(subscription.points(&run).last(), Some(&(5, 1_800_000_100)));
+    for second in 1..200 {
+        subscription.runs = vec![(run, 5 + second)];
+        subscription.note_acked(run, 1_800_000_100 + second * 10, retention);
+    }
+    assert!(subscription.points(&run).len() > 1);
+    assert!(subscription.note_acked(run, 1_800_000_100 + 2000 + retention, retention));
+    assert_eq!(
+        subscription.points(&run).len(),
+        1,
+        "idle past the retention"
+    );
+    assert!(!subscription.note_acked(run, 1_800_000_100 + 2001 + retention, retention));
 }

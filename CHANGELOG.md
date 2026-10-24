@@ -19,6 +19,9 @@ is cut.
 
 ### Added
 
+- **A producer keeps acknowledged batches for a declared retention (WP-7.9b).**
+  `operations.streams.acknowledged_retention` (`PERMGUARD_STREAM_ACKNOWLEDGED_RETENTION`, default `0s`) keeps each batch that long after every required coordinator acknowledged it, so a coordinator restored from a snapshot is resent what it lost: set it to the coordinators' snapshot interval plus their recovery time.
+  Each run's acknowledgement keeps when it reached its value, a few coalesced points per run; an acknowledgement from before the setting ages from the first pass that sees it.
 - **A producer resends to a coordinator restored from a snapshot (WP-7.9b).**
   Each run's acknowledgement records the coordinator boot id it was answered under; the first answer below it under a new incarnation rewinds that run and resends the retained sealed batches byte for byte from the coordinator's `expected_seq`, logged `host.stream.coordinator_restored`.
   Under the same incarnation an answer below the acknowledgement still stops the subscription `ack_behind`; a position below what the producer already deleted stops it with the new code `producer_gap`, logged `host.stream.producer_gap`, nothing reconstructed.

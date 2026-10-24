@@ -2426,6 +2426,44 @@ fn test_a_read_cursor_is_valid_a_day_unless_told() {
     );
 }
 
+/// WP-7.9b: a producer deletes what every required coordinator acknowledged at once unless the
+/// deployment declares how long to keep it, from the environment or
+/// `operations.streams.acknowledged_retention`; a malformed value is refused.
+#[test]
+fn test_acknowledged_batches_are_kept_only_as_long_as_declared() {
+    assert_eq!(
+        config(&[], &[], &[]).stream_acknowledged_retention(),
+        Duration::ZERO
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_STREAM_ACKNOWLEDGED_RETENTION, "0s")], &[])
+            .stream_acknowledged_retention(),
+        Duration::ZERO
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_STREAM_ACKNOWLEDGED_RETENTION, "26h")], &[])
+            .stream_acknowledged_retention(),
+        Duration::from_secs(26 * 3600)
+    );
+    let file = permguard_core::ConfigFile::parse(
+        "operations:\n  streams:\n    acknowledged_retention: 2d\n",
+    )
+    .expect("parses");
+    assert!(file.settings().contains(&(
+        SETTING_STREAM_ACKNOWLEDGED_RETENTION.to_owned(),
+        "2d".to_owned()
+    )));
+    assert!(
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new()
+                .with_environment(pairs(&[(SETTING_STREAM_ACKNOWLEDGED_RETENTION, "soon")])),
+        )
+        .is_err()
+    );
+}
+
 /// WP-7.12: a transfer session stays open fifteen minutes by default, and at most an hour.
 #[test]
 fn test_a_transfer_session_is_open_at_most_an_hour() {

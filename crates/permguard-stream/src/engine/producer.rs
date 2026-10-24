@@ -107,6 +107,9 @@ pub struct Producer<C> {
     /// The fence of each subscription seen shipping, with its task's selector: what a stream it
     /// covers opens its genesis run under (WP-6.1, after the review).
     fences: Mutex<Vec<(permguard_core::authz::Selector, Fence)>>,
+    /// How long a batch is kept after every required subscription acknowledged it (WP-7.9b):
+    /// `None` deletes it at once.
+    acknowledged_retention: Option<std::time::Duration>,
 }
 
 impl<C> std::fmt::Debug for Producer<C> {
@@ -131,7 +134,22 @@ impl<C: RecordCodec> Producer<C> {
             floor: std::sync::RwLock::new(None),
             lease: super::retention::Lease::default(),
             fences: Mutex::new(Vec::new()),
+            acknowledged_retention: None,
         }
+    }
+
+    /// This producer keeping each batch `retention` after every required subscription
+    /// acknowledged it (WP-7.9b): a coordinator restored from a snapshot that old is resent what
+    /// it lost. Zero deletes at once; a retention under a second counts as one.
+    pub fn with_acknowledged_retention(mut self, retention: std::time::Duration) -> Self {
+        self.acknowledged_retention = (!retention.is_zero()).then_some(retention);
+        self
+    }
+
+    /// The acknowledged retention in force, seconds.
+    pub(crate) fn acknowledged_retention_secs(&self) -> Option<u64> {
+        self.acknowledged_retention
+            .map(|retention| retention.as_secs().max(1))
     }
 
     /// This producer's `history` streams kept above `floor`, the oldest position a loaded

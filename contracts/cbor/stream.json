@@ -145,7 +145,15 @@
       "fields": [
         { "label": 1, "name": "run", "type": "bytes", "occurs": "required", "note": "16 bytes" },
         { "label": 2, "name": "acked", "type": "uint", "occurs": "required", "note": "the highest contiguous sequence the consumer acknowledged" },
-        { "label": 3, "name": "coordinator_boot_id", "type": "bytes", "occurs": "optional", "note": "16 bytes: the coordinator incarnation the acknowledgement was last answered under (WP-7.9b); absent on a run answered before" }
+        { "label": 3, "name": "coordinator_boot_id", "type": "bytes", "occurs": "optional", "note": "16 bytes: the coordinator incarnation the acknowledgement was last answered under (WP-7.9b); absent on a run answered before" },
+        { "label": 4, "name": "points", "type": "array<map:acknowledgement_point>", "occurs": "optional", "note": "only under an acknowledged retention (WP-7.9b): when the acknowledgement reached each kept point, oldest first, both rising" }
+      ]
+    },
+    "acknowledgement_point": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "acked", "type": "uint", "occurs": "required", "note": "the acknowledgement at that point" },
+        { "label": 2, "name": "at", "type": "uint", "occurs": "required", "note": "when the producer recorded it, seconds since the epoch, UTC" }
       ]
     },
     "pruned_mark": {

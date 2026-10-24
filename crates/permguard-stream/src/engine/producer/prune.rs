@@ -8,6 +8,8 @@
 //! ```text
 //! per run   bound = truncate_safe, min the `history` floor; through = the last whole batch below
 //!           ANCHOR (cumulative, from sequence 1) ─▶ the audit record ─▶ PRUNED {1 through}
+//!           and, under an acknowledged retention (WP-7.9b), min what every required subscription
+//!           had acknowledged the retention ago
 //! journal   the first frame still kept: the first RECORDS frame past its run's `through`
 //!           base = what the frames before that frame's segment gave the open ─▶ STATE 11
 //!           ─▶ Journal::drop_prefix: BASE, then the segments below it
@@ -29,7 +31,7 @@ use super::super::run::RunStatement;
 use super::super::state::Base;
 use super::super::{RecordCodec, Retention, StreamError, hex, record_digest};
 use super::seal::{PRUNED, batches_of, below_mark, pruned_of, spans_of};
-use super::ship::{subscriptions_of, truncate_safe_of};
+use super::ship::{acknowledged_by, keep_subscription, subscriptions_of, truncate_safe_of};
 use super::{
     Physical, Producer, RECORDS, RESERVE_BYTES, RESERVE_FILE, RUN_OPEN, TERMINAL, Writer,
     decode_group,
@@ -72,7 +74,26 @@ impl<C: RecordCodec> Producer<C> {
         };
         let runs = physical.runs(signer, &self.descriptor)?;
         let mut writer = physical.writer();
-        let subscriptions = subscriptions_of(&writer.dir)?;
+        let mut subscriptions = subscriptions_of(&writer.dir)?;
+        let now = self.context.time.now_secs();
+        let retention = self.acknowledged_retention_secs();
+        if let Some(retention) = retention
+            && audit.is_some()
+        {
+            // Every acknowledgement's points brought up to now (WP-7.9b): one recorded before the
+            // retention was set gets its first and ages from this pass, a run no longer answered
+            // collapses to the one point past the retention.
+            for subscription in &mut subscriptions {
+                let runs: Vec<[u8; 16]> = subscription.runs.iter().map(|(run, _)| *run).collect();
+                let mut changed = false;
+                for run in runs {
+                    changed |= subscription.note_acked(run, now, retention);
+                }
+                if changed {
+                    keep_subscription(&writer.dir, subscription)?;
+                }
+            }
+        }
         let root = writer.dir.subdir(BATCHES, true)?;
         if audit.is_some() {
             // What a crash left below a run's mark before its deletion: decided, and finished.
@@ -94,6 +115,13 @@ impl<C: RecordCodec> Producer<C> {
                 continue;
             };
             let mut bound = safe.min(*last_seq);
+            // Kept the retention after every required subscription acknowledged it (WP-7.9b).
+            if let Some(retention) = retention {
+                bound = bound.min(
+                    acknowledged_by(&subscriptions, run, *fence, now.saturating_sub(retention))
+                        .unwrap_or(0),
+                );
+            }
             if self.descriptor.retention == Retention::History
                 && let Some(floor) = self.floor()
             {

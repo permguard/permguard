@@ -6,7 +6,8 @@
 //! ```text
 //! producer/<sha256(resource)>/<producer-host>/
 //! ├── subscriptions/<membership>-<task>.cbor   {1 membership, 2 task, 3 required,
-//! │                                             4 [{1 run, 2 acked, 3? boot}], 5 state,
+//! │                                             4 [{1 run, 2 acked, 3? boot,
+//! │                                                4? [{1 acked, 2 at}]}], 5 state,
 //! │                                             6? paused_epoch, 7? reason}
 //! └── batches/<run>/PRUNED                     {1 through}: the batch files deleted
 //! ```
@@ -72,6 +73,9 @@ pub enum SubscriptionState {
 }
 
 /// One subscription of a producer's stream: a membership's ship task.
+/// When a run's acknowledgement reached a value: `(acked, at)`, `at` in seconds (WP-7.9b).
+pub type Point = (u64, u64);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Subscription {
     pub membership_id: [u8; 16],
@@ -83,19 +87,80 @@ pub struct Subscription {
     /// what tells a restored coordinator from one that lost acknowledged records. A run answered
     /// before it was recorded has none.
     pub boots: Vec<([u8; 16], [u8; 16])>,
+    /// When each run's acknowledgement reached each kept point, `(acked, at)` oldest first, kept
+    /// only under an acknowledged retention (WP-7.9b): what tells how long ago a batch was
+    /// acknowledged.
+    pub points: Vec<([u8; 16], Vec<Point>)>,
     pub state: SubscriptionState,
 }
 
 impl Subscription {
-    fn new(subscribed: &Subscribed<'_>) -> Self {
+    pub(crate) fn new(subscribed: &Subscribed<'_>) -> Self {
         Self {
             membership_id: subscribed.membership_id,
             task_id: subscribed.task_id.to_owned(),
             required: subscribed.required,
             runs: Vec::new(),
             boots: Vec::new(),
+            points: Vec::new(),
             state: SubscriptionState::Active,
         }
+    }
+
+    /// The points of `run`'s acknowledgement, oldest first.
+    pub fn points(&self, run: &[u8; 16]) -> &[(u64, u64)] {
+        self.points
+            .iter()
+            .find(|(held, _)| held == run)
+            .map_or(&[], |(_, points)| points.as_slice())
+    }
+
+    /// The highest sequence of `run` acknowledged at or before `cutoff`, `0` when none was.
+    pub fn acked_by(&self, run: &[u8; 16], cutoff: u64) -> u64 {
+        self.points(run)
+            .iter()
+            .filter(|(_, at)| *at <= cutoff)
+            .map(|(acked, _)| *acked)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Records that `run`'s acknowledgement stands at its current value at `now`, under a
+    /// retention of `retention` seconds, and answers whether the points changed. Every point
+    /// dropped leaves less deletable, never more: a point above the acknowledgement (a restore
+    /// lowered it), the previous newest when it is closer than a sixteenth of the retention to
+    /// the one before, and every point older than the newest one already past the retention. A
+    /// clock stepped back stamps no earlier than the newest point: later keeps more.
+    pub(crate) fn note_acked(&mut self, run: [u8; 16], now: u64, retention: u64) -> bool {
+        let acked = self.acked(&run);
+        if acked == 0 {
+            return false;
+        }
+        let at = match self.points.iter().position(|(held, _)| *held == run) {
+            Some(at) => at,
+            None => {
+                self.points.push((run, Vec::new()));
+                self.points.len() - 1
+            }
+        };
+        let points = &mut self.points[at].1;
+        let before = points.clone();
+        points.retain(|(seq, _)| *seq <= acked);
+        let now = now.max(points.last().map_or(0, |(_, at)| *at));
+        if !points.last().is_some_and(|(seq, _)| *seq == acked) {
+            let step = (retention / 16).max(1);
+            if let [.., previous, newest] = points.as_slice()
+                && newest.1.saturating_sub(previous.1) < step
+            {
+                points.pop();
+            }
+            points.push((acked, now));
+        }
+        let cutoff = now.saturating_sub(retention);
+        if let Some(oldest) = points.iter().rposition(|(_, at)| *at <= cutoff) {
+            points.drain(..oldest);
+        }
+        *points != before
     }
 
     /// The coordinator boot id `run`'s acknowledgement was last answered under.
@@ -142,6 +207,17 @@ impl Subscription {
             ];
             if let Some(boot) = self.boot(run) {
                 pairs.push((Value::Int(3), Value::Bytes(boot.to_vec())));
+            }
+            let points = self.points(run);
+            if !points.is_empty() {
+                let mut kept = Vec::new();
+                for (acked, at) in points {
+                    kept.push(Value::Map(vec![
+                        (Value::Int(1), uint(*acked)?),
+                        (Value::Int(2), uint(*at)?),
+                    ]));
+                }
+                pairs.push((Value::Int(4), Value::Array(kept)));
             }
             runs.push(Value::Map(pairs));
         }
@@ -190,6 +266,7 @@ impl Subscription {
         };
         let mut runs: Vec<([u8; 16], u64)> = Vec::new();
         let mut boots: Vec<([u8; 16], [u8; 16])> = Vec::new();
+        let mut points: Vec<([u8; 16], Vec<Point>)> = Vec::new();
         for value in map.array(4)? {
             let mut run = Map::of(value, "a subscription's run")?;
             let id: [u8; 16] = run.fixed(1)?;
@@ -198,9 +275,35 @@ impl Subscription {
                 .optional_bytes(3)?
                 .map(|bytes| super::super::codec::fixed::<16>(bytes, "a run's coordinator boot id"))
                 .transpose()?;
+            let mut kept: Vec<(u64, u64)> = Vec::new();
+            if let Some(value) = run.optional(4) {
+                let Value::Array(values) = value else {
+                    return Err(StreamError::Invalid(
+                        "a run's acknowledgement points are an array".to_owned(),
+                    ));
+                };
+                for value in values {
+                    let mut point = Map::of(value, "an acknowledgement point")?;
+                    let held = (point.uint(1)?, point.uint(2)?);
+                    point.finish()?;
+                    // Oldest first, neither going back: what `note_acked` writes.
+                    if kept
+                        .last()
+                        .is_some_and(|last: &(u64, u64)| held.0 <= last.0 || held.1 < last.1)
+                    {
+                        return Err(StreamError::Invalid(
+                            "a run's acknowledgement points are out of order".to_owned(),
+                        ));
+                    }
+                    kept.push(held);
+                }
+            }
             run.finish()?;
             if let Some(boot) = boot {
                 boots.push((id, boot));
+            }
+            if !kept.is_empty() {
+                points.push((id, kept));
             }
             if runs.iter().any(|(held, _)| *held == id) {
                 return Err(StreamError::Invalid(
@@ -231,6 +334,7 @@ impl Subscription {
             required,
             runs,
             boots,
+            points,
             state,
         })
     }
@@ -311,7 +415,7 @@ fn subscription_of(
     .transpose()
 }
 
-fn keep_subscription(dir: &Dir, subscription: &Subscription) -> Result<(), StreamError> {
+pub(super) fn keep_subscription(dir: &Dir, subscription: &Subscription) -> Result<(), StreamError> {
     replace_view(
         &subscriptions_dir(dir)?,
         &file_name(&subscription.membership_id, &subscription.task_id)?,
@@ -334,6 +438,22 @@ pub(super) fn truncate_safe_of(
         .iter()
         .filter(|subscription| subscription.required && subscription.membership_id == fence)
         .map(|subscription| subscription.acked(run))
+        .min()
+}
+
+/// What every required subscription of the fencing membership had acknowledged of `run` at
+/// `cutoff` (WP-7.9b): the least of their acknowledgements by then; `None` when none exists.
+pub(super) fn acknowledged_by(
+    subscriptions: &[Subscription],
+    run: &[u8; 16],
+    fence: Option<[u8; 16]>,
+    cutoff: u64,
+) -> Option<u64> {
+    let fence = fence?;
+    subscriptions
+        .iter()
+        .filter(|subscription| subscription.required && subscription.membership_id == fence)
+        .map(|subscription| subscription.acked_by(run, cutoff))
         .min()
 }
 
@@ -1117,6 +1237,10 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
                 && matches!(answer.outcome, Outcome::Ok | Outcome::OutOfOrder)
             {
                 subscription.set_boot(shipment.run, boot);
+            }
+            // When the acknowledgement got where it stands: what the retention ages (WP-7.9b).
+            if let Some(retention) = self.acknowledged_retention_secs() {
+                subscription.note_acked(shipment.run, self.context.time.now_secs(), retention);
             }
             keep_subscription(&writer.dir, &subscription).map_err(wrap)?;
             go_on

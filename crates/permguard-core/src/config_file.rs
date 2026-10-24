@@ -55,10 +55,10 @@ use crate::config::{
     SETTING_PUBLIC_TLS_MIN_VERSION, SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM,
     SETTING_SECRETS_COORDINATOR_ROOT_REF, SETTING_SECRETS_DIRECTORY, SETTING_SECRETS_ENV_PREFIX,
     SETTING_SECRETS_PROVIDER, SETTING_SECRETS_ZONE_KEY_VERSION, SETTING_SHUTDOWN_DRAIN_TIMEOUT,
-    SETTING_SHUTDOWN_TIMEOUT, SETTING_STREAM_CURSOR_TTL, SETTING_TELEMETRY_ADDR,
-    SETTING_TELEMETRY_ADVERTISED_URL, SETTING_TELEMETRY_TLS_CERT, SETTING_TELEMETRY_TLS_KEY,
-    SETTING_TELEMETRY_TLS_MIN_VERSION, SETTING_TIME_MAX_CLOCK_SKEW, SETTING_TLS_RELOAD,
-    SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
+    SETTING_SHUTDOWN_TIMEOUT, SETTING_STREAM_ACKNOWLEDGED_RETENTION, SETTING_STREAM_CURSOR_TTL,
+    SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL, SETTING_TELEMETRY_TLS_CERT,
+    SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION, SETTING_TIME_MAX_CLOCK_SKEW,
+    SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
 };
 use crate::realm::{
     ClaimMapping, ExchangeProfileClaims, ExchangeProfileConfig, ExchangeProfilePrivileges,
@@ -701,6 +701,10 @@ struct StreamsSection {
     /// How long a read cursor is valid after it is issued.
     #[serde(default)]
     cursor_ttl: Option<String>,
+    /// How long a producer keeps a batch after every required coordinator acknowledged it
+    /// (WP-7.9b).
+    #[serde(default)]
+    acknowledged_retention: Option<String>,
 }
 
 /// The keys this deployment signs with and publishes.
@@ -1400,6 +1404,10 @@ impl ConfigFile {
             (
                 SETTING_STREAM_CURSOR_TTL,
                 self.operations.streams.cursor_ttl.as_ref(),
+            ),
+            (
+                SETTING_STREAM_ACKNOWLEDGED_RETENTION,
+                self.operations.streams.acknowledged_retention.as_ref(),
             ),
             (
                 SETTING_BACKUP_RECOVERY_KEY_ID,
