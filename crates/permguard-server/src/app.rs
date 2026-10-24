@@ -1593,6 +1593,22 @@ impl App {
             generation = volume.generation(),
             "this process holds the volume"
         );
+        // A volume restored for forensics is never served; another restore is logged (WP-7.9).
+        if let Some(reason) = permguard_host::restore::serving_refused(&volume)
+            .with_context(|| format!("reading the restore of {}", config.working_dir().display()))?
+        {
+            bail!("{reason}");
+        }
+        if let Some(restored) = permguard_host::restore::marked(&volume)
+            .with_context(|| format!("reading the restore of {}", config.working_dir().display()))?
+        {
+            tracing::info!(
+                event.name = "volume.restored",
+                mode = restored.mode.as_str(),
+                generation = restored.generation,
+                "this volume was restored: every remote task opens its session for a fresh lease"
+            );
+        }
 
         // No subsystem is served while a migration is between two sides, and no layout this build
         // does not read is served at all (WP-1.9): an interrupted migration is landed by its

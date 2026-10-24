@@ -341,6 +341,16 @@ pub enum Command {
         #[command(subcommand)]
         action: HostAction,
     },
+    /// Restore a Server Host's volume from a snapshot, offline: the server stopped, the previous
+    /// owner fenced with `volume claim`, the volume scanned, then the mode's identity transition.
+    Restore {
+        /// The server's configuration file, read with the environment as the server reads them:
+        /// where the volume's keys are kept and how they are opened.
+        #[arg(long, global = true, value_name = "FILE")]
+        server_config: Option<PathBuf>,
+        #[command(subcommand)]
+        action: RestoreAction,
+    },
     /// Print shell completions. Add to your shell's config to complete commands and flags.
     #[command(
         after_help = "Examples:\n  permguard completion zsh > \"${fpath[1]}/_permguard\"\n  permguard completion bash >> ~/.bashrc"
@@ -1937,6 +1947,41 @@ pub enum ResetAction {
   permguard host identity reset run --volume ./volume --confirm-file reset.plan -o json")]
     Run {
         /// The plan `reset plan` wrote. Not needed to complete a reset a crash interrupted.
+        #[arg(long, value_name = "FILE")]
+        confirm_file: Option<PathBuf>,
+    },
+}
+
+/// `permguard restore …` (WP-7.9): two steps, the run consuming the plan's file.
+#[derive(Debug, Subcommand)]
+pub enum RestoreAction {
+    /// Plan the restore: prove the fence, scan the volume, open its keys, and write the plan to
+    /// `--out` for the run to confirm.
+    #[command(after_help = "Examples:
+  permguard restore plan --volume /var/lib/permguard --mode dr --reason \"region lost\" --out restore.plan
+  permguard restore plan --volume ./volume --mode forensic --reason audit --out restore.plan -o json")]
+    Plan {
+        /// `dr` keeps the Host and starts a new incarnation; `forensic` is never served; `clone`
+        /// makes a new Host of the snapshot's data.
+        #[arg(long, value_parser = ["dr", "forensic", "clone"])]
+        mode: String,
+        /// Why, printable: kept in the plan.
+        #[arg(long)]
+        reason: String,
+        /// Where the plan is written: a new file, readable by its owner only.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+    /// Run the restore the plan in `--confirm-file` describes, refused when the volume or its
+    /// claim moved since.
+    #[command(after_help = "Examples:
+  permguard restore run --volume /var/lib/permguard --mode dr --confirm-file restore.plan
+  permguard restore run --volume ./volume --mode clone --confirm-file restore.plan -o json")]
+    Run {
+        /// The mode the plan names: a plan of another is refused.
+        #[arg(long, value_parser = ["dr", "forensic", "clone"])]
+        mode: String,
+        /// The plan `restore plan` wrote.
         #[arg(long, value_name = "FILE")]
         confirm_file: Option<PathBuf>,
     },

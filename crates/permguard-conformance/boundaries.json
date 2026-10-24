@@ -1591,6 +1591,16 @@
       "source": "crates/permguard-host/src/operations/backup.rs",
       "item": "Backups::open",
       "reason": "the backups' own state views, written by this Host through the storage library under its volume lock"
+    },
+    {
+      "source": "crates/permguard-host/src/restore.rs",
+      "item": "Marker::decode",
+      "reason": "the volume's own `host/RESTORE` view, written by the restore through the storage library under the volume lock (WP-7.9)"
+    },
+    {
+      "source": "crates/permguard-host/src/restore.rs",
+      "item": "Mode::parse",
+      "reason": "a closed set of three names: the marker's own field, and a command-line value clap already restricts to them (WP-7.9)"
     }
   ]
 }

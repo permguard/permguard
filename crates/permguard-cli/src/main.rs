@@ -223,6 +223,10 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
             server_config,
             action,
         } => commands::host::host_command(&globals, server_config.as_deref(), action, &trace),
+        Command::Restore {
+            server_config,
+            action,
+        } => commands::restore::restore_command(&globals, server_config.as_deref(), action, &trace),
         Command::Inspect { timeout } => inspect_command(&globals, timeout, &trace),
         Command::Discover { url, timeout } => {
             commands::discover::discover_command(&globals, &url, timeout, &trace)
@@ -325,6 +329,7 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Apply { .. } => ("apply", Class::Control),
         Command::Verify => ("verify", Class::Control),
         Command::Inspect { .. } => ("inspect", Class::Planes),
+        Command::Restore { .. } => ("restore", Class::Volume),
         Command::Discover { .. } => ("discover", Class::Local),
         Command::Host { action, .. } => {
             let class = match action {

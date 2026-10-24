@@ -14,4 +14,5 @@ pub mod host;
 pub mod host_proof;
 pub mod inspect;
 pub mod objects;
+pub mod restore;
 pub mod workspace;

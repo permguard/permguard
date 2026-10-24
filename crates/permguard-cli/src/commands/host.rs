@@ -44,7 +44,7 @@ use crate::trace::Trace;
 use permguard_host::api::host_input::{IdentityPin, InvitationHandoff, PinStore};
 
 /// The `--volume` target an offline command works on (TC-1): stated, never guessed.
-fn volume_of(globals: &Globals) -> Result<std::path::PathBuf, Failure> {
+pub(super) fn volume_of(globals: &Globals) -> Result<std::path::PathBuf, Failure> {
     globals.volume.clone().ok_or_else(|| {
         Failure::usage(
             "an offline host command works on a volume: name it with --volume <dir>, the \
@@ -135,7 +135,7 @@ fn grants(
 }
 
 /// The initiator the CLI's operations name in the mutation journal and the audit trail.
-const INITIATOR: &str = "cli";
+pub(super) const INITIATOR: &str = "cli";
 
 /// Opens the grant store and the mutation journal of `volume`, resolving any grant mutation a
 /// crash left open: what a command that mutates needs.
@@ -178,8 +178,22 @@ fn open(
 }
 
 /// Claims `volume`, an existing one only, without opening any store: what `host holds` reads and
-/// writes beside the grants (after the review).
+/// writes beside the grants (after the review). A volume restored for forensics is refused: the
+/// offline commands that write never work on it (WP-7.9).
 fn claim(volume: &std::path::Path, trace: &Trace) -> Result<Volume, Failure> {
+    let held = hold(volume, trace)?;
+    if let Some(reason) = permguard_host::restore::serving_refused(&held)
+        .map_err(|error| Failure::unavailable(format!("reading the restore marker: {error}")))?
+    {
+        return Err(Failure::usage(format!(
+            "{reason}; nothing is written to it"
+        )));
+    }
+    Ok(held)
+}
+
+/// [`claim`] without the forensic refusal: what `restore`, which judges the marker itself, holds.
+pub(super) fn hold(volume: &std::path::Path, trace: &Trace) -> Result<Volume, Failure> {
     trace.say(format!("volume: {}", volume.display()));
     // An existing volume only: a mistyped path must not become a fresh volume holding grants the
     // server never sees. The volume's own layout marker is what says it is one.
@@ -539,7 +553,7 @@ fn offline_engine(
 /// The custody `serve` keeps the volume's keys in (WP-3.2, owner decision of 2026-10-08): read
 /// from the server's configuration and the environment, as `serve` reads them. Without
 /// `--server-config` the keys are the `development` custody's plaintext files.
-fn custodian(
+pub(super) fn custodian(
     held: &Volume,
     server_config: Option<&Path>,
 ) -> Result<std::sync::Arc<Custodian>, Failure> {
@@ -563,7 +577,7 @@ fn without_custody(server_config: Option<&Path>, error: impl std::fmt::Display) 
     }
 }
 
-fn open_identity(
+pub(super) fn open_identity(
     held: &Volume,
     server_config: Option<&Path>,
 ) -> Result<permguard_host::identity::Identity, Failure> {
@@ -1428,7 +1442,7 @@ struct ResetPlanned {
 const RESET_MODE: &str = "emergency";
 
 /// What a Host API refusal says, for a CLI failure.
-fn refusal_text(refusal: &permguard_host::api::Refusal) -> String {
+pub(super) fn refusal_text(refusal: &permguard_host::api::Refusal) -> String {
     refusal
         .error()
         .map_or_else(|| "denied".to_owned(), ToString::to_string)
@@ -1475,7 +1489,7 @@ impl Report for ResetPlan {
 }
 
 #[derive(Serialize)]
-struct ResetReport {
+pub(super) struct ResetReport {
     old_host_id: String,
     host_id: String,
     fingerprint: String,
@@ -1575,7 +1589,7 @@ fn reset(
     trace: &Trace,
 ) -> Result<(), Failure> {
     let volume = volume_of(globals)?;
-    use permguard_host::identity::{self, IdentityError};
+    use permguard_host::identity;
     use permguard_host::membership::Store;
 
     let now = permguard_host::authz::store::now();
@@ -1837,76 +1851,92 @@ fn reset(
                 time,
             )
             .map_err(|error| Failure::unavailable(format!("the key rings: {error:#}")))?;
-            // The trails sealed under `host.operations` before it retires with the identity: a
-            // reset requires that recovery checkpoint, so a volume without the ring is refused
-            // before the identity or a membership changes (WP-4.9).
-            let signer = rings
-                .iter()
-                .find(|ring| ring.id() == permguard_host::keys::ring::HOST_OPERATIONS)
-                .ok_or_else(|| {
-                    Failure::unavailable(
-                        "no host.operations ring: a reset requires a recovery audit checkpoint; \
-                         the identity and its memberships are unchanged, plan again",
-                    )
-                })?;
-            audit.seal_with(std::sync::Arc::clone(signer)
-                as std::sync::Arc<
-                    dyn permguard_host::audit::checkpoint::CheckpointSigner,
-                >);
-            let evidence = || -> Result<(), String> {
-                let sealed = audit.checkpoint_all().map_err(|error| error.to_string())?;
-                trace.say(format!("{} audit checkpoint(s) sealed", sealed.len()));
-                Ok(())
-            };
-            let done = permguard_host::membership::reset::emergency(
-                &store,
-                &mutations,
-                &opened,
-                &rings,
-                &Initiator::System(INITIATOR.to_owned()),
-                now,
-                &evidence,
-            )
-            .map_err(|error| match error {
-                permguard_host::membership::reset::EmergencyError::Identity(
-                    MutationError::Refused(IdentityError::Refused(_)),
-                ) => Failure::usage(error),
-                other => Failure::unavailable(other),
-            })?;
-            render(
-                &ResetReport {
-                    old_host_id: identity::record::uuid_text(&done.reset.old_host_id),
-                    host_id: identity::record::uuid_text(&done.reset.host_id),
-                    fingerprint: done.reset.fingerprint,
-                    witness: done.reset.witness,
-                    ended: done
-                        .ended
-                        .iter()
-                        .map(|held| identity::record::uuid_text(&held.request.membership_id))
-                        .collect(),
-                    orphaned: done
-                        .orphaned
-                        .iter()
-                        .map(|held| ResetOrphanedReport {
-                            membership_id: identity::record::uuid_text(&held.request.membership_id),
-                            coordinator: identity::record::uuid_text(
-                                &held.request.coordinator.host_id,
-                            ),
-                            address: held.request.coordinator_address.clone(),
-                        })
-                        .collect(),
-                },
-                globals.output,
-                trace,
-            )?;
+            let done = emergency(&store, &mutations, &opened, &rings, &audit, now, trace)?;
+            render(&reset_report(&done), globals.output, trace)?;
             std::mem::forget(held);
         }
     }
     Ok(())
 }
 
+/// The offline emergency reset of `opened` (WP-4.1): the audit trails sealed under
+/// `host.operations` first, then a new identity, every membership ended or orphaned. What
+/// `reset run` and a `clone` restore run (WP-7.9).
+pub(super) fn emergency(
+    store: &permguard_host::membership::Store,
+    mutations: &Mutations,
+    opened: &permguard_host::identity::Identity,
+    rings: &[std::sync::Arc<permguard_host::keys::ring::Ring>],
+    audit: &std::sync::Arc<permguard_host::audit::Engine>,
+    now: u64,
+    trace: &Trace,
+) -> Result<permguard_host::membership::reset::Emergency, Failure> {
+    use permguard_host::identity::IdentityError;
+    // The trails sealed under `host.operations` before it retires with the identity: a
+    // reset requires that recovery checkpoint, so a volume without the ring is refused
+    // before the identity or a membership changes (WP-4.9).
+    let signer = rings
+        .iter()
+        .find(|ring| ring.id() == permguard_host::keys::ring::HOST_OPERATIONS)
+        .ok_or_else(|| {
+            Failure::unavailable(
+                "no host.operations ring: a reset requires a recovery audit checkpoint; \
+                 the identity and its memberships are unchanged, plan again",
+            )
+        })?;
+    audit.seal_with(std::sync::Arc::clone(signer)
+        as std::sync::Arc<
+            dyn permguard_host::audit::checkpoint::CheckpointSigner,
+        >);
+    let evidence = || -> Result<(), String> {
+        let sealed = audit.checkpoint_all().map_err(|error| error.to_string())?;
+        trace.say(format!("{} audit checkpoint(s) sealed", sealed.len()));
+        Ok(())
+    };
+    permguard_host::membership::reset::emergency(
+        store,
+        mutations,
+        opened,
+        rings,
+        &Initiator::System(INITIATOR.to_owned()),
+        now,
+        &evidence,
+    )
+    .map_err(|error| match error {
+        permguard_host::membership::reset::EmergencyError::Identity(MutationError::Refused(
+            IdentityError::Refused(_),
+        )) => Failure::usage(error),
+        other => Failure::unavailable(other),
+    })
+}
+
+/// What a reset `done` reports.
+pub(super) fn reset_report(done: &permguard_host::membership::reset::Emergency) -> ResetReport {
+    use permguard_host::identity::record::uuid_text;
+    ResetReport {
+        old_host_id: uuid_text(&done.reset.old_host_id),
+        host_id: uuid_text(&done.reset.host_id),
+        fingerprint: done.reset.fingerprint.clone(),
+        witness: done.reset.witness.clone(),
+        ended: done
+            .ended
+            .iter()
+            .map(|held| uuid_text(&held.request.membership_id))
+            .collect(),
+        orphaned: done
+            .orphaned
+            .iter()
+            .map(|held| ResetOrphanedReport {
+                membership_id: uuid_text(&held.request.membership_id),
+                coordinator: uuid_text(&held.request.coordinator.host_id),
+                address: held.request.coordinator_address.clone(),
+            })
+            .collect(),
+    }
+}
+
 /// The plans store of `held`, its operations a crash left open resolved.
-fn open_plans(
+pub(super) fn open_plans(
     held: &Volume,
     mutations: &Mutations,
     now: u64,
@@ -1920,7 +1950,7 @@ fn open_plans(
 }
 
 /// Writes `bytes` to a new file at `path`, readable by its owner only.
-fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
+pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
     use std::io::Write as _;
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
@@ -1937,7 +1967,7 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
 }
 
 /// An audit engine on `held`, stamped with `identity`.
-fn audit_offline(
+pub(super) fn audit_offline(
     held: &Volume,
     identity: &permguard_host::identity::Identity,
     time: Option<&std::sync::Arc<permguard_host::time::TimeGuard>>,

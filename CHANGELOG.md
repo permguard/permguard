@@ -19,6 +19,10 @@ is cut.
 
 ### Added
 
+- **A snapshot is restored offline in one of three modes (WP-7.9a).**
+  `permguard restore plan --volume <dir> --mode dr|forensic|clone --reason <text> --out <file>` requires the previous owner fenced by `volume claim`, a claim generation above the one the snapshot's last start recorded, then scans every journal and object tree, opens the identity and every ring through `--server-config`, and writes a mode-0600 plan receipt; `restore run --mode <mode> --confirm-file <file>` requires the same volume, mode and claim, scans again and transitions.
+  `dr` keeps the Host and starts a new incarnation of it; `forensic` is never served — the server refuses to start on it, the offline commands that write refuse it, and no later restore but a forensic one runs on it; `clone` runs the offline emergency reset and makes a new Host.
+  The restore is recorded `host/RESTORE` and audited `host.restore.planned` and `host.restore.completed`; under dual control the plan is refused, no approval reaching an offline volume yet.
 - **The backup barrier is served on the Host API (WP-7.8b).**
   `POST /host/v1/backup/prepare`, `finalize` and `abort` under `backup.manage`, and `GET /host/v1/backups` under `backup.read`, answer alike over REST and `permguard.host.v1.OperationsService`, described in `host.json` and the proto.
   The server opens the volume's backups at start, recovers their operations with the transaction, and records the abort of a prepare a restart cut short; `operations.backup.recovery_key_id` and `encryption_profile` reach every manifest.

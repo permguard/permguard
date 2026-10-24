@@ -1511,3 +1511,57 @@ async fn test_the_file_custody_seals_the_identity_key_under_the_kek() {
         key
     );
 }
+
+/// WP-7.9: a volume restored for forensics is never served: the server refuses to start on it,
+/// naming why, and starts on one restored for disaster recovery.
+#[tokio::test]
+async fn test_a_forensic_volume_is_never_served() {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::Mutations;
+    use permguard_host::restore::{Marker, Mode, record};
+    use permguard_host::storage::volume::Volume;
+
+    let path = config_file("forensic", SERVABLE);
+    let config = fs::read_to_string(&path).expect("the file reads");
+    let volume_root = config
+        .lines()
+        .find_map(|line| line.strip_prefix("working_dir: "))
+        .expect("the fixture names its volume")
+        .to_owned();
+    let _ = fs::remove_dir_all(&volume_root);
+    let mark = |mode: Mode| {
+        let volume =
+            Volume::claim(Path::new(&volume_root), AssuranceProfile::Development).expect("claimed");
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal");
+        record(
+            &mutations,
+            &volume,
+            &Marker {
+                mode,
+                at: 1_800_000_000,
+                generation: volume.generation(),
+                previous_boot_id: [7; 16],
+                plan_id: [8; 16],
+            },
+            Initiator::System("test".to_owned()),
+        )
+        .expect("recorded");
+    };
+
+    mark(Mode::Forensic);
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("a forensic volume");
+    assert!(
+        format!("{refused:#}").contains("restored for forensics"),
+        "{refused:#}"
+    );
+
+    mark(Mode::Dr);
+    app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect("a volume restored for disaster recovery serves");
+}

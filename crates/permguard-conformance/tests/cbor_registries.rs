@@ -38,7 +38,7 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 19] = [
+const REGISTRIES: [&str; 20] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
@@ -55,6 +55,7 @@ const REGISTRIES: [&str; 19] = [
     "notp.json",
     "objects.json",
     "operation-plan.json",
+    "restore.json",
     "sealed-key.json",
     "session.json",
     "stream.json",
@@ -695,6 +696,30 @@ fn grant_samples() -> Vec<Sample> {
             Some(Box::new(|bytes: &[u8]| verdict(Transition::decode(bytes)))),
         ),
     ]
+}
+
+fn restore_samples() -> Vec<Sample> {
+    use permguard_host::restore::{Marker, Mode};
+
+    [Mode::Dr, Mode::Forensic, Mode::Clone]
+        .into_iter()
+        .map(|mode| {
+            sample(
+                "restore_marker",
+                Marker {
+                    mode,
+                    at: 1_800_000_000,
+                    generation: 3,
+                    previous_boot_id: ZONE_ID,
+                    plan_id: SCOPE_ID,
+                }
+                .encode()
+                .expect("encodes"),
+                &[],
+                Some(Box::new(|bytes: &[u8]| verdict(Marker::decode(bytes)))),
+            )
+        })
+        .collect()
 }
 
 fn identity_samples() -> Vec<Sample> {
@@ -2944,6 +2969,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "operation-plan.json" => operation_plan_samples(),
         "mutation.json" => mutation_samples(),
         "identity.json" => identity_samples(),
+        "restore.json" => restore_samples(),
         "session.json" => session_samples(),
         "stream.json" => stream_samples(),
         "keys.json" => keys_samples(),

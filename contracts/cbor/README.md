@@ -85,6 +85,7 @@ Forward compatibility is carried by versions, never by silently ignored fields.
 | `identity.json`       | Host identity document, succession, `INIT`, `BOOT` | `identity_document`, `succession_record`, `init`, `boot`                                           |
 | `keys.json`           | key ring journal entry, view and binding payload   | `journal_entry`, `ring_view`, `ring_binding`                                                       |
 | `operation-plan.json` | plan receipt, approval and the plan body           | `plan_receipt`, `plan_approval`, `plan_body`                                                       |
+| `restore.json`        | the restore marker `host/RESTORE`                  | `restore_marker`                                                                                   |
 
 `notp.json` also registers `ref_answer`, the `GET …/refs/{name}` body, and `ref_state`, the bytes a `ref_digest` is taken over, which never travel.
 It registers `get_ref_request` and `mirror_request` too, the messages of the `policy.mirror` task that carry a pull over the Host task transport.
