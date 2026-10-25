@@ -45,6 +45,12 @@ debug = "line-tables-only"
 [profile.test]
 debug = "line-tables-only"
 
+# Third-party crates built with optimizations in debug builds and tests: the cryptography, CBOR
+# and TLS the tests run every time execute faster, and they are compiled once, while the
+# workspace's own crates stay unoptimized and quick to rebuild.
+[profile.dev.package."*"]
+opt-level = 1
+
 [workspace.dependencies]
 permguard-all-in-one = { path = "crates/permguard-all-in-one", version = "0.1.0" }
 permguard-cli = { path = "crates/permguard-cli", version = "0.1.0" }
