@@ -11,7 +11,8 @@
 //!
 //! It reads the status and the identity, rotates the identity, and carries the memberships and
 //! the grants (WP-4.8): every operation the `host identity`, `host members` and `host grants`
-//! commands reach.
+//! commands reach; [`Operations`] adds the key rings, the audit trails, the configuration and the
+//! plans (TC-2).
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -36,12 +37,15 @@ use permguard_host::api::streams::{
 use permguard_host::api::{CreateGrant, Grants, PlanRevoke, Planned, Revoked, RunRevoke};
 
 use crate::catalog::Failure;
+
+mod ops;
 use crate::endpoint::Endpoint;
 use crate::grpc::GrpcChannel;
 use crate::host_proto as map;
 use crate::host_v1 as proto;
 use crate::http::Client;
 use crate::tls::TlsOptions;
+pub use ops::Operations;
 
 /// One stream of one resource, as the stream reads name it (WP-5.7b).
 #[derive(Debug, Clone, Copy)]
@@ -72,7 +76,7 @@ impl Change {
 }
 
 /// What the Host listener answers, whichever transport asked.
-pub trait Host {
+pub trait Host: Operations {
     /// `GET /host/v1/status`, `OperationsService.GetStatus`.
     fn status(&self) -> Result<StatusView, Failure>;
 
@@ -183,7 +187,14 @@ fn query_value(value: &str) -> String {
 
 /// A path segment the Host API names: an id, refused when it would leave its segment.
 fn segment(id: &str) -> Result<&str, Failure> {
-    if id.is_empty() || id.contains(['/', '?', '#', '%']) || id == "." || id == ".." {
+    // Only visible ASCII: a space or a line break would leave the request line (after the TC-2
+    // review).
+    if id.is_empty()
+        || id.contains(['/', '?', '#', '%'])
+        || !id.bytes().all(|byte| byte.is_ascii_graphic())
+        || id == "."
+        || id == ".."
+    {
         return Err(usage(format!("`{id}` is not an id")));
     }
     Ok(id)
@@ -1258,7 +1269,7 @@ mod tests {
             stream_path(&stream, "frontier").expect("a path"),
             "/host/v1/streams/data/decisions/frontier?resource=plane%2Fdata%2Fzone%2Fz%251%2Fledger%2Fl%231%3Fx%3D%26y"
         );
-        for plane in ["a/b", "..", "", "a%2Fb", "a?b"] {
+        for plane in ["a/b", "..", "", "a%2Fb", "a?b", "a b", "a\r\nX: y", "à"] {
             let bad = StreamName { plane, ..stream };
             assert!(stream_path(&bad, "frontier").is_err(), "{plane}");
             assert!(checked(&bad).is_err(), "{plane}");

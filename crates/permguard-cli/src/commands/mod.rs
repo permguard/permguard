@@ -11,6 +11,7 @@ pub mod decisions;
 pub mod discover;
 pub mod events;
 pub mod host;
+mod host_ops;
 pub mod host_proof;
 pub mod inspect;
 pub mod objects;

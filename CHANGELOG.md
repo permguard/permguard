@@ -19,6 +19,10 @@ is cut.
 
 ### Added
 
+- **The `host` command family reaches the key rings, the audit trails, the configuration, the lifecycle and the plans (TC-2).**
+  `permguard host keys {list, show, rotate, revoke plan|run, bundle export}`, `host audit {query, checkpoints, export}`, `host config {show --effective, revisions}`, `host status` and `host plans {list, approve}` call the Host listener over REST or gRPC, as `--host-endpoint` says, and print with `-o terminal|json|yaml`.
+  A key revocation writes its plan to a new owner-only file and runs from it; `bundle export` and `audit export` walk every page at the frontier their first page fixed into a new owner-only file, the bundle in the shape `ledgers import --bundle` reads.
+  `ops/command-line.md` is the command inventory: one row per command with its grant and its state, and a test walks the command tree against it; `host secrets`, `host drain` and `host maintenance` are listed `blocked`, the Host API serving none of their routes yet.
 - **An operator plans and runs the object sweep on the Host API (WP-7.11b).**
   `POST /host/v1/gc/objects/plan` `{request_id, resource?}` and `POST /host/v1/gc/objects/run` `{request_id, receipt}`, gRPC `OperationsService.PlanGc` and `RunGc`, under the new grant `gc.manage` on the scope: the Control Plane, or a zone or ledger of it.
   A plan changes nothing and answers its receipt (`gc.objects`, no approval) and, ledger by ledger, the candidates and their bytes and what is kept and why: `reachable`, `pinned`, `grace`, `held`.

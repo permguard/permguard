@@ -743,6 +743,11 @@ permguard host streams --help    # the streams the Host produces and consumes
 permguard host grants --help     # the Host authorization store; recovery bootstrap is offline
 permguard host identity --help   # the Host identity; provisioning and emergency reset are offline
 permguard host holds --help      # legal and incident holds that keep ledgers from garbage collection
+permguard host keys --help       # the key rings: keys, rotation, revocation and the verification bundle
+permguard host audit --help      # the audit trails: records, signed checkpoints and exports
+permguard host config --help     # the effective configuration and its revisions
+permguard host status            # the phase of the Host, every Plane and every service
+permguard host plans --help      # plan receipts, and the approvals dual control requires
 permguard restore plan --help    # restore a stopped Host's volume from a snapshot: plan, then run
 ```
 

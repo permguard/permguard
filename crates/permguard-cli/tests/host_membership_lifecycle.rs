@@ -343,7 +343,13 @@ fn launch_host(
                     ),
                     effective: Effective {
                         revision: 0,
-                        settings: Vec::new(),
+                        settings: vec![permguard_host::api::Setting {
+                            key: "PERMGUARD_LOG_LEVEL".to_owned(),
+                            value: Some("info".to_owned()),
+                            masked: false,
+                            origin: "environment".to_owned(),
+                            class: "startup".to_owned(),
+                        }],
                     },
                     trail: "test".to_owned(),
                     mutations: Some(mutations),
@@ -1027,4 +1033,322 @@ fn the_stream_commands_answer_the_same_over_both_transports() {
     assert_eq!(rest[4]["subscriptions"][0]["reason"], "gone");
     assert_eq!(rest[5]["gaps"][0]["low_watermark"], 5);
     assert_eq!(rest[6]["anchors"][0]["anchor"], "oQEC");
+}
+
+/// The JSON file a command wrote.
+fn written(path: &Path) -> Value {
+    serde_json::from_slice(&std::fs::read(path).expect("the file is written")).expect("JSON")
+}
+
+/// TC-2: the `host keys`, `host audit`, `host config`, `host status` and `host plans` commands
+/// against an in-process Host, over REST and over gRPC: each answers what the Host holds, the
+/// two-step revocation runs from the plan file it wrote, the bundle and the export walk their
+/// pages into new owner-only files, and a refusal carries its code on both transports.
+#[test]
+fn the_host_operations_commands_answer_over_both_transports() {
+    let root = scratch("operations");
+    let pki = Pki::new(&root);
+    let authority = pki.authority();
+    let (operator_certificate, operator_key) = pki.issue("operator", "operator");
+    let tls = OperatorTls {
+        authority: authority.clone(),
+        certificate: operator_certificate,
+        key: operator_key,
+    };
+    let (certificate, key) = pki.issue("host", "127.0.0.1");
+    let host = launch_host(
+        root.join("host"),
+        certificate,
+        key,
+        authority,
+        Role::Coordinator,
+    );
+    let mut configs = Vec::new();
+    let mut refusals = Vec::new();
+    let mut first_records = Vec::new();
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://127.0.0.1:{}", host.address.port());
+        let call = |args: &[&str]| call(&root, &endpoint, &tls, &words(args));
+        let file = |name: &str| root.join(format!("{scheme}-{name}"));
+
+        let status = call(&["host", "status"]);
+        assert!(status["state"].is_string(), "{scheme}: {status}");
+        assert_eq!(status["assurance"]["profile"], "production", "{scheme}");
+
+        let rings = call(&["host", "keys", "list"]);
+        let names: Vec<&str> = rings["rings"]
+            .as_array()
+            .expect("rings")
+            .iter()
+            .filter_map(|ring| ring["ring"].as_str())
+            .collect();
+        assert!(names.contains(&"host.operations"), "{scheme}: {names:?}");
+        let ring = call(&["host", "keys", "show", "data.attest"]);
+        let epoch = ring["epoch"].as_u64().expect("an epoch");
+        let before: Vec<String> = ring["keys"]
+            .as_array()
+            .expect("keys")
+            .iter()
+            .filter_map(|key| key["kid"].as_str().map(str::to_owned))
+            .collect();
+        assert!(!before.is_empty(), "{scheme}");
+
+        let rotated = call(&[
+            "host",
+            "keys",
+            "rotate",
+            "data.attest",
+            "--expected-epoch",
+            &epoch.to_string(),
+        ]);
+        let new_kid = rotated["kid"].as_str().expect("the new kid").to_owned();
+        assert!(
+            rotated["receipt"]["operation_id"].is_string(),
+            "{scheme}: {rotated}"
+        );
+        let retired = before
+            .iter()
+            .find(|kid| **kid != new_kid)
+            .expect("a key other than the new one")
+            .clone();
+
+        // A two-step revocation: the plan written once to a new file, run from it.
+        let plan_file = file("revoke.json");
+        let planned = call(&[
+            "host",
+            "keys",
+            "revoke",
+            "plan",
+            "data.attest",
+            &retired,
+            "--reason",
+            "compromise",
+            "--out",
+            plan_file.to_str().expect("UTF-8"),
+        ]);
+        assert_eq!(written(&plan_file), planned, "{scheme}");
+        let again = cli(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&[
+                "host",
+                "keys",
+                "revoke",
+                "plan",
+                "data.attest",
+                &retired,
+                "--reason",
+                "compromise",
+                "--out",
+                plan_file.to_str().expect("UTF-8"),
+            ]),
+        );
+        assert_eq!(
+            again.status.code(),
+            Some(64),
+            "{scheme}: a plan file is never overwritten"
+        );
+        let refusal: Value = serde_json::from_slice(&again.stderr).expect("a JSON refusal");
+        assert!(
+            refusal["message"]
+                .as_str()
+                .is_some_and(|text| text.contains("--out")),
+            "{scheme}: {refusal}"
+        );
+        assert_eq!(
+            written(&plan_file),
+            planned,
+            "{scheme}: the first plan kept"
+        );
+        let revoked = call(&[
+            "host",
+            "keys",
+            "revoke",
+            "run",
+            "data.attest",
+            "--confirm-file",
+            plan_file.to_str().expect("UTF-8"),
+        ]);
+        assert_eq!(revoked["kid"], retired.as_str(), "{scheme}");
+
+        // The verification bundle, every page, in the shape an import reads.
+        let bundle_file = file("bundle.json");
+        let bundled = call(&[
+            "host",
+            "keys",
+            "bundle",
+            "export",
+            "--resource",
+            "host",
+            "--out",
+            bundle_file.to_str().expect("UTF-8"),
+        ]);
+        let bundle = written(&bundle_file);
+        assert_eq!(bundle["resource"], "host", "{scheme}");
+        assert!(bundle["manifest"].as_str().is_some_and(|m| !m.is_empty()));
+        assert_eq!(
+            bundled["items"].as_u64(),
+            Some(bundle["items"].as_array().expect("items").len() as u64),
+            "{scheme}"
+        );
+        assert_eq!(
+            bundled["bundle_digest"], bundle["bundle_digest"],
+            "{scheme}"
+        );
+
+        // The security trail holds the rotation and the revocation.
+        let page = call(&[
+            "host",
+            "audit",
+            "query",
+            "--class",
+            "security",
+            "--resource",
+            "host",
+            "--limit",
+            "1000",
+        ]);
+        let actions: Vec<&str> = page["records"]
+            .as_array()
+            .expect("records")
+            .iter()
+            .filter_map(|record| record["action"].as_str())
+            .collect();
+        assert!(
+            actions.contains(&"host.keys.rotated"),
+            "{scheme}: {actions:?}"
+        );
+        // The time bounds reach the Host: nothing after the far future, nothing before 2001.
+        for (bound, instant) in [
+            ("--from", "2099-01-01T00:00:00Z"),
+            ("--to", "2001-01-01T00:00:00Z"),
+        ] {
+            let none = call(&[
+                "host",
+                "audit",
+                "query",
+                "--class",
+                "security",
+                "--resource",
+                "host",
+                bound,
+                instant,
+            ]);
+            assert_eq!(
+                none["records"].as_array().map(Vec::len),
+                Some(0),
+                "{scheme} {bound}: {none}"
+            );
+        }
+        // The trail's first record, the same bytes whichever transport carried it.
+        let first = call(&[
+            "host",
+            "audit",
+            "query",
+            "--class",
+            "security",
+            "--resource",
+            "host",
+            "--limit",
+            "1",
+        ]);
+        first_records.push(first["records"][0].clone());
+        assert!(first["next_cursor"].is_string(), "{scheme}: {first}");
+        let checkpoints = call(&[
+            "host",
+            "audit",
+            "checkpoints",
+            "--class",
+            "security",
+            "--resource",
+            "host",
+        ]);
+        assert_eq!(checkpoints["class"], "security", "{scheme}");
+        let export_file = file("audit.json");
+        let exported = call(&[
+            "host",
+            "audit",
+            "export",
+            "--class",
+            "security",
+            "--resource",
+            "host",
+            "--out",
+            export_file.to_str().expect("UTF-8"),
+        ]);
+        let export = written(&export_file);
+        let frontier = export["frontier"].as_u64().expect("a frontier");
+        assert_eq!(exported["frontier"].as_u64(), Some(frontier), "{scheme}");
+        let records: usize = export["pages"]
+            .as_array()
+            .expect("pages")
+            .iter()
+            .map(|page| page["records"].as_array().map_or(0, Vec::len))
+            .sum();
+        assert_eq!(
+            exported["records"].as_u64(),
+            Some(records as u64),
+            "{scheme}"
+        );
+        assert!(records > 0, "{scheme}");
+
+        configs.push((
+            call(&["host", "config", "show", "--effective"]),
+            call(&["host", "config", "revisions"]),
+        ));
+
+        // The revocation's plan is listed, consumed; its planner cannot approve it.
+        let plans = call(&["host", "plans", "list"]);
+        let plan_id = planned["plan_id"].as_str().expect("a plan id");
+        let listed = plans["plans"]
+            .as_array()
+            .expect("plans")
+            .iter()
+            .find(|plan| plan["plan_id"] == plan_id)
+            .unwrap_or_else(|| panic!("{scheme}: the plan is listed: {plans}"));
+        assert_eq!(listed["status"], "consumed", "{scheme}");
+        let approve = cli(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&["host", "plans", "approve", plan_id]),
+        );
+        assert!(!approve.status.success(), "{scheme}");
+        let refusal: Value = serde_json::from_slice(&approve.stderr).expect("a JSON refusal");
+        refusals.push((refusal["class"].clone(), refusal["code"].clone()));
+    }
+    assert_eq!(
+        configs[0], configs[1],
+        "the same configuration over REST and gRPC"
+    );
+    assert_eq!(
+        configs[0].0["settings"][0]["key"], "PERMGUARD_LOG_LEVEL",
+        "the settings carried"
+    );
+    assert_eq!(
+        first_records[0], first_records[1],
+        "the same first record over REST and gRPC"
+    );
+    assert!(
+        first_records[0]["record"]
+            .as_str()
+            .is_some_and(|record| !record.is_empty())
+    );
+    // Every file a command wrote is its owner's alone.
+    #[cfg(unix)]
+    for scheme in ["https", "grpcs"] {
+        use std::os::unix::fs::PermissionsExt as _;
+        for name in ["revoke.json", "bundle.json", "audit.json"] {
+            let mode = std::fs::metadata(root.join(format!("{scheme}-{name}")))
+                .expect("written")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "{scheme}-{name}");
+        }
+    }
+    assert_eq!(
+        refusals[0], refusals[1],
+        "the same refusal over REST and gRPC"
+    );
 }

@@ -1294,6 +1294,124 @@ mod tests {
         }
     }
 
+    /// TC-2: the command tree is the inventory `ops/command-line.md` states, read from it: every
+    /// `present` row is a command and every command a `present` row, and no row that is not
+    /// `present` names a command.
+    /// TC-2: `host config show` names the effective configuration, the one it prints.
+    #[test]
+    fn test_host_config_show_asks_for_the_effective_configuration() {
+        assert!(
+            command()
+                .try_get_matches_from(["permguard", "host", "config", "show"])
+                .is_err()
+        );
+        assert!(
+            command()
+                .try_get_matches_from(["permguard", "host", "config", "show", "--effective"])
+                .is_ok()
+        );
+    }
+
+    /// What `document`, the inventory, says against `tree`, the command paths: the commands it
+    /// does not list, the `present` rows no command answers, the other rows a command answers.
+    fn inventory_offences(
+        document: &str,
+        tree: &std::collections::BTreeSet<String>,
+    ) -> (Vec<String>, Vec<String>, Vec<String>, usize) {
+        let mut present = std::collections::BTreeSet::new();
+        let mut elsewhere = std::collections::BTreeSet::new();
+        for line in document.lines() {
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            // `| `command` | grant | state | why |`: the leading cell is empty.
+            let [_, command, _, state, why, ..] = cells.as_slice() else {
+                continue;
+            };
+            let Some(command) = command
+                .strip_prefix('`')
+                .and_then(|rest| rest.strip_suffix('`'))
+            else {
+                continue;
+            };
+            match *state {
+                "present" => assert!(present.insert(command.to_owned()), "`{command}` twice"),
+                "server" | "absent" | "blocked" => {
+                    assert!(
+                        *state == "server" || !why.is_empty(),
+                        "`{command}` is {state} without saying why"
+                    );
+                    assert!(elsewhere.insert(command.to_owned()), "`{command}` twice");
+                }
+                other => panic!("`{command}` has the state `{other}`"),
+            }
+        }
+        (
+            tree.difference(&present).cloned().collect(),
+            present.difference(tree).cloned().collect(),
+            elsewhere.intersection(tree).cloned().collect(),
+            present.len(),
+        )
+    }
+
+    /// The command paths of the tree.
+    fn tree_paths() -> std::collections::BTreeSet<String> {
+        fn leaves(
+            command: &clap::Command,
+            path: &str,
+            out: &mut std::collections::BTreeSet<String>,
+        ) {
+            let subcommands: Vec<&clap::Command> = command
+                .get_subcommands()
+                .filter(|subcommand| subcommand.get_name() != "help")
+                .collect();
+            if subcommands.is_empty() && !path.is_empty() {
+                out.insert(path.trim().to_owned());
+            }
+            for subcommand in subcommands {
+                leaves(
+                    subcommand,
+                    &format!("{path} {}", subcommand.get_name()),
+                    out,
+                );
+            }
+        }
+        let mut tree = std::collections::BTreeSet::new();
+        leaves(&command(), "", &mut tree);
+        tree
+    }
+
+    /// TC-2: the command tree is the inventory `ops/command-line.md` states, read from it: every
+    /// `present` row is a command and every command a `present` row, and no row that is not
+    /// `present` names a command.
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn test_the_command_tree_is_the_inventory() {
+        let document = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ops/command-line.md"),
+        )
+        .expect("the inventory is checked in");
+        let (unlisted, missing, answered, present) = inventory_offences(&document, &tree_paths());
+        assert!(present > 100, "only {present} present rows were read");
+        assert!(
+            unlisted.is_empty() && missing.is_empty() && answered.is_empty(),
+            "commands the inventory does not list: {unlisted:?}; present rows no command answers: \
+             {missing:?}; rows not present that a command answers: {answered:?}"
+        );
+    }
+
+    /// Each way the tree and the inventory can part is found.
+    #[test]
+    fn test_the_inventory_check_finds_each_difference() {
+        let document =
+            "| `a b` | g | present | |\n| `c` | g | absent | TC-9 |\n| `d` | g | present | |";
+        let tree: std::collections::BTreeSet<String> =
+            ["a b", "c", "e"].into_iter().map(str::to_owned).collect();
+        let (unlisted, missing, answered, present) = inventory_offences(document, &tree);
+        assert_eq!(unlisted, ["c", "e"]);
+        assert_eq!(missing, ["d"]);
+        assert_eq!(answered, ["c"]);
+        assert_eq!(present, 2);
+    }
+
     #[test]
     fn test_every_command_answers_h_and_help_the_same_way() {
         let mut checked = 0;
@@ -1625,6 +1743,234 @@ pub enum HostAction {
     Streams {
         #[command(subcommand)]
         action: StreamsAction,
+    },
+    /// The Host's key rings: their keys, epochs and bindings, rotation, revocation and the
+    /// verification bundle, through the Host listener.
+    Keys {
+        #[command(subcommand)]
+        action: KeysAction,
+    },
+    /// The Host's audit trails: records, signed checkpoints and fixed-frontier exports.
+    Audit {
+        #[command(subcommand)]
+        action: AuditAction,
+    },
+    /// The Host's effective configuration and its dynamic revisions.
+    Config {
+        #[command(subcommand)]
+        action: HostConfigAction,
+    },
+    /// The phase of the Host, every Plane and every service, with reasons, and the assurance
+    /// profile with its added controls and relaxations.
+    #[command(
+        after_help = "Examples:\n  permguard host status\n  permguard --host-endpoint grpcs://host.example:9443 host status -o json"
+    )]
+    Status,
+    /// The plan receipts of two-step changes, and the countersignature dual control requires.
+    Plans {
+        #[command(subcommand)]
+        action: PlansAction,
+    },
+}
+
+/// `permguard host keys …` (TC-2).
+#[derive(Debug, Subcommand)]
+pub enum KeysAction {
+    /// List the key rings the Host composes, with their epochs and key counts.
+    #[command(
+        after_help = "Examples:\n  permguard host keys list\n  permguard --host-endpoint grpcs://host.example:9443 host keys list -o json"
+    )]
+    List,
+    /// Print one ring's public keys, epoch and binding.
+    #[command(
+        after_help = "Examples:\n  permguard host keys show host.operations\n  permguard host keys show data.attest -o json"
+    )]
+    Show {
+        /// The ring, as `host keys list` names it.
+        ring: String,
+    },
+    /// Rotate a ring: its next key is prepublished, then activated.
+    #[command(
+        after_help = "Examples:\n  permguard host keys rotate host.operations --expected-epoch 3\n  permguard host keys rotate control.attest --expected-epoch 1 -o json"
+    )]
+    Rotate {
+        /// The ring, as `host keys list` names it.
+        ring: String,
+        /// The ring's epoch the operator read; a ring that moved is refused.
+        #[arg(long)]
+        expected_epoch: u64,
+    },
+    /// Revoke a key of a ring: a terminal compromise transition, planned then run.
+    Revoke {
+        #[command(subcommand)]
+        action: KeyRevokeAction,
+    },
+    /// The signed public verification bundle of a resource.
+    Bundle {
+        #[command(subcommand)]
+        action: BundleAction,
+    },
+}
+
+/// Two-step key revocation.
+#[derive(Debug, Subcommand)]
+pub enum KeyRevokeAction {
+    /// Plan a key's revocation and write its private confirmation file.
+    #[command(
+        after_help = "Examples:\n  permguard host keys revoke plan host.operations 9f2c… --reason compromise --out revoke.json\n  permguard host keys revoke plan data.attest 9f2c… --reason compromise --compromised-at 2026-10-01T00:00:00Z --out revoke.json -o json"
+    )]
+    Plan {
+        /// The ring, as `host keys list` names it.
+        ring: String,
+        /// The key's id, as `host keys show` prints it.
+        kid: String,
+        /// Why the key is revoked.
+        #[arg(long)]
+        reason: String,
+        /// Since when the key is held compromised, RFC 3339.
+        #[arg(long, value_name = "INSTANT", value_parser = rfc3339_instant)]
+        compromised_at: Option<String>,
+        /// The ring's epoch the operator read.
+        #[arg(long)]
+        expected_epoch: Option<u64>,
+        /// A new owner-only file that receives the plan.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+    /// Run a planned key revocation.
+    #[command(
+        after_help = "Examples:\n  permguard host keys revoke run host.operations --confirm-file revoke.json\n  permguard host keys revoke run data.attest --confirm-file revoke.json -o json"
+    )]
+    Run {
+        /// The ring, as `host keys list` names it.
+        ring: String,
+        /// The private plan file written by `revoke plan`.
+        #[arg(long, value_name = "FILE")]
+        confirm_file: PathBuf,
+    },
+}
+
+/// `permguard host keys bundle …`.
+#[derive(Debug, Subcommand)]
+pub enum BundleAction {
+    /// Write a resource's verification bundle, every page at one frontier, to a new owner-only
+    /// file: the signed manifest and its items, base64url, as `ledgers import --bundle` reads it.
+    #[command(
+        after_help = "Examples:\n  permguard host keys bundle export --resource plane/control/zone/z1 --out bundle.json\n  permguard --host-endpoint grpcs://host.example:9443 host keys bundle export --resource host --out bundle.json -o json"
+    )]
+    Export {
+        /// The resource, in the Host API's grammar.
+        #[arg(long)]
+        resource: String,
+        /// A new owner-only file that receives the bundle.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+}
+
+/// `permguard host audit …` (TC-2), under `audit.read` on the resource.
+#[derive(Debug, Subcommand)]
+pub enum AuditAction {
+    /// Print one page of a trail's records, its gaps and the cursor of the next page.
+    #[command(
+        after_help = "Examples:\n  permguard host audit query --class security --resource host\n  permguard host audit query --class operations --resource plane/control --from 2026-10-01T00:00:00Z --to 2026-10-02T00:00:00Z -o json"
+    )]
+    Query {
+        /// The trail's class: `security`, `operations` or `access`.
+        #[arg(long)]
+        class: String,
+        /// The trail's resource, in the Host API's grammar.
+        #[arg(long)]
+        resource: String,
+        /// The earliest record time, RFC 3339, inclusive.
+        #[arg(long, value_name = "INSTANT", value_parser = rfc3339_instant)]
+        from: Option<String>,
+        /// The latest record time, RFC 3339, inclusive.
+        #[arg(long, value_name = "INSTANT", value_parser = rfc3339_instant)]
+        to: Option<String>,
+        /// Where the page starts, as the page before printed it.
+        #[arg(long)]
+        cursor: Option<String>,
+        /// How many records the page carries, 1 to 1000.
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Print a trail's signed checkpoints and the keys that cover them.
+    #[command(
+        after_help = "Examples:\n  permguard host audit checkpoints --class security --resource host\n  permguard host audit checkpoints --class security --resource host --period 2026-10-01 -o json"
+    )]
+    Checkpoints {
+        /// The trail's class.
+        #[arg(long)]
+        class: String,
+        /// The trail's resource, in the Host API's grammar.
+        #[arg(long)]
+        resource: String,
+        /// One UTC day, `YYYY-MM-DD`; every day when left out.
+        #[arg(long)]
+        period: Option<String>,
+    },
+    /// Write a trail's export, every page at one frontier with its verification metadata, to a
+    /// new owner-only file.
+    #[command(
+        after_help = "Examples:\n  permguard host audit export --class security --resource host --out audit.json\n  permguard host audit export --class security --resource host --frontier 120 --out audit.json -o json"
+    )]
+    Export {
+        /// The trail's class.
+        #[arg(long)]
+        class: String,
+        /// The trail's resource, in the Host API's grammar.
+        #[arg(long)]
+        resource: String,
+        /// The sequence the export stops before; the trail's next one when left out.
+        #[arg(long)]
+        frontier: Option<u64>,
+        /// A new owner-only file that receives the export.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+}
+
+/// `permguard host config …` (TC-2).
+#[derive(Debug, Subcommand)]
+pub enum HostConfigAction {
+    /// Print the Host's effective configuration, each value with the layer it came from,
+    /// secrets masked.
+    #[command(
+        after_help = "Examples:\n  permguard host config show --effective\n  permguard host config show --effective -o yaml"
+    )]
+    Show {
+        /// The effective configuration: what the Host runs with.
+        #[arg(long, required = true)]
+        effective: bool,
+    },
+    /// Print the dynamic configuration journal: memberships, grants, retention.
+    #[command(
+        after_help = "Examples:\n  permguard host config revisions\n  permguard host config revisions -o json"
+    )]
+    Revisions,
+}
+
+/// `permguard host plans …` (TC-2).
+#[derive(Debug, Subcommand)]
+pub enum PlansAction {
+    /// List the plans whose operation the caller may do, with their approvals.
+    #[command(
+        after_help = "Examples:\n  permguard host plans list\n  permguard host plans list --status pending -o json"
+    )]
+    List {
+        /// Only plans in this status: `pending`, `ready`, `consumed` or `expired`.
+        #[arg(long)]
+        status: Option<String>,
+    },
+    /// Approve another principal's plan: the countersignature dual control requires. A
+    /// principal never approves its own plan.
+    #[command(
+        after_help = "Examples:\n  permguard host plans approve 0123456789abcdef0123456789abcdef\n  permguard host plans approve 0123456789abcdef0123456789abcdef -o json"
+    )]
+    Approve {
+        /// The plan's id, as `host plans list` prints it.
+        plan_id: String,
     },
 }
 

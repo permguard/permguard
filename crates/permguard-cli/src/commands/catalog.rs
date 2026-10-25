@@ -371,13 +371,9 @@ fn written(
     Ok(())
 }
 
-/// The keys bundle file an import reads (WP-7.10): the source Host's bundle, base64url.
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct BundleFile {
-    manifest: String,
-    items: Vec<String>,
-}
+/// The keys bundle file an import reads (WP-7.10): the source Host's bundle, base64url, the one
+/// `host keys bundle export` writes (TC-2).
+use super::host_ops::BundleFile;
 
 /// What `import` hands the plane: the archive file, the bundle file decoded, the pin.
 fn import_request(

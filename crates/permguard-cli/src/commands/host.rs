@@ -66,6 +66,11 @@ pub fn host_command(
         HostAction::Identity { action } => identity(globals, server_config, action, trace),
         HostAction::Members { action } => members(globals, action, trace),
         HostAction::Streams { action } => streams(globals, action, trace),
+        HostAction::Keys { action } => super::host_ops::keys(globals, action, trace),
+        HostAction::Audit { action } => super::host_ops::audit(globals, action, trace),
+        HostAction::Config { action } => super::host_ops::config(globals, action, trace),
+        HostAction::Status => super::host_ops::status(globals, trace),
+        HostAction::Plans { action } => super::host_ops::plans(globals, action, trace),
     }
 }
 
@@ -735,7 +740,7 @@ fn identity(
 
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
-fn request_id() -> String {
+pub(super) fn request_id() -> String {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -747,7 +752,7 @@ fn request_id() -> String {
     )
 }
 
-fn online_host(
+pub(super) fn online_host(
     globals: &Globals,
     trace: &Trace,
     invitation_token: bool,
@@ -912,13 +917,20 @@ fn runs_of(frontier: permguard_host::api::streams::Frontier) -> serde_json::Valu
     serde_json::json!({ "resource": frontier.resource, "runs": runs })
 }
 
-fn render_json(value: &impl Serialize, globals: &Globals, trace: &Trace) -> Result<(), Failure> {
+pub(super) fn render_json(
+    value: &impl Serialize,
+    globals: &Globals,
+    trace: &Trace,
+) -> Result<(), Failure> {
     let value = serde_json::to_value(value)
         .map_err(|error| Failure::internal(format!("rendering the Host answer: {error}")))?;
     render(&JsonReport(value), globals.output, trace)
 }
 
-fn read_json<T: serde::de::DeserializeOwned>(path: &Path, what: &str) -> Result<T, Failure> {
+pub(super) fn read_json<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    what: &str,
+) -> Result<T, Failure> {
     let bytes = crate::confirm::read_bytes(Some(path), what, 1024 * 1024)?;
     permguard_host::api::decode_external_json(&bytes).map_err(|error| {
         // Serde may quote an unknown field name. These documents can carry invitations,
@@ -933,7 +945,7 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path, what: &str) -> Result<
     })
 }
 
-fn rooted_file(globals: &Globals, path: &Path) -> std::path::PathBuf {
+pub(super) fn rooted_file(globals: &Globals, path: &Path) -> std::path::PathBuf {
     if path.is_absolute() {
         path.to_owned()
     } else {
@@ -1164,6 +1176,7 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                 expected_revision,
                 out,
             } => {
+                let reserved = Reserved::claim(&rooted_file(globals, &out))?;
                 let answer = online_host(globals, trace, false)?
                     .plan_member_revoke(
                         &id,
@@ -1174,10 +1187,7 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                         },
                     )
                     .map_err(|failure| Failure::from_client(&failure))?;
-                write_new(
-                    &rooted_file(globals, &out),
-                    &serde_json::to_vec_pretty(&answer).map_err(Failure::internal)?,
-                )?;
+                reserved.fill(&serde_json::to_vec_pretty(&answer).map_err(Failure::internal)?)?;
                 render_json(&answer, globals, trace)?;
             }
             MemberRevokeAction::Run { id, confirm_file } => {
@@ -1264,6 +1274,7 @@ fn grant_revoke(
             expected_revision,
             out,
         } => {
+            let reserved = Reserved::claim(&rooted_file(globals, &out))?;
             let answer = online_host(globals, trace, false)?
                 .plan_grant_revoke(
                     &grant_id,
@@ -1273,10 +1284,7 @@ fn grant_revoke(
                     },
                 )
                 .map_err(|failure| Failure::from_client(&failure))?;
-            write_new(
-                &rooted_file(globals, &out),
-                &serde_json::to_vec_pretty(&answer).map_err(Failure::internal)?,
-            )?;
+            reserved.fill(&serde_json::to_vec_pretty(&answer).map_err(Failure::internal)?)?;
             render_json(&answer, globals, trace)
         }
         GrantRevokeAction::Run {
@@ -1950,6 +1958,56 @@ pub(super) fn open_plans(
 }
 
 /// Writes `bytes` to a new file at `path`, readable by its owner only.
+/// A new owner-only `--out` file, claimed before the Host is asked (after the TC-2 review): an
+/// answer the Host gives, a plan above all, always has its file, and a file that exists is refused
+/// before anything changes. Dropped unfilled, it is removed.
+pub(super) struct Reserved {
+    path: std::path::PathBuf,
+    file: Option<std::fs::File>,
+}
+
+impl Reserved {
+    pub(super) fn claim(path: &Path) -> Result<Self, Failure> {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.mode(0o600);
+        }
+        let file = options
+            .open(path)
+            .map_err(|error| Failure::usage(format!("--out {}: {error}", path.display())))?;
+        Ok(Self {
+            path: path.to_owned(),
+            file: Some(file),
+        })
+    }
+
+    /// Writes `bytes`, the whole file.
+    pub(super) fn fill(mut self, bytes: &[u8]) -> Result<(), Failure> {
+        use std::io::Write as _;
+        let mut file = self
+            .file
+            .take()
+            .ok_or_else(|| Failure::internal("filled twice"))?;
+        let written = file.write_all(bytes);
+        drop(file);
+        written.map_err(|error| {
+            let _ = std::fs::remove_file(&self.path);
+            Failure::unavailable(format!("writing {}: {error}", self.path.display()))
+        })
+    }
+}
+
+impl Drop for Reserved {
+    fn drop(&mut self) {
+        if self.file.take().is_some() {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
 pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
     use std::io::Write as _;
     let mut options = std::fs::OpenOptions::new();

@@ -346,7 +346,12 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
                 HostAction::Identity { .. }
                 | HostAction::Members { .. }
                 | HostAction::Streams { .. }
-                | HostAction::Grants { .. } => Class::Host,
+                | HostAction::Grants { .. }
+                | HostAction::Keys { .. }
+                | HostAction::Audit { .. }
+                | HostAction::Config { .. }
+                | HostAction::Status
+                | HostAction::Plans { .. } => Class::Host,
             };
             ("host", class)
         }
