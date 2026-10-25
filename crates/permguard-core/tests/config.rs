@@ -2464,6 +2464,25 @@ fn test_acknowledged_batches_are_kept_only_as_long_as_declared() {
     );
 }
 
+/// WP-7.11: a sweep removes at most ten thousand objects unless the deployment says otherwise,
+/// from the environment or `controlPlane.storage.gc.max_removals`; zero is refused.
+#[test]
+fn test_a_sweep_removes_a_bounded_number_of_objects() {
+    assert_eq!(config(&[], &[], &[]).gc_max_removals(), 10_000);
+    assert_eq!(
+        config(&[], &[(SETTING_GC_MAX_REMOVALS, "250")], &[]).gc_max_removals(),
+        250
+    );
+    assert!(
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_environment(pairs(&[(SETTING_GC_MAX_REMOVALS, "0")])),
+        )
+        .is_err()
+    );
+}
+
 /// WP-7.12: a transfer session stays open fifteen minutes by default, and at most an hour.
 #[test]
 fn test_a_transfer_session_is_open_at_most_an_hour() {

@@ -253,7 +253,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
     let backups =
         permguard_host::operations::backup::Backups::open(&volume).expect("the backups open");
     std::mem::forget(volume);
-    Arc::new(
+    let api = Arc::new(
         HostApi::new(Composition {
             authorization: Arc::new(Authorization::new(
                 Arc::clone(&store),
@@ -319,7 +319,58 @@ fn facade(tag: &str) -> Arc<HostApi> {
         })
         .with_streams(Arc::new(FixedStreams))
         .with_backups(Arc::new(backups), None, None),
-    )
+    );
+    // The object sweep a Control Plane provides (WP-7.11b), answering fixed reports.
+    api.gc_jobs()
+        .provide(
+            permguard_host::gc::OBJECTS,
+            "control",
+            Arc::new(FixedSweep) as Arc<dyn permguard_host::gc::GcJob>,
+        )
+        .expect("the object sweep is provided");
+    api
+}
+
+/// A sweep answering one ledger's fixed report (WP-7.11b).
+struct FixedSweep;
+
+impl permguard_host::gc::GcJob for FixedSweep {
+    fn plan(
+        &self,
+        scope: &permguard_core::authz::Resource,
+    ) -> Result<permguard_host::gc::Report, permguard_host::gc::GcError> {
+        Ok(fixed_report(scope, 0))
+    }
+
+    fn run(
+        &self,
+        scope: &permguard_core::authz::Resource,
+        _plan_id: &str,
+    ) -> Result<permguard_host::gc::Report, permguard_host::gc::GcError> {
+        Ok(fixed_report(scope, 1))
+    }
+}
+
+fn fixed_report(
+    scope: &permguard_core::authz::Resource,
+    removed: u64,
+) -> permguard_host::gc::Report {
+    permguard_host::gc::Report {
+        entries: vec![permguard_host::gc::Entry {
+            resource: format!("{scope}/zone/z/ledger/l"),
+            candidates: 1,
+            candidate_bytes: 64,
+            removed,
+            removed_bytes: removed * 64,
+            kept: vec![permguard_host::gc::Kept {
+                reason: "reachable".to_owned(),
+                count: 3,
+            }],
+        }],
+        resumes_at: None,
+        skipped: Vec::new(),
+        omitted: 0,
+    }
 }
 
 /// A stream engine answering one decision stream on `plane/data/zone/z/ledger/l`, its producer's
@@ -1790,6 +1841,66 @@ impl Transport {
         }
     }
 
+    async fn plan_gc(&self, who: Option<&str>, job: &str, request_id: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/gc/{job}/plan"),
+                    who,
+                    Some(json!({"request_id": request_id})),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .plan_gc(Self::grpc_request(
+                        who,
+                        host_v1::PlanGcRequest {
+                            job: job.to_owned(),
+                            request_id: request_id.to_owned(),
+                            resource: String::new(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn run_gc(
+        &self,
+        who: Option<&str>,
+        job: &str,
+        request_id: &str,
+        receipt: &str,
+    ) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/gc/{job}/run"),
+                    who,
+                    Some(json!({"request_id": request_id, "receipt": receipt})),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .run_gc(Self::grpc_request(
+                        who,
+                        host_v1::RunGcRequest {
+                            job: job.to_owned(),
+                            request_id: request_id.to_owned(),
+                            receipt: receipt_bytes(receipt),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
     async fn prepare_backup(&self, who: Option<&str>) -> Outcome {
         match self {
             Self::Rest(_) => {
@@ -2320,6 +2431,33 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         transport.abort_backup(admin, &second_token).await,
     ));
     steps.push(("list the backups", transport.list_backups(admin).await));
+    // An operator's object sweep (WP-7.11b): refused to a stranger and for a job nobody serves,
+    // granted on the Plane, planned, run, and its spent receipt refused.
+    steps.push((
+        "plan a sweep as a stranger",
+        transport.plan_gc(Some(STRANGER), "objects", "gc").await,
+    ));
+    steps.push((
+        "plan a sweep nobody serves",
+        transport.plan_gc(admin, "everything", "gc").await,
+    ));
+    steps.push((
+        "grant the object sweep",
+        transport
+            .create_grant(admin, "gc-grant", ADMIN, operations::GC_MANAGE, None)
+            .await,
+    ));
+    let planned = transport.plan_gc(admin, "objects", "gc").await;
+    let sweep = receipt_of(&planned);
+    steps.push(("plan the object sweep", planned));
+    steps.push((
+        "run the object sweep",
+        transport.run_gc(admin, "objects", "gc-run", &sweep).await,
+    ));
+    steps.push((
+        "run the spent object sweep",
+        transport.run_gc(admin, "objects", "gc-again", &sweep).await,
+    ));
     steps.push((
         "read the identity",
         transport.identity_document(admin).await,
@@ -2629,6 +2767,9 @@ fn schema_of(case: &str) -> &'static str {
         "finalize the backup" => "BackupEnded",
         "abort a backup" => "BackupAborted",
         "list the backups" => "BackupList",
+        "grant the object sweep" => "GrantCreated",
+        "plan the object sweep" => "GcPlanned",
+        "run the object sweep" => "GcRan",
         "read the identity" | "read the identity after its rotation" => "HostIdentity",
         "rotate the identity" => "IdentityRotated",
         "read the ring bindings" => "RingBindings",
@@ -2830,6 +2971,16 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
         refused("list the plans as a stranger"),
         (String::new(), common::FORBIDDEN.to_owned())
     );
+    // The object sweep's refusals (WP-7.11b).
+    assert_eq!(
+        refused("plan a sweep as a stranger"),
+        (String::new(), common::FORBIDDEN.to_owned())
+    );
+    assert_eq!(
+        refused("plan a sweep nobody serves"),
+        ("not_found".to_owned(), common::NOT_FOUND.to_owned())
+    );
+    assert_eq!(refused("run the spent object sweep").1, host::PLAN_EXPIRED);
     // The backup's refusals (WP-7.8).
     assert_eq!(
         refused("list the backups as a stranger"),

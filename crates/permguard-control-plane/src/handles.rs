@@ -75,6 +75,8 @@ pub(crate) fn declaration() -> Declaration {
         .mutates(crate::catalog::CATALOG_DOMAIN)
         // The garbage collection keeps what a hold names (WP-7.3c).
         .reads_holds()
+        // The operator's object sweep on the Host API (WP-7.11b).
+        .provides_gc_job(permguard_host::gc::OBJECTS)
         .handles_task(TaskType::PolicyMirror, 1)
         .handles_task(TaskType::EventsImport, 1)
         .uses_task(TaskType::DecisionsShip, 1)

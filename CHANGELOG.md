@@ -19,6 +19,16 @@ is cut.
 
 ### Added
 
+- **An operator plans and runs the object sweep on the Host API (WP-7.11b).**
+  `POST /host/v1/gc/objects/plan` `{request_id, resource?}` and `POST /host/v1/gc/objects/run` `{request_id, receipt}`, gRPC `OperationsService.PlanGc` and `RunGc`, under the new grant `gc.manage` on the scope: the Control Plane, or a zone or ledger of it.
+  A plan changes nothing and answers its receipt (`gc.objects`, no approval) and, ledger by ledger, the candidates and their bytes and what is kept and why: `reachable`, `pinned`, `grace`, `held`.
+  A run spends its plan first, in an operation of its own, then sweeps the scope again outside any operation, under every recheck of the background pass, within `storage.gc.max_removals` and serialized with it, and answers what it removed, what it kept and why (`bound` too), where it stopped, and its receipt; a retry answers the recorded run, and a zone or ledger the catalog does not hold is `not_found`.
+  Both are audited, `host.gc.planned` and `host.gc.ran`, a run even when it removes nothing, and the Plane's `store.swept` record names the plan.
+  A store with `storage.gc.enabled: false` keeps every object: the job is not provided and the routes answer `unavailable`.
+- **A garbage-collection pass is bounded and checks the holds again before it deletes (WP-7.11a).**
+  `controlPlane.storage.gc.max_removals` (`PERMGUARD_STORAGE_GC_MAX_REMOVALS`, default `10000`) caps the objects one sweep removes; a pass that reaches it stops in the ledger it was sweeping, the next resumes there, and the `store.swept` record says where.
+  Under each ledger's transfer lock, after its pins are read and its refs walked and right before anything of it is removed, the holds are read again: a hold added during a pass keeps its ledger whole, temporaries included.
+  A push commit is refused `transfer_mismatch` when it reaches an object already on disk that its transfer did not declare and no ref reaches: a sweep could have removed it between its listing and the ref; one another ref reaches is pinned by the commit's session under the ledger's lock; a client declaring its whole closure, as the CLI does, is unaffected.
 - **An exported archive is imported into another Host (WP-7.10b).**
   `permguard ledgers import <file> --as <zone>/<name>` and `permguard zones import <file> --as <zone>`, with `--mode archive|re-home`, the source Host's keys bundle (`--bundle`) and identity pin (`--pin`), reach `POST /v1/zones/{zone}/import` and gRPC `Import` under `catalog.write` and `policy.push`.
   The archive is verified whole before anything is written: the manifest from the bundle and pin, the bundle's digest, every object canonical, each ledger's objects exactly what its refs reach, every statement on a ref the manifest names, the counts.

@@ -1383,10 +1383,66 @@ message Backup {
   // Its signed manifest, base64url.
   optional string manifest = 6;
 }
-message PlanGcRequest {}
-message PlanGcResponse {}
-message RunGcRequest {}
-message RunGcResponse {}
+// `POST /host/v1/gc/{job}/plan` (WP-7.11b), under `gc.manage` on the scope.
+message PlanGcRequest {
+  // `objects`.
+  string job = 1;
+  string request_id = 2;
+  // The Plane's zone or ledger, as a grant names it; the whole Plane when empty.
+  string resource = 3;
+}
+message PlanGcResponse {
+  string job = 1;
+  // The scope the plan names.
+  string resource = 2;
+  string plan_id = 3;
+  string plan_digest = 4;
+  string expires = 5;
+  // The receipt the run presents, COSE_Sign1 `permguard.operation.plan.v1` (WP-3.9).
+  bytes receipt = 6;
+  uint64 approvals_required = 7;
+  // What a run would remove now, and what it would keep and why.
+  GcReport report = 8;
+}
+// `POST /host/v1/gc/{job}/run` (WP-7.11b).
+message RunGcRequest {
+  string job = 1;
+  string request_id = 2;
+  // The receipt the plan step answered.
+  bytes receipt = 3;
+}
+message RunGcResponse {
+  string job = 1;
+  string resource = 2;
+  // The plan the run spent.
+  string plan_id = 3;
+  GcReport report = 4;
+  Receipt receipt = 5;
+}
+// What a garbage-collection plan or run found, resource by resource.
+message GcReport {
+  repeated GcEntry entries = 1;
+  // The resource a run stopped in at its bound.
+  optional string resumes_at = 2;
+  // The resources it could not read, and why: nothing of them was removed.
+  repeated string skipped = 3;
+  // Resources past the report's bound it does not list.
+  uint64 omitted = 4;
+}
+message GcEntry {
+  string resource = 1;
+  uint64 candidates = 2;
+  uint64 candidate_bytes = 3;
+  // Zero for a plan.
+  uint64 removed = 4;
+  uint64 removed_bytes = 5;
+  repeated GcKept kept = 6;
+}
+// What a sweep kept for one reason: `reachable`, `pinned`, `grace`, `held` or `bound`.
+message GcKept {
+  string reason = 1;
+  uint64 count = 2;
+}
 message GetStorageQuotaRequest {}
 message GetStorageQuotaResponse {}
 message ProbeStorageRequest {}

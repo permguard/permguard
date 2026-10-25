@@ -25,6 +25,7 @@ pub mod audit;
 pub mod backups;
 pub mod bounds;
 pub mod config;
+pub mod gc;
 pub mod grants;
 pub mod host_input;
 pub mod identity;
@@ -267,6 +268,10 @@ pub struct HostApi {
     backups: Option<Arc<crate::operations::backup::Backups>>,
     /// The recovery-key id and encryption profile every snapshot manifest binds.
     backup_labels: (Option<String>, Option<String>),
+    /// The garbage-collection jobs the Planes provide (WP-7.11b), filled as they register.
+    gc: Arc<crate::gc::Jobs>,
+    /// Held while a gc run checks and spends its plan (WP-7.11b).
+    gc_spending: std::sync::Mutex<()>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -301,6 +306,8 @@ impl HostApi {
             streams: None,
             backups: None,
             backup_labels: (None, None),
+            gc: Arc::default(),
+            gc_spending: std::sync::Mutex::new(()),
         }
     }
 

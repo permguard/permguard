@@ -19,6 +19,7 @@ pub mod audit;
 pub mod authz;
 pub mod composition;
 pub mod exports;
+pub mod gc;
 pub mod holds;
 pub mod identity;
 pub mod keys;

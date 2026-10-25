@@ -127,6 +127,7 @@ fn grant_of(kind: &str) -> Option<&'static str> {
         KEYS_REVOKE => Some(operations::KEYS_ADMIN),
         MEMBERSHIP_REVOKE => Some(operations::MEMBERSHIP_ADMIN),
         IDENTITY_RESET => Some(operations::IDENTITY_ADMIN),
+        plan::GC_OBJECTS => Some(operations::GC_MANAGE),
         _ => None,
     }
 }

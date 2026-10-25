@@ -110,6 +110,7 @@ controlPlane:
   #     enabled: "true"      # the default; "false" keeps everything, forever
   #     interval: "6h"       # how often the store is swept — about how promptly space returns
   #     grace: "24h"         # how old an unreachable object must be before it may go
+  #     max_removals: "10000" # objects one sweep removes at most; the next resumes where it stopped
 
   # # Where the decisions this deployment's data planes answer are kept. Off by default: a control
   # # plane that receives nothing should not create a store, and a deployment that has not decided

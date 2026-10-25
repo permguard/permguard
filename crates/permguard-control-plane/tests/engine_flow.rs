@@ -1284,7 +1284,7 @@ fn a_retried_commit_whose_statement_was_lost_is_signed_again() {
 fn every_file_of_a_populated_ledger_is_declared() {
     use permguard_host::storage::authority::Declared as _;
 
-    let fixture = Fixture::new("declared");
+    let fixture = Fixture::new("undeclared-then-whole");
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
     push(&fixture, &objects, &head, None);
     let carried = derive_policy_id(b"permit(principal, action, resource);");
@@ -2028,4 +2028,116 @@ fn an_upload_past_the_ledger_quota_is_refused() {
         Err(EngineError::Unavailable { .. })
     ));
     assert!(!fixture.store.has_object(&Digest::compute(&objects[0])));
+}
+
+/// WP-7.11, after the review: a commit that reaches an object already on disk, which its
+/// transfer did not declare and no ref reaches, is refused: a sweep could remove that object
+/// between its listing and the ref. Declared, the same push lands.
+#[test]
+fn a_commit_reaching_an_undeclared_unreached_object_is_refused() {
+    let fixture = Fixture::new("undeclared-leftover");
+    let (objects, head) = build_commit("permit(principal, action, resource);", Vec::new());
+    // What an abandoned push left on disk: unreached, and in no session.
+    let leftover = objects
+        .iter()
+        .find(|bytes| Digest::compute(bytes) != head)
+        .expect("an object besides the commit")
+        .clone();
+    fixture.store.put_object(&leftover).expect("left over");
+    let declared: Vec<Vec<u8>> = objects
+        .iter()
+        .filter(|bytes| **bytes != leftover)
+        .cloned()
+        .collect();
+    let refused = try_commit(&fixture, "main", &head, None, &declared);
+    assert!(
+        matches!(
+            &refused,
+            Err(EngineError::Transfer {
+                code: "transfer_mismatch",
+                ..
+            })
+        ),
+        "{refused:?}"
+    );
+    assert!(fixture.store.read_ref("main").unwrap().is_none(), "no ref");
+    // Its whole closure declared, under a request of its own, the same push lands.
+    let engine = fixture.engine();
+    let negotiated = engine
+        .negotiate_push(&NegotiatePushRequest {
+            request_id: "whole".to_owned(),
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: claims(&objects),
+        })
+        .expect("negotiated");
+    let missing: Vec<Vec<u8>> = objects
+        .iter()
+        .filter(|bytes| negotiated.missing.contains(&Digest::compute(bytes)))
+        .cloned()
+        .collect();
+    engine
+        .upload(&UploadObjectsRequest {
+            transfer_id: negotiated.transfer_id,
+            compression: None,
+            objects: missing,
+        })
+        .expect("uploaded");
+    engine
+        .commit_push(
+            &CommitPushRequest {
+                request_id: "whole".to_owned(),
+                transfer_id: negotiated.transfer_id,
+                r#ref: "main".into(),
+                new_head: head.clone(),
+                expected_ref: None,
+            },
+            &fixture.signer(),
+        )
+        .expect("declared whole");
+}
+
+/// WP-7.11, after the mutants: an object a commit reaches without declaring it is accepted when a
+/// ref already reaches it, and pinned then: a commit on `feature` whose tree is `main`'s declares
+/// only itself.
+#[test]
+fn a_commit_reaching_what_a_ref_reaches_need_not_declare_it() {
+    let fixture = Fixture::new("undeclared-reached");
+    let shared = "permit(principal, action, resource);";
+    let (objects, main) = build_commit(shared, Vec::new());
+    try_commit(&fixture, "main", &main, None, &objects).expect("main");
+    let (root, feature) = build_commit("forbid(principal, action, resource);", Vec::new());
+    try_commit(&fixture, "feature", &feature, None, &root).expect("feature's root");
+    // The path keeps its id, so the tree is new; the policy blob is main's, byte for byte.
+    let carried = derive_policy_id(b"forbid(principal, action, resource);");
+    let (next, head) = build_commit_with_id(shared, vec![feature.clone()], Some(carried));
+    let blob = objects
+        .iter()
+        .find(|bytes| next.contains(bytes) && Digest::compute(bytes) != main)
+        .filter(|bytes| !root.contains(bytes))
+        .expect("a blob main holds and feature does not")
+        .clone();
+    let own: Vec<Vec<u8>> = next
+        .iter()
+        .filter(|bytes| **bytes != blob)
+        .cloned()
+        .collect();
+    let at = fixture.store.read_ref("feature").unwrap().expect("feature");
+    let expected_ref = Some(ExpectedRef {
+        counter: at.counter,
+        digest: permguard_control_plane::store::ref_digest(&at).unwrap(),
+    });
+    try_commit(&fixture, "feature", &head, expected_ref, &own)
+        .expect("the undeclared blob is main's");
+    // And pinned by the commit's session, which a sweep keeps for the grace after it closed,
+    // whatever moves `main` meanwhile (after the review).
+    let digest = Digest::compute(&blob);
+    let sessions = fixture.store.transfers().unwrap().list().unwrap();
+    assert!(
+        sessions
+            .iter()
+            .any(|session| session.r#ref == "feature" && session.pinned(&digest)),
+        "the reached blob is pinned"
+    );
 }

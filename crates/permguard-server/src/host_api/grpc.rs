@@ -156,6 +156,34 @@ fn receipt(receipt: api::Receipt) -> v1::Receipt {
     }
 }
 
+/// A garbage-collection report as gRPC carries it (WP-7.11b).
+fn gc_report(report: permguard_host::gc::Report) -> v1::GcReport {
+    v1::GcReport {
+        entries: report
+            .entries
+            .into_iter()
+            .map(|entry| v1::GcEntry {
+                resource: entry.resource,
+                candidates: entry.candidates,
+                candidate_bytes: entry.candidate_bytes,
+                removed: entry.removed,
+                removed_bytes: entry.removed_bytes,
+                kept: entry
+                    .kept
+                    .into_iter()
+                    .map(|kept| v1::GcKept {
+                        reason: kept.reason,
+                        count: kept.count,
+                    })
+                    .collect(),
+            })
+            .collect(),
+        resumes_at: report.resumes_at,
+        skipped: report.skipped,
+        omitted: report.omitted,
+    }
+}
+
 fn blank(text: String) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
@@ -851,12 +879,59 @@ impl OperationsService for Served {
         }))
     }
 
-    async fn plan_gc(&self, _request: Request<v1::PlanGcRequest>) -> Answer<v1::PlanGcResponse> {
-        Err(unimplemented("garbage collection"))
+    /// `POST /host/v1/gc/{job}/plan` (WP-7.11b): the job's sweep is read off the async workers.
+    async fn plan_gc(&self, request: Request<v1::PlanGcRequest>) -> Answer<v1::PlanGcResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let job = asked.job;
+        let planned = self
+            .blocking(move |api| {
+                api.plan_gc(
+                    &actor,
+                    &job,
+                    api::gc::PlanGc {
+                        request_id: asked.request_id,
+                        resource: blank(asked.resource),
+                    },
+                )
+            })
+            .await?;
+        Ok(Response::new(v1::PlanGcResponse {
+            receipt: raw(&planned.receipt)?,
+            job: planned.job,
+            resource: planned.resource,
+            plan_id: planned.plan_id,
+            plan_digest: planned.plan_digest,
+            expires: planned.expires,
+            approvals_required: planned.approvals_required,
+            report: Some(gc_report(planned.report)),
+        }))
     }
 
-    async fn run_gc(&self, _request: Request<v1::RunGcRequest>) -> Answer<v1::RunGcResponse> {
-        Err(unimplemented("garbage collection"))
+    /// `POST /host/v1/gc/{job}/run` (WP-7.11b).
+    async fn run_gc(&self, request: Request<v1::RunGcRequest>) -> Answer<v1::RunGcResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let job = asked.job;
+        let ran = self
+            .blocking(move |api| {
+                api.run_gc(
+                    &actor,
+                    &job,
+                    api::gc::RunGc {
+                        request_id: asked.request_id,
+                        receipt: b64(&asked.receipt),
+                    },
+                )
+            })
+            .await?;
+        Ok(Response::new(v1::RunGcResponse {
+            job: ran.job,
+            resource: ran.resource,
+            plan_id: ran.plan_id,
+            report: Some(gc_report(ran.report)),
+            receipt: Some(receipt(ran.receipt)),
+        }))
     }
 
     async fn get_storage_quota(

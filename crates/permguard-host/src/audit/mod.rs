@@ -186,6 +186,10 @@ pub const REGISTRY: &[ActionSchema] = &[
     // A restore (WP-7.9): planned, then run.
     mutation("host.restore.planned", HOST),
     mutation("host.restore.completed", HOST),
+    // An operator's garbage collection (WP-7.11b): planned, then run, even when it removes
+    // nothing.
+    mutation("host.gc.planned", HOST),
+    mutation("host.gc.ran", HOST),
     // The key rings (WP-3.1): every journal entry an `operations` record, an operator's
     // rotation and revocation each a mutation.
     ActionSchema {

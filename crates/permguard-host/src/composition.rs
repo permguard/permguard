@@ -164,6 +164,7 @@ pub struct Declaration {
     mutations: Vec<&'static str>,
     layouts: Vec<&'static str>,
     reads_holds: bool,
+    gc_jobs: Vec<&'static str>,
 }
 
 impl Declaration {
@@ -254,6 +255,15 @@ impl Declaration {
         self
     }
 
+    /// Declares that this Plane provides the garbage-collection `job` the Host API plans and runs
+    /// (WP-7.11b): one of [`crate::gc::JOBS`], provided by one Plane.
+    pub fn provides_gc_job(mut self, job: &'static str) -> Self {
+        if !self.gc_jobs.contains(&job) {
+            self.gc_jobs.push(job);
+        }
+        self
+    }
+
     /// Declares a WP-1.9 layout subsystem whose version in force this Plane reads (WP-6.2d): a
     /// legacy store it stops reading once the volume archived it, without touching the volume.
     pub fn reads_layout(mut self, subsystem: &'static str) -> Self {
@@ -291,6 +301,8 @@ pub enum CompositionError {
     /// A Plane declared, as its own artifact, a content type only the Host identity signs: the
     /// identity document, a succession, a session or its proof, a ring binding (WP-2.3).
     Reserved { plane: String, artifact: String },
+    /// A Plane declared a garbage-collection job the Host does not serve (WP-7.11b).
+    UnknownGcJob { plane: String, job: String },
 }
 
 /// The content types the Host identity signs and no Plane may declare as its artifact: a verifier
@@ -321,6 +333,12 @@ impl std::fmt::Display for CompositionError {
                 f,
                 "the plane `{plane}` asked for {what}, which it did not declare"
             ),
+            Self::UnknownGcJob { plane, job } => write!(
+                f,
+                "the plane `{plane}` declared the gc job `{job}`, which the Host does not serve: \
+                 the jobs are {}",
+                crate::gc::JOBS.join(", ")
+            ),
             Self::Reserved { plane, artifact } => write!(
                 f,
                 "the plane `{plane}` declared `{artifact}` as its artifact, which only the Host \
@@ -343,6 +361,7 @@ pub struct Host {
     memberships: Option<Arc<dyn ServingMembers>>,
     mirror_tasks: Option<Arc<dyn MirrorTasks>>,
     holds: Option<Arc<crate::holds::HoldStore>>,
+    gc_jobs: Option<Arc<crate::gc::Jobs>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
@@ -372,6 +391,7 @@ pub struct HostBuilder {
     memberships: Option<Arc<dyn ServingMembers>>,
     mirror_tasks: Option<Arc<dyn MirrorTasks>>,
     holds: Option<Arc<crate::holds::HoldStore>>,
+    gc_jobs: Option<Arc<crate::gc::Jobs>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
@@ -475,6 +495,13 @@ impl HostBuilder {
         self
     }
 
+    /// The Host API's garbage-collection jobs (WP-7.11b): a Plane that declared a job provides it
+    /// there.
+    pub fn gc_jobs(mut self, jobs: Arc<crate::gc::Jobs>) -> Self {
+        self.gc_jobs = Some(jobs);
+        self
+    }
+
     /// The version in force of every WP-1.9 layout on the volume, as the start left it (WP-6.2d):
     /// a Plane reads those it declared.
     pub fn layouts(mut self, layouts: impl IntoIterator<Item = (String, u16)>) -> Self {
@@ -490,6 +517,7 @@ impl HostBuilder {
             memberships: self.memberships,
             mirror_tasks: self.mirror_tasks,
             holds: self.holds,
+            gc_jobs: self.gc_jobs,
             streams: self.streams,
             rings: self.rings,
             recorder: self.recorder,
@@ -539,6 +567,16 @@ impl Host {
             return Err(CompositionError::Reserved {
                 plane,
                 artifact: (*artifact).to_owned(),
+            });
+        }
+        if let Some(job) = declaration
+            .gc_jobs
+            .iter()
+            .find(|job| !crate::gc::JOBS.contains(job))
+        {
+            return Err(CompositionError::UnknownGcJob {
+                plane,
+                job: (*job).to_owned(),
             });
         }
         {
@@ -597,6 +635,12 @@ impl Host {
                     .scope_schemas
                     .iter()
                     .map(|name| ("scope schema", name.clone())),
+            );
+            claimed.extend(
+                declaration
+                    .gc_jobs
+                    .iter()
+                    .map(|job| ("gc job", (*job).to_owned())),
             );
             claimed.extend(
                 declaration
@@ -752,6 +796,10 @@ impl Host {
                 .reads_holds
                 .then(|| self.holds.clone())
                 .flatten(),
+            gc_jobs: (!declaration.gc_jobs.is_empty())
+                .then(|| self.gc_jobs.clone())
+                .flatten(),
+            declared_gc_jobs: declaration.gc_jobs.clone(),
         })
     }
 }
@@ -786,6 +834,8 @@ pub struct Registration {
     memberships: Option<Arc<dyn ServingMembers>>,
     mirror_tasks: Option<Arc<dyn MirrorTasks>>,
     holds: Option<Arc<crate::holds::HoldStore>>,
+    gc_jobs: Option<Arc<crate::gc::Jobs>>,
+    declared_gc_jobs: Vec<&'static str>,
 }
 
 /// Who serves a resource under this Host's memberships, and what was observed of them: the Host
@@ -1107,6 +1157,31 @@ impl Registration {
     /// Host that composes none.
     pub fn holds(&self) -> Option<Arc<crate::holds::HoldStore>> {
         self.holds.clone()
+    }
+
+    /// Provides the garbage-collection `job` this Plane declared with `handler` (WP-7.11b): the
+    /// Host API plans and runs it from now on. Answers whether the Host serves the jobs at all;
+    /// one without a Host API does not.
+    pub fn provide_gc_job(
+        &self,
+        job: &'static str,
+        handler: Arc<dyn crate::gc::GcJob>,
+    ) -> Result<bool, CompositionError> {
+        if !self.declared_gc_jobs.contains(&job) {
+            return Err(self.undeclared(format!("the gc job `{job}`")));
+        }
+        match &self.gc_jobs {
+            Some(jobs) => jobs
+                .provide(job, &self.plane, handler)
+                .map(|()| true)
+                .map_err(|error| CompositionError::Collision {
+                    what: "gc job",
+                    name: format!("{job}: {error}"),
+                    first: "an earlier registration".to_owned(),
+                    second: self.plane.clone(),
+                }),
+            None => Ok(false),
+        }
     }
 
     /// The member side of `policy.mirror` (WP-7.2a): `None` for a Plane that does not consume
@@ -3542,5 +3617,80 @@ mod tests {
             .register(Declaration::new("control"))
             .expect("registered");
         assert!(control.layout("events-legacy").is_err());
+    }
+
+    struct NoJob;
+
+    impl crate::gc::GcJob for NoJob {
+        fn plan(
+            &self,
+            _: &permguard_core::authz::Resource,
+        ) -> Result<crate::gc::Report, crate::gc::GcError> {
+            Ok(crate::gc::Report::default())
+        }
+
+        fn run(
+            &self,
+            _: &permguard_core::authz::Resource,
+            _: &str,
+        ) -> Result<crate::gc::Report, crate::gc::GcError> {
+            Ok(crate::gc::Report::default())
+        }
+    }
+
+    /// WP-7.11b: a gc job is one the Host serves, declared and provided by one Plane.
+    #[test]
+    fn a_gc_job_is_provided_once_by_the_plane_that_declared_it() {
+        let jobs = Arc::new(crate::gc::Jobs::default());
+        let host = Host::builder().gc_jobs(Arc::clone(&jobs)).build();
+        let refused = host
+            .register(Declaration::new("other").provides_gc_job("everything"))
+            .expect_err("not a job the Host serves");
+        assert!(
+            matches!(&refused, CompositionError::UnknownGcJob { job, .. } if job == "everything"),
+            "{refused:?}"
+        );
+        let control = host
+            .register(Declaration::new("control").provides_gc_job(crate::gc::OBJECTS))
+            .expect("registered");
+        let refused = host
+            .register(Declaration::new("data").provides_gc_job(crate::gc::OBJECTS))
+            .expect_err("one Plane provides a job");
+        assert!(
+            matches!(&refused, CompositionError::Collision { what: "gc job", .. }),
+            "{refused:?}"
+        );
+        assert!(jobs.get(crate::gc::OBJECTS).is_none(), "not provided yet");
+        assert!(
+            control
+                .provide_gc_job(crate::gc::OBJECTS, Arc::new(NoJob))
+                .expect("provided")
+        );
+        let (plane, _) = jobs.get(crate::gc::OBJECTS).expect("provided");
+        assert_eq!(plane, "control");
+        assert!(
+            control
+                .provide_gc_job(crate::gc::OBJECTS, Arc::new(NoJob))
+                .is_err(),
+            "provided once"
+        );
+        // A Plane that did not declare it provides nothing.
+        let quiet = host
+            .register(Declaration::new("quiet"))
+            .expect("registered");
+        assert!(matches!(
+            quiet.provide_gc_job(crate::gc::OBJECTS, Arc::new(NoJob)),
+            Err(CompositionError::Undeclared { .. })
+        ));
+        // A Host without a Host API serves no job, and says so.
+        let bare = Host::builder().build();
+        let control = bare
+            .register(Declaration::new("control").provides_gc_job(crate::gc::OBJECTS))
+            .expect("registered");
+        assert!(
+            !control
+                .provide_gc_job(crate::gc::OBJECTS, Arc::new(NoJob))
+                .expect("answered")
+        );
     }
 }

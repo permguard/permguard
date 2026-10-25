@@ -5184,6 +5184,242 @@
         },
         "x-grpc-rpc": "permguard.host.v1.OperationsService/ApprovePlan"
       }
+    },
+    "/host/v1/gc/{job}/plan": {
+      "post": {
+        "operationId": "planGc",
+        "summary": "Plan a garbage-collection job",
+        "description": "Under `gc.manage` on the scope: the job's Plane when `resource` is absent, or a zone or ledger of it (WP-7.11b). Changes nothing: answers the plan receipt, COSE_Sign1 `permguard.operation.plan.v1` under `host.operations` naming `gc.objects` and the scope, and what a run would remove now and keep and why. Requires no approval. Records `host.gc.planned`.",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "objects"
+              ]
+            },
+            "description": "The job: `objects`, the Control Plane's object sweep.",
+            "x-grpc-field": "job"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id and, optionally, the scope.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanGcBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and what a run would remove and keep.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GcPlanned"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, or the scope is not the job's Plane, a zone or a ledger of it (`invalid_argument`); the request id is empty (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No gc job has that name, or the zone or ledger the scope names holds nothing of the catalog (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The transaction could not finish (`internal`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Plane that provides the job is not composed or its sweep could not run, the Host has no `operations.keys`, or the mutation journal or the audit trail cannot record (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/PlanGc"
+      }
+    },
+    "/host/v1/gc/{job}/run": {
+      "post": {
+        "operationId": "runGc",
+        "summary": "Run a planned garbage-collection job",
+        "description": "Under `gc.manage` on the scope the receipt names, by the planner alone (WP-7.11b). Spends the plan in the run's own transaction, then sweeps the scope again under every recheck of the background pass, within its bound and serialized with it: what the plan listed was removable then, not an order. Answers what was removed, what was kept and why, where the run stopped at its bound, and the receipt; a retry with the same request id answers the first run. Records `host.gc.ran`, even when nothing is removed, and the Plane's `store.swept` names the plan.",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "objects"
+              ]
+            },
+            "description": "The job: `objects`, the Control Plane's object sweep.",
+            "x-grpc-field": "job"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id and the plan's receipt.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunGcBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What was removed and kept, and the receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GcRan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape or the receipt is not a plan receipt (`invalid_argument`), the receipt is not the one the plan step answered (`plan_digest_mismatch`), or the request id is empty (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No gc job has that name, the scope's zone or ledger is gone (`not_found`), or no plan of the receipt is held for the caller and this job (`plan_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan was spent or expired (`plan_expired`), or the request id was reused for another run (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The transaction could not finish (`internal`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Plane that provides the job is not composed or its sweep could not run, the Host has no `operations.keys`, or the mutation journal or the audit trail cannot record (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/RunGc"
+      }
     }
   },
   "components": {
@@ -10635,6 +10871,291 @@
         "additionalProperties": false,
         "description": "One key a member received: its coordinates, never its bytes (WP-4.7).",
         "x-grpc-message": "permguard.host.v1.ZoneKeyTuple"
+      },
+      "PlanGcBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The caller's name for this plan; a retry is answered with the same plan.",
+            "x-grpc-field": "request_id",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "resource": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Plane's zone, `plane/<p>/zone/<id>`, or ledger, `plane/<p>/zone/<id>/ledger/<id>`, as a grant names it; the whole Plane when absent or `null`.",
+            "x-grpc-field": "resource"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/gc/{job}/plan` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.PlanGcRequest",
+        "x-grpc-only": [
+          "job"
+        ],
+        "x-grpc-note": "`job` travels in the path on REST."
+      },
+      "RunGcBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The caller's name for this run; a retry is answered with the first run.",
+            "x-grpc-field": "request_id",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "receipt": {
+            "type": "string",
+            "description": "The receipt the plan step answered, base64url without padding.",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": [
+          "request_id",
+          "receipt"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/gc/{job}/run` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.RunGcRequest",
+        "x-grpc-only": [
+          "job"
+        ],
+        "x-grpc-note": "`job` travels in the path on REST."
+      },
+      "GcPlanned": {
+        "type": "object",
+        "properties": {
+          "job": {
+            "type": "string",
+            "description": "The job planned.",
+            "x-grpc-field": "job"
+          },
+          "resource": {
+            "type": "string",
+            "description": "The scope the plan names.",
+            "x-grpc-field": "resource"
+          },
+          "plan_id": {
+            "type": "string",
+            "description": "The plan's id, 32 hex characters.",
+            "x-grpc-field": "plan_id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "What the plan changes, `sha256:<hex>`.",
+            "x-grpc-field": "plan_digest"
+          },
+          "expires": {
+            "type": "string",
+            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made.",
+            "x-grpc-field": "expires",
+            "format": "date-time"
+          },
+          "receipt": {
+            "type": "string",
+            "description": "The receipt the run presents: COSE_Sign1 `permguard.operation.plan.v1` under `host.operations`, base64url without padding.",
+            "x-grpc-field": "receipt"
+          },
+          "approvals_required": {
+            "type": "integer",
+            "description": "Always 0: a garbage-collection plan requires no approval.",
+            "x-grpc-field": "approvals_required",
+            "minimum": 0
+          },
+          "report": {
+            "$ref": "#/components/schemas/GcReport",
+            "description": "What a run would remove now, and what it would keep and why.",
+            "x-grpc-field": "report"
+          }
+        },
+        "required": [
+          "job",
+          "resource",
+          "plan_id",
+          "plan_digest",
+          "expires",
+          "receipt",
+          "approvals_required",
+          "report"
+        ],
+        "additionalProperties": false,
+        "description": "What a garbage-collection plan answers.",
+        "x-grpc-message": "permguard.host.v1.PlanGcResponse"
+      },
+      "GcRan": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The run's receipt.",
+            "x-grpc-field": "receipt"
+          },
+          "job": {
+            "type": "string",
+            "description": "The job run.",
+            "x-grpc-field": "job"
+          },
+          "resource": {
+            "type": "string",
+            "description": "The scope swept.",
+            "x-grpc-field": "resource"
+          },
+          "plan_id": {
+            "type": "string",
+            "description": "The plan the run spent.",
+            "x-grpc-field": "plan_id"
+          },
+          "report": {
+            "$ref": "#/components/schemas/GcReport",
+            "description": "What the run removed, and what it kept and why.",
+            "x-grpc-field": "report"
+          }
+        },
+        "required": [
+          "receipt",
+          "job",
+          "resource",
+          "plan_id",
+          "report"
+        ],
+        "additionalProperties": false,
+        "description": "What a garbage-collection run answers.",
+        "x-grpc-message": "permguard.host.v1.RunGcResponse"
+      },
+      "GcReport": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GcEntry"
+            },
+            "description": "Each resource the job read, at most 256.",
+            "x-grpc-field": "entries"
+          },
+          "resumes_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The resource a run stopped in at its bound: what a later run removes.",
+            "x-grpc-field": "resumes_at"
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The resources the job could not read, and why: nothing of them was removed.",
+            "x-grpc-field": "skipped"
+          },
+          "omitted": {
+            "type": "integer",
+            "description": "Resources past the 256 listed, counted only.",
+            "x-grpc-field": "omitted",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "entries",
+          "resumes_at",
+          "skipped",
+          "omitted"
+        ],
+        "additionalProperties": false,
+        "description": "What a garbage-collection plan or run found, resource by resource.",
+        "x-grpc-message": "permguard.host.v1.GcReport"
+      },
+      "GcEntry": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "The resource, as a grant names it.",
+            "x-grpc-field": "resource"
+          },
+          "candidates": {
+            "type": "integer",
+            "description": "What the sweep found removable.",
+            "x-grpc-field": "candidates",
+            "minimum": 0
+          },
+          "candidate_bytes": {
+            "type": "integer",
+            "description": "Their bytes.",
+            "x-grpc-field": "candidate_bytes",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "description": "What it removed: zero for a plan.",
+            "x-grpc-field": "removed",
+            "minimum": 0
+          },
+          "removed_bytes": {
+            "type": "integer",
+            "description": "Their bytes.",
+            "x-grpc-field": "removed_bytes",
+            "minimum": 0
+          },
+          "kept": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GcKept"
+            },
+            "description": "What it kept, by reason.",
+            "x-grpc-field": "kept"
+          }
+        },
+        "required": [
+          "resource",
+          "candidates",
+          "candidate_bytes",
+          "removed",
+          "removed_bytes",
+          "kept"
+        ],
+        "additionalProperties": false,
+        "description": "One resource of a garbage-collection report.",
+        "x-grpc-message": "permguard.host.v1.GcEntry"
+      },
+      "GcKept": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "`reachable`, `pinned`, `grace`, `held` or `bound`.",
+            "x-grpc-field": "reason",
+            "enum": [
+              "reachable",
+              "pinned",
+              "grace",
+              "held",
+              "bound"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "description": "How many.",
+            "x-grpc-field": "count",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "reason",
+          "count"
+        ],
+        "additionalProperties": false,
+        "description": "What a sweep kept for one reason.",
+        "x-grpc-message": "permguard.host.v1.GcKept"
       }
     }
   },

@@ -2430,6 +2430,8 @@ impl App {
             // opens its task sessions through it.
             host = host
                 .mirror_tasks(Arc::clone(&api) as Arc<dyn permguard_host::composition::MirrorTasks>)
+                // The garbage-collection jobs the Planes provide to the Host API (WP-7.11b).
+                .gc_jobs(api.gc_jobs())
                 .memberships(api);
         }
         let host = host.build();

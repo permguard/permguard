@@ -569,7 +569,7 @@ impl Engine<'_> {
 
         // The lock is not held while the commit is verified: the ref's compare-and-swap is what
         // serializes two commits, and the session is only closed once the outcome is durable.
-        let outcome = self.commit_bound(request, signer);
+        let outcome = self.commit_bound(request, signer, &session);
         // The session's bookkeeping follows the outcome and never changes it: a ref that landed
         // is answered as landed even when its session could not be closed now; a retry learns
         // it from the ref.
@@ -624,6 +624,7 @@ impl Engine<'_> {
         &self,
         request: &CommitPushRequest,
         signer: HeadSigner<'_>,
+        session: &transfer::Session,
     ) -> Result<CommitPushResponse> {
         // Idempotency first: a retry whose commit already landed is a
         // success and re-runs nothing.
@@ -657,6 +658,54 @@ impl Engine<'_> {
                 expected_old.as_ref(),
                 old_reachable.as_ref(),
             )?;
+            // Every object the commit makes reachable is one its transfer pinned, so a sweep never
+            // removes it between its listing and the ref (WP-7.11), or one a ref already reaches:
+            // an object old, undeclared and unreached is refused. What a ref reaches now another
+            // commit may unreach before this ref lands, so it is pinned too, under the ledger's
+            // transfer lock a sweep holds, and found present after (the review).
+            let unpinned: Vec<&Digest> = region
+                .iter()
+                .filter(|digest| !session.pinned(digest))
+                .collect();
+            if !unpinned.is_empty() {
+                let mut reached = BTreeSet::new();
+                for (_, state) in self.store.list_refs()? {
+                    reached.extend(self.reachable_from(&state.head)?);
+                }
+                if let Some(undeclared) = unpinned.iter().find(|digest| !reached.contains(**digest))
+                {
+                    return Err(transfer_refusal(
+                        codes::notp::TRANSFER_MISMATCH,
+                        format!(
+                            "the commit reaches {undeclared}, which its transfer did not declare: \
+                             negotiate the push with its whole closure"
+                        ),
+                    ));
+                }
+                let transfers = self.store.transfers()?;
+                let Some(mut latest) = transfers.get(&session.transfer_id)? else {
+                    return Err(unknown_transfer());
+                };
+                latest
+                    .pins
+                    .extend(unpinned.iter().map(|digest| (*digest).clone()));
+                // A session's pins are sorted, each once.
+                latest.pins.sort();
+                latest.pins.dedup();
+                transfers.put(&latest)?;
+                if let Some(gone) = unpinned
+                    .iter()
+                    .find(|digest| !self.store.has_object(digest))
+                {
+                    return Err(transfer_refusal(
+                        codes::notp::TRANSFER_MISMATCH,
+                        format!(
+                            "the commit reaches {gone}, which is no longer held: negotiate the \
+                             push with its whole closure"
+                        ),
+                    ));
+                }
+            }
             // The ref is a durable claim on every object it reaches. Negotiation told this push
             // not to send what was already present, and another push may have linked those
             // objects without flushing them yet: their directories are flushed before the ref is

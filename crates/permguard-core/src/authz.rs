@@ -86,6 +86,9 @@ pub mod operations {
     pub const BACKUP_MANAGE: &str = "backup.manage";
     /// List the snapshot manifests the Host knows (WP-7.8).
     pub const BACKUP_READ: &str = "backup.read";
+    /// Plan and run a garbage-collection job on the Host API, on the scope it sweeps (WP-7.11b,
+    /// `5-command-line/2-command-line-commands.md` garbage collection).
+    pub const GC_MANAGE: &str = "gc.manage";
 
     /// Every registered operation.
     pub const ALL: &[&str] = &[
@@ -108,6 +111,7 @@ pub mod operations {
         EVIDENCE_READ,
         BACKUP_MANAGE,
         BACKUP_READ,
+        GC_MANAGE,
     ];
 
     /// Whether `operation` is registered.

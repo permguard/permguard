@@ -188,6 +188,9 @@ pub struct GcSection {
     /// How old an unreachable object must be before it may go, e.g. `24h`.
     #[serde(default)]
     grace: Option<String>,
+    /// How many objects one sweep removes at most (WP-7.11).
+    #[serde(default)]
+    max_removals: Option<String>,
 }
 
 impl StorageSection {
@@ -200,6 +203,10 @@ impl StorageSection {
                 self.gc.interval.as_ref(),
             ),
             (crate::config::SETTING_GC_GRACE, self.gc.grace.as_ref()),
+            (
+                crate::config::SETTING_GC_MAX_REMOVALS,
+                self.gc.max_removals.as_ref(),
+            ),
         ]
         .into_iter()
         .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value.clone())))
@@ -215,9 +222,10 @@ mod storage_section_tests {
 
     #[test]
     fn the_block_becomes_the_settings_the_plane_reads() {
-        let section: StorageSection =
-            serde_norway::from_str("gc:\n  enabled: \"true\"\n  interval: 6h\n  grace: 24h\n")
-                .expect("the section parses");
+        let section: StorageSection = serde_norway::from_str(
+            "gc:\n  enabled: \"true\"\n  interval: 6h\n  grace: 24h\n  max_removals: \"500\"\n",
+        )
+        .expect("the section parses");
 
         assert_eq!(
             section.settings(),
@@ -231,6 +239,10 @@ mod storage_section_tests {
                     "6h".to_owned()
                 ),
                 (crate::config::SETTING_GC_GRACE.to_owned(), "24h".to_owned()),
+                (
+                    crate::config::SETTING_GC_MAX_REMOVALS.to_owned(),
+                    "500".to_owned()
+                ),
             ]
         );
     }

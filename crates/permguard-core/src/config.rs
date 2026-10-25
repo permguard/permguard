@@ -460,6 +460,10 @@ pub const SETTING_GC_INTERVAL: &str = "PERMGUARD_STORAGE_GC_INTERVAL";
 /// push, which is why the default is a day and not a minute.
 pub const SETTING_GC_GRACE: &str = "PERMGUARD_STORAGE_GC_GRACE";
 
+/// How many objects one sweep removes at most (WP-7.11): a pass that reaches it stops, and the
+/// next resumes where it stopped, so the work of a tick stays bounded however much is due.
+pub const SETTING_GC_MAX_REMOVALS: &str = "PERMGUARD_STORAGE_GC_MAX_REMOVALS";
+
 /// Runtime setting keys for the decision path: what a data plane keeps in memory so an
 /// authorization check never touches a disk.
 ///
@@ -991,6 +995,7 @@ const MINIMUM_GC_GRACE: Duration = Duration::from_secs(15 * 60);
 const DEFAULT_GC_ENABLED: bool = true;
 const DEFAULT_GC_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 const DEFAULT_GC_GRACE: Duration = Duration::from_secs(24 * 60 * 60);
+const DEFAULT_GC_MAX_REMOVALS: u32 = 10_000;
 
 /// Decision-path defaults: enough compiled partitions for a plane that serves a handful of
 /// ledgers, and a memory bound a small container can hold. Both are meant to be raised by a
@@ -1376,6 +1381,7 @@ pub struct Config {
     gc_enabled: bool,
     gc_interval: Duration,
     gc_grace: Duration,
+    gc_max_removals: u32,
     authz_cache_partitions: usize,
     authz_cache_bytes: u64,
     authz_cache_zone_partitions: Option<usize>,
@@ -1590,6 +1596,7 @@ impl Default for Config {
             gc_enabled: DEFAULT_GC_ENABLED,
             gc_interval: DEFAULT_GC_INTERVAL,
             gc_grace: DEFAULT_GC_GRACE,
+            gc_max_removals: DEFAULT_GC_MAX_REMOVALS,
             authz_cache_partitions: DEFAULT_AUTHZ_CACHE_PARTITIONS,
             authz_cache_bytes: DEFAULT_AUTHZ_CACHE_BYTES,
             authz_cache_zone_partitions: None,
@@ -3554,6 +3561,11 @@ produce: use `EdDSA` or `ES256`"
         self.gc_grace
     }
 
+    /// How many objects one sweep removes at most (WP-7.11).
+    pub fn gc_max_removals(&self) -> u32 {
+        self.gc_max_removals
+    }
+
     /// Whether this plane records the decisions it answers.
     pub fn log_enabled(&self) -> bool {
         self.log_enabled
@@ -4537,6 +4549,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_GC_ENABLED => b(self.gc_enabled),
             SETTING_GC_INTERVAL => d(self.gc_interval),
             SETTING_GC_GRACE => d(self.gc_grace),
+            SETTING_GC_MAX_REMOVALS => Some(self.gc_max_removals.to_string()),
             SETTING_AUTHZ_CACHE_PARTITIONS => n(self.authz_cache_partitions),
             SETTING_AUTHZ_CACHE_BYTES => n(self.authz_cache_bytes),
             SETTING_AUTHZ_CACHE_ZONE_PARTITIONS => n(self.authz_cache_zone_partitions()),
@@ -5160,6 +5173,11 @@ produce: use `EdDSA` or `ES256`"
                     MINIMUM_GC_GRACE.as_secs()
                 );
             }
+        }
+        if let Some(value) = settings.get(SETTING_GC_MAX_REMOVALS) {
+            // `parse_count` refuses zero: a sweep that may remove nothing is not a sweep.
+            self.gc_max_removals =
+                parse_count(value).with_context(|| format!("reading {SETTING_GC_MAX_REMOVALS}"))?;
         }
         if let Some(value) = settings.get(SETTING_LOG_ENABLED) {
             self.log_enabled_stated =
@@ -6309,6 +6327,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_EXPERIMENTAL_DOGWOOD,
     SETTING_GC_ENABLED,
     SETTING_GC_GRACE,
+    SETTING_GC_MAX_REMOVALS,
     SETTING_GC_INTERVAL,
     SETTING_ISSUER,
     SETTING_KEYS_CUSTODY,

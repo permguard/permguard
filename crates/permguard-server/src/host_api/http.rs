@@ -127,6 +127,8 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/backup/finalize", post(finalize_backup))
         .route("/host/v1/backup/abort", post(abort_backup))
         .route("/host/v1/backups", get(list_backups))
+        .route("/host/v1/gc/{job}/plan", post(plan_gc))
+        .route("/host/v1/gc/{job}/run", post(run_gc))
         .with_state(Served { api, disclosure })
 }
 
@@ -720,6 +722,26 @@ async fn abort_backup(
 
 async fn list_backups(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
     blocking(&served, move |api| api.list_backups(&actor)).await
+}
+
+/// `POST /host/v1/gc/{job}/plan` (WP-7.11b): the job's sweep is read off the async workers.
+async fn plan_gc(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(job): Path<String>,
+    Closed(plan): Closed<permguard_host::api::gc::PlanGc>,
+) -> Response {
+    blocking(&served, move |api| api.plan_gc(&actor, &job, plan)).await
+}
+
+/// `POST /host/v1/gc/{job}/run` (WP-7.11b).
+async fn run_gc(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(job): Path<String>,
+    Closed(run): Closed<permguard_host::api::gc::RunGc>,
+) -> Response {
+    blocking(&served, move |api| api.run_gc(&actor, &job, run)).await
 }
 
 async fn list_members(

@@ -52,6 +52,8 @@ pub const MEMBERSHIP_REVOKE: &str = "membership.revoke";
 pub const IDENTITY_RESET: &str = "identity.reset";
 /// The restore of a snapshot onto the volume, offline (WP-7.9).
 pub const RESTORE: &str = "restore";
+/// An operator's run of the Control Plane's object sweep (WP-7.11b).
+pub const GC_OBJECTS: &str = "gc.objects";
 /// Every operation a receipt may name.
 pub const OPERATIONS: &[&str] = &[
     GRANT_REVOKE,
@@ -59,6 +61,7 @@ pub const OPERATIONS: &[&str] = &[
     MEMBERSHIP_REVOKE,
     IDENTITY_RESET,
     RESTORE,
+    GC_OBJECTS,
 ];
 
 /// How long a plan that requires no approval may be run after it was made.
