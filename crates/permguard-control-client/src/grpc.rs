@@ -518,6 +518,7 @@ impl crate::catalog::Catalog for GrpcAdmin {
             revision: ledger.revision,
             state: active_unless_said(ledger.state),
             provenance: ledger.provenance.map(provenance_of),
+            serving_members: Vec::new(),
         };
         Ok(crate::catalog::Imported {
             mode: answer.mode,
@@ -675,6 +676,11 @@ impl GrpcAdmin {
             revision: ledger.revision,
             state: active_unless_said(ledger.state),
             provenance: ledger.provenance.map(provenance_of),
+            serving_members: ledger
+                .serving_members
+                .into_iter()
+                .map(serving_member_of)
+                .collect(),
         })
     }
 
@@ -815,6 +821,7 @@ impl GrpcAdmin {
                 revision: ledger.revision,
                 state: active_unless_said(ledger.state),
                 provenance: ledger.provenance.map(provenance_of),
+                serving_members: Vec::new(),
             })
             .collect())
     }
@@ -929,8 +936,45 @@ impl GrpcAdmin {
     }
 }
 
-/// A ledger's state as gRPC carries it: a server older than states sends none, which reads as
-/// `active`, as it does over REST (WP-7.3b).
+/// A serving member as `GetLedger` carries it on gRPC (TC-5).
+fn serving_member_of(member: proto::ServingMember) -> crate::catalog::ServingMember {
+    crate::catalog::ServingMember {
+        host_id: member.host_id,
+        membership_id: member.membership_id,
+        task_id: member.task_id,
+        declared_assurance: member.declared_assurance,
+        assurance: member.assurance_binding_status.map(|assurance| {
+            crate::catalog::ServingAssurance {
+                verdict: assurance.verdict,
+                current: assurance.current,
+                policy_revision: assurance.policy_revision,
+                claims: assurance
+                    .claims
+                    .into_iter()
+                    .map(|claim| crate::catalog::ServingClaim {
+                        control: claim.control,
+                        class: claim.class,
+                        by: claim.by,
+                    })
+                    .collect(),
+                expires_at: assurance.expires_at,
+            }
+        }),
+        lease_state: member.lease_state,
+        last_session_at: member.last_session_at,
+        progress: member
+            .progress
+            .map(|progress| crate::catalog::ServingProgress {
+                report_seq: progress.report_seq,
+                reported_at: progress.reported_at,
+                received_at: progress.received_at,
+                state: progress.state,
+                checkpoint_digest: progress.checkpoint_digest,
+                stale: progress.stale,
+            }),
+    }
+}
+
 /// A re-homed ledger's provenance as the wire carries it (WP-7.10).
 fn provenance_of(provenance: proto::LedgerProvenance) -> permguard_core::Provenance {
     permguard_core::Provenance {
@@ -942,6 +986,8 @@ fn provenance_of(provenance: proto::LedgerProvenance) -> permguard_core::Provena
     }
 }
 
+/// A ledger's state as gRPC carries it: a server older than states sends none, which reads as
+/// `active`, as it does over REST (WP-7.3b).
 fn active_unless_said(state: String) -> String {
     if state.is_empty() {
         "active".to_owned()

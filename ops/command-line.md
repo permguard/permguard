@@ -8,7 +8,7 @@ The test `test_the_command_tree_is_the_inventory` of `crates/permguard-cli/src/a
 
 The **Command** cell is the command's path, without its arguments.
 The **Grant** cell is the operation the Host checks for it, as the Host names its operations (`keys.admin` where the specification says `keys.manage`, for instance), or that it needs none of the Host's: `public`, `local` (the command line's own state), `transport` (the connection's proof alone), `offline` (a stopped server's volume), `—` (a workspace command whose plane checks its own grants).
-`host holds` works offline on a stopped server's volume (WP-7.3c); the catalog's online `holds` commands are a later package.
+`host holds` works offline on a stopped server's volume (WP-7.3c); the catalog's online `holds` commands wait for a catalog route.
 The **State** cell is one of:
 
 - `present`: the command line answers it;
@@ -42,45 +42,45 @@ The **State** cell is one of:
 
 ## Catalog
 
-| Command              | Grant           | State   | Why  |
-| -------------------- | --------------- | ------- | ---- |
-| `zones create`       | `catalog.write` | present |      |
-| `zones list`         | `catalog.read`  | present |      |
-| `zones get`          | `catalog.read`  | present |      |
-| `zones update`       | `catalog.write` | present |      |
-| `zones delete`       | `catalog.write` | present |      |
-| `ledgers create`     | `catalog.write` | present |      |
-| `ledgers list`       | `catalog.read`  | present |      |
-| `ledgers get`        | `catalog.read`  | present |      |
-| `ledgers update`     | `catalog.write` | present |      |
-| `ledgers delete`     | `catalog.write` | present |      |
-| `ledgers archive`    | `catalog.write` | present |      |
-| `ledgers restore`    | `catalog.write` | present |      |
-| `holds add`          | `catalog.hold`  | absent  | TC-5 |
-| `holds list`         | `catalog.hold`  | absent  | TC-5 |
-| `holds release`      | `catalog.hold`  | absent  | TC-5 |
-| `tombstones list`    | `catalog.read`  | absent  | TC-5 |
-| `host holds add`     | offline         | present |      |
-| `host holds list`    | offline         | present |      |
-| `host holds release` | offline         | present |      |
+| Command              | Grant           | State   | Why                                                                                                  |
+| -------------------- | --------------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `zones create`       | `catalog.write` | present |                                                                                                      |
+| `zones list`         | `catalog.read`  | present |                                                                                                      |
+| `zones get`          | `catalog.read`  | present |                                                                                                      |
+| `zones update`       | `catalog.write` | present |                                                                                                      |
+| `zones delete`       | `catalog.write` | present |                                                                                                      |
+| `ledgers create`     | `catalog.write` | present |                                                                                                      |
+| `ledgers list`       | `catalog.read`  | present |                                                                                                      |
+| `ledgers get`        | `catalog.read`  | present |                                                                                                      |
+| `ledgers update`     | `catalog.write` | present |                                                                                                      |
+| `ledgers delete`     | `catalog.write` | present |                                                                                                      |
+| `ledgers archive`    | `catalog.write` | present |                                                                                                      |
+| `ledgers restore`    | `catalog.write` | present |                                                                                                      |
+| `holds add`          | `catalog.hold`  | blocked | the catalog serves no holds route and `catalog.hold` is no operation yet; `host holds` works offline |
+| `holds list`         | `catalog.hold`  | blocked | the catalog serves no holds route and `catalog.hold` is no operation yet; `host holds` works offline |
+| `holds release`      | `catalog.hold`  | blocked | the catalog serves no holds route and `catalog.hold` is no operation yet; `host holds` works offline |
+| `tombstones list`    | `catalog.read`  | blocked | the catalog serves no tombstones route yet                                                           |
+| `host holds add`     | offline         | present |                                                                                                      |
+| `host holds list`    | offline         | present |                                                                                                      |
+| `host holds release` | offline         | present |                                                                                                      |
 
 ## Evidence
 
-| Command             | Grant           | State   | Why  |
-| ------------------- | --------------- | ------- | ---- |
-| `decisions list`    | `evidence.read` | present |      |
-| `decisions tail`    | `evidence.read` | present |      |
-| `decisions get`     | `evidence.read` | present |      |
-| `decisions signers` | `evidence.read` | present |      |
-| `decisions export`  | `evidence.read` | present |      |
-| `decisions verify`  | offline         | present |      |
-| `events list`       | `evidence.read` | present |      |
-| `events tail`       | `evidence.read` | present |      |
-| `events get`        | `evidence.read` | present |      |
-| `events signers`    | `evidence.read` | present |      |
-| `events export`     | `evidence.read` | present |      |
-| `events verify`     | offline         | present |      |
-| `evidence anchors`  | `evidence.read` | absent  | TC-5 |
+| Command             | Grant           | State   | Why |
+| ------------------- | --------------- | ------- | --- |
+| `decisions list`    | `evidence.read` | present |     |
+| `decisions tail`    | `evidence.read` | present |     |
+| `decisions get`     | `evidence.read` | present |     |
+| `decisions signers` | `evidence.read` | present |     |
+| `decisions export`  | `evidence.read` | present |     |
+| `decisions verify`  | offline         | present |     |
+| `events list`       | `evidence.read` | present |     |
+| `events tail`       | `evidence.read` | present |     |
+| `events get`        | `evidence.read` | present |     |
+| `events signers`    | `evidence.read` | present |     |
+| `events export`     | `evidence.read` | present |     |
+| `events verify`     | offline         | present |     |
+| `evidence anchors`  | `streams.read` | present |     |
 
 ## Host identity
 

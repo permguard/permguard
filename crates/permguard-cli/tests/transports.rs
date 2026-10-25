@@ -191,6 +191,38 @@ fn rest() -> Router {
         .route("/v1/zones", get(json(zones.to_owned())))
         .route("/v1/zones/acme/ledgers", get(json(ledgers.to_owned())))
         .route(
+            "/v1/zones/acme/ledgers/main-ledger",
+            // The Control Plane's answer, with the members the Host's composition names; the
+            // binding carries members a later server may add, which a client reads past.
+            get(json(
+                serde_json::json!({
+                    "id": "l-1", "zone_id": "z-1", "name": "main-ledger", "default_ref": "main",
+                    "created_at": 1, "updated_at": 1, "revision": 1, "state": "active",
+                    "serving_members": [{
+                        "host_id": "01a3", "membership_id": "m-1", "task_id": "mirror",
+                        "declared_assurance": "production",
+                        "assurance_binding_status": {
+                            "verdict": "accepted", "current": true, "policy_revision": "p-3",
+                            "task_ids": ["mirror"],
+                            "claims": [{"control": "key.storage", "class": "attested", "by": "verifier-1"}],
+                            "appraised_by": "verifier-1", "issued_at": "2026-10-01T00:00:00Z",
+                            "expires_at": "2027-01-01T00:00:00Z", "binding_digest": "sha256:cd"
+                        },
+                        "lease_state": "live", "last_session_at": "2026-10-25T10:00:00Z",
+                        "progress": {
+                            "report_seq": 7, "reported_at": "2026-10-25T09:59:00Z",
+                            "received_at": "2026-10-25T10:00:00Z", "state": "serving",
+                            "checkpoint_digest": "sha256:ab", "stale": false
+                        }
+                    }, {
+                        "host_id": "02b4", "membership_id": "m-2", "task_id": "mirror",
+                        "declared_assurance": "development", "lease_state": "none"
+                    }]
+                })
+                .to_string(),
+            )),
+        )
+        .route(
             "/v1/zones/acme/import",
             post(|body: String| async move {
                 use base64::Engine as _;
@@ -423,7 +455,50 @@ impl ZoneCatalog for Plane {
         &self,
         _request: Request<proto::GetLedgerRequest>,
     ) -> Result<Response<proto::LedgerResponse>, Status> {
-        unserved()
+        Ok(Response::new(proto::LedgerResponse {
+            ledger: Some(proto::Ledger {
+                serving_members: vec![
+                    proto::ServingMember {
+                        host_id: "01a3".into(),
+                        membership_id: "m-1".into(),
+                        task_id: "mirror".into(),
+                        declared_assurance: "production".into(),
+                        assurance_binding_status: Some(proto::ServingAssurance {
+                            verdict: "accepted".into(),
+                            current: true,
+                            policy_revision: "p-3".into(),
+                            claims: vec![proto::ServingClaim {
+                                control: "key.storage".into(),
+                                class: "attested".into(),
+                                by: "verifier-1".into(),
+                            }],
+                            expires_at: "2027-01-01T00:00:00Z".into(),
+                        }),
+                        lease_state: "live".into(),
+                        last_session_at: Some("2026-10-25T10:00:00Z".into()),
+                        progress: Some(proto::ServingProgress {
+                            report_seq: 7,
+                            reported_at: "2026-10-25T09:59:00Z".into(),
+                            received_at: "2026-10-25T10:00:00Z".into(),
+                            state: Some("serving".into()),
+                            checkpoint_digest: Some("sha256:ab".into()),
+                            stale: false,
+                        }),
+                    },
+                    proto::ServingMember {
+                        host_id: "02b4".into(),
+                        membership_id: "m-2".into(),
+                        task_id: "mirror".into(),
+                        declared_assurance: "development".into(),
+                        assurance_binding_status: None,
+                        lease_state: "none".into(),
+                        last_session_at: None,
+                        progress: None,
+                    },
+                ],
+                ..ledger()
+            }),
+        }))
     }
 
     async fn rename_ledger(
@@ -1549,4 +1624,71 @@ fn an_event_read_that_does_not_verify_exits_two_over_both_transports() {
         assert!(stderr.contains("events_unverified"), "{scheme}: {stderr}");
         assert!(!output.stdout.is_empty(), "{scheme}");
     }
+}
+
+/// TC-5: `ledgers get` prints the members assigned to serve the ledger with what they reported,
+/// alike over REST and gRPC, and says that the assurance is declared and the progress
+/// member-reported.
+#[test]
+fn a_ledger_get_lists_its_serving_members_on_both_transports() {
+    let dir = scratch("members");
+    let pki = pki(&dir);
+    let address = serve(rest().merge(grpc()), &pki, Seen::default());
+    let mut answers = Vec::new();
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        let get = |format: &str| {
+            cli(
+                &dir,
+                &[
+                    "-o",
+                    format,
+                    "--tls-ca-file",
+                    &pki.authority.display().to_string(),
+                    "ledgers",
+                    "get",
+                    "--zone",
+                    "acme",
+                    "main-ledger",
+                    "--control-endpoint",
+                    &endpoint,
+                ],
+            )
+        };
+        let output = get("json");
+        assert!(output.status.success(), "{scheme}: {output:?}");
+        let report: Value = serde_json::from_slice(&output.stdout).expect("JSON");
+        let member = &report["serving_members"][0];
+        assert_eq!(member["lease_state"], "live", "{scheme}");
+        assert_eq!(member["progress"]["report_seq"], 7, "{scheme}");
+        assert_eq!(
+            member["assurance_binding_status"]["claims"][0]["by"], "verifier-1",
+            "{scheme}"
+        );
+        assert!(
+            report["serving_members"][1]["progress"].is_null(),
+            "{scheme}"
+        );
+        let terminal = get("terminal");
+        let text = String::from_utf8_lossy(&terminal.stdout).into_owned();
+        for line in [
+            "served by (assigned; progress is member-reported):",
+            "task mirror lease live, last session 2026-10-25T10:00:00Z",
+            "declared assurance production (declared, not verified); binding accepted, current \
+             under policy p-3 until 2027-01-01T00:00:00Z",
+            "reported #7 at 2026-10-25T09:59:00Z (serving), received 2026-10-25T10:00:00Z, \
+             checkpoint sha256:ab",
+            "task mirror lease none",
+            "declared assurance development (declared, not verified)",
+            "no report yet",
+        ] {
+            assert!(text.contains(line), "{scheme}: `{line}` in {text}");
+        }
+        assert!(!text.contains("stale"), "{scheme}: {text}");
+        answers.push(report);
+    }
+    assert_eq!(
+        answers[0], answers[1],
+        "the same members over REST and gRPC"
+    );
 }

@@ -965,11 +965,11 @@ impl permguard_host::api::streams::StreamReads for FixedStreams {
     }
     fn anchors(
         &self,
-        _: &str,
-        _: &str,
+        plane: &str,
+        stream_type: &str,
         _: &str,
     ) -> Result<Option<Vec<permguard_host::api::streams::AnchorView>>, String> {
-        Ok(Some(vec![fixed_anchor()]))
+        Ok(((plane, stream_type) == ("data", "decisions")).then(|| vec![fixed_anchor()]))
     }
 }
 
@@ -1851,5 +1851,88 @@ fn the_object_sweep_is_planned_and_run_over_both_transports() {
     assert!(
         ran >= 2,
         "a run is audited even when it removes nothing: {page}"
+    );
+}
+
+/// TC-5: `evidence anchors <zone> <ledger>` reads the retained prefix anchors of the ledger's
+/// decision and event streams through the Host listener, alike over REST and gRPC, says which
+/// stream the Host does not keep, and refuses an id that is not one.
+#[test]
+fn the_evidence_anchors_answer_over_both_transports() {
+    let root = scratch("anchors");
+    let pki = Pki::new(&root);
+    let authority = pki.authority();
+    let (operator_certificate, operator_key) = pki.issue("operator", "operator");
+    let tls = OperatorTls {
+        authority: authority.clone(),
+        certificate: operator_certificate,
+        key: operator_key,
+    };
+    let (certificate, key) = pki.issue("host", "127.0.0.1");
+    let host = launch_host(
+        root.join("host"),
+        certificate,
+        key,
+        authority,
+        Role::Coordinator,
+    );
+    let mut answers = Vec::new();
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://127.0.0.1:{}", host.address.port());
+        let anchors = call(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&["evidence", "anchors", "z1", "l1"]),
+        );
+        assert_eq!(
+            anchors["resource"], "plane/data/zone/z1/ledger/l1",
+            "{scheme}"
+        );
+        let decisions = &anchors["streams"][0];
+        assert_eq!(decisions["stream_type"], "decisions", "{scheme}");
+        assert_eq!(
+            (&decisions["served"], &decisions["held"]),
+            (&Value::Bool(true), &Value::Bool(true)),
+            "{scheme}"
+        );
+        assert_eq!(
+            decisions["anchors"]["anchors"][0]["anchor"], "oQEC",
+            "{scheme}"
+        );
+        // A stream type the Host does not serve is said so, without anchors.
+        let events = &anchors["streams"][1];
+        assert_eq!(events["stream_type"], "events", "{scheme}");
+        assert_eq!(
+            (&events["served"], &events["held"]),
+            (&Value::Bool(false), &Value::Bool(false)),
+            "{scheme}"
+        );
+        assert!(events.get("anchors").is_none(), "{scheme}");
+        // A ledger the Host's streams do not list: served, not held.
+        let elsewhere = call(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&["evidence", "anchors", "z1", "l404"]),
+        );
+        assert_eq!(elsewhere["streams"][0]["served"], true, "{scheme}");
+        assert_eq!(elsewhere["streams"][0]["held"], false, "{scheme}");
+        let refused = cli(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&["evidence", "anchors", "z1/ledger", "l1"]),
+        );
+        assert_eq!(refused.status.code(), Some(64), "{scheme}");
+        assert!(
+            String::from_utf8_lossy(&refused.stderr).contains("are ids"),
+            "{scheme}: refused before the Host is asked"
+        );
+        answers.push(anchors);
+    }
+    assert_eq!(
+        answers[0], answers[1],
+        "the same anchors over REST and gRPC"
     );
 }

@@ -54,6 +54,64 @@ pub struct Ledger {
     /// A re-homed ledger's provenance (WP-7.10).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<permguard_core::Provenance>,
+    /// On `GetLedger` only: the members assigned to serve it and what was observed of them
+    /// (WP-4.4, TC-5); assignment and member-reported observations, not a guarantee.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub serving_members: Vec<ServingMember>,
+}
+
+/// One member assigned to serve a ledger, as both transports carry it (TC-5): what a member
+/// declared is never rendered as verified.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServingMember {
+    pub host_id: String,
+    pub membership_id: String,
+    pub task_id: String,
+    /// What the member declared, never verified by this answer.
+    pub declared_assurance: String,
+    /// The coordinator's appraisal of the binding, without its evidence.
+    #[serde(default, rename = "assurance_binding_status")]
+    pub assurance: Option<ServingAssurance>,
+    /// `live` while a session's lease runs, `none` otherwise.
+    pub lease_state: String,
+    #[serde(default)]
+    pub last_session_at: Option<String>,
+    /// The member's last report, member-reported; absent before the first.
+    #[serde(default)]
+    pub progress: Option<ServingProgress>,
+}
+
+/// An assurance binding's status (WP-4.4).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServingAssurance {
+    /// `accepted` or `revoked`.
+    pub verdict: String,
+    pub current: bool,
+    pub policy_revision: String,
+    #[serde(default)]
+    pub claims: Vec<ServingClaim>,
+    pub expires_at: String,
+}
+
+/// One accepted claim: the control, the class of evidence, and who vouches.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServingClaim {
+    pub control: String,
+    pub class: String,
+    pub by: String,
+}
+
+/// A member's last report of one ledger, member-reported (WP-4.4).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServingProgress {
+    pub report_seq: u64,
+    pub reported_at: String,
+    pub received_at: String,
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub checkpoint_digest: Option<String>,
+    pub stale: bool,
 }
 
 /// What the server says when it refuses: the shape every Permguard API shares.

@@ -19,6 +19,10 @@ is cut.
 
 ### Added
 
+- **A ledger's serving members and its evidence anchors from the command line (TC-5).**
+  `permguard ledgers get` prints the members assigned to serve the ledger, their lease and last session, the assurance they declared (never shown as verified) and their last member-reported progress, alike over REST and gRPC.
+  `permguard evidence anchors <zone> <ledger>` prints the retained prefix anchors of the ledger's decision and event streams through the Host listener, under `streams.read`, and says for each whether the Host serves the stream type and whether its stream list names the ledger.
+  The catalog's online `holds` and `tombstones list` are listed `blocked`: the catalog serves no route for them yet.
 - **The object sweep from the command line (TC-4).**
   `permguard gc objects plan [--zone <id> [--ledger <id>]] --out <file>` asks the Host API for a plan of the Control Plane's sweep, changes nothing, prints the candidates and what is kept and why, and writes the plan to a new owner-only file; `permguard gc objects run --confirm-file <file>` runs it once and prints what was removed, what was kept and why, where it stopped, and the receipt, over REST or gRPC.
   `gc mirrors|imports|streams` and `storage quota show|probe` are listed `blocked` in `ops/command-line.md`: the Host serves no such job or route yet.

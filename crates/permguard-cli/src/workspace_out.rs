@@ -702,6 +702,9 @@ pub struct LedgerView {
     pub revision: u64,
     /// `active` or `archived` (WP-7.3b).
     pub state: String,
+    /// On `ledgers get`: the members assigned to serve it, and what they reported (TC-5).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub serving_members: Vec<permguard_control_client::catalog::ServingMember>,
 }
 
 impl From<Ledger> for LedgerView {
@@ -715,6 +718,7 @@ impl From<Ledger> for LedgerView {
             updated_at: when(ledger.updated_at),
             revision: ledger.revision,
             state: ledger.state,
+            serving_members: ledger.serving_members,
         }
     }
 }
@@ -836,7 +840,68 @@ impl Report for LedgerReport {
             style::dim("revision:"),
             self.ledger.revision
         )?;
-        writeln!(out, "  {} {}", style::dim("state:  "), self.ledger.state)
+        writeln!(out, "  {} {}", style::dim("state:  "), self.ledger.state)?;
+        if self.ledger.serving_members.is_empty() {
+            return Ok(());
+        }
+        // Assignment and what each member reported: never a guarantee that it serves now.
+        writeln!(
+            out,
+            "  {}",
+            style::dim("served by (assigned; progress is member-reported):")
+        )?;
+        for member in &self.ledger.serving_members {
+            writeln!(
+                out,
+                "    {} task {} lease {}{}",
+                style::id(&member.host_id),
+                member.task_id,
+                member.lease_state,
+                member
+                    .last_session_at
+                    .as_deref()
+                    .map(|at| format!(", last session {at}"))
+                    .unwrap_or_default()
+            )?;
+            writeln!(
+                out,
+                "      declared assurance {} (declared, not verified){}",
+                member.declared_assurance,
+                member
+                    .assurance
+                    .as_ref()
+                    .map(|binding| format!(
+                        "; binding {}{} under policy {} until {}",
+                        binding.verdict,
+                        if binding.current { ", current" } else { "" },
+                        binding.policy_revision,
+                        binding.expires_at
+                    ))
+                    .unwrap_or_default()
+            )?;
+            match &member.progress {
+                Some(progress) => writeln!(
+                    out,
+                    "      reported #{} at {}{}, received {}{}{}",
+                    progress.report_seq,
+                    progress.reported_at,
+                    progress
+                        .state
+                        .as_deref()
+                        .map(|state| format!(" ({state})"))
+                        .unwrap_or_default(),
+                    progress.received_at,
+                    progress
+                        .checkpoint_digest
+                        .as_deref()
+                        .map(|digest| format!(", checkpoint {digest}"))
+                        .unwrap_or_default(),
+                    if progress.stale { ", stale" } else { "" }
+                )?,
+                None => writeln!(out, "      no report yet")?,
+            }
+        }
+        Ok(())
     }
 }
 

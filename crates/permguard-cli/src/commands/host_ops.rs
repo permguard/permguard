@@ -519,13 +519,7 @@ pub fn gc_command(
         GcObjectsAction::Plan { zone, ledger, out } => {
             // An id is one component of the scope: anything else would move it (after the
             // review).
-            let id = |text: &str| {
-                !text.is_empty()
-                    && text
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
-            };
-            if !zone.iter().chain(ledger.iter()).all(|text| id(text)) {
+            if !zone.iter().chain(ledger.iter()).all(|text| component(text)) {
                 return Err(Failure::usage(
                     "--zone and --ledger are ids: letters, digits, `-`, `_`, `.` and `:`",
                 ));
@@ -570,6 +564,104 @@ pub fn gc_command(
             render_json(&ran, globals, trace)?;
         }
     }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Whether `text` is one component of a resource, as the core grammar reads one: letters, digits,
+/// `-`, `_`, `.` and `:`, at most 128 bytes.
+pub(crate) fn component(text: &str) -> bool {
+    !text.contains('/') && permguard_core::authz::Resource::parse(&format!("plane/{text}")).is_ok()
+}
+
+/// One evidence stream of a ledger, as the Host answers it.
+#[derive(Debug, Serialize)]
+struct EvidenceStream {
+    stream_type: String,
+    /// Whether the Host serves this stream type at all.
+    served: bool,
+    /// Whether the Host's stream list names this ledger among the stream's resources: an empty
+    /// `anchors` with `held: false` is a ledger the Host does not hold, not one without anchors.
+    held: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    anchors: Option<permguard_host::api::streams::AnchorList>,
+}
+
+/// What `evidence anchors` prints.
+#[derive(Debug, Serialize)]
+struct EvidenceAnchors {
+    zone: String,
+    ledger: String,
+    resource: String,
+    streams: Vec<EvidenceStream>,
+}
+
+/// The Data Plane, whose decision and event streams carry a ledger's evidence.
+const DATA_PLANE: &str = "data";
+
+/// Runs `permguard evidence …` (TC-5).
+pub fn evidence_command(
+    globals: &Globals,
+    action: crate::args::EvidenceAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    use crate::args::EvidenceAction;
+    use permguard_control_client::host::StreamName;
+
+    let EvidenceAction::Anchors { zone, ledger } = action;
+    if !component(&zone) || !component(&ledger) {
+        return Err(Failure::usage(
+            "the zone and the ledger are ids: letters, digits, `-`, `_`, `.` and `:`",
+        ));
+    }
+    let resource = format!("plane/{DATA_PLANE}/zone/{zone}/ledger/{ledger}");
+    let host = online_host(globals, trace, false)?;
+    // Which streams list the ledger among their resources.
+    let listed = host.streams().map_err(failed)?;
+    let held = |stream_type: &str| {
+        listed.streams.iter().any(|stream| {
+            stream.plane == DATA_PLANE
+                && stream.stream_type == stream_type
+                && stream
+                    .resources
+                    .iter()
+                    .any(|held| held.resource == resource)
+        })
+    };
+    let mut streams = Vec::new();
+    for stream_type in ["decisions", "events"] {
+        let answer = host.stream_anchors(&StreamName {
+            plane: DATA_PLANE,
+            stream_type,
+            resource: &resource,
+        });
+        streams.push(match answer {
+            Ok(anchors) => EvidenceStream {
+                stream_type: stream_type.to_owned(),
+                served: true,
+                held: held(stream_type),
+                anchors: Some(anchors),
+            },
+            Err(failure) if failure.reason == permguard_core::codes::stream::STREAM_UNKNOWN => {
+                EvidenceStream {
+                    stream_type: stream_type.to_owned(),
+                    served: false,
+                    held: false,
+                    anchors: None,
+                }
+            }
+            Err(failure) => return Err(failed(failure)),
+        });
+    }
+    render_json(
+        &EvidenceAnchors {
+            zone,
+            ledger,
+            resource,
+            streams,
+        },
+        globals,
+        trace,
+    )?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -819,6 +911,25 @@ mod tests {
             ..Pages::default()
         };
         assert!(audit_export(&moved, "security", "host", None).is_err());
+    }
+
+    /// TC-5, after the review: an id is one component of the core grammar.
+    #[test]
+    fn an_id_is_one_component() {
+        assert!(component("z1"));
+        assert!(component("0198f3bb-0000-7000-8000-000000000002"));
+        for bad in [
+            "",
+            "z/1",
+            "x/zone/y",
+            "z?1",
+            "z#1",
+            "z 1",
+            "*",
+            &"a".repeat(129),
+        ] {
+            assert!(!component(bad), "{bad}");
+        }
     }
 
     /// TC-2, after the review: an `--out` file is claimed before the Host is asked, refused when

@@ -752,6 +752,7 @@ permguard host backup --help     # application-consistent backups: prepare, fina
 permguard backup verify --help   # a snapshot checked offline against its signed manifest
 permguard migrate --help         # a stopped volume's layout migrations: plan, run, status, rollback
 permguard gc objects --help      # the Control Plane's object sweep on demand: plan, then run
+permguard evidence --help        # a ledger's retained evidence anchors, through the Host listener
 permguard restore plan --help    # restore a stopped Host's volume from a snapshot: plan, then run
 ```
 

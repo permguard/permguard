@@ -367,6 +367,12 @@ pub enum Command {
         #[command(subcommand)]
         action: MigrateAction,
     },
+    /// A ledger's evidence as the Host keeps it: the retained prefix anchors of its decision and
+    /// event streams, through the Host listener.
+    Evidence {
+        #[command(subcommand)]
+        action: EvidenceAction,
+    },
     /// Garbage collection on demand, through the Host listener: planned, then run from the plan,
     /// each run printing what it removed, what it kept and why, and its receipt.
     Gc {
@@ -2538,6 +2544,23 @@ pub enum MigrateAction {
         /// The subsystem, as `migrate status` names it.
         #[arg(long)]
         subsystem: String,
+    },
+}
+
+/// `permguard evidence …` (TC-5), under `streams.read` on the ledger.
+#[derive(Debug, Subcommand)]
+pub enum EvidenceAction {
+    /// Print the retained prefix anchors of a ledger's decision and event streams and the ranges
+    /// they cover; a stream type the Host does not serve, and a ledger its streams do not list,
+    /// are said so.
+    #[command(
+        after_help = "Examples:\n  permguard evidence anchors 0198f3bb-0000-7000-8000-000000000002 0198f3bb-0000-7000-8000-000000000003\n  permguard --host-endpoint grpcs://host.example:9443 evidence anchors z1 l1 -o json"
+    )]
+    Anchors {
+        /// The zone, by id.
+        zone: String,
+        /// The ledger, by id.
+        ledger: String,
     },
 }
 
