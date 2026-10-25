@@ -367,6 +367,12 @@ pub enum Command {
         #[command(subcommand)]
         action: MigrateAction,
     },
+    /// Garbage collection on demand, through the Host listener: planned, then run from the plan,
+    /// each run printing what it removed, what it kept and why, and its receipt.
+    Gc {
+        #[command(subcommand)]
+        action: GcAction,
+    },
     /// Print shell completions. Add to your shell's config to complete commands and flags.
     #[command(
         after_help = "Examples:\n  permguard completion zsh > \"${fpath[1]}/_permguard\"\n  permguard completion bash >> ~/.bashrc"
@@ -1313,6 +1319,41 @@ mod tests {
     /// TC-2: the command tree is the inventory `ops/command-line.md` states, read from it: every
     /// `present` row is a command and every command a `present` row, and no row that is not
     /// `present` names a command.
+    /// TC-4: a ledger is named within its zone.
+    #[test]
+    fn test_gc_objects_names_a_ledger_within_its_zone() {
+        assert!(
+            command()
+                .try_get_matches_from([
+                    "permguard",
+                    "gc",
+                    "objects",
+                    "plan",
+                    "--ledger",
+                    "l1",
+                    "--out",
+                    "p"
+                ])
+                .is_err()
+        );
+        assert!(
+            command()
+                .try_get_matches_from([
+                    "permguard",
+                    "gc",
+                    "objects",
+                    "plan",
+                    "--zone",
+                    "z1",
+                    "--ledger",
+                    "l1",
+                    "--out",
+                    "p"
+                ])
+                .is_ok()
+        );
+    }
+
     /// TC-2: `host config show` names the effective configuration, the one it prints.
     #[test]
     fn test_host_config_show_asks_for_the_effective_configuration() {
@@ -2497,6 +2538,47 @@ pub enum MigrateAction {
         /// The subsystem, as `migrate status` names it.
         #[arg(long)]
         subsystem: String,
+    },
+}
+
+/// `permguard gc …` (TC-4).
+#[derive(Debug, Subcommand)]
+pub enum GcAction {
+    /// The Control Plane's object sweep: what no ref, transfer, hold or grace keeps.
+    Objects {
+        #[command(subcommand)]
+        action: GcObjectsAction,
+    },
+}
+
+/// `permguard gc objects …`, under `gc.manage` on the Control Plane, a zone or a ledger of it.
+#[derive(Debug, Subcommand)]
+pub enum GcObjectsAction {
+    /// Plan the sweep: nothing changes; prints the candidates, their bytes and what is kept and
+    /// why, and writes the plan to a new owner-only file.
+    #[command(
+        after_help = "Examples:\n  permguard gc objects plan --out gc.plan\n  permguard gc objects plan --zone 0198f3bb-0000-7000-8000-000000000002 --out gc.plan -o json"
+    )]
+    Plan {
+        /// Only this zone, by id, as `zones list` prints it.
+        #[arg(long, alias = "zone-id")]
+        zone: Option<String>,
+        /// Only this ledger of the zone, by id.
+        #[arg(long, requires = "zone")]
+        ledger: Option<String>,
+        /// A new owner-only file that receives the plan.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+    /// Run the planned sweep: bounded, serialized with the background pass, and audited even
+    /// when it removes nothing; prints what was removed, kept and why, and the receipt.
+    #[command(
+        after_help = "Examples:\n  permguard gc objects run --confirm-file gc.plan\n  permguard gc objects run --confirm-file gc.plan -o json"
+    )]
+    Run {
+        /// The plan file `plan` wrote.
+        #[arg(long, value_name = "FILE")]
+        confirm_file: PathBuf,
     },
 }
 

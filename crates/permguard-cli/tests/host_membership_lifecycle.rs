@@ -259,6 +259,25 @@ fn launch_host(
                 permguard_host::authz::store::now(),
             )
             .expect("the stream reader is issued");
+            // The operator's object sweep (TC-4), on the Control Plane's resources.
+            permguard_host::operations::grants::issue(
+                &mutations,
+                &grants,
+                permguard_host::operations::journal::Initiator::System("test".to_owned()),
+                Issue {
+                    principal: Principal::new(ADMIN).expect("the administrator"),
+                    operations: vec![operations::GC_MANAGE.to_owned()],
+                    selector: Selector::under(
+                        Resource::parse("plane/control").expect("a resource"),
+                    ),
+                    resource_types: vec!["*".to_owned()],
+                    constraints: Default::default(),
+                    issued_by: "test".to_owned(),
+                    expires_at: None,
+                },
+                permguard_host::authz::store::now(),
+            )
+            .expect("the sweeper is issued");
             let (replay, _) = Replay::open(&volume, permguard_host::authz::store::now())
                 .expect("the replay opens");
             let open_ring = |id: &'static str| {
@@ -383,6 +402,14 @@ fn launch_host(
                     None,
                 ),
             );
+            // The Control Plane's object sweep, answering what it was asked (TC-4).
+            api.gc_jobs()
+                .provide(
+                    permguard_host::gc::OBJECTS,
+                    "control",
+                    Arc::new(Sweep) as Arc<dyn permguard_host::gc::GcJob>,
+                )
+                .expect("the sweep is provided");
             let surface = Surface::listener(
                 "host-api",
                 "127.0.0.1:0",
@@ -1558,4 +1585,271 @@ fn the_backup_commands_drive_a_snapshot_over_both_transports() {
         let verdict: Value = serde_json::from_slice(&changed.stdout).expect("JSON");
         assert_eq!(verdict["consistency"], "crash_consistent", "{scheme}");
     }
+}
+
+/// The runs the fake sweep was asked for: a plan never is one.
+static SWEEPS_RUN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A sweep that removes nothing and says what it keeps and where it would stop; its runs counted.
+struct Sweep;
+
+impl permguard_host::gc::GcJob for Sweep {
+    fn plan(
+        &self,
+        scope: &Resource,
+    ) -> Result<permguard_host::gc::Report, permguard_host::gc::GcError> {
+        Ok(sweep_report(scope, "grace"))
+    }
+
+    fn run(
+        &self,
+        scope: &Resource,
+        _plan_id: &str,
+    ) -> Result<permguard_host::gc::Report, permguard_host::gc::GcError> {
+        SWEEPS_RUN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(sweep_report(scope, "bound"))
+    }
+}
+
+fn sweep_report(scope: &Resource, kept: &str) -> permguard_host::gc::Report {
+    permguard_host::gc::Report {
+        entries: vec![permguard_host::gc::Entry {
+            resource: format!("{scope}"),
+            candidates: 3,
+            candidate_bytes: 30,
+            removed: 0,
+            removed_bytes: 0,
+            kept: vec![permguard_host::gc::Kept {
+                reason: kept.to_owned(),
+                count: 3,
+            }],
+        }],
+        resumes_at: Some(format!("{scope}/ledger/l9")),
+        skipped: vec![format!("{scope}/ledger/l2: unreadable")],
+        omitted: 7,
+    }
+}
+
+/// TC-4: `gc objects plan` changes nothing and writes its plan to a new owner-only file; `run`
+/// presents its receipt once and prints what was removed, what was kept and why, and the receipt;
+/// the run is audited even when it removes nothing; alike over REST and gRPC.
+#[test]
+fn the_object_sweep_is_planned_and_run_over_both_transports() {
+    let root = scratch("gc");
+    let pki = Pki::new(&root);
+    let authority = pki.authority();
+    let (operator_certificate, operator_key) = pki.issue("operator", "operator");
+    let tls = OperatorTls {
+        authority: authority.clone(),
+        certificate: operator_certificate,
+        key: operator_key,
+    };
+    let (certificate, key) = pki.issue("host", "127.0.0.1");
+    let host = launch_host(
+        root.join("host"),
+        certificate,
+        key,
+        authority,
+        Role::Coordinator,
+    );
+    let mut runs = Vec::new();
+    let mut plans: Vec<Value> = Vec::new();
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://127.0.0.1:{}", host.address.port());
+        let call = |args: &[&str]| call(&root, &endpoint, &tls, &words(args));
+        // The whole Plane and one ledger: the scope each names.
+        for (args, scope) in [
+            (vec![], "plane/control"),
+            (
+                vec!["--zone", "z1", "--ledger", "l1"],
+                "plane/control/zone/z1/ledger/l1",
+            ),
+        ] {
+            let file = root.join(format!("{scheme}-{}-gc.plan", args.len()));
+            let mut all = vec!["gc", "objects", "plan"];
+            all.extend(args.iter().copied());
+            all.extend(["--out", file.to_str().expect("UTF-8")]);
+            assert_eq!(call(&all)["resource"], scope, "{scheme}");
+        }
+        // An id that is not one component, and a plan of another job, are refused.
+        let refused = cli(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&[
+                "gc",
+                "objects",
+                "plan",
+                "--zone",
+                "z1/ledger/x",
+                "--out",
+                root.join(format!("{scheme}-bad.plan"))
+                    .to_str()
+                    .expect("UTF-8"),
+            ]),
+        );
+        assert_eq!(refused.status.code(), Some(64), "{scheme}");
+        assert!(!root.join(format!("{scheme}-bad.plan")).exists());
+        let other = root.join(format!("{scheme}-mirrors.plan"));
+        std::fs::write(
+            &other,
+            serde_json::json!({
+                "job": "mirrors", "resource": "plane/data", "plan_id": "p", "plan_digest": "d",
+                "expires": "2099-01-01T00:00:00Z", "receipt": "AA", "approvals_required": 0,
+                "report": {"entries": [], "resumes_at": null, "skipped": [], "omitted": 0}
+            })
+            .to_string(),
+        )
+        .expect("written");
+        let refused = cli(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&[
+                "gc",
+                "objects",
+                "run",
+                "--confirm-file",
+                other.to_str().expect("UTF-8"),
+            ]),
+        );
+        assert_eq!(refused.status.code(), Some(64), "{scheme}");
+        assert!(
+            String::from_utf8_lossy(&refused.stderr).contains("plans the `mirrors` job"),
+            "{scheme}: refused before the Host is asked"
+        );
+        let plan_file = root.join(format!("{scheme}-gc.plan"));
+        let planned = call(&[
+            "gc",
+            "objects",
+            "plan",
+            "--zone",
+            "z1",
+            "--out",
+            plan_file.to_str().expect("UTF-8"),
+        ]);
+        let before = SWEEPS_RUN.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(planned["resource"], "plane/control/zone/z1", "{scheme}");
+        assert_eq!(planned["approvals_required"], 0, "{scheme}");
+        assert!(
+            planned["expires"]
+                .as_str()
+                .and_then(permguard_core::time::from_rfc3339)
+                .is_some(),
+            "{scheme}: {planned}"
+        );
+        let report = &planned["report"];
+        assert_eq!(
+            report["entries"][0]["kept"][0]["reason"], "grace",
+            "{scheme}"
+        );
+        assert_eq!(
+            (
+                report["entries"][0]["candidates"].as_u64(),
+                report["entries"][0]["candidate_bytes"].as_u64(),
+                report["omitted"].as_u64()
+            ),
+            (Some(3), Some(30), Some(7)),
+            "{scheme}"
+        );
+        assert_eq!(
+            report["resumes_at"], "plane/control/zone/z1/ledger/l9",
+            "{scheme}"
+        );
+        assert_eq!(
+            report["skipped"][0],
+            "plane/control/zone/z1/ledger/l2: unreadable"
+        );
+        let mut plan = planned.clone();
+        for minted in ["receipt", "plan_id", "plan_digest", "expires"] {
+            plan[minted] = Value::Null;
+        }
+        plans.push(plan);
+        assert_eq!(written(&plan_file), planned, "{scheme}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&plan_file)
+                .expect("written")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "{scheme}");
+        }
+        let ran = call(&[
+            "gc",
+            "objects",
+            "run",
+            "--confirm-file",
+            plan_file.to_str().expect("UTF-8"),
+        ]);
+        assert_eq!(ran["plan_id"], planned["plan_id"], "{scheme}");
+        assert_eq!(ran["report"]["entries"][0]["removed"], 0, "{scheme}");
+        assert_eq!(ran["report"]["entries"][0]["kept"][0]["reason"], "bound");
+        assert_eq!(
+            SWEEPS_RUN.load(std::sync::atomic::Ordering::SeqCst),
+            before + 1,
+            "{scheme}: the plan ran nothing, the run ran once"
+        );
+        assert!(
+            ran["receipt"]["operation_id"]
+                .as_str()
+                .is_some_and(|id| !id.is_empty()),
+            "{scheme}: {ran}"
+        );
+        assert!(
+            ran["receipt"]["audit"]["trail"]
+                .as_str()
+                .is_some_and(|trail| !trail.is_empty()),
+            "{scheme}: {ran}"
+        );
+        let again = cli(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&[
+                "gc",
+                "objects",
+                "run",
+                "--confirm-file",
+                plan_file.to_str().expect("UTF-8"),
+            ]),
+        );
+        assert!(!again.status.success(), "{scheme}: a receipt runs once");
+        let refusal: Value = serde_json::from_slice(&again.stderr).expect("a JSON refusal");
+        assert_eq!(refusal["code"], "plan_expired", "{scheme}");
+        let mut answer = ran.clone();
+        answer["receipt"] = Value::Null;
+        answer["plan_id"] = Value::Null;
+        runs.push(answer);
+    }
+    assert_eq!(runs[0], runs[1], "the same run over REST and gRPC");
+    assert_eq!(plans[0], plans[1], "the same plan over REST and gRPC");
+    // Audited, though nothing was removed.
+    let endpoint = format!("https://127.0.0.1:{}", host.address.port());
+    let page = call(
+        &root,
+        &endpoint,
+        &tls,
+        &words(&[
+            "host",
+            "audit",
+            "query",
+            "--class",
+            "security",
+            "--resource",
+            "host",
+            "--limit",
+            "1000",
+        ]),
+    );
+    let ran = page["records"]
+        .as_array()
+        .expect("records")
+        .iter()
+        .filter(|record| record["action"] == "host.gc.ran")
+        .count();
+    assert!(
+        ran >= 2,
+        "a run is audited even when it removes nothing: {page}"
+    );
 }

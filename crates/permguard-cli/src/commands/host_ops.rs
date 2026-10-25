@@ -501,6 +501,78 @@ pub(super) fn backup(
     Ok(ExitCode::SUCCESS)
 }
 
+/// The Control Plane, as the Host API's resources name it.
+const CONTROL_PLANE: &str = "control";
+
+/// Runs `permguard gc …` (TC-4).
+pub fn gc_command(
+    globals: &Globals,
+    action: crate::args::GcAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    use crate::args::{GcAction, GcObjectsAction};
+    use permguard_host::api::gc::{GcPlanned, PlanGc, RunGc};
+
+    let GcAction::Objects { action } = action;
+    let host = online_host(globals, trace, false)?;
+    match action {
+        GcObjectsAction::Plan { zone, ledger, out } => {
+            // An id is one component of the scope: anything else would move it (after the
+            // review).
+            let id = |text: &str| {
+                !text.is_empty()
+                    && text
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
+            };
+            if !zone.iter().chain(ledger.iter()).all(|text| id(text)) {
+                return Err(Failure::usage(
+                    "--zone and --ledger are ids: letters, digits, `-`, `_`, `.` and `:`",
+                ));
+            }
+            let resource = match (zone, ledger) {
+                (Some(zone), Some(ledger)) => {
+                    Some(format!("plane/{CONTROL_PLANE}/zone/{zone}/ledger/{ledger}"))
+                }
+                (Some(zone), None) => Some(format!("plane/{CONTROL_PLANE}/zone/{zone}")),
+                _ => None,
+            };
+            let reserved = reserve(globals, &out)?;
+            let planned = host
+                .plan_gc(
+                    permguard_host::gc::OBJECTS,
+                    &PlanGc {
+                        request_id: request_id(),
+                        resource,
+                    },
+                )
+                .map_err(failed)?;
+            fill(reserved, &planned)?;
+            render_json(&planned, globals, trace)?;
+        }
+        GcObjectsAction::Run { confirm_file } => {
+            let plan: GcPlanned = read_json(&rooted_file(globals, &confirm_file), "gc plan")?;
+            if plan.job != permguard_host::gc::OBJECTS {
+                return Err(Failure::usage(format!(
+                    "--confirm-file plans the `{}` job, not `objects`",
+                    plan.job
+                )));
+            }
+            let ran = host
+                .run_gc(
+                    permguard_host::gc::OBJECTS,
+                    &RunGc {
+                        request_id: request_id(),
+                        receipt: plan.receipt,
+                    },
+                )
+                .map_err(failed)?;
+            render_json(&ran, globals, trace)?;
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::unreachable)]
@@ -634,6 +706,20 @@ mod tests {
             unreachable!()
         }
         fn backups(&self) -> Result<permguard_host::api::backups::BackupList, ClientFailure> {
+            unreachable!()
+        }
+        fn plan_gc(
+            &self,
+            _: &str,
+            _: &permguard_host::api::gc::PlanGc,
+        ) -> Result<permguard_host::api::gc::GcPlanned, ClientFailure> {
+            unreachable!()
+        }
+        fn run_gc(
+            &self,
+            _: &str,
+            _: &permguard_host::api::gc::RunGc,
+        ) -> Result<permguard_host::api::gc::GcRan, ClientFailure> {
             unreachable!()
         }
     }

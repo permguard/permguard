@@ -751,6 +751,7 @@ permguard host plans --help      # plan receipts, and the approvals dual control
 permguard host backup --help     # application-consistent backups: prepare, finalize or abort, list
 permguard backup verify --help   # a snapshot checked offline against its signed manifest
 permguard migrate --help         # a stopped volume's layout migrations: plan, run, status, rollback
+permguard gc objects --help      # the Control Plane's object sweep on demand: plan, then run
 permguard restore plan --help    # restore a stopped Host's volume from a snapshot: plan, then run
 ```
 

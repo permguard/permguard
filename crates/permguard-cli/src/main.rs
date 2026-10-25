@@ -227,6 +227,7 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
             server_config,
             action,
         } => commands::restore::restore_command(&globals, server_config.as_deref(), action, &trace),
+        Command::Gc { action } => commands::host_ops::gc_command(&globals, action, &trace),
         Command::Backup { action } => {
             commands::offline_ops::backup_command(&globals, action, &trace)
         }
@@ -343,6 +344,7 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Inspect { .. } => ("inspect", Class::Planes),
         Command::Restore { .. } => ("restore", Class::Volume),
         Command::Backup { .. } => ("backup", Class::Volume),
+        Command::Gc { .. } => ("gc", Class::Host),
         Command::Migrate { .. } => ("migrate", Class::Volume),
         Command::Discover { .. } => ("discover", Class::Local),
         Command::Host { action, .. } => {

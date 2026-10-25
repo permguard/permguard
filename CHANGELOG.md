@@ -19,6 +19,9 @@ is cut.
 
 ### Added
 
+- **The object sweep from the command line (TC-4).**
+  `permguard gc objects plan [--zone <id> [--ledger <id>]] --out <file>` asks the Host API for a plan of the Control Plane's sweep, changes nothing, prints the candidates and what is kept and why, and writes the plan to a new owner-only file; `permguard gc objects run --confirm-file <file>` runs it once and prints what was removed, what was kept and why, where it stopped, and the receipt, over REST or gRPC.
+  `gc mirrors|imports|streams` and `storage quota show|probe` are listed `blocked` in `ops/command-line.md`: the Host serves no such job or route yet.
 - **Backups, their offline verification and the layout migrations from the command line (TC-3).**
   `permguard host backup prepare --token-out <file>` writes the snapshot token to a new owner-only file and prints the signed manifest, never the token; `finalize --backup-token-file --snapshot-id` and `abort --backup-token-file` end it (not `--token-file`, the bearer the command line authenticates with); `list` shows the Host's backups; over REST or gRPC.
   `permguard backup verify --volume <snapshot> --manifest <file> --bundle <file> --pin <fingerprint>` checks a snapshot offline against its manifest under the bundle `host keys bundle export` wrote: exit 2 when it is only crash-consistent.

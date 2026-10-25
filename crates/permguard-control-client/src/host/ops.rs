@@ -15,11 +15,13 @@ use permguard_host::api::backups::{
     AbortBackup, BackupEnded, BackupList, BackupPrepared, BackupView, FinalizeBackup, PrepareBackup,
 };
 use permguard_host::api::config::{Effective, Revision, Revisions, Setting};
+use permguard_host::api::gc::{GcPlanned, GcRan, PlanGc, RunGc};
 use permguard_host::api::keys::{
     KeyBundlePage, KeyBundleQuery, KeyRevoked, KeyView, PlanKeyRevoke, RingRotated, RingSummary,
     RingView, Rings, RotateRing, RunKeyRevoke,
 };
 use permguard_host::api::plans::{ApprovalView, ApprovePlan, PlanApproved, PlanList, PlanView};
+use permguard_host::gc::{Entry, Kept, Report};
 
 use super::{GrpcHost, RestHost, json, query_value, segment, usage};
 use crate::catalog::Failure;
@@ -71,6 +73,10 @@ pub trait Operations {
     fn abort_backup(&self, request: &AbortBackup) -> Result<BackupEnded, Failure>;
     /// `GET /host/v1/backups`, `OperationsService.ListBackups`.
     fn backups(&self) -> Result<BackupList, Failure>;
+    /// `POST /host/v1/gc/{job}/plan`, `OperationsService.PlanGc` (TC-4).
+    fn plan_gc(&self, job: &str, request: &PlanGc) -> Result<GcPlanned, Failure>;
+    /// `POST /host/v1/gc/{job}/run`, `OperationsService.RunGc`.
+    fn run_gc(&self, job: &str, request: &RunGc) -> Result<GcRan, Failure>;
 }
 
 /// `?name=value&…` of the members given, percent-encoded; empty when none is.
@@ -217,6 +223,20 @@ impl Operations for RestHost {
 
     fn backups(&self) -> Result<BackupList, Failure> {
         self.get("/host/v1/backups")
+    }
+
+    fn plan_gc(&self, job: &str, request: &PlanGc) -> Result<GcPlanned, Failure> {
+        self.post(
+            &format!("/host/v1/gc/{}/plan", segment(job)?),
+            &json(request)?,
+        )
+    }
+
+    fn run_gc(&self, job: &str, request: &RunGc) -> Result<GcRan, Failure> {
+        self.post(
+            &format!("/host/v1/gc/{}/run", segment(job)?),
+            &json(request)?,
+        )
     }
 }
 
@@ -715,6 +735,82 @@ impl Operations for GrpcHost {
                 })
                 .collect(),
         })
+    }
+
+    fn plan_gc(&self, job: &str, request: &PlanGc) -> Result<GcPlanned, Failure> {
+        segment(job)?;
+        let answer = self
+            .0
+            .run(
+                "PlanGc",
+                self.operations_client().plan_gc(proto::PlanGcRequest {
+                    job: job.to_owned(),
+                    request_id: request.request_id.clone(),
+                    resource: request.resource.clone().unwrap_or_default(),
+                }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(GcPlanned {
+            receipt: map::b64(&answer.receipt),
+            job: answer.job,
+            resource: answer.resource,
+            plan_id: answer.plan_id,
+            plan_digest: answer.plan_digest,
+            expires: answer.expires,
+            approvals_required: answer.approvals_required,
+            report: report_in(answer.report.unwrap_or_default()),
+        })
+    }
+
+    fn run_gc(&self, job: &str, request: &RunGc) -> Result<GcRan, Failure> {
+        segment(job)?;
+        let receipt = map::raw(&request.receipt).map_err(usage)?;
+        let answer = self
+            .0
+            .run(
+                "RunGc",
+                self.operations_client().run_gc(proto::RunGcRequest {
+                    job: job.to_owned(),
+                    request_id: request.request_id.clone(),
+                    receipt,
+                }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(GcRan {
+            receipt: map::receipt(answer.receipt),
+            job: answer.job,
+            resource: answer.resource,
+            plan_id: answer.plan_id,
+            report: report_in(answer.report.unwrap_or_default()),
+        })
+    }
+}
+
+/// A garbage-collection report as gRPC carries it.
+fn report_in(report: proto::GcReport) -> Report {
+    Report {
+        entries: report
+            .entries
+            .into_iter()
+            .map(|entry| Entry {
+                resource: entry.resource,
+                candidates: entry.candidates,
+                candidate_bytes: entry.candidate_bytes,
+                removed: entry.removed,
+                removed_bytes: entry.removed_bytes,
+                kept: entry
+                    .kept
+                    .into_iter()
+                    .map(|kept| Kept {
+                        reason: kept.reason,
+                        count: kept.count,
+                    })
+                    .collect(),
+            })
+            .collect(),
+        resumes_at: report.resumes_at,
+        skipped: report.skipped,
+        omitted: report.omitted,
     }
 }
 

@@ -212,15 +212,15 @@ The **State** cell is one of:
 
 ## Garbage collection and pressure
 
-| Command              | Grant          | State  | Why  |
-| -------------------- | -------------- | ------ | ---- |
-| `gc objects plan`    | `gc.manage`    | absent | TC-4 |
-| `gc objects run`     | `gc.manage`    | absent | TC-4 |
-| `gc mirrors plan`    | `gc.manage`    | absent | TC-4 |
-| `gc mirrors run`     | `gc.manage`    | absent | TC-4 |
-| `gc imports plan`    | `gc.manage`    | absent | TC-4 |
-| `gc imports run`     | `gc.manage`    | absent | TC-4 |
-| `gc streams plan`    | `gc.manage`    | absent | TC-4 |
-| `gc streams run`     | `gc.manage`    | absent | TC-4 |
-| `storage quota show` | `storage.read` | absent | TC-4 |
-| `storage probe`      | `storage.read` | absent | TC-4 |
+| Command              | Grant          | State   | Why                                                                                           |
+| -------------------- | -------------- | ------- | --------------------------------------------------------------------------------------------- |
+| `gc objects plan`    | `gc.manage`    | present |                                                                                               |
+| `gc objects run`     | `gc.manage`    | present |                                                                                               |
+| `gc mirrors plan`    | `gc.manage`    | blocked | the Host serves no such gc job: its sweep runs in the background only                         |
+| `gc mirrors run`     | `gc.manage`    | blocked | the Host serves no such gc job: its sweep runs in the background only                         |
+| `gc imports plan`    | `gc.manage`    | blocked | the Host serves no such gc job: its sweep runs in the background only                         |
+| `gc imports run`     | `gc.manage`    | blocked | the Host serves no such gc job: its sweep runs in the background only                         |
+| `gc streams plan`    | `gc.manage`    | blocked | the Host serves no such gc job: its sweep runs in the background only                         |
+| `gc streams run`     | `gc.manage`    | blocked | the Host serves no such gc job: its sweep runs in the background only                         |
+| `storage quota show` | `storage.read` | blocked | the Host API serves no storage route: its request and answer are not fixed by any package yet |
+| `storage probe`      | `storage.read` | blocked | the Host API serves no storage route: its request and answer are not fixed by any package yet |
