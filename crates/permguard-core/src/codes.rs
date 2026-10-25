@@ -324,6 +324,8 @@ pub mod client {
     pub const DECISIONS_UNVERIFIED: &str = "decisions_unverified";
     /// A workspace head statement or local closure that did not verify (TC-1): exit 2.
     pub const HEAD_UNVERIFIED: &str = "head_unverified";
+    /// A snapshot that differs from its signed manifest, only crash-consistent (TC-3): exit 2.
+    pub const BACKUP_UNVERIFIED: &str = "backup_unverified";
     pub const EXPORT_TRUNCATED: &str = "export_truncated";
     pub const KEYS_EMPTY: &str = "keys_empty";
     pub const KEYS_MALFORMED: &str = "keys_malformed";
@@ -707,6 +709,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::EVENT_EXPORT_UNREADABLE,
         client::EVENT_KEYS_REQUIRED,
         client::EVENTS_UNVERIFIED,
+        client::BACKUP_UNVERIFIED,
         client::DECISIONS_UNVERIFIED,
         client::HEAD_UNVERIFIED,
         client::EXPORT_TRUNCATED,

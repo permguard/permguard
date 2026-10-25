@@ -44,7 +44,7 @@ use crate::trace::Trace;
 use permguard_host::api::host_input::{IdentityPin, InvitationHandoff, PinStore};
 
 /// The `--volume` target an offline command works on (TC-1): stated, never guessed.
-pub(super) fn volume_of(globals: &Globals) -> Result<std::path::PathBuf, Failure> {
+pub(crate) fn volume_of(globals: &Globals) -> Result<std::path::PathBuf, Failure> {
     globals.volume.clone().ok_or_else(|| {
         Failure::usage(
             "an offline host command works on a volume: name it with --volume <dir>, the \
@@ -71,6 +71,7 @@ pub fn host_command(
         HostAction::Config { action } => super::host_ops::config(globals, action, trace),
         HostAction::Status => super::host_ops::status(globals, trace),
         HostAction::Plans { action } => super::host_ops::plans(globals, action, trace),
+        HostAction::Backup { action } => super::host_ops::backup(globals, action, trace),
     }
 }
 
@@ -185,7 +186,7 @@ fn open(
 /// Claims `volume`, an existing one only, without opening any store: what `host holds` reads and
 /// writes beside the grants (after the review). A volume restored for forensics is refused: the
 /// offline commands that write never work on it (WP-7.9).
-fn claim(volume: &std::path::Path, trace: &Trace) -> Result<Volume, Failure> {
+pub(super) fn claim(volume: &std::path::Path, trace: &Trace) -> Result<Volume, Failure> {
     let held = hold(volume, trace)?;
     if let Some(reason) = permguard_host::restore::serving_refused(&held)
         .map_err(|error| Failure::unavailable(format!("reading the restore marker: {error}")))?

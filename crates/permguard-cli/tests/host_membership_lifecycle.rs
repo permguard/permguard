@@ -372,7 +372,16 @@ fn launch_host(
                         importing: None,
                     })),
                 })
-                .with_streams(Arc::new(FixedStreams)),
+                .with_streams(Arc::new(FixedStreams))
+                // The application-consistent backups (TC-3).
+                .with_backups(
+                    Arc::new(
+                        permguard_host::operations::backup::Backups::open(&volume)
+                            .expect("the backups open"),
+                    ),
+                    None,
+                    None,
+                ),
             );
             let surface = Surface::listener(
                 "host-api",
@@ -1351,4 +1360,202 @@ fn the_host_operations_commands_answer_over_both_transports() {
         refusals[0], refusals[1],
         "the same refusal over REST and gRPC"
     );
+}
+
+/// Every file below `from`, copied to `to`: what a storage driver's snapshot holds.
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("the copy");
+    for entry in std::fs::read_dir(from).expect("lists").flatten() {
+        let target = to.join(entry.file_name());
+        if entry.file_type().expect("a type").is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).expect("copied");
+        }
+    }
+}
+
+/// TC-3: `host backup` over REST and over gRPC: the prepare writes the token to a new owner-only
+/// file and never prints it, the list shows the backup, the finalize records the driver's
+/// snapshot from the token file and an abort ends another; then, offline, `backup verify` checks
+/// the snapshot taken inside the barrier against the printed manifest, the exported bundle and the
+/// identity pin, and labels a changed one crash-consistent, exit 2.
+#[test]
+fn the_backup_commands_drive_a_snapshot_over_both_transports() {
+    let root = scratch("backup");
+    let pki = Pki::new(&root);
+    let authority = pki.authority();
+    let (operator_certificate, operator_key) = pki.issue("operator", "operator");
+    let tls = OperatorTls {
+        authority: authority.clone(),
+        certificate: operator_certificate,
+        key: operator_key,
+    };
+    let (certificate, key) = pki.issue("host", "127.0.0.1");
+    let host_root = root.join("host");
+    let host = launch_host(
+        host_root.clone(),
+        certificate,
+        key,
+        authority,
+        Role::Coordinator,
+    );
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://127.0.0.1:{}", host.address.port());
+        let call = |args: &[&str]| call(&root, &endpoint, &tls, &words(args));
+        let file = |name: &str| root.join(format!("{scheme}-{name}"));
+        let token_file = file("backup.token");
+        let output = cli(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&[
+                "host",
+                "backup",
+                "prepare",
+                "--token-out",
+                token_file.to_str().expect("UTF-8"),
+            ]),
+        );
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let token = std::fs::read_to_string(&token_file).expect("the token");
+        assert!(token.len() > 20, "{scheme}");
+        assert!(
+            !String::from_utf8_lossy(&output.stdout).contains(token.trim())
+                && !String::from_utf8_lossy(&output.stderr).contains(token.trim()),
+            "{scheme}: the token is never printed"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&token_file)
+                .expect("written")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "{scheme}");
+        }
+        let prepared: Value = serde_json::from_slice(&output.stdout).expect("JSON");
+        let listed = call(&["host", "backup", "list"]);
+        let state = |listed: &Value| {
+            listed["backups"]
+                .as_array()
+                .expect("backups")
+                .iter()
+                .find(|backup| backup["operation_id"] == prepared["operation_id"])
+                .map(|backup| backup["state"].clone())
+        };
+        assert_eq!(state(&listed), Some(Value::from("prepared")), "{scheme}");
+
+        // The storage driver's snapshot, inside the barrier.
+        let snapshot = file("snapshot");
+        copy_tree(&host_root, &snapshot);
+        let snapshot_id = format!("copy:{scheme}");
+        let finalized = call(&[
+            "host",
+            "backup",
+            "finalize",
+            "--backup-token-file",
+            token_file.to_str().expect("UTF-8"),
+            "--snapshot-id",
+            &snapshot_id,
+        ]);
+        assert_eq!(finalized["state"], "finalized", "{scheme}");
+        assert_eq!(finalized["snapshot_id"], snapshot_id.as_str(), "{scheme}");
+        assert_eq!(
+            state(&call(&["host", "backup", "list"])),
+            Some(Value::from("finalized")),
+            "{scheme}"
+        );
+
+        // Another backup, aborted.
+        let second_token = file("second.token");
+        call(&[
+            "host",
+            "backup",
+            "prepare",
+            "--token-out",
+            second_token.to_str().expect("UTF-8"),
+        ]);
+        let aborted = call(&[
+            "host",
+            "backup",
+            "abort",
+            "--backup-token-file",
+            second_token.to_str().expect("UTF-8"),
+        ]);
+        assert_eq!(aborted["state"], "aborted", "{scheme}");
+
+        // Offline: the snapshot against its manifest, under the exported bundle and the pin.
+        let bundle = file("bundle.json");
+        call(&[
+            "host",
+            "keys",
+            "bundle",
+            "export",
+            "--resource",
+            "host",
+            "--out",
+            bundle.to_str().expect("UTF-8"),
+        ]);
+        let manifest = file("manifest.txt");
+        std::fs::write(
+            &manifest,
+            prepared["manifest"].as_str().expect("a manifest"),
+        )
+        .expect("written");
+        let verify_with = |volume: &Path, pin: &str| {
+            let mut command = Command::new(env!("CARGO_BIN_EXE_permguard"));
+            for (name, _) in std::env::vars_os() {
+                if name.to_string_lossy().starts_with("PERMGUARD_") {
+                    command.env_remove(name);
+                }
+            }
+            command
+                .current_dir(&root)
+                .env("PERMGUARD_CONFIG", root.join("cli-config.yml"))
+                .args(["-o", "json", "-w"])
+                .arg(&root)
+                .args(["backup", "verify", "--volume"])
+                .arg(volume)
+                .arg("--manifest")
+                .arg(&manifest)
+                .arg("--bundle")
+                .arg(&bundle)
+                .args(["--pin", pin])
+                .output()
+                .expect("the local CLI runs")
+        };
+        let verify = |volume: &Path| verify_with(volume, &host.fingerprint);
+        // Another pin: refused, never labelled, exit 2.
+        let pinned = verify_with(&snapshot, "sha256:0000");
+        assert_eq!(pinned.status.code(), Some(2), "{scheme}");
+        let refusal: Value = serde_json::from_slice(&pinned.stderr).expect("a JSON refusal");
+        assert_eq!(refusal["code"], "backup_unverified", "{scheme}");
+        let verified = verify(&snapshot);
+        assert!(
+            verified.status.success(),
+            "{scheme}: {}",
+            String::from_utf8_lossy(&verified.stderr)
+        );
+        let verdict: Value = serde_json::from_slice(&verified.stdout).expect("JSON");
+        assert_eq!(verdict["consistency"], "application_consistent", "{scheme}");
+        assert_eq!(
+            verdict["operation_id"], prepared["operation_id"],
+            "{scheme}"
+        );
+        // A file of the snapshot changed: only crash-consistent, exit 2.
+        std::fs::write(snapshot.join("host/VOLUME_ID.changed"), b"x").expect("written");
+        let identity = snapshot.join("host/identity/BOOT");
+        let mut bytes = std::fs::read(&identity).expect("a BOOT");
+        bytes.push(0);
+        std::fs::write(&identity, bytes).expect("changed");
+        let changed = verify(&snapshot);
+        assert_eq!(changed.status.code(), Some(2), "{scheme}");
+        let verdict: Value = serde_json::from_slice(&changed.stdout).expect("JSON");
+        assert_eq!(verdict["consistency"], "crash_consistent", "{scheme}");
+    }
 }

@@ -135,6 +135,22 @@ pub fn migrate_events(
 ) -> Result<()> {
     use permguard_host::storage::volume::hold;
 
+    let volume = hold(volume_root)
+        .with_context(|| format!("holding the volume at {}", volume_root.display()))?;
+    migrate_events_on(&volume, backup, working_dir, directory, bounds, out)
+}
+
+/// [`migrate_events`] on `volume`, held by the caller (TC-3).
+pub fn migrate_events_on(
+    volume: &permguard_host::storage::volume::Volume,
+    backup: &str,
+    working_dir: &Path,
+    directory: &Path,
+    bounds: Bounds,
+    out: &mut dyn Write,
+) -> Result<()> {
+    let volume_root = volume.root();
+
     if backup.trim().is_empty() {
         anyhow::bail!("`--backup` names the external backup taken before the migration");
     }
@@ -150,8 +166,6 @@ pub fn migrate_events(
             working_dir.display()
         );
     }
-    let volume = hold(volume_root)
-        .with_context(|| format!("holding the volume at {}", volume_root.display()))?;
     let now = permguard_host::authz::store::now();
     let horizon = horizon(bounds, i64::try_from(now).unwrap_or(i64::MAX));
     let reading = || {
@@ -160,12 +174,12 @@ pub fn migrate_events(
             directory.display()
         )
     };
-    let said = match standing(&volume, directory, bounds, horizon).with_context(reading)? {
+    let said = match standing(volume, directory, bounds, horizon).with_context(reading)? {
         Standing::Absent => format!("{SUBSYSTEM}: nothing to archive at {}", directory.display()),
         Standing::Archived => format!("{SUBSYSTEM}: archived already in {TARGET}"),
         Standing::Undrained | Standing::Orphan | Standing::Drained => {
             carry(
-                &volume,
+                volume,
                 directory,
                 bounds,
                 horizon,

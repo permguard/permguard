@@ -190,6 +190,9 @@ pub const REGISTRY: &[ActionSchema] = &[
     // nothing.
     mutation("host.gc.planned", HOST),
     mutation("host.gc.ran", HOST),
+    // A layout migration planned offline from the command line (TC-3); its run is the
+    // migration's own record.
+    mutation("host.migrate.planned", HOST),
     // The key rings (WP-3.1): every journal entry an `operations` record, an operator's
     // rotation and revocation each a mutation.
     ActionSchema {

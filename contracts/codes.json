@@ -96,6 +96,12 @@
       "kind": "local",
       "class": "validation"
     },
+    "client.BACKUP_UNVERIFIED": {
+      "code": "backup_unverified",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
     "client.DECISION_EXPORT_MALFORMED": {
       "code": "decision_export_malformed",
       "contract": "5-command-line/1-command-line.md",

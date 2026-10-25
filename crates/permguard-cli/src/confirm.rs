@@ -23,23 +23,28 @@ pub fn read_bytes(
             "--confirm-file names the {what} the plan step wrote"
         ))
     })?;
+    read_named(path, "--confirm-file", what, most)
+}
+
+/// [`read_bytes`] of the file the flag `flag` named: its refusals name that flag (TC-3).
+pub fn read_named(path: &Path, flag: &str, what: &str, most: usize) -> Result<Vec<u8>, Failure> {
     let size = std::fs::metadata(path)
-        .map_err(|error| Failure::usage(format!("--confirm-file {}: {error}", path.display())))?
+        .map_err(|error| Failure::usage(format!("{flag} {}: {error}", path.display())))?
         .len();
     if size == 0 {
         return Err(Failure::usage(format!(
-            "--confirm-file {} is empty",
+            "{flag} {} is empty",
             path.display()
         )));
     }
     if size > most as u64 {
         return Err(Failure::usage(format!(
-            "--confirm-file {} is {size} bytes; a {what} takes up to {most}",
+            "{flag} {} is {size} bytes; a {what} takes up to {most}",
             path.display()
         )));
     }
     std::fs::read(path)
-        .map_err(|error| Failure::usage(format!("--confirm-file {}: {error}", path.display())))
+        .map_err(|error| Failure::usage(format!("{flag} {}: {error}", path.display())))
 }
 
 #[cfg(test)]

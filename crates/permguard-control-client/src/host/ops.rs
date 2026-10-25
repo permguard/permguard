@@ -11,6 +11,9 @@ use permguard_host::api::audit::{
     AuditAnchorView, AuditCheckpointQuery, AuditCheckpointView, AuditCheckpoints, AuditExportPage,
     AuditExportQuery, AuditGapView, AuditQuery, AuditRecordPage, AuditRecordView,
 };
+use permguard_host::api::backups::{
+    AbortBackup, BackupEnded, BackupList, BackupPrepared, BackupView, FinalizeBackup, PrepareBackup,
+};
 use permguard_host::api::config::{Effective, Revision, Revisions, Setting};
 use permguard_host::api::keys::{
     KeyBundlePage, KeyBundleQuery, KeyRevoked, KeyView, PlanKeyRevoke, RingRotated, RingSummary,
@@ -59,6 +62,15 @@ pub trait Operations {
     fn plans(&self, status: Option<&str>) -> Result<PlanList, Failure>;
     /// `POST /host/v1/plans/{id}/approve`, `OperationsService.ApprovePlan`.
     fn approve_plan(&self, plan_id: &str, request: &ApprovePlan) -> Result<PlanApproved, Failure>;
+
+    /// `POST /host/v1/backup/prepare`, `OperationsService.PrepareBackup` (TC-3).
+    fn prepare_backup(&self) -> Result<BackupPrepared, Failure>;
+    /// `POST /host/v1/backup/finalize`, `OperationsService.FinalizeBackup`.
+    fn finalize_backup(&self, request: &FinalizeBackup) -> Result<BackupEnded, Failure>;
+    /// `POST /host/v1/backup/abort`, `OperationsService.AbortBackup`.
+    fn abort_backup(&self, request: &AbortBackup) -> Result<BackupEnded, Failure>;
+    /// `GET /host/v1/backups`, `OperationsService.ListBackups`.
+    fn backups(&self) -> Result<BackupList, Failure>;
 }
 
 /// `?name=value&…` of the members given, percent-encoded; empty when none is.
@@ -189,6 +201,22 @@ impl Operations for RestHost {
             &format!("/host/v1/plans/{}/approve", segment(plan_id)?),
             &json(request)?,
         )
+    }
+
+    fn prepare_backup(&self) -> Result<BackupPrepared, Failure> {
+        self.post("/host/v1/backup/prepare", &json(&PrepareBackup {})?)
+    }
+
+    fn finalize_backup(&self, request: &FinalizeBackup) -> Result<BackupEnded, Failure> {
+        self.post("/host/v1/backup/finalize", &json(request)?)
+    }
+
+    fn abort_backup(&self, request: &AbortBackup) -> Result<BackupEnded, Failure> {
+        self.post("/host/v1/backup/abort", &json(request)?)
+    }
+
+    fn backups(&self) -> Result<BackupList, Failure> {
+        self.get("/host/v1/backups")
     }
 }
 
@@ -605,6 +633,103 @@ impl Operations for GrpcHost {
             receipt: map::receipt(answer.receipt),
             plan: plan_in(answer.plan.unwrap_or_default()),
         })
+    }
+
+    fn prepare_backup(&self) -> Result<BackupPrepared, Failure> {
+        let answer = self
+            .0
+            .run(
+                "PrepareBackup",
+                self.operations_client()
+                    .prepare_backup(proto::PrepareBackupRequest {}),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(BackupPrepared {
+            operation_id: answer.operation_id,
+            manifest: answer.manifest,
+            token: answer.token,
+            expires_at: answer.expires_at,
+            receipt: map::receipt(answer.receipt),
+        })
+    }
+
+    fn finalize_backup(&self, request: &FinalizeBackup) -> Result<BackupEnded, Failure> {
+        let answer = self
+            .0
+            .run(
+                "FinalizeBackup",
+                self.operations_client()
+                    .finalize_backup(proto::FinalizeBackupRequest {
+                        token: request.token.clone(),
+                        snapshot_id: request.snapshot_id.clone(),
+                    }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(ended(
+            answer.backup,
+            answer.state,
+            answer.snapshot_id,
+            answer.receipt,
+        ))
+    }
+
+    fn abort_backup(&self, request: &AbortBackup) -> Result<BackupEnded, Failure> {
+        let answer = self
+            .0
+            .run(
+                "AbortBackup",
+                self.operations_client()
+                    .abort_backup(proto::AbortBackupRequest {
+                        token: request.token.clone(),
+                    }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(ended(
+            answer.backup,
+            answer.state,
+            answer.snapshot_id,
+            answer.receipt,
+        ))
+    }
+
+    fn backups(&self) -> Result<BackupList, Failure> {
+        let answer = self
+            .0
+            .run(
+                "ListBackups",
+                self.operations_client()
+                    .list_backups(proto::ListBackupsRequest {}),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(BackupList {
+            backups: answer
+                .backups
+                .into_iter()
+                .map(|backup| BackupView {
+                    operation_id: backup.operation_id,
+                    at: backup.at,
+                    state: backup.state,
+                    snapshot_id: backup.snapshot_id,
+                    ended_at: backup.ended_at,
+                    manifest: backup.manifest,
+                })
+                .collect(),
+        })
+    }
+}
+
+/// How a finalize or an abort ended, as gRPC carries it.
+fn ended(
+    backup: String,
+    state: String,
+    snapshot_id: Option<String>,
+    receipt: Option<proto::Receipt>,
+) -> BackupEnded {
+    BackupEnded {
+        backup,
+        state,
+        snapshot_id,
+        receipt: map::receipt(receipt),
     }
 }
 

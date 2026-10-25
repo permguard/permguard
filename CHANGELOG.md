@@ -19,6 +19,10 @@ is cut.
 
 ### Added
 
+- **Backups, their offline verification and the layout migrations from the command line (TC-3).**
+  `permguard host backup prepare --token-out <file>` writes the snapshot token to a new owner-only file and prints the signed manifest, never the token; `finalize --backup-token-file --snapshot-id` and `abort --backup-token-file` end it (not `--token-file`, the bearer the command line authenticates with); `list` shows the Host's backups; over REST or gRPC.
+  `permguard backup verify --volume <snapshot> --manifest <file> --bundle <file> --pin <fingerprint>` checks a snapshot offline against its manifest under the bundle `host keys bundle export` wrote: exit 2 when it is only crash-consistent.
+  `permguard migrate plan --subsystem keys|audit|decisions|events --backup <reference> --out <file>` signs a plan receipt offline under the volume's `host.operations` (receipt operation `migrate`), `migrate run --confirm-file` spends it once and runs the server binary's own migration, `migrate status` and `migrate rollback --subsystem` read and undo a layout; a migration never builds its new generation over anything that exists, and dual control refuses an offline plan.
 - **The `host` command family reaches the key rings, the audit trails, the configuration, the lifecycle and the plans (TC-2).**
   `permguard host keys {list, show, rotate, revoke plan|run, bundle export}`, `host audit {query, checkpoints, export}`, `host config {show --effective, revisions}`, `host status` and `host plans {list, approve}` call the Host listener over REST or gRPC, as `--host-endpoint` says, and print with `-o terminal|json|yaml`.
   A key revocation writes its plan to a new owner-only file and runs from it; `bundle export` and `audit export` walk every page at the frontier their first page fixed into a new owner-only file, the bundle in the shape `ledgers import --bundle` reads.

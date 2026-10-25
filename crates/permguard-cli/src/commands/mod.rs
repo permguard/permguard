@@ -15,5 +15,6 @@ mod host_ops;
 pub mod host_proof;
 pub mod inspect;
 pub mod objects;
+pub mod offline_ops;
 pub mod restore;
 pub mod workspace;

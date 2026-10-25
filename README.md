@@ -748,6 +748,9 @@ permguard host audit --help      # the audit trails: records, signed checkpoints
 permguard host config --help     # the effective configuration and its revisions
 permguard host status            # the phase of the Host, every Plane and every service
 permguard host plans --help      # plan receipts, and the approvals dual control requires
+permguard host backup --help     # application-consistent backups: prepare, finalize or abort, list
+permguard backup verify --help   # a snapshot checked offline against its signed manifest
+permguard migrate --help         # a stopped volume's layout migrations: plan, run, status, rollback
 permguard restore plan --help    # restore a stopped Host's volume from a snapshot: plan, then run
 ```
 

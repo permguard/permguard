@@ -157,11 +157,11 @@ fn mode_of(text: &str) -> Result<Mode, Failure> {
     })
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(super) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn unhex16(text: &str) -> Option<[u8; 16]> {
+pub(super) fn unhex16(text: &str) -> Option<[u8; 16]> {
     if text.len() != 32 || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
     }
@@ -240,9 +240,9 @@ fn scan(held: &Volume, trace: &Trace) -> Result<u64, Failure> {
     Ok(report.files_checked)
 }
 
-/// The configuration the restore reads, refused when it requires dual control: a restore plan
-/// then needs an approval, which an offline volume cannot collect.
-fn config_of(server_config: Option<&Path>) -> Result<permguard_core::Config, Failure> {
+/// The configuration a restore or a migration reads, refused when it requires dual control: an
+/// offline plan then needs an approval, which an offline volume cannot collect.
+pub(super) fn config_of(server_config: Option<&Path>) -> Result<permguard_core::Config, Failure> {
     let config = permguard_server::offline::config(env!("CARGO_PKG_VERSION"), server_config)
         .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
     if config
@@ -250,14 +250,15 @@ fn config_of(server_config: Option<&Path>) -> Result<permguard_core::Config, Fai
         .requires(permguard_core::assurance::Control::OperationsDualControl)
     {
         return Err(Failure::usage(
-            "the assurance profile requires dual control, under which a restore needs an \
-             approval that no offline volume can collect yet: nothing was planned",
+            "the assurance profile requires dual control, under which an offline restore or \
+             migration needs an approval that no offline volume can collect yet: nothing was \
+             planned",
         ));
     }
     Ok(config)
 }
 
-fn planner() -> Result<Principal, Failure> {
+pub(super) fn planner() -> Result<Principal, Failure> {
     Principal::new(INITIATOR).map_err(|error| Failure::internal(format!("the planner: {error}")))
 }
 

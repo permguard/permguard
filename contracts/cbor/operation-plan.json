@@ -18,7 +18,7 @@
           "name": "operation",
           "type": "text",
           "occurs": "required",
-          "note": "`grant.revoke`, `keys.revoke`, `membership.revoke`, `identity.reset`, `restore` (WP-7.9) or `gc.objects` (WP-7.11b)"
+          "note": "`grant.revoke`, `keys.revoke`, `membership.revoke`, `identity.reset`, `restore` (WP-7.9), `gc.objects` (WP-7.11b) or `migrate` (TC-3)"
         },
         {
           "label": 3,

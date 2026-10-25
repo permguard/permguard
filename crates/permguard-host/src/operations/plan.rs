@@ -54,6 +54,8 @@ pub const IDENTITY_RESET: &str = "identity.reset";
 pub const RESTORE: &str = "restore";
 /// An operator's run of the Control Plane's object sweep (WP-7.11b).
 pub const GC_OBJECTS: &str = "gc.objects";
+/// A subsystem's layout migration of a stopped server's volume, offline (TC-3).
+pub const MIGRATE: &str = "migrate";
 /// Every operation a receipt may name.
 pub const OPERATIONS: &[&str] = &[
     GRANT_REVOKE,
@@ -62,6 +64,7 @@ pub const OPERATIONS: &[&str] = &[
     IDENTITY_RESET,
     RESTORE,
     GC_OBJECTS,
+    MIGRATE,
 ];
 
 /// How long a plan that requires no approval may be run after it was made.

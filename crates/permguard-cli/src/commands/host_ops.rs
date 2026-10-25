@@ -410,6 +410,97 @@ pub(super) fn plans(
     Ok(ExitCode::SUCCESS)
 }
 
+/// What `host backup prepare` prints: the answer without the token, which went to its file.
+#[derive(Debug, Serialize)]
+struct BackupPreparedOut {
+    operation_id: String,
+    manifest: String,
+    expires_at: String,
+    receipt: permguard_host::api::Receipt,
+    token_out: String,
+}
+
+/// The token in a `--backup-token-file`, as `prepare` wrote it.
+fn token_of(globals: &Globals, path: &std::path::Path) -> Result<String, Failure> {
+    let bytes = crate::confirm::read_named(
+        &rooted_file(globals, path),
+        "--backup-token-file",
+        "snapshot token",
+        4096,
+    )?;
+    let token = String::from_utf8(bytes)
+        .map_err(|_| Failure::usage("--backup-token-file does not hold a snapshot token"))?;
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(Failure::usage(
+            "--backup-token-file does not hold a snapshot token",
+        ));
+    }
+    Ok(token.to_owned())
+}
+
+/// `permguard host backup …` (TC-3).
+pub(super) fn backup(
+    globals: &Globals,
+    action: crate::args::HostBackupAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    use crate::args::HostBackupAction;
+    use permguard_host::api::backups::{AbortBackup, FinalizeBackup};
+
+    let host = online_host(globals, trace, false)?;
+    match action {
+        HostBackupAction::Prepare { token_out } => {
+            // The token's file first: a prepared backup always has its token somewhere, and a
+            // file already there prepares nothing.
+            let reserved = reserve(globals, &token_out)?;
+            let prepared = host.prepare_backup().map_err(failed)?;
+            if let Err(written) = reserved.fill(prepared.token.as_bytes()) {
+                // The token exists nowhere else: abort the backup now rather than leave the Host
+                // without mutations until the barrier expires (after the TC-3 review).
+                let aborted = host.abort_backup(&AbortBackup {
+                    token: prepared.token.clone(),
+                });
+                return Err(Failure::unavailable(match aborted {
+                    Ok(_) => format!("{}; the backup was aborted", written.message),
+                    Err(_) => format!(
+                        "{}; the backup could not be aborted and holds mutations until {}",
+                        written.message, prepared.expires_at
+                    ),
+                }));
+            }
+            render_json(
+                &BackupPreparedOut {
+                    operation_id: prepared.operation_id,
+                    manifest: prepared.manifest,
+                    expires_at: prepared.expires_at,
+                    receipt: prepared.receipt,
+                    token_out: rooted_file(globals, &token_out).display().to_string(),
+                },
+                globals,
+                trace,
+            )?;
+        }
+        HostBackupAction::Finalize {
+            backup_token_file,
+            snapshot_id,
+        } => {
+            let token = token_of(globals, &backup_token_file)?;
+            let ended = host
+                .finalize_backup(&FinalizeBackup { token, snapshot_id })
+                .map_err(failed)?;
+            render_json(&ended, globals, trace)?;
+        }
+        HostBackupAction::Abort { backup_token_file } => {
+            let token = token_of(globals, &backup_token_file)?;
+            let ended = host.abort_backup(&AbortBackup { token }).map_err(failed)?;
+            render_json(&ended, globals, trace)?;
+        }
+        HostBackupAction::List => render_json(&host.backups().map_err(failed)?, globals, trace)?,
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::unreachable)]
@@ -523,6 +614,26 @@ mod tests {
             unreachable!()
         }
         fn approve_plan(&self, _: &str, _: &ApprovePlan) -> Result<PlanApproved, ClientFailure> {
+            unreachable!()
+        }
+        fn prepare_backup(
+            &self,
+        ) -> Result<permguard_host::api::backups::BackupPrepared, ClientFailure> {
+            unreachable!()
+        }
+        fn finalize_backup(
+            &self,
+            _: &permguard_host::api::backups::FinalizeBackup,
+        ) -> Result<permguard_host::api::backups::BackupEnded, ClientFailure> {
+            unreachable!()
+        }
+        fn abort_backup(
+            &self,
+            _: &permguard_host::api::backups::AbortBackup,
+        ) -> Result<permguard_host::api::backups::BackupEnded, ClientFailure> {
+            unreachable!()
+        }
+        fn backups(&self) -> Result<permguard_host::api::backups::BackupList, ClientFailure> {
             unreachable!()
         }
     }

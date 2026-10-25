@@ -351,6 +351,22 @@ pub enum Command {
         #[command(subcommand)]
         action: RestoreAction,
     },
+    /// Verify a snapshot against its signed manifest, offline: every file the manifest's
+    /// inventory binds, under the keys bundle exported from the Host and its identity pin.
+    Backup {
+        #[command(subcommand)]
+        action: BackupVerifyAction,
+    },
+    /// The layout migrations of a stopped server's volume (WP-1.9), offline: planned, then run
+    /// from the plan; their status, and the rollback of a committed one.
+    Migrate {
+        /// The server's configuration file, read with the environment as the server reads them:
+        /// where the volume's keys are kept, and where the event history is.
+        #[arg(long, global = true, value_name = "FILE")]
+        server_config: Option<PathBuf>,
+        #[command(subcommand)]
+        action: MigrateAction,
+    },
     /// Print shell completions. Add to your shell's config to complete commands and flags.
     #[command(
         after_help = "Examples:\n  permguard completion zsh > \"${fpath[1]}/_permguard\"\n  permguard completion bash >> ~/.bashrc"
@@ -1771,6 +1787,11 @@ pub enum HostAction {
         #[command(subcommand)]
         action: PlansAction,
     },
+    /// Application-consistent backups: prepare, finalize or abort, and list.
+    Backup {
+        #[command(subcommand)]
+        action: HostBackupAction,
+    },
 }
 
 /// `permguard host keys …` (TC-2).
@@ -2403,6 +2424,123 @@ pub enum RestoreAction {
         #[arg(long, value_name = "FILE")]
         confirm_file: Option<PathBuf>,
     },
+}
+
+/// `permguard backup …` (TC-3), offline.
+#[derive(Debug, Subcommand)]
+pub enum BackupVerifyAction {
+    /// Check the snapshot at `--volume` against its manifest: `consistent` when every file is the
+    /// one the manifest binds, `crash_consistent` (exit 2) when any differs.
+    #[command(
+        after_help = "Examples:\n  permguard backup verify --volume /mnt/snapshot --manifest manifest.cose --bundle bundle.json --pin sha256:ab12…\n  permguard backup verify --volume ./snapshot --manifest manifest.txt --bundle bundle.json --pin sha256:ab12… -o json"
+    )]
+    Verify {
+        /// The snapshot's manifest: its COSE_Sign1 bytes, or their base64url text as `host backup
+        /// prepare` prints them.
+        #[arg(long, value_name = "FILE")]
+        manifest: PathBuf,
+        /// The Host's verification bundle, as `host keys bundle export --resource host` writes
+        /// it, kept outside the snapshot.
+        #[arg(long, value_name = "FILE")]
+        bundle: PathBuf,
+        /// The Host identity's fingerprint the operator pinned.
+        #[arg(long)]
+        pin: String,
+    },
+}
+
+/// `permguard migrate …` (TC-3), offline on a stopped server's `--volume`.
+#[derive(Debug, Subcommand)]
+pub enum MigrateAction {
+    /// Plan one subsystem's migration with the external backup taken before it, and write the
+    /// plan to `--out` for the run to confirm.
+    #[command(
+        after_help = "Examples:\n  permguard migrate plan --volume /var/lib/permguard --subsystem audit --backup snap-2026-10-25 --out migrate.plan\n  permguard migrate plan --volume ./volume --subsystem keys --backup snap-1 --out migrate.plan -o json"
+    )]
+    Plan {
+        /// `keys`, `audit`, `decisions` or `events`.
+        #[arg(long, value_parser = ["keys", "audit", "decisions", "events"])]
+        subsystem: String,
+        /// The external backup taken before the migration, as the operator names it.
+        #[arg(long)]
+        backup: String,
+        /// Where the legacy data is, when it moved: `<ring>=<directory>` for `keys` (repeated),
+        /// a directory for `audit` and `decisions`.
+        #[arg(long, value_name = "LOCATION")]
+        legacy: Vec<String>,
+        /// Where the plan is written: a new file, readable by its owner only.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+    /// Run the migration the plan in `--confirm-file` describes, refused when the volume or its
+    /// claim moved since.
+    #[command(
+        after_help = "Examples:\n  permguard migrate run --volume /var/lib/permguard --confirm-file migrate.plan\n  permguard migrate run --volume ./volume --confirm-file migrate.plan -o json"
+    )]
+    Run {
+        /// The plan `migrate plan` wrote.
+        #[arg(long, value_name = "FILE")]
+        confirm_file: Option<PathBuf>,
+    },
+    /// List every subsystem laid out on the volume: its version, generation and where its
+    /// migration stands.
+    #[command(
+        after_help = "Examples:\n  permguard migrate status --volume /var/lib/permguard\n  permguard migrate status --volume ./volume -o json"
+    )]
+    Status,
+    /// Return a committed migration to its old generation, when the new one is as the commit
+    /// left it.
+    #[command(
+        after_help = "Examples:\n  permguard migrate rollback --volume /var/lib/permguard --subsystem audit-legacy\n  permguard migrate rollback --volume ./volume --subsystem keys -o json"
+    )]
+    Rollback {
+        /// The subsystem, as `migrate status` names it.
+        #[arg(long)]
+        subsystem: String,
+    },
+}
+
+/// `permguard host backup …` (TC-3), through the Host listener.
+#[derive(Debug, Subcommand)]
+pub enum HostBackupAction {
+    /// Prepare an application-consistent backup: mutations stop, the volume is flushed, and the
+    /// signed manifest is printed; the snapshot token is written to a new owner-only file.
+    #[command(
+        after_help = "Examples:\n  permguard host backup prepare --token-out backup.token\n  permguard --host-endpoint grpcs://host.example:9443 host backup prepare --token-out backup.token -o json"
+    )]
+    Prepare {
+        /// Where the token is written: a new file, readable by its owner only.
+        #[arg(long, value_name = "FILE")]
+        token_out: PathBuf,
+    },
+    /// Record the storage driver's snapshot of a prepared backup, and resume mutations.
+    #[command(
+        after_help = "Examples:\n  permguard host backup finalize --backup-token-file backup.token --snapshot-id snap-2026-10-25\n  permguard host backup finalize --backup-token-file backup.token --snapshot-id snap-1 -o json"
+    )]
+    Finalize {
+        /// The token file `prepare` wrote. Not `--token-file`, the bearer the command line
+        /// authenticates with.
+        #[arg(long, value_name = "FILE")]
+        backup_token_file: PathBuf,
+        /// The storage driver's id of the snapshot it took.
+        #[arg(long)]
+        snapshot_id: String,
+    },
+    /// Abort a prepared backup, and resume mutations.
+    #[command(
+        after_help = "Examples:\n  permguard host backup abort --backup-token-file backup.token\n  permguard host backup abort --backup-token-file backup.token -o json"
+    )]
+    Abort {
+        /// The token file `prepare` wrote. Not `--token-file`, the bearer the command line
+        /// authenticates with.
+        #[arg(long, value_name = "FILE")]
+        backup_token_file: PathBuf,
+    },
+    /// List the backups this Host knows, each with its manifest.
+    #[command(
+        after_help = "Examples:\n  permguard host backup list\n  permguard host backup list -o json"
+    )]
+    List,
 }
 
 /// `permguard host grants …`: online administration, plus offline recovery bootstrap.

@@ -118,6 +118,20 @@ pub fn migrate_decisions(
 ) -> Result<()> {
     use permguard_host::storage::volume::hold;
 
+    let volume = hold(volume_root)
+        .with_context(|| format!("holding the volume at {}", volume_root.display()))?;
+    migrate_decisions_on(&volume, backup, legacy, out)
+}
+
+/// [`migrate_decisions`] on `volume`, held by the caller (TC-3).
+pub fn migrate_decisions_on(
+    volume: &permguard_host::storage::volume::Volume,
+    backup: &str,
+    legacy: Option<&Path>,
+    out: &mut dyn Write,
+) -> Result<()> {
+    let volume_root = volume.root();
+
     if backup.trim().is_empty() {
         anyhow::bail!("`--backup` names the external backup taken before the migration");
     }
@@ -127,15 +141,13 @@ pub fn migrate_decisions(
         Some(given) => given.to_path_buf(),
         None => volume_root.join(SPOOL),
     };
-    let volume = hold(volume_root)
-        .with_context(|| format!("holding the volume at {}", volume_root.display()))?;
     let reading = || format!("reading the legacy decision spool at {}", spool.display());
-    let said = match standing(&volume, &spool).with_context(reading)? {
+    let said = match standing(volume, &spool).with_context(reading)? {
         Standing::Absent => format!("{SUBSYSTEM}: nothing to archive at {}", spool.display()),
         Standing::Archived => format!("{SUBSYSTEM}: archived already in {TARGET}"),
         Standing::Undrained | Standing::Orphan | Standing::Drained => {
             carry(
-                &volume,
+                volume,
                 &spool,
                 AssuranceProfile::Production,
                 Some(backup.to_owned()),

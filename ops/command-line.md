@@ -192,23 +192,23 @@ The **State** cell is one of:
 
 ## Backup, restore and migration
 
-| Command                | Grant             | State   | Why  |
-| ---------------------- | ----------------- | ------- | ---- |
-| `host backup prepare`  | `backup.manage`   | absent  | TC-3 |
-| `host backup finalize` | `backup.manage`   | absent  | TC-3 |
-| `host backup abort`    | `backup.manage`   | absent  | TC-3 |
-| `host backup list`     | `backup.read`     | absent  | TC-3 |
-| `backup verify`        | offline           | absent  | TC-3 |
-| `restore plan`         | recovery operator | present |      |
-| `restore run`          | recovery operator | present |      |
-| `migrate plan`         | recovery operator | absent  | TC-3 |
-| `migrate run`          | recovery operator | absent  | TC-3 |
-| `migrate status`       | recovery operator | absent  | TC-3 |
-| `migrate rollback`     | recovery operator | absent  | TC-3 |
-| `ledgers export`       | `catalog.read`    | present |      |
-| `ledgers import`       | `policy.push`     | present |      |
-| `zones export`         | `catalog.read`    | present |      |
-| `zones import`         | `policy.push`     | present |      |
+| Command                | Grant             | State   | Why |
+| ---------------------- | ----------------- | ------- | --- |
+| `host backup prepare`  | `backup.manage`   | present |     |
+| `host backup finalize` | `backup.manage`   | present |     |
+| `host backup abort`    | `backup.manage`   | present |     |
+| `host backup list`     | `backup.read`     | present |     |
+| `backup verify`        | offline           | present |     |
+| `restore plan`         | recovery operator | present |     |
+| `restore run`          | recovery operator | present |     |
+| `migrate plan`         | recovery operator | present |     |
+| `migrate run`          | recovery operator | present |     |
+| `migrate status`       | recovery operator | present |     |
+| `migrate rollback`     | recovery operator | present |     |
+| `ledgers export`       | `catalog.read`    | present |     |
+| `ledgers import`       | `policy.push`     | present |     |
+| `zones export`         | `catalog.read`    | present |     |
+| `zones import`         | `policy.push`     | present |     |
 
 ## Garbage collection and pressure
 

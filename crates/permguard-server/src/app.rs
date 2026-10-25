@@ -2723,17 +2723,17 @@ pub fn exit_code_of(error: &anyhow::Error) -> ExitCode {
 }
 
 /// `migrate keys` (WP-3.1): every legacy ring with a `ring.json` migrated into `host/keys/<ring>`
-/// with the backup declared, offline, holding the volume.
-fn migrate_keys(
-    volume_root: &std::path::Path,
+/// with the backup declared, offline, on `volume`, held by the caller.
+pub fn migrate_keys_on(
+    volume: &permguard_host::storage::volume::Volume,
     backup: &str,
     overrides: &[String],
     out: &mut dyn Write,
 ) -> Result<()> {
     use permguard_host::keys::migration::{lay_out, needs_migration};
     use permguard_host::keys::ring::{CONTROL_ATTEST, DATA_ATTEST, HOST_OPERATIONS};
-    use permguard_host::storage::volume::hold;
 
+    let volume_root = volume.root();
     if backup.trim().is_empty() {
         anyhow::bail!("`--backup` names the external backup taken before the migration");
     }
@@ -2755,11 +2755,9 @@ fn migrate_keys(
             .with_context(|| format!("`{ring}` is not a ring with a legacy directory"))?;
         held.1 = std::path::PathBuf::from(directory);
     }
-    let volume = hold(volume_root)
-        .with_context(|| format!("holding the volume at {}", volume_root.display()))?;
     let now = permguard_host::authz::store::now();
     for (ring, directory) in directories {
-        if !needs_migration(&volume, ring, Some(&directory))
+        if !needs_migration(volume, ring, Some(&directory))
             .with_context(|| format!("reading the layout of {ring}"))?
         {
             writeln!(out, "{ring}: nothing to migrate at {}", directory.display())
@@ -2767,7 +2765,7 @@ fn migrate_keys(
             continue;
         }
         lay_out(
-            &volume,
+            volume,
             ring,
             Some(&directory),
             permguard_core::assurance::AssuranceProfile::Production,
@@ -2787,18 +2785,18 @@ fn migrate_keys(
     Ok(())
 }
 
-/// Runs one `migrate` command offline, holding the volume (WP-1.9).
 /// `migrate audit`: carries the legacy JSON-lines audit chain into `host/audit/legacy` byte for
-/// byte, with an external backup declared (WP-3.8). A volume without one is declared at once.
-fn migrate_audit(
-    volume_root: &std::path::Path,
+/// byte, with an external backup declared (WP-3.8), on `volume`, held by the caller. A volume
+/// without one is declared at once.
+pub fn migrate_audit_on(
+    volume: &permguard_host::storage::volume::Volume,
     backup: &str,
     legacy: Option<&std::path::Path>,
     out: &mut dyn Write,
 ) -> Result<()> {
     use permguard_host::audit::jsonl::{Laid, lay_out, needs_migration};
-    use permguard_host::storage::volume::hold;
 
+    let volume_root = volume.root();
     if backup.trim().is_empty() {
         anyhow::bail!("`--backup` names the external backup taken before the migration");
     }
@@ -2808,9 +2806,7 @@ fn migrate_audit(
         Some(given) => given.to_path_buf(),
         None => volume_root.join("operations/audit"),
     };
-    let volume = hold(volume_root)
-        .with_context(|| format!("holding the volume at {}", volume_root.display()))?;
-    if !needs_migration(&volume, Some(&directory))
+    if !needs_migration(volume, Some(&directory))
         .with_context(|| format!("reading the legacy audit chain in {}", directory.display()))?
     {
         writeln!(
@@ -2822,7 +2818,7 @@ fn migrate_audit(
         return Ok(());
     }
     let laid = lay_out(
-        &volume,
+        volume,
         Some(&directory),
         permguard_core::assurance::AssuranceProfile::Production,
         Some(backup.to_owned()),
@@ -2846,33 +2842,19 @@ fn migrate_audit(
     Ok(())
 }
 
-fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
-    use permguard_host::storage::migrate::{self, Layout};
+/// Runs one offline `migrate` command but `events`, which reads the server's configuration
+/// (`legacy_events::migrate_events`), holding the volume it names (WP-1.9).
+pub fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
     use permguard_host::storage::volume::hold;
 
-    let now = permguard_host::authz::store::now();
-    let (volume_root, subsystem) = match what {
-        MigrateCommand::Status { volume } => (volume, None),
-        MigrateCommand::Recover { volume, subsystem }
-        | MigrateCommand::Rollback { volume, subsystem }
-        | MigrateCommand::Finalize { volume, subsystem } => (volume, Some(subsystem.as_str())),
-        MigrateCommand::Keys {
-            volume,
-            backup,
-            legacy,
-        } => return migrate_keys(volume, backup, legacy, out),
-        MigrateCommand::Audit {
-            volume,
-            backup,
-            legacy,
-        } => return migrate_audit(volume, backup, legacy.as_deref(), out),
-        MigrateCommand::Decisions {
-            volume,
-            backup,
-            legacy,
-        } => {
-            return crate::legacy_spool::migrate_decisions(volume, backup, legacy.as_deref(), out);
-        }
+    let volume_root = match what {
+        MigrateCommand::Status { volume }
+        | MigrateCommand::Recover { volume, .. }
+        | MigrateCommand::Rollback { volume, .. }
+        | MigrateCommand::Finalize { volume, .. }
+        | MigrateCommand::Keys { volume, .. }
+        | MigrateCommand::Audit { volume, .. }
+        | MigrateCommand::Decisions { volume, .. } => volume,
         // Dispatched with its configuration before this is reached.
         MigrateCommand::Events { .. } => {
             anyhow::bail!("`migrate events` reads the server's configuration it names")
@@ -2880,9 +2862,47 @@ fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
     };
     let volume = hold(volume_root)
         .with_context(|| format!("holding the volume at {}", volume_root.display()))?;
+    migrate_on(&volume, what, out)
+}
+
+/// [`migrate`] on `volume`, held by the caller: the command line runs the migration a plan names
+/// under the lock it verified and spent the plan under, so no new claim slips between the two
+/// (TC-3). The volume a command names is the one held.
+pub fn migrate_on(
+    volume: &permguard_host::storage::volume::Volume,
+    what: &MigrateCommand,
+    out: &mut dyn Write,
+) -> Result<()> {
+    use permguard_host::storage::migrate::{self, Layout};
+
+    let now = permguard_host::authz::store::now();
+    let volume_root = volume.root();
+    let subsystem = match what {
+        MigrateCommand::Status { .. } => None,
+        MigrateCommand::Recover { subsystem, .. }
+        | MigrateCommand::Rollback { subsystem, .. }
+        | MigrateCommand::Finalize { subsystem, .. } => Some(subsystem.as_str()),
+        MigrateCommand::Keys { backup, legacy, .. } => {
+            return migrate_keys_on(volume, backup, legacy, out);
+        }
+        MigrateCommand::Audit { backup, legacy, .. } => {
+            return migrate_audit_on(volume, backup, legacy.as_deref(), out);
+        }
+        MigrateCommand::Decisions { backup, legacy, .. } => {
+            return crate::legacy_spool::migrate_decisions_on(
+                volume,
+                backup,
+                legacy.as_deref(),
+                out,
+            );
+        }
+        MigrateCommand::Events { .. } => {
+            anyhow::bail!("`migrate events` reads the server's configuration it names")
+        }
+    };
     match (what, subsystem) {
         (MigrateCommand::Status { .. }, _) => {
-            let all = migrate::status(&volume).context("reading the layouts")?;
+            let all = migrate::status(volume).context("reading the layouts")?;
             if all.is_empty() {
                 writeln!(out, "no subsystem is laid out on {}", volume_root.display())
                     .context("writing the result")?;
@@ -2917,7 +2937,7 @@ fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
             }
         }
         (MigrateCommand::Recover { .. }, Some(subsystem)) => {
-            let layout = Layout::open(&volume, subsystem)
+            let layout = Layout::open(volume, subsystem)
                 .with_context(|| format!("opening the layout of {subsystem}"))?;
             let found = layout
                 .recover(now)
@@ -2933,7 +2953,7 @@ fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
             .context("writing the result")?;
         }
         (MigrateCommand::Rollback { .. }, Some(subsystem)) => {
-            Layout::open(&volume, subsystem)
+            Layout::open(volume, subsystem)
                 .with_context(|| format!("opening the layout of {subsystem}"))?
                 .rollback(now)
                 .with_context(|| format!("rolling back the migration of {subsystem}"))?;
@@ -2941,7 +2961,7 @@ fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
                 .context("writing the result")?;
         }
         (MigrateCommand::Finalize { .. }, Some(subsystem)) => {
-            Layout::open(&volume, subsystem)
+            Layout::open(volume, subsystem)
                 .with_context(|| format!("opening the layout of {subsystem}"))?
                 .finalize(now)
                 .with_context(|| format!("finalizing the migration of {subsystem}"))?;
