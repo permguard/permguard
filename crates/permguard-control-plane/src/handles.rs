@@ -454,4 +454,41 @@ mod task_contract_tests {
             ]
         );
     }
+
+    struct NoSweep;
+
+    impl permguard_host::gc::GcJob for NoSweep {
+        fn plan(
+            &self,
+            _: &permguard_core::authz::Resource,
+        ) -> Result<permguard_host::gc::Report, permguard_host::gc::GcError> {
+            Ok(permguard_host::gc::Report::default())
+        }
+
+        fn run(
+            &self,
+            _: &permguard_core::authz::Resource,
+            _: &str,
+        ) -> Result<permguard_host::gc::Report, permguard_host::gc::GcError> {
+            Ok(permguard_host::gc::Report::default())
+        }
+    }
+
+    /// WP-7.11b: the plane declares the object sweep, so its registration provides it to the
+    /// Host API.
+    #[test]
+    fn the_plane_provides_the_object_sweep() {
+        let jobs = std::sync::Arc::new(permguard_host::gc::Jobs::default());
+        let host = permguard_host::composition::Host::builder()
+            .gc_jobs(std::sync::Arc::clone(&jobs))
+            .build();
+        let registration = host.register(super::declaration()).expect("registered");
+        assert!(
+            registration
+                .provide_gc_job(permguard_host::gc::OBJECTS, std::sync::Arc::new(NoSweep))
+                .expect("declared")
+        );
+        let (plane, _) = jobs.get(permguard_host::gc::OBJECTS).expect("provided");
+        assert_eq!(plane, crate::service::PLANE);
+    }
 }

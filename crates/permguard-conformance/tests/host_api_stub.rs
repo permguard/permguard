@@ -195,6 +195,14 @@ const SHAPED: &[&str] = &[
     "AbortBackupResponse",
     "ListBackupsResponse",
     "Backup",
+    // An operator's garbage collection (WP-7.11b).
+    "PlanGcRequest",
+    "PlanGcResponse",
+    "RunGcRequest",
+    "RunGcResponse",
+    "GcReport",
+    "GcEntry",
+    "GcKept",
 ];
 
 /// Every message outside [`SHAPED`] is empty: no field number is assigned ahead of the contract.

@@ -1618,6 +1618,11 @@ mod tests {
         assert!(swept.held);
         assert_eq!((swept.removed, swept.held_objects), (0, 1));
         assert!(store.has_object(digest));
+        // Found at the first ask: kept whole before any session is closed, counted the same.
+        let first = || -> Result<bool> { Ok(true) };
+        let swept = sweep_within(store, Duration::from_secs(60), &mut budget, &first, false)
+            .expect("swept");
+        assert_eq!((swept.held, swept.held_objects), (true, 1));
     }
 
     /// WP-7.11b, after the review: neither a plan nor a scoped run reads or moves the cursor the
