@@ -1,0 +1,91 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# The operational drills (WP-7.7), every week and by hand.
+#
+# A test proves a function; a drill proves a procedure an operator runs on a bad day, with the
+# binaries and the topology they run it with. Each drill writes a JSON record of what it proved and
+# of what it did not, uploaded with the run:
+#
+#   restore      a Data Plane loses its volume and comes back from its last backup, in `dr` mode, on
+#                the Compose lab's split-plane profile
+#   split-brain  the successor of a Host cannot write until fencing completes (H-05): on one volume
+#                with the server binary, and on a cluster, where the replica is killed while it
+#                writes (`scripts/chart-takeover.sh`)
+#
+# The release pipeline runs the same drills against the release, never blocking it, and attaches
+# the records.
+
+name: drills
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+# Read-only: nothing here publishes, and a job that compiles must not hold a token that could.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  restore:
+    name: restore drill (compose split-plane, dr)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: the lab image
+        run: docker build -f lab/compose/Dockerfile -t permguard/lab:local .
+      - name: lose the Data Plane's volume and restore it
+        run: NO_BUILD=1 ./scripts/drill-restore.sh drill-restore.json
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: drill-restore
+          path: |
+            drill-restore.json
+            target/compose-lab
+          if-no-files-found: ignore
+
+  split-brain:
+    name: split-brain drill (one volume, then a cluster)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+        with:
+          toolchain: "1.97"
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: the server
+        run: cargo build --release --locked -p permguard-all-in-one
+      - name: a successor beside its predecessor, on one volume
+        run: ./scripts/drill-split-brain.sh target/release/permguard-all-in-one drill-split-brain.json
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: kind, pinned by digest
+        run: |
+          set -euo pipefail
+          curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+          echo "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  kind" | sha256sum --check
+          sudo install -m 0755 kind /usr/local/bin/kind
+      - name: the data plane image
+        run: docker build --build-arg PACKAGE=permguard-data-plane --build-arg BIN=permguard-data-plane -t permguard/data-plane:e2e .
+      - name: the replica killed while it writes, on a cluster
+        run: ./scripts/chart-takeover.sh permguard/data-plane:e2e takeover-qualification.json
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: drill-split-brain
+          path: |
+            drill-split-brain.json
+            takeover-qualification.json
+          if-no-files-found: ignore

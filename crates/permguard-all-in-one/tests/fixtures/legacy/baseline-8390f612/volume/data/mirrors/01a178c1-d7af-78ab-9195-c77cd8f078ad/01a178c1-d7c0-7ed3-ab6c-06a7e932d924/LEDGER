@@ -1,0 +1,7 @@
+{
+  "zone_id": "01a178c1-d7af-78ab-9195-c77cd8f078ad",
+  "zone_name": "acme",
+  "ledger_id": "01a178c1-d7c0-7ed3-ab6c-06a7e932d924",
+  "ledger_name": "main-ledger",
+  "server": "http://127.0.0.1:26443"
+}

@@ -1,0 +1,11 @@
+{
+  "body": {
+    "day": "2026-10-26",
+    "at": "2026-10-26T15:09:11Z",
+    "records": 35,
+    "head": "eba15ac115bf7bb84745a6b918aab6c931af48c3cdee547aa419127a0b1cd9a6"
+  },
+  "kid": "coS5hHpc93WHiT9vH7A2WOhyVIrjt22KB_24MIC30LU",
+  "algorithm": "EdDSA",
+  "signature": "f07749f6e974600c332f4c3ed42534046fb608281517f592fe877a34f9bdc49d3fad27f74820fc174ccf79a54322057b5f36d27f87523da936bed70c60c8be0b"
+}

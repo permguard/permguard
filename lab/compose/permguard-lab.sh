@@ -117,20 +117,11 @@ cmd_pki() {
 # serve
 # ---------------------------------------------------------------------------------------------
 
-# `serve <binary> <config>`: what a Pod's init containers and its server are, in one container.
-# The claim moves forward on every start (TD-1); the operator is granted once, offline, before the
-# Host first serves; the listeners carry the certificate the lab's authority issued to this
-# service's name.
-cmd_serve() {
-    local binary="$1" config="$2" host="${LAB_HOST:?the service name, LAB_HOST}"
-    [ -f "${pki}/${host}.crt" ] || fail "the lab authority issued no certificate to ${host}"
-    "${binary}" volume claim --volume "${volume}" --next --create
-    if [ ! -f /var/lib/permguard/.lab-operator ]; then
-        permguard -o json host grants bootstrap --volume "${volume}" \
-            --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
-        touch /var/lib/permguard/.lab-operator
-        log "${host}: the lab operator is granted on this volume"
-    fi
+# The listeners' environment of `host` running `binary`: where clients reach each listener, and the
+# certificate the lab's authority issued to the service's name. What the server reads its
+# configuration with, and so what an offline command reading that configuration needs too.
+listener_env() {
+    local host="$1" binary="$2"
     local listeners=(ADMIN)
     case "${binary}" in
     *control-plane) listeners+=(CONTROL_HTTP CONTROL_GRPC) ;;
@@ -146,6 +137,23 @@ cmd_serve() {
         export "PERMGUARD_${listener}_TLS_KEY=${pki}/${host}.key"
         export "PERMGUARD_${listener}_TLS_CLIENT_CA=${pki}/ca.crt"
     done
+}
+
+# `serve <binary> <config>`: what a Pod's init containers and its server are, in one container.
+# The claim moves forward on every start (TD-1); the operator is granted once, offline, before the
+# Host first serves; the listeners carry the certificate the lab's authority issued to this
+# service's name.
+cmd_serve() {
+    local binary="$1" config="$2" host="${LAB_HOST:?the service name, LAB_HOST}"
+    [ -f "${pki}/${host}.crt" ] || fail "the lab authority issued no certificate to ${host}"
+    "${binary}" volume claim --volume "${volume}" --next --create
+    if [ ! -f /var/lib/permguard/.lab-operator ]; then
+        permguard -o json host grants bootstrap --volume "${volume}" \
+            --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
+        touch /var/lib/permguard/.lab-operator
+        log "${host}: the lab operator is granted on this volume"
+    fi
+    listener_env "${host}" "${binary}"
     # The server refuses a `PERMGUARD_` name it does not know; the lab's own are not prefixed.
     unset LAB_HOST LAB_DIR LAB_EXAMPLES LAB_TEMPLATES
     exec "${binary}" "${config}"
@@ -201,7 +209,7 @@ grant_operator() {
     local endpoint
     endpoint="$(host_endpoint "${host}")"
     pg --host-endpoint "${endpoint}" host grants issue --principal "${principal}" \
-        --operations membership.admin,membership.read,identity.read,streams.read \
+        --operations membership.admin,membership.read,identity.read,streams.read,backup.manage,backup.read,keys.read \
         --selector host >/dev/null
     case "${host}" in
     control-plane | all-in-one)
@@ -447,7 +455,12 @@ cmd_assert() {
     local profile="${1:?the profile}" phase="${2:-}"
     case "${profile}" in
     all-in-one) assert_all_in_one ;;
-    split-plane) assert_split_plane ;;
+    split-plane)
+        case "${phase}" in
+        "") assert_split_plane ;;
+        *) drill_restore "${phase}" ;;
+        esac
+        ;;
     multi-data-plane) assert_multi_data_plane ;;
     multi-group) assert_multi_group ;;
     temporal-replicas) assert_temporal "${phase}" ;;
@@ -552,6 +565,109 @@ assert_split_plane() {
     # `crates/permguard-conformance/tests/compose.rs`): what verified the batches is the ring the
     # membership pinned.
     log "the coordinator holds all ${recorded} records of ${producer}, verified under its pinned data.attest ring"
+}
+
+# The restore drill (WP-7.7, `scripts/drill-restore.sh`), in three phases on the split-plane lab:
+#
+#   backup    online: an application-consistent backup of the Data Plane's volume, mounted read-only
+#             at /drill/data-plane, then decisions the backup does not hold, shipped
+#   restore   offline, the Data Plane stopped and its volume mounted: the volume lost, the snapshot
+#             verified and put back, the lost Host fenced, the snapshot restored in `dr` mode
+#   restored  online again: the same Host and identity, its memberships active, serving its
+#             ledger and shipping the decisions it answers after the restore
+#
+# What each phase learnt is kept under the lab's state, `drill/`, for the next one and for the
+# drill's record.
+drill_restore() {
+    local phase="$1" drill="${state}/drill" resource
+    resource="$(decisions_resource acme main)"
+    case "${phase}" in
+    backup)
+        step "restore drill: an application-consistent backup of the Data Plane"
+        rm -rf "${drill}"
+        mkdir -p "${drill}"
+        local prepared identity snapshot_id
+        identity="$(pg --host-endpoint "$(host_endpoint data-plane)" host identity show)"
+        jq -er '.host_id' <<<"${identity}" >"${drill}/host_id"
+        jq -er '.fingerprint' <<<"${identity}" >"${drill}/pin"
+        prepared="$(pg --host-endpoint "$(host_endpoint data-plane)" host backup prepare \
+            --token-out "${drill}/backup.token")"
+        jq -er '.manifest' <<<"${prepared}" >"${drill}/manifest.txt"
+        # The storage driver's snapshot, inside the barrier: the Host writes nothing until finalized.
+        cp -a /drill/data-plane/volume "${drill}/snapshot"
+        snapshot_id="drill:$(date -u +%Y%m%dT%H%M%SZ)"
+        pg --host-endpoint "$(host_endpoint data-plane)" host backup finalize \
+            --backup-token-file "${drill}/backup.token" --snapshot-id "${snapshot_id}" |
+            jq -e '.state == "finalized"' >/dev/null || fail "the backup was not finalized"
+        rm -f "${drill}/backup.token"
+        # Kept outside the snapshot, as an operator keeps it.
+        pg --host-endpoint "$(host_endpoint data-plane)" host keys bundle export --resource host \
+            --out "${drill}/bundle.json" >/dev/null
+        log "backup ${snapshot_id} finalized; the manifest, the bundle and the pin kept beside it"
+
+        step "restore drill: decisions the backup does not hold"
+        local recorded
+        expect_decision data-plane acme main permit.json true >/dev/null
+        expect_decision data-plane acme main deny.json false >/dev/null
+        recorded="$(wait_shipped data-plane "${resource}")"
+        echo "${recorded}" >"${drill}/recorded_before_loss"
+        log "the Data Plane recorded and shipped ${recorded} records before its volume is lost"
+        ;;
+    restore)
+        step "restore drill: the volume lost, the snapshot verified and put back"
+        [ -f "${drill}/manifest.txt" ] || fail "no backup: run the backup phase first"
+        find "${volume}" -mindepth 1 -delete
+        cp -a "${drill}/snapshot/." "${volume}/"
+        permguard -o json backup verify --volume "${volume}" --manifest "${drill}/manifest.txt" \
+            --bundle "${drill}/bundle.json" --pin "$(cat "${drill}/pin")" |
+            jq -e '.consistency == "application_consistent"' >/dev/null ||
+            fail "the snapshot does not verify against its manifest"
+        log "the snapshot verifies: application-consistent, under the pinned identity"
+
+        step "restore drill: the lost Host fenced, the snapshot restored in dr mode"
+        permguard-data-plane volume claim --volume "${volume}" --next >/dev/null
+        listener_env data-plane permguard-data-plane
+        local config=/opt/permguard/lab/data-plane.yml restored
+        permguard -o json restore plan --mode dr --reason "the restore drill" --out "${drill}/restore.plan" \
+            --volume "${volume}" --server-config "${config}" >/dev/null
+        restored="$(permguard -o json restore run --mode dr --confirm-file "${drill}/restore.plan" \
+            --volume "${volume}" --server-config "${config}")"
+        jq -e --arg host "$(cat "${drill}/host_id")" \
+            '.mode == "dr" and .host_id == $host and (.previous_boot_id | length) > 0' \
+            >/dev/null <<<"${restored}" || fail "the dr restore did not keep the Host: ${restored}"
+        # The next start is a new incarnation: a new boot id under the claim the fence moved.
+        jq -c '{previous_boot_id, plan_id}' <<<"${restored}" >"${drill}/restored.json"
+        local verify
+        verify="$(permguard-data-plane volume verify --volume "${volume}" 2>&1)" ||
+            fail "volume verify: ${verify}"
+        grep -q ' 0 findings' <<<"${verify}" || fail "volume verify: ${verify}"
+        log "restored in dr mode as the same Host; volume verify finds nothing"
+        ;;
+    restored)
+        step "restore drill: the same Host, a new boot, serving and shipping again"
+        local identity recorded held producer
+        identity="$(pg --host-endpoint "$(host_endpoint data-plane)" host identity show)"
+        jq -e --arg host "$(cat "${drill}/host_id")" --arg pin "$(cat "${drill}/pin")" \
+            '.host_id == $host and .fingerprint == $pin' >/dev/null <<<"${identity}" ||
+            fail "the restored Host is not the Host that was backed up: ${identity}"
+        assert_enrolled data-plane
+        wait_serving data-plane acme main
+        expect_decision data-plane acme main permit.json true >/dev/null
+        expect_decision data-plane acme main deny.json false >/dev/null
+        recorded="$(wait_shipped data-plane "${resource}")"
+        producer="$(producer_of data-plane)"
+        held="$(held_from "${resource}" "${producer}")"
+        [ "${held}" -ge "$(cat "${drill}/recorded_before_loss")" ] ||
+            fail "the coordinator holds ${held} records of ${producer}, fewer than were shipped before the loss"
+        jq -n --arg host "$(cat "${drill}/host_id")" --argjson before "$(cat "${drill}/recorded_before_loss")" \
+            --argjson after "${recorded}" --argjson held "${held}" --slurpfile restored "${drill}/restored.json" \
+            '{host_id: $host, previous_boot_id: $restored[0].previous_boot_id, plan_id: $restored[0].plan_id,
+              recorded_before_loss: $before, recorded_after_restore: $after, held_by_coordinator: $held}' \
+            >"${drill}/result.json"
+        log "serving again; every record it wrote since the restore is shipped; the coordinator holds ${held}"
+        ;;
+    *) fail "no restore drill phase ${phase}" ;;
+    esac
 }
 
 assert_multi_data_plane() {

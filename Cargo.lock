@@ -2335,7 +2335,9 @@ dependencies = [
  "permguard-control-plane",
  "permguard-core",
  "permguard-data-plane",
+ "permguard-languages",
  "permguard-server",
+ "serde_json",
  "tokio",
 ]
 

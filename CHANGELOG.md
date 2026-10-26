@@ -19,6 +19,17 @@ is cut.
 
 ### Added
 
+- **Restore and split-brain drills, and the baseline volume recovered through every migration (WP-7.7).**
+  `scripts/drill-restore.sh` runs the restore drill on the Compose lab's `split-plane` profile.
+  It takes an application-consistent backup of the Data Plane, answers decisions the backup does not hold, loses the volume, and restores the verified snapshot in `dr` mode.
+  The restored Data Plane must come back as the same Host under a new boot, with its memberships active, serving its ledger and shipping every record it writes after the restore.
+  `scripts/drill-split-brain.sh` proves on one volume that a successor started beside its predecessor, or a claim moved beside it, is refused before anything is written.
+  Each drill writes a JSON record of what it proved and of what it did not.
+  The new `drills` workflow runs both every week, the split-brain drill also on a cluster through `scripts/chart-takeover.sh`; the release pipeline runs them against the release, never blocking it, and attaches the records.
+  `crates/permguard-all-in-one/tests/fixtures/legacy/baseline-8390f612` is the whole volume an all-in-one of the plan's baseline commit wrote, captured by `scripts/capture-baseline-volume.sh`.
+  A test starts today's server on it, runs every migration to `finalize`, and checks that the same requests get the same decisions before and after.
+  The legacy readers and the first-contact paths stay: they are removed once a release has carried the membership-driven paths, as the convergence order requires.
+
 - **A serving gate before every release, and a failpoint for the no-network invariant (TS-4).**
   `permguard-bench gate` runs the candidate's own binaries over HTTP and gRPC, every workload and evidence mode.
   It fails unless the candidate answers within the published p99 at `bench/slo.json`'s representative concurrency and at the concurrency its headroom requires.

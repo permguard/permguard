@@ -212,6 +212,80 @@ jobs:
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
 
+  # The drills (WP-7.7) against the release: the split-brain drill with the server this release
+  # published, the restore drill on the Compose lab built from the tagged source. They report on a
+  # release already published and never block it; each writes its record, or the job after it
+  # leaves a note in the record's place. It compiles the lab image, so it holds a read-only token.
+  drills:
+    name: Drill what was published
+    needs: [build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The published server
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "${GITHUB_REF_NAME}" --dir published --pattern 'permguard_all_in_one_Linux_x86_64.tar.gz'
+          mkdir -p shipped
+          tar -xzf published/permguard_all_in_one_Linux_x86_64.tar.gz -C shipped
+          install -m 0755 "$(find shipped -type f -name permguard-all-in-one)" ./permguard-all-in-one
+      - name: Split-brain, on one volume
+        run: ./scripts/drill-split-brain.sh ./permguard-all-in-one drill-split-brain.json
+      - name: Restore, on the Compose lab
+        if: always()
+        run: |
+          docker build -f lab/compose/Dockerfile -t permguard/lab:local .
+          NO_BUILD=1 ./scripts/drill-restore.sh drill-restore.json
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: drills
+          path: |
+            drill-split-brain.json
+            drill-restore.json
+          retention-days: 1
+          if-no-files-found: ignore
+
+  # Attaches the drill records. Separate from the drills because writing to the release needs a
+  # token that may write, and a job that compiles must not hold one.
+  publish-drills:
+    name: Publish the drill records
+    needs: [build, drills]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: drills
+      - name: Attach the records to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Each record, or the note that says why there is none: a release is never silently
+          # without either.
+          for drill in drill-split-brain drill-restore; do
+            if [ -s "${drill}.json" ]; then
+              gh release upload "${GITHUB_REF_NAME}" "${drill}.json" --clobber
+            else
+              printf 'the %s of %s (%s) did not complete; see the workflow run %s\n' \
+                "${drill}" "${GITHUB_REF_NAME}" "${GITHUB_SHA}" \
+                "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > "${drill}.txt"
+              gh release upload "${GITHUB_REF_NAME}" "${drill}.txt" --clobber
+              echo "::warning title=No ${drill} record::$(cat "${drill}.txt")"
+            fi
+          done
+
   # An independent rebuild, compared byte for byte with what was published. Never blocking:
   # provenance says where an artifact came from, reproducibility says anyone can get the same bytes,
   # and only the second claim depends on this job. It runs on a fresh runner without the build cache,
