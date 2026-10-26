@@ -60,6 +60,22 @@ run_profile() {
         exit 1
     }
 
+    # Whether one-shot `job` exited 0, waiting for it to exit: read from the engine rather than
+    # `docker compose wait`, whose answer for a container that already exited differs by version.
+    finished() {
+        local container state code deadline=$((SECONDS + 900))
+        container="$(dc ps -a -q "$1")"
+        [ -n "${container}" ] || return 1
+        while :; do
+            state="$(docker inspect -f '{{.State.Status}}' "${container}")"
+            [ "${state}" = exited ] && break
+            [ "${SECONDS}" -lt "${deadline}" ] || return 1
+            sleep 2
+        done
+        code="$(docker inspect -f '{{.State.ExitCode}}' "${container}")"
+        [ "${code}" = 0 ]
+    }
+
     step "${profile}: a fresh project, ${project}"
     dc down -v --remove-orphans >/dev/null 2>&1 || true
     dc up -d 2>/dev/null || failed "the profile did not start"
@@ -67,7 +83,7 @@ run_profile() {
     local jobs=(lab-pki lab-catalog)
     [ "${profile}" = all-in-one ] || jobs+=(lab-enroll)
     for job in "${jobs[@]}"; do
-        dc wait "${job}" >/dev/null || failed "${job} did not finish cleanly"
+        finished "${job}" || failed "${job} did not finish cleanly"
     done
     dc logs --no-color lab-catalog lab-enroll 2>/dev/null | sed -n 's/^[^|]*| //p' || true
 
