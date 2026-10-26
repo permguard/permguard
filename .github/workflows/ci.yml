@@ -271,7 +271,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # The chart's conformance tests (`permguard-conformance/tests/chart.rs`) render it with helm.
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-      - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
         with:
           tool: cargo-llvm-cov
       # Reported, not gated. A coverage threshold buys tests written to move a number; a number in
