@@ -1097,14 +1097,52 @@ dataPlane:
         custody:
           provider: file
           identity: kms
-          operations: kms
+          operations: pkcs11
           kms: { address: \"https://vault:8200\", tokenRef: vault-token }
+          pkcs11: { module: /usr/lib/softhsm/libsofthsm2.so, tokenLabel: permguard, pinRef: hsm-pin }
 ",
     );
     let keys = &rendered.config("permguard-data-plane-vault")["operations"]["keys"];
     assert_eq!(keys["rings"]["host.identity"]["custody"], "kms");
-    assert_eq!(keys["rings"]["host.operations"]["custody"], "kms");
+    assert_eq!(keys["rings"]["host.operations"]["custody"], "pkcs11");
     assert_eq!(keys["kms"]["token_ref"], "vault-token");
+    // TS-4: `host.operations` opens a decision stream's run while the decision waits, and a remote
+    // KMS is not allowed on the decision path: a Data Plane that records evidence refuses it.
+    refused(
+        "\
+dataPlane:
+  groups:
+    - name: vault
+      selector: plane/data/*
+      assurance:
+        profile: regulated
+        custody:
+          provider: file
+          identity: kms
+          operations: kms
+          kms: { address: \"https://vault:8200\", tokenRef: vault-token }
+",
+        "decision path",
+    );
+    // The all-in-one records decisions through its configuration, and is refused the same way.
+    refused(
+        "\
+allInOne:
+  enabled: true
+  tls: { secretName: aio-tls }
+  persistence: { enabled: true }
+  assurance:
+    profile: production
+    custody:
+      provider: file
+      operations: kms
+      kms: { address: \"https://vault:8200\", tokenRef: vault-token }
+  extraConfig: { dataPlane: { decisions: { log: { enabled: \"true\" } } } }
+controlPlane: { enabled: false }
+dataPlane: { enabled: false }
+",
+        "decision path",
+    );
 }
 
 #[test]

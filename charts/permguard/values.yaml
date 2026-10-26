@@ -190,7 +190,15 @@ dataPlane:
   #     - name: people
   #       selector: plane/data/zone/people/*
   #       replicas: 2
-  #       assurance: { profile: regulated, custody: { provider: kms, kms: { address: "https://vault:8200", tokenRef: vault-token } } }
+  #       # `host.identity` in the KMS; `host.operations` in the token, since it signs while a
+  #       # recorded decision waits and a remote KMS is not allowed there.
+  #       assurance:
+  #         profile: regulated
+  #         custody:
+  #           provider: pkcs11
+  #           identity: kms
+  #           pkcs11: { module: /usr/lib/softhsm/libsofthsm2.so, tokenLabel: permguard, pinRef: hsm-pin }
+  #           kms: { address: "https://vault:8200", tokenRef: vault-token }
   #
   # What a group leaves out comes from `groupDefaults` below. The Plane-wide values in this section
   # (image, ports, TLS, resources, placement, `extraConfig`, `extraEnv`) are the static
@@ -254,6 +262,8 @@ dataPlane:
     # `identity` and `operations` rings when they differ, and the `pkcs11` (`module`, `tokenLabel`,
     # `pinRef`) or `kms` (`address`, `mount`, `tokenRef`, `ca`) references. `regulated` keeps
     # `host.identity` and `host.operations` in `pkcs11` or `kms`, and the chart refuses it otherwise.
+    # Where decisions are recorded, `host.operations` stays out of a remote KMS: it signs while a
+    # decision waits (TS-4).
     assurance:
       profile: production
       addedControls: []

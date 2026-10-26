@@ -823,6 +823,15 @@ task lab:clean
 <details>
 <summary><b>Load testing</b></summary>
 
+Every release publishes `permguard-benchmark.json`, the release benchmark of its own binaries, and passes the serving gate before it is published.
+[`bench/README.md`](bench/README.md) says what both measure and how to read your own capacity off a report:
+
+```sh
+task bench:release STORAGE="local NVMe"   # the release benchmark on this machine
+```
+
+A Data Plane never reaches the network from a decision: a call it tried would be refused and counted in `permguard_decision_path_egress_total`, which reads zero on a correct plane.
+
 Start the benchmark server, then run a k6 profile:
 
 ```sh

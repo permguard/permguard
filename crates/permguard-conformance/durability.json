@@ -54,6 +54,12 @@
       "item": "measure",
       "primitive": "write",
       "reason": "writes the benchmark report the run produced to the path its operator named: an output file of a tool, not Host state"
+    },
+    {
+      "source": "crates/permguard-conformance/src/bin/permguard-bench.rs",
+      "item": "serving_gate",
+      "primitive": "write",
+      "reason": "writes the serving gate's verdict to the path its operator named: an output file of a tool, not Host state"
     }
   ]
 }

@@ -11,10 +11,12 @@
 //! | [`server`] | the release's own server started on loopback, and the example dataset applied to it  |
 //! | [`load`]   | closed-loop HTTP and gRPC clients, one connection each, timing every answer          |
 //! | [`run`]    | one run end to end, every interface, evidence mode and workload                      |
+//! | [`gate`]   | the serving gate: the objective with its headroom, typed refusals, no network (TS-4) |
 //!
 //! The binary is `permguard-bench`; `bench/README.md` says how a release runs it and how a
 //! deployment reads its own capacity off a report.
 
+pub mod gate;
 pub mod load;
 pub mod probe;
 pub mod report;

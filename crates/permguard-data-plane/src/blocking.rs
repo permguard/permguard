@@ -411,9 +411,11 @@ impl Blocking {
             .await
             .map_err(Refused::AtCapacity)?;
         let started = std::time::Instant::now();
+        // The decision path's scope does not cross onto a blocking thread by itself (TS-4).
+        let carried = permguard_core::egress::carried();
         let done = tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            work()
+            carried.run(work)
         })
         .await;
 
@@ -634,6 +636,24 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
         assert_eq!(pool.in_flight(), 0, "the guard publishes completion itself");
+    }
+
+    /// TS-4: work a decision hands the pool runs inside the decision path's scope, so a network
+    /// call it makes is refused like one made by the decision itself; work handed over outside a
+    /// decision is not.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn work_a_decision_hands_the_pool_stays_on_the_decision_path() {
+        use permguard_core::egress::{Target, check, decision};
+        let pool = pool(2);
+        let inside = decision(async { pool.run(&[], || check(Target::Kms)).await })
+            .await
+            .expect("it ran");
+        assert!(
+            inside.is_err(),
+            "the blocking half of a decision is the decision path"
+        );
+        let outside = pool.run(&[], || check(Target::Kms)).await.expect("it ran");
+        assert!(outside.is_ok(), "the pool's threads keep no mark");
     }
 
     /// Zero is read as one: a configuration never means "refuse everything".

@@ -35,10 +35,20 @@ pub const OVERLOAD_CODES: [&str; 3] = [
 /// interfaces so they measure the same thing near the refusal point.
 pub const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// The code the gate files the transport's shed under: the generic `unavailable` with the
+/// shed's own message, which a transport failure named with the same code never carries.
+pub const SHED: &str = "unavailable (request bound)";
+
 /// An answer the plane typed as an overload refusal, or what else it was.
-fn refusal_or_error(code: Option<String>, otherwise: String) -> Outcome {
+fn refusal_or_error(code: Option<String>, message: &str, otherwise: String) -> Outcome {
     match code {
         Some(code) if OVERLOAD_CODES.contains(&code.as_str()) => Outcome::Refused(code),
+        Some(code)
+            if code == permguard_core::codes::common::UNAVAILABLE
+                && message == permguard_core::limits::OVERLOADED =>
+        {
+            Outcome::Refused(SHED.to_owned())
+        }
         _ => Outcome::Failed(otherwise),
     }
 }
@@ -94,12 +104,14 @@ impl Client {
                 Ok((200, body)) => judge(&body, request.decision),
                 // `503` is the plane's "come back"; the code in the body says which bound refused.
                 // Without one it is not a typed refusal, and the gate says so.
-                Ok((503, body)) => refusal_or_error(
-                    serde_json::from_slice::<Value>(&body)
-                        .ok()
-                        .and_then(|body| body["code"].as_str().map(str::to_owned)),
-                    "untyped_503".to_owned(),
-                ),
+                Ok((503, body)) => {
+                    let body = serde_json::from_slice::<Value>(&body).unwrap_or_default();
+                    refusal_or_error(
+                        body["code"].as_str().map(str::to_owned),
+                        body["message"].as_str().unwrap_or_default(),
+                        "untyped_503".to_owned(),
+                    )
+                }
                 Ok((status, _)) => Outcome::Failed(format!("status_{status}")),
                 Err(error) => Outcome::Failed(error),
             },
@@ -110,7 +122,7 @@ impl Client {
                 Ok(_) => Outcome::Failed("wrong_decision".to_owned()),
                 Err(failure) => {
                     let kind = format!("{}:{}", failure.class, failure.reason);
-                    refusal_or_error(Some(failure.reason), kind)
+                    refusal_or_error(Some(failure.reason), &failure.detail, kind)
                 }
             },
         }
@@ -432,19 +444,42 @@ mod tests {
     #[test]
     fn test_only_a_typed_overload_code_is_a_refusal() {
         assert_eq!(
-            refusal_or_error(Some("evaluation_at_capacity".to_owned()), "x".to_owned()),
+            refusal_or_error(
+                Some("evaluation_at_capacity".to_owned()),
+                "",
+                "x".to_owned()
+            ),
             Outcome::Refused("evaluation_at_capacity".to_owned())
         );
         assert_eq!(
             refusal_or_error(
                 Some("transport".to_owned()),
+                "",
                 "unavailable:transport".to_owned()
             ),
             Outcome::Failed("unavailable:transport".to_owned())
         );
         assert_eq!(
-            refusal_or_error(None, "untyped_503".to_owned()),
+            refusal_or_error(None, "", "untyped_503".to_owned()),
             Outcome::Failed("untyped_503".to_owned())
+        );
+        // The generic code is the shed only with the shed's own message: a transport failure the
+        // gRPC client names `unavailable` stays an error.
+        assert_eq!(
+            refusal_or_error(
+                Some("unavailable".to_owned()),
+                permguard_core::limits::OVERLOADED,
+                "x".to_owned()
+            ),
+            Outcome::Refused(SHED.to_owned())
+        );
+        assert_eq!(
+            refusal_or_error(
+                Some("unavailable".to_owned()),
+                "transport error",
+                "unavailable:unavailable".to_owned()
+            ),
+            Outcome::Failed("unavailable:unavailable".to_owned())
         );
     }
 

@@ -69,6 +69,14 @@ jobs:
         run: ./scripts/check-license-headers.sh
       - name: tests
         run: cargo test --workspace --all-features --locked
+      # TS-4: the candidate meets its published objective with its headroom, refuses typed within
+      # bounds, and reaches no network from a decision — before anything is published.
+      - name: the serving gate
+        run: |
+          cargo build --release --locked -p permguard-all-in-one -p permguard-cli -p permguard-conformance --bins
+          target/release/permguard-bench gate \
+            --server target/release/permguard-all-in-one --cli target/release/permguard \
+            --directory "${RUNNER_TEMP}/permguard-gate" --out permguard-gate.json
 
   supply-chain:
     name: Advisories, licences, sources

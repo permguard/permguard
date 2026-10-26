@@ -3452,6 +3452,11 @@ mod host_log {
             )
         }
 
+        /// The volume's root, for a fault scoped to it.
+        pub(super) fn root(&self) -> &std::path::Path {
+            self.volume.root()
+        }
+
         /// The `data.attest` ring, which signs responses as it signs batches (WP-6.6b).
         pub(super) fn attest(&self) -> Arc<Ring> {
             Arc::clone(&self.attest)
@@ -5437,4 +5442,153 @@ async fn records_wait_for_their_flush_on_slots_of_their_own() {
         "the load and the evaluation ran on their own pools and gave their slots back"
     );
     drop(releases);
+}
+
+/// TS-4, storage latency: every flush of the Host's decision stream takes 50 ms. Sixteen decisions
+/// at once under `required` evidence, four evidence slots: each is answered only once its record
+/// is durable, or refused `decision_unrecordable` — none is answered unrecorded — and the answered
+/// ones are exactly the records the stream holds.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_slow_disk_delays_or_refuses_decisions_and_never_answers_one_unrecorded() {
+    use permguard_core::fault::{Fault, inject};
+    use permguard_data_plane::blocking::Blocking;
+
+    let host = host_log::HostStream::new("slow-disk");
+    let producer = host.producer();
+    let log = host.log(&producer, host_log::LOOSE);
+    let _slow = inject(
+        host.root(),
+        Fault::SlowFsync {
+            delay: std::time::Duration::from_millis(50),
+        },
+    );
+    let root = scratch("slow-disk-mirrors").join("mirrors");
+    let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+    );
+    let decider = Arc::new(
+        Decider::new(
+            root.to_path_buf(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_journal(
+            Some(Arc::new(log)),
+            subjects(),
+            permguard_core::decisions::IncludeSection::default(),
+        )
+        .with_evidence(Blocking::evidence(4, Metrics::none())),
+    );
+    let mut asked = Vec::new();
+    for _ in 0..16 {
+        let decider = Arc::clone(&decider);
+        asked.push(tokio::spawn(async move {
+            let request = ask("acme", "main-ledger", "alice", "read");
+            let started = std::time::Instant::now();
+            let answer = decider.decide(&request, None).await;
+            (answer, started.elapsed())
+        }));
+    }
+    let (mut answered, mut refused) = (0, 0);
+    for asked in asked {
+        let (answer, took) = asked.await.expect("joins");
+        match answer {
+            Ok(answer) => {
+                assert!(answer.decision);
+                assert!(
+                    took >= std::time::Duration::from_millis(50),
+                    "answered in {took:?}, before a 50 ms flush could have settled its record"
+                );
+                answered += 1;
+            }
+            Err(error) => {
+                assert_eq!(error.code(), "decision_unrecordable", "{error}");
+                refused += 1;
+            }
+        }
+    }
+    assert_eq!(answered + refused, 16);
+    assert!(
+        answered >= 4,
+        "the four evidence slots answered: {answered}"
+    );
+    let resource = host_log::ledger(&uuid_of("acme"), &uuid_of("main-ledger"));
+    let decisions = host_log::records(&producer, &resource)
+        .iter()
+        .filter(|(_, record)| record["kind"] == "decision")
+        .count();
+    assert_eq!(
+        decisions, answered,
+        "every answered decision has its record, and nothing refused left one"
+    );
+}
+
+/// TS-4: a decision's whole path runs inside the no-network scope — its record too, written on the
+/// evidence pool's thread. A recorder that looks finds itself on the decision path, so a network
+/// call it made would be refused.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_decision_records_its_evidence_on_the_decision_path() {
+    use permguard_data_plane::decisions::{Decided, DecisionRecorder, Written};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct Looking(Arc<AtomicBool>);
+    impl DecisionRecorder for Looking {
+        fn record(&self, _decided: &Decided<'_>) -> Result<Written, String> {
+            unreachable!("the decision path records located")
+        }
+        fn record_located(
+            &self,
+            _decided: &Decided<'_>,
+        ) -> Result<(Written, Option<permguard_languages::attestation::Position>), String> {
+            self.0
+                .store(permguard_core::egress::on_decision_path(), Ordering::SeqCst);
+            Ok((Written::Recorded { seq: 1 }, None))
+        }
+        fn refuses_unrecorded(&self) -> bool {
+            true
+        }
+    }
+
+    let root = scratch("egress-scope").join("mirrors");
+    let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+    );
+    let looked = Arc::new(AtomicBool::new(false));
+    let decider = Decider::new(
+        root.to_path_buf(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::none(),
+        None,
+        256,
+    )
+    .with_journal(
+        Some(Arc::new(Looking(Arc::clone(&looked)))),
+        subjects(),
+        permguard_core::decisions::IncludeSection::default(),
+    );
+    let answer = decider
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("decided and recorded");
+    assert!(answer.decision);
+    assert!(
+        looked.load(Ordering::SeqCst),
+        "the record was written outside the decision path's scope"
+    );
+    assert!(
+        !permguard_core::egress::on_decision_path(),
+        "and the scope ended with the decision"
+    );
 }

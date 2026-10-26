@@ -447,7 +447,9 @@ impl Submitter {
         authorized: Option<&(String, String)>,
     ) -> Result<SubmitResponse, ApiError> {
         let started = Instant::now();
-        let answered = self.answer(request, source, authorized).await;
+        // The decision path (TS-4), as for a stateless decision.
+        let answered =
+            permguard_core::egress::decision(self.answer(request, source, authorized)).await;
         self.metrics.observe(
             &measure::SUBMISSION_SECONDS,
             &[],

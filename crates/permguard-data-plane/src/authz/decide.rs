@@ -940,7 +940,10 @@ impl Decider {
         asker: Asker,
     ) -> Result<CheckResponse, ApiError> {
         let started = Instant::now();
-        let outcome = self.answer(request, trace, authorized, asker).await;
+        // The decision path (TS-4): nothing below may reach the network, and whatever tries is
+        // refused and counted.
+        let outcome =
+            permguard_core::egress::decision(self.answer(request, trace, authorized, asker)).await;
         self.metrics.observe(
             &super::measure::REQUEST_SECONDS,
             &[],

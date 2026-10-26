@@ -689,3 +689,83 @@ async fn test_a_stopped_intake_serves_no_new_connection_and_finishes_the_open_on
     let answered = open.await.expect("joined").expect("answered");
     assert!(answered.ends_with("done"), "{answered}");
 }
+
+/// TS-4, P5 "overload is a typed 503": past the request bound the surface answers at once, in the
+/// caller's protocol, with the class and code every refusal carries — the shared body over HTTP, a
+/// trailers-only `UNAVAILABLE` with `permguard-error-class` and `permguard-error-code` over gRPC —
+/// so a client can tell "come back" from a fault without reading a sentence.
+#[tokio::test]
+async fn test_a_request_past_the_bound_is_refused_typed_in_its_own_protocol() {
+    let surface = Surface::listener("test", "127.0.0.1:0", router())
+        .limits(Limits::default().with_concurrent_requests(1))
+        .start()
+        .await
+        .expect("the listener binds");
+    let address = surface.address();
+
+    // The one slot, held by a request that does not finish while the others are asked.
+    let held = tokio::spawn(exchange(
+        address,
+        b"GET /slow HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    ));
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Another route: the bound is the surface's, not each route's.
+    let started = std::time::Instant::now();
+    let answer = exchange(
+        address,
+        b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert!(
+        status(&answer).contains("503"),
+        "one slot for the whole surface: {answer}"
+    );
+    assert_eq!(header(&answer, "content-type"), Some("application/json"));
+    let body = answer
+        .split_once("\r\n\r\n")
+        .map(|(_, body)| body)
+        .unwrap_or_default();
+    let refusal: serde_json::Value = serde_json::from_str(body).expect("the refusal is JSON");
+    assert_eq!(refusal["class"], "unavailable", "{refusal}");
+    assert_eq!(
+        refusal["code"],
+        permguard_core::codes::common::UNAVAILABLE,
+        "{refusal}"
+    );
+    assert_eq!(refusal["message"], permguard_core::limits::OVERLOADED);
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "refused at once"
+    );
+
+    let answer = exchange(
+        address,
+        b"POST /permguard.data.v1.PolicyDecisionPoint/Evaluate HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/grpc\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert!(
+        status(&answer).contains("200"),
+        "gRPC answers in its trailers: {answer}"
+    );
+    assert_eq!(header(&answer, "content-type"), Some("application/grpc"));
+    assert_eq!(
+        header(&answer, "grpc-status"),
+        Some("14"),
+        "UNAVAILABLE: {answer}"
+    );
+    assert_eq!(
+        header(&answer, "permguard-error-class"),
+        Some("unavailable")
+    );
+    assert_eq!(
+        header(&answer, "permguard-error-code"),
+        Some(permguard_core::codes::common::UNAVAILABLE)
+    );
+
+    held.abort();
+    surface
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("the listener stops");
+}

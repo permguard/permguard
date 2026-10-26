@@ -434,6 +434,11 @@ above). Dual control is in force by the `regulated` profile itself and has no va
 {{- fail (printf "%s: kms.address is `https://`: a token and wrapped keys never cross plain HTTP outside development." $label) }}
 {{- end }}
 {{- end }}
+{{- /* TS-4: a Data Plane that records its decisions opens a stream's run under `host.operations` while a decision waits, and a remote KMS is not allowed on the decision path; the server refuses it at start. */ -}}
+{{- $records := or (and (eq (toString $unit.kind) "dataPlane") (ne (toString $unit.evidence) "disabled")) (and (eq (toString $unit.kind) "allInOne") (or (eq (toString (dig "dataPlane" "decisions" "log" "enabled" "" $config)) "true") (eq (get $env "PERMGUARD_DECISIONS_LOG_ENABLED") "true"))) }}
+{{- if and $records (eq (get $rings "host.operations") "kms") }}
+{{- fail (printf "%s: `host.operations` signs the run a decision record opens, while the decision waits, and a remote KMS is not allowed on the decision path: keep it `pkcs11` (or `file` below `regulated`) where evidence is recorded." $label) }}
+{{- end }}
 {{- if eq $profile "regulated" }}
 {{- if $.Values.developmentMode }}
 {{- fail (printf "%s: the `regulated` profile is not served in developmentMode, which is somebody's laptop." $label) }}

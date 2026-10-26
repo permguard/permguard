@@ -414,6 +414,14 @@ impl<T: Read + Write> ReadWrite for T {}
 /// host where the first address can be the unreachable one. Giving up there would report a plane as
 /// down while it is answering perfectly well on its other address.
 fn connect(address: &str, timeout: Duration) -> Result<TcpStream, Error> {
+    // Never from a decision (TS-4): refused before the name is resolved, so nothing leaves the
+    // process.
+    permguard_core::egress::check(permguard_core::egress::Target::ControlPlane).map_err(
+        |source| Error::Connect {
+            address: address.to_owned(),
+            source,
+        },
+    )?;
     let resolved: Vec<SocketAddr> = address
         .to_socket_addrs()
         .map_err(|source| Error::Resolve {

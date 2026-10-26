@@ -224,6 +224,36 @@ fn wait_ready(server: &mut Server, within: Duration) -> Result<(), String> {
     ))
 }
 
+/// The server's metrics, as its Host publishes them.
+pub fn metrics(server: &Server) -> Result<String, String> {
+    use std::io::Write as _;
+    let mut stream =
+        std::net::TcpStream::connect(&server.host).map_err(|error| error.to_string())?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .map_err(|error| error.to_string())?;
+    write!(
+        stream,
+        "GET /metrics HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+        server.host
+    )
+    .map_err(|error| error.to_string())?;
+    let mut answer = String::new();
+    stream
+        .read_to_string(&mut answer)
+        .map_err(|error| error.to_string())?;
+    let (head, body) = answer
+        .split_once("\r\n\r\n")
+        .ok_or("the metrics answer has no body")?;
+    if !head.starts_with("HTTP/1.1 200") {
+        return Err(format!(
+            "the metrics answered {}",
+            head.lines().next().unwrap_or_default()
+        ));
+    }
+    Ok(body.to_owned())
+}
+
 /// The status of a plain `GET` on loopback.
 fn get_status(address: &str, path: &str) -> std::io::Result<u16> {
     use std::io::Write as _;

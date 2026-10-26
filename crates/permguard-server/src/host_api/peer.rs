@@ -282,6 +282,9 @@ impl Connection {
     ) -> Result<Self, PeerError> {
         let mut tls = tls.clone();
         tls.alpn_protocols = vec![b"h2".to_vec()];
+        // Never from a decision (TS-4).
+        permguard_core::egress::check(permguard_core::egress::Target::HostPeer)
+            .map_err(transport)?;
         let tcp = TcpStream::connect(address).await.map_err(transport)?;
         let stream = tokio_rustls::TlsConnector::from(Arc::new(tls))
             .connect(server_name.clone(), tcp)
@@ -827,6 +830,9 @@ async fn endpoint(address: &str) -> Result<(SocketAddr, ServerName<'static>), Re
         .trim_end_matches(']')
         .to_owned();
     let name = ServerName::try_from(host.clone()).map_err(|_| invalid())?;
+    // Never from a decision (TS-4): refused before the name leaves the process.
+    permguard_core::egress::check(permguard_core::egress::Target::Resolve)
+        .map_err(|error| unreachable_peer(format!("resolving `{address}`: {error}")))?;
     let resolved = tokio::net::lookup_host((host.as_str(), port))
         .await
         .map_err(|error| unreachable_peer(format!("resolving `{address}`: {error}")))?
@@ -842,6 +848,42 @@ mod tests {
     use tower::{Service as _, ServiceExt as _};
 
     use super::*;
+
+    /// TS-4: a peer Host is never reached from a decision: inside the decision path's scope the
+    /// name is not resolved and no socket is opened; outside it the same address resolves.
+    #[tokio::test]
+    async fn a_decision_never_resolves_or_dials_a_peer() {
+        let refused = permguard_core::egress::decision(endpoint("https://localhost:5444"))
+            .await
+            .expect_err("refused on the decision path");
+        assert!(
+            refused.reason.contains("decision path"),
+            "{}",
+            refused.reason
+        );
+        assert!(
+            endpoint("https://localhost:5444").await.is_ok(),
+            "outside a decision the same name resolves"
+        );
+
+        let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
+        let tls = rustls::ClientConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .expect("TLS 1.3")
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth();
+        let refused = permguard_core::egress::decision(Connection::open(
+            "127.0.0.1:9".parse().expect("an address"),
+            ServerName::try_from("localhost").expect("a name"),
+            &tls,
+        ))
+        .await
+        .expect_err("refused on the decision path");
+        assert!(
+            matches!(&refused, PeerError::Transport(detail) if detail.contains("decision path")),
+            "{refused:?}"
+        );
+    }
 
     #[tokio::test]
     async fn the_connector_hands_its_connection_over_once_and_never_reconnects() {

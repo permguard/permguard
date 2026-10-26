@@ -169,6 +169,10 @@ impl Transit {
         path: &str,
         body: Option<Zeroizing<String>>,
     ) -> Result<Value, CallError> {
+        // Never from a decision (TS-4): checked on the caller's thread, before the job reaches
+        // the client's own, where the decision's scope does not follow.
+        permguard_core::egress::check(permguard_core::egress::Target::Kms)
+            .map_err(|refused| CallError::Unreachable(refused.to_string()))?;
         let (answer, received) = mpsc::channel();
         self.jobs
             .lock()

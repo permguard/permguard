@@ -19,6 +19,16 @@ is cut.
 
 ### Added
 
+- **A serving gate before every release, and a failpoint for the no-network invariant (TS-4).**
+  `permguard-bench gate` runs the candidate's own binaries over HTTP and gRPC, every workload and evidence mode.
+  It fails unless the candidate answers within the published p99 at `bench/slo.json`'s representative concurrency and at the concurrency its headroom requires.
+  It also fails unless, at four times its request bound, the candidate refuses typed, within the refusal objective and without an error.
+  Every outbound client of the Host and its planes now asks `permguard_core::egress` first: the control client over HTTP and gRPC, the Host peer client and the Vault Transit custody.
+  On the decision path the call is refused before anything leaves the process.
+  The refusal is counted in `permguard_decision_path_egress_total`, which reads zero on a correct plane and fails the gate otherwise.
+  CI runs the gate on every change; the release pipeline runs it on the tagged commit before anything is published.
+  `permguard_core::fault` gains `Fault::SlowFsync`, a flush that succeeds after a delay: a decision on a slow disk is answered once its record is durable, or refused, never answered unrecorded.
+
 - **A release benchmark, published with every release (TS-3).**
   `permguard-bench run` starts the release's own `permguard-all-in-one` on loopback, applies `examples/basics` with the release's own CLI, and measures the native PDP over HTTP and gRPC, with the decision log off and `required`, on a ladder of offered concurrency.
   The report (`permguard.bench.report.v1`) names the platform, the storage class with a measured `fsync` probe, the dataset and its digest, and per step p50/p95/p99 latency, throughput, CPU seconds, peak RSS, refusals by code and errors, with the refusal point of each run.
@@ -676,6 +686,17 @@ is cut.
 
 ### Changed
 
+- **`host.operations` in a remote KMS is refused where decisions or temporal events are recorded (TS-4).**
+  It signs the statement that opens a stream's run, which a decision log or a temporal journal does on the first record it appends, while a decision waits.
+  The no-network decision invariant keeps a remote KMS off that path, and the decision path now refuses the call.
+  The configuration is therefore refused at start, and the chart refuses it for a Data Plane that records evidence.
+  Keep `host.operations` in `pkcs11` (or `file` below `regulated`) on such a Host; `host.identity` may stay in the KMS.
+
+- **Past the request bound, a surface answers a typed refusal (TS-4).**
+  It was a plain-text `503`.
+  Over HTTP it is now the shared refusal body with `503`: class `unavailable`, code `unavailable`, and the message.
+  Over gRPC it is a trailers-only `UNAVAILABLE` carrying `permguard-error-class` and `permguard-error-code`.
+
 - **Policy evaluation, decision records and loads run on pools of their own (TS-3).**
   `dataPlane.decisions.evaluation_concurrency` (`PERMGUARD_EVALUATION_CONCURRENCY`) bounds the evaluations running at once, by default the Host's logical cores.
   A burst wider than that waits in `dataPlane.decisions.evaluation_queue` (`PERMGUARD_EVALUATION_QUEUE`, default 64) no longer than the request's deadline, and past it the plane answers `503` `evaluation_at_capacity` at once.
@@ -1017,6 +1038,11 @@ is cut.
 - An identity rotation destroys every retired private key past its grace that the custody still holds, so a key a previous rotation could not destroy is tried again; a key kept is reported as `host.identity_key_kept`, and the public keys and successions stay.
 
 ### Fixed
+
+- **`limits.concurrent_requests` bounds the whole surface, as documented (TS-4).**
+  The bound was applied once per route, so a surface held the configured number of requests on each of its routes at once.
+  A deployment that relied on the larger effective bound sees refusals sooner and should size the setting from its benchmark report.
+  A plane surface's own `/health` and `/version` share its bound, so liveness and readiness probes belong on the Host's `/healthz` and `/readyz`, as the chart and the Compose lab already use.
 
 - **Cedar decides a request whose subject or resource nobody stated (TL-6).**
   An entity that neither the entity store nor the request's properties state was added to the store with no attributes.

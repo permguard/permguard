@@ -96,6 +96,9 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
             .collect(),
     );
     Arc::clone(DECIDER.get_or_init(|| {
+        // Where the decision path's refused network calls are counted (TS-4): published at zero,
+        // read by the serving gate off the release candidate.
+        permguard_core::egress::install(context.metrics().clone());
         let config = context.config();
         let root: PathBuf = config.mirrors_directory();
         let cache = Arc::new(

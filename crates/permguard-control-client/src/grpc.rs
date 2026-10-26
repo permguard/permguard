@@ -214,6 +214,14 @@ impl GrpcChannel {
     where
         F: std::future::Future<Output = Result<tonic::Response<T>, tonic::Status>>,
     {
+        // Never from a decision (TS-4): the channel dials on its first call, so the call is where
+        // the network would be reached.
+        if let Err(refused) =
+            permguard_core::egress::check(permguard_core::egress::Target::ControlPlane)
+        {
+            self.narrate(rpc, "refused on the decision path");
+            return Err(tonic::Status::unavailable(refused.to_string()));
+        }
         match self.runtime.block_on(future) {
             Ok(response) => {
                 self.narrate(rpc, "OK");

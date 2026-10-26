@@ -4,5 +4,6 @@
     "required": 250.0
   },
   "headroom": 0.3,
-  "refusal_p99_ms": 50.0
+  "refusal_p99_ms": 50.0,
+  "representative_concurrency": 8
 }

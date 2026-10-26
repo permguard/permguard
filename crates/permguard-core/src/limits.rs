@@ -42,6 +42,11 @@ use std::time::Duration;
 /// sees and far below what a machine notices.
 const DEFAULT_CONNECTIONS: u32 = 1_024;
 
+/// The message of a surface's answer past its request bound (TS-4): what a client reads beside
+/// the class and code, and what tells the shed from a transport failure a gRPC client names with
+/// the same generic code.
+pub const OVERLOADED: &str = "the surface is serving as many requests as it is allowed to";
+
 /// How many of one surface's sockets a single address may hold.
 ///
 /// The pool limit alone has a failure mode the pool cannot see: one client opening `connections`

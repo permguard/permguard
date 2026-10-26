@@ -60,6 +60,33 @@ Size a deployment from a report taken on its own hardware and storage class; a n
 The defaults the product ships are protective bounds, not capacity promises.
 The evaluation pool defaults to the Host's logical cores, read at start; the storage pool, the evaluation queue and the request bound keep fixed defaults that only stop a plane from accumulating work it cannot finish.
 
+## The serving gate
+
+`permguard-bench gate` holds a release candidate to its published objective (TS-4).
+It runs the candidate's own binaries under a request bound of 32 and judges, per interface, workload and evidence mode, three steps:
+
+| Step           | Offered concurrency                              | Must                                                                                |
+| -------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| representative | `representative_concurrency` of `bench/slo.json` | answer everything correctly within the p99 objective                                |
+| headroom       | that, divided by one less the headroom           | the same: the candidate has the headroom it publishes                               |
+| overload       | four times the request bound                     | refuse some, every refusal typed and within its p99, no error, every answer correct |
+
+After the runs on each server it reads `permguard_decision_path_egress_total` off the candidate's own metrics.
+Every outbound client of the Host and its planes asks `permguard_core::egress` first, and on the decision path the call is refused and counted, so anything but zero fails the gate.
+The module lists the clients that check, and the one that need not.
+The series is published at zero, so a candidate whose failpoint is not installed fails too.
+
+CI runs the gate on every change, in the job that builds the release binaries, and the release pipeline runs it on the tagged commit before anything is published.
+
+A slow disk is not something the gate can impose on a release binary: the fault hooks are armed only inside the process, by design.
+A test of the real decision path holds it to one instead: `a_slow_disk_delays_or_refuses_decisions_and_never_answers_one_unrecorded` in `permguard-data-plane`.
+There every flush of the Host's decision stream takes 50 ms, and each decision is answered only once its record is durable, or refused typed.
+
+```sh
+target/release/permguard-bench gate \
+  --server target/release/permguard-all-in-one --cli target/release/permguard --out permguard-gate.json
+```
+
 ## The k6 scripts
 
 | Script        | Looks at                                                       |

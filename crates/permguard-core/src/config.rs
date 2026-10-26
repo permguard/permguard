@@ -2604,6 +2604,22 @@ produce: use `EdDSA` or `ES256`"
                  `host.operations` on `kms` alone"
             );
         }
+        // `host.operations` signs the statement that opens a stream's run, and a decision log or a
+        // temporal journal opens one on the first record it appends — while a decision waits.
+        // The no-network decision invariant keeps a remote KMS off that path, and the decision
+        // path now refuses the call (TS-4): refused here, at start, rather than on the first
+        // decision of every ledger.
+        if (self.log_enabled() || self.events_enabled())
+            && self.keys_custody_of("host.operations") == KeyCustody::Kms
+        {
+            bail!(
+                "`host.operations` signs the run a decision record or a temporal event opens, while \
+                 the decision waits, and a remote KMS is not allowed on the decision path: keep \
+                 `host.operations` `file` or `pkcs11` ({SETTING_KEYS_OPERATIONS_CUSTODY}, or \
+                 {SETTING_KEYS_CUSTODY} for every ring) where the decision log or temporal events \
+                 are on"
+            );
+        }
         if self.assurance_profile == crate::assurance::AssuranceProfile::Regulated {
             for ring in ["host.identity", "host.operations"] {
                 let custody = self.keys_custody_of(ring);

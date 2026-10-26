@@ -191,6 +191,9 @@ pub struct Slo {
     pub headroom: f64,
     /// How slow a refusal may be at p99, in milliseconds: refusing is only useful when it is fast.
     pub refusal_p99_ms: f64,
+    /// The concurrency the serving gate holds a release candidate to the objective at (TS-4), and,
+    /// divided by one less the headroom, the concurrency it must also meet it at.
+    pub representative_concurrency: usize,
 }
 
 impl Slo {
@@ -208,6 +211,9 @@ impl Slo {
         }
         if !slo.refusal_p99_ms.is_finite() || slo.refusal_p99_ms <= 0.0 {
             return Err("the refusal objective must be positive".to_owned());
+        }
+        if slo.representative_concurrency == 0 {
+            return Err("the representative concurrency must be at least one".to_owned());
         }
         Ok(slo)
     }
@@ -321,7 +327,7 @@ mod tests {
     use super::*;
 
     fn slo() -> Slo {
-        Slo::parse(r#"{"p99_ms": {"disabled": 10.0, "required": 50.0}, "headroom": 0.25, "refusal_p99_ms": 20.0}"#)
+        Slo::parse(r#"{"p99_ms": {"disabled": 10.0, "required": 50.0}, "headroom": 0.25, "refusal_p99_ms": 20.0, "representative_concurrency": 4}"#)
             .expect("an objective")
     }
 
@@ -454,21 +460,21 @@ mod tests {
 
     #[test]
     fn test_an_objective_that_cannot_judge_anything_is_refused() {
-        assert!(Slo::parse(r#"{"p99_ms": {}, "headroom": 0.2, "refusal_p99_ms": 5.0}"#).is_err());
+        assert!(Slo::parse(r#"{"p99_ms": {}, "headroom": 0.2, "refusal_p99_ms": 5.0, "representative_concurrency": 4}"#).is_err());
         assert!(
-            Slo::parse(r#"{"p99_ms": {"required": 0.0}, "headroom": 0.2, "refusal_p99_ms": 5.0}"#)
+            Slo::parse(r#"{"p99_ms": {"required": 0.0}, "headroom": 0.2, "refusal_p99_ms": 5.0, "representative_concurrency": 4}"#)
                 .is_err()
         );
         assert!(
-            Slo::parse(r#"{"p99_ms": {"required": 5.0}, "headroom": 1.0, "refusal_p99_ms": 5.0}"#)
+            Slo::parse(r#"{"p99_ms": {"required": 5.0}, "headroom": 1.0, "refusal_p99_ms": 5.0, "representative_concurrency": 4}"#)
                 .is_err()
         );
         assert!(
-            Slo::parse(r#"{"p99_ms": {"required": 5.0}, "headroom": 0.2, "refusal_p99_ms": 0.0}"#)
+            Slo::parse(r#"{"p99_ms": {"required": 5.0}, "headroom": 0.2, "refusal_p99_ms": 0.0, "representative_concurrency": 4}"#)
                 .is_err()
         );
         assert!(
-            Slo::parse(r#"{"p99_ms": {"required": 5.0}, "headroom": 0.2, "refusal_p99_ms": 5.0, "extra": 1}"#)
+            Slo::parse(r#"{"p99_ms": {"required": 5.0}, "headroom": 0.2, "refusal_p99_ms": 5.0, "representative_concurrency": 4, "extra": 1}"#)
                 .is_err()
         );
     }

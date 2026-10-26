@@ -31,6 +31,7 @@ pub mod config_section;
 pub mod correlation;
 pub mod decisions;
 pub mod domains;
+pub mod egress;
 pub mod error;
 pub mod fault;
 pub mod frontier;

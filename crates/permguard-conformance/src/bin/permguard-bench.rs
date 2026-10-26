@@ -7,6 +7,8 @@
 //! permguard-bench run --server target/release/permguard-all-in-one --cli target/release/permguard \
 //!     --storage-class "github-hosted runner, ephemeral SSD" --out permguard-benchmark.json
 //! permguard-bench capacity permguard-benchmark.json
+//! permguard-bench gate --server target/release/permguard-all-in-one --cli target/release/permguard \
+//!     --out permguard-gate.json
 //! ```
 
 use std::collections::BTreeMap;
@@ -37,6 +39,36 @@ enum Command {
         /// The report to read.
         report: PathBuf,
     },
+    /// The serving gate (TS-4): the candidate meets its objective with its headroom, refuses
+    /// typed within bounds past its request bound, and reaches no network from a decision.
+    Gate(Box<GateArgs>),
+}
+
+#[derive(clap::Args)]
+struct GateArgs {
+    /// The candidate's `permguard-all-in-one`.
+    #[arg(long)]
+    server: PathBuf,
+    /// The candidate's `permguard` CLI.
+    #[arg(long)]
+    cli: PathBuf,
+    #[arg(long, default_value = "examples/basics")]
+    example: PathBuf,
+    #[arg(long)]
+    directory: Option<PathBuf>,
+    #[arg(long, default_value = "bench/slo.json")]
+    slo: PathBuf,
+    #[arg(long, value_delimiter = ',', default_value = "http,grpc")]
+    interfaces: Vec<String>,
+    #[arg(long, value_delimiter = ',', default_value = "disabled,required")]
+    evidence: Vec<String>,
+    #[arg(long, default_value_t = 5.0)]
+    step_seconds: f64,
+    #[arg(long, default_value_t = 2.0)]
+    warmup_seconds: f64,
+    /// Where the verdict is written.
+    #[arg(long)]
+    out: PathBuf,
 }
 
 #[derive(clap::Args)]
@@ -103,7 +135,61 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Command::Gate(args) => match serving_gate(*args) {
+            Ok(true) => ExitCode::SUCCESS,
+            Ok(false) => {
+                eprintln!("permguard-bench: the serving gate failed");
+                ExitCode::FAILURE
+            }
+            Err(error) => {
+                eprintln!("permguard-bench: {error}");
+                ExitCode::FAILURE
+            }
+        },
     }
+}
+
+fn serving_gate(args: GateArgs) -> Result<bool, String> {
+    let slo = Slo::parse(
+        &std::fs::read_to_string(&args.slo)
+            .map_err(|error| format!("{}: {error}", args.slo.display()))?,
+    )
+    .map_err(|error| format!("{}: {error}", args.slo.display()))?;
+    let dataset = permguard_conformance::bench::server::dataset(&args.example, "")?;
+    let mut languages: Vec<String> = dataset
+        .workloads
+        .iter()
+        .flat_map(|workload| workload.runtimes.clone())
+        .collect();
+    languages.sort();
+    languages.dedup();
+    let defaulted = args.directory.is_none();
+    let directory = args.directory.clone().unwrap_or_else(|| {
+        std::env::temp_dir().join(format!("permguard-gate-{}", std::process::id()))
+    });
+    let options = permguard_conformance::bench::gate::Options {
+        binaries: Binaries {
+            server: args.server,
+            cli: args.cli,
+        },
+        example: args.example,
+        languages: languages.join(","),
+        directory: directory.clone(),
+        slo,
+        interfaces: args.interfaces,
+        evidence: args.evidence,
+        step: Duration::from_secs_f64(args.step_seconds),
+        warmup: Duration::from_secs_f64(args.warmup_seconds),
+    };
+    let verdict =
+        permguard_conformance::bench::gate::gate(&options, &mut |line| eprintln!("{line}"))?;
+    let mut text = serde_json::to_string_pretty(&verdict).map_err(|error| error.to_string())?;
+    text.push('\n');
+    std::fs::write(&args.out, text).map_err(|error| format!("{}: {error}", args.out.display()))?;
+    if defaulted {
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+    Ok(verdict.passed)
 }
 
 fn measure(args: RunArgs) -> Result<(), String> {
@@ -138,6 +224,7 @@ fn measure(args: RunArgs) -> Result<(), String> {
         .collect();
     languages.sort();
     languages.dedup();
+    let defaulted = args.directory.is_none();
     let directory = args.directory.clone().unwrap_or_else(|| {
         std::env::temp_dir().join(format!("permguard-bench-{}", std::process::id()))
     });
@@ -164,7 +251,10 @@ fn measure(args: RunArgs) -> Result<(), String> {
     let mut text = serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?;
     text.push('\n');
     std::fs::write(&args.out, text).map_err(|error| format!("{}: {error}", args.out.display()))?;
-    let _ = std::fs::remove_dir_all(&directory);
+    // Only a directory the run chose itself is removed: one an operator named stays theirs.
+    if defaulted {
+        let _ = std::fs::remove_dir_all(&directory);
+    }
     eprintln!("report written to {}", args.out.display());
     Ok(())
 }

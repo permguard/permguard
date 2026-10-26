@@ -18,7 +18,7 @@ use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use http::StatusCode;
 use hyper_util::rt::TokioTimer;
 use tokio::task::JoinHandle;
-use tower::limit::ConcurrencyLimitLayer;
+use tower::limit::GlobalConcurrencyLimitLayer;
 use tower::load_shed::LoadShedLayer;
 use tower::{BoxError, ServiceBuilder};
 use tower_http::catch_panic::CatchPanicLayer;
@@ -170,11 +170,16 @@ impl<'a> Listener<'a> {
             // The two belong together: a concurrency limit on its own makes an overloaded surface
             // slow instead of full, which is worse — the client waits, the memory the wait costs is
             // still spent, and nobody is told anything. Shedding turns that into an answer.
+            //
+            // One bound for the whole surface, as the setting says (TS-4): the layer is applied to
+            // every route of the router, and a per-application limit would give each route a
+            // bound of its own — a surface of ten routes would hold ten times the requests it
+            // was configured for.
             let overload = ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(overloaded))
                 .layer(LoadShedLayer::new())
-                .layer(ConcurrencyLimitLayer::new(
-                    limits.concurrent_requests() as usize
+                .layer(GlobalConcurrencyLimitLayer::new(
+                    limits.concurrent_requests() as usize,
                 ));
 
             // Applied here rather than by each surface, so no surface can be added without them.
@@ -567,16 +572,17 @@ fn panicked(payload: Box<dyn std::any::Any + Send + 'static>) -> http::Response<
 /// 503 and not 500: the request was not wrong and nothing is broken. It is a "come back", and a
 /// client that reads status codes will treat it as one — which is the difference between a load spike
 /// that recovers and one that turns into a retry storm against an endpoint the client thinks is
-/// faulty.
-async fn overloaded(_error: BoxError) -> (StatusCode, &'static str) {
+/// faulty. Typed, in the caller's protocol (TS-4, P5): class `unavailable` and the generic code,
+/// like every refusal, over HTTP and over gRPC alike.
+async fn overloaded(
+    crate::gate::SpeaksGrpc(grpc): crate::gate::SpeaksGrpc,
+    _error: BoxError,
+) -> axum::response::Response {
     tracing::warn!(
         event.name = "surface.shed",
         component = "transport",
         "refused a request: the surface is already serving as many as it is allowed to"
     );
 
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        "the surface is serving as many requests as it is allowed to",
-    )
+    crate::gate::unavailable(permguard_core::limits::OVERLOADED, grpc)
 }

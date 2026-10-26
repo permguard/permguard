@@ -2590,3 +2590,33 @@ fn test_pools_that_together_exceed_the_runtimes_blocking_threads_are_refused() {
         "{error}"
     );
 }
+
+/// TS-4: `host.operations` opens a decision stream's run while the decision waits, and the
+/// no-network invariant keeps a remote KMS off that path: with the decision log on, a `kms`
+/// `host.operations` is refused at start; with it off, the same custody is accepted.
+#[test]
+fn test_a_kms_operations_ring_is_refused_where_decisions_are_recorded() {
+    let kms = [
+        (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+        (SETTING_ASSURANCE_PROFILE, "development"),
+        (SETTING_KEYS_OPERATIONS_CUSTODY, "kms"),
+        (SETTING_KEYS_KMS_ADDRESS, "https://vault:8200"),
+        (SETTING_KEYS_KMS_TOKEN_REF, "vault-token"),
+    ];
+    let recording = [
+        (SETTING_LOG_ENABLED, "true"),
+        (SETTING_SECRETS_COORDINATOR_ROOT_REF, "zone-root"),
+        (SETTING_AUDIT_PSEUDONYM_ENABLED, "true"),
+        (SETTING_AUDIT_PSEUDONYM_KEY_REF, "audit-pseudonym"),
+    ];
+    let refused = config(&[&kms[..], &recording[..]].concat(), &[], &[])
+        .validate()
+        .expect_err("a remote KMS on the decision path")
+        .to_string();
+    assert!(refused.contains("decision path"), "{refused}");
+    let accepted = config(&kms, &[], &[]).validate();
+    assert!(
+        accepted.is_ok(),
+        "off the decision path the KMS keeps the ring: {accepted:?}"
+    );
+}
