@@ -303,6 +303,65 @@ jobs:
       - name: scale a group down and up
         run: ./scripts/chart-e2e.sh permguard/data-plane:e2e
 
+  # The Compose lab's five profiles, each enrolled by the lab's own authority and checked — the same
+  # script and the same assertions on Linux and on macOS (TD-3, F-24, F-25, F-26). The image is built
+  # once, here, and the macOS job runs that very image.
+  compose-lab:
+    name: compose lab (linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the lab image
+        run: docker build -f lab/compose/Dockerfile -t permguard/lab:local .
+      - name: every profile
+        run: NO_BUILD=1 ./scripts/compose-lab.sh
+      - name: the image, for the macOS job
+        run: docker save permguard/lab:local | gzip > lab-image.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compose-lab-image
+          path: lab-image.tar.gz
+          retention-days: 1
+      - name: the logs of a failed profile
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compose-lab-linux
+          path: target/compose-lab
+
+  compose-lab-macos:
+    name: compose lab (macos)
+    needs: compose-lab
+    # An Intel runner: the Docker engine runs in a virtual machine, which the Apple silicon runners
+    # cannot nest. Both runners are amd64, so the Linux job's image runs here unchanged.
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: compose-lab-image
+      - name: a Docker engine, in Colima
+        run: |
+          set -euo pipefail
+          brew install colima docker docker-compose
+          mkdir -p "${HOME}/.docker/cli-plugins"
+          ln -sfn "$(brew --prefix)/opt/docker-compose/bin/docker-compose" "${HOME}/.docker/cli-plugins/docker-compose"
+          colima start --cpu 3 --memory 8 --disk 30
+          docker version
+          docker compose version
+      - name: the Linux job's image
+        run: gunzip -c lab-image.tar.gz | docker load
+      - name: every profile
+        run: NO_BUILD=1 ./scripts/compose-lab.sh
+      - name: the logs of a failed profile
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compose-lab-macos
+          path: target/compose-lab
+
   chart-drain:
     name: drain controller and storage takeover on a cluster
     runs-on: ubuntu-latest

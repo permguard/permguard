@@ -21,7 +21,7 @@ REPO_DIR := $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
 profile = $(if $(RELEASE),--release)
 scope = $(if $(PKG),-p $(PKG),--workspace)
 
-.PHONY: check-boundaries check-chart check-durability check-mutations fuzz clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems check-vectors notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
+.PHONY: check-boundaries check-chart check-durability check-mutations fuzz clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems check-vectors notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-test lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
 
 build: ## Build every Permguard crate.
 	cargo build $(scope) $(profile) $(ARGS)
@@ -112,23 +112,25 @@ run-as-mtls-data: ## Run the data plane locally, with mutual TLS on its shared H
 run-as-mtls-all: ## Run all-in-one locally, with mutual TLS on each shared HTTP+gRPC plane listener.
 	$(MAKE) run-all CONFIG=config.local-mtls.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
 
-lab-up: ## Start the compose lab: both planes, Prometheus, Grafana, Loki.
-	docker compose -f docker-compose.lab.yml --profile lab up --build $(if $(ARGS),$(ARGS),-d)
+lab-up: ## Start one Compose lab profile, enrolled by the lab's authority. PROFILE: all-in-one, split-plane (default), multi-data-plane, multi-group, temporal-replicas.
+	COMPOSE_PROFILES=$(if $(PROFILE),$(PROFILE),split-plane) docker compose -f docker-compose.lab.yml up --build $(if $(ARGS),$(ARGS),-d)
 	$(MAKE) lab-where
 
-lab-all: ## Start the compose lab with the all-in-one runtime instead of the two planes.
-	docker compose -f docker-compose.lab.yml --profile all-in-one up --build $(if $(ARGS),$(ARGS),-d)
-	$(MAKE) lab-where
+lab-all: ## Start the Compose lab's all-in-one profile.
+	$(MAKE) lab-up PROFILE=all-in-one ARGS="$(ARGS)"
+
+lab-test: ## Run the Compose lab's gate: every profile, or PROFILE, on fresh volumes, then tear it down (TD-3).
+	scripts/compose-lab.sh $(PROFILE)
 
 lab-observability: ## Start only Prometheus, Grafana and Loki, to watch planes running on the host.
-	docker compose -f docker-compose.lab.yml --profile observability up $(if $(ARGS),$(ARGS),-d)
+	COMPOSE_PROFILES=observability docker compose -f docker-compose.lab.yml up $(if $(ARGS),$(ARGS),-d)
 	$(MAKE) lab-where
 
 lab-down: ## Stop the compose lab, keeping its data: metrics, logs and dashboards survive the next up.
-	docker compose -f docker-compose.lab.yml --profile lab --profile all-in-one --profile observability down $(ARGS)
+	docker compose -f docker-compose.lab.yml --profile '*' down $(ARGS)
 
-lab-clean: ## Stop the compose lab AND discard its data: the next up starts with empty dashboards.
-	docker compose -f docker-compose.lab.yml --profile lab --profile all-in-one --profile observability down -v
+lab-clean: ## Stop the compose lab AND discard its data: the next up starts from a new authority and empty dashboards.
+	docker compose -f docker-compose.lab.yml --profile '*' down -v
 
 clean: ## Remove build artifacts. STALE=7 removes only what nothing has touched for 7 days.
 	@set -eu; \
@@ -142,14 +144,13 @@ clean: ## Remove build artifacts. STALE=7 removes only what nothing has touched 
 lab-logs: ## Follow the compose lab's logs. SERVICE names one service.
 	docker compose -f docker-compose.lab.yml logs --follow --tail 50 $(SERVICE)
 
-lab-where: ## Print where the lab is listening.
-	@printf 'Grafana     http://127.0.0.1:%s   (dashboards are already provisioned)\n' "$${PERMGUARD_GRAFANA_PORT:-7590}"
+lab-where: ## Print where the lab is listening. Its ports are ephemeral, on the host's loopback.
+	@printf 'Grafana     http://127.0.0.1:%s   (with the observability profile)\n' "$${PERMGUARD_GRAFANA_PORT:-7590}"
 	@printf 'Prometheus  http://127.0.0.1:%s\n' "$${PERMGUARD_PROMETHEUS_PORT:-7591}"
 	@printf 'Loki        http://127.0.0.1:%s\n' "$${PERMGUARD_LOKI_PORT:-7592}"
-	@printf 'Host        http://%s:5443   (all-in-one or control)\n' "$${PERMGUARD_CONTROL_HOST_IP:-127.0.0.1}"
-	@printf 'Host        http://%s:5443   (standalone data)\n' "$${PERMGUARD_DATA_HOST_IP:-127.0.0.2}"
-	@printf 'Control     http://127.0.0.1:%s\n' "$${PERMGUARD_CONTROL_HTTP_PORT:-6443}"
-	@printf 'Data        http://127.0.0.1:%s\n' "$${PERMGUARD_DATA_HTTP_PORT:-7443}"
+	@docker compose -f docker-compose.lab.yml --profile '*' ps
+	@printf '\nThe certificates name the service: pass --tls-server-name <service> with the lab authority,\n'
+	@printf 'docker compose -f docker-compose.lab.yml cp lab-pki:/lab/pki/ca.crt .\n'
 
 bench-server: ## Run the control plane for capacity benchmarks: release build, limits out of the way (each PERMGUARD_LIMITS_* overridable).
 	PERMGUARD_LIMITS_CONCURRENT_REQUESTS=$${PERMGUARD_LIMITS_CONCURRENT_REQUESTS:-100000} PERMGUARD_LIMITS_CONNECTIONS=$${PERMGUARD_LIMITS_CONNECTIONS:-20000} PERMGUARD_LIMITS_CONNECTIONS_PER_PEER=$${PERMGUARD_LIMITS_CONNECTIONS_PER_PEER:-0} cargo run --release -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml $(ARGS)

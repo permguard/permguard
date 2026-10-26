@@ -712,6 +712,23 @@ fn lifecycle(scheme: &str) {
         ]),
     );
     assert_eq!(approved["status"], "active");
+    // The member takes the signed manifest at once, rather than at its next pass (TD-3).
+    let synced = call(
+        &root,
+        &member_endpoint,
+        &tls,
+        &words(&["host", "members", "sync", id]),
+    );
+    assert_eq!(
+        (
+            synced["status"].as_str(),
+            synced["role"].as_str(),
+            synced["epoch"].as_u64(),
+            synced["membership_id"].as_str()
+        ),
+        (Some("active"), Some("member"), Some(1), Some(id)),
+        "{scheme}: {synced}"
+    );
 
     let scheduled = call(
         &root,

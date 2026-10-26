@@ -347,32 +347,37 @@ tasks:
         vars: { CONFIG: config.local-mtls.yml, ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
 
   lab:up:
-    desc: Start the compose lab — both planes, Prometheus, Grafana, Loki.
+    desc: Start one Compose lab profile, enrolled by the lab's authority. PROFILE is all-in-one, split-plane (default), multi-data-plane, multi-group or temporal-replicas.
     cmds:
-      - docker compose -f docker-compose.lab.yml --profile lab up --build {{.ARGS | default "-d"}}
+      - COMPOSE_PROFILES={{.PROFILE | default "split-plane"}} docker compose -f docker-compose.lab.yml up --build {{.ARGS | default "-d"}}
       - task: lab:where
 
   lab:all:
-    desc: Start the compose lab with the all-in-one runtime instead of the two planes.
+    desc: Start the Compose lab's all-in-one profile.
     cmds:
-      - docker compose -f docker-compose.lab.yml --profile all-in-one up --build {{.ARGS | default "-d"}}
-      - task: lab:where
+      - task: lab:up
+        vars: { PROFILE: all-in-one, ARGS: '{{.ARGS}}' }
+
+  lab:test:
+    desc: Run the Compose lab's gate — every profile, or PROFILE — on fresh volumes, and tear it down (TD-3).
+    cmds:
+      - scripts/compose-lab.sh {{.PROFILE}}
 
   lab:observability:
     desc: Start only Prometheus, Grafana and Loki, to watch planes running on the host.
     cmds:
-      - docker compose -f docker-compose.lab.yml --profile observability up {{.ARGS | default "-d"}}
+      - COMPOSE_PROFILES=observability docker compose -f docker-compose.lab.yml up {{.ARGS | default "-d"}}
       - task: lab:where
 
   lab:down:
     desc: Stop the compose lab, keeping its data — metrics, logs and dashboards survive the next up.
     cmds:
-      - docker compose -f docker-compose.lab.yml --profile lab --profile all-in-one --profile observability down {{.ARGS}}
+      - docker compose -f docker-compose.lab.yml --profile '*' down {{.ARGS}}
 
   lab:clean:
-    desc: Stop the compose lab AND discard its data — the next up starts with empty dashboards.
+    desc: Stop the compose lab AND discard its data — the next up starts from a new authority and empty dashboards.
     cmds:
-      - docker compose -f docker-compose.lab.yml --profile lab --profile all-in-one --profile observability down -v
+      - docker compose -f docker-compose.lab.yml --profile '*' down -v
 
   clean:
     desc: Remove build artifacts. STALE=7 removes only what nothing has touched for 7 days.
@@ -396,16 +401,15 @@ tasks:
       - docker compose -f docker-compose.lab.yml logs --follow --tail 50 {{.SERVICE}}
 
   lab:where:
-    desc: Print where the lab is listening.
+    desc: Print where the lab is listening. Its ports are ephemeral, on the host's loopback.
     cmds:
       - |
-        printf 'Grafana     http://127.0.0.1:%s   (dashboards are already provisioned)\n' "${PERMGUARD_GRAFANA_PORT:-7590}"
+        printf 'Grafana     http://127.0.0.1:%s   (with the observability profile)\n' "${PERMGUARD_GRAFANA_PORT:-7590}"
         printf 'Prometheus  http://127.0.0.1:%s\n' "${PERMGUARD_PROMETHEUS_PORT:-7591}"
         printf 'Loki        http://127.0.0.1:%s\n' "${PERMGUARD_LOKI_PORT:-7592}"
-        printf 'Host        http://%s:5443   (all-in-one or control)\n' "${PERMGUARD_CONTROL_HOST_IP:-127.0.0.1}"
-        printf 'Host        http://%s:5443   (standalone data)\n' "${PERMGUARD_DATA_HOST_IP:-127.0.0.2}"
-        printf 'Control     http://127.0.0.1:%s\n' "${PERMGUARD_CONTROL_HTTP_PORT:-6443}"
-        printf 'Data        http://127.0.0.1:%s\n' "${PERMGUARD_DATA_HTTP_PORT:-7443}"
+        docker compose -f docker-compose.lab.yml --profile '*' ps
+        printf '\nThe certificates name the service: pass --tls-server-name <service> with the lab authority,\n'
+        printf 'docker compose -f docker-compose.lab.yml cp lab-pki:/lab/pki/ca.crt .\n'
 
   test:
     desc: Run tests.

@@ -19,6 +19,15 @@ is cut.
 
 ### Added
 
+- **The Compose lab's five profiles (TD-3).**
+  `docker-compose.lab.yml` runs `all-in-one`, `split-plane`, `multi-data-plane`, `multi-group` and `temporal-replicas`, started with the profile's name in `COMPOSE_PROFILES`.
+  The lab's own test authority issues every certificate, grants its operator on each volume before the Host first serves, and enrolls each Data Plane over one-time invitations with the exact fingerprints it read from both Hosts.
+  A Data Plane holds two memberships with its coordinator: `policy.mirror` on the Control Plane's tree of its zone, and its shipping tasks on its own.
+  Every Host is reached by its service name; the ports published on the host's loopback are ephemeral, and nothing depends on a loopback alias or the host's network.
+  `scripts/compose-lab.sh` (`task lab:test`) starts each profile on fresh volumes and runs what it must prove, the same on Linux and on macOS.
+- **`permguard host members sync <id>`.**
+  The member side syncs one membership to the coordinator's signed manifest now, rather than at its next periodic pass.
+
 - **The drain controller and the fenced recovery Job (TD-2).**
   `dataPlane.drainController.enabled` renders, per group that keeps a volume, a CronJob running `permguard reclaim run` and the template of its drain Job.
   A retained claim of an ordinal above the replicas gets a Job on that claim: the group's own image and configuration, a new claim generation, and `shutdown.recover_drain`.
@@ -636,6 +645,11 @@ is cut.
 
 ### Changed
 
+- **The Compose lab's `lab` profile is gone (TD-3).**
+  It started both planes on a configuration that predates membership and published the Data Plane on the loopback alias `127.0.0.2`.
+  `task lab:up` and `make lab-up` take `PROFILE` (default `split-plane`); Prometheus, Grafana, Loki, Promtail and Tempo start only with the `observability` profile, beside a lab profile or alone.
+  `task lab:down` and `task lab:clean` stop every profile.
+
 - **The chart's data plane objects are named after their group, and default to recorded evidence (TD-1).**
   The data plane workload, Services, ConfigMap, disruption budget, autoscaler and NetworkPolicy are named `<release>-data-plane-<group>`.
   A release that sets no `dataPlane.groups` renders the one group `default`, selector `plane/data/*`.
@@ -958,6 +972,18 @@ is cut.
 - An identity rotation destroys every retired private key past its grace that the custody still holds, so a key a previous rotation could not destroy is tried again; a key kept is reported as `host.identity_key_kept`, and the public keys and successions stay.
 
 ### Fixed
+
+- **Decisions answered just after a membership was synced are shipped (TD-3).**
+  A member that took its manifest with `host members sync` registered its ship tasks only at its next periodic pass, up to a minute later.
+  A decision recorded meanwhile opened its stream's first run without the task's fence; the pass then rolled the stream over, and that run's records were never acknowledged by the coordinator.
+  The ship tasks of every manifest a member accepts are now registered when it accepts it.
+
+- **An audit trail being created is no longer read as a damaged one (TD-3).**
+  A trail's directory exists a moment before its `META.cbor`, and listing the trails without the lock they are created under read such a trail as unreadable: a fresh Host logged `audit.sweep_failed`, and an audit export or an identity reset in that window would have refused.
+
+- **One commit pushed to two ledgers of the same name is two requests (TD-3).**
+  A push's request id named the ref and the new head but not the ledger, so `apply` of one commit to `acme/main` and `beta/main` within one second was refused `request_id_reused`.
+  The id now names the ledger's zone and ledger as well.
 
 - **An idle decision spool is neither full nor expired.**
   The spool's pressure counted every segment it held, the last one acknowledged included, so a plane that had shipped everything ended its stream for `age_expiry` after a quiet day; it now measures only the segments holding a record the receiver has not acknowledged.

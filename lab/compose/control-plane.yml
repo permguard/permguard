@@ -1,0 +1,38 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Compose lab's Control Plane Host (TD-3): the coordinator every data plane of a profile enrolls
+# with. One static file; what varies per container comes from the environment `permguard-lab serve`
+# sets — the listeners' certificates, issued by the lab's own authority to the service's DNS name.
+#
+# A lab, on its own network: the development profile, material the Host generates for itself, and
+# a test authority the bootstrap trusts. Never a template for a deployment.
+
+working_dir: /var/lib/permguard/volume
+development_mode: true
+autogenerate: true
+assurance: { profile: development }
+log: { level: info, format: json }
+
+# The `temporal-replicas` profile's ledger is Dogwood, whose temporal interface is `v1alpha1`.
+experimental: { dogwood: { enabled: "true" } }
+
+# The Server Host: discovery, health and metrics, in the clear, for the lab's health checks.
+host: { addr: 0.0.0.0:5443 }
+
+# The Host listener: membership, grants and streams, mutual TLS under the lab's authority.
+admin: { addr: 0.0.0.0:5444 }
+
+operations:
+  keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }
+  secrets: { provider: directory, coordinator_root_ref: zone-root }
+  audit: { pseudonym: { enabled: true, key_ref: audit-pseudonym, key_version: "v1" } }
+
+controlPlane:
+  # The catalog and the ledgers, mutual TLS: the operator pushes here.
+  public:
+    http: { addr: 0.0.0.0:6443 }
+    grpc: { addr: 0.0.0.0:6443 }
+  # What the members ship arrives on this Host's consumer streams over their `decisions.ship` and
+  # `events.ship` tasks, verified under each member's pinned ring: no store of its own, and no
+  # producer key file to copy here.

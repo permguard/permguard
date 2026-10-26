@@ -2294,6 +2294,15 @@ pub enum MembersAction {
         /// The membership UUID.
         id: String,
     },
+    /// On the member: fetch and record the coordinator's manifests since the one held, which is
+    /// how an approved membership becomes active on its member (TD-3).
+    #[command(
+        after_help = "Examples:\n  permguard --host-endpoint https://member.example:5444 host members sync 0198f2aa-0000-7000-8000-000000000002\n  permguard --host-endpoint https://member.example:5444 host members sync 0198f2aa-0000-7000-8000-000000000002 -o json"
+    )]
+    Sync {
+        /// The membership UUID.
+        id: String,
+    },
     /// Suspend a membership.
     #[command(
         after_help = "Examples:\n  permguard host members suspend 0198f2aa-0000-7000-8000-000000000002 --expected-revision 2 --reason maintenance\n  permguard host members suspend 0198f2aa-0000-7000-8000-000000000002 --expected-revision 2 --reason maintenance -o json"

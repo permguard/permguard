@@ -109,6 +109,7 @@ The **State** cell is one of:
 | `host members reject`        | `membership.admin` | present |     |
 | `host members list`          | `membership.read`  | present |     |
 | `host members get`           | `membership.read`  | present |     |
+| `host members sync`          | `membership.admin` | present |     |
 | `host members suspend`       | `membership.admin` | present |     |
 | `host members resume`        | `membership.admin` | present |     |
 | `host members fence`         | `membership.admin` | present |     |

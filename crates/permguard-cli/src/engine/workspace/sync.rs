@@ -60,6 +60,30 @@ pub struct PullOutcome {
     pub previous_counter: Option<u64>,
 }
 
+/// The request id of a push: the ledger, the ref and the new head name it. A retry of the same
+/// apply is the same request; the same commit applied to another ref, or to the same ref of
+/// another ledger, is another one (TD-3: two ledgers named alike in two zones, given one commit in
+/// one second, collided on one id and the second push was refused as a reused request).
+fn push_request_id(ledger: &config::LedgerConfig, r#ref: &str, new_head: &Digest) -> String {
+    let named = |id: &str, name: &str| {
+        if id.is_empty() {
+            name.to_owned()
+        } else {
+            id.to_owned()
+        }
+    };
+    Digest::compute(
+        format!(
+            "{zone}/{ledger}\n{ref}\n{new_head}",
+            zone = named(&ledger.zone_id, &ledger.zone),
+            ledger = named(&ledger.ledger_id, &ledger.ledger),
+            ref = r#ref
+        )
+        .as_bytes(),
+    )
+    .to_string()
+}
+
 impl Workspace<'_> {
     /// Apply: plan, then push — negotiate once, upload the missing objects
     /// in batches, commit with compare-and-swap, verify the returned
@@ -104,10 +128,7 @@ impl Workspace<'_> {
         let commit_bytes = commit.encode().map_err(|error| err(error.to_string()))?;
         let new_head = inventory::put(self.store, &commit_bytes).map_err(err)?;
         let expected_ref = self.expected_ref(remote, ledger, &r#ref, checkpoint.as_ref())?;
-        // The ref and the new head name the request: a retry of this apply is the same request,
-        // and the same commit applied to another ref is another one.
-        let request_id =
-            Digest::compute(format!("{ref}\n{new_head}", ref = r#ref).as_bytes()).to_string();
+        let request_id = push_request_id(ledger, &r#ref, &new_head);
 
         // The delta closure: reachable from the new head, minus the old one.
         let stop = match &expected_old {
@@ -1302,4 +1323,55 @@ fn now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs() as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tracked(zone: &str, ledger: &str) -> config::LedgerConfig {
+        config::LedgerConfig {
+            remote: "origin".to_owned(),
+            zone: zone.to_owned(),
+            ledger: "main".to_owned(),
+            zone_id: format!("{zone}-id"),
+            ledger_id: ledger.to_owned(),
+        }
+    }
+
+    /// TD-3: one commit pushed to the same ref of two ledgers is two requests; a retry of one
+    /// push is the same request.
+    #[test]
+    fn a_push_is_named_by_its_ledger_its_ref_and_its_head() {
+        let head = Digest::compute(b"one commit");
+        let acme = push_request_id(&tracked("acme", "l1"), "main", &head);
+        assert_eq!(acme, push_request_id(&tracked("acme", "l1"), "main", &head));
+        assert_ne!(acme, push_request_id(&tracked("beta", "l1"), "main", &head));
+        assert_ne!(acme, push_request_id(&tracked("acme", "l2"), "main", &head));
+        assert_ne!(
+            acme,
+            push_request_id(&tracked("acme", "l1"), "other", &head)
+        );
+        assert_ne!(
+            acme,
+            push_request_id(&tracked("acme", "l1"), "main", &Digest::compute(b"another"))
+        );
+        // Before checkout resolved the ids, the names stand for them.
+        let unresolved = config::LedgerConfig {
+            zone_id: String::new(),
+            ledger_id: String::new(),
+            ..tracked("acme", "l1")
+        };
+        assert_ne!(
+            push_request_id(&unresolved, "main", &head),
+            push_request_id(
+                &config::LedgerConfig {
+                    zone: "beta".to_owned(),
+                    ..unresolved.clone()
+                },
+                "main",
+                &head
+            )
+        );
+    }
 }

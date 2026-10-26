@@ -38,7 +38,7 @@ scrape_configs:
     metrics_path: /metrics
     dns_sd_configs:
       # Each container is a separate Server Host and therefore uses the canonical operations port.
-      - names: [control-plane, data-plane, all-in-one]
+      - names: [control-plane, data-plane, data-plane-a, data-plane-b, data-plane-acme, data-plane-beta, temporal-a, temporal-b, all-in-one]
         type: A
         port: 5443
         refresh_interval: 10s

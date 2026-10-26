@@ -776,7 +776,16 @@ impl Engine {
 
     /// Every trail on the volume, by class and digest, with the resource its `META.cbor` names or
     /// why it names none.
+    ///
+    /// Listed under the lock a trail is created under (TD-3): a trail's directory exists a moment
+    /// before its `META.cbor` does, and a listing between the two read the trail being created as
+    /// one whose `META.cbor` is unreadable.
     fn trails(&self) -> Result<Vec<Listed>, Refused> {
+        let _creating = self
+            .inner
+            .open
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let storage = |error: crate::storage::StorageError| Refused::Storage(error.to_string());
         let mut trails = Vec::new();
         for class_name in self.inner.trails.subdirs().map_err(storage)? {

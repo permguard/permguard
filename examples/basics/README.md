@@ -609,8 +609,8 @@ task cli -- -w /tmp clone grpc://127.0.0.1:6443/acme/main-ledger lab-grpc
 ## Watching it happen
 
 ```bash
-task lab:up          # Prometheus, Grafana, Loki
-task lab:where       # the URLs
+task lab:observability   # Prometheus, Grafana, Loki
+task lab:where           # the URLs
 ```
 
 | Dashboard | Answers |

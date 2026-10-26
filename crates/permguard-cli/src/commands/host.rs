@@ -1170,6 +1170,17 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                 .map_err(|failure| Failure::from_client(&failure))?;
             render_json(&answer, globals, trace)?;
         }
+        MembersAction::Sync { id } => {
+            let answer = online_host(globals, trace, false)?
+                .sync_membership(
+                    &id,
+                    &permguard_host::api::members::SyncMembership {
+                        request_id: request_id(),
+                    },
+                )
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
+        }
         MembersAction::Revoke { action } => match action {
             MemberRevokeAction::Plan {
                 id,

@@ -759,41 +759,47 @@ permguard restore plan --help    # restore a stopped Host's volume from a snapsh
 </details>
 
 <details>
-<summary><b>Observability lab</b></summary>
+<summary><b>Compose lab</b></summary>
 
-Start both planes plus Prometheus, Grafana and Loki:
+Five topologies, each a Compose profile that the lab's own test authority enrolls and the gate checks on Linux and macOS:
 
-```sh
-task lab:up                # or: make lab-up
-```
+| Profile             | Topology                                                                     | What its gate proves                                                     |
+| ------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `all-in-one`        | one Server with the Control and Data Planes                                  | the development baseline: a permit and a deny                            |
+| `split-plane`       | one Control Plane Host and one Data Plane Host                               | exact-fingerprint enrollment; decisions mirrored, shipped, acknowledged  |
+| `multi-data-plane`  | one Control Plane Host and two Data Plane Hosts on one ledger                | two identities, two producer streams, no record of one lost to the other |
+| `multi-group`       | two Data Plane groups with disjoint zones, each its own service              | each group serves its zone and nothing else                              |
+| `temporal-replicas` | two temporal Data Plane Hosts with the coordinator's event store and imports | an occurrence on one replica decides on the other, and after failover    |
 
-Start only observability, for planes running on the host:
-
-```sh
-task lab:observability     # or: make lab-observability
-```
-
-Print the local addresses:
+Start one, then see where it listens:
 
 ```sh
-task lab:where             # or: make lab-where
+task lab:up PROFILE=split-plane   # or: make lab-up PROFILE=split-plane
+task lab:where                    # or: make lab-where
 ```
 
-```text
-Grafana     http://127.0.0.1:7590
-Prometheus  http://127.0.0.1:7591
-Loki        http://127.0.0.1:7592
-Host        http://127.0.0.1:5443   (all-in-one or control)
-Host        http://127.0.0.2:5443   (standalone data)
-Control     http://127.0.0.1:6443
-Data        http://127.0.0.1:7443
+Every Host is reached by its service name inside the lab's network.
+The ports published on the host's loopback are ephemeral, and the certificates name the service, so a client on the host passes `--tls-server-name <service>` with the lab's authority.
+
+Run the gate — every profile on fresh volumes, or one:
+
+```sh
+task lab:test                     # or: scripts/compose-lab.sh
+task lab:test PROFILE=multi-group
+```
+
+Add Prometheus, Grafana and Loki beside a profile, or alone for planes running on the host:
+
+```sh
+COMPOSE_PROFILES=split-plane,observability docker compose -f docker-compose.lab.yml up -d
+task lab:observability            # or: make lab-observability
 ```
 
 Follow logs and stop the lab:
 
 ```sh
 task lab:logs
-task lab:logs SERVICE=grafana
+task lab:logs SERVICE=data-plane
 task lab:down
 task lab:clean
 ```

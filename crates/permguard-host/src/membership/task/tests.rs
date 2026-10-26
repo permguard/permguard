@@ -1836,6 +1836,8 @@ struct Shipping {
     retained: std::sync::Mutex<Vec<Vec<String>>>,
     /// The coordinator boot id each answer was handed back under.
     boots: std::sync::Mutex<Vec<Option<[u8; 16]>>>,
+    /// Every subscription kept, as its task id and epoch.
+    subscribed: std::sync::Mutex<Vec<(String, u64)>>,
 }
 
 impl crate::composition::StreamShipping for Shipping {
@@ -1844,6 +1846,10 @@ impl crate::composition::StreamShipping for Shipping {
         subscription: &crate::composition::Subscribed<'_>,
     ) -> Result<Vec<String>, String> {
         assert_eq!(subscription.task_id, "decisions");
+        self.subscribed
+            .lock()
+            .expect("lock")
+            .push((subscription.task_id.to_owned(), subscription.epoch));
         Ok(if *self.shipped.lock().expect("lock") {
             Vec::new()
         } else {
@@ -1939,6 +1945,35 @@ async fn the_ship_pass_sends_what_the_engine_has_due_and_hands_back_the_answers(
     );
     assert_eq!(acting.ship_due(who()).await, 0, "nothing due");
     let _ = id;
+}
+
+/// TD-3: a manifest the member syncs registers its ship tasks at once, without waiting for the
+/// next pass: a record the plane writes between the sync and that pass opens its run under the
+/// task's fence, and is shipped, instead of landing in an unfenced run nothing ships.
+#[tokio::test]
+async fn a_synced_manifest_registers_its_ship_tasks_before_the_next_pass() {
+    let (c, m) = (
+        Side::new("subscribe-c", true),
+        Side::new("subscribe-m", false),
+    );
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Shipping::default();
+    let acting = Member {
+        shipping: Some(&engine),
+        ..member(&m, &connector)
+    };
+    assert!(engine.subscribed.lock().expect("lock").is_empty());
+    let held = acting.sync(who(), &id).await.expect("synced");
+    assert_eq!(
+        engine.subscribed.lock().expect("lock").clone(),
+        vec![("decisions".to_owned(), held.epoch())],
+        "kept by the sync itself"
+    );
+    assert!(
+        engine.answers.lock().expect("lock").is_empty(),
+        "registered, nothing shipped"
+    );
 }
 
 /// WP-5.4, after the mutants: a store the coordinator cannot reach now backs the subscription off;

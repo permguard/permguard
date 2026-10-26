@@ -516,6 +516,36 @@ fn trails_of(volume: &Volume) -> Dir {
         .expect("trails")
 }
 
+/// TD-3, found by the Compose lab: a trail's directory exists a moment before its `META.cbor`;
+/// a listing taken between the two waits for the trail to be created rather than reading it as a
+/// trail whose `META.cbor` cannot be read.
+#[test]
+fn a_listing_waits_for_a_trail_being_created() {
+    let root = scratch("creating");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let engine = open_engine(&volume, time);
+    let trails = trails_of(&volume);
+    std::thread::scope(|scope| {
+        // What `Inner::trail` holds while it creates one: the directory first, then its META.
+        let creating = engine.inner.open.lock().expect("the lock");
+        trail::directory(&trails, Class::Security, CONTROL, true).expect("the directory");
+        let listing = scope.spawn(|| engine.trails_held());
+        std::thread::sleep(Duration::from_millis(300));
+        Trail::open(&trails, Class::Security, CONTROL, None).expect("its META");
+        drop(creating);
+        let listed = listing
+            .join()
+            .expect("the listing")
+            .expect("no unreadable trail");
+        assert!(
+            listed.contains(&(Class::Security, CONTROL.to_owned())),
+            "{listed:?}"
+        );
+    });
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn a_clock_stepped_back_across_midnight_does_not_write_to_an_earlier_day() {
     let root = scratch("step-back");

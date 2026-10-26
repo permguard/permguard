@@ -1730,6 +1730,7 @@ fn the_host_identity_members_and_grants_command_families_are_complete() {
         &["host", "members", "join", "--help"],
         &["host", "members", "pending", "--help"],
         &["host", "members", "approve", "--help"],
+        &["host", "members", "sync", "--help"],
         &["host", "members", "sessions", "--help"],
         &["host", "members", "verify", "--help"],
         &["host", "grants", "revoke", "plan", "--help"],

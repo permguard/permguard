@@ -595,6 +595,7 @@ impl Member<'_> {
                 ));
             }
         }
+        self.subscribe_shipping();
         // The receipt of a revocation is the coordinator's manifest that ended the membership:
         // revoked, or rejected while it was pending, or expired.
         if action == Action::Revoke
@@ -675,7 +676,24 @@ impl Member<'_> {
                 )
                 .map_err(engine)?;
         }
+        self.subscribe_shipping();
         Ok(())
+    }
+
+    /// Registers the subscriptions of the manifests just accepted (TD-3): a manifest that made a
+    /// ship task live has its fence remembered now, so a record the plane writes before the next
+    /// pass opens its genesis run under that fence and is shipped, rather than landing in an
+    /// unfenced run the pass then ends with nothing to ship it. Logged, never refused: the pass
+    /// registers them again.
+    fn subscribe_shipping(&self) {
+        if let Err(error) = self.register_subscriptions() {
+            tracing::warn!(
+                event.name = "host.membership.subscribe_failed",
+                component = "host",
+                error = %error,
+                "the ship tasks of an accepted manifest could not be registered: the next pass does"
+            );
+        }
     }
 
     /// Re-pins this Host's `ring` on the membership of `task` (WP-4.5): the statement of the

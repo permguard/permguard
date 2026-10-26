@@ -65,7 +65,6 @@ happens there stays there.
 
 ## Not to be confused with `lab/`
 
-`lab/` at the repository root is something else: the configuration of the local
-observability stack — Prometheus, Grafana, Loki, Tempo — that `task lab:up` starts.
+`lab/` at the repository root is something else: the configuration of the local observability stack — Prometheus, Grafana, Loki, Tempo — that `task lab:observability` starts, and the Compose lab's profiles and authority under `lab/compose`.
 These examples are policy workspaces; that is the environment they can be watched
 in.
