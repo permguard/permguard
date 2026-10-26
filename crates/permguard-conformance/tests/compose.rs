@@ -244,8 +244,14 @@ fn a_host_only_reads_the_lab_authority_and_the_coordinator_keeps_no_producer_key
     let all = services(&compose());
     for (name, service) in hosts(&all) {
         let mounts = strings(&service["volumes"]);
-        assert!(mounts.contains(&"lab:/lab:ro".to_owned()), "{name}: {mounts:?}");
-        assert!(!mounts.contains(&"lab:/lab".to_owned()), "{name} may write the authority");
+        assert!(
+            mounts.contains(&"lab:/lab:ro".to_owned()),
+            "{name}: {mounts:?}"
+        );
+        assert!(
+            !mounts.contains(&"lab:/lab".to_owned()),
+            "{name} may write the authority"
+        );
     }
     // The coordinator verifies what members ship under the rings their memberships pinned: no
     // store that would need a producer key file, and no key file named.
@@ -303,7 +309,9 @@ fn no_enrollment_token_is_embedded_in_the_examples_the_chart_or_the_lab() {
             // environment variable.
             let invitation = text.contains("invite_id");
             let secret = text.contains("\"token\"")
-                || text.lines().any(|line| line.trim_start().starts_with("token:"))
+                || text
+                    .lines()
+                    .any(|line| line.trim_start().starts_with("token:"))
                 || text.contains("_TOKEN=");
             if invitation && secret {
                 found.push(path.to_path_buf());
