@@ -461,6 +461,15 @@ pub struct Answered {
 /// still overrides, silence is still not a deny, and a partition that could not answer at all
 /// still makes the result indeterminate.
 pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<Answered> {
+    evaluate_all_on(crate::fanout::Fanout::shared(), work)
+}
+
+/// [`evaluate_all`] on `pool`: the process's own in production, a private one in a test that must
+/// not share its workers with whatever else the test binary runs at the time.
+pub(crate) fn evaluate_all_on(
+    pool: &crate::fanout::Fanout,
+    work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>,
+) -> Vec<Answered> {
     let count = work.len();
     let jobs: Vec<Box<dyn FnOnce() -> Answered + Send + 'static>> = work
         .into_iter()
@@ -488,7 +497,7 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
         })
         .collect();
 
-    match crate::fanout::Fanout::shared().run(jobs) {
+    match pool.run(jobs) {
         Ok(answered) => answered,
         // Every job catches its own panic, so a hole means the pool itself lost a job it had
         // accepted. An answer short of a partition is not this request's answer: every partition
@@ -694,6 +703,10 @@ mod tests {
     /// Not "both were called" — a sequential loop satisfies that. Each evaluator waits on a
     /// barrier the other must reach, so the pair answers only if they overlap in time. A
     /// sequential `evaluate_all` deadlocks here and the test times out rather than passing.
+    ///
+    /// On a pool of its own: the process's pool is shared with every test the binary runs at
+    /// once, and a pool whose queue is full runs jobs on the caller, one after another — the
+    /// documented degradation, which this barrier would turn into a hang.
     #[test]
     fn two_partitions_of_a_profile_are_evaluated_at_the_same_time() {
         struct Meeting(std::sync::Arc<std::sync::Barrier>, &'static str);
@@ -723,7 +736,7 @@ mod tests {
             })
             .collect();
 
-        let answered = evaluate_all(work);
+        let answered = evaluate_all_on(&crate::fanout::Fanout::with_workers(2), work);
         assert_eq!(answered.len(), 2);
         // And in the order they were given, not the order they finished.
         assert_eq!(answered[0].verdict.determining(), ["first".to_owned()]);
