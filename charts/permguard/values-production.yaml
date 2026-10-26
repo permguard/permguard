@@ -40,60 +40,45 @@ controlPlane:
       keys:
         enabled: "true"
         directory: "operations/keys"
-      # The decision log is NOT enabled here, and that is the honest baseline rather than a
-      # missing line. Turning it on needs material this chart cannot invent:
-      #
-      #   * a data-plane signing ring, or the plane refuses to start;
-      #   * a commitment secret and a pseudonymisation key, which the runtime requires;
-      #   * `controlPlane.decisions.producer_keys` — the published keys of each producer, or the
-      #     control plane serves no decision routes at all and the records have nowhere to go;
-      #   * storage that survives a restart for the ring and the spool, per replica.
-      #
-      # A values file that switched it on without those renders and then fails to start, or starts
-      # and loses the producer identity on the first restart — which ends the audit stream it was
-      # turned on for. Supply them in an overlay that owns the cluster's secrets:
-      #
-      #   controlPlane:
-      #     extraConfig:
-      #       controlPlane:
-      #         decisions:
-      #           enabled: "true"
-      #           directory: "data/decisions/store"
-      #           retention: "90d"
-      #           producer_keys:          # each JWKS bound to the ONE pdp it signs for
-      #             - path: trust/data-plane-decisions.jwks
-      #               pdp: data-plane-eu-1
-      #   dataPlane:
-      #     persistence: { enabled: true }  # with persistence.perReplica: true for >1 replica
-      #     extraConfig:
-      #       dataPlane:
-      #         keys: { enabled: "true", directory: "operations/keys" }
-      #         decisions: { log: { enabled: "true" } }
+      # The data plane groups below record every decision (`evidence.mode: required`, the
+      # `production` floor) on their Host's stream and ship it to this Host over their
+      # membership's `decisions.ship` task: nothing here names their keys. Their own material —
+      # the Plane signing ring, the commitment secret and the pseudonymisation key — comes from
+      # the overlay that owns the cluster's secrets, never from this file; a group missing it
+      # refuses to start rather than answer unrecorded.
 
 dataPlane:
   # TLS from a `kubernetes.io/tls` Secret, as the control plane (WP-2.11).
   tls:
     secretName: permguard-data-plane-tls
-  replicaCount: 3
   resources:
     requests:
       cpu: 500m
       memory: 512Mi
     limits:
       memory: 2Gi
-  podDisruptionBudget:
-    enabled: true
-    budget: minAvailable
-    value: 2
-  autoscaling:
-    enabled: true
-    minReplicas: 3
-    maxReplicas: 15
-    targetCPUUtilizationPercentage: 65
-  # A mirror's state is its own: each replica mirrors into its own volume, which is what lets it
-  # scale at all.
-  persistence:
-    enabled: false
+  # One group serving every ledger. A deployment that splits its ledgers across groups lists one
+  # entry per group, with disjoint selectors (TD-1).
+  groups:
+    - name: serving
+      selector: plane/data/*
+      replicas: 3
+      # A replica answers only with recorded decisions (`required`, the `production` floor), so it
+      # keeps its spool and its signing ring on a volume of its own, retained when the group scales
+      # down. The decision log then needs material this chart cannot invent — the Plane signing
+      # ring, the commitment secret, the pseudonymisation key, and the control plane it ships to —
+      # which an overlay that owns the cluster's secrets supplies under `extraConfig` and mounted
+      # Secrets. Without it the pod refuses to start rather than answer unrecorded.
+      evidence: { mode: required }
+      assurance: { profile: production }
+      persistence:
+        enabled: true
+        size: 20Gi
+      podDisruptionBudget:
+        budget: minAvailable
+        value: 2
+      # Fixed replicas: autoscaling a group that keeps evidence waits for the drain controller and
+      # the recovery Job (TD-2).
   # A replicated mirror needs policies to mirror, or it is three pods answering `deny` to
   # everything. The URL alone means every zone and every ledger that control plane lists.
   extraConfig:
@@ -105,11 +90,6 @@ dataPlane:
         # whose Service is named after the release — an address a values file cannot know. Set it
         # here to follow something else, or to reach it over `https` with an authority to check,
         # which is what a deployment that does not trust its own network should do.
-      # The decision log is left off here for the reasons spelled out under `controlPlane`: it
-      # needs a signing ring, a commitment secret, a pseudonymisation key, producer keys on the
-      # control plane, and storage that survives a restart. When an overlay turns it on, its stream
-      # is named by the Host's `host_id` and run; `templates/checks.yaml` refuses a values file or
-      # an `extraEnv` that still sets the retired `pdp_id`.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -117,6 +97,7 @@ dataPlane:
             matchLabels:
               app.kubernetes.io/name: permguard
               app.kubernetes.io/component: data-plane
+              permguard.com/group: serving
           topologyKey: kubernetes.io/hostname
   topologySpreadConstraints:
     - maxSkew: 1
@@ -126,10 +107,11 @@ dataPlane:
         matchLabels:
           app.kubernetes.io/name: permguard
           app.kubernetes.io/component: data-plane
+          permguard.com/group: serving
 
 persistence:
-  # The control plane's catalog, key ring and audit store live here. The data plane is a mirror and
-  # keeps its own state per replica, which is what lets it scale — see the notes in values.yaml.
+  # The control plane's catalog, key ring and audit store live here. Each data plane replica keeps
+  # its own volume, from its group's claim template.
   enabled: true
   size: 20Gi
 

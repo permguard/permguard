@@ -183,6 +183,64 @@ pub fn hold(root: &Path) -> Result<Volume> {
     Volume::lock(root)
 }
 
+/// Moves the volume's claim one generation forward and answers the generation it replaced and the
+/// new one (TD-1).
+///
+/// What an orchestrator that hands the volume to a new process at every start runs before it: each
+/// start supersedes the one before, so a frame a previous process appends after it is recognised as
+/// a stale writer's. With `create`, a missing `root` whose parent exists is created first, owner-only
+/// — the volume directory inside a mount the orchestrator provided, which a server running as a
+/// non-root user can own and keep private where the mount's own root belongs to somebody else. A
+/// missing parent is still refused: that is a mistyped path or a mount that is not there.
+pub fn advance_claim(root: &Path, create: bool) -> Result<(u64, u64)> {
+    if create && !root.exists() {
+        match root.parent() {
+            Some(parent) if parent.is_dir() => {
+                Dir::create_root(root)?;
+                restrict_owner_only(root)?;
+            }
+            _ => {
+                return Err(StorageError::Refused(format!(
+                    "{} has no parent directory to create it in: the volume directory is created \
+                     inside an existing mount, never with it",
+                    root.display()
+                )));
+            }
+        }
+    }
+    if !root.is_dir() {
+        return Err(StorageError::Refused(format!(
+            "{} is not a directory; a claim is written on an existing volume root, a mount point, \
+             and never creates one",
+            root.display()
+        )));
+    }
+    let volume = Volume::lock(root)?;
+    let next = volume.generation.checked_add(1).ok_or_else(|| {
+        StorageError::Refused(format!(
+            "the volume at {} is claimed at the last generation there is",
+            root.display()
+        ))
+    })?;
+    replace_view(&volume.host, VOLUME_CLAIM, VIEW, &next.to_be_bytes())?;
+
+    Ok((volume.generation, next))
+}
+
+/// Narrows a directory this process just created to its owner.
+#[cfg(unix)]
+fn restrict_owner_only(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+        .map_err(|error| StorageError::Refused(format!("restricting {}: {error}", path.display())))
+}
+
+#[cfg(not(unix))]
+fn restrict_owner_only(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
 /// Records `generation` as the volume's claim, for the orchestrator or the recovery operator, and
 /// answers the generation it replaced.
 ///
@@ -404,6 +462,51 @@ mod tests {
             root.join(HOST).join(VOLUME_ID).exists(),
             "the first claim creates the volume"
         );
+    }
+
+    #[test]
+    fn an_advanced_claim_supersedes_every_start_before_it() {
+        let root = scratch("advance");
+        std::fs::create_dir_all(&root).expect("a mount point");
+        assert_eq!(advance_claim(&root, false).expect("first"), (UNCLAIMED, 1));
+        assert_eq!(advance_claim(&root, false).expect("second"), (1, 2));
+        set_claim(&root, 9).expect("an operator's claim");
+        assert_eq!(advance_claim(&root, false).expect("after it"), (9, 10));
+        let volume = Volume::claim(&root, AssuranceProfile::Production).expect("servable");
+        assert_eq!(volume.generation(), 10);
+        // Never beside a holder.
+        let refused = advance_claim(&root, false).expect_err("held");
+        assert!(matches!(refused, StorageError::Held(_)), "{refused}");
+        drop(volume);
+        assert_eq!(advance_claim(&root, false).expect("released"), (10, 11));
+    }
+
+    #[test]
+    fn an_advanced_claim_creates_the_volume_directory_only_inside_an_existing_mount() {
+        let mount = scratch("mount");
+        let root = mount.join("volume");
+        // Without `create`, or without the mount, nothing is created.
+        let refused = advance_claim(&root, true).expect_err("no mount");
+        assert!(matches!(refused, StorageError::Refused(_)), "{refused}");
+        assert!(!mount.exists());
+        std::fs::create_dir_all(&mount).expect("the mount");
+        let refused = advance_claim(&root, false).expect_err("not asked to create");
+        assert!(matches!(refused, StorageError::Refused(_)), "{refused}");
+        assert!(!root.exists());
+
+        assert_eq!(advance_claim(&root, true).expect("created"), (UNCLAIMED, 1));
+        assert!(root.join(HOST).join(VOLUME_ID).exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&root)
+                .expect("there")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o700, "owner-only");
+        }
+        // Once there, `create` changes nothing but the claim.
+        assert_eq!(advance_claim(&root, true).expect("again"), (1, 2));
     }
 
     #[test]

@@ -41,6 +41,8 @@ jobs:
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # The chart's conformance tests (`permguard-conformance/tests/chart.rs`) render it with helm.
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
       - name: the declared MSRV is the one we build with
         run: |
           declared="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
@@ -247,6 +249,8 @@ jobs:
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # The chart's conformance tests (`permguard-conformance/tests/chart.rs`) render it with helm.
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
       - name: clippy and tests, on stable
         run: |
           cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -265,6 +269,8 @@ jobs:
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # The chart's conformance tests (`permguard-conformance/tests/chart.rs`) render it with helm.
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
       - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2
         with:
           tool: cargo-llvm-cov
@@ -274,6 +280,28 @@ jobs:
         run: |
           cargo llvm-cov --workspace --all-features --summary-only \
             | tee "${GITHUB_STEP_SUMMARY}"
+
+  chart-e2e:
+    name: helm chart on a cluster
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The end-to-end run upgrades from the single-group chart, read from its last commit.
+          fetch-depth: 0
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: kind, pinned by digest
+        run: |
+          set -euo pipefail
+          curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+          echo "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  kind" | sha256sum --check
+          sudo install -m 0755 kind /usr/local/bin/kind
+      - name: the data plane image
+        run: docker build --build-arg PACKAGE=permguard-data-plane --build-arg BIN=permguard-data-plane -t permguard/data-plane:e2e .
+      # A group scaled 3 → 1 and back: drained replicas, retained claims, the same identities, and
+      # an upgrade from the single-group chart that keeps its claim (TD-1).
+      - name: scale a group down and up
+        run: ./scripts/chart-e2e.sh permguard/data-plane:e2e
 
   chart:
     name: helm chart
@@ -295,10 +323,9 @@ jobs:
             "${tls}" \
             "--values charts/permguard/values-production.yaml" \
             "${tls} --set allInOne.enabled=true,controlPlane.enabled=false,dataPlane.enabled=false" \
-            "${tls} --set persistence.enabled=true,dataPlane.persistence.enabled=false" \
-            "${tls} --set persistence.enabled=true,dataPlane.replicaCount=1" \
+            "${tls} --set persistence.enabled=true" \
+            "${tls} --set dataPlane.replicaCount=1" \
             "${tls} --set metrics.serviceMonitor.enabled=true" \
-            "${tls} --set dataPlane.autoscaling.enabled=true" \
             "${tls} --set image.registry=ghcr.io" \
             "--set developmentMode=true,autogenerate=true"; do
             echo "helm template ${values}"
@@ -331,13 +358,12 @@ jobs:
             echo "the chart rendered an install that installs nothing" >&2
             exit 1
           fi
-          # One PersistentVolumeClaim mounted in three replicas is three mirrors writing over each
-          # other. The chart gives a component one claim, so persistence and replication are only
-          # compatible where each replica gets its own state — and asking for the other shape has
-          # to fail at template time rather than in a cluster at three in the morning.
+          # A data plane group that records evidence keeps a volume per replica, and scaling it on
+          # load waits for drain recovery (TD-2); every other group refusal is a named test of
+          # `crates/permguard-conformance/tests/chart.rs`.
           if helm template permguard charts/permguard ${tls} \
-               --set persistence.enabled=true > /dev/null 2>&1; then
-            echo "the chart rendered a replicated data plane sharing one volume" >&2
+               --set dataPlane.autoscaling.enabled=true > /dev/null 2>&1; then
+            echo "the chart rendered an autoscaled data plane group that keeps evidence" >&2
             exit 1
           fi
           # A control plane holds the authority: the catalog, the refs, the key ring. Two of them

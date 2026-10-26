@@ -2,7 +2,7 @@
 Copyright (c) 2022 Nitro Agility S.r.l.
 SPDX-License-Identifier: Apache-2.0
 */}}
-{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane }}
 {{- if $plane.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -38,24 +38,7 @@ data:
     {{- $public := dict "public" (dict "http" $http "grpc" $grpc) }}
     {{- $_ := set $config $section $public }}
     {{- $merged := mergeOverwrite $config ($plane.extraConfig | default dict) }}
-    {{- /*
-    A data plane that mirrors and names no server follows this release's own control plane.
-    A values file cannot write that address: the Service is named after the release, so a
-    literal `permguard-control-plane` is only right when the release happens to be called
-    `permguard` — and wrong in a way that renders, installs, and mirrors nothing.
-    */ -}}
-    {{- $mirrors := dig "dataPlane" "mirrors" dict $merged }}
-    {{- if and (eq $component "data-plane") $mirrors (not (dig "servers" list $mirrors)) }}
-    {{- $server := dict "url" (include "permguard.controlPlaneUrl" $) }}
-    {{- /*
-    A control plane serving TLS from its Secret is verified against the authority the data plane's
-    own Secret carries as `ca.crt` (one issuer signing both, as cert-manager writes it) (WP-2.11).
-    */ -}}
-    {{- if and (hasPrefix "https://" $server.url) $plane.tls.secretName }}
-    {{- $_ := set $server "tls" (dict "ca_file" "/etc/permguard-tls/ca.crt") }}
-    {{- end }}
-    {{- $_ := set $mirrors "servers" (list $server) }}
-    {{- end }}
+    {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" (include "permguard.planeAssurance" $plane | fromJson) | fromYaml) }}
     {{- toYaml $merged | nindent 4 }}
 ---
 {{- end }}
@@ -88,5 +71,6 @@ data:
     {{- $_ := set $config $section (dict "public" (dict "http" $http "grpc" $grpc)) }}
     {{- end }}
     {{- $merged := mergeOverwrite $config (.Values.allInOne.extraConfig | default dict) }}
+    {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" (include "permguard.planeAssurance" .Values.allInOne | fromJson) | fromYaml) }}
     {{- toYaml $merged | nindent 4 }}
 {{- end }}

@@ -19,6 +19,33 @@ is cut.
 
 ### Added
 
+- **The chart deploys the data plane as named groups (TD-1).**
+  `dataPlane.groups[]` renders one group per entry, and what a group leaves out comes from `dataPlane.groupDefaults`.
+  A group states its name, its membership `selector`, `replicas` or `autoscaling`, `service`, `evidence.mode`, `persistence`, `assurance.profile` and `assurance.custody`, and `shutdown`.
+  It may also state its own disruption budget, placement and network peers.
+  Each group has its own workload, Service, NetworkPolicy, disruption budget, autoscaler and membership manifest, all selected by the `permguard.com/group` label.
+  A group that keeps a volume is a StatefulSet with one claim template, and its claims are retained on scale-down and on deletion.
+  Its claims ask `ReadWriteOncePod` from `production` on Kubernetes 1.29 or later.
+  Its `preStop` hook runs `drain`, and its grace period is its `shutdown.timeoutSeconds` plus five seconds.
+  The server's volume is the directory `/var/lib/permguard/volume` inside the mount, created for the server's user by the first Pod.
+  An init container moves the volume's claim one generation forward in every Pod, so a `production` replica has the claim it needs and a previous Pod becomes a stale writer.
+  Each group renders `<group>-membership`: the selector, minimum assurance and `tasks.json` that `permguard host members invite create` takes for its replicas.
+  `values.schema.json` closes a group's keys: a key a group does not know is refused rather than ignored.
+- **The chart states every Host's assurance profile and refuses what the profile refuses (TD-1).**
+  The control plane and the all-in-one state theirs under their own `assurance`.
+  A `regulated` Host is refused when `host.identity` or `host.operations` is not in `pkcs11` or `kms` custody.
+  It is also refused when terminated upstream, on TLS 1.2, with an experimental runtime, or in `developmentMode`.
+  The `development` custody is refused above `development`, and a `pkcs11` or `kms` custody without the references Bootstrap needs is refused at every profile.
+  The chart also refuses duplicate or malformed group names, overlapping or malformed selectors, a selector outside `plane/data`, and a task wider than its membership.
+  It refuses evidence or temporal history without a volume, a claim retention other than `Retain`, a shared access mode, and autoscaling a group that keeps a volume.
+  It refuses a replicated temporal group without a declared shared consistency, and a drain that leaves no time to release the volume.
+  `task check:chart` lints the chart and runs its rendering tests; `scripts/chart-e2e.sh` scales a group `3 → 1` and back on a kind cluster.
+- **`drain`, for a container's `preStop` hook (TD-1).**
+  Every server binary answers `drain [--pid 1] [--wait 0]`: it sends SIGTERM to the server in its container and returns.
+  With `--wait <seconds>` it waits for the server to exit, and fails when the server is still running at the end.
+- **`volume claim --next [--create]` (TD-1).**
+  `volume claim --volume <directory> --next` moves the claim one generation forward, for an orchestrator that claims the volume before every Pod; `--generation <n>` stays for the operator.
+  With `--create` it first makes a missing volume directory, owner-only, inside an existing mount, and refuses a missing mount.
 - **A ledger's serving members and its evidence anchors from the command line (TC-5).**
   `permguard ledgers get` prints the members assigned to serve the ledger, their lease and last session, the assurance they declared (never shown as verified) and their last member-reported progress, alike over REST and gRPC.
   `permguard evidence anchors <zone> <ledger>` prints the retained prefix anchors of the ledger's decision and event streams through the Host listener, under `streams.read`, and says for each whether the Host serves the stream type and whether its stream list names the ledger.
@@ -581,6 +608,18 @@ is cut.
   A denial at a listener's gate (`unauthenticated`, `forbidden`) is reported with its code and no class over REST as over gRPC, exit 64.
 
 ### Changed
+
+- **The chart's data plane objects are named after their group, and default to recorded evidence (TD-1).**
+  The data plane workload, Services, ConfigMap, disruption budget, autoscaler and NetworkPolicy are named `<release>-data-plane-<group>`.
+  A release that sets no `dataPlane.groups` renders the one group `default`, selector `plane/data/*`.
+  That group takes the single-group keys `dataPlane.replicaCount`, `autoscaling`, `persistence`, `podDisruptionBudget` and `service`, which are refused beside `groups`.
+  Upgrading from the single-group chart recreates the data plane under the new names, and clients that reached `<release>-data-plane` reach `<release>-data-plane-default`.
+  Each new replica starts on a new volume with a new Host identity.
+  The old chart's claim `<release>-data-plane` is kept on upgrade (`helm.sh/resource-policy: keep`) and no longer mounted, and the claims of its `perReplica` StatefulSet stay as Kubernetes left them.
+  They may hold decisions and events the old replicas did not ship: recover them before deleting the claims.
+  A group defaults to `production`, `evidence.mode: required` and a volume per replica, as the profile requires.
+  Its decision log is rendered on and closed when full, and needs its signing ring, commitment secret and pseudonymisation key from the deployment's secrets.
+  `persistence.perReplica` and the chart-wide `persistence.enabled` now apply to the control plane and the all-in-one only.
 
 - **Discovery names the Host, every state and every interface's stage.**
   The process document at `/.well-known/server-configuration` on the telemetry listener now carries `host_id`, once the Host's identity is open, the Host's `state`, and each plane's `state`, the lifecycle phases as they are when it is asked for.

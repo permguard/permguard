@@ -10,7 +10,7 @@ exposes the Server Host operations surface to Prometheus and the kubelet. It is 
 NetworkPolicy, an ingress or a mesh can allow one without allowing the other: process discovery and
 metrics describe the inside of the process, and health tells an attacker when it is struggling.
 */}}
-{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane }}
 {{- if $plane.enabled }}
 apiVersion: v1
 kind: Service

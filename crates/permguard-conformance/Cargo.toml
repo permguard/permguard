@@ -37,6 +37,8 @@ tonic-prost.workspace = true
 tonic-prost-build.workspace = true
 
 [dev-dependencies]
+# The chart's rendered manifests, read back as data (`chart`).
+serde_norway.workspace = true
 permguard-decisions.workspace = true
 permguard-events.workspace = true
 permguard-host.workspace = true

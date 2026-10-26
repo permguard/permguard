@@ -1565,3 +1565,22 @@ async fn test_a_forensic_volume_is_never_served() {
         .await
         .expect("a volume restored for disaster recovery serves");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_drain_is_dispatched_without_a_configuration() {
+    // A server already gone: the command answers without reading any configuration file.
+    let mut server = std::process::Command::new("sh")
+        .args(["-c", "exit 0"])
+        .spawn()
+        .expect("the stand-in starts");
+    let pid = server.id();
+    server.wait().expect("it exits and is reaped");
+
+    let out = output_of(&app(), &Action::Named(Command::Drain { pid, wait: 0 })).await;
+
+    assert_eq!(
+        out,
+        format!("no server is running as process {pid}: nothing to drain\n")
+    );
+}

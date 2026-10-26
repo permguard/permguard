@@ -25,6 +25,7 @@ pub mod legacy_spool;
 pub mod logging;
 pub mod offline;
 pub mod plane;
+pub mod prestop;
 pub mod repin;
 pub mod shipping;
 pub mod signal;

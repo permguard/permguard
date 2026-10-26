@@ -2,7 +2,7 @@
 Copyright (c) 2022 Nitro Agility S.r.l.
 SPDX-License-Identifier: Apache-2.0
 */}}
-{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane }}
 {{- if $plane.enabled }}
 {{- $perReplica := include "permguard.perReplica" (dict "root" $ "plane" $plane) }}
 apiVersion: apps/v1

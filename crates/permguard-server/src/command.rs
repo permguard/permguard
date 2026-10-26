@@ -141,6 +141,22 @@ pub enum Command {
         #[command(subcommand)]
         what: MigrateCommand,
     },
+    /// Ask the server in this container to drain: what a `preStop` hook runs, so the drain
+    /// starts inside the one grace budget (TD-1).
+    Drain {
+        /// The server's process id: the container's first process unless said otherwise.
+        #[arg(long, default_value_t = 1)]
+        pid: u32,
+        /// How long to wait for it to stop, in seconds; 0, the default, asks and returns, which is
+        /// what a hook inside the server's own container needs.
+        #[arg(
+            long,
+            value_name = "SECONDS",
+            default_value_t = 0,
+            value_parser = clap::value_parser!(u64).range(0..=86_400)
+        )]
+        wait: u64,
+    },
 }
 
 /// What can be asked of the subsystem layouts from the command line (WP-1.9). Every command runs
@@ -276,8 +292,23 @@ pub enum VolumeCommand {
         volume: PathBuf,
 
         /// The new lease generation; higher than the current one.
-        #[arg(long, value_name = "N")]
-        generation: u64,
+        #[arg(
+            long,
+            value_name = "N",
+            required_unless_present = "next",
+            conflicts_with = "next"
+        )]
+        generation: Option<u64>,
+
+        /// Move the claim one generation forward instead: what an orchestrator runs before every
+        /// start of the process that owns the volume (TD-1).
+        #[arg(long)]
+        next: bool,
+
+        /// With `--next`, create the volume directory when it is missing and its parent exists:
+        /// the directory inside a mount, which the server can own and keep private.
+        #[arg(long, conflicts_with = "generation")]
+        create: bool,
     },
     /// Check everything on the volume that startup does not read, and repair nothing.
     ///

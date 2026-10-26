@@ -800,6 +800,14 @@ impl App {
     /// the path a process takes exactly once. [`App::dispatch`] deliberately does not do it, because a
     /// test or a downstream command may take that path more than once in the same process.
     async fn run_action(&self, action: &Action) -> Result<()> {
+        // `drain` is a signal and nothing else: no configuration to read, no log pipeline to start,
+        // so nothing in the container's environment can stop a `preStop` hook from asking.
+        if let Action::Named(Command::Drain { pid, wait }) = action {
+            let mut out = io::stdout();
+            crate::prestop::drain(*pid, std::time::Duration::from_secs(*wait), &mut out).await?;
+            out.flush().context("flushing standard output")?;
+            return Ok(());
+        }
         let config = self.config_for(action)?;
 
         // Held for the whole run: dropping it flushes and shuts down the
@@ -830,6 +838,9 @@ impl App {
 
     /// Runs one action against a caller-provided output stream.
     pub async fn dispatch_to(&self, action: &Action, out: &mut dyn Write) -> Result<()> {
+        if let Action::Named(Command::Drain { pid, wait }) = action {
+            return crate::prestop::drain(*pid, std::time::Duration::from_secs(*wait), out).await;
+        }
         let config = self.config_for(action)?;
 
         self.execute(action, &config, out).await
@@ -855,8 +866,17 @@ impl App {
                 what: StreamsCommand::Verify { directory, keys },
             }) => verify_streams(directory, keys, out),
             Action::Named(Command::Volume {
-                what: VolumeCommand::Claim { volume, generation },
-            }) => claim_volume(volume, *generation, out),
+                what:
+                    VolumeCommand::Claim {
+                        volume,
+                        generation,
+                        next,
+                        create,
+                    },
+            }) => match (generation, next) {
+                (Some(generation), false) => claim_volume(volume, *generation, out),
+                _ => advance_volume_claim(volume, *create, out),
+            },
             Action::Named(Command::Volume {
                 what: VolumeCommand::Verify { volume, sample },
             }) => verify_volume(volume, *sample, &self.verified_trees, out),
@@ -871,6 +891,9 @@ impl App {
                 out,
             ),
             Action::Named(Command::Migrate { what }) => migrate(what, out),
+            Action::Named(Command::Drain { pid, wait }) => {
+                crate::prestop::drain(*pid, std::time::Duration::from_secs(*wait), out).await
+            }
         }
     }
 
@@ -2976,6 +2999,21 @@ pub fn migrate_on(
 /// Records a new claim generation on the volume at `root`, as the orchestrator or the operator asks.
 fn claim_volume(root: &Path, generation: u64, out: &mut dyn Write) -> Result<()> {
     let previous = permguard_host::storage::volume::set_claim(root, generation)
+        .with_context(|| format!("claiming the volume at {}", root.display()))?;
+
+    writeln!(
+        out,
+        "the volume at {} is claimed at generation {generation} (was {previous})",
+        root.display()
+    )
+    .context("writing the result")?;
+
+    Ok(())
+}
+
+/// Moves the claim of the volume at `root` one generation forward (TD-1).
+fn advance_volume_claim(root: &Path, create: bool, out: &mut dyn Write) -> Result<()> {
+    let (previous, generation) = permguard_host::storage::volume::advance_claim(root, create)
         .with_context(|| format!("claiming the volume at {}", root.display()))?;
 
     writeln!(

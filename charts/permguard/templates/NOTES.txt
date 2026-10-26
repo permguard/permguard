@@ -14,26 +14,44 @@ The two planes, each with a service of its own:
 {{ if .Values.controlPlane.enabled }}
   control  {{ include "permguard.fullname" . }}-control-plane:{{ .Values.controlPlane.ports.http }}
 {{- end }}
+{{- $groups := list }}
 {{- if .Values.dataPlane.enabled }}
-  data     {{ include "permguard.fullname" . }}-data-plane:{{ .Values.dataPlane.ports.http }}
+{{- $groups = (include "permguard.dataPlaneGroups" . | fromJson).groups }}
+{{- range $groups }}
+  data     {{ .base }}:{{ $.Values.dataPlane.ports.http }}  (group {{ .name }}, {{ .selector }}, {{ .assurance.profile }})
+{{- end }}
 {{- end }}
 
 Reach them from your machine, and ask them what they are:
 
   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "permguard.fullname" . }}-control-plane {{ .Values.controlPlane.ports.http }}:{{ .Values.controlPlane.ports.http }} &
-  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "permguard.fullname" . }}-data-plane {{ .Values.dataPlane.ports.http }}:{{ .Values.dataPlane.ports.http }} &
+{{- with $groups }}
+  kubectl --namespace {{ $.Release.Namespace }} port-forward svc/{{ (first .).base }} {{ $.Values.dataPlane.ports.http }}:{{ $.Values.dataPlane.ports.http }} &
+{{- end }}
   permguard inspect
+{{- with $groups }}
+
+Each data plane replica enrolls with its group's membership: the ConfigMap `<group>-membership`
+holds the selector, the minimum assurance and `tasks.json` that
+`permguard host members invite create --selector … --min-assurance … --tasks tasks.json` takes, one
+invitation per replica.
+{{- end }}
 {{- end }}
 
 The Server Host operations surface has a service of its own and is never part of the public plane
 service. It answers process discovery, liveness, readiness, version and metrics on
 {{ if .Values.allInOne.enabled }}{{ .Values.allInOne.ports.telemetry }}{{ else }}{{ .Values.controlPlane.ports.telemetry }}{{ end }}; metrics are under `/metrics`.
 
-{{ if not .Values.persistence.enabled }}
-NOTE: persistence is off, so each pod keeps its keys and its audit trail in an emptyDir. A restart
+{{ if and (not .Values.persistence.enabled) (or .Values.controlPlane.enabled .Values.allInOne.enabled) }}
+NOTE: persistence is off, so the control plane keeps its keys and its audit trail in an emptyDir. A restart
       mints new signing keys{{ if .Values.autogenerate }} — `autogenerate` is on{{ end }}, which is
       fine for a test environment and wrong for anything issuing tokens somebody else verifies. Set
       `persistence.enabled=true` for a real installation.
+{{- end }}
+{{- with (lookup "v1" "PersistentVolumeClaim" .Release.Namespace (printf "%s-data-plane" (include "permguard.fullname" .))) }}
+
+NOTE: the claim {{ .metadata.name }} of the single-group data plane is kept and no longer mounted.
+      It may hold decisions and events that replica did not ship: recover them before deleting it.
 {{- end }}
 {{- if .Values.developmentMode }}
 

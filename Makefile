@@ -21,7 +21,7 @@ REPO_DIR := $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
 profile = $(if $(RELEASE),--release)
 scope = $(if $(PKG),-p $(PKG),--workspace)
 
-.PHONY: check-boundaries check-durability check-mutations fuzz clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems check-vectors notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
+.PHONY: check-boundaries check-chart check-durability check-mutations fuzz clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems check-vectors notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
 
 build: ## Build every Permguard crate.
 	cargo build $(scope) $(profile) $(ARGS)
@@ -193,6 +193,10 @@ prepare-release: ## Move the repository to a version, so that tagging it is safe
 
 check-boundaries: ## Check that every untrusted decoder is registered, bounded and fuzzed.
 	cargo test -p permguard-conformance --test boundaries --locked
+
+check-chart: ## Lint the Helm chart and run its rendering tests; `make test` runs them too, so both need helm.
+	helm lint charts/permguard --values charts/permguard/values-production.yaml
+	cargo test -p permguard-conformance --test chart --locked
 
 check-durability: ## Check that every durability primitive lives in the storage library or is allow-listed.
 	cargo test -p permguard-conformance --test durability --locked
