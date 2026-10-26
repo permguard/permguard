@@ -11,20 +11,20 @@
 //!
 //! The upgrade an operator runs on it, with today's binary:
 //!
-//! | Step                                   | What it proves                                                        |
-//! | -------------------------------------- | --------------------------------------------------------------------- |
-//! | start with the baseline's versions     | refused, naming the two key versions to raise (WP-3.3)                 |
-//! | raise them and start                   | the server migrates the audit chain, the decision spool and the rings itself, and answers as the baseline did |
-//! | `migrate events`, offline              | the shipped legacy event history is archived                          |
-//! | `migrate finalize`, every subsystem    | each old generation removed; the rollback horizon ends there          |
-//! | `volume verify` and `audit verify`     | nothing on the volume is damaged; the legacy chain and its seal verify |
-//! | start again                            | the same answers                                                      |
+//! | Step                                | What it proves                                                                                                                           |
+//! | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+//! | start with the baseline's versions  | refused, naming the two key versions to raise (WP-3.3)                                                                                   |
+//! | raise them and start                | the server migrates the audit chain, the decision spool and the rings itself, and answers as the baseline did                            |
+//! | `migrate events`, offline           | refused while the Control Plane's store sits inside the history; once it is moved out, the shipped history is archived, past the horizon |
+//! | `migrate finalize`, every subsystem | each old generation removed; the rollback horizon ends there                                                                             |
+//! | `volume verify` and `audit verify`  | nothing on the volume is damaged; the legacy chain and its seal verify                                                                   |
+//! | start again                         | the same answers                                                                                                                         |
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
+use std::process::{Child, Command, Output};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -38,6 +38,13 @@ const SUBSYSTEMS: [&str; 6] = [
     "keys-data-attest",
     "keys-host-operations",
 ];
+
+/// The event journal's retention: the least this build admits, what its temporal runtimes look
+/// back (a day) with the lateness and the skew below.
+const RETENTION_SECONDS: u64 = 86_400 + 5 * 60 + 30;
+/// How far behind now the legacy history's archive reads it as drained: the retention, the
+/// lateness and the skew again (`permguard_events::archive::horizon`).
+const ARCHIVE_HORIZON: Duration = Duration::from_secs(RETENTION_SECONDS + 5 * 60 + 30);
 
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/legacy/baseline-8390f612")
@@ -91,10 +98,8 @@ struct Upgrade {
 
 impl Upgrade {
     fn new(tag: &str) -> Self {
-        let dir = std::env::temp_dir().join(format!(
-            "permguard-baseline-{tag}-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("permguard-baseline-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let volume = dir.join("volume");
         copy_tree(&fixture().join("volume"), &volume);
@@ -155,7 +160,7 @@ dataPlane:
   events:
     enabled: \"true\"
     directory: data/events
-    retention: {{ minimum: 48h, allowed_lateness: 5m, clock_skew: 30s }}
+    retention: {{ minimum: {RETENTION_SECONDS}s, allowed_lateness: 5m, clock_skew: 30s }}
     destination: {{ url: \"http://127.0.0.1:{control}\" }}
     pull: {{ mode: local }}
 operations:
@@ -166,6 +171,27 @@ operations:
     pseudonym: {{ enabled: true, key_ref: audit-pseudonym, key_version: \"{pseudonym}\" }}
 ",
                 volume = self.volume.display(),
+            ),
+        )
+        .expect("the configuration writes");
+    }
+
+    /// The operator's step the archive asks for: the baseline kept the Control Plane's event store
+    /// inside the legacy event history, which `migrate finalize` removes whole, so the store moves
+    /// out of it, and the configuration with it.
+    fn move_the_event_store_out(&self) {
+        std::fs::rename(
+            self.volume.join("data/events/store"),
+            self.volume.join("data/events-store"),
+        )
+        .expect("the event store moves");
+        let config = std::fs::read_to_string(&self.config).expect("the configuration");
+        assert!(config.contains("directory: data/events/store,"));
+        std::fs::write(
+            &self.config,
+            config.replace(
+                "directory: data/events/store,",
+                "directory: data/events-store,",
             ),
         )
         .expect("the configuration writes");
@@ -357,6 +383,10 @@ fn test_the_capture_is_the_baselines() {
     assert_eq!(capture["decided"]["gateway-permit"], true);
     assert_eq!(capture["temporal"]["read-before-login"], false);
     assert_eq!(capture["temporal"]["read-inside-window"], true);
+    assert!(
+        capture["captured_at"].as_u64().is_some(),
+        "the recovery test reads the archive's horizon from the capture's time"
+    );
     // The stores the migrations read, as the baseline laid them out.
     let volume = fixture().join("volume");
     for store in [
@@ -367,7 +397,10 @@ fn test_the_capture_is_the_baselines() {
         "data/decisions/spool",
         "data/events",
     ] {
-        assert!(volume.join(store).exists(), "the baseline volume holds {store}");
+        assert!(
+            volume.join(store).exists(),
+            "the baseline volume holds {store}"
+        );
     }
 }
 
@@ -382,10 +415,7 @@ fn test_the_baseline_volume_refuses_to_start_until_its_key_versions_are_raised()
         .start()
         .err()
         .expect("the baseline's pseudonym version is refused");
-    assert!(
-        refused.contains("audit.pseudonym.key_version"),
-        "{refused}"
-    );
+    assert!(refused.contains("audit.pseudonym.key_version"), "{refused}");
 
     let upgrade = Upgrade::new("zone-keys");
     upgrade.configure("v2", "v1");
@@ -420,16 +450,61 @@ fn test_the_baseline_volume_recovers_through_every_migration() {
             upgrade.config.to_str().expect("UTF-8"),
         ])
     };
+    // It is archived only once older than the archive's horizon, a day and some past the capture.
+    // The capture is fixed in the past, so every run from then on takes the whole path; a run
+    // inside that first day can only prove the refusal, and stops there.
+    let captured = captured()["captured_at"]
+        .as_u64()
+        .expect("the capture's time");
+    let drained_at = std::time::UNIX_EPOCH
+        + Duration::from_secs(captured)
+        + ARCHIVE_HORIZON
+        + Duration::from_secs(60);
+    if std::time::SystemTime::now() < drained_at {
+        let refused = archive();
+        assert!(!refused.status.success(), "archived inside the horizon");
+        assert!(
+            text(&refused).contains("a loaded window may still read"),
+            "{}",
+            text(&refused)
+        );
+        eprintln!(
+            "the capture is inside the archive's horizon until {drained_at:?}: the refusal is \
+             proven, the rest waits for it"
+        );
+        return;
+    }
+    // Until the shipper sent it the history is refused as undrained, and the server comes back for
+    // a few more rounds; once drained, it is refused while the Control Plane's store sits inside
+    // it, naming the store, until the operator moves the store out.
+    let mut moved = false;
     let mut archived = archive();
-    for _ in 0..5 {
+    for _ in 0..6 {
         if archived.status.success() {
             break;
         }
-        let server = upgrade.start().expect("the upgraded server starts");
-        std::thread::sleep(Duration::from_secs(5));
-        server.stop();
+        if text(&archived).contains("move them out of it") {
+            assert!(!moved, "{}", text(&archived));
+            assert!(
+                text(&archived).contains("store/CURSOR_KEY"),
+                "{}",
+                text(&archived)
+            );
+            upgrade.move_the_event_store_out();
+            moved = true;
+        } else {
+            assert!(
+                text(&archived).contains("a loaded window may still read"),
+                "{}",
+                text(&archived)
+            );
+            let server = upgrade.start().expect("the upgraded server starts");
+            std::thread::sleep(Duration::from_secs(5));
+            server.stop();
+        }
         archived = archive();
     }
+    assert!(moved, "the store inside the history was never refused");
     assert!(archived.status.success(), "{}", text(&archived));
 
     let status = upgrade.offline(&["migrate", "status", "--volume", upgrade.volume()]);
@@ -437,9 +512,9 @@ fn test_the_baseline_volume_recovers_through_every_migration() {
     let status = text(&status);
     for subsystem in SUBSYSTEMS {
         assert!(
-            status
-                .lines()
-                .any(|line| line.starts_with(&format!("{subsystem}:")) && line.contains("committed")),
+            status.lines().any(
+                |line| line.starts_with(&format!("{subsystem}:")) && line.contains("committed")
+            ),
             "{subsystem} is not committed:\n{status}"
         );
     }
@@ -454,11 +529,18 @@ fn test_the_baseline_volume_recovers_through_every_migration() {
             "--subsystem",
             subsystem,
         ]);
-        assert!(finalized.status.success(), "{subsystem}: {}", text(&finalized));
+        assert!(
+            finalized.status.success(),
+            "{subsystem}: {}",
+            text(&finalized)
+        );
     }
     let status = text(&upgrade.offline(&["migrate", "status", "--volume", upgrade.volume()]));
     assert_eq!(
-        status.lines().filter(|line| line.contains("(idle)")).count(),
+        status
+            .lines()
+            .filter(|line| line.contains("(idle)"))
+            .count(),
         SUBSYSTEMS.len(),
         "{status}"
     );
@@ -477,7 +559,11 @@ fn test_the_baseline_volume_recovers_through_every_migration() {
 
     let verified = upgrade.offline(&["volume", "verify", "--volume", upgrade.volume()]);
     assert!(verified.status.success(), "{}", text(&verified));
-    assert!(text(&verified).contains(" 0 findings"), "{}", text(&verified));
+    assert!(
+        text(&verified).contains(" 0 findings"),
+        "{}",
+        text(&verified)
+    );
     let audited = upgrade.offline(&[
         "audit",
         "verify",

@@ -87,7 +87,8 @@ claim_refused=false
 if "${server}" volume claim --volume "${volume}" --generation 2 >"${work}/claim-beside.log" 2>&1; then
     fail "the claim moved beside its holder"
 fi
-claim_refused=true
+grep -q "held by another process" "${work}/claim-beside.log" && claim_refused=true
+"${claim_refused}" || fail "the claim failed for another reason: $(tail -3 "${work}/claim-beside.log")"
 
 # Fencing completes: the predecessor stops, the claim moves forward, and only then the successor writes.
 stop "${predecessor}"

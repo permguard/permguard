@@ -109,6 +109,9 @@ submit requests/2-read-inside-window.json >"${work}/inside-window.json"
 
 # A batch every second: three intervals ship what was recorded.
 sleep 4
+# When the history was written, in epoch seconds: the newest event is no later. Its archive waits
+# until then plus the retention, which the recovery test reads from here.
+captured_at="$(date -u +%s)"
 
 kill -TERM "${pid}"
 wait "${pid}" || true
@@ -119,7 +122,7 @@ mkdir -p "${out}"
 cp -R "${work}/volume" "${out}/volume"
 find "${out}/volume" -name LOCK -type f -exec sh -c ': >"$1"' _ {} \;
 find "${out}/volume" -type d -empty -delete
-jq -n --arg commit "$(git -C "${worktree}" rev-parse HEAD)" \
+jq -n --arg commit "$(git -C "${worktree}" rev-parse HEAD)" --argjson captured_at "${captured_at}" \
     --slurpfile permit "${work}/permit.json" --slurpfile deny "${work}/deny.json" \
     --slurpfile gateway "${work}/gateway-permit.json" \
     --slurpfile before "${work}/before-login.json" --slurpfile inside "${work}/inside-window.json" \
@@ -127,6 +130,7 @@ jq -n --arg commit "$(git -C "${worktree}" rev-parse HEAD)" \
       decided: {permit: $permit[0].decision, deny: $deny[0].decision,
                 "gateway-permit": $gateway[0].decision},
       temporal: {ledger: "agent-governance", example: "examples/dogwood-session-access",
-                 "read-before-login": $before[0].decision, "read-inside-window": $inside[0].decision}}' \
+                 "read-before-login": $before[0].decision, "read-inside-window": $inside[0].decision},
+      captured_at: $captured_at}' \
     >"${out}/capture.json"
 echo "captured $(find "${out}/volume" -type f | wc -l | tr -d ' ') files into ${out}"

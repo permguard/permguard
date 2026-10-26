@@ -59,14 +59,15 @@ fn uploads(job: &Value) -> String {
         .join("\n")
 }
 
+/// Whether a permission set grants any write: a map with one `write`, or `write-all`.
 fn grants_write(permissions: Option<&Value>) -> bool {
-    permissions
-        .and_then(Value::as_mapping)
-        .is_some_and(|permissions| {
-            permissions
-                .values()
-                .any(|level| level.as_str() == Some("write"))
-        })
+    match permissions {
+        Some(Value::String(all)) => all == "write-all",
+        Some(Value::Mapping(permissions)) => permissions
+            .values()
+            .any(|level| level.as_str() == Some("write")),
+        _ => false,
+    }
 }
 
 /// Whether `job` may write: its own permissions, or the workflow's when it declares none.

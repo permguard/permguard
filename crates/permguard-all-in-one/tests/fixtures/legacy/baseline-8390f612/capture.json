@@ -13,5 +13,6 @@
     "example": "examples/dogwood-session-access",
     "read-before-login": false,
     "read-inside-window": true
-  }
+  },
+  "captured_at": 1793027347
 }

@@ -22,12 +22,18 @@ is cut.
 - **Restore and split-brain drills, and the baseline volume recovered through every migration (WP-7.7).**
   `scripts/drill-restore.sh` runs the restore drill on the Compose lab's `split-plane` profile.
   It takes an application-consistent backup of the Data Plane, answers decisions the backup does not hold, loses the volume, and restores the verified snapshot in `dr` mode.
-  The restored Data Plane must come back as the same Host under a new boot, with its memberships active, serving its ledger and shipping every record it writes after the restore.
+  The restored Data Plane must come back as the same Host under a new boot, with its memberships active and serving its ledger.
+  Its snapshot's decisions run is behind what the coordinator acknowledged, and the drill checks that the coordinator fences it off.
+  The coordinator takes none of its records, keeps every one it acknowledged and suspends the shipping membership.
+  The drill's record names what it found: no operator command opens the approved successor of a fenced run yet, so shipping after a `dr` restore stays suspended.
   `scripts/drill-split-brain.sh` proves on one volume that a successor started beside its predecessor, or a claim moved beside it, is refused before anything is written.
   Each drill writes a JSON record of what it proved and of what it did not.
-  The new `drills` workflow runs both every week, the split-brain drill also on a cluster through `scripts/chart-takeover.sh`; the release pipeline runs them against the release, never blocking it, and attaches the records.
+  The new `drills` workflow runs both every week, the split-brain drill also on a cluster through `scripts/chart-takeover.sh`.
+  The release pipeline runs them against the release, never blocking it, and attaches the records.
   `crates/permguard-all-in-one/tests/fixtures/legacy/baseline-8390f612` is the whole volume an all-in-one of the plan's baseline commit wrote, captured by `scripts/capture-baseline-volume.sh`.
   A test starts today's server on it, runs every migration to `finalize`, and checks that the same requests get the same decisions before and after.
+  Upgrading that layout takes one manual step: the baseline kept the Control Plane's event store (`controlPlane.events.directory: data/events/store`) inside the legacy event history.
+  `migrate events` refuses to archive the history while the store is there, naming its files; move the store out and point the configuration at its new place, then archive.
   The legacy readers and the first-contact paths stay: they are removed once a release has carried the membership-driven paths, as the convergence order requires.
 
 - **A serving gate before every release, and a failpoint for the no-network invariant (TS-4).**

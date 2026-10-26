@@ -208,6 +208,7 @@ grant_operator() {
     principal="cert:sha256:$(cat "${pki}/operator.fp")"
     local endpoint
     endpoint="$(host_endpoint "${host}")"
+    # The backup operations and the key bundle are the restore drill's (`scripts/drill-restore.sh`).
     pg --host-endpoint "${endpoint}" host grants issue --principal "${principal}" \
         --operations membership.admin,membership.read,identity.read,streams.read,backup.manage,backup.read,keys.read \
         --selector host >/dev/null
@@ -573,8 +574,9 @@ assert_split_plane() {
 #             at /drill/data-plane, then decisions the backup does not hold, shipped
 #   restore   offline, the Data Plane stopped and its volume mounted: the volume lost, the snapshot
 #             verified and put back, the lost Host fenced, the snapshot restored in `dr` mode
-#   restored  online again: the same Host and identity, its memberships active, serving its
-#             ledger and shipping the decisions it answers after the restore
+#   restored  online again: the same Host and identity, serving its ledger; its snapshot run, behind
+#             what the coordinator acknowledged, is fenced off: none of its records taken, nothing
+#             acknowledged lost, the shipping membership suspended until an operator acts
 #
 # What each phase learnt is kept under the lab's state, `drill/`, for the next one and for the
 # drill's record.
@@ -644,8 +646,8 @@ drill_restore() {
         log "restored in dr mode as the same Host; volume verify finds nothing"
         ;;
     restored)
-        step "restore drill: the same Host, a new boot, serving and shipping again"
-        local identity recorded held producer
+        step "restore drill: the same Host, serving again, its old run fenced off"
+        local identity producer member_fp held answer deadline
         identity="$(pg --host-endpoint "$(host_endpoint data-plane)" host identity show)"
         jq -e --arg host "$(cat "${drill}/host_id")" --arg pin "$(cat "${drill}/pin")" \
             '.host_id == $host and .fingerprint == $pin' >/dev/null <<<"${identity}" ||
@@ -654,17 +656,41 @@ drill_restore() {
         wait_serving data-plane acme main
         expect_decision data-plane acme main permit.json true >/dev/null
         expect_decision data-plane acme main deny.json false >/dev/null
-        recorded="$(wait_shipped data-plane "${resource}")"
+        log "the restored Data Plane serves its ledger and records what it answers"
+
+        # The snapshot's run is behind what the coordinator acknowledged: the restored producer
+        # writes its next records at sequences the coordinator already holds others at. The
+        # coordinator must take none of them, keep every record it acknowledged before the loss,
+        # and suspend the shipping membership: a fork, closed until an operator acts.
+        member_fp="$(fingerprint data-plane)"
+        deadline=$((SECONDS + 240))
+        while :; do
+            answer="$(pg --host-endpoint "$(host_endpoint control-plane)" host members list)"
+            jq -e --arg fp "${member_fp}" \
+                '[.members[] | select(.role == "coordinator" and .member.fingerprint == $fp and
+                  .status == "suspended")] | length == 1' >/dev/null <<<"${answer}" && break
+            [ "${SECONDS}" -lt "${deadline}" ] ||
+                fail "the coordinator did not fence off the restored producer's run: ${answer}"
+            sleep 5
+        done
         producer="$(producer_of data-plane)"
         held="$(held_from "${resource}" "${producer}")"
-        [ "${held}" -ge "$(cat "${drill}/recorded_before_loss")" ] ||
-            fail "the coordinator holds ${held} records of ${producer}, fewer than were shipped before the loss"
-        jq -n --arg host "$(cat "${drill}/host_id")" --argjson before "$(cat "${drill}/recorded_before_loss")" \
-            --argjson after "${recorded}" --argjson held "${held}" --slurpfile restored "${drill}/restored.json" \
+        [ "${held}" = "$(cat "${drill}/recorded_before_loss")" ] ||
+            fail "the coordinator holds ${held} records of ${producer}, not the $(cat "${drill}/recorded_before_loss") it acknowledged before the loss"
+        # Nor acknowledged them as already held: the producer's acknowledged point stays below
+        # what the coordinator holds, and what it wrote since the restore stays with it.
+        frontier data-plane "${resource}" |
+            jq -e --argjson held "${held}" \
+                '[.producer[] | select(.last_seq > .acknowledged and .acknowledged < $held)] | length == 1' \
+                >/dev/null || fail "the restored producer's records were acknowledged, or it retains none of them"
+        log "the coordinator took none of the restored run's records, kept its ${held} and suspended the shipping membership"
+
+        jq -n --arg host "$(cat "${drill}/host_id")" --argjson held "${held}" \
+            --slurpfile restored "${drill}/restored.json" \
             '{host_id: $host, previous_boot_id: $restored[0].previous_boot_id, plan_id: $restored[0].plan_id,
-              recorded_before_loss: $before, recorded_after_restore: $after, held_by_coordinator: $held}' \
+              held_by_coordinator: $held, shipping: "suspended: the restored run forked at the coordinator",
+              finding: "a dr restore resumes the snapshot run, behind what the coordinator acknowledged; the coordinator detects the fork and suspends the shipping membership, and no operator command opens the approved successor yet"}' \
             >"${drill}/result.json"
-        log "serving again; every record it wrote since the restore is shipped; the coordinator holds ${held}"
         ;;
     *) fail "no restore drill phase ${phase}" ;;
     esac

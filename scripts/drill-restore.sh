@@ -14,8 +14,12 @@
 #   decisions the backup does not hold, shipped to the coordinator
 #   the Data Plane stops; its volume is lost and the snapshot put back, verified against its
 #   manifest under the pinned identity; the lost Host is fenced and the snapshot restored in `dr`
-#   the Data Plane starts: the same Host under a new boot, memberships active, serving its ledger,
-#   and every record it writes after the restore shipped
+#   the Data Plane starts: the same Host, memberships active, serving its ledger; the snapshot's run,
+#   behind what the coordinator acknowledged, is fenced off by the coordinator, which takes none of
+#   its records and keeps every one it acknowledged
+#
+# The record's `finding` names what the drill found and the procedure does not yet cover: a fenced
+# run has no operator path to its approved successor, so shipping stays suspended.
 #
 # It needs what `scripts/compose-lab.sh` needs; NO_BUILD=1 and PERMGUARD_LAB_IMAGE work the same,
 # and the logs of a failed drill are written under ARTIFACTS (default `target/compose-lab`).
@@ -38,6 +42,8 @@ failed() {
     [ "${KEEP:-0}" = 1 ] || dc down -v --remove-orphans >/dev/null 2>&1 || true
     exit 1
 }
+# However the drill ends, the lab comes down, unless KEEP=1 asks to look at it.
+trap '[ "${KEEP:-0}" = 1 ] || dc down -v --remove-orphans >/dev/null 2>&1 || true' EXIT
 healthy() { # service
     local container deadline=$((SECONDS + 300))
     container="$(dc ps -q "$1")"
@@ -69,8 +75,12 @@ jq -n --argjson result "${result}" --arg image "${PERMGUARD_LAB_IMAGE}" \
       result: "passed",
       backup: "application-consistent: prepare, copy inside the barrier, finalize; verified offline against its manifest, the exported bundle and the pinned identity",
       restored: $result,
-      checks: ["the same host_id and identity, restored as a new incarnation (previous_boot_id recorded)", "memberships active, pinning the coordinator",
-               "the ledger served: a permit and a deny", "every record written after the restore shipped",
-               "volume verify: 0 findings"]}' >"${record}"
-dc down -v --remove-orphans >/dev/null 2>&1
+      checks: ["the same host_id and identity, restored as a new incarnation (previous_boot_id recorded)",
+               "memberships active after the restore, pinning the coordinator",
+               "the ledger served: a permit and a deny, each recorded",
+               "the snapshot run, behind the coordinator, fenced off: none of its records taken, every acknowledged record kept, the shipping membership suspended",
+               "volume verify: 0 findings"],
+      finding: $result.finding}' >"${record}"
+# The restore is proven; shipping after it is not, and the record says why (status.md, WP-7.7).
+echo "::warning title=drill-restore finding::$(jq -r .finding <<<"${result}")"
 echo "ok: drill-restore (${record})"
