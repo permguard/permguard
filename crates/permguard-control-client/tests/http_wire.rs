@@ -523,3 +523,84 @@ fn a_token_never_travels_over_rest_in_the_clear() {
         "nothing was sent with the token, nothing without it"
     );
 }
+
+/// A JSON answer sent in chunks, as the Kubernetes API sends it (TD-2), reads as its whole body.
+#[test]
+fn a_chunked_json_answer_reads_as_its_body() {
+    use permguard_control_client::Endpoint;
+    use permguard_control_client::http::Client;
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port is free");
+    let address = listener.local_addr().expect("bound");
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("a connection");
+        let mut reader = BufReader::new(stream.try_clone().expect("cloned"));
+        let mut line = String::new();
+        while reader.read_line(&mut line).expect("reads") > 2 {
+            line.clear();
+        }
+        stream
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n\
+                  9\r\n{\"items\":\r\nb\r\n[1,2,3]}\n  \r\n0\r\n\r\n",
+            )
+            .expect("written");
+    });
+    let client = Client::new(
+        std::time::Duration::from_secs(5),
+        TlsOptions::default(),
+        false,
+    )
+    .expect("a client");
+    let endpoint = Endpoint::parse(&format!("http://{address}")).expect("an endpoint");
+    let answer = client.get(&endpoint, "/list").expect("answered");
+    server.join().expect("served");
+    assert_eq!(answer.status, 200);
+    let value: serde_json::Value = serde_json::from_str(&answer.body).expect("one JSON value");
+    assert_eq!(value["items"], serde_json::json!([1, 2, 3]));
+}
+
+/// A chunked answer the server cut short, or whose chunk size is absurd, is a malformed answer,
+/// never a panic: the body is whatever the remote end sent (after the review).
+#[test]
+fn a_truncated_or_absurd_chunked_answer_is_malformed() {
+    use permguard_control_client::Endpoint;
+    use permguard_control_client::http::Client;
+
+    for body in [
+        &b"5\r\nabc"[..],
+        &b"5\r\nabcde"[..],
+        &b"5\r\nabcdeXY0\r\n\r\n"[..],
+        &b"ffffffffffffffff\r\nabc"[..],
+        &b"zz\r\nabc"[..],
+    ] {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a port is free");
+        let address = listener.local_addr().expect("bound");
+        let body = body.to_vec();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("a connection");
+            let mut reader = BufReader::new(stream.try_clone().expect("cloned"));
+            let mut line = String::new();
+            while reader.read_line(&mut line).expect("reads") > 2 {
+                line.clear();
+            }
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
+                .expect("written");
+            stream.write_all(&body).expect("written");
+        });
+        let client = Client::new(
+            std::time::Duration::from_secs(5),
+            TlsOptions::default(),
+            false,
+        )
+        .expect("a client");
+        let endpoint = Endpoint::parse(&format!("http://{address}")).expect("an endpoint");
+        let refused = client
+            .get(&endpoint, "/list")
+            .err()
+            .expect("malformed, not a body");
+        assert_eq!(refused.reason(), "malformed_response", "{refused}");
+        server.join().expect("served");
+    }
+}

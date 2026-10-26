@@ -181,14 +181,15 @@ The **State** cell is one of:
 
 ## Lifecycle
 
-| Command                  | Grant                          | State   | Why                                                                                               |
-| ------------------------ | ------------------------------ | ------- | ------------------------------------------------------------------------------------------------- |
-| `host status`            | `lifecycle.read`               | present |                                                                                                   |
-| `host drain`             | `lifecycle.manage`             | blocked | the Host API serves no drain route: its request and answer are not fixed by any package yet       |
-| `host maintenance enter` | `lifecycle.manage`             | blocked | the Host API serves no maintenance route: its request and answer are not fixed by any package yet |
-| `host maintenance exit`  | `lifecycle.manage`             | blocked | the Host API serves no maintenance route: its request and answer are not fixed by any package yet |
-| `host plans list`        | grant of the planned operation | present |                                                                                                   |
-| `host plans approve`     | grant of the planned operation | present |                                                                                                   |
+| Command                  | Grant                                                                                 | State   | Why                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `host status`            | `lifecycle.read`                                                                      | present |                                                                                                   |
+| `host drain`             | `lifecycle.manage`                                                                    | blocked | the Host API serves no drain route: its request and answer are not fixed by any package yet       |
+| `host maintenance enter` | `lifecycle.manage`                                                                    | blocked | the Host API serves no maintenance route: its request and answer are not fixed by any package yet |
+| `host maintenance exit`  | `lifecycle.manage`                                                                    | blocked | the Host API serves no maintenance route: its request and answer are not fixed by any package yet |
+| `host plans list`        | grant of the planned operation                                                        | present |                                                                                                   |
+| `host plans approve`     | grant of the planned operation                                                        | present |                                                                                                   |
+| `reclaim run`            | `membership.read`, `streams.read` on the coordinator; the namespace's Kubernetes Role | present |                                                                                                   |
 
 ## Backup, restore and migration
 

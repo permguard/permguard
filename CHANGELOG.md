@@ -19,6 +19,33 @@ is cut.
 
 ### Added
 
+- **The drain controller and the fenced recovery Job (TD-2).**
+  `dataPlane.drainController.enabled` renders, per group that keeps a volume, a CronJob running `permguard reclaim run` and the template of its drain Job.
+  A retained claim of an ordinal above the replicas gets a Job on that claim: the group's own image and configuration, a new claim generation, and `shutdown.recover_drain`.
+  The recovery drain resumes what an earlier drain left, drains, and prints its signed drain receipt and verification bundle when the drain completes.
+  The controller deletes the claim, under its UID, only when that receipt verifies under the member's identity pin its coordinator holds and is of the Job's own claim generation.
+  The coordinator's frontier must also acknowledge every stream run the receipt names through its last sequence.
+  A Job that fails, or that `jobDeadlineSeconds` ends (a forced timeout), keeps the claim and the Job; a Pod of the ordinal, or a group scaled back up, keeps it too.
+  Its ServiceAccount may only read the group workloads, list and delete claims, create, read and delete Jobs, and read Pods and their logs, in the release's namespace.
+- **The drain receipt (TD-2).**
+  A Host whose drain completes can state it as a COSE_Sign1 `permguard.drain.receipt.v1` under its `host.operations` ring.
+  The receipt names the Host, the volume, the claim generation, the time and every shipped stream run with its last sequence and acknowledgement.
+  `shutdown.recover_drain` (`PERMGUARD_SHUTDOWN_RECOVER_DRAIN`) makes a run stop once started and print the receipt of a complete drain as one JSON line; an incomplete drain prints none and exits 75.
+  A Host without its Host listener composes no Host API and issues no receipt.
+- **The chart serves the Server Host listener (TD-2).**
+  `controlPlane.hostListener`, `dataPlane.hostListener` and `allInOne.hostListener` render the `admin` listener on port 5444, with `allow`.
+  Its mutual TLS comes from a `kubernetes.io/tls` Secret whose `ca.crt` verifies the client certificates.
+  The control plane and the all-in-one get a `-host` Service, each group replica a `host` port on its headless Service, and `networkPolicy.host.from` names who may reach them.
+- **Autoscaling a group that keeps a volume (TD-2).**
+  It renders only with the drain controller enabled and a scale-down stabilization of at least the shutdown budget plus the drain Job's deadline.
+  It also needs `persistence.takeover` qualified, with the driver, the storage class of its claims and the evidence of a qualification run.
+  The autoscaler removes one replica per stabilization window.
+  `scripts/chart-takeover.sh` runs part of that qualification on a cluster: it kills the replica's Pod while it writes, round after round.
+  It checks that each successor claims a higher generation only after the old writer released the volume, and that recovery refuses no stale-writer frame, then runs `volume verify` offline.
+  Its record says what it did not prove: on one node the volume's lock serialized the successor, and provider fencing, a node kill and a partition need the storage and the nodes being qualified.
+- **`permguard reclaim run` (TD-2).**
+  One pass of the drain controller, printing one JSON line per retained claim: `drain-started`, `draining`, `kept` with why, `reclaimed`, `in-use` or `deleting`.
+  `--host-endpoint` names the coordinator's Host listener; the Kubernetes API is the cluster's own, or `--kube-api` with `--kube-token-file` and `--kube-ca`.
 - **The chart deploys the data plane as named groups (TD-1).**
   `dataPlane.groups[]` renders one group per entry, and what a group leaves out comes from `dataPlane.groupDefaults`.
   A group states its name, its membership `selector`, `replicas` or `autoscaling`, `service`, `evidence.mode`, `persistence`, `assurance.profile` and `assurance.custody`, and `shutdown`.
@@ -618,8 +645,17 @@ is cut.
   The old chart's claim `<release>-data-plane` is kept on upgrade (`helm.sh/resource-policy: keep`) and no longer mounted, and the claims of its `perReplica` StatefulSet stay as Kubernetes left them.
   They may hold decisions and events the old replicas did not ship: recover them before deleting the claims.
   A group defaults to `production`, `evidence.mode: required` and a volume per replica, as the profile requires.
-  Its decision log is rendered on and closed when full, and needs its signing ring, commitment secret and pseudonymisation key from the deployment's secrets.
+  Its decision log is rendered with `mode: required` and needs the Plane signing ring, the coordinator root secret and the pseudonymisation key from the deployment's secrets; `best-effort` is refused, as the server refuses it.
   `persistence.perReplica` and the chart-wide `persistence.enabled` now apply to the control plane and the all-in-one only.
+- **The control plane and the all-in-one keep their volume in a directory inside the mount, under a claim (TD-2).**
+  As for a data plane group, their working directory is `/var/lib/permguard/volume`, created for the server's user.
+  When they keep a volume, a claim init container moves its claim forward before every Pod.
+  Until now neither could start on a Kubernetes volume: making the mount's root private failed, its root belonging to root, and `production` refused a volume without a claim.
+  A control plane volume written by an earlier chart, with its files at the root of the claim, is not read: move them into `volume/` before upgrading.
+- **The chart renders the Host operations section as `host` (TD-2).**
+  It rendered the older spelling `telemetry`, so a values file setting `host.principals` or `host.authz` in `extraConfig` produced a section the server refused as duplicated.
+- **The command line reads chunked JSON answers (TD-2).**
+  A server answering a JSON request with `Transfer-Encoding: chunked`, as the Kubernetes API does, was read with its chunk sizes in the body.
 
 - **Discovery names the Host, every state and every interface's stage.**
   The process document at `/.well-known/server-configuration` on the telemetry listener now carries `host_id`, once the Host's identity is open, the Host's `state`, and each plane's `state`, the lifecycle phases as they are when it is asked for.

@@ -1262,6 +1262,26 @@
     },
     {
       "crate": "permguard-host",
+      "source": "crates/permguard-host/src/operations/drain.rs",
+      "item": "DrainReceipt::decode",
+      "entry": "permguard_host::operations::drain::DrainReceipt::decode",
+      "max_input_bytes": 262144,
+      "limit": "`operations::drain::MAX_RECEIPT_BYTES`, checked by the decoder before it parses, and at most `MAX_STREAMS` streams: a drain receipt's payload, which the drain controller reads from a drain Job's log (TD-2)",
+      "enforced_at_decoder": true,
+      "fuzz": "drain_receipt"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/operations/drain.rs",
+      "item": "verify",
+      "entry": "permguard_host::operations::drain::verify",
+      "max_input_bytes": 262144,
+      "limit": "`operations::drain::MAX_RECEIPT_BYTES` for the receipt envelope and the keys bundle's own bounds, checked before anything is parsed: a receipt and a bundle a drain Job printed (TD-2)",
+      "enforced_at_decoder": true,
+      "fuzz": "drain_receipt"
+    },
+    {
+      "crate": "permguard-host",
       "source": "crates/permguard-host/src/exports.rs",
       "item": "Manifest::decode",
       "entry": "permguard_host::exports::Manifest::decode",

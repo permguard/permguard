@@ -112,19 +112,27 @@ fn storage(error: impl std::fmt::Display) -> String {
     format!("the backups: {error}")
 }
 
-fn uint(value: u64, what: &str) -> Result<Value, String> {
+pub(super) fn uint(value: u64, what: &str) -> Result<Value, String> {
     i64::try_from(value)
         .map(Value::Int)
         .map_err(|_| format!("{what} is out of range"))
 }
 
 /// A canonical map's members, closed to labels `1..=highest`, in order.
-fn labelled(bytes: &[u8], what: &str, highest: i64) -> Result<BTreeMap<i64, Value>, String> {
+pub(super) fn labelled(
+    bytes: &[u8],
+    what: &str,
+    highest: i64,
+) -> Result<BTreeMap<i64, Value>, String> {
     let value = cbor::decode_canonical(bytes).map_err(|error| format!("{what}: {error}"))?;
     labelled_value(value, what, highest)
 }
 
-fn labelled_value(value: Value, what: &str, highest: i64) -> Result<BTreeMap<i64, Value>, String> {
+pub(super) fn labelled_value(
+    value: Value,
+    what: &str,
+    highest: i64,
+) -> Result<BTreeMap<i64, Value>, String> {
     let Value::Map(pairs) = value else {
         return Err(format!("{what} is a map"));
     };
@@ -145,14 +153,22 @@ fn labelled_value(value: Value, what: &str, highest: i64) -> Result<BTreeMap<i64
     }
 }
 
-fn take_uint(held: &mut BTreeMap<i64, Value>, label: i64, what: &str) -> Result<u64, String> {
+pub(super) fn take_uint(
+    held: &mut BTreeMap<i64, Value>,
+    label: i64,
+    what: &str,
+) -> Result<u64, String> {
     match held.remove(&label) {
         Some(Value::Int(value)) if value >= 0 => Ok(value as u64),
         _ => Err(format!("{what} is an unsigned integer")),
     }
 }
 
-fn take_text(held: &mut BTreeMap<i64, Value>, label: i64, what: &str) -> Result<String, String> {
+pub(super) fn take_text(
+    held: &mut BTreeMap<i64, Value>,
+    label: i64,
+    what: &str,
+) -> Result<String, String> {
     match held.remove(&label) {
         Some(Value::Text(text)) => Ok(text),
         _ => Err(format!("{what} is text")),
@@ -171,7 +187,7 @@ fn take_optional_text(
     }
 }
 
-fn take_bytes<const N: usize>(
+pub(super) fn take_bytes<const N: usize>(
     held: &mut BTreeMap<i64, Value>,
     label: i64,
     what: &str,
@@ -182,7 +198,7 @@ fn take_bytes<const N: usize>(
     }
 }
 
-fn finish(held: BTreeMap<i64, Value>, what: &str) -> Result<(), String> {
+pub(super) fn finish(held: BTreeMap<i64, Value>, what: &str) -> Result<(), String> {
     match held.keys().next() {
         None => Ok(()),
         Some(label) => Err(format!("{what} holds the unexpected label {label}")),

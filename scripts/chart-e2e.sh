@@ -86,7 +86,7 @@ claim_of() { kubectl --namespace "${namespace}" logs "${workload}-$1" -c claim; 
 
 step "every Pod start moves the volume's claim forward"
 for ordinal in 0 1 2; do
-    claim_of "${ordinal}" | grep -q "claimed at generation 1 (was 0)" ||
+    grep -q "claimed at generation 1 (was 0)" <<<"$(claim_of "${ordinal}")" ||
         fail "replica ${ordinal}: $(claim_of "${ordinal}")"
     echo "replica ${ordinal}: $(claim_of "${ordinal}")"
 done
@@ -117,7 +117,7 @@ for ordinal in 1 2; do
     grep -i "drain" "${logs}/${ordinal}.log" | sed "s/^/replica ${ordinal}: /" | cut -c1-200 ||
         { cat "${logs}/${ordinal}.log" >&2; fail "replica ${ordinal} logged no drain"; }
 done
-if kubectl --namespace "${namespace}" get events --field-selector reason=FailedPreStopHook -o name | grep -q .; then
+if [ -n "$(kubectl --namespace "${namespace}" get events --field-selector reason=FailedPreStopHook -o name)" ]; then
     kubectl --namespace "${namespace}" get events --field-selector reason=FailedPreStopHook >&2
     fail "a preStop hook failed"
 fi
@@ -134,7 +134,7 @@ step "scale back to 3 reattaches the same identities"
 kubectl --namespace "${namespace}" scale "statefulset/${workload}" --replicas 3
 kubectl --namespace "${namespace}" rollout status "statefulset/${workload}" --timeout 300s
 for ordinal in 1 2; do
-    claim_of "${ordinal}" | grep -q "claimed at generation 2 (was 1)" ||
+    grep -q "claimed at generation 2 (was 1)" <<<"$(claim_of "${ordinal}")" ||
         fail "replica ${ordinal} restarted without moving its claim: $(claim_of "${ordinal}")"
     echo "replica ${ordinal}: $(claim_of "${ordinal}")"
 done

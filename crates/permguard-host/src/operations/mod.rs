@@ -15,6 +15,7 @@
 //! 2026-10-07); a later domain uses the same [`mutation::Mutations::run`].
 
 pub mod backup;
+pub mod drain;
 pub mod grants;
 pub mod journal;
 pub mod mutation;

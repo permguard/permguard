@@ -73,12 +73,18 @@ either bound turns autoscaling on, unless the group says `enabled: false`.
       "accessModes" (dig "persistence" "accessModes" list $g | default $d.persistence.accessModes | default list)
       "whenScaled" (toString (dig "persistence" "retention" "whenScaled" "" $g | default (ternary "Retain" "Delete" (eq (toString (dig "persistence" "retainOnScaleDown" true $g)) "true")) | default $d.persistence.retention.whenScaled))
       "whenDeleted" (toString (dig "persistence" "retention" "whenDeleted" "" $g | default $d.persistence.retention.whenDeleted))
+      "takeover" (dict
+        "qualified" (eq (toString (dig "persistence" "takeover" "qualified" $d.persistence.takeover.qualified $g)) "true")
+        "driver" (toString (dig "persistence" "takeover" "driver" $d.persistence.takeover.driver $g))
+        "storageClass" (toString (dig "persistence" "takeover" "storageClass" $d.persistence.takeover.storageClass $g))
+        "evidence" (toString (dig "persistence" "takeover" "evidence" $d.persistence.takeover.evidence $g)))
 -}}
 {{- $autoscaling := dict
       "enabled" $flag.autoscaling
       "minReplicas" (dig "autoscaling" "minReplicas" $d.autoscaling.minReplicas $g)
       "maxReplicas" (dig "autoscaling" "maxReplicas" $d.autoscaling.maxReplicas $g)
       "targetCPUUtilizationPercentage" (dig "autoscaling" "targetCPUUtilizationPercentage" $d.autoscaling.targetCPUUtilizationPercentage $g)
+      "scaleDownStabilizationSeconds" (int (dig "autoscaling" "scaleDownStabilizationSeconds" $d.autoscaling.scaleDownStabilizationSeconds $g))
 -}}
 {{- $assurance := dict
       "profile" (toString (dig "assurance" "profile" $d.assurance.profile $g))
@@ -102,6 +108,7 @@ either bound turns autoscaling on, unless the group says `enabled: false`.
 {{- $network := dict
       "public" (dig "networkPolicy" "public" "from" (dig "networkPolicy" "public" "from" $root.Values.networkPolicy.public.from $d) $g | default list)
       "telemetry" (dig "networkPolicy" "telemetry" "from" (dig "networkPolicy" "telemetry" "from" $root.Values.networkPolicy.telemetry.from $d) $g | default list)
+      "host" (dig "networkPolicy" "host" "from" (dig "networkPolicy" "host" "from" ($root.Values.networkPolicy.host.from | default list) $d) $g | default list)
 -}}
 {{- $resolved := dict
       "name" $name
@@ -330,4 +337,23 @@ Every Host this release configures, for the checks a configuration answers whate
 {{- end -}}
 {{- end -}}
 {{- dict "units" $units | toJson -}}
+{{- end -}}
+
+{{/*
+The `admin` section of a Host whose `hostListener` is on (TD-2): every interface, the mounted
+Secret's certificate and key, its `ca.crt` as the authority client certificates are verified
+against, and the operators `allow` names. Takes `(dict "listener" $hostListener "advertised" url)`;
+answers YAML, empty when the listener is off.
+*/}}
+{{- define "permguard.hostListenerConfig" -}}
+{{- $l := .listener | default dict -}}
+{{- if $l.enabled -}}
+{{- $admin := dict
+      "addr" (printf "0.0.0.0:%d" (int $l.port))
+      "tls" (dict "cert" "/etc/permguard-host-tls/tls.crt" "key" "/etc/permguard-host-tls/tls.key" "client_ca" "/etc/permguard-host-tls/ca.crt")
+-}}
+{{- with .advertised }}{{ $_ := set $admin "advertised_url" . }}{{ end -}}
+{{- with $l.allow }}{{ $_ := set $admin "allow" . }}{{ end -}}
+{{- toYaml (dict "admin" $admin) -}}
+{{- end -}}
 {{- end -}}

@@ -38,8 +38,9 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 21] = [
+const REGISTRIES: [&str; 22] = [
     "audit.json",
+    "drain-receipt.json",
     "grant.json",
     "head-statement.json",
     "identity.json",
@@ -755,6 +756,43 @@ fn ledger_export_samples() -> Vec<Sample> {
             Some(Box::new(|bytes: &[u8]| verdict(Manifest::decode(bytes)))),
         ),
     ]
+}
+
+fn drain_receipt_samples() -> Vec<Sample> {
+    use permguard_host::operations::drain::{DrainReceipt, DrainedStream};
+
+    let stream = |run: &str, last_seq: u64| DrainedStream {
+        plane: "data".to_owned(),
+        stream_type: "decisions".to_owned(),
+        resource: "plane/data/zone/acme/ledger/main".to_owned(),
+        run: run.to_owned(),
+        last_seq,
+        acknowledged: last_seq,
+    };
+    [
+        Vec::new(),
+        vec![stream(&"0a".repeat(16), 12), stream(&"0c".repeat(16), 3)],
+    ]
+    .into_iter()
+    .map(|streams| {
+        sample(
+            "drain_receipt",
+            DrainReceipt {
+                host_id: HOST_ID,
+                volume_id: ZONE_ID,
+                generation: 4,
+                drained_at: 1_800_000_000,
+                streams,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(DrainReceipt::decode(bytes))
+            })),
+        )
+    })
+    .collect()
 }
 
 fn restore_samples() -> Vec<Sample> {
@@ -3057,6 +3095,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "mutation.json" => mutation_samples(),
         "identity.json" => identity_samples(),
         "restore.json" => restore_samples(),
+        "drain-receipt.json" => drain_receipt_samples(),
         "ledger-export.json" => ledger_export_samples(),
         "session.json" => session_samples(),
         "stream.json" => stream_samples(),

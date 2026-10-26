@@ -192,7 +192,7 @@ pub fn hold(root: &Path) -> Result<Volume> {
 /// — the volume directory inside a mount the orchestrator provided, which a server running as a
 /// non-root user can own and keep private where the mount's own root belongs to somebody else. A
 /// missing parent is still refused: that is a mistyped path or a mount that is not there.
-pub fn advance_claim(root: &Path, create: bool) -> Result<(u64, u64)> {
+pub fn advance_claim(root: &Path, create: bool) -> Result<Advanced> {
     if create && !root.exists() {
         match root.parent() {
             Some(parent) if parent.is_dir() => {
@@ -224,7 +224,20 @@ pub fn advance_claim(root: &Path, create: bool) -> Result<(u64, u64)> {
     })?;
     replace_view(&volume.host, VOLUME_CLAIM, VIEW, &next.to_be_bytes())?;
 
-    Ok((volume.generation, next))
+    Ok(Advanced {
+        previous: volume.generation,
+        generation: next,
+        volume_id: volume.id(),
+    })
+}
+
+/// What [`advance_claim`] did: the generation it replaced, the one it wrote, and the volume's id,
+/// which a drain receipt names (TD-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Advanced {
+    pub previous: u64,
+    pub generation: u64,
+    pub volume_id: [u8; 16],
 }
 
 /// Narrows a directory this process just created to its owner.
@@ -468,17 +481,26 @@ mod tests {
     fn an_advanced_claim_supersedes_every_start_before_it() {
         let root = scratch("advance");
         std::fs::create_dir_all(&root).expect("a mount point");
-        assert_eq!(advance_claim(&root, false).expect("first"), (UNCLAIMED, 1));
-        assert_eq!(advance_claim(&root, false).expect("second"), (1, 2));
+        assert_eq!(advance_claim(&root, false).expect("first").generation, 1);
+        assert_eq!(advance_claim(&root, false).expect("second").generation, 2);
         set_claim(&root, 9).expect("an operator's claim");
-        assert_eq!(advance_claim(&root, false).expect("after it"), (9, 10));
+        let after = advance_claim(&root, false).expect("after it");
+        assert_eq!((after.previous, after.generation), (9, 10));
         let volume = Volume::claim(&root, AssuranceProfile::Production).expect("servable");
         assert_eq!(volume.generation(), 10);
+        assert_eq!(
+            after.volume_id,
+            volume.id(),
+            "the id of the volume it claimed"
+        );
         // Never beside a holder.
         let refused = advance_claim(&root, false).expect_err("held");
         assert!(matches!(refused, StorageError::Held(_)), "{refused}");
         drop(volume);
-        assert_eq!(advance_claim(&root, false).expect("released"), (10, 11));
+        assert_eq!(
+            advance_claim(&root, false).expect("released").generation,
+            11
+        );
     }
 
     #[test]
@@ -494,7 +516,7 @@ mod tests {
         assert!(matches!(refused, StorageError::Refused(_)), "{refused}");
         assert!(!root.exists());
 
-        assert_eq!(advance_claim(&root, true).expect("created"), (UNCLAIMED, 1));
+        assert_eq!(advance_claim(&root, true).expect("created").generation, 1);
         assert!(root.join(HOST).join(VOLUME_ID).exists());
         #[cfg(unix)]
         {
@@ -506,7 +528,7 @@ mod tests {
             assert_eq!(mode & 0o777, 0o700, "owner-only");
         }
         // Once there, `create` changes nothing but the claim.
-        assert_eq!(advance_claim(&root, true).expect("again"), (1, 2));
+        assert_eq!(advance_claim(&root, true).expect("again").generation, 2);
     }
 
     #[test]

@@ -58,6 +58,17 @@ controlPlane:
   tls:
     secretName: ""
     terminatedUpstream: false
+  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, mutual TLS
+  # only. Off by default; a Host without it holds no membership, ships no evidence and issues no
+  # drain receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key`
+  # the listener presents and whose `ca.crt` its clients' certificates are verified against;
+  # `allow` names the operators' certificates, as `admin.allow` does (`cn:<name>`, `san:<uri>`).
+  hostListener:
+    enabled: false
+    port: 5444
+    tls:
+      secretName: ""
+    allow: []
   service:
     type: ClusterIP
     annotations: {}
@@ -158,20 +169,24 @@ dataPlane:
   groups: []
   groupDefaults:
     replicas: 3
-    # Only a group without a volume may autoscale until the drain controller and the recovery Job
-    # exist (TD-2): removing a replica that keeps evidence or history needs both.
+    # A group that keeps a volume autoscales only with the drain controller enabled, its storage
+    # takeover qualified (`persistence.takeover`) and a scale-down stabilization of at least its
+    # shutdown budget plus the drain Job's deadline (TD-2): removing a replica that keeps evidence
+    # needs all three, and the chart refuses each missing one.
     autoscaling:
       enabled: false
       minReplicas: 3
       maxReplicas: 12
       targetCPUUtilizationPercentage: 70
+      scaleDownStabilizationSeconds: 1200
     service:
       enabled: true
       type: ClusterIP
       annotations: {}
-    # `required` (a decision is answered only once its record is durable), `best-effort` or
-    # `disabled`. `production` and `regulated` take `required` only: the decision-log contract lets
-    # `production` relax it per ledger, with a recorded risk acceptance, never for a whole group.
+    # `required` (a decision is answered only once its record is durable) or `disabled`, rendered as
+    # the decision log's `mode`. `production` and `regulated` take `required` only: the decision-log
+    # contract lets `production` relax it per ledger, with a recorded risk acceptance, never for a
+    # whole group; `best-effort` is refused until its loss record is defined, as the server does.
     evidence:
       mode: required
     # A group with a volume is a StatefulSet: one claim per replica, from one template, retained
@@ -188,6 +203,17 @@ dataPlane:
       retention:
         whenScaled: Retain
         whenDeleted: Retain
+      # Evidence that this storage revokes a replica's old writer before attaching its successor,
+      # which automatic failover and autoscaling need (TD-2): the CSI `driver`, the `storageClass`
+      # and the `evidence` reference of the qualification — a node kill and a partition on that
+      # driver and class, which `scripts/chart-takeover.sh` starts with its Pod kills and its
+      # offline verification. The chart cannot check the evidence; it refuses only its absence.
+      # A Kubernetes lease or an expired heartbeat alone is not fencing.
+      takeover:
+        qualified: false
+        driver: ""
+        storageClass: ""
+        evidence: ""
     # The serving floor of every replica (`development`, `production`, `regulated`), rendered into
     # its Host configuration, checked at Bootstrap and published by discovery. `custody` says where
     # the Host's private keys are held: `provider` (`development`, `file`, `pkcs11`, `kms`), the
@@ -234,6 +260,40 @@ dataPlane:
   tls:
     secretName: ""
     terminatedUpstream: false
+  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, mutual TLS
+  # only. Off by default, and shared by every group; a Host without it holds no membership, ships no evidence and issues no
+  # drain receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key`
+  # the listener presents and whose `ca.crt` its clients' certificates are verified against;
+  # `allow` names the operators' certificates, as `admin.allow` does (`cn:<name>`, `san:<uri>`).
+  hostListener:
+    enabled: false
+    port: 5444
+    tls:
+      secretName: ""
+    allow: []
+  # The drain controller (TD-2): a CronJob per group that keeps a volume, running
+  # `permguard reclaim run` with the CLI image. A retained claim of an ordinal above the replicas
+  # gets a fenced drain Job on its own claim; the claim is deleted only when that Job prints a drain
+  # receipt that verifies under the member's pin the coordinator holds and the coordinator's
+  # frontier acknowledges every stream it names. A Job that fails or reaches `jobDeadlineSeconds`
+  # (a forced timeout) never authorizes it. Needs the data plane's Host listener, the coordinator's
+  # (`coordinator`, or this release's control plane Host listener when empty) and `tls.secretName`,
+  # a `kubernetes.io/tls` Secret holding the client certificate of an operator granted
+  # `membership.read` and `streams.read` there, and the authority (`ca.crt`) to verify it against.
+  # A record no required subscription acknowledges keeps the claim: decisions recorded before the
+  # replica enrolled, and events of a group whose memberships have no `events.ship` task, whose
+  # temporal history is then kept on the claim rather than reclaimed.
+  # One coordinator: a stream another coordinator acknowledges keeps its claim. A succeeded Job
+  # whose proof is missing (no receipt, no membership) keeps its claim too, and stays until an
+  # operator deletes it; the next pass then runs a new one.
+  drainController:
+    enabled: false
+    schedule: "*/5 * * * *"
+    repository: cli
+    coordinator: ""
+    tls:
+      secretName: ""
+    jobDeadlineSeconds: 600
   resources:
     requests:
       cpu: 100m
@@ -274,7 +334,7 @@ dataPlane:
   #         bytes: "256M"      # what they may weigh, against this pod's memory limit
   #       max_evaluations: "256"
   #       # Every decision, recorded on the Host's stream, named by its `host_id` and run. Whether
-  #       # the log is on, and `on_full`, come from each group's `evidence.mode`: stating them here
+  #       # the log is on, and its `mode`, come from each group's `evidence.mode`: stating them here
   #       # as well is refused.
   #       log:
   #         server:
@@ -323,6 +383,17 @@ allInOne:
   tls:
     secretName: ""
     terminatedUpstream: false
+  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, mutual TLS
+  # only. Off by default; a Host without it holds no membership, ships no evidence and issues no
+  # drain receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key`
+  # the listener presents and whose `ca.crt` its clients' certificates are verified against;
+  # `allow` names the operators' certificates, as `admin.allow` does (`cn:<name>`, `san:<uri>`).
+  hostListener:
+    enabled: false
+    port: 5444
+    tls:
+      secretName: ""
+    allow: []
   service:
     type: ClusterIP
     annotations: {}
@@ -476,6 +547,9 @@ networkPolicy:
   public:
     from: []
   telemetry:
+    from: []
+  # The Host listener's peers: operators, peer Hosts and the drain controller.
+  host:
     from: []
 
 serviceAccount:

@@ -91,6 +91,29 @@ pub async fn drain(api: &HostApi, deadline: Instant) -> Result<Drained> {
     )))
 }
 
+/// Prints the drain receipt of a recovery drain that completed (TD-2): one JSON line on standard
+/// output, `{"drain_receipt": {"receipt", "bundle"}}`, which the drain controller reads from the
+/// Job's log. A receipt the Host refuses to issue (a stream still behind) fails the drain, so the
+/// Job never ends in success without one.
+pub fn print_receipt(api: &HostApi) -> Result<()> {
+    use std::io::Write as _;
+
+    let export = api
+        .drain_receipt()
+        .map_err(|error| anyhow!("issuing the drain receipt: {error}"))?;
+    let line = serde_json::json!({ "drain_receipt": export });
+    let mut out = std::io::stdout().lock();
+    writeln!(out, "{line}").map_err(|error| anyhow!("printing the drain receipt: {error}"))?;
+    out.flush()
+        .map_err(|error| anyhow!("printing the drain receipt: {error}"))?;
+    tracing::info!(
+        event.name = "host.drain_receipt",
+        component = COMPONENT,
+        "the drain completed and its signed receipt is printed"
+    );
+    Ok(())
+}
+
 /// Resumes shipping the streams an incomplete drain marked, while the Host is in Load: one pass
 /// within `budget`. A mark that remains keeps the Host `degraded: evidence`, and the periodic
 /// passes go on.

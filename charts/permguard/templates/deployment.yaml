@@ -60,6 +60,22 @@ spec:
       # Long enough for readiness to go false, the load balancer to notice, and connections in
       # flight to finish. The process drains on SIGTERM; this is the time it is given to.
       terminationGracePeriodSeconds: 30
+      {{- if include "permguard.persists" (dict "root" $ "plane" $plane) }}
+      # The orchestrator's claim (WP-1.4), moved forward before every Pod's server opens the
+      # volume, as for a data plane group: from `production` a volume is served only under one.
+      initContainers:
+        - name: claim
+          image: {{ include "permguard.image" (dict "root" $ "repository" $plane.repository) }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args: ["volume", "claim", "--volume", "/var/lib/permguard/volume", "--next", "--create"]
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $plane.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/permguard
+      {{- end }}
       containers:
         - name: {{ $component }}
           image: {{ include "permguard.image" (dict "root" $ "repository" $plane.repository) }}
@@ -67,8 +83,12 @@ spec:
           args: ["/etc/permguard/config.yml"]
           # The decision and event streams are named by the Host's `host_id` and run (WP-6.1,
           # WP-6.2): no producer name comes from the pod any more.
-          {{- with $plane.extraEnv }}
           env:
+            # The Host's volume is a directory inside the mount, which the server can own and keep
+            # private: a mounted volume's root belongs to root (TD-1, TD-2).
+            - name: PERMGUARD_WORKING_DIR
+              value: /var/lib/permguard/volume
+            {{- with $plane.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           securityContext:
@@ -85,6 +105,11 @@ spec:
             - name: telemetry
               containerPort: {{ $plane.ports.telemetry }}
               protocol: TCP
+            {{- if $plane.hostListener.enabled }}
+            - name: host
+              containerPort: {{ $plane.hostListener.port }}
+              protocol: TCP
+            {{- end }}
           {{- include "permguard.probes" (dict "root" $) | nindent 10 }}
           resources:
             {{- toYaml $plane.resources | nindent 12 }}
@@ -100,6 +125,11 @@ spec:
             {{- if $plane.tls.secretName }}
             - name: public-tls
               mountPath: /etc/permguard-tls
+              readOnly: true
+            {{- end }}
+            {{- if $plane.hostListener.enabled }}
+            - name: host-tls
+              mountPath: /etc/permguard-host-tls
               readOnly: true
             {{- end }}
             {{- with $plane.extraVolumeMounts }}
@@ -132,6 +162,11 @@ spec:
         - name: public-tls
           secret:
             secretName: {{ $plane.tls.secretName }}
+        {{- end }}
+        {{- if $plane.hostListener.enabled }}
+        - name: host-tls
+          secret:
+            secretName: {{ $plane.hostListener.tls.secretName }}
         {{- end }}
         {{- with $plane.extraVolumes }}
         {{- toYaml . | nindent 8 }}
@@ -218,12 +253,30 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: 30
+      {{- if include "permguard.persists" (dict "root" . "plane" .Values.allInOne) }}
+      # The orchestrator's claim (WP-1.4), moved forward before every Pod's server opens the volume.
+      initContainers:
+        - name: claim
+          image: {{ include "permguard.image" (dict "root" . "repository" .Values.allInOne.repository) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["volume", "claim", "--volume", "/var/lib/permguard/volume", "--next", "--create"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.allInOne.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/permguard
+      {{- end }}
       containers:
         - name: all-in-one
           image: {{ include "permguard.image" (dict "root" . "repository" .Values.allInOne.repository) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["/etc/permguard/config.yml"]
           env:
+            # The Host's volume is a directory inside the mount, as for the standalone planes.
+            - name: PERMGUARD_WORKING_DIR
+              value: /var/lib/permguard/volume
             - name: PERMGUARD_RUNTIME_PLANES
               value: "control,data"
             {{- with .Values.allInOne.extraEnv }}
@@ -238,6 +291,10 @@ spec:
               containerPort: {{ .Values.allInOne.ports.dataHttp }}
             - name: telemetry
               containerPort: {{ .Values.allInOne.ports.telemetry }}
+            {{- if .Values.allInOne.hostListener.enabled }}
+            - name: host
+              containerPort: {{ .Values.allInOne.hostListener.port }}
+            {{- end }}
           {{- include "permguard.probes" (dict "root" .) | nindent 10 }}
           resources:
             {{- toYaml .Values.allInOne.resources | nindent 12 }}
@@ -252,6 +309,11 @@ spec:
             {{- if .Values.allInOne.tls.secretName }}
             - name: public-tls
               mountPath: /etc/permguard-tls
+              readOnly: true
+            {{- end }}
+            {{- if .Values.allInOne.hostListener.enabled }}
+            - name: host-tls
+              mountPath: /etc/permguard-host-tls
               readOnly: true
             {{- end }}
             {{- with .Values.allInOne.extraVolumeMounts }}
@@ -274,6 +336,11 @@ spec:
         - name: public-tls
           secret:
             secretName: {{ .Values.allInOne.tls.secretName }}
+        {{- end }}
+        {{- if .Values.allInOne.hostListener.enabled }}
+        - name: host-tls
+          secret:
+            secretName: {{ .Values.allInOne.hostListener.tls.secretName }}
         {{- end }}
         {{- with .Values.allInOne.extraVolumes }}
         {{- toYaml . | nindent 8 }}

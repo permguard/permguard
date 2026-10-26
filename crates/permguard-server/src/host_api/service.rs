@@ -140,6 +140,12 @@ impl Service for HostApiService {
                 Some(api) => crate::shipping::drain(&api, deadline).await?,
                 None => Drained::Complete,
             };
+            if (&surfaces, &shipped) == (&Drained::Complete, &Drained::Complete)
+                && context.config().shutdown_recover_drain()
+                && let Some(api) = context.host_handles::<HostApi>()
+            {
+                crate::shipping::print_receipt(&api)?;
+            }
             Ok(match (surfaces, shipped) {
                 (Drained::Complete, Drained::Complete) => Drained::Complete,
                 (Drained::Incomplete(cut), Drained::Complete)

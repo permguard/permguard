@@ -25,6 +25,7 @@ pub mod audit;
 pub mod backups;
 pub mod bounds;
 pub mod config;
+pub mod drain;
 pub mod gc;
 pub mod grants;
 pub mod host_input;
@@ -272,6 +273,9 @@ pub struct HostApi {
     gc: Arc<crate::gc::Jobs>,
     /// Held while a gc run checks and spends its plan (WP-7.11b).
     gc_spending: std::sync::Mutex<()>,
+    /// The volume this process claimed and the claim generation it holds, which a drain receipt
+    /// names (TD-2).
+    volume: Option<([u8; 16], u64)>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -308,6 +312,7 @@ impl HostApi {
             backup_labels: (None, None),
             gc: Arc::default(),
             gc_spending: std::sync::Mutex::new(()),
+            volume: None,
         }
     }
 
@@ -325,6 +330,12 @@ impl HostApi {
     }
 
     /// This facade reading the Host's streams through `streams` (WP-5.7a).
+    /// Names the volume this process claimed and its claim generation (TD-2).
+    pub fn with_volume(mut self, volume_id: [u8; 16], generation: u64) -> Self {
+        self.volume = Some((volume_id, generation));
+        self
+    }
+
     pub fn with_streams(mut self, streams: Arc<dyn streams::StreamReads>) -> Self {
         self.streams = Some(streams);
         self

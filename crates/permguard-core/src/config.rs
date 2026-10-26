@@ -267,6 +267,11 @@ pub const SETTING_SHUTDOWN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_TIMEOUT";
 /// decision of 2026-10-06).
 pub const SETTING_SHUTDOWN_DRAIN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_DRAIN_TIMEOUT";
 
+/// Runtime setting key for a recovery drain run (TD-2): the process stops as soon as it has
+/// started — Load having resumed the streams a drain left — and a drain that completes prints its
+/// signed drain receipt and the Host's verification bundle. What the drain controller's Job sets.
+pub const SETTING_SHUTDOWN_RECOVER_DRAIN: &str = "PERMGUARD_SHUTDOWN_RECOVER_DRAIN";
+
 /// Runtime setting key for the largest backward step of the wall clock the Host tolerates: beyond
 /// it the clock is in anomaly, and new leases and time-sensitive signatures refuse until wall time
 /// passes the highest one observed (WP-2.12, owner decisions of 2026-10-07).
@@ -1364,6 +1369,7 @@ pub struct Config {
     limits: Limits,
     shutdown_timeout: Duration,
     shutdown_drain_timeout: Duration,
+    shutdown_recover_drain: bool,
     time_max_clock_skew: Duration,
     assurance_profile: crate::assurance::AssuranceProfile,
     assurance_added: Vec<crate::assurance::Control>,
@@ -1578,6 +1584,7 @@ impl Default for Config {
             limits: Limits::default(),
             shutdown_timeout: DEFAULT_SHUTDOWN_TIMEOUT,
             shutdown_drain_timeout: DEFAULT_SHUTDOWN_DRAIN_TIMEOUT,
+            shutdown_recover_drain: false,
             time_max_clock_skew: DEFAULT_TIME_MAX_CLOCK_SKEW,
             assurance_profile: crate::assurance::AssuranceProfile::Production,
             assurance_added: Vec::new(),
@@ -3377,6 +3384,12 @@ produce: use `EdDSA` or `ES256`"
         self.shutdown_drain_timeout
     }
 
+    /// Whether this run is a recovery drain (TD-2): stop once started, and print the signed drain
+    /// receipt when the drain completes.
+    pub fn shutdown_recover_drain(&self) -> bool {
+        self.shutdown_recover_drain
+    }
+
     /// Returns the largest backward step of the wall clock the Host tolerates before it declares
     /// a clock anomaly. Never zero.
     pub fn time_max_clock_skew(&self) -> Duration {
@@ -4495,6 +4508,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_LIMITS_BODY_BYTES => n(self.limits.body_bytes()),
             SETTING_SHUTDOWN_TIMEOUT => d(self.shutdown_timeout),
             SETTING_SHUTDOWN_DRAIN_TIMEOUT => d(self.shutdown_drain_timeout),
+            SETTING_SHUTDOWN_RECOVER_DRAIN => Some(self.shutdown_recover_drain.to_string()),
             SETTING_TIME_MAX_CLOCK_SKEW => d(self.time_max_clock_skew),
             SETTING_ASSURANCE_PROFILE => Some(self.assurance_profile.as_str().to_owned()),
             SETTING_ASSURANCE_ADDED_CONTROLS => {
@@ -5047,6 +5061,11 @@ produce: use `EdDSA` or `ES256`"
         if let Some(value) = settings.get(SETTING_SHUTDOWN_DRAIN_TIMEOUT) {
             self.shutdown_drain_timeout = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_SHUTDOWN_DRAIN_TIMEOUT}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_SHUTDOWN_RECOVER_DRAIN) {
+            self.shutdown_recover_drain = parse_bool(value)
+                .with_context(|| format!("reading {SETTING_SHUTDOWN_RECOVER_DRAIN}"))?;
         }
 
         if let Some(value) = settings.get(SETTING_MEMBERSHIP_APPRAISAL_CONTROLS) {
@@ -6418,6 +6437,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_SECRETS_ZONE_KEY_VERSION,
     SETTING_SECRETS_PROVIDER,
     SETTING_SHUTDOWN_DRAIN_TIMEOUT,
+    SETTING_SHUTDOWN_RECOVER_DRAIN,
     SETTING_SHUTDOWN_TIMEOUT,
     SETTING_TELEMETRY_ADDR,
     SETTING_TELEMETRY_ADVERTISED_URL,

@@ -1,0 +1,199 @@
+{{/*
+Copyright (c) 2022 Nitro Agility S.r.l.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+{{/*
+The drain controller (TD-2).
+
+A group that keeps a volume retains a claim when it scales down: the claim may hold evidence its
+replica did not ship. For every such group this renders the drain Job's template — the group's own
+Pod, on one retained claim, under a new claim generation, as a recovery drain that stops once started
+and prints its signed receipt when its drain completes — and a CronJob running `permguard reclaim
+run`, which creates that Job for each retained claim above the replicas and deletes a claim only when
+the Job's receipt verifies under the member's pin the coordinator holds and the coordinator's frontier
+acknowledges every stream it names. A Job that fails, or that its deadline ends, keeps the claim.
+
+Its ServiceAccount may do exactly that, in this namespace: read the group workloads, list and
+delete claims, create, read and delete Jobs, read Pods and their logs.
+*/}}
+{{- if and .Values.dataPlane.enabled .Values.dataPlane.drainController.enabled }}
+{{- $dp := .Values.dataPlane }}
+{{- $dc := $dp.drainController }}
+{{- $account := printf "%s-reclaim" (include "permguard.fullname" .) }}
+{{- $coordinator := $dc.coordinator | default (printf "https://%s-control-plane-host:%d" (include "permguard.fullname" .) (int .Values.controlPlane.hostListener.port)) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $account }}
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" . "component" "drain-controller") | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $account }}
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" . "component" "drain-controller") | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $account }}
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" . "component" "drain-controller") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $account }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $account }}
+    namespace: {{ .Release.Namespace }}
+---
+{{- if .Values.networkPolicy.enabled }}
+{{- /*
+A drain Job serves nobody: its Pod runs the group's server only to recover and drain, and no
+Service selects it. Nothing may reach it.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "permguard.fullname" . }}-data-plane-drain
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" . "component" "drain-controller") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "permguard.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: data-plane-drain
+  policyTypes: ["Ingress"]
+  ingress: []
+---
+{{- end }}
+{{- range $g := (include "permguard.dataPlaneGroups" . | fromJson).groups }}
+{{- if $g.persistence.enabled }}
+{{- $job := dict
+      "apiVersion" "batch/v1"
+      "kind" "Job"
+      "metadata" (dict
+        "name" "__JOB__"
+        "labels" (dict
+          "app.kubernetes.io/name" (include "permguard.name" $)
+          "app.kubernetes.io/instance" $.Release.Name
+          "app.kubernetes.io/component" "data-plane-drain"
+          "permguard.com/drain-of" $g.name
+          "permguard.com/ordinal" "__ORDINAL__"))
+      "spec" (dict
+        "backoffLimit" 0
+        "activeDeadlineSeconds" (int $dc.jobDeadlineSeconds)
+        "template" (dict
+          "metadata" (dict "labels" (dict
+            "app.kubernetes.io/name" (include "permguard.name" $)
+            "app.kubernetes.io/instance" $.Release.Name
+            "app.kubernetes.io/component" "data-plane-drain"
+            "permguard.com/drain-of" $g.name
+            "permguard.com/ordinal" "__ORDINAL__"))
+          "spec" (include "permguard.groupPodSpec" (dict "root" $ "group" $g "dp" $dp "stateful" true "claim" "__CLAIM__" "recover" true) | fromYaml)))
+}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $g.base }}-drain-job
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+data:
+  job.json: |
+    {{- $job | toPrettyJson | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $g.base }}-reclaim
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" $ "component" "drain-controller") | nindent 4 }}
+    permguard.com/group: {{ $g.name }}
+spec:
+  schedule: {{ $dc.schedule | quote }}
+  # One pass at a time: two would race to create the same Job.
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            {{- include "permguard.componentLabels" (dict "root" $ "component" "drain-controller") | nindent 12 }}
+        spec:
+          serviceAccountName: {{ $account }}
+          restartPolicy: Never
+          {{- with $.Values.image.pullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml $.Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: reclaim
+              image: {{ include "permguard.image" (dict "root" $ "repository" $dc.repository) }}
+              imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              args:
+                - "--workdir"
+                - "/tmp"
+                - "--host-endpoint"
+                - {{ $coordinator | quote }}
+                - "--tls-ca-file"
+                - "/etc/permguard-reclaim-tls/ca.crt"
+                - "--tls-cert-file"
+                - "/etc/permguard-reclaim-tls/tls.crt"
+                - "--tls-key-file"
+                - "/etc/permguard-reclaim-tls/tls.key"
+                - "reclaim"
+                - "run"
+                - "--selector"
+                - {{ printf "app.kubernetes.io/instance=%s,app.kubernetes.io/component=data-plane,permguard.com/group=%s" $.Release.Name $g.name | quote }}
+                - "--job-template"
+                - "/etc/permguard-reclaim/job.json"
+              env:
+                - name: PERMGUARD_CONFIG
+                  value: /tmp/cli-config.yml
+              securityContext:
+                {{- toYaml $.Values.securityContext | nindent 16 }}
+              volumeMounts:
+                - name: template
+                  mountPath: /etc/permguard-reclaim
+                  readOnly: true
+                - name: tls
+                  mountPath: /etc/permguard-reclaim-tls
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: template
+              configMap:
+                name: {{ $g.base }}-drain-job
+            - name: tls
+              secret:
+                secretName: {{ $dc.tls.secretName }}
+            - name: tmp
+              emptyDir: {}
+---
+{{- end }}
+{{- end }}
+{{- end }}

@@ -228,6 +228,9 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
             action,
         } => commands::restore::restore_command(&globals, server_config.as_deref(), action, &trace),
         Command::Gc { action } => commands::host_ops::gc_command(&globals, action, &trace),
+        Command::Reclaim {
+            action: crate::args::ReclaimAction::Run(args),
+        } => commands::reclaim::run(&globals, &trace, args),
         Command::Evidence { action } => {
             commands::host_ops::evidence_command(&globals, action, &trace)
         }
@@ -348,6 +351,7 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Restore { .. } => ("restore", Class::Volume),
         Command::Backup { .. } => ("backup", Class::Volume),
         Command::Gc { .. } => ("gc", Class::Host),
+        Command::Reclaim { .. } => ("reclaim", Class::Host),
         Command::Evidence { .. } => ("evidence", Class::Host),
         Command::Migrate { .. } => ("migrate", Class::Volume),
         Command::Discover { .. } => ("discover", Class::Local),

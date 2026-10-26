@@ -165,6 +165,7 @@
     "protected.OPERATION_APPROVAL": "permguard.operation.approval.v1",
     "protected.OPERATION_PLAN": "permguard.operation.plan.v1",
     "protected.SNAPSHOT_MANIFEST": "permguard.snapshot.manifest.v1",
+    "protected.DRAIN_RECEIPT": "permguard.drain.receipt.v1",
     "protected.STREAM_RUN": "permguard.stream.run.v1",
     "record.DECISION_V1": "permguard.decision.v1",
     "record.EVENT_V1": "permguard.event.record.v1",

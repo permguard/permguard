@@ -295,16 +295,18 @@ evidence be deleted by Kubernetes rather than by a verified operation.
 {{- end }}
 {{- end }}
 {{- /* Evidence: a known mode, one the profile allows, and one source. */ -}}
-{{- if not (has $g.evidence (list "required" "best-effort" "disabled")) }}
-{{- fail (printf "dataPlane.groups[%s]: evidence.mode is %q: required, best-effort or disabled." $g.name $g.evidence) }}
+{{- if eq $g.evidence "best-effort" }}
+{{- fail (printf "dataPlane.groups[%s]: evidence.mode is best-effort, which this build does not serve: its loss record is not defined yet (WP-6.1), and the server refuses it. Use required, or disabled under development." $g.name) }}
+{{- end }}
+{{- if not (has $g.evidence (list "required" "disabled")) }}
+{{- fail (printf "dataPlane.groups[%s]: evidence.mode is %q: required or disabled." $g.name $g.evidence) }}
 {{- end }}
 {{- if and (ne $g.assurance.profile "development") (ne $g.evidence "required") }}
 {{- fail (printf "dataPlane.groups[%s]: a `%s` group answers only with recorded decisions, and its evidence mode is `%s`: `production` permits `best-effort` per ledger with a recorded risk acceptance, never for a whole group, and `regulated` permits `required` only." $g.name $g.assurance.profile $g.evidence) }}
 {{- end }}
 {{- $stated := dig "dataPlane" "decisions" "log" dict $g.extraConfig }}
 {{- $enabled := ternary "false" "true" (eq $g.evidence "disabled") }}
-{{- $full := ternary "closed" "open" (eq $g.evidence "required") }}
-{{- if or (and (hasKey $stated "enabled") (ne (toString $stated.enabled) $enabled)) (and (hasKey $stated "on_full") (ne $g.evidence "disabled") (ne (toString $stated.on_full) $full)) }}
+{{- if or (and (hasKey $stated "enabled") (ne (toString $stated.enabled) $enabled)) (and (hasKey $stated "mode") (ne (toString $stated.mode) $g.evidence)) (and (hasKey $stated "on_full") (ne (toString $stated.on_full) "closed")) }}
 {{- fail (printf "dataPlane.groups[%s]: the decision log is stated in extraConfig and by evidence.mode=%s, two sources of the same setting: the chart renders the log from the mode, so remove it from extraConfig." $g.name $g.evidence) }}
 {{- end }}
 {{- /* Storage: what must survive a restart keeps a volume, and only a verified operation deletes one. */ -}}
@@ -323,7 +325,35 @@ evidence be deleted by Kubernetes rather than by a verified operation.
 {{- end }}
 {{- end }}
 {{- if and $g.autoscaling.enabled (gt (int $g.autoscaling.maxReplicas) 1) }}
-{{- fail (printf "dataPlane.groups[%s]: autoscaling a group that keeps a volume needs drain recovery — the drain controller and the recovery Job — which this chart does not deploy yet: a replica scaled away could leave evidence nobody ships. Set a fixed replicas count." $g.name) }}
+{{- /*
+An autoscaler removes replicas on load, and a replica that keeps a volume may leave evidence it did
+not ship: it needs drain recovery (the drain controller), a stabilization long enough for a drain
+and its recovery Job, and storage whose takeover is qualified (TD-2).
+*/ -}}
+{{- $dc := $.Values.dataPlane.drainController }}
+{{- if not $dc.enabled }}
+{{- fail (printf "dataPlane.groups[%s]: autoscaling a group that keeps a volume needs drain recovery: enable dataPlane.drainController, or a replica scaled away could leave evidence nobody ships. Otherwise set a fixed replicas count." $g.name) }}
+{{- end }}
+{{- /* The controller's period, from its schedule: every minute, or every N minutes. */ -}}
+{{- $period := 0 }}
+{{- if eq (toString $dc.schedule) "* * * * *" }}
+{{- $period = 60 }}
+{{- else if regexMatch "^\\*/[0-9]+ \\* \\* \\* \\*$" (toString $dc.schedule) }}
+{{- $period = mul (int (regexFind "[0-9]+" (toString $dc.schedule))) 60 }}
+{{- else }}
+{{- fail (printf "dataPlane.groups[%s]: autoscaling a group that keeps a volume needs the drain controller's period, and its schedule %q is neither `* * * * *` nor `*/N * * * *`." $g.name $dc.schedule) }}
+{{- end }}
+{{- $budget := add (int $g.shutdown.timeoutSeconds) (int $dc.jobDeadlineSeconds) (int $period) }}
+{{- if lt (int $g.autoscaling.scaleDownStabilizationSeconds) (int $budget) }}
+{{- fail (printf "dataPlane.groups[%s]: autoscaling.scaleDownStabilizationSeconds is %d, less than a drain, the controller's period and its recovery Job (%d seconds): the autoscaler would remove the next replica before the last one's evidence is recovered." $g.name (int $g.autoscaling.scaleDownStabilizationSeconds) (int $budget)) }}
+{{- end }}
+{{- $t := $g.persistence.takeover }}
+{{- if not (and $t.qualified $t.driver $t.storageClass $t.evidence) }}
+{{- fail (printf "dataPlane.groups[%s]: autoscaling a group that keeps a volume needs its storage takeover qualified: persistence.takeover.qualified with the driver, the storageClass and the evidence of a qualification run that the storage revokes the old writer before attaching the successor. A lease or an expired heartbeat alone is not fencing." $g.name) }}
+{{- end }}
+{{- if ne $t.storageClass $g.persistence.storageClass }}
+{{- fail (printf "dataPlane.groups[%s]: persistence.takeover.storageClass is %q and the group's claims use %q: the qualification is of the storage class the claims are made from." $g.name $t.storageClass $g.persistence.storageClass) }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- /* Temporal history: replicated only under a declared shared consistency. */ -}}
@@ -430,6 +460,55 @@ above). Dual control is in force by the `regulated` profile itself and has no va
 {{- if and $on (ne (toString $on) "false") }}
 {{- fail (printf "%s: the experimental runtime %s is opted into, and the `regulated` profile never serves experimental runtimes." $label $runtime) }}
 {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+
+{{- /*
+The Host listener (TD-2): mutual TLS from a Secret, and one source for it.
+*/ -}}
+{{- range $label, $plane := dict "controlPlane" .Values.controlPlane "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- if and $plane.enabled $plane.hostListener $plane.hostListener.enabled (not $plane.hostListener.tls.secretName) }}
+{{- fail (printf "%s.hostListener is enabled and names no tls.secretName: the Host listener serves mutual TLS only, from a kubernetes.io/tls Secret with ca.crt." $label) }}
+{{- end }}
+{{- end }}
+{{- range $unit := (include "permguard.configUnits" $ | fromJson).units }}
+{{- $listener := (ternary $.Values.controlPlane.hostListener (ternary $.Values.allInOne.hostListener $.Values.dataPlane.hostListener (eq $unit.kind "allInOne")) (eq $unit.kind "controlPlane")) }}
+{{- if hasKey ($unit.extraConfig | default dict) "telemetry" }}
+{{- fail (printf "%s: extraConfig states `telemetry`, the older spelling of the `host` section the chart renders: write it as `host`, or the server sees the section twice." $unit.label) }}
+{{- end }}
+{{- if and $listener.enabled (hasKey ($unit.extraConfig | default dict) "admin") }}
+{{- fail (printf "%s: extraConfig states `admin` and hostListener is enabled, two sources of the Host listener: state it in hostListener." $unit.label) }}
+{{- end }}
+{{- end }}
+
+{{- /*
+The drain controller (TD-2): what it reaches and what it needs.
+*/ -}}
+{{- if and .Values.dataPlane.enabled .Values.dataPlane.drainController.enabled }}
+{{- $dc := .Values.dataPlane.drainController }}
+{{- if not .Values.dataPlane.hostListener.enabled }}
+{{- fail "dataPlane.drainController needs dataPlane.hostListener: a replica without its Host listener holds no membership and issues no drain receipt, so no claim of it could ever be reclaimed." }}
+{{- end }}
+{{- if not $dc.tls.secretName }}
+{{- fail "dataPlane.drainController.tls.secretName names no Secret: the controller presents an operator's client certificate to the coordinator's Host listener, and verifies it against the Secret's ca.crt." }}
+{{- end }}
+{{- if and (not $dc.coordinator) (not (and .Values.controlPlane.enabled .Values.controlPlane.hostListener.enabled)) }}
+{{- fail "dataPlane.drainController names no coordinator and this release's control plane serves no Host listener: set dataPlane.drainController.coordinator to the coordinator's Host listener, or enable controlPlane.hostListener." }}
+{{- end }}
+{{- if and $dc.coordinator (not (hasPrefix "https://" $dc.coordinator)) }}
+{{- fail (printf "dataPlane.drainController.coordinator is %q: the coordinator's Host listener is reached over https only." $dc.coordinator) }}
+{{- end }}
+{{- if or (lt (int $dc.jobDeadlineSeconds) 30) (not $dc.schedule) }}
+{{- fail "dataPlane.drainController needs a schedule and a jobDeadlineSeconds of at least 30: the drain Job's deadline is what a forced timeout is." }}
+{{- end }}
+{{- range $g := (include "permguard.dataPlaneGroups" $ | fromJson).groups }}
+{{- if and $g.persistence.enabled (lt (int $dc.jobDeadlineSeconds) (add (int $g.shutdown.timeoutSeconds) 60)) }}
+{{- fail (printf "dataPlane.groups[%s]: dataPlane.drainController.jobDeadlineSeconds (%d) is shorter than the group's shutdown budget plus a minute to start (%d): every drain Job would end as a forced timeout and no claim could ever be reclaimed." $g.name (int $dc.jobDeadlineSeconds) (add (int $g.shutdown.timeoutSeconds) 60)) }}
+{{- end }}
+{{- if and $g.persistence.enabled (gt (len $g.base) 44) }}
+{{- fail (printf "dataPlane.groups[%s]: with the drain controller the workload name %q is at most 44 characters, for its CronJob's: shorten the group name or the release name." $g.name $g.base) }}
 {{- end }}
 {{- end }}
 {{- end }}

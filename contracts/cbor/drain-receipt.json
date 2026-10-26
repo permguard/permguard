@@ -1,0 +1,105 @@
+{
+  "artifact": "the drain receipt, the payload of a COSE_Sign1 `permguard.drain.receipt.v1` under the member Host's `host.operations` ring, issued by a drain that completed",
+  "authority": "1-architecture/11-architecture-deployment-conformance.md#kubernetes (reclamation), TD-2 decisions of 2026-10-26 (labels, types, cardinalities); crates/permguard-host/src/operations/drain.rs",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "drain_receipt": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "v",
+          "type": "uint",
+          "occurs": "required",
+          "note": "the payload version, 1; another is refused"
+        },
+        {
+          "label": 2,
+          "name": "host_id",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "16 bytes, the Host that drained"
+        },
+        {
+          "label": 3,
+          "name": "volume_id",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "16 bytes, the volume it drained"
+        },
+        {
+          "label": 4,
+          "name": "generation",
+          "type": "uint",
+          "occurs": "required",
+          "note": "the claim generation the draining process held"
+        },
+        {
+          "label": 5,
+          "name": "drained_at",
+          "type": "uint",
+          "occurs": "required",
+          "note": "seconds since the epoch, UTC"
+        },
+        {
+          "label": 6,
+          "name": "streams",
+          "type": "array<map:drained_stream>",
+          "occurs": "required",
+          "note": "every run of every shipped stream a required subscription holds, at most 4096"
+        }
+      ]
+    },
+    "drained_stream": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "plane",
+          "type": "text",
+          "occurs": "required",
+          "note": "the stream's plane"
+        },
+        {
+          "label": 2,
+          "name": "type",
+          "type": "text",
+          "occurs": "required",
+          "note": "the stream type"
+        },
+        {
+          "label": 3,
+          "name": "resource",
+          "type": "text",
+          "occurs": "required",
+          "note": "the resource the run is of"
+        },
+        {
+          "label": 4,
+          "name": "run",
+          "type": "text",
+          "occurs": "required",
+          "note": "the run: 16 bytes as 32 lowercase hexadecimal digits, as the frontier names it"
+        },
+        {
+          "label": 5,
+          "name": "last_seq",
+          "type": "uint",
+          "occurs": "required",
+          "note": "the last sequence the run holds"
+        },
+        {
+          "label": 6,
+          "name": "acknowledged",
+          "type": "uint",
+          "occurs": "required",
+          "note": "the least acknowledgement of its required subscriptions, at least last_seq"
+        }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": [
+    "drain_receipt"
+  ]
+}

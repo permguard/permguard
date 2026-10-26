@@ -495,22 +495,18 @@ dataPlane:
 
 #[test]
 fn a_required_stream_without_persistent_storage_is_refused() {
-    for evidence in ["required", "best-effort"] {
-        refused(
-            &format!(
-                "\
+    refused(
+        "\
 dataPlane:
   groups:
     - name: edge
       selector: plane/data/*
-      assurance: {{ profile: development }}
-      evidence: {{ mode: {evidence} }}
-      persistence: {{ enabled: false }}
-"
-            ),
-            "without persistent storage",
-        );
-    }
+      assurance: { profile: development }
+      evidence: { mode: required }
+      persistence: { enabled: false }
+",
+        "without persistent storage",
+    );
     refused(
         "\
 dataPlane:
@@ -543,30 +539,45 @@ dataPlane:
         ));
         rendered.config("permguard-data-plane-billing")["dataPlane"]["decisions"]["log"].clone()
     };
+    // The decision log's own vocabulary (WP-6.1): `mode`, and `enabled` agreeing with it.
     assert_eq!(
         log("production", "required"),
-        json!({ "enabled": "true", "on_full": "closed" })
+        json!({ "enabled": "true", "mode": "required" })
     );
     assert_eq!(
-        log("development", "best-effort"),
-        json!({ "enabled": "true", "on_full": "open" })
+        log("development", "disabled"),
+        json!({ "enabled": "false", "mode": "disabled" })
     );
     for profile in ["production", "regulated"] {
-        for mode in ["best-effort", "disabled"] {
-            refused(
-                &format!(
-                    "\
+        refused(
+            &format!(
+                "\
 dataPlane:
   groups:
     - name: billing
       selector: plane/data/*
       assurance: {{ profile: {profile} }}
-      evidence: {{ mode: {mode} }}
+      evidence: {{ mode: disabled }}
 "
-                ),
-                "evidence mode",
-            );
-        }
+            ),
+            "evidence mode",
+        );
+    }
+    // `best-effort` is refused at every profile: the server does not serve it yet.
+    for profile in ["development", "production"] {
+        refused(
+            &format!(
+                "\
+dataPlane:
+  groups:
+    - name: billing
+      selector: plane/data/*
+      assurance: {{ profile: {profile} }}
+      evidence: {{ mode: best-effort }}
+"
+            ),
+            "does not serve",
+        );
     }
     refused(
         "\
@@ -579,17 +590,21 @@ dataPlane:
         "evidence.mode",
     );
     // The mode has one source: a log the configuration states otherwise is refused.
-    refused(
-        "\
+    for stated in ["on_full: open", "mode: disabled", "enabled: \"false\""] {
+        refused(
+            &format!(
+                "\
 dataPlane:
   groups:
     - name: billing
       selector: plane/data/*
       extraConfig:
-        dataPlane: { decisions: { log: { on_full: open } } }
-",
-        "two sources",
-    );
+        dataPlane: {{ decisions: {{ log: {{ {stated} }} }} }}
+"
+            ),
+            "two sources",
+        );
+    }
 }
 
 #[test]
@@ -1514,4 +1529,372 @@ dataPlane:
     // The other group keeps the chart-wide peers: any.
     let people = &rendered.get("NetworkPolicy", "permguard-data-plane-people")["spec"]["ingress"];
     assert!(people[0].get("from").is_none() && people[1].get("from").is_none());
+}
+
+/// The values the drain controller needs (TD-2): the Host listeners and the controller's Secret.
+const CONTROLLER: &str = "\
+controlPlane:
+  hostListener: { enabled: true, tls: { secretName: control-plane-host } }
+dataPlane:
+  hostListener: { enabled: true, tls: { secretName: data-plane-host } }
+  drainController: { enabled: true, tls: { secretName: reclaim-operator } }
+";
+
+fn with_controller(groups: &str) -> String {
+    format!("{CONTROLLER}{groups}")
+}
+
+const AUTOSCALED: &str = "  groups:
+    - name: billing
+      selector: plane/data/*
+      autoscaling: { minReplicas: 2, maxReplicas: 6 }
+      persistence:
+        storageClass: csi-qualified
+        takeover: { qualified: true, driver: ebs.csi.aws.com, storageClass: csi-qualified, evidence: \"qualification-2026-10-26\" }
+";
+
+#[test]
+fn autoscaling_a_persistent_group_needs_the_controller_stabilization_and_qualified_takeover() {
+    // Everything stated: it renders.
+    render(&with_controller(AUTOSCALED));
+    // Without the drain controller.
+    refused(&format!("dataPlane:\n{AUTOSCALED}"), "drain recovery");
+    // Without a qualified takeover, or with one of another storage class.
+    for (from, to) in [
+        ("qualified: true", "qualified: false"),
+        ("evidence: \"qualification-2026-10-26\"", "evidence: \"\""),
+        ("driver: ebs.csi.aws.com", "driver: \"\""),
+    ] {
+        refused(
+            &with_controller(&AUTOSCALED.replace(from, to)),
+            "takeover qualified",
+        );
+    }
+    refused(
+        &with_controller(&AUTOSCALED.replace(
+            "storageClass: csi-qualified, evidence",
+            "storageClass: other, evidence",
+        )),
+        "the storage class the claims are made from",
+    );
+    // A stabilization shorter than a drain, the controller's period and its recovery Job: 30 +
+    // 300 + 600 seconds by default.
+    refused(
+        &with_controller(&AUTOSCALED.replace(
+            "maxReplicas: 6 }",
+            "maxReplicas: 6, scaleDownStabilizationSeconds: 929 }",
+        )),
+        "scaleDownStabilizationSeconds",
+    );
+    render(&with_controller(&AUTOSCALED.replace(
+        "maxReplicas: 6 }",
+        "maxReplicas: 6, scaleDownStabilizationSeconds: 930 }",
+    )));
+    // A schedule whose period the chart cannot read.
+    refused(
+        &with_controller(AUTOSCALED).replace(
+            "drainController: { enabled: true,",
+            "drainController: { enabled: true, schedule: \"0 * * * *\",",
+        ),
+        "the drain controller's period",
+    );
+}
+
+#[test]
+fn a_drain_job_deadline_shorter_than_a_drain_is_refused() {
+    refused(
+        &with_controller("  groups:\n    - name: billing\n      selector: plane/data/*\n").replace(
+            "drainController: { enabled: true,",
+            "drainController: { enabled: true, jobDeadlineSeconds: 89,",
+        ),
+        "every drain Job would end as a forced timeout",
+    );
+    render(
+        &with_controller("  groups:\n    - name: billing\n      selector: plane/data/*\n").replace(
+            "drainController: { enabled: true,",
+            "drainController: { enabled: true, jobDeadlineSeconds: 90,",
+        ),
+    );
+}
+
+#[test]
+fn nothing_may_reach_a_drain_job() {
+    let rendered = render(&with_controller(
+        "  groups:\n    - name: billing\n      selector: plane/data/*\n",
+    ));
+    let policy = rendered.get("NetworkPolicy", "permguard-data-plane-drain");
+    assert_eq!(policy["spec"]["ingress"], json!([]));
+    assert_eq!(
+        policy["spec"]["podSelector"]["matchLabels"]["app.kubernetes.io/component"],
+        "data-plane-drain"
+    );
+}
+
+#[test]
+fn an_autoscaled_persistent_group_renders_its_stabilization() {
+    let rendered = render(&with_controller(AUTOSCALED));
+    let hpa = rendered.get("HorizontalPodAutoscaler", "permguard-data-plane-billing");
+    assert_eq!(hpa["spec"]["scaleTargetRef"]["kind"], "StatefulSet");
+    assert_eq!(
+        hpa["spec"]["behavior"]["scaleDown"],
+        json!({
+            "stabilizationWindowSeconds": 1200,
+            "policies": [{ "type": "Pods", "value": 1, "periodSeconds": 1200 }]
+        })
+    );
+}
+
+#[test]
+fn the_drain_controller_renders_a_fenced_recovery_job_and_least_privilege() {
+    let rendered = render(&with_controller(
+        "  groups:
+    - name: billing
+      selector: plane/data/zone/billing/*
+    - name: edge
+      selector: plane/data/zone/edge/*
+      assurance: { profile: development }
+      evidence: { mode: disabled }
+      persistence: { enabled: false }
+",
+    ));
+    // A stateless group keeps no claim: no Job, no CronJob.
+    assert!(!rendered.has("ConfigMap", "permguard-data-plane-edge-drain-job"));
+    assert!(!rendered.has("CronJob", "permguard-data-plane-edge-reclaim"));
+
+    let template =
+        rendered.get("ConfigMap", "permguard-data-plane-billing-drain-job")["data"]["job.json"]
+            .as_str()
+            .unwrap()
+            .replace("__CLAIM__", "state-permguard-data-plane-billing-2")
+            .replace("__JOB__", "permguard-data-plane-billing-drain-2")
+            .replace("__ORDINAL__", "2");
+    let job: Value = serde_json::from_str(&template).expect("the template is JSON");
+    assert_eq!(job["kind"], "Job");
+    assert_eq!(
+        job["metadata"]["name"],
+        "permguard-data-plane-billing-drain-2"
+    );
+    // One attempt, bounded: a Job its deadline ends is a forced timeout.
+    assert_eq!(job["spec"]["backoffLimit"], 0);
+    assert_eq!(job["spec"]["activeDeadlineSeconds"], 600);
+    let pod = &job["spec"]["template"]["spec"];
+    assert_eq!(pod["restartPolicy"], "Never");
+    let state = pod["volumes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|volume| volume["name"] == "state")
+        .unwrap();
+    assert_eq!(
+        state["persistentVolumeClaim"]["claimName"],
+        "state-permguard-data-plane-billing-2"
+    );
+    // Fenced: its own claim generation first, then the same server as a recovery drain.
+    assert_eq!(
+        pod["initContainers"][0]["args"],
+        json!([
+            "volume",
+            "claim",
+            "--volume",
+            "/var/lib/permguard/volume",
+            "--next",
+            "--create"
+        ])
+    );
+    let env = pod["containers"][0]["env"].as_array().unwrap();
+    assert!(env.contains(&json!({ "name": "PERMGUARD_SHUTDOWN_RECOVER_DRAIN", "value": "true" })));
+    // The same group configuration, Host listener included.
+    let volumes: Vec<&Value> = pod["volumes"].as_array().unwrap().iter().collect();
+    assert!(
+        volumes
+            .iter()
+            .any(|volume| volume["configMap"]["name"] == "permguard-data-plane-billing")
+    );
+    assert!(
+        volumes
+            .iter()
+            .any(|volume| volume["secret"]["secretName"] == "data-plane-host")
+    );
+    // No Service and no group policy selects it: it serves nobody.
+    let labels = &job["spec"]["template"]["metadata"]["labels"];
+    let group_pods = &rendered.get("Service", "permguard-data-plane-billing")["spec"]["selector"];
+    assert!(!selects(group_pods, labels));
+
+    let cron = rendered.get("CronJob", "permguard-data-plane-billing-reclaim");
+    assert_eq!(cron["spec"]["concurrencyPolicy"], "Forbid");
+    let container = &cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0];
+    let args: Vec<&str> = container["args"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|arg| arg.as_str().unwrap())
+        .collect();
+    let after = |flag: &str| args[args.iter().position(|arg| *arg == flag).unwrap() + 1];
+    assert_eq!(
+        after("--host-endpoint"),
+        "https://permguard-control-plane-host:5444"
+    );
+    assert_eq!(
+        after("--selector"),
+        "app.kubernetes.io/instance=permguard,app.kubernetes.io/component=data-plane,permguard.com/group=billing"
+    );
+    assert!(args.windows(2).any(|pair| pair == ["reclaim", "run"]));
+    assert_eq!(
+        cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["serviceAccountName"],
+        "permguard-reclaim"
+    );
+
+    // The Role: exactly what the controller does, in this namespace.
+    assert_eq!(
+        rendered.get("Role", "permguard-reclaim")["rules"],
+        json!([
+            { "apiGroups": ["apps"], "resources": ["statefulsets"], "verbs": ["get", "list"] },
+            { "apiGroups": [""], "resources": ["persistentvolumeclaims"], "verbs": ["get", "list", "delete"] },
+            { "apiGroups": ["batch"], "resources": ["jobs"], "verbs": ["get", "list", "create", "delete"] },
+            { "apiGroups": [""], "resources": ["pods"], "verbs": ["get", "list"] },
+            { "apiGroups": [""], "resources": ["pods/log"], "verbs": ["get"] }
+        ])
+    );
+    assert!(rendered.all("ClusterRole").is_empty());
+}
+
+#[test]
+fn the_drain_controller_prerequisites_are_refused() {
+    let groups = "  groups:\n    - name: billing\n      selector: plane/data/*\n";
+    refused(
+        &with_controller(groups).replace(
+            "  hostListener: { enabled: true, tls: { secretName: data-plane-host } }\n",
+            "",
+        ),
+        "needs dataPlane.hostListener",
+    );
+    refused(
+        &with_controller(groups).replace("tls: { secretName: reclaim-operator }", ""),
+        "names no Secret",
+    );
+    refused(
+        &with_controller(groups).replace(
+            "controlPlane:\n  hostListener: { enabled: true, tls: { secretName: control-plane-host } }\n",
+            "",
+        ),
+        "names no coordinator",
+    );
+    refused(
+        &with_controller(groups).replace(
+            "drainController: { enabled: true,",
+            "drainController: { enabled: true, coordinator: \"http://coordinator:5444\",",
+        ),
+        "over https only",
+    );
+    refused(
+        &with_controller(
+            "  groups:\n    - name: a-group-name-of-twenty-two\n      selector: plane/data/*\n",
+        ),
+        "at most 44 characters",
+    );
+}
+
+#[test]
+fn the_host_listener_serves_mutual_tls_from_its_secret() {
+    let rendered = render(&with_controller(
+        "  groups:\n    - name: billing\n      selector: plane/data/*\n",
+    ));
+    for (config, port) in [
+        ("permguard-data-plane-billing", 5444),
+        ("permguard-control-plane", 5444),
+    ] {
+        let admin = &rendered.config(config)["admin"];
+        assert_eq!(admin["addr"], format!("0.0.0.0:{port}"));
+        assert_eq!(
+            admin["tls"],
+            json!({
+                "cert": "/etc/permguard-host-tls/tls.crt",
+                "key": "/etc/permguard-host-tls/tls.key",
+                "client_ca": "/etc/permguard-host-tls/ca.crt"
+            })
+        );
+    }
+    assert_eq!(
+        rendered.config("permguard-control-plane")["admin"]["advertised_url"],
+        "https://permguard-control-plane-host:5444"
+    );
+    let service = rendered.get("Service", "permguard-control-plane-host");
+    assert_eq!(service["spec"]["ports"][0]["port"], 5444);
+    let headless = rendered.get("Service", "permguard-data-plane-billing-headless");
+    assert!(
+        headless["spec"]["ports"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|port| port["name"] == "host")
+    );
+    let policy = &rendered.get("NetworkPolicy", "permguard-data-plane-billing")["spec"]["ingress"];
+    assert_eq!(policy[2]["ports"][0]["port"], 5444);
+
+    refused(
+        "controlPlane:\n  hostListener: { enabled: true }\n",
+        "names no tls.secretName",
+    );
+    refused(
+        "\
+controlPlane:
+  hostListener: { enabled: true, tls: { secretName: h } }
+  extraConfig: { admin: { addr: 0.0.0.0:1 } }
+",
+        "two sources of the Host listener",
+    );
+    refused(
+        "controlPlane:\n  extraConfig: { telemetry: { addr: 0.0.0.0:1 } }\n",
+        "the older spelling",
+    );
+    // The `host` section a values file adds merges with the one the chart renders.
+    let rendered = render(
+        "controlPlane:\n  extraConfig: { host: { principals: [{ san_uri: \"spiffe://acme/ops\" }] } }\n",
+    );
+    let host = &rendered.config("permguard-control-plane")["host"];
+    assert_eq!(host["addr"], "0.0.0.0:5443");
+    assert_eq!(host["principals"][0]["san_uri"], "spiffe://acme/ops");
+}
+
+#[test]
+fn every_host_keeps_its_volume_in_a_directory_inside_the_mount_under_its_claim() {
+    let env_of = |container: &Value| container["env"].as_array().unwrap().clone();
+    let working_dir =
+        json!({ "name": "PERMGUARD_WORKING_DIR", "value": "/var/lib/permguard/volume" });
+    // The control plane, persistent: the claim first, the volume directory inside the mount.
+    let rendered = render("persistence: { enabled: true }\n");
+    let pod = &rendered.get("Deployment", "permguard-control-plane")["spec"]["template"]["spec"];
+    assert_eq!(
+        pod["initContainers"][0]["args"],
+        json!([
+            "volume",
+            "claim",
+            "--volume",
+            "/var/lib/permguard/volume",
+            "--next",
+            "--create"
+        ])
+    );
+    assert!(env_of(&pod["containers"][0]).contains(&working_dir));
+    assert_eq!(
+        rendered.config("permguard-control-plane")["working_dir"],
+        "/var/lib/permguard/volume"
+    );
+    // Without a volume there is no claim to move, and the directory is still inside the mount.
+    let rendered = render("{}\n");
+    let pod = &rendered.get("Deployment", "permguard-control-plane")["spec"]["template"]["spec"];
+    assert!(pod.get("initContainers").is_none());
+    assert!(env_of(&pod["containers"][0]).contains(&working_dir));
+    // The all-in-one, the same way.
+    let rendered = render(
+        "\
+allInOne: { enabled: true, tls: { secretName: aio-tls } }
+controlPlane: { enabled: false }
+dataPlane: { enabled: false }
+persistence: { enabled: true }
+",
+    );
+    let pod = &rendered.get("Deployment", "permguard-all-in-one")["spec"]["template"]["spec"];
+    assert_eq!(pod["initContainers"][0]["name"], "claim");
+    assert!(env_of(&pod["containers"][0]).contains(&working_dir));
 }

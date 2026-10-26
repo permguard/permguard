@@ -16,9 +16,9 @@ data:
     {{- $config := dict
           "development_mode" $.Values.developmentMode
           "autogenerate" $.Values.autogenerate
-          "working_dir" "/var/lib/permguard"
+          "working_dir" "/var/lib/permguard/volume"
           "log" (dict "level" $.Values.logging.level "format" $.Values.logging.format)
-          "telemetry" (dict "addr" (printf "0.0.0.0:%d" (int $plane.ports.telemetry)))
+          "host" (dict "addr" (printf "0.0.0.0:%d" (int $plane.ports.telemetry)))
     }}
     {{- /*
     A pod binds every interface and publishes its Service. Those are two different addresses and
@@ -39,6 +39,9 @@ data:
     {{- $_ := set $config $section $public }}
     {{- $merged := mergeOverwrite $config ($plane.extraConfig | default dict) }}
     {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" (include "permguard.planeAssurance" $plane | fromJson) | fromYaml) }}
+    {{- with (include "permguard.hostListenerConfig" (dict "listener" $plane.hostListener "advertised" (printf "https://%s-%s-host:%d" (include "permguard.fullname" $) $component (int $plane.hostListener.port))) | fromYaml) }}
+    {{- $merged = mergeOverwrite $merged . }}
+    {{- end }}
     {{- toYaml $merged | nindent 4 }}
 ---
 {{- end }}
@@ -55,9 +58,9 @@ data:
     {{- $config := dict
           "development_mode" .Values.developmentMode
           "autogenerate" .Values.autogenerate
-          "working_dir" "/var/lib/permguard"
+          "working_dir" "/var/lib/permguard/volume"
           "log" (dict "level" .Values.logging.level "format" .Values.logging.format)
-          "telemetry" (dict "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.telemetry)))
+          "host" (dict "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.telemetry)))
           "runtime" (dict "planes" (list "control" "data"))
     }}
     {{- $tls := include "permguard.publicTls" .Values.allInOne.tls | fromYaml }}
@@ -72,5 +75,8 @@ data:
     {{- end }}
     {{- $merged := mergeOverwrite $config (.Values.allInOne.extraConfig | default dict) }}
     {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" (include "permguard.planeAssurance" .Values.allInOne | fromJson) | fromYaml) }}
+    {{- with (include "permguard.hostListenerConfig" (dict "listener" .Values.allInOne.hostListener "advertised" (printf "https://%s-all-in-one-host:%d" (include "permguard.fullname" .) (int .Values.allInOne.hostListener.port))) | fromYaml) }}
+    {{- $merged = mergeOverwrite $merged . }}
+    {{- end }}
     {{- toYaml $merged | nindent 4 }}
 {{- end }}

@@ -379,6 +379,12 @@ pub enum Command {
         #[command(subcommand)]
         action: GcAction,
     },
+    /// The drain controller of a data plane group in a cluster: the retained volume claims of
+    /// ordinals above the replicas, drained by a fenced Job and deleted only on proof (TD-2).
+    Reclaim {
+        #[command(subcommand)]
+        action: ReclaimAction,
+    },
     /// Print shell completions. Add to your shell's config to complete commands and flags.
     #[command(
         after_help = "Examples:\n  permguard completion zsh > \"${fpath[1]}/_permguard\"\n  permguard completion bash >> ~/.bashrc"
@@ -2562,6 +2568,42 @@ pub enum EvidenceAction {
         /// The ledger, by id.
         ledger: String,
     },
+}
+
+/// `permguard reclaim …` (TD-2).
+#[derive(Debug, Subcommand)]
+pub enum ReclaimAction {
+    /// One pass: create the drain Job of each retained claim above the replicas, and delete a
+    /// claim only when its Job printed a drain receipt that verifies under the member's pin the
+    /// coordinator holds and the coordinator's frontier acknowledges every stream it names. Prints
+    /// one JSON line per claim; `--host-endpoint` names the coordinator's Host listener.
+    #[command(
+        after_help = "Examples:\n  permguard --host-endpoint https://pg-permguard-control-plane-host:5444 reclaim run --selector app.kubernetes.io/instance=pg,app.kubernetes.io/component=data-plane,permguard.com/group=billing --job-template /etc/permguard-reclaim/job.json\n  permguard --host-endpoint https://coordinator.example:5444 --tls-ca-file ca.crt --tls-cert-file operator.crt --tls-key-file operator.key reclaim run --namespace permguard --kube-api https://127.0.0.1:6443 --kube-token-file token --kube-ca kube-ca.crt --selector permguard.com/group=billing --job-template job.json"
+    )]
+    Run(ReclaimRun),
+}
+
+/// `permguard reclaim run`'s arguments.
+#[derive(Debug, clap::Args)]
+pub struct ReclaimRun {
+    /// The label selector of the group workloads and their claims.
+    #[arg(long)]
+    pub selector: String,
+    /// The drain Job manifest, JSON, with `__CLAIM__`, `__JOB__` and `__ORDINAL__` to fill in.
+    #[arg(long, value_name = "FILE")]
+    pub job_template: PathBuf,
+    /// The namespace; the ServiceAccount's own when absent.
+    #[arg(long)]
+    pub namespace: Option<String>,
+    /// The Kubernetes API, when not the cluster this runs in.
+    #[arg(long, value_name = "URL")]
+    pub kube_api: Option<String>,
+    /// The bearer token for `--kube-api`.
+    #[arg(long, value_name = "FILE")]
+    pub kube_token_file: Option<PathBuf>,
+    /// The authority `--kube-api` is verified against.
+    #[arg(long, value_name = "FILE")]
+    pub kube_ca: Option<PathBuf>,
 }
 
 /// `permguard gc …` (TC-4).

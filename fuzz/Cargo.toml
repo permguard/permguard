@@ -215,6 +215,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "drain_receipt"
+path = "fuzz_targets/drain_receipt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "export_manifest"
 path = "fuzz_targets/export_manifest.rs"
 test = false

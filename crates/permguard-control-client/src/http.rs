@@ -564,14 +564,20 @@ fn parse_raw(endpoint: &Endpoint, response: &[u8]) -> Result<RawResponse, Error>
     Ok(RawResponse { status, body })
 }
 
-/// Decodes a chunked body; `None` when it is not one.
+/// Decodes a chunked body; `None` when it is not one — a size that is not hex, a chunk the body
+/// ends inside, a chunk not followed by its CRLF, a size past the address space. Every index is
+/// checked: the body is whatever the remote end sent (after the review).
 fn dechunk(body: &[u8]) -> Option<Vec<u8>> {
     let mut out = Vec::new();
     let mut at = 0usize;
     loop {
-        let line_end = body[at..].windows(2).position(|w| w == b"\r\n")? + at;
+        let line_end = body
+            .get(at..)?
+            .windows(2)
+            .position(|w| w == b"\r\n")?
+            .checked_add(at)?;
         let size = usize::from_str_radix(
-            std::str::from_utf8(&body[at..line_end])
+            std::str::from_utf8(body.get(at..line_end)?)
                 .ok()?
                 .trim()
                 .split(';')
@@ -579,12 +585,16 @@ fn dechunk(body: &[u8]) -> Option<Vec<u8>> {
             16,
         )
         .ok()?;
-        at = line_end + 2;
+        at = line_end.checked_add(2)?;
         if size == 0 {
             return Some(out);
         }
-        out.extend_from_slice(body.get(at..at + size)?);
-        at += size + 2;
+        let end = at.checked_add(size)?;
+        out.extend_from_slice(body.get(at..end)?);
+        if body.get(end..end.checked_add(2)?)? != b"\r\n" {
+            return None;
+        }
+        at = end.checked_add(2)?;
     }
 }
 
@@ -607,20 +617,31 @@ fn parse(endpoint: &Endpoint, response: &[u8]) -> Result<Response, Error> {
         });
     }
 
-    let response = String::from_utf8_lossy(response);
-
-    let (head, body) = response
-        .split_once("\r\n\r\n")
+    let split = response
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
         .ok_or_else(|| malformed("the response has no header section"))?;
+    let head = String::from_utf8_lossy(&response[..split]);
     let status_line = head.lines().next().unwrap_or_default();
     let status = status_line
         .split_whitespace()
         .nth(1)
         .and_then(|code| code.parse::<u16>().ok())
         .ok_or_else(|| malformed(&format!("its status line reads `{status_line}`")))?;
+    // A server may answer in chunks (the Kubernetes API does, TD-2): the body is what they carry.
+    let chunked = head.lines().any(|line| {
+        line.to_ascii_lowercase().starts_with("transfer-encoding:")
+            && line.to_ascii_lowercase().contains("chunked")
+    });
+    let body = &response[split + 4..];
+    let body = if chunked {
+        String::from_utf8_lossy(
+            &dechunk(body).ok_or_else(|| malformed("its chunked body is unreadable"))?,
+        )
+        .into_owned()
+    } else {
+        String::from_utf8_lossy(body).into_owned()
+    };
 
-    Ok(Response {
-        status,
-        body: body.to_owned(),
-    })
+    Ok(Response { status, body })
 }

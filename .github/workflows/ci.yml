@@ -303,6 +303,36 @@ jobs:
       - name: scale a group down and up
         run: ./scripts/chart-e2e.sh permguard/data-plane:e2e
 
+  chart-drain:
+    name: drain controller and storage takeover on a cluster
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: kind, pinned by digest
+        run: |
+          set -euo pipefail
+          curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+          echo "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  kind" | sha256sum --check
+          sudo install -m 0755 kind /usr/local/bin/kind
+      - name: the images
+        run: |
+          set -euo pipefail
+          docker build --build-arg PACKAGE=permguard-data-plane --build-arg BIN=permguard-data-plane -t permguard/data-plane:e2e .
+          docker build --build-arg PACKAGE=permguard-control-plane --build-arg BIN=permguard-control-plane -t permguard/control-plane:e2e .
+          docker build --build-arg PACKAGE=permguard-cli --build-arg BIN=permguard -t permguard/cli:e2e .
+      # A forced timeout never deletes an evidence claim; the fenced drain Job prints its receipt
+      # (TD-2).
+      - name: the drain controller
+        run: ./scripts/chart-reclaim-e2e.sh
+      # Kill the replica while it writes; no stale-writer frame (TD-2, H-05).
+      - name: the storage takeover gate
+        run: ./scripts/chart-takeover.sh permguard/data-plane:e2e takeover-qualification.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: takeover-qualification
+          path: takeover-qualification.json
+
   chart:
     name: helm chart
     runs-on: ubuntu-latest

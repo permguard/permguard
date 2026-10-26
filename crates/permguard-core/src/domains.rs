@@ -138,6 +138,8 @@ pub mod protected {
     /// The Host's attestation of one principal's approval of a plan (WP-3.9).
     pub const OPERATION_APPROVAL: &str = "permguard.operation.approval.v1";
     pub const SNAPSHOT_MANIFEST: &str = "permguard.snapshot.manifest.v1";
+    /// A member Host's statement that its drain completed, under `host.operations` (TD-2).
+    pub const DRAIN_RECEIPT: &str = "permguard.drain.receipt.v1";
     pub const LEDGER_EXPORT: &str = "permguard.ledger.export.v1";
     pub const STREAM_RUN: &str = "permguard.stream.run.v1";
     pub const AUDIT_CHECKPOINT: &str = "permguard.audit.checkpoint.v1";
@@ -463,6 +465,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             protected::OPERATION_APPROVAL,
         ),
         ("protected.SNAPSHOT_MANIFEST", protected::SNAPSHOT_MANIFEST),
+        ("protected.DRAIN_RECEIPT", protected::DRAIN_RECEIPT),
         ("protected.LEDGER_EXPORT", protected::LEDGER_EXPORT),
         ("protected.STREAM_RUN", protected::STREAM_RUN),
         ("protected.AUDIT_CHECKPOINT", protected::AUDIT_CHECKPOINT),

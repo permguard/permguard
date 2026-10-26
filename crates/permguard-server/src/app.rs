@@ -1605,6 +1605,11 @@ impl App {
         // below; that it is listening starts here.
         let shutdown = match &self.shutdown_factory {
             Some(factory) => factory(),
+            // A recovery drain (TD-2) stops as soon as it has started: Load has resumed what an
+            // earlier drain left, and the drain that follows ships the rest or says it did not.
+            None if config.shutdown_recover_drain() => {
+                Box::pin(async {}) as permguard_core::BoxFuture<'static, ()>
+            }
             None => signal::process_shutdown(),
         };
 
@@ -2308,6 +2313,8 @@ impl App {
                 Some(reads) => api.with_streams(reads),
                 None => api,
             };
+            // The volume a drain receipt names (TD-2).
+            let api = api.with_volume(volume.id(), volume.generation());
             // The application-consistent snapshot's barrier (WP-7.8).
             let api = api.with_backups(
                 Arc::clone(&backups),
@@ -3013,13 +3020,22 @@ fn claim_volume(root: &Path, generation: u64, out: &mut dyn Write) -> Result<()>
 
 /// Moves the claim of the volume at `root` one generation forward (TD-1).
 fn advance_volume_claim(root: &Path, create: bool, out: &mut dyn Write) -> Result<()> {
-    let (previous, generation) = permguard_host::storage::volume::advance_claim(root, create)
+    let advanced = permguard_host::storage::volume::advance_claim(root, create)
         .with_context(|| format!("claiming the volume at {}", root.display()))?;
+    let id: String = advanced
+        .volume_id
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
 
+    // The volume's id is printed too: a drain receipt names it, and the drain controller binds the
+    // receipt to the volume this line says was claimed (TD-2).
     writeln!(
         out,
-        "the volume at {} is claimed at generation {generation} (was {previous})",
-        root.display()
+        "the volume at {} (id {id}) is claimed at generation {} (was {})",
+        root.display(),
+        advanced.generation,
+        advanced.previous
     )
     .context("writing the result")?;
 
