@@ -8,6 +8,8 @@
 //! resource-derived target is frozen by the audit engine (WP-3.5), as status.md records.
 
 #![allow(clippy::expect_used)]
+// The vectors are the pseudonymiser's: a build without it has none to check.
+#![cfg(feature = "pseudonym")]
 
 use permguard_core::Pseudonymizer as _;
 use permguard_std::pseudonym::HmacPseudonymizer;
