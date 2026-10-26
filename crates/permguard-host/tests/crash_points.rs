@@ -21,6 +21,29 @@ use permguard_host::storage::{Dir, format, tombstone, volume};
 
 const DIRECTORY: &str = "PERMGUARD_CRASH_DIRECTORY";
 
+/// Claims the volume at `root`, waiting out a lock another test's child shares for an instant.
+///
+/// A child process another test thread spawns holds a copy of every descriptor of this process
+/// between its fork and its exec — the volume's `LOCK` among them, close-on-exec or not — so a lock
+/// this thread has just released can read as held by another process for that instant. Waited
+/// out, and bounded: a lock really held elsewhere is still refused.
+fn claim_volume(root: &Path) -> volume::Volume {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match volume::Volume::claim(
+            root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        ) {
+            Err(permguard_host::storage::StorageError::Held(_))
+                if std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            claimed => return claimed.expect("claimed"),
+        }
+    }
+}
+
 fn scratch(tag: &str) -> PathBuf {
     let path =
         std::env::temp_dir().join(format!("permguard-host-crash-{tag}-{}", std::process::id()));
@@ -105,11 +128,9 @@ fn child_immutable() {
 #[test]
 #[ignore = "started by its parent, with a crash point"]
 fn child_volume() {
-    volume::Volume::claim(
-        Path::new(&std::env::var(DIRECTORY).expect("the parent names the directory")),
-        permguard_core::assurance::AssuranceProfile::Development,
-    )
-    .expect("claimed");
+    claim_volume(Path::new(
+        &std::env::var(DIRECTORY).expect("the parent names the directory"),
+    ));
 }
 
 #[test]
@@ -547,11 +568,8 @@ fn every_crash_point_of_a_volume_creation_recovers() {
             "{point}: FORMAT is written last"
         );
 
-        let claimed = volume::Volume::claim(
-            &path,
-            permguard_core::assurance::AssuranceProfile::Development,
-        )
-        .expect("the next claim completes the volume");
+        // The next claim completes the volume.
+        let claimed = claim_volume(&path);
         assert_eq!(
             std::fs::read(host.join(volume::VOLUME_ID)).expect("VOLUME_ID"),
             written,
@@ -559,11 +577,7 @@ fn every_crash_point_of_a_volume_creation_recovers() {
         );
         let id = claimed.id();
         drop(claimed);
-        let again = volume::Volume::claim(
-            &path,
-            permguard_core::assurance::AssuranceProfile::Development,
-        )
-        .expect("claimed again");
+        let again = claim_volume(&path);
         assert_eq!(again.id(), id, "{point}");
     }
 }
@@ -597,7 +611,6 @@ mod migrating {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_host::storage::migrate::testing::{NotesV2, SUBSYSTEM, write_note};
     use permguard_host::storage::migrate::{Layout, Phase, Preflight, Reads};
-    use permguard_host::storage::volume::Volume;
 
     const NOW: u64 = 1_800_000_000;
 
@@ -619,7 +632,7 @@ mod migrating {
 
     /// Lays `notes` out at version 1 with two notes on a fresh volume at `root`.
     fn lay_out(root: &Path) {
-        let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(root);
         let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
         layout.declare(1, "data/notes/g1", NOW).expect("declared");
         let old = layout.active(&Reads::only(1)).expect("active");
@@ -629,7 +642,7 @@ mod migrating {
 
     fn migrated(root: &Path) {
         lay_out(root);
-        let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(root);
         Layout::open(&volume, SUBSYSTEM)
             .expect("opens")
             .migrate(&migration(), preflight())
@@ -639,7 +652,7 @@ mod migrating {
     #[test]
     #[ignore = "started by its parent, with a crash point"]
     fn child_migrate() {
-        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(&root());
         Layout::open(&volume, SUBSYSTEM)
             .expect("opens")
             .migrate(&migration(), preflight())
@@ -650,7 +663,7 @@ mod migrating {
     #[test]
     #[ignore = "started by its parent, with a crash point"]
     fn child_abandon() {
-        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(&root());
         let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
         layout
             .migrate(
@@ -668,7 +681,7 @@ mod migrating {
     #[test]
     #[ignore = "started by its parent, with a crash point"]
     fn child_finalize() {
-        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(&root());
         Layout::open(&volume, SUBSYSTEM)
             .expect("opens")
             .finalize(NOW + 1)
@@ -678,7 +691,7 @@ mod migrating {
     #[test]
     #[ignore = "started by its parent, with a crash point"]
     fn child_rollback() {
-        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(&root());
         Layout::open(&volume, SUBSYSTEM)
             .expect("opens")
             .rollback(NOW + 1)
@@ -687,7 +700,7 @@ mod migrating {
 
     /// What a volume must look like on one side or the other, whatever step the crash hit.
     fn assert_on_one_side(root: &Path, point: &str, expect_new: bool) {
-        let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(root);
         let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
         // Opening already completed a finalize or a rollback in progress; a migration between
         // its intent and its commit waits for this.
@@ -783,7 +796,7 @@ mod migrating {
                 "the child aborted at {point}"
             );
             assert_on_one_side(&path, point, true);
-            let volume = Volume::claim(&path, AssuranceProfile::Development).expect("claimed");
+            let volume = claim_volume(&path);
             let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
             // Every finalize point is past the manifest's replacement, so opening the layout
             // completed what the crash left.
@@ -807,7 +820,7 @@ mod migrating {
                 crash("migrating::child_rollback", point, &path),
                 "the child aborted at {point}"
             );
-            let volume = Volume::claim(&path, AssuranceProfile::Development).expect("claimed");
+            let volume = claim_volume(&path);
             let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
             // Every rollback point is past the manifest's return, so opening the layout
             // completed what the crash left.
@@ -832,7 +845,6 @@ mod migrating {
 
 mod mutating {
     use super::*;
-    use permguard_core::assurance::AssuranceProfile;
     use permguard_core::authz::{Principal, Selector};
     use permguard_host::audit::{Class, HOST, trail};
     use permguard_host::authz::{GrantStore, Issue};
@@ -891,7 +903,7 @@ mod mutating {
     }
 
     fn reopen(path: &Path) -> (Volume, std::sync::Arc<GrantStore>, Mutations) {
-        let volume = Volume::claim(path, AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(path);
         let (store, _) = GrantStore::open(&volume).expect("the store opens");
         let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
         (volume, store, mutations)

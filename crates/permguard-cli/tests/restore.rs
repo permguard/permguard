@@ -24,6 +24,28 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
+/// Runs `claim` until the volume's lock is not reported held, for at most five seconds.
+///
+/// A child process another test thread spawns holds a copy of every descriptor of this process
+/// between its fork and its exec — the volume's `LOCK` among them, close-on-exec or not — so a lock
+/// this thread has just released can read as held by another process for that instant. Waited
+/// out, and bounded: a lock really held elsewhere is still refused.
+fn waiting_out_a_spawn<T>(
+    mut claim: impl FnMut() -> Result<T, permguard_host::storage::StorageError>,
+) -> Result<T, permguard_host::storage::StorageError> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match claim() {
+            Err(permguard_host::storage::StorageError::Held(_))
+                if std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            claimed => return claimed,
+        }
+    }
+}
+
 fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
@@ -130,10 +152,12 @@ impl Snapshot {
     }
 
     fn held(&self) -> permguard_host::storage::volume::Volume {
-        permguard_host::storage::volume::Volume::claim(
-            &self.volume,
-            permguard_core::assurance::AssuranceProfile::Development,
-        )
+        waiting_out_a_spawn(|| {
+            permguard_host::storage::volume::Volume::claim(
+                &self.volume,
+                permguard_core::assurance::AssuranceProfile::Development,
+            )
+        })
         .expect("the volume")
     }
 
@@ -147,7 +171,10 @@ impl Snapshot {
 
     /// The recovery operator's `volume claim`: the previous owner fenced.
     fn claim(&self, generation: u64) {
-        permguard_host::storage::volume::set_claim(&self.volume, generation).expect("claimed");
+        waiting_out_a_spawn(|| {
+            permguard_host::storage::volume::set_claim(&self.volume, generation)
+        })
+        .expect("claimed");
     }
 
     fn marker(&self) -> Option<permguard_host::restore::Marker> {
