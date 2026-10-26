@@ -181,6 +181,82 @@ impl Snapshot {
         permguard_host::restore::marked(&self.held()).expect("reads")
     }
 
+    /// Appends `decisions` decision records and `events` event records to the Data Plane's
+    /// streams of one ledger, as the server would, under the volume's own identity and
+    /// `host.operations` ring: the receipts of each.
+    fn append(
+        &self,
+        decisions: usize,
+        events: usize,
+    ) -> (
+        Vec<permguard_stream::engine::Receipt>,
+        Vec<permguard_stream::engine::Receipt>,
+    ) {
+        use permguard_host::identity::{self, Identity};
+        use permguard_server::offline;
+        let config =
+            offline::config(env!("CARGO_PKG_VERSION"), Some(&self.config)).expect("the config");
+        let held = self.held();
+        let custodian = offline::custodian(&config, &held).expect("the custody");
+        let host_id = identity::host_id_of(&held)
+            .expect("read")
+            .expect("provisioned");
+        let (_, keys) = identity::directories(&held).expect("the identity directory");
+        let stored = identity::stored_public(
+            permguard_host::storage::Dir::open(keys.path()).expect("the keys"),
+        );
+        let custodied = custodian
+            .plan(
+                permguard_host::keys::ring::HOST_IDENTITY,
+                host_id,
+                keys,
+                stored,
+                identity::Suite::Ed25519Sha256V1,
+            )
+            .expect("the identity's custody");
+        let opened = Identity::open(&held, custodied.provider).expect("the identity opens");
+        let time = std::sync::Arc::new(permguard_host::time::TimeGuard::system(
+            config.time_max_clock_skew(),
+        ));
+        let operations = offline::rings(&config, &held, host_id, None, &custodian, time.clone())
+            .expect("rings")
+            .into_iter()
+            .find(|ring| ring.id() == permguard_host::keys::ring::HOST_OPERATIONS)
+            .expect("the operations ring");
+        let engine = permguard_stream::engine::Streams::open(&held, &opened, operations, time)
+            .expect("the streams");
+        let ledger = permguard_core::authz::Resource::ledger("data", "zone-a", "ledger-a");
+        let decided = if decisions == 0 {
+            Vec::new()
+        } else {
+            let producer = engine
+                .register_producer(
+                    permguard_decisions::stream::descriptor(),
+                    permguard_decisions::stream::Codec,
+                )
+                .expect("the decision stream");
+            let record = vector("decision_record", 0);
+            (0..decisions)
+                .map(|_| producer.append(&ledger, &record).expect("appended"))
+                .collect()
+        };
+        let recorded = if events == 0 {
+            Vec::new()
+        } else {
+            let producer = engine
+                .register_producer(
+                    permguard_events::stream::descriptor(),
+                    permguard_events::stream::Codec,
+                )
+                .expect("the event stream");
+            let record = vector("event_batch", 0);
+            (0..events)
+                .map(|_| producer.append(&ledger, &record).expect("appended"))
+                .collect()
+        };
+        (decided, recorded)
+    }
+
     fn host_id(&self) -> String {
         permguard_host::identity::record::uuid_text(
             &permguard_host::identity::host_id_of(&self.held())
@@ -193,6 +269,23 @@ impl Snapshot {
 impl Drop for Snapshot {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// A record the streams' codecs accept, from the evidence vectors: the `n`th decision record, or
+/// the `n`th record of the event batch.
+fn vector(name: &str, n: usize) -> serde_json::Value {
+    let vectors: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/vectors/evidence.json"
+        ))
+        .expect("the vectors"),
+    )
+    .expect("JSON");
+    match name {
+        "decision_record" => vectors[name][n]["record"].clone(),
+        _ => vectors[name]["records"][n].clone(),
     }
 }
 
@@ -289,6 +382,54 @@ fn a_dr_restore_keeps_the_host_under_a_new_boot_id_once_per_fence() {
         "{}",
         stderr(&spent)
     );
+}
+
+/// WP-7.7 (owner decision of 2026-10-26): a `dr` restore rolls every producer run of the
+/// snapshot over before its marker: the restored Host appends to successors only, from sequence 1,
+/// never to a run a coordinator may hold further.
+#[test]
+fn a_dr_restore_rolls_the_producer_runs_over() {
+    let snapshot = Snapshot::new("dr-streams", "");
+    let (before, recorded) = snapshot.append(2, 1);
+    let previous = snapshot.boot();
+    snapshot.claim(previous.generation + 1);
+    let plan = snapshot.dir.join("restore.plan");
+    json(&snapshot.plan("dr", &plan));
+    let restored = json(&snapshot.restore("dr", &plan));
+    assert_eq!(
+        restored["streams"]["runs_rolled_over"], 2,
+        "the decision run and the event run"
+    );
+    assert_eq!(restored["streams"]["forked"], serde_json::json!([]));
+    let (after, recorded_after) = snapshot.append(1, 1);
+    assert_ne!(
+        after[0].run_id, before[0].run_id,
+        "the snapshot's runs are not appended to"
+    );
+    assert_ne!(recorded_after[0].run_id, recorded[0].run_id);
+    assert_eq!((after[0].seq, recorded_after[0].seq), (1, 1));
+}
+
+/// WP-7.7: a producer stream the restore cannot roll over refuses a `dr` restore, nothing written.
+#[test]
+fn a_dr_restore_refuses_a_producer_stream_it_does_not_know() {
+    let snapshot = Snapshot::new("dr-unknown-stream", "");
+    let unknown = snapshot
+        .volume
+        .join("host/streams/data/unknown/1/producer/somewhere");
+    std::fs::create_dir_all(&unknown).expect("a producer directory");
+    let previous = snapshot.boot();
+    snapshot.claim(previous.generation + 1);
+    let plan = snapshot.dir.join("restore.plan");
+    json(&snapshot.plan("dr", &plan));
+    let refused = snapshot.restore("dr", &plan);
+    assert!(!refused.status.success());
+    assert!(
+        stderr(&refused).contains("`data/unknown` version 1"),
+        "{}",
+        stderr(&refused)
+    );
+    assert!(snapshot.marker().is_none(), "nothing was recorded");
 }
 
 /// WP-7.9: the run requires the claim the plan proved the fence under; raised since, it is

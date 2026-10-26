@@ -22,10 +22,8 @@ is cut.
 - **Restore and split-brain drills, and the baseline volume recovered through every migration (WP-7.7).**
   `scripts/drill-restore.sh` runs the restore drill on the Compose lab's `split-plane` profile.
   It takes an application-consistent backup of the Data Plane, answers decisions the backup does not hold, loses the volume, and restores the verified snapshot in `dr` mode.
-  The restored Data Plane must come back as the same Host under a new boot, with its memberships active and serving its ledger.
-  Its snapshot's decisions run is behind what the coordinator acknowledged, and the drill checks that the coordinator fences it off.
-  The coordinator takes none of its records, keeps every one it acknowledged and suspends the shipping membership.
-  The drill's record names what it found: no operator command opens the approved successor of a fenced run yet, so shipping after a `dr` restore stays suspended.
+  The drill then fences the Data Plane's memberships on the coordinator before restarting it.
+  The restored Data Plane must come back as the same Host under a new boot, with its memberships active, serving its ledger and shipping again.
   `scripts/drill-split-brain.sh` proves on one volume that a successor started beside its predecessor, or a claim moved beside it, is refused before anything is written.
   Each drill writes a JSON record of what it proved and of what it did not.
   The new `drills` workflow runs both every week, the split-brain drill also on a cluster through `scripts/chart-takeover.sh`.
@@ -702,6 +700,20 @@ is cut.
   A denial at a listener's gate (`unauthenticated`, `forbidden`) is reported with its code and no class over REST as over gRPC, exit 64.
 
 ### Changed
+
+- **`restore run --mode dr` rolls every producer run over (WP-7.7).**
+  A snapshot's runs are behind what its coordinators may have acknowledged before the loss, so a restored Data Plane that appended to them wrote other records at sequences a coordinator already held.
+  The coordinator rightly found a fork and suspended shipping, and nothing reopened it.
+  The restore now ends each decision and event run of the snapshot at its last durable record and opens its successor, before it records the restore.
+  The restored Host writes only to successors, which coordinators take as new runs.
+  The report gains `streams.runs_rolled_over` and `streams.forked`: a stream already forked is left to its operator, named.
+  A producer stream of a kind the restore does not know refuses it before anything is written.
+  After a `dr` restore, and before the restart, fence the Host's memberships on each coordinator with `host members fence`: the Host that was lost may still hold sessions there.
+- **A coordinator takes a batch signed again over the same records as an exact replay (WP-7.7).**
+  A restored producer seals again the records its snapshot held unsealed; when it had sealed and shipped the same range before the loss, the second batch file differs only in its id and time.
+  A coordinator holding a batch of that range now answers `ok` and keeps the first file when the new one is signed by the same key.
+  It must also commit to the same run, range, previous head, head and Merkle root.
+  Any other difference is still a fork; a held batch file that does not read is reported as the store's corruption, not as the producer's fork.
 
 - **`host.operations` in a remote KMS is refused where decisions or temporal events are recorded (TS-4).**
   It signs the statement that opens a stream's run, which a decision log or a temporal journal does on the first record it appends, while a decision waits.

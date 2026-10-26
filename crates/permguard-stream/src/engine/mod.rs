@@ -67,8 +67,8 @@ use sha2::{Digest as _, Sha256};
 pub use consumer::{Consumer, ConsumerState, ForkMark, MAX_VIEW_BYTES};
 pub use producer::{
     Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, MAX_SUBSCRIPTION_BYTES, Position,
-    PressureBounds, Producer, Receipt, Sealing, Span, Spans, Subscription, SubscriptionState,
-    canonical_jwk, decode_group, encode_group,
+    PressureBounds, Producer, Receipt, Restored, Sealing, Span, Spans, Subscription,
+    SubscriptionState, canonical_jwk, decode_group, encode_group,
 };
 pub use run::{Fence, RunEnd, RunStatement};
 pub use state::State;

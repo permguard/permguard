@@ -54,9 +54,12 @@ control_endpoint() { printf 'https://%s:6443' "$1"; }
 data_endpoint() { printf 'https://%s:7443' "$1"; }
 
 # Waits until `host` answers discovery: started, its listeners bound.
+# Waits until `host` answers discovery and its Host listener accepts connections: the server opens
+# its listeners one after another, and the lab's authority calls the Host listener next.
 wait_up() {
     local host="$1" deadline=$((SECONDS + ${2:-180}))
-    until curl -fsS -o /dev/null "http://${host}:5443/.well-known/server-configuration" 2>/dev/null; do
+    until curl -fsS -o /dev/null "http://${host}:5443/.well-known/server-configuration" 2>/dev/null &&
+        (: <"/dev/tcp/${host}/5444") 2>/dev/null; do
         [ "${SECONDS}" -lt "${deadline}" ] || fail "${host} did not come up"
         sleep 2
     done
@@ -568,15 +571,16 @@ assert_split_plane() {
     log "the coordinator holds all ${recorded} records of ${producer}, verified under its pinned data.attest ring"
 }
 
-# The restore drill (WP-7.7, `scripts/drill-restore.sh`), in three phases on the split-plane lab:
+# The restore drill (WP-7.7, `scripts/drill-restore.sh`), in four phases on the split-plane lab:
 #
 #   backup    online: an application-consistent backup of the Data Plane's volume, mounted read-only
 #             at /drill/data-plane, then decisions the backup does not hold, shipped
 #   restore   offline, the Data Plane stopped and its volume mounted: the volume lost, the snapshot
-#             verified and put back, the lost Host fenced, the snapshot restored in `dr` mode
-#   restored  online again: the same Host and identity, serving its ledger; its snapshot run, behind
-#             what the coordinator acknowledged, is fenced off: none of its records taken, nothing
-#             acknowledged lost, the shipping membership suspended until an operator acts
+#             verified and put back, the lost Host fenced, the snapshot restored in `dr` mode, its
+#             producer runs rolled over
+#   fence     the restored Host's memberships fenced on the coordinator before it starts (P9)
+#   restored  online again: the same Host and identity, serving its ledger, shipping what it
+#             records in the successors of the runs the restore rolled over, its memberships active
 #
 # What each phase learnt is kept under the lab's state, `drill/`, for the next one and for the
 # drill's record.
@@ -602,6 +606,9 @@ drill_restore() {
             --backup-token-file "${drill}/backup.token" --snapshot-id "${snapshot_id}" |
             jq -e '.state == "finalized"' >/dev/null || fail "the backup was not finalized"
         rm -f "${drill}/backup.token"
+        # The runs the snapshot holds: what the restore rolls over.
+        pg --host-endpoint "$(host_endpoint data-plane)" host streams runs data decisions \
+            --resource "${resource}" | jq -c '[.runs[].run]' >"${drill}/snapshot_runs"
         # Kept outside the snapshot, as an operator keeps it.
         pg --host-endpoint "$(host_endpoint data-plane)" host keys bundle export --resource host \
             --out "${drill}/bundle.json" >/dev/null
@@ -637,17 +644,46 @@ drill_restore() {
         jq -e --arg host "$(cat "${drill}/host_id")" \
             '.mode == "dr" and .host_id == $host and (.previous_boot_id | length) > 0' \
             >/dev/null <<<"${restored}" || fail "the dr restore did not keep the Host: ${restored}"
-        # The next start is a new incarnation: a new boot id under the claim the fence moved.
-        jq -c '{previous_boot_id, plan_id}' <<<"${restored}" >"${drill}/restored.json"
+        # The next start is a new incarnation: a new boot id under the claim the fence moved; the
+        # snapshot's runs rolled over, so the restored Host appends to none of them.
+        jq -e '.streams.runs_rolled_over >= 1 and (.streams.forked | length) == 0' >/dev/null \
+            <<<"${restored}" || fail "the restore rolled no producer run over: ${restored}"
+        jq -c '{previous_boot_id, plan_id, runs_rolled_over: .streams.runs_rolled_over}' \
+            <<<"${restored}" >"${drill}/restored.json"
         local verify
         verify="$(permguard-data-plane volume verify --volume "${volume}" 2>&1)" ||
             fail "volume verify: ${verify}"
         grep -q ' 0 findings' <<<"${verify}" || fail "volume verify: ${verify}"
         log "restored in dr mode as the same Host; volume verify finds nothing"
         ;;
+    fence)
+        # P9: memberships fenced before remote work. The Host lost may still hold sessions on its
+        # coordinator; the fence ends them and raises each membership's epoch, and the restored
+        # Host syncs to the new one on its first session.
+        step "restore drill: the restored Host's memberships fenced on the coordinator"
+        local member_fp memberships fenced
+        member_fp="$(cat "${drill}/pin")"
+        memberships="$(pg --host-endpoint "$(host_endpoint control-plane)" host members list |
+            jq -c --arg fp "${member_fp}" \
+                '[.members[] | select(.role == "coordinator" and .member.fingerprint == $fp) |
+                  {id: .membership_id, revision, epoch}]')"
+        jq -e 'length == 2' >/dev/null <<<"${memberships}" ||
+            fail "the coordinator does not hold the restored Host's two memberships: ${memberships}"
+        fenced=0
+        while read -r membership; do
+            pg --host-endpoint "$(host_endpoint control-plane)" host members fence \
+                "$(jq -r .id <<<"${membership}")" --expected-revision "$(jq -r .revision <<<"${membership}")" \
+                --reason "the restore drill: the Host was restored in dr mode" |
+                jq -e --argjson epoch "$(jq .epoch <<<"${membership}")" \
+                    '.status == "active" and .epoch == $epoch + 1' >/dev/null ||
+                fail "the membership ${membership} was not fenced"
+            fenced=$((fenced + 1))
+        done < <(jq -c '.[]' <<<"${memberships}")
+        log "${fenced} memberships fenced: active, each at its next epoch"
+        ;;
     restored)
-        step "restore drill: the same Host, serving again, its old run fenced off"
-        local identity producer member_fp held answer deadline
+        step "restore drill: the same Host, serving and shipping again"
+        local identity producer member_fp held answer member_runs coordinator_runs
         identity="$(pg --host-endpoint "$(host_endpoint data-plane)" host identity show)"
         jq -e --arg host "$(cat "${drill}/host_id")" --arg pin "$(cat "${drill}/pin")" \
             '.host_id == $host and .fingerprint == $pin' >/dev/null <<<"${identity}" ||
@@ -658,38 +694,42 @@ drill_restore() {
         expect_decision data-plane acme main deny.json false >/dev/null
         log "the restored Data Plane serves its ledger and records what it answers"
 
-        # The snapshot's run is behind what the coordinator acknowledged: the restored producer
-        # writes its next records at sequences the coordinator already holds others at. The
-        # coordinator must take none of them, keep every record it acknowledged before the loss,
-        # and suspend the shipping membership: a fork, closed until an operator acts.
-        member_fp="$(fingerprint data-plane)"
-        deadline=$((SECONDS + 240))
-        while :; do
-            answer="$(pg --host-endpoint "$(host_endpoint control-plane)" host members list)"
-            jq -e --arg fp "${member_fp}" \
-                '[.members[] | select(.role == "coordinator" and .member.fingerprint == $fp and
-                  .status == "suspended")] | length == 1' >/dev/null <<<"${answer}" && break
-            [ "${SECONDS}" -lt "${deadline}" ] ||
-                fail "the coordinator did not fence off the restored producer's run: ${answer}"
-            sleep 5
-        done
+        # The restore rolled the snapshot's run over, so what the restored Host records lands in
+        # a successor, a new run to the coordinator: every run shipped whole, the coordinator
+        # keeping what it acknowledged of the snapshot's run and holding the successors whole.
+        wait_shipped data-plane "${resource}" 300 >/dev/null
         producer="$(producer_of data-plane)"
+        member_runs="$(pg --host-endpoint "$(host_endpoint data-plane)" host streams runs data decisions \
+            --resource "${resource}")"
+        coordinator_runs="$(pg --host-endpoint "$(host_endpoint control-plane)" host streams runs data decisions \
+            --resource "${resource}")"
+        # Every run holding records is held by the coordinator at least as far as the Host holds
+        # it (the snapshot's further: what it acknowledged before the loss), and some run the
+        # restore opened holds records, held whole.
+        jq -e -n --argjson member "${member_runs}" --argjson coordinator "${coordinator_runs}" \
+            --arg producer "${producer}" --argjson snapshot "$(cat "${drill}/snapshot_runs")" \
+            'def held($run): [$coordinator.runs[] | select(.producer == $producer and .run == $run)][0].acked // 0;
+             [$member.runs[] | select(.last_seq > 0)] as $holding |
+             all($holding[]; held(.run) >= .last_seq) and
+             any($holding[]; (.run | IN($snapshot[]) | not) and held(.run) == .last_seq)' >/dev/null ||
+            fail "the coordinator does not hold the restored Host's runs: ${member_runs} ${coordinator_runs}"
         held="$(held_from "${resource}" "${producer}")"
-        [ "${held}" = "$(cat "${drill}/recorded_before_loss")" ] ||
-            fail "the coordinator holds ${held} records of ${producer}, not the $(cat "${drill}/recorded_before_loss") it acknowledged before the loss"
-        # Nor acknowledged them as already held: the producer's acknowledged point stays below
-        # what the coordinator holds, and what it wrote since the restore stays with it.
-        frontier data-plane "${resource}" |
-            jq -e --argjson held "${held}" \
-                '[.producer[] | select(.last_seq > .acknowledged and .acknowledged < $held)] | length == 1' \
-                >/dev/null || fail "the restored producer's records were acknowledged, or it retains none of them"
-        log "the coordinator took none of the restored run's records, kept its ${held} and suspended the shipping membership"
+        [ "${held}" -gt "$(cat "${drill}/recorded_before_loss")" ] ||
+            fail "the coordinator holds ${held} records of ${producer}, no more than before the loss"
+        member_fp="$(fingerprint data-plane)"
+        answer="$(pg --host-endpoint "$(host_endpoint control-plane)" host members list)"
+        jq -e --arg fp "${member_fp}" \
+            '[.members[] | select(.role == "coordinator" and .member.fingerprint == $fp)] |
+             length == 2 and all(.status == "active")' >/dev/null <<<"${answer}" ||
+            fail "a membership of the restored Host is not active: ${answer}"
+        log "shipping resumed: the runs the restore opened held whole, ${held} records held in all, both memberships active"
 
         jq -n --arg host "$(cat "${drill}/host_id")" --argjson held "${held}" \
+            --argjson before "$(cat "${drill}/recorded_before_loss")" \
             --slurpfile restored "${drill}/restored.json" \
             '{host_id: $host, previous_boot_id: $restored[0].previous_boot_id, plan_id: $restored[0].plan_id,
-              held_by_coordinator: $held, shipping: "suspended: the restored run forked at the coordinator",
-              finding: "a dr restore resumes the snapshot run, behind what the coordinator acknowledged; the coordinator detects the fork and suspends the shipping membership, and no operator command opens the approved successor yet"}' \
+              runs_rolled_over: $restored[0].runs_rolled_over, recorded_before_loss: $before,
+              held_by_coordinator: $held, shipping: "resumed"}' \
             >"${drill}/result.json"
         ;;
     *) fail "no restore drill phase ${phase}" ;;

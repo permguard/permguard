@@ -775,8 +775,15 @@ impl<C: RecordCodec> Consumer<C> {
             &|stored| stored == file,
         ) {
             Ok(Published::Written | Published::AlreadyThere) => {}
-            // Another batch file of the same range: the producer signed it twice.
-            Err(StorageError::Corruption(_)) => return forked(first),
+            // Another batch file of the same range: signed again over the same records and
+            // commitments, as a producer restored in `dr` mode seals what its snapshot held
+            // unsealed, it is an exact replay and the first file stays (WP-7.7); over anything
+            // else, a fork.
+            Err(StorageError::Corruption(_)) => {
+                if !self.same_commitments(&batches, first, last, envelope, &jwk.kid)? {
+                    return forked(first);
+                }
+            }
             Err(error) => return Err(error.into()),
         }
         if new_span {
@@ -796,6 +803,42 @@ impl<C: RecordCodec> Consumer<C> {
             self.append(held, from, suffix)?;
         }
         Ok((Answer::of(Outcome::Ok, held.acked), None))
+    }
+
+    /// Whether the batch file held for `first`..`last` commits to what `envelope` commits to, under
+    /// the same key `kid`: the same run, stream, range, previous head, head and Merkle root. Another
+    /// key over a range held is a conflicting transition. The held file was verified when it was
+    /// admitted; what is compared is its envelope. A held file that does not read is the store's
+    /// corruption, never the producer's fork.
+    fn same_commitments(
+        &self,
+        batches: &Dir,
+        first: u64,
+        last: u64,
+        envelope: &super::batch::Envelope,
+        kid: &str,
+    ) -> Result<bool, StreamError> {
+        let name = format!("{first}-{last}.jws");
+        let unreadable = || {
+            StreamError::Corruption(format!(
+                "the batch file `{name}` held does not read as a batch"
+            ))
+        };
+        let held = batches.read(&name)?.ok_or_else(unreadable)?;
+        let held = SealedBatch::decode(&held).map_err(|_| unreadable())?;
+        let (held_kid, held) = (
+            held.kid().map_err(|_| unreadable())?,
+            held.envelope_unverified().map_err(|_| unreadable())?,
+        );
+        Ok(held_kid == kid
+            && held.run == envelope.run
+            && held.stream_key == envelope.stream_key
+            && held.descriptor_version == envelope.descriptor_version
+            && (held.first_seq, held.last_seq, held.count)
+                == (envelope.first_seq, envelope.last_seq, envelope.count)
+            && held.previous_head == envelope.previous_head
+            && held.head == envelope.head
+            && held.merkle_root == envelope.merkle_root)
     }
 
     /// The fork mark of `key`'s producer, when its stream was found forked.

@@ -14,12 +14,11 @@
 #   decisions the backup does not hold, shipped to the coordinator
 #   the Data Plane stops; its volume is lost and the snapshot put back, verified against its
 #   manifest under the pinned identity; the lost Host is fenced and the snapshot restored in `dr`
-#   the Data Plane starts: the same Host, memberships active, serving its ledger; the snapshot's run,
-#   behind what the coordinator acknowledged, is fenced off by the coordinator, which takes none of
-#   its records and keeps every one it acknowledged
-#
-# The record's `finding` names what the drill found and the procedure does not yet cover: a fenced
-# run has no operator path to its approved successor, so shipping stays suspended.
+#   the restore rolls the snapshot's producer runs over, so the restored Host never appends to a
+#   run the coordinator holds further; the Host's memberships are fenced on the coordinator (P9)
+#   the Data Plane starts: the same Host, memberships active, serving its ledger, and shipping
+#   again: what it records lands in the successor runs, which the coordinator holds whole beside
+#   every record it acknowledged before the loss
 #
 # It needs what `scripts/compose-lab.sh` needs; NO_BUILD=1 and PERMGUARD_LAB_IMAGE work the same,
 # and the logs of a failed drill are written under ARTIFACTS (default `target/compose-lab`).
@@ -62,6 +61,7 @@ step "restore drill: the Data Plane stopped"
 dc stop data-plane >/dev/null 2>&1
 dc run --rm -v "${data_volume}:/var/lib/permguard" lab assert split-plane restore ||
     failed "the restore phase failed"
+dc run --rm lab assert split-plane fence || failed "the fence phase failed"
 
 step "restore drill: the Data Plane started on the restored volume"
 dc start data-plane >/dev/null 2>&1
@@ -76,11 +76,10 @@ jq -n --argjson result "${result}" --arg image "${PERMGUARD_LAB_IMAGE}" \
       backup: "application-consistent: prepare, copy inside the barrier, finalize; verified offline against its manifest, the exported bundle and the pinned identity",
       restored: $result,
       checks: ["the same host_id and identity, restored as a new incarnation (previous_boot_id recorded)",
+               "the snapshot producer runs rolled over by the restore",
+               "the restored Host memberships fenced on the coordinator, each at its next epoch",
                "memberships active after the restore, pinning the coordinator",
                "the ledger served: a permit and a deny, each recorded",
-               "the snapshot run, behind the coordinator, fenced off: none of its records taken, every acknowledged record kept, the shipping membership suspended",
-               "volume verify: 0 findings"],
-      finding: $result.finding}' >"${record}"
-# The restore is proven; shipping after it is not, and the record says why (status.md, WP-7.7).
-echo "::warning title=drill-restore finding::$(jq -r .finding <<<"${result}")"
+               "shipping resumed: every run shipped whole, the successors held whole by the coordinator beside what it acknowledged before the loss",
+               "volume verify: 0 findings"]}' >"${record}"
 echo "ok: drill-restore (${record})"

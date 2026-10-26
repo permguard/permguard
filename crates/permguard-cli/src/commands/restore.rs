@@ -11,7 +11,9 @@
 //!
 //! The fence is proven before anything opens the identity, whose open records a new `BOOT`: the
 //! plan binds the snapshot's boot id and the claim generation it proved, and the run requires
-//! that same generation. `dr` and `forensic` record the marker only, before the plan is spent;
+//! that same generation. `dr` first rolls every producer run of the snapshot over (WP-7.7), so the
+//! restored Host never appends to a run a coordinator may hold further, then records the marker;
+//! `forensic` records the marker only; both before the plan is spent;
 //! `clone` spends the plan, runs the offline emergency reset, then records the marker, through
 //! the mutation transaction. A forensic volume is terminal: no later restore but a forensic one,
 //! and no offline command that writes, works on it.
@@ -91,6 +93,17 @@ struct RestoreReport {
     /// The emergency reset a `clone` ran.
     #[serde(skip_serializing_if = "Option::is_none")]
     reset: Option<ResetReport>,
+    /// What a `dr` restore did to the producer runs (WP-7.7).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    streams: Option<StreamsReport>,
+}
+
+/// The producer runs a `dr` restore rolled over, and the forked streams it left to their operator.
+#[derive(Serialize)]
+struct StreamsReport {
+    runs_rolled_over: u64,
+    /// Each forked stream, `<plane>/<type> <resource>`, with the sequence it forked at.
+    forked: Vec<String>,
 }
 
 impl Report for RestoreReport {
@@ -103,6 +116,13 @@ impl Report for RestoreReport {
         writeln!(out)?;
         if let Some(reset) = &self.reset {
             reset.render_terminal(out)?;
+            writeln!(out)?;
+        }
+        if let Some(streams) = &self.streams {
+            writeln!(out, "runs rolled over  {}", streams.runs_rolled_over)?;
+            for forked in &streams.forked {
+                writeln!(out, "left forked       {forked}")?;
+            }
             writeln!(out)?;
         }
         writeln!(
@@ -118,7 +138,9 @@ impl Report for RestoreReport {
                 }
                 _ => {
                     "The next start is a new incarnation of the same Host: a new boot id, and \
-                     every remote task opens its session for a fresh lease."
+                     every remote task opens its session for a fresh lease. Before it, fence \
+                     this Host's memberships on each coordinator (`host members fence`): the \
+                     Host lost may still hold sessions there."
                 }
             }
         )
@@ -490,7 +512,7 @@ fn run(
         opened.host_id(),
         Some(Arc::clone(&opened) as Arc<dyn permguard_host::keys::ring::Binder>),
         &custodian,
-        time,
+        Arc::clone(&time),
     )
     .map_err(|error| Failure::unavailable(format!("the key rings: {error:#}")))?;
 
@@ -518,9 +540,16 @@ fn run(
         permguard_host::api::plans::consume_plan(&mutations, &replay, &planner, &plan)
             .map_err(|error| Failure::unavailable(format!("consuming the plan: {error}")))
     };
+    // The producer runs roll over before the marker, which refuses a second run: a crash between
+    // the two leaves the run to be done again, which rolls every stream over once more and leaves
+    // an empty run behind each, harmless to every consumer (WP-7.7).
+    let streams = match mode {
+        Mode::Dr => Some(roll_over_streams(&held, &opened, &rings, &time)?),
+        Mode::Forensic | Mode::Clone => None,
+    };
     let reset = match mode {
-        // The marker is the whole transition, so it comes first: a crash before the plan is spent
-        // leaves the marker, which refuses a second run and, for `forensic`, every start.
+        // The marker is the rest of the transition, so it comes next: a crash before the plan is
+        // spent leaves the marker, which refuses a second run and, for `forensic`, every start.
         Mode::Dr | Mode::Forensic => {
             record()?;
             consume()?;
@@ -545,12 +574,139 @@ fn run(
             previous_boot_id: hex(&previous_boot_id),
             plan_id: plan.plan_id.clone(),
             reset: reset.as_ref().map(reset_report),
+            streams,
         },
         globals.output,
         trace,
     )?;
     std::mem::forget(held);
     Ok(())
+}
+
+/// The producer streams a `dr` restore rolls over: the Data Plane's, the descriptors the server
+/// registers (WP-7.7). A producer stream of any other descriptor refuses the restore before
+/// anything is written.
+fn rolled_over() -> [permguard_stream::engine::Descriptor; 2] {
+    [
+        permguard_decisions::stream::descriptor(),
+        permguard_events::stream::descriptor(),
+    ]
+}
+
+/// Rolls every producer run of the volume over (WP-7.7, owner decision of 2026-10-26): each ends
+/// at its snapshot's last durable record and its successor opens under the boot id the restore's
+/// identity open recorded. Every producer directory is read first: one of a stream this restore
+/// does not know refuses it, nothing written.
+fn roll_over_streams(
+    held: &Volume,
+    opened: &permguard_host::identity::Identity,
+    rings: &[Arc<permguard_host::keys::ring::Ring>],
+    time: &Arc<permguard_host::time::TimeGuard>,
+) -> Result<StreamsReport, Failure> {
+    use permguard_stream::engine::{STREAMS, Streams};
+
+    let root = held.root().join("host").join(STREAMS);
+    let mut found = Vec::new();
+    for plane in subdirs(&root)? {
+        for stream_type in subdirs(&root.join(&plane))? {
+            for version in subdirs(&root.join(&plane).join(&stream_type))? {
+                let producers = root
+                    .join(&plane)
+                    .join(&stream_type)
+                    .join(&version)
+                    .join("producer");
+                if subdirs(&producers)?.is_empty() {
+                    continue;
+                }
+                let known = rolled_over().iter().any(|descriptor| {
+                    descriptor.plane == plane
+                        && descriptor.stream_type == stream_type
+                        && descriptor.version.to_string() == version
+                });
+                if !known {
+                    return Err(Failure::unavailable(format!(
+                        "the volume holds producer runs of `{plane}/{stream_type}` version \
+                         {version}, which this restore cannot roll over: nothing was changed"
+                    )));
+                }
+                found.push(stream_type.clone());
+            }
+        }
+    }
+    if found.is_empty() {
+        return Ok(StreamsReport {
+            runs_rolled_over: 0,
+            forked: Vec::new(),
+        });
+    }
+    let operations = rings
+        .iter()
+        .find(|ring| ring.id() == permguard_host::keys::ring::HOST_OPERATIONS)
+        .ok_or_else(|| Failure::internal("no `host.operations` ring was opened"))?;
+    let engine = Streams::open(held, opened, Arc::clone(operations), Arc::clone(time))
+        .map_err(|error| Failure::unavailable(format!("opening the streams: {error}")))?;
+    let mut restored = Vec::new();
+    for stream_type in found {
+        let done = match stream_type.as_str() {
+            "decisions" => engine
+                .register_producer(
+                    permguard_decisions::stream::descriptor(),
+                    permguard_decisions::stream::Codec,
+                )
+                .and_then(|producer| producer.succeed_restored()),
+            _ => engine
+                .register_producer(
+                    permguard_events::stream::descriptor(),
+                    permguard_events::stream::Codec,
+                )
+                .and_then(|producer| producer.succeed_restored()),
+        }
+        .map_err(|error| {
+            Failure::unavailable(format!(
+                "rolling the `data/{stream_type}` runs over: {error}"
+            ))
+        })?;
+        restored.push((stream_type, done));
+    }
+    Ok(StreamsReport {
+        runs_rolled_over: restored
+            .iter()
+            .map(|(_, done)| done.rolled.len() as u64)
+            .sum(),
+        forked: restored
+            .iter()
+            .flat_map(|(stream_type, done)| {
+                done.forked.iter().map(move |(resource, at_seq)| {
+                    format!("data/{stream_type} {resource} at sequence {at_seq}")
+                })
+            })
+            .collect(),
+    })
+}
+
+/// The directory names below `path`, sorted; none when it does not exist.
+fn subdirs(path: &Path) -> Result<Vec<String>, Failure> {
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(Failure::unavailable(format!(
+                "reading {}: {error}",
+                path.display()
+            )));
+        }
+    };
+    let mut names = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            Failure::unavailable(format!("reading {}: {error}", path.display()))
+        })?;
+        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            names.push(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    names.sort();
+    Ok(names)
 }
 
 #[cfg(test)]

@@ -471,6 +471,80 @@ fn a_forked_stream_opens_no_run_of_its_own() {
     ));
 }
 
+/// WP-7.7 (owner decision of 2026-10-26): a `dr` restore rolls every run of the producer over,
+/// each successor naming where its snapshot's run ended and keeping its fence; what the restored
+/// producer appends lands in the successor, never in a run a coordinator may hold further.
+#[test]
+fn a_restored_producer_rolls_every_run_over_and_appends_only_to_successors() {
+    let host = Host::new("restored");
+    let producer = host.producer();
+    let mut ended = Vec::new();
+    for n in [1, 2] {
+        producer
+            .open_run(&ledger(n), Some(fence(1)))
+            .expect("opened");
+        producer.append(&ledger(n), &"a".to_owned()).expect("a");
+        let last = producer.append(&ledger(n), &"b".to_owned()).expect("b");
+        ended.push(RunEnd {
+            run_id: last.run_id,
+            last_seq: 2,
+            last_record_digest: last.record_digest,
+        });
+    }
+    // The restore, offline: a producer of its own over the snapshot's streams.
+    drop(producer);
+    let restored = host.producer().succeed_restored().expect("rolled over");
+    assert!(restored.forked.is_empty());
+    let mut successors = restored.rolled;
+    successors.sort_by_key(|statement| statement.key.resource.clone());
+    assert_eq!(successors.len(), 2);
+    let mut predecessors: Vec<RunEnd> = successors
+        .iter()
+        .map(|statement| statement.predecessor.expect("a predecessor"))
+        .collect();
+    predecessors.sort_by_key(|end| end.run_id);
+    ended.sort_by_key(|end| end.run_id);
+    assert_eq!(predecessors, ended);
+    for successor in &successors {
+        assert_eq!(successor.fence, Some(fence(1)), "the run's fence is kept");
+        assert_eq!(successor.producer_boot_id, host.identity.boot_id());
+        assert_eq!(successor.approval, None);
+    }
+    // The restarted producer writes in the successors, from sequence 1.
+    let restarted = host.producer();
+    for n in [1, 2] {
+        let next = restarted.append(&ledger(n), &"c".to_owned()).expect("c");
+        assert!(
+            successors
+                .iter()
+                .any(|successor| successor.run_id == next.run_id)
+        );
+        assert_eq!(next.seq, 1);
+    }
+}
+
+/// WP-7.7: a restore leaves a forked stream to its operator: not rolled over, named, still forked.
+#[test]
+fn a_restore_leaves_a_forked_stream_forked() {
+    let host = Host::new("restored-forked");
+    let producer = host.producer();
+    producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    producer.append(&ledger(2), &"a".to_owned()).expect("a");
+    producer.report_fork(&ledger(2), 1).expect("reported");
+    drop(producer);
+    let restored = host.producer().succeed_restored().expect("restored");
+    assert_eq!(restored.rolled.len(), 1);
+    assert_eq!(
+        restored.forked,
+        vec![(ledger(2).to_string(), 1)],
+        "the forked stream is named with where it forked"
+    );
+    assert!(matches!(
+        host.producer().append(&ledger(2), &"b".to_owned()),
+        Err(StreamError::Forked { at_seq: 1 })
+    ));
+}
+
 /// WP-5.1, done when: concurrent appenders never share a sequence; every sequence of the run is
 /// taken once, and their records read back at the sequence they were answered.
 #[test]
@@ -2483,10 +2557,12 @@ fn an_exact_replay_is_ok_and_a_differing_one_a_fork() {
     );
 }
 
-/// WP-5.3: a batch whose previous head is not the record before it is a fork, and a batch file
-/// of a range held with other bytes, signed again, is a fork.
+/// WP-5.3: a batch whose previous head is not the record before it is a fork; a range held,
+/// signed again, is an exact replay when it commits to the same records (WP-7.7), a fork when its
+/// records differ (the overlap's comparison; a file differing in its commitments alone is
+/// `a_range_whose_held_file_commits_to_other_records_is_a_fork`).
 #[test]
-fn a_batch_that_does_not_chain_or_was_signed_twice_is_a_fork() {
+fn a_batch_that_does_not_chain_or_signs_a_range_again_over_other_records_is_a_fork() {
     let host = Host::new("ingest-chain");
     let consumer = consumer_on(&host);
     let (_producer, run, batches) = shipped(&host, 3, 2);
@@ -2512,12 +2588,121 @@ fn a_batch_that_does_not_chain_or_was_signed_twice_is_a_fork() {
         1,
     );
     assert_ne!(twice, batches[0]);
+    // Signed again with the same records and commitments, as a restored producer seals what its
+    // snapshot held unsealed (WP-7.7): an exact replay, the first file kept.
     assert_eq!(
         ingest(&consumer, &other, &ship_of(&other, &twice))
+            .expect("ok")
+            .0,
+        Answer::of(Outcome::Ok, 2)
+    );
+    let held = consumer_run_dir(&other, &other, &run)
+        .join("batches")
+        .join("1-2.jws");
+    assert_eq!(std::fs::read(&held).expect("held"), batches[0]);
+    // Signed again over other records: a fork.
+    let differing = forge(
+        &other,
+        run,
+        1,
+        batch::GENESIS_HEAD.to_owned(),
+        &["r0", "x1"],
+        1,
+    );
+    assert_eq!(
+        ingest(&consumer, &other, &ship_of(&other, &differing))
             .expect("fork")
             .0
             .outcome,
         Outcome::Fork
+    );
+}
+
+/// WP-7.7: a batch file a crash left before its records were admitted is not taken for the range's
+/// records: a batch of that range over other records, signed again, is a fork.
+#[test]
+fn a_range_whose_held_file_commits_to_other_records_is_a_fork() {
+    let host = Host::new("ingest-crash-file");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 2, 2);
+    // A crash between the batch file and its records: the file of another batching is there,
+    // nothing of it admitted.
+    let left = forge(
+        &host,
+        run,
+        1,
+        batch::GENESIS_HEAD.to_owned(),
+        &["r0", "x1"],
+        1,
+    );
+    let dir = consumer_run_dir(&host, &host, &run).join("batches");
+    std::fs::create_dir_all(&dir).expect("the batches directory");
+    std::fs::write(dir.join("1-2.jws"), &left).expect("the file a crash left");
+    assert_eq!(
+        ingest(&consumer, &host, &ship_of(&host, &batches[0]))
+            .expect("fork")
+            .0
+            .outcome,
+        Outcome::Fork
+    );
+}
+
+/// WP-7.7, after the review: a range held, signed again over the same records by another key of
+/// the ring, is a conflicting transition, not an exact replay; its span is never added beside a
+/// kept file another key signed.
+#[test]
+fn a_range_signed_again_by_another_key_is_a_fork() {
+    let (host, wall, mono) = manual_host("ingest-other-key");
+    let consumer = consumer_on(&host);
+    let (producer, run, batches) = shipped(&host, 4, 2);
+    drop(producer);
+    for body in &batches {
+        ingest(&consumer, &host, &ship_of(&host, body)).expect("ingested");
+    }
+    rotate_attest(&host, &wall, &mono);
+    let original = batch::SealedBatch::decode(&batches[1])
+        .expect("decoded")
+        .envelope_unverified()
+        .expect("an envelope");
+    let resigned = forge_with(
+        host.attest.as_ref(),
+        &host,
+        run,
+        3,
+        original.previous_head.clone(),
+        vec![b"r2".to_vec(), b"r3".to_vec()],
+        1,
+        |envelope| *envelope = original.clone(),
+    );
+    assert_eq!(
+        ingest(&consumer, &host, &ship_of(&host, &resigned))
+            .expect("answered")
+            .0
+            .outcome,
+        Outcome::Fork
+    );
+}
+
+/// WP-7.7, after the review: a held batch file that does not read is the store's corruption, never
+/// a fork the producer is blamed for.
+#[test]
+fn an_unreadable_held_file_is_corruption_not_a_fork() {
+    let host = Host::new("ingest-unreadable-file");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 2, 2);
+    let dir = consumer_run_dir(&host, &host, &run).join("batches");
+    std::fs::create_dir_all(&dir).expect("the batches directory");
+    std::fs::write(dir.join("1-2.jws"), b"not a batch").expect("a damaged file");
+    assert!(matches!(
+        ingest(&consumer, &host, &ship_of(&host, &batches[0])),
+        Err(StreamError::Corruption(_))
+    ));
+    assert_eq!(
+        consumer
+            .forked(&ledger(1), host.identity.host_id())
+            .expect("read"),
+        None,
+        "nothing is blamed on the producer"
     );
 }
 

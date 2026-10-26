@@ -89,6 +89,14 @@ pub struct Position {
     pub prev: [u8; 32],
 }
 
+/// What a `dr` restore did to a producer's streams (WP-7.7): the successor of each run it rolled
+/// over, and each forked stream it left to its operator, by resource with where it forked.
+#[derive(Debug, Default)]
+pub struct Restored {
+    pub rolled: Vec<RunStatement>,
+    pub forked: Vec<(String, u64)>,
+}
+
 /// The typed producer handle of one descriptor.
 pub struct Producer<C> {
     context: Context,
@@ -459,6 +467,39 @@ impl<C: RecordCodec> Producer<C> {
     ) -> Result<RunStatement, StreamError> {
         self.physical(resource)?
             .rollover(&self.context, fence, Some(approval))
+    }
+
+    /// Rolls every stream of this producer over after a `dr` restore (WP-7.7, owner decision of
+    /// 2026-10-26): each run of the snapshot ends at its last durable record and its successor
+    /// opens under this handle's boot id, the restore's, with the run's fence. A coordinator may
+    /// hold a run further than its snapshot does, so the restored producer never appends to one;
+    /// its successors are new runs to every consumer. A forked stream is left to its operator.
+    pub fn succeed_restored(&self) -> Result<Restored, StreamError> {
+        let mut restored = Restored::default();
+        for physical in self.every()? {
+            let (run, forked) = {
+                let writer = physical.writer();
+                (
+                    writer.run.clone(),
+                    writer.state.as_ref().and_then(|state| state.forked_at_seq),
+                )
+            };
+            let Some(run) = run else {
+                continue;
+            };
+            if let Some(at_seq) = forked {
+                restored
+                    .forked
+                    .push((physical.key.resource.clone(), at_seq));
+                continue;
+            }
+            restored.rolled.push(physical.rollover(
+                &self.context,
+                run.statement.fence.clone(),
+                None,
+            )?);
+        }
+        Ok(restored)
     }
 
     /// The stream's STATE, once it holds a run.
