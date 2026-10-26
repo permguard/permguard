@@ -163,11 +163,59 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
             .with_profile(config.assurance().profile())
             // What this deployment has opted into. A ledger naming a provisional contract it has
             // not enabled is refused at load rather than served.
-            .with_enabled(permguard_languages::registry::Enabled::from_names(
-                config.experimental_enabled_names(),
-            )),
+            .with_enabled(enabled(config)),
         )
     }))
+}
+
+/// What this deployment serves: the experimental runtimes it opted into, and from `production` up
+/// only runtimes whose conformance gate passes (TL-6).
+pub fn enabled(config: &permguard_core::Config) -> permguard_languages::registry::Enabled {
+    let enabled =
+        permguard_languages::registry::Enabled::from_names(config.experimental_enabled_names());
+    let floor = permguard_core::assurance::AssuranceProfile::Production;
+    if config.assurance().profile().at_least(floor) {
+        enabled.requiring_conformance()
+    } else {
+        enabled
+    }
+}
+
+/// One runtime as the plane's discovery lists it (TL-6): `LanguageListing` in
+/// `contracts/openapi/discovery.json`, whose members are exactly these.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct LanguageListing {
+    pub name: &'static str,
+    pub descriptor_digest: &'static str,
+    pub experimental: bool,
+    pub served: bool,
+    pub conformance: permguard_languages::conformance::Summary,
+}
+
+/// The runtimes this build carries as the plane's discovery lists them (TL-6): each with its
+/// descriptor's digest, whether it is experimental, whether this deployment serves it, and its
+/// conformance gate's result.
+pub fn listings(config: &permguard_core::Config) -> Vec<LanguageListing> {
+    let enabled = enabled(config);
+    permguard_languages::languages()
+        .iter()
+        .map(|language| LanguageListing {
+            name: language.name(),
+            descriptor_digest: permguard_languages::descriptor::descriptor_digest(language.name())
+                .unwrap_or_default(),
+            experimental: language.experimental(),
+            served: enabled.serves(*language),
+            conformance: permguard_languages::conformance::summary(language.name()),
+        })
+        .collect()
+}
+
+/// [`listings`] as the plane's document carries them.
+pub fn languages(config: &permguard_core::Config) -> Vec<serde_json::Value> {
+    listings(config)
+        .into_iter()
+        .filter_map(|listing| serde_json::to_value(listing).ok())
+        .collect()
 }
 
 /// The base URL this plane publishes in its configuration document.

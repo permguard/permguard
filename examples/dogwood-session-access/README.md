@@ -479,3 +479,4 @@ Dogwood support is **experimental**. Its API and replication contracts are
 `v1alpha1`, and a deployment serves them only when
 `experimental.dogwood.enabled: true` and the corresponding event surfaces are
 enabled.
+Its conformance gate still has open items, so a Data Plane under `production` or `regulated` refuses Dogwood ledgers even when it is enabled: run it under `development`, as `task run:experimental` does.

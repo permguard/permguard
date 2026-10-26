@@ -1,0 +1,45 @@
+entity Account in [AccountGroup] = { 
+    admins: Set<User>,
+    owner: User,
+    private: Bool,
+};
+entity AccountGroup  = { 
+    owner: User,
+};
+entity Administrator, UserGroup;
+entity Album, Photo in [Account, Album] = { 
+    account: Account,
+    admins: Set<User>,
+    private: Bool,
+};
+entity User in [UserGroup] = { 
+    department: String,
+    jobLevel: Long,
+};
+
+action addPhoto appliesTo {
+    principal: [User], 
+    resource: [Album], 
+    context: { 
+        authenticated: Bool,
+        photo: {
+            filesize_mb: Long,
+            filetype: String,
+        },
+    }
+};
+action comment, delete, edit, view appliesTo {
+    principal: [User], 
+    resource: [Photo], 
+    context: { authenticated: Bool }
+};
+action listAlbums appliesTo {
+    principal: [User], 
+    resource: [Account], 
+    context: { authenticated: Bool }
+};
+action listPhotos appliesTo {
+    principal: [User], 
+    resource: [Album], 
+    context: { authenticated: Bool }
+};

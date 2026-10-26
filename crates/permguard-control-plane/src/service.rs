@@ -1620,8 +1620,30 @@ mod tests {
             jwks_uri: "http://127.0.0.1:7443/data-plane/keys".to_owned(),
             streams_endpoint: None,
             interfaces: std::collections::BTreeMap::new(),
+            languages: Vec::new(),
         };
         doc.check("DataPlaneConfiguration", &data);
+        // Each runtime with its gate (TL-6): every member present.
+        data.languages.push(serde_json::json!({
+            "name": "cedar",
+            "descriptor_digest": "sha256:00",
+            "experimental": false,
+            "served": true,
+            "conformance": {
+                "gate": "permguard.language.conformance.v1",
+                "production_ready": false,
+                "open": ["golden_vectors"]
+            }
+        }));
+        doc.check("DataPlaneConfiguration", &data);
+        doc.check_json("LanguageListing", &data.languages[0]);
+        doc.check_json("ConformanceGate", &data.languages[0]["conformance"]);
+        assert!(!doc.accepts_json(
+            "LanguageListing",
+            &serde_json::json!({"name": "cedar", "descriptor_digest": "d", "experimental": false,
+                "served": true, "conformance": {"gate": "permguard.language.conformance.v1",
+                "production_ready": true, "open": []}, "extra": 1})
+        ));
         data.streams_endpoint = Some("http://127.0.0.1:7443/v1/streams".to_owned());
         data.interfaces.insert(
             "permguard.api.pdp.native.v1".to_owned(),

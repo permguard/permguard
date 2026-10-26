@@ -1,0 +1,44 @@
+{
+  "folder": "bitsnegate",
+  "files": {
+    "test-bitsnegate-0058.yaml": {
+      "sha256": "sha256:9831082035b7483b07d99373bbb2dd723cda585df6b11bc6f2e59f3bac3ae013",
+      "cases": [
+        {
+          "note": "bitsnegate/basic bitwise-negate",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\tbits.negate(42, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                -43
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-bitsnegate-0059.yaml": {
+      "sha256": "sha256:7e8b64cf912cd7b8a05b0691e2b2acc58dabe32355832d283591d87751f66b77",
+      "cases": [
+        {
+          "note": "bitsnegate/float error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tbits.negate(7.2, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "bits.negate: operand 1 must be integer number but got floating-point number",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

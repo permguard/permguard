@@ -1,0 +1,278 @@
+{
+  "folder": "jsonfilter",
+  "files": {
+    "test-jsonfilter-0218.yaml": {
+      "sha256": "sha256:369df75da6033726177c07f60400e1a1d9ca185a0c948b33d1f033afd7f4eb78",
+      "cases": [
+        {
+          "note": "jsonfilter/base",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({\"a\": {\"b\": {\"c\": 7, \"d\": 8}}, \"e\": 9}, {\"a/b/c\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 7
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonfilter-0219.yaml": {
+      "sha256": "sha256:c23eb8e967ce8095e39e58f9d726f895cf669cc24f1a5f3cc7edfc60c7ea4598",
+      "cases": [
+        {
+          "note": "jsonfilter/multiple roots",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({\"a\": {\"b\": {\"c\": 7, \"d\": 8}}, \"e\": 9}, {\"a/b/c\", \"e\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 7
+                  }
+                },
+                "e": 9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonfilter-0220.yaml": {
+      "sha256": "sha256:94b3e10fe3d4c803901b674e990dac662600495a0dcd3bc1e85a20508929b659",
+      "cases": [
+        {
+          "note": "jsonfilter/multiple roots array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({\"a\": {\"b\": {\"c\": 7, \"d\": 8}}, \"e\": 9}, [\"a/b/c\", \"e\"], __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 7
+                  }
+                },
+                "e": 9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonfilter-0221.yaml": {
+      "sha256": "sha256:73e5cd66e697a109c266e75209d8dfa66ed8829d8178a0357a33780f515d042e",
+      "cases": [
+        {
+          "note": "jsonfilter/shared roots",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({\"a\": {\"b\": {\"c\": 7, \"d\": 8}, \"e\": 9}}, {\"a/b/c\", \"a/e\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 7
+                  },
+                  "e": 9
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonfilter-0222.yaml": {
+      "sha256": "sha256:bc9f530ab3cd98fb04cc1f439a4d63e130e6bbf354992a3c420ad06d029fd23d",
+      "cases": [
+        {
+          "note": "jsonfilter/conflict",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({\"a\": {\"b\": 7}}, {\"a\", \"a/b\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": 7
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonfilter-0223.yaml": {
+      "sha256": "sha256:60a0777fd47bef4c5439c52f90b6f64ff9d1c8f64eea132906d8c1039403189e",
+      "cases": [
+        {
+          "note": "jsonfilter/empty list",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({\"a\": 7}, set(), __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonfilter-0224.yaml": {
+      "sha256": "sha256:0972fe98c09954eb8d7778470c3e7f43d7e5631d3a1601dbd21a990af8bde09b",
+      "cases": [
+        {
+          "note": "jsonfilter/empty object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({}, {\"a/b\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonfilter-0225.yaml": {
+      "sha256": "sha256:1afe7e1dd00386c1e4cb98835edc34b150878e5b2387c23b6be6b19051043a29",
+      "cases": [
+        {
+          "note": "jsonfilter/arrays",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({\"a\": [{\"b\": 7, \"c\": 8}, {\"d\": 9}]}, {\"a/0/b\", \"a/1\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": [
+                  {
+                    "b": 7
+                  },
+                  {
+                    "d": 9
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonfilter-0226.yaml": {
+      "sha256": "sha256:df140a90eef5dbe6ada6d958cd51c8cea32502d5eeabfeb660facc6d4fd72967",
+      "cases": [
+        {
+          "note": "jsonfilter/object with number keys",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({\"a\": [{\"1\": [\"b\", \"c\", \"d\"]}, {\"x\": \"y\"}]}, {\"a/0/1/2\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": [
+                  {
+                    "1": [
+                      "d"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonfilter-0227.yaml": {
+      "sha256": "sha256:14e5fbdcba98459015a4fb6dbd90bb51fb339a6b06f41ace2fd47307fa4dd3fc",
+      "cases": [
+        {
+          "note": "jsonfilter/arrays of roots",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({\"a\": {\"b\": {\"c\": 7, \"d\": 8}}, \"e\": 9}, {[\"a\", \"b\", \"c\"], [\"e\"]}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 7
+                  }
+                },
+                "e": 9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonfilter-0228.yaml": {
+      "sha256": "sha256:2d016afee7c31480734bb05721472e06166251798d44aa5e6fddc073cc725dab",
+      "cases": [
+        {
+          "note": "jsonfilter/mixed root types",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.filter({\"a\": {\"b\": {\"c\": 7, \"d\": 8, \"x\": 0}}, \"e\": 9}, {\"a/b/d\", [\"a\", \"b\", \"c\"]}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 7,
+                    "d": 8
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

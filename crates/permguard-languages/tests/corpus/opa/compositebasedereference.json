@@ -1,0 +1,80 @@
+{
+  "folder": "compositebasedereference",
+  "files": {
+    "test-compositebasedereference-1073.yaml": {
+      "sha256": "sha256:c9d72f3fe507344cfaf155ff15c11b33f716dfc152c1ea23db109e62be39130c",
+      "cases": [
+        {
+          "note": "compositebasedereference/array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnot data.a[[0]]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-compositebasedereference-1074.yaml": {
+      "sha256": "sha256:7fd64242530f33bfe074af378a6a9eba9313144fa2cc0e60e4a9f71996a1cb6f",
+      "cases": [
+        {
+          "note": "compositebasedereference/object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnot data.a[{\"b\": \"c\"}]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-compositebasedereference-1075.yaml": {
+      "sha256": "sha256:c38602a2d8c4adf81da5136c771241ad78bb16116fd42cde78a70133786358a0",
+      "cases": [
+        {
+          "note": "compositebasedereference/set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnot data.a[[\"b\"]]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

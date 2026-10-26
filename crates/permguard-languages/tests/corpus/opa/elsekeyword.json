@@ -1,0 +1,301 @@
+{
+  "folder": "elsekeyword",
+  "files": {
+    "test-elsekeyword-1054.yaml": {
+      "sha256": "sha256:ed63f9ff48388cb26499d1a26989ba9af55863cad1a85a0b4dd3e39250c72e79",
+      "cases": [
+        {
+          "note": "elsekeyword/no-op",
+          "query": "data.ex.no_op = x",
+          "modules": [
+            "package ex\n\nno_op if {\n\ttrue\n} else := false\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1055.yaml": {
+      "sha256": "sha256:a4835f894cd243021e93df1da80c7e99790948b74908ee4bc85c775c68816c4c",
+      "cases": [
+        {
+          "note": "elsekeyword/trivial",
+          "query": "data.ex.bool = x",
+          "modules": [
+            "package ex\n\nbool if {\n\tfalse\n} else := true\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1056.yaml": {
+      "sha256": "sha256:01b67d1d0ca56e1093274ba0b4e39e3505449aac1624b74540869ed2a76b1a72",
+      "cases": [
+        {
+          "note": "elsekeyword/trivial-non-bool",
+          "query": "data.ex.non_bool = x",
+          "modules": [
+            "package ex\n\nnon_bool := null if {\n\tfalse\n} else := [100]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                100
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1057.yaml": {
+      "sha256": "sha256:3c5fc3d88f3ec1a227907ff437f4f79ce7eeb7c79157e55e1dd819e59d594ee8",
+      "cases": [
+        {
+          "note": "elsekeyword/trivial-3",
+          "query": "data.ex.triple = x",
+          "modules": [
+            "package ex\n\ntriple if {\n\tfalse\n} else if {\n\tfalse\n} else := \"hello\"\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hello"
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1058.yaml": {
+      "sha256": "sha256:0cda815f49cc9fa6ca55e119fd240c949188f93fdbfa9800c072d7931a5b6866",
+      "cases": [
+        {
+          "note": "elsekeyword/var-head",
+          "query": "data.ex.vars = x",
+          "modules": [
+            "package ex\n\nvars if {\n\tfalse\n} else := [\"hello\", x] if {\n\tdata.b.v2 = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                "hello",
+                "goodbye"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1059.yaml": {
+      "sha256": "sha256:bd52cc9ebd223e83bf66d5f3f7db49dadd5a3109e12bf3b4fef33ee008dcae47",
+      "cases": [
+        {
+          "note": "elsekeyword/ref-head",
+          "query": "data.ex.refs = x",
+          "modules": [
+            "package ex\n\nrefs if {\n\tfalse\n} else := __local6__ if {\n\ttrue\n\t__local7__ = data.b.v2\n\t__local6__ = [\"hello\", __local7__]\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                "hello",
+                "goodbye"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1060.yaml": {
+      "sha256": "sha256:b49a5956a581b6ed877104d78f89c3ed9d4e7616de1e1755ace0b298e0ee44ad",
+      "cases": [
+        {
+          "note": "elsekeyword/first-match",
+          "query": "data.ex.multiple_defined = x",
+          "modules": [
+            "package ex\n\nmultiple_defined := false if {\n\tfalse\n} else if {\n\ttrue\n} else := false\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1061.yaml": {
+      "sha256": "sha256:64c4cbb4a63903f32fb2c626e31e8b4184191b0984b96561ca0448e8e205558a",
+      "cases": [
+        {
+          "note": "elsekeyword/default-1",
+          "query": "data.ex.default_1 = x",
+          "modules": [
+            "package ex\n\ndefault default_1 := 1\n\ndefault_1 if {\n\tfalse\n}\n\ndefault_1 := 2\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1062.yaml": {
+      "sha256": "sha256:d6dc40e5fcc48bc24d26859cbca13e984f0bff37aa5e3e00a1de8fcd7d0b9ddb",
+      "cases": [
+        {
+          "note": "elsekeyword/default-2",
+          "query": "data.ex.default_2 = x",
+          "modules": [
+            "package ex\n\ndefault default_2 := 2\n\ndefault_2 if {\n\tfalse\n}\n\ndefault_2 := 1 if {\n\tfalse\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1063.yaml": {
+      "sha256": "sha256:f0e5fcefdc98d87c41723828cdeedb89662a589b1583d3feddf9594b6a4df60e",
+      "cases": [
+        {
+          "note": "elsekeyword/multiple-roots",
+          "query": "data.ex.multiple_roots = x",
+          "modules": [
+            "package ex\n\nmultiple_roots if {\n\tfalse\n} else := 1 if {\n\tfalse\n} else := 2 if {\n\ttrue\n} else := 3\n\nmultiple_roots := 2\n\nmultiple_roots := 3 if {\n\tfalse\n} else := 2\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1064.yaml": {
+      "sha256": "sha256:cae7fb0af80bbe1f3e2b621634c48c174a2916091eb1db2e585fd7bb96e23de3",
+      "cases": [
+        {
+          "note": "elsekeyword/indexed",
+          "query": "data.ex.indexed = x",
+          "modules": [
+            "package ex\n\nindexed if {\n\tdata.a[0] = 0\n} else := 2 if {\n\tdata.a[0] = 1\n} else := 3 if {\n\tdata.a[0] = 1\n}\n\nindexed if {\n\tdata.a[0] = 1\n\tdata.a[2] = 2\n} else if {\n\tfalse\n} else := 2 if {\n\tdata.a[0] = x\n\tx = 1\n\tdata.a[2] = 3\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        }
+      ]
+    },
+    "test-elsekeyword-1065.yaml": {
+      "sha256": "sha256:b3f91e44a27ca767e4c2eb4415e2f6805e1edf5acd617fdac289710d2fea77f1",
+      "cases": [
+        {
+          "note": "elsekeyword/conflict-1",
+          "query": "data.ex.conflict_1 = x",
+          "modules": [
+            "package ex\n\nconflict_1 if {\n\tfalse\n} else := true\n\nconflict_1 := false\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        }
+      ]
+    },
+    "test-elsekeyword-1066.yaml": {
+      "sha256": "sha256:4892a703c482efe049c6042f6e49f19c5005856f69a2875a61e9adef778b2e80",
+      "cases": [
+        {
+          "note": "elsekeyword/conflict-2",
+          "query": "data.ex.conflict_2 = x",
+          "modules": [
+            "package ex\n\nconflict_2 if {\n\tfalse\n}\n\nelse := false\n\nconflict_2 if {\n\tfalse\n}\n\nelse := true\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        }
+      ]
+    },
+    "test-elsekeyword-1067.yaml": {
+      "sha256": "sha256:2453f42d6312c1099bfeb888f44007fa6e82455163f429f726c53af806b1c3d1",
+      "cases": [
+        {
+          "note": "elsekeyword/functions",
+          "query": "data.ex.fn_result = x",
+          "modules": [
+            "package ex\n\nfn_result := [x, y, z] if {\n\tdata.ex.fn(101, true, x)\n\tdata.ex.fn(100, true, y)\n\tdata.ex.fn(100, false, z)\n}\n\nfn(x, y) := \"large\" if {\n\tx > 100\n} else := \"small\" if {\n\ty = true\n} else := \"medium\"\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "large",
+                "small",
+                "medium"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

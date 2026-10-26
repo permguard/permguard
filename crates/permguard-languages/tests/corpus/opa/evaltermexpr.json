@@ -1,0 +1,412 @@
+{
+  "folder": "evaltermexpr",
+  "files": {
+    "test-evaltermexpr-0525.yaml": {
+      "sha256": "sha256:cf7caa581085250dedd818eb4c500abd59562ca6e2c3f826be9d216cc757f2d4",
+      "cases": [
+        {
+          "note": "evaltermexpr/true",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := true\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0526.yaml": {
+      "sha256": "sha256:2bfba44b96e43aa08bdad09498bde83ba0e5fdf45677a76ebb8436d9299005aa",
+      "cases": [
+        {
+          "note": "evaltermexpr/false",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tfalse\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0527.yaml": {
+      "sha256": "sha256:4738daa78c67cddd77799a47c79932b7d9b2643dcafee0d989adf39a9e551a8a",
+      "cases": [
+        {
+          "note": "evaltermexpr/number non-zero",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t-3.14\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0528.yaml": {
+      "sha256": "sha256:4b673ad63eecdcd88b87c073341438a8a99a3b89133836aaa72dc9e8d144f268",
+      "cases": [
+        {
+          "note": "evaltermexpr/number zero",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnull\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0529.yaml": {
+      "sha256": "sha256:aa853d71b32838bd637209301a03125ff84c588f5d46d6eb631ed7147f61878d",
+      "cases": [
+        {
+          "note": "evaltermexpr/null",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnull\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0530.yaml": {
+      "sha256": "sha256:69e7b05404e5fd9389b47a2b8179f3d9bbc1df345bfc6faa8df037d09b29a813",
+      "cases": [
+        {
+          "note": "evaltermexpr/string non-empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t\"abc\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0531.yaml": {
+      "sha256": "sha256:e550fecc04a38b079be6bc67b4d002479e6eab76d90bc5a289f307c7633ef410",
+      "cases": [
+        {
+          "note": "evaltermexpr/string empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t\"\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0532.yaml": {
+      "sha256": "sha256:bb6548117129d2fe2185e7eea0da07e89cc93b66087015609b7badd7773b1c2a",
+      "cases": [
+        {
+          "note": "evaltermexpr/array non-empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t[1, 2, 3]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0533.yaml": {
+      "sha256": "sha256:52b7f3255e34c1525e04aa45e8e63b2aac33bf32724a6026aa3d2f8abc0a9d56",
+      "cases": [
+        {
+          "note": "evaltermexpr/array empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t[]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0534.yaml": {
+      "sha256": "sha256:d8de6b157ab9056673c85e3eba24b74d79ffd828856e8f0da2d96aa14b41ceed",
+      "cases": [
+        {
+          "note": "evaltermexpr/object non-empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t{\"a\": 1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0535.yaml": {
+      "sha256": "sha256:f5f2fef3888ffbc74acc2a0baec798c920eb88056811787ebe51587a5fba2b15",
+      "cases": [
+        {
+          "note": "evaltermexpr/object empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t{}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0536.yaml": {
+      "sha256": "sha256:267385d1fadd3b94a48b7573ffc9e709c10cbe96d906af03d13af74bcc72576d",
+      "cases": [
+        {
+          "note": "evaltermexpr/set non-empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t{1, 2, 3}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0537.yaml": {
+      "sha256": "sha256:8f8a966783ef8f55c2be65481a567e833c53e27a401de1ebb48be93b6eff52cf",
+      "cases": [
+        {
+          "note": "evaltermexpr/set empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tset()\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0538.yaml": {
+      "sha256": "sha256:e36960395c7fb57a9aa69fa45c57721f534735c1f613f9c051cf43e90db57ea2",
+      "cases": [
+        {
+          "note": "evaltermexpr/ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[i]\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0539.yaml": {
+      "sha256": "sha256:7ad990591b50ed48c2a45e77c6a35fe8ff5da70cacd87ae2fc9c715095210b10",
+      "cases": [
+        {
+          "note": "evaltermexpr/ref undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.deadbeef[i]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0540.yaml": {
+      "sha256": "sha256:5735e6ef967f893ed4f46999ef095baa84f791a905c31662b338ff37e2b82cc3",
+      "cases": [
+        {
+          "note": "evaltermexpr/ref undefined (path)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[true]\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0541.yaml": {
+      "sha256": "sha256:df137a6182aafc6f20f2fdef83bad91ebe6bd22bba45eb80b3b1252033b63ed5",
+      "cases": [
+        {
+          "note": "evaltermexpr/ref false",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.c[0].x[1]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  "3.14159"
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0542.yaml": {
+      "sha256": "sha256:1b1d6711041fdd41bf1f73e5dcdb35f7a8028a5f0a6fca4775ac3ea527d56b27",
+      "cases": [
+        {
+          "note": "evaltermexpr/array comprehension",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t[x | x = 1]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0543.yaml": {
+      "sha256": "sha256:fb3accb46d4cc70e9756ae3782c4dc75952c0cbb4deb09e709f3c1b214da29c8",
+      "cases": [
+        {
+          "note": "evaltermexpr/array comprehension empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t[x | x = 1; x = 2]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-evaltermexpr-0544.yaml": {
+      "sha256": "sha256:020a1938311f668299499dc74c30cdfde43555cc5b4e66c8a3f3c6024f973307",
+      "cases": [
+        {
+          "note": "evaltermexpr/arbitrary position",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[i] = x\n\tx\n\ti\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

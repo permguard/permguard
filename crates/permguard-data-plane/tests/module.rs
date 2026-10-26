@@ -289,6 +289,83 @@ async fn a_plane_document_carries_its_phase() {
     );
 }
 
+/// TL-6: the plane's document lists every runtime this build carries with its conformance gate's
+/// result and whether this deployment serves it; from `production` up a runtime with an open item
+/// is not served, opted into or not.
+#[tokio::test]
+async fn discovery_publishes_each_runtimes_gate_and_whether_it_is_served() {
+    use permguard_core::config::{SETTING_ASSURANCE_PROFILE, SETTING_EXPERIMENTAL_DOGWOOD};
+
+    let storage = MemoryStorage::new();
+    let audit = RecordingAuditSink::new();
+    let listed = |config: &Config| {
+        let languages = permguard_data_plane::authz::languages(config);
+        languages
+            .iter()
+            .map(|language| {
+                (
+                    language["name"].as_str().expect("a name").to_owned(),
+                    language["served"].as_bool().expect("served"),
+                )
+            })
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+
+    let development = deployed_with(&[
+        (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
+        (SETTING_ASSURANCE_PROFILE, "development"),
+    ]);
+    let server = ServerContext::new(identity(), &development, &storage, &audit);
+    let context = PlaneContext::new(&server, "data");
+    let (status, document) = get(
+        permguard_data_plane::module().http_routes(&context),
+        "/.well-known/server-configuration",
+    )
+    .await;
+    assert_eq!(status, 200);
+    let document: serde_json::Value = serde_json::from_str(&document).expect("JSON");
+    let dogwood = document["languages"]
+        .as_array()
+        .expect("languages")
+        .iter()
+        .find(|language| language["name"] == "dogwood")
+        .expect("dogwood is listed");
+    assert_eq!(
+        dogwood["conformance"],
+        serde_json::json!({
+            "gate": "permguard.language.conformance.v1",
+            "production_ready": false,
+            "open": ["golden_vectors", "fault_injection"]
+        })
+    );
+    assert!(
+        dogwood["descriptor_digest"]
+            .as_str()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    assert_eq!(
+        listed(&development),
+        [("cedar", true), ("dogwood", true), ("rego", true)]
+            .map(|(name, served)| (name.to_owned(), served))
+            .into(),
+        "development serves what it opted into"
+    );
+
+    let production = deployed_with(&[
+        (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
+        (SETTING_ASSURANCE_PROFILE, "production"),
+    ]);
+    assert_eq!(
+        listed(&production),
+        [("cedar", true), ("dogwood", false), ("rego", true)]
+            .map(|(name, served)| (name.to_owned(), served))
+            .into(),
+        "production serves only runtimes whose gate passes"
+    );
+    assert!(permguard_data_plane::authz::enabled(&production).requires_conformance());
+    assert!(!permguard_data_plane::authz::enabled(&development).requires_conformance());
+}
+
 #[tokio::test]
 async fn discovery_lists_the_temporal_interface_only_where_it_is_served() {
     use permguard_core::config::SETTING_EVENTS_ENABLED;

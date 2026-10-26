@@ -1,0 +1,447 @@
+{
+  "folder": "reachable",
+  "files": {
+    "test-reachable-0322.yaml": {
+      "sha256": "sha256:8e2cfbe599c80dc1e60821e3095844b521740dd020a0467093a7071d020c21b9",
+      "cases": [
+        {
+          "note": "reachable/empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tgraph.reachable({}, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-reachable-0323.yaml": {
+      "sha256": "sha256:a76e63e16204145ad5b4836e67f86616614a94c9b751df0767ba21b0e11ae930",
+      "cases": [
+        {
+          "note": "reachable/cycle",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tgraph.reachable({\n\t\t\"a\": {\"b\"},\n\t\t\"b\": {\"c\"},\n\t\t\"c\": {\"a\"},\n\t}, {\"a\"}, __local1__)\n\tsort(__local1__, __local2__)\n\t__local0__ = __local2__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+                "a",
+                "b",
+                "c"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-reachable-0324.yaml": {
+      "sha256": "sha256:f3e178178efa80ca7282a318fa1cd6336606d09ae3bf7b256d1a588a32c9c2d7",
+      "cases": [
+        {
+          "note": "reachable/components",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tgraph.reachable({\n\t\t\"a\": {\"b\", \"c\"},\n\t\t\"b\": {\"d\"},\n\t\t\"c\": {\"d\"},\n\t\t\"d\": set(),\n\t\t\"e\": {\"f\"},\n\t\t\"f\": {\"e\"},\n\t\t\"x\": {\"x\"},\n\t}, {\"b\", \"e\"}, __local1__)\n\tsort(__local1__, __local2__)\n\t__local0__ = __local2__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+                "b",
+                "d",
+                "e",
+                "f"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-reachable-0325.yaml": {
+      "sha256": "sha256:434d9def587f4e61be11d7c61b95338ffbcd1081819991a413f18c519aaa684a",
+      "cases": [
+        {
+          "note": "reachable/arrays",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tgraph.reachable({\n\t\t\"a\": [\"b\"],\n\t\t\"b\": [\"c\"],\n\t\t\"c\": [\"a\"],\n\t}, [\"a\"], __local1__)\n\tsort(__local1__, __local2__)\n\t__local0__ = __local2__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+                "a",
+                "b",
+                "c"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-reachable-0326.yaml": {
+      "sha256": "sha256:c7435a21e7c752b497cf9299d1959dbc16fc271db18c5c23e1d5e824398451b2",
+      "cases": [
+        {
+          "note": "reachable/malformed 1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.graph\n\t__local3__ = input.initial\n\tgraph.reachable(__local2__, __local3__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"graph\": 1, \"initial\": [1]}",
+          "want_error_code": "eval_type_error",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-reachable-0327.yaml": {
+      "sha256": "sha256:8d7d6be5a741a93fcecfc606aa138b756e11a3ee987b1ca8092f4ff41032547b",
+      "cases": [
+        {
+          "note": "reachable/malformed 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.graph\n\t__local3__ = input.initial\n\tgraph.reachable(__local2__, __local3__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"graph\": {\"a\": null}, \"initial\": [\"a\"]}",
+          "want_result": [
+            {
+              "x": [
+                "a"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-reachable-0328.yaml": {
+      "sha256": "sha256:031ab4b21f262281ab2e4253fd726775a019749d0d627cdf0caf3e2364917beb",
+      "cases": [
+        {
+          "note": "reachable/malformed 3",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.graph\n\t__local3__ = input.initial\n\tgraph.reachable(__local2__, __local3__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"graph\": {\"a\": []}, \"initial\": \"a\"}",
+          "want_error_code": "eval_type_error",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-reachable-paths-0422.yaml": {
+      "sha256": "sha256:629007f1e2de455037e1a7735d3a5e5bfc73689a07f9b95b76058d61ec09d452",
+      "cases": [
+        {
+          "note": "reachable_paths/empty",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths({}, {\"a\"}, result)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        },
+        {
+          "note": "reachable_paths/cycle",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": { \"a\": {\"b\"}, \"b\": {\"c\"}, \"c\": {\"a\"}, }, \"initial\": {\"a\"} }",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a",
+                  "b",
+                  "c"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "reachable_paths/components",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": { \"a\": {\"b\", \"c\"}, \"b\": {\"d\"}, \"c\": {\"d\"}, \"d\": set(), \"e\": {\"f\"}, \"f\": {\"e\"}, \"x\": {\"x\"}, }, \"initial\": { \"b\", \"e\" } }",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "b",
+                  "d"
+                ],
+                [
+                  "e",
+                  "f"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "reachable_paths/arrays",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": { \"a\": [\"b\"], \"b\": [\"c\"], \"c\": [\"a\"], }, \"initial\": [\"a\"] }",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a",
+                  "b",
+                  "c"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "reachable_paths/malformed 1",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": 1, \"initial\": [1] }",
+          "want_error_code": "eval_type_error",
+          "strict_error": true
+        },
+        {
+          "note": "reachable_paths/malformed 2",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": { \"a\": null }, \"initial\": [\"a\"] }",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "reachable_paths/malformed 3",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": { \"a\": [] }, \"initial\": \"a\" }",
+          "want_error_code": "eval_type_error",
+          "strict_error": true
+        },
+        {
+          "note": "reachable_paths/multiple_paths",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": { \"a\": [\"b\", \"c\"], \"b\": [\"c\"], \"c\": [], }, \"initial\": {\"a\"} }",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a",
+                  "b",
+                  "c"
+                ],
+                [
+                  "a",
+                  "c"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "reachable_paths/invalid_end",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": { \"a\": [\"b\"], \"b\": [\"nonexistent\"], }, \"initial\": {\"a\", \"b\"} }",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a",
+                  "b"
+                ],
+                [
+                  "b"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-reachable-paths-1022.yaml": {
+      "sha256": "sha256:080e84f315352a81b89e94e0be4ecc45587780e9a8560ed9001b28f9ce33575f",
+      "cases": [
+        {
+          "note": "reachable_paths/cycle_1022_1",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": { \"one\": [\"two\",\"five\"], \"two\": [\"four\"], \"three\": [\"\"], \"four\": [\"three\"], \"five\": [\"seven\",\"six\"], \"six\": [\"nine\"], \"seven\": [\"eight\"], \"eight\": [\"\"], \"nine\": [\"\"], }, \"initial\": {\"one\"} }",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "one",
+                  "five",
+                  "seven",
+                  "eight"
+                ],
+                [
+                  "one",
+                  "five",
+                  "six",
+                  "nine"
+                ],
+                [
+                  "one",
+                  "two",
+                  "four",
+                  "three"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "reachable_paths/cycle_1022_2",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": { \"one\": {\"two\",\"five\"}, \"two\": {\"four\"}, \"three\": {\"\"}, \"four\": {\"three\"}, \"five\": {\"seven\",\"six\"}, \"six\": {\"nine\"}, \"seven\": {\"eight\"}, \"eight\": {\"\"}, \"nine\": {\"\"}, }, \"initial\": {\"one\"} }",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "one",
+                  "five",
+                  "seven",
+                  "eight"
+                ],
+                [
+                  "one",
+                  "five",
+                  "six",
+                  "nine"
+                ],
+                [
+                  "one",
+                  "two",
+                  "four",
+                  "three"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "reachable_paths/cycle_1022_3",
+          "query": "data.reachable.p = x",
+          "modules": [
+            "package reachable\n\np := result if {\n\tgraph.reachable_paths(input.graph, input.initial, result)\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{ \"graph\": { \"one\": [\"two\",\"five\"], \"two\": [\"four\"], \"three\": [\"\"], \"four\": [\"three\"], \"five\": [\"seven\",\"six\"], \"six\": [\"nine\",\"seven\"], \"seven\": [\"eight\"], \"eight\": [\"three\"], \"nine\": [\"\"], }, \"initial\": {\"one\"} }",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "one",
+                  "five",
+                  "seven",
+                  "eight",
+                  "three"
+                ],
+                [
+                  "one",
+                  "five",
+                  "six"
+                ],
+                [
+                  "one",
+                  "five",
+                  "six",
+                  "nine"
+                ],
+                [
+                  "one",
+                  "two",
+                  "four",
+                  "three"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

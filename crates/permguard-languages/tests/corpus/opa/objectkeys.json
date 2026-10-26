@@ -1,0 +1,122 @@
+{
+  "folder": "objectkeys",
+  "files": {
+    "test-objectkeys.yaml": {
+      "sha256": "sha256:6ef03fe37d458599df9c6e861e69dcc2d97aaabd9b73a7c37b91291afa1de3b2",
+      "cases": [
+        {
+          "note": "objectkeys/string_keys_found",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := object.keys({\"a\": 1, \"b\": 2})\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                "a",
+                "b"
+              ]
+            }
+          ]
+        },
+        {
+          "note": "objectkeys/number_keys_found",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := object.keys({1: 1, 2: 2})\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "note": "objectkeys/object_keys_found",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := object.keys({{\"a\": 1}: 1, {\"b\": 2}: 2})\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                {
+                  "a": 1
+                },
+                {
+                  "b": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "note": "objectkeys/set_keys_found",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := object.keys({{\"a\"}: 1, {\"b\"}: 2})\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a"
+                ],
+                [
+                  "b"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "objectkeys/array_keys_found",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := object.keys({[\"a\"]: 1, [\"b\"]: 2})\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a"
+                ],
+                [
+                  "b"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "objectkeys/empty_result",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := object.keys({})\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        },
+        {
+          "note": "objectkeys/error_on_non_object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := object.keys(input.obj)\n"
+          ],
+          "input_term": "{\"obj\":\"object\"}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.keys: operand 1 must be object but got string",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,666 @@
+{
+  "folder": "globmatch",
+  "files": {
+    "test-globmatch-0133.yaml": {
+      "sha256": "sha256:820dfb9eca85078b31e51fbdb2f9d6b9b633473d8eb5b071b988d9929624007c",
+      "cases": [
+        {
+          "note": "globmatch/glob match with . delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"*.github.com\", [\".\"], \"api.github.com\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0134.yaml": {
+      "sha256": "sha256:6145ed1578a19bb9460c51b17b7e1ec40d73aad961ae6f1a5e60f3724a26049d",
+      "cases": [
+        {
+          "note": "globmatch/super glob match with . delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"api.**.com\", [\".\"], \"api.github.com\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0135.yaml": {
+      "sha256": "sha256:d5acdc8a234ab713934f02da2c7d6475120282326f33b037c31b8424564ebef1",
+      "cases": [
+        {
+          "note": "globmatch/super glob match with . delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"api.**.com\", [\".\"], \"api.cdn.github.com\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0136.yaml": {
+      "sha256": "sha256:a96ac4fa8ec2403719067cac80f28f7e412eded272a34dbe4ed44c0442412c49",
+      "cases": [
+        {
+          "note": "globmatch/glob match with : delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"*:github:com\", [\":\"], \"api:github:com\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0137.yaml": {
+      "sha256": "sha256:6864f09c7c39bfa5e10ce026f2f7d6cf45499b92fe8508d279c3667d04c3bf0f",
+      "cases": [
+        {
+          "note": "globmatch/glob no match with . delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"*.github.com\", [\".\"], \"api.not-github.com\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0138.yaml": {
+      "sha256": "sha256:6dfb8c1848b9f8473ca6c5fbd5f529fc3d9fe59618afff9e2d5b8f731fdfd5b0",
+      "cases": [
+        {
+          "note": "globmatch/glob match with character-list matchers",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"[abc]at\", [], \"cat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0139.yaml": {
+      "sha256": "sha256:f6e18960aae0b5cd40455a4967139e1f56cd37213289f8dd403219b6bc951ec2",
+      "cases": [
+        {
+          "note": "globmatch/glob no match with character-list matchers",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"[abc]at\", [], \"fat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0140.yaml": {
+      "sha256": "sha256:489fc00372b35c80f0d5208aec7113a4c47ae4d535f0ecbb13c6940589eb0c9b",
+      "cases": [
+        {
+          "note": "globmatch/glob match with negated character-list matchers",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"[!abc]at\", [], \"fat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0141.yaml": {
+      "sha256": "sha256:fb586480e38bc0d2b19157763f0f11d50b987a84efca7b2f42f1ab3b1ff5e94a",
+      "cases": [
+        {
+          "note": "globmatch/glob no match with negated character-list matchers",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"[!abc]at\", [], \"cat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0142.yaml": {
+      "sha256": "sha256:2ea1ea3234bef770a11c2d51de4ddb16b9f8d006aa6d416173e061bd3cd746e9",
+      "cases": [
+        {
+          "note": "globmatch/glob match with character-range matchers",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"[a-c]at\", [], \"bat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0143.yaml": {
+      "sha256": "sha256:f55260ff31d14879a58e45d8bd6879703635ba9e941ce102ddcdbbdae889df27",
+      "cases": [
+        {
+          "note": "globmatch/glob no match with character-range matchers",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"[a-c]at\", [], \"fat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0144.yaml": {
+      "sha256": "sha256:fc589c923db153b88d282c4feb6a3a0f7103a7d22532598dce19bba64f2e2350",
+      "cases": [
+        {
+          "note": "globmatch/glob no match with character-range matchers",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"[!a-c]at\", [], \"bat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0145.yaml": {
+      "sha256": "sha256:dab53989c8ce74ee9db14ed9b793c38684867ff14da412148601ad16604204a4",
+      "cases": [
+        {
+          "note": "globmatch/glob match with character-range matchers",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"[!a-c]at\", [], \"fat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0146.yaml": {
+      "sha256": "sha256:ecc62a61a118477baaed67f3cf1dc099a44237ff6304b8300190b18664309453",
+      "cases": [
+        {
+          "note": "globmatch/glob match with single wild-card",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"?at\", [], \"fat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0147.yaml": {
+      "sha256": "sha256:7d30fd5c0c2ac0e457850cbf1ed2b6e65504e00822fc5acd13c73b02b85bb499",
+      "cases": [
+        {
+          "note": "globmatch/glob no match with single wild-card",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"?at\", [], \"at\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0148.yaml": {
+      "sha256": "sha256:8216cc190cf29ca32239b5531e4e413c489c8841fa56a66afb53161229e69ce1",
+      "cases": [
+        {
+          "note": "globmatch/glob match with single wild-card and delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"?at\", [\"f\"], \"bat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0149.yaml": {
+      "sha256": "sha256:0ed14da25cd5d00cae034010eeb8c4e620ea75ab455d2ea49013c0fa73fc6b68",
+      "cases": [
+        {
+          "note": "globmatch/glob no match with single wild-card and delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"?at\", [\"f\"], \"fat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0150.yaml": {
+      "sha256": "sha256:3322c9621be27e2d865ef7bb6518f702b85187ec51e970927fe1ccabbaf432c0",
+      "cases": [
+        {
+          "note": "globmatch/glob match with pattern-alternatives list (cat)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"{cat,bat,[fr]at}\", [], \"cat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0151.yaml": {
+      "sha256": "sha256:1fac5d99b6b0606d91e04de01460a6b55fc0160839412d2c968022f927478b2f",
+      "cases": [
+        {
+          "note": "globmatch/glob match with pattern-alternatives list (bat)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"{cat,bat,[fr]at}\", [], \"bat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0152.yaml": {
+      "sha256": "sha256:7ff3318ba77ae04feaabe5fbc36433b177040407c5744c8ae5fd482aeef9b64a",
+      "cases": [
+        {
+          "note": "globmatch/glob match with pattern-alternatives list (fat)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"{cat,bat,[fr]at}\", [], \"fat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0153.yaml": {
+      "sha256": "sha256:35ca65201096b1d3a5a8254d449db9cd6b5e95fc10165ec5f08bbcf4f8205b3e",
+      "cases": [
+        {
+          "note": "globmatch/glob match with pattern-alternatives list (rat)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"{cat,bat,[fr]at}\", [], \"rat\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0154.yaml": {
+      "sha256": "sha256:4addef8646897a3eff66b5bd258b90dad7ef9f9c2c01ab7d17c2072fb4353c7d",
+      "cases": [
+        {
+          "note": "globmatch/glob no match with pattern-alternatives list",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"{cat,bat,[fr]at}\", [], \"at\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0155.yaml": {
+      "sha256": "sha256:0ee2fab818e52d976025bc479543dc324eebc91a3b40a2886beb484ed4d5757b",
+      "cases": [
+        {
+          "note": "globmatch/glob match single with . delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"*\", [\".\"], \"foo\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0156.yaml": {
+      "sha256": "sha256:9d052c5a3daf18aab9c090a7fce332d83af37552a670a7ba6fd5d6be93940291",
+      "cases": [
+        {
+          "note": "globmatch/glob match single with default delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"*\", [], \"foo\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0157.yaml": {
+      "sha256": "sha256:410d587d4a80870eff85d028926086519d1e49b8141efd5161359fd5ac932166",
+      "cases": [
+        {
+          "note": "globmatch/glob no match single with . delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"*\", [\".\"], \"foo.bar\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0158.yaml": {
+      "sha256": "sha256:4ab0f67b904ca9b7d5c01c256235fe454148630ea93b62493cda8c24de9ad860",
+      "cases": [
+        {
+          "note": "globmatch/glob no match single with default delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"*\", [], \"foo.bar\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-0159.yaml": {
+      "sha256": "sha256:abcd6811ec6cb796508632a0dc0a270d684b50e500738a10ba791166ee620ddd",
+      "cases": [
+        {
+          "note": "globmatch/glob match single without default delimiter",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"*\", null, \"foo.bar\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        },
+        {
+          "note": "globmatch/glob match single without default delimiter, glob non-empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.match(\"foo*\", null, \"foo.bar\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-globmatch-issue-5273.yaml": {
+      "sha256": "sha256:3f7b0024f76314f92312a8e331a32878fd0b11a3431fe2f15bfef290c2a0d476",
+      "cases": [
+        {
+          "note": "globmatch/no deadlocks for glob match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains x if {\n\tglob.match(\"*.github.com\", [\".\"], \"api.github.com\", x)\n\tglob.match(\"*.github.com\", [\".\"], \"api.github.com\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-globmatch-issue-5283.yaml": {
+      "sha256": "sha256:e4f546ca88693af7f5993feffaabe0c13246cdf624f11f5f481b1e387a94f381",
+      "cases": [
+        {
+          "note": "globmatch/captured negative results, variable",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := glob.match(\"*.github.com\", [\".\"], input)\n}\n"
+          ],
+          "input": "api.example.com",
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "globmatch/captured negative result, constant",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tglob.match(\"*.github.com\", [\".\"], input, false)\n}\n"
+          ],
+          "input": "api.example.com",
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

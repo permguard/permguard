@@ -1,0 +1,24 @@
+{
+  "folder": "objectremovenonstringkey",
+  "files": {
+    "test-objectremovenonstringkey-0299.yaml": {
+      "sha256": "sha256:04ad1f3e51c8f9dab2858941a64f846429e30402d8701ebd4fc426fbe91a9f63",
+      "cases": [
+        {
+          "note": "objectremovenonstringkey/non string root",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tobject.remove({\"a\": 1, [[7]]: 2}, {[[7]]}, __local1__)\n\t__local0__ = __local1__\n\t__local0__ = {\"a\": 1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

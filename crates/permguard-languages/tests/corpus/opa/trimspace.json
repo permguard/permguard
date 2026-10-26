@@ -1,0 +1,49 @@
+{
+  "folder": "trimspace",
+  "files": {
+    "test-trimspace-0372.yaml": {
+      "sha256": "sha256:d296dc8e1471dee7c14d3d8f3fb0de027fcf2a83e4ef4d60d862780c9449a823",
+      "cases": [
+        {
+          "note": "trimspace/trims all leading and trailing white space from string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\ttrim_space(\" \\t\\n foo, bar \\n\\t\\r\\n\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "foo, bar"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-trimspace-0373.yaml": {
+      "sha256": "sha256:d95b61be55ccca5d95caf2b2797f2d8514627f0ea5f54c89a2ceb1f9f335e15b",
+      "cases": [
+        {
+          "note": "trimspace/trims nothing from string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\ttrim_space(\"foo, bar\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "foo, bar"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

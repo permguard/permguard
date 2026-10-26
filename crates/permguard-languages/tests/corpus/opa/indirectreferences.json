@@ -1,0 +1,116 @@
+{
+  "folder": "indirectreferences",
+  "files": {
+    "test-indirectreferences-0758.yaml": {
+      "sha256": "sha256:d8e2fcc6cda1fbd91f1c20968690510d6a5e8824511205e3e9c4e4a548e535c7",
+      "cases": [
+        {
+          "note": "indirectreferences/array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = [1, 2, 3]\n\t__local0__[x]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                0,
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-indirectreferences-0759.yaml": {
+      "sha256": "sha256:76b925546707ac5f6d8f6692465e76e9f576aceda46e3dee661742f845771a1d",
+      "cases": [
+        {
+          "note": "indirectreferences/call",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tsplit(\"foo.bar\", \".\", __local0__)\n\t__local0__[0] = \"foo\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-indirectreferences-0760.yaml": {
+      "sha256": "sha256:340a5bcf378eb90834e705bfda905ff7a4af3f1b715d9eccc06b011dafa29c64",
+      "cases": [
+        {
+          "note": "indirectreferences/multiple call",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tsplit(\"foo.bar:qux\", \".\", __local0__)\n\t__local2__ = __local0__[_]\n\tsplit(__local2__, \":\", __local1__)\n\t__local1__[i] = x\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "bar",
+                "foo",
+                "qux"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-indirectreferences-0761.yaml": {
+      "sha256": "sha256:83ced19ef8205f82e3e645e227237453025121cee3a7c8302ee77aab9fa45df5",
+      "cases": [
+        {
+          "note": "indirectreferences/user call",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nfn(__local0__) := [__local0__]\n\np contains x if {\n\tdata.generated.fn(1, __local1__)\n\tx = __local1__[0]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-indirectreferences-0762.yaml": {
+      "sha256": "sha256:b2f49e65b7956591968cdef9042578089284f77d6c774b71b549fbd4d5888a53",
+      "cases": [
+        {
+          "note": "indirectreferences/user call in comprehension",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nfn(__local0__) := [__local0__]\n\np contains x if {\n\t__local2__ = [y | data.generated.fn(1, __local1__); y = __local1__]\n\tx = __local2__[_][_]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

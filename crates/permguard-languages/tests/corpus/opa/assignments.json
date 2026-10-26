@@ -1,0 +1,84 @@
+{
+  "folder": "assignments",
+  "files": {
+    "test-file-level-assignments.yaml": {
+      "sha256": "sha256:b4c641292a4dc67bb8a40edad6b13a3cbc14ba87c5e359d5992b7f24c420418e",
+      "cases": [
+        {
+          "note": "assignments/file-level/default_value",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\ndefault a := 1\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": 1
+              }
+            }
+          ]
+        },
+        {
+          "note": "assignments/file-level/rule",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\nb := 2\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "b": 2
+              }
+            }
+          ]
+        },
+        {
+          "note": "assignments/file-level/else_keyword",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\nc := 3 if {\n\tfalse\n} else := 4\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "c": 4
+              }
+            }
+          ]
+        },
+        {
+          "note": "assignments/file-level/partial_rule",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\nd[msg] := 5 if {\n\tmsg = [1, 2, 3][_]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "d": {
+                  "1": 5,
+                  "2": 5,
+                  "3": 5
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "assignments/file-level/function_return_value",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\ne := f(6)\n\nf(x) := x\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "e": 6
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

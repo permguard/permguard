@@ -1,0 +1,429 @@
+{
+  "folder": "walkbuiltin",
+  "files": {
+    "test-walkbuiltin-0970.yaml": {
+      "sha256": "sha256:85fe3657fe7a52c077e789957108f197f6d36d8292557f6cf998adf70ede5ce8",
+      "cases": [
+        {
+          "note": "walkbuiltin/scalar",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.a[0]\n\twalk(__local0__, x)\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+
+                  ],
+                  1
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        },
+        {
+          "note": "walkbuiltin/scalar no path",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains x if {\n\twalk(data.a[0], [_, x])\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-walkbuiltin-0971.yaml": {
+      "sha256": "sha256:b08621f378ba8dc9740c3ba95b6a28188ab082de3d0946f575fe5f4149958eb9",
+      "cases": [
+        {
+          "note": "walkbuiltin/arrays",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.a\n\twalk(__local0__, x)\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+
+                  ],
+                  [
+                    1,
+                    2,
+                    3,
+                    4
+                  ]
+                ],
+                [
+                  [
+                    0
+                  ],
+                  1
+                ],
+                [
+                  [
+                    1
+                  ],
+                  2
+                ],
+                [
+                  [
+                    2
+                  ],
+                  3
+                ],
+                [
+                  [
+                    3
+                  ],
+                  4
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        },
+        {
+          "note": "walkbuiltin/arrays no path",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := [x | walk(data.a, [_, x])]\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4,
+                [
+                  1,
+                  2,
+                  3,
+                  4
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-walkbuiltin-0972.yaml": {
+      "sha256": "sha256:feb6475811f3ac40f5cc0bd48bddcfa864175ff9833fedecd0e9c590c0e4dffe",
+      "cases": [
+        {
+          "note": "walkbuiltin/objects",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.b\n\twalk(__local0__, x)\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+
+                  ],
+                  {
+                    "v1": "hello",
+                    "v2": "goodbye"
+                  }
+                ],
+                [
+                  [
+                    "v1"
+                  ],
+                  "hello"
+                ],
+                [
+                  [
+                    "v2"
+                  ],
+                  "goodbye"
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        },
+        {
+          "note": "walkbuiltin/objects no path",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [x | walk(data.b, [_, x])]\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                "goodbye",
+                "hello",
+                {
+                  "v1": "hello",
+                  "v2": "goodbye"
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-walkbuiltin-0973.yaml": {
+      "sha256": "sha256:58e689ed9572d5333d7101f0285c0791b59d94a73b2bb4f6f9198580b7405b15",
+      "cases": [
+        {
+          "note": "walkbuiltin/sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.generated.q\n\twalk(__local0__, x)\n}\n\nq := {{1, 2, 3}}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+
+                  ],
+                  [
+                    [
+                      1,
+                      2,
+                      3
+                    ]
+                  ]
+                ],
+                [
+                  [
+                    [
+                      1,
+                      2,
+                      3
+                    ]
+                  ],
+                  [
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                [
+                  [
+                    [
+                      1,
+                      2,
+                      3
+                    ],
+                    1
+                  ],
+                  1
+                ],
+                [
+                  [
+                    [
+                      1,
+                      2,
+                      3
+                    ],
+                    2
+                  ],
+                  2
+                ],
+                [
+                  [
+                    [
+                      1,
+                      2,
+                      3
+                    ],
+                    3
+                  ],
+                  3
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        },
+        {
+          "note": "walkbuiltin/sets no path",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := [x | walk({{1, 2, 3}}, [_, x])]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                [
+                  1,
+                  2,
+                  3
+                ],
+                1,
+                2,
+                3
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-walkbuiltin-0974.yaml": {
+      "sha256": "sha256:1a30e463660e6fba6a8f8fc0572e69e8d00d55f51113ff1ada560c8ccd4b0e03",
+      "cases": [
+        {
+          "note": "walkbuiltin/match and filter",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains [k, x] if {\n\twalk(q, [k, x])\n\tcontains(k[1], \"oo\")\n}\n\nq := [{\n\t\"foo\": 1,\n\t\"bar\": 2,\n\t\"bazoo\": 3,\n}]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+                    0,
+                    "bazoo"
+                  ],
+                  3
+                ],
+                [
+                  [
+                    0,
+                    "foo"
+                  ],
+                  1
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-walkbuiltin-0975.yaml": {
+      "sha256": "sha256:b63e81717889eab33c0833a19f3f68280a7baa55af9deb81cdc39b0b6e5d1afb",
+      "cases": [
+        {
+          "note": "walkbuiltin/partially ground path",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains [k1, k2, x] if {\n\t__local0__ = data.generated.q\n\twalk(__local0__, [[\"a\", k1, \"b\", k2], x])\n}\n\nq := {\"a\": [\n\t{\"b\": {\"foo\": 1, \"bar\": 2}},\n\t{\"b\": {\"baz\": 3, \"qux\": 4}},\n]}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  0,
+                  "bar",
+                  2
+                ],
+                [
+                  0,
+                  "foo",
+                  1
+                ],
+                [
+                  1,
+                  "baz",
+                  3
+                ],
+                [
+                  1,
+                  "qux",
+                  4
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-walkbuiltin-wildcard-path.yaml": {
+      "sha256": "sha256:dacd99582510b2515557ff82f296879080461feab2e8fb59cfd1c4ee9fd452c4",
+      "cases": [
+        {
+          "note": "walkbuiltin/wildcard-path same values as when path provided",
+          "query": "x = data.testing.same_values",
+          "modules": [
+            "package testing\n\nobj := {\n\t\"bar\": \"baz\",\n\t\"qux\": [\n\t\t1,\n\t\t{\"p\": \"rego\", \"q\": \"rules\"},\n\t\t{1, 2, 3, {\"a\": \"b\", \"c\": {\"d\", \"e\", 1}}},\n\t],\n}\n\nwith_path contains value if {\n\twalk(obj, [path, value])\n}\n\nwithout_path contains value if {\n\twalk(obj, [_, value])\n}\n\nsame_values := with_path == without_path\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

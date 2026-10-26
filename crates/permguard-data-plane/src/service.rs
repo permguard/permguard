@@ -155,6 +155,10 @@ fn data_plane_configuration(
         context.config(),
         permguard_server::plane::PlaneId::Data,
     );
+    // Every runtime this build carries, and what this deployment does with it: discovery reads the
+    // conformance gate (TL-6), so a caller learns a runtime is not served here, and why, from the
+    // document rather than from a refused load.
+    configuration.languages = authz::languages(context.config());
     if let Some(link) = permguard_server::plane::InterfaceLink::of(
         permguard_languages::request::INTERFACE,
         format!("{base}{}", permguard_languages::request::CONFIGURATION_PATH),

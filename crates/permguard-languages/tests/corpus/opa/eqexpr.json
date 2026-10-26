@@ -1,0 +1,1445 @@
+{
+  "folder": "eqexpr",
+  "files": {
+    "test-eqexpr-0545.yaml": {
+      "sha256": "sha256:e96ca7559f76c6e8745aaded859ea89d45cf965cd042b551d58f09152560fa74",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: same type",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\ttrue = false\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0546.yaml": {
+      "sha256": "sha256:bdcbf336197140f0c07f9454e1d37c268db104661a4f034521d953f962839f0f",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: array order",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t[1, 2, 3] = [1, 3, 2]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0547.yaml": {
+      "sha256": "sha256:7ba5b1833f9eed5faef1c15c59bdf2f19f69a815a62fc1ae9fca89f04d6cf847",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: ref value",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[3] = 9999\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0548.yaml": {
+      "sha256": "sha256:06e82618c2edfbb293c20bb3189c17e99811f2c55cd205852d56c924b15019d9",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: ref values",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[i] = 9999\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0549.yaml": {
+      "sha256": "sha256:09731667317d0678161e9c514d920ea91b0e1f61552dc5f9156a6f4ca51bdd54",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: ground var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[3] = x\n\tx = 3\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0550.yaml": {
+      "sha256": "sha256:1a4fd891665d86d0d7e69052e3ed95fd4dd6291cdeef9a53652f4deb44bdb1da",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: array var 1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t[1, x, x] = [1, 2, 3]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0551.yaml": {
+      "sha256": "sha256:f8020739c6ea071b91ddbeacaed5014b33390fdce7a28886a04cf054be9f3012",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: array var 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t[1, x, 3] = [1, 2, x]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0552.yaml": {
+      "sha256": "sha256:8625823c87ad8b286ab8e20c590ba03df7837b901c23747d98b8faebf011f6de",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: object var 1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.a\n\t__local1__ = data.a\n\t{\"a\": 1, \"b\": 2} = {\"a\": __local0__, \"b\": __local1__}\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0553.yaml": {
+      "sha256": "sha256:301d8e8a39ed148a4252271f7c5f662c1b0578d0943b5ca71db5baba2494a6a6",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: array deep var 1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t[[1, x], [3, x]] = [[1, 2], [3, 4]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0554.yaml": {
+      "sha256": "sha256:f478f6a63386c51272446e0f8ba4b4e716d4b90049d9a56aba0032f0a86d0db2",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: array deep var 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t[[1, x], [3, 4]] = [[1, 2], [x, 4]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0555.yaml": {
+      "sha256": "sha256:ffd659e242234ed5e533aa852196dbf7cef92414c000c0a3ae071f05f5a3c657",
+      "cases": [
+        {
+          "note": "eqexpr/undefined: set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t{1, 2, 3} = {1, 2, 4}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0556.yaml": {
+      "sha256": "sha256:3f97d9b5f99a017ea94a1bb37a046a2d00475d54273957c880cd9900b282d95b",
+      "cases": [
+        {
+          "note": "eqexpr/ground: bool",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\ttrue = true\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0557.yaml": {
+      "sha256": "sha256:a59957098c2016794b1c5dc51b8ff701470bde9d2f3556200c4a008edd69b5fa",
+      "cases": [
+        {
+          "note": "eqexpr/ground: string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t\"string\" = \"string\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0558.yaml": {
+      "sha256": "sha256:ac777a437ee578c0b2bb02498f724445a6f5b06c447d3264bedfc0727c70a487",
+      "cases": [
+        {
+          "note": "eqexpr/ground: number",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t17 = 17\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0559.yaml": {
+      "sha256": "sha256:2855daade9cc5dfbe423a24457f1c168b1f58a90e814e32e2470abc220a335cd",
+      "cases": [
+        {
+          "note": "eqexpr/ground: null",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnull = null\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0560.yaml": {
+      "sha256": "sha256:1d3457e8a6dcf55b4f4860c64c9ff9f3f078d10f070fba4adb9e2427526d2ae1",
+      "cases": [
+        {
+          "note": "eqexpr/ground: array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t[1, 2, 3] = [1, 2, 3]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0561.yaml": {
+      "sha256": "sha256:91b7a6d9fda33d9ac91ca34086c13810b20f96299382f7952c20bda37f853593",
+      "cases": [
+        {
+          "note": "eqexpr/ground: set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t{1, 2, 3} = {1, 2, 3}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0562.yaml": {
+      "sha256": "sha256:8619c358b2288b6ab56fb9117d274d51629a199adadfe5b2ed0070c203d17b23",
+      "cases": [
+        {
+          "note": "eqexpr/ground: object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t{\"a\": [1, 2, 3], \"b\": false} = {\"a\": [1, 2, 3], \"b\": false}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0563.yaml": {
+      "sha256": "sha256:5ee158d09907846acfbdc9757303fe6ce5c7b13b2de4ceafeccb0d2f0af178db",
+      "cases": [
+        {
+          "note": "eqexpr/ground: ref 1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[2] = 3\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0564.yaml": {
+      "sha256": "sha256:bd823ebccd8363e6f97925275ab3f2a49d904c52ad25e479d88026c743000bb1",
+      "cases": [
+        {
+          "note": "eqexpr/ground: ref 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.b.v2 = \"goodbye\"\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0565.yaml": {
+      "sha256": "sha256:aaa8abab676ec84c0c1e7bee5eb8d6a90e323a62cbdbd9655da93049a4960214",
+      "cases": [
+        {
+          "note": "eqexpr/ground: ref 3",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.d.e = [\"bar\", \"baz\"]\n}\n"
+          ],
+          "data": {
+            "d": {
+              "e": [
+                "bar",
+                "baz"
+              ]
+            }
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0566.yaml": {
+      "sha256": "sha256:47a8a130dc1b22df1d171b7dd8d8338af1c668818c3efff7c6eeea711f46d203",
+      "cases": [
+        {
+          "note": "eqexpr/ground: ref 4",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.c[0].x[1] = data.c[0].z.q\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.1415
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0567.yaml": {
+      "sha256": "sha256:a401c97a0e7e6a152437217f76c281112da00d5dca4c0cac3cacf69c914d8231",
+      "cases": [
+        {
+          "note": "eqexpr/var: x=y=z",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tz = 42\n\ty = z\n\tx = y\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                42
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0568.yaml": {
+      "sha256": "sha256:213d6f4c903f8f78c5122b425a0c295fc58958e511955ff7897a4d435cc22c1f",
+      "cases": [
+        {
+          "note": "eqexpr/var: ref value",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[3] = x\n\tx = 4\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0569.yaml": {
+      "sha256": "sha256:4483c30422b3a8248808d25ec9f49502cbd00828b00ec762007b4acce74959b1",
+      "cases": [
+        {
+          "note": "eqexpr/var: ref values",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[i] = x\n\tx = 2\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0570.yaml": {
+      "sha256": "sha256:280c1822cc9ce76d4374685c5867900735615382f1bc10cc48816ac719bffd93",
+      "cases": [
+        {
+          "note": "eqexpr/var: ref key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[i] = 4\n\tx = 3\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0571.yaml": {
+      "sha256": "sha256:b7ecd9d42cc6dc8b4daa64d0a7032b6f0b4928d2a2d122abc9c5c24823fdb992",
+      "cases": [
+        {
+          "note": "eqexpr/var: ref keys",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[i] = x\n\ti = 2\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0572.yaml": {
+      "sha256": "sha256:c398730bd46676c6b6d51873edb601d105ba8be19ea6d477883ea00aa6f7454d",
+      "cases": [
+        {
+          "note": "eqexpr/var: ref ground var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\ti = 2\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0573.yaml": {
+      "sha256": "sha256:9e737dd7b509beac087a6c223ff0969c3c70ebe9779e96c2bcd0079c273e9db9",
+      "cases": [
+        {
+          "note": "eqexpr/var: ref ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.c[0].x[i] = data.c[0].z[j]\n\tx = [i, j]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  0,
+                  "p"
+                ],
+                [
+                  1,
+                  "q"
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0574.yaml": {
+      "sha256": "sha256:b252aaf5e1585e5ebd161a4752514d874c185820c268ee24a00d2bf0ccae01ea",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t[1, x, 3] = [1, 2, 3]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0575.yaml": {
+      "sha256": "sha256:3a5d1882e69e5093433c2ebcaba3c2bc6d8f819c8151f86080667ee3bb013cfa",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: array 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t[[1, x], [3, 4]] = [[1, 2], [3, 4]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0576.yaml": {
+      "sha256": "sha256:1eeda4c6677bc76e3b269224013b58b0cceb12d85d68088e3d52f54864ac8a5a",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: array same var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t[2, x, 3] = [x, 2, 3]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0577.yaml": {
+      "sha256": "sha256:1703e04375f12e4abe566c3b2efa82bf76abe9ebdc275e376639db0cd21ef3c2",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: array multiple vars",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains z if {\n\t[1, x, y] = [1, 2, 3]\n\tz = [x, y]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  2,
+                  3
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0578.yaml": {
+      "sha256": "sha256:bf4d97d695579d85723cf91459d96a8a0cf430f2d1af84eb59196fd70b592b89",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: array multiple vars 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains z if {\n\t[1, x, 3] = [y, 2, 3]\n\tz = [x, y]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  2,
+                  1
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0579.yaml": {
+      "sha256": "sha256:79a745e0e769dc82eb12249d08e706d34985aaf2d012e0f98f4a6ead5ac68b49",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: array ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.a[0]\n\t__local1__ = data.a[1]\n\t__local2__ = data.a[2]\n\t__local3__ = data.a[3]\n\t[1, 2, 3, x] = [__local0__, __local1__, __local2__, __local3__]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0580.yaml": {
+      "sha256": "sha256:abf6a50aefd6a948778d6e4178f2a3f45881c2b634f5166ef0176671e2ac8629",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: array non-ground ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.a[0]\n\t__local1__ = data.a[1]\n\t__local2__ = data.a[2]\n\t__local3__ = data.a[i]\n\t[1, 2, 3, x] = [__local0__, __local1__, __local2__, __local3__]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0581.yaml": {
+      "sha256": "sha256:c7326acf153aeaf9dba6496f5e55b4387728014c51848003348851b493b5a4b5",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: array = ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t[true, false, x] = data.c[i][j]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                "foo"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0582.yaml": {
+      "sha256": "sha256:2b1d73fbd1885bca3ad786a7e975e6479f9c9c97d5067174a394ab97a1786173",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: array = ref (reversed)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.c[i][j] = [true, false, x]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                "foo"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0583.yaml": {
+      "sha256": "sha256:52670c6586312f7f1ed2e5b25bf5b1c3a853d1f2158389e1cc6c1ec19263929e",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: array = var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\tx = 3\n\t[1, 2, x] = y\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  2,
+                  3
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0584.yaml": {
+      "sha256": "sha256:12862122be3497ebf837c78f9cbc9c4473314b85bc499f6072de898a8afbcc35",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object val",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\t{\"x\": y} = {\"x\": \"y\"}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "y"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0585.yaml": {
+      "sha256": "sha256:f9358dd9432842b472ed2a4cec91e9d72c01c83d176b3cb2846164a7f7a52aeb",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object same var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t{\"x\": x, \"y\": x} = {\"x\": 1, \"y\": 1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0586.yaml": {
+      "sha256": "sha256:10a0428143fca1a5d75db8c7a432a144393cafd2e86c35c79a30041e4e0e951f",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object multiple vars",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains z if {\n\t{\"x\": x, \"y\": y} = {\"x\": 1, \"y\": 2}\n\tz = [x, y]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  2
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0587.yaml": {
+      "sha256": "sha256:e51a3765dee8ab6dc9c4ac62b052f25c20846db159f997b915ab15714b462930",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object multiple vars 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains z if {\n\t{\"x\": x, \"y\": 2} = {\"x\": 1, \"y\": y}\n\tz = [x, y]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  2
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0588.yaml": {
+      "sha256": "sha256:5ae6f236f480cc229fe7300ffa34b00bb7b2a3afb2201d4fa446d315cf358fc3",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.c[0].x[0]\n\t{\"p\": __local0__, \"q\": x} = data.c[i][j]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0589.yaml": {
+      "sha256": "sha256:6eda4843b267ef3d1f4d6d33db7eb25baf2f60cc133cc6d69247e488633b7568",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object non-ground ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.c[0].x[i]\n\t{\"a\": 1, \"b\": x} = {\"a\": 1, \"b\": __local0__}\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                false,
+                true,
+                "foo"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0590.yaml": {
+      "sha256": "sha256:2d8219fffbbe064c05ceb9b6ee7ad4df7fb8d1767b0a6e84244e96302a31e094",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object = ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t{\"p\": y, \"q\": z} = data.c[i][j]\n\tx = [i, j, y, z]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  0,
+                  "z",
+                  true,
+                  false
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0591.yaml": {
+      "sha256": "sha256:f072426d4c45d62be23367acf812baf9359add5f586d434fcdc5dcdbd4c9d036",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object = ref (reversed)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.c[i][j] = {\"p\": y, \"q\": z}\n\tx = [i, j, y, z]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  0,
+                  "z",
+                  true,
+                  false
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0592.yaml": {
+      "sha256": "sha256:d71461d805409c91f332629e8c1ebaf0420d7db8815dd9c1f8a5c59f31fcf28c",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object = var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\ty = 2\n\t{\"a\": 1, \"b\": y} = x\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "a": 1,
+                  "b": 2
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0593.yaml": {
+      "sha256": "sha256:02f01fc10b9f837a3243d12752aeee1468dcd37fc093aac314b97e0b79977fe2",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object/array nested",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains ys if {\n\tdata.f[i] = {\"xs\": [2], \"ys\": ys}\n}\n"
+          ],
+          "data": {
+            "f": [
+              {
+                "xs": [
+                  1
+                ],
+                "ys": [
+                  2
+                ]
+              },
+              {
+                "xs": [
+                  2
+                ],
+                "ys": [
+                  3
+                ]
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  3
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0594.yaml": {
+      "sha256": "sha256:309068d14184027c8e301dc502fdf4981ddb661b32c03977fd4e6e990ea0c8c2",
+      "cases": [
+        {
+          "note": "eqexpr/pattern: object/array nested 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains v if {\n\tdata.f[i] = {\"xs\": [x], \"ys\": [y]}\n\tv = [x, y]\n}\n"
+          ],
+          "data": {
+            "f": [
+              {
+                "xs": [
+                  1
+                ],
+                "ys": [
+                  2
+                ]
+              },
+              {
+                "xs": [
+                  2
+                ],
+                "ys": [
+                  3
+                ]
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  3
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0595.yaml": {
+      "sha256": "sha256:d0bd7c88de6902eb477a508a7d6a9e151cf91a8a6a67a793aaef5354a413bd40",
+      "cases": [
+        {
+          "note": "eqexpr/unordered: sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tx = 2\n\t{1, 3, x} = {1, 2, 3}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0596.yaml": {
+      "sha256": "sha256:4822e5fa34a4fe22a5af7ba1bc3a266fb379473a3d0457332b653e9541d9bced",
+      "cases": [
+        {
+          "note": "eqexpr/unordered: object keys",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tx = \"a\"\n\t{x: 1} = {\"a\": 1}\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                "a"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0597.yaml": {
+      "sha256": "sha256:cf5c94c876615d1003ab8096363790d676c989fb97540ac1f2c3773560bc8b93",
+      "cases": [
+        {
+          "note": "eqexpr/unordered: object keys (reverse)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tx = \"a\"\n\t{\"a\": 1} = {x: 1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "a"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-eqexpr-0598.yaml": {
+      "sha256": "sha256:4133dc3b73b81eb6d180ccbb37598b993492af3714d5efe9fa8bc3f1006d2fdb",
+      "cases": [
+        {
+          "note": "eqexpr/indexing: intersection",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a[i] = data.g[i][j]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "g": {
+              "a": [
+                1,
+                0,
+                0,
+                0
+              ],
+              "b": [
+                0,
+                2,
+                0,
+                0
+              ],
+              "c": [
+                0,
+                0,
+                0,
+                4
+              ]
+            }
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-eqexpr-0599.yaml": {
+      "sha256": "sha256:52833f9340f693aea92e3277e62c1174d7b9fda72394bb85c838073db34928d3",
+      "cases": [
+        {
+          "note": "eqexpr/indexing: input is 1.0",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if input == 1.0\n"
+          ],
+          "input_term": "1.0",
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "eqexpr/indexing: input is 1",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if input == 1.0\n"
+          ],
+          "input_term": "1",
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,587 @@
+{
+  "runtime": "cedar",
+  "engine": {
+    "name": "cedar-policy",
+    "version": "4.11.0"
+  },
+  "manifests": [
+    {
+      "name": "a stateless profile of one cedar partition",
+      "yaml": "metadata:\n  kind: policy\n  name: vectors\nruntimes:\n  cedar:\n    language: { name: cedar, constraint: \">=4.0.0\" }\n    engine:   { name: permguard, constraint: \">=0.1.0 <0.2.0\" }\npartitions:\n  policies:\n    runtime: cedar\n    schema: true\nprofiles:\n  default: { type: permguard.api.pdp.native.v1, partitions: [policies] }\n",
+      "expect": "accepted"
+    },
+    {
+      "name": "an unknown runtime language",
+      "yaml": "metadata:\n  kind: policy\n  name: vectors\nruntimes:\n  cedar:\n    language: { name: cedarx, constraint: \">=4.0.0\" }\n    engine:   { name: permguard, constraint: \">=0.1.0 <0.2.0\" }\npartitions:\n  policies:\n    runtime: cedar\nprofiles:\n  default: { type: permguard.api.pdp.native.v1, partitions: [policies] }\n",
+      "expect": {
+        "refused": "no built-in plugin for `cedarx`"
+      }
+    },
+    {
+      "name": "a language range this build does not meet",
+      "yaml": "metadata:\n  kind: policy\n  name: vectors\nruntimes:\n  cedar:\n    language: { name: cedar, constraint: \">=99.0.0\" }\n    engine:   { name: permguard, constraint: \">=0.1.0 <0.2.0\" }\npartitions:\n  policies:\n    runtime: cedar\nprofiles:\n  default: { type: permguard.api.pdp.native.v1, partitions: [policies] }\n",
+      "expect": {
+        "refused": "manifest rejected: runtime `cedar`: language cedar 4.11.0 does not satisfy `>=99.0.0`"
+      }
+    },
+    {
+      "name": "a temporal profile naming a cedar partition",
+      "yaml": "metadata:\n  kind: policy\n  name: vectors\nruntimes:\n  cedar:\n    language: { name: cedar, constraint: \">=4.0.0\" }\n    engine:   { name: permguard, constraint: \">=0.1.0 <0.2.0\" }\npartitions:\n  policies:\n    runtime: cedar\nprofiles:\n  default: { type: permguard.api.pdp.temporal.v1alpha1, partitions: [policies] }\n",
+      "expect": {
+        "refused": "manifest rejected: the profile `default` is `permguard.api.pdp.temporal.v1alpha1` and names the partition `policies`, which runs `cedar` — a runtime that decides from the request alone. A temporal profile records history and decides against it, and there is no conversion that would make a stateless partition do so"
+      }
+    },
+    {
+      "name": "an unknown profile type",
+      "yaml": "metadata:\n  kind: policy\n  name: vectors\nruntimes:\n  cedar:\n    language: { name: cedar, constraint: \">=4.0.0\" }\n    engine:   { name: permguard, constraint: \">=0.1.0 <0.2.0\" }\npartitions:\n  policies:\n    runtime: cedar\nprofiles:\n  default: { type: permguard.api.pdp.v1, partitions: [policies] }\n",
+      "expect": {
+        "refused": "manifest rejected: unknown profile type `permguard.api.pdp.v1` (this build serves: permguard.api.pdp.native.v1, permguard.api.pdp.temporal.v1alpha1, permguard.pdp.v1)"
+      }
+    }
+  ],
+  "partitions": [
+    {
+      "name": "plain",
+      "policies": [
+        {
+          "id": "p-read",
+          "source": "permit (principal in Group::\"finance\", action == Action::\"read\", resource);"
+        },
+        {
+          "id": "f-classified",
+          "source": "forbid (principal, action, resource) when { resource has classified && resource.classified };"
+        }
+      ],
+      "artifacts": {},
+      "expect": "compiles"
+    },
+    {
+      "name": "erroring",
+      "policies": [
+        {
+          "id": "p-read",
+          "source": "permit (principal, action == Action::\"read\", resource);"
+        },
+        {
+          "id": "p-cleared",
+          "source": "permit (principal, action, resource) when { principal.clearance == \"top\" };"
+        },
+        {
+          "id": "f-write",
+          "source": "forbid (principal, action == Action::\"write\", resource);"
+        }
+      ],
+      "artifacts": {},
+      "expect": "compiles"
+    },
+    {
+      "name": "schema",
+      "policies": [
+        {
+          "id": "p-owner",
+          "source": "permit (principal, action == Action::\"read\", resource) when { resource.owner == principal && context.mfa };"
+        }
+      ],
+      "artifacts": {
+        "permguard.cedar.schema.v1": "entity Group;\nentity User in [Group] { clearance?: String };\nentity Document { owner: User, classified: Bool };\naction read, write appliesTo { principal: [User], resource: [Document], context: { mfa: Bool } };\n"
+      },
+      "expect": "compiles"
+    },
+    {
+      "name": "ill-typed",
+      "policies": [
+        {
+          "id": "p-bad",
+          "source": "permit (principal, action == Action::\"read\", resource) when { resource.owner == 42 };"
+        }
+      ],
+      "artifacts": {
+        "permguard.cedar.schema.v1": "entity Group;\nentity User in [Group] { clearance?: String };\nentity Document { owner: User, classified: Bool };\naction read, write appliesTo { principal: [User], resource: [Document], context: { mfa: Bool } };\n"
+      },
+      "expect": {
+        "refused": "cedar: the policies do not satisfy the partition's schema: the types Long and User are not compatible"
+      }
+    },
+    {
+      "name": "unparsable",
+      "policies": [
+        {
+          "id": "p-broken",
+          "source": "permit (principal, action, resource"
+        }
+      ],
+      "artifacts": {},
+      "expect": {
+        "refused": "cedar: policy p-broken does not parse: cedar: unexpected end of input"
+      }
+    },
+    {
+      "name": "enumerated",
+      "policies": [
+        {
+          "id": "p-paint",
+          "source": "permit (principal, action == Action::\"paint\", resource);"
+        }
+      ],
+      "artifacts": {
+        "permguard.cedar.schema.v1": "entity User;\nentity Color enum [\"red\", \"blue\"];\naction paint appliesTo { principal: [User], resource: [Color] };\n"
+      },
+      "expect": "compiles"
+    }
+  ],
+  "requests": [
+    {
+      "name": "a group member reads",
+      "partition": "plain",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "input": {
+        "cedar": [
+          {
+            "uid": {
+              "type": "User",
+              "id": "alice"
+            },
+            "attrs": {},
+            "parents": [
+              {
+                "type": "Group",
+                "id": "finance"
+              }
+            ]
+          },
+          {
+            "uid": {
+              "type": "Group",
+              "id": "finance"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "User",
+              "id": "bob"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      },
+      "expect": {
+        "verdict": "P",
+        "determining": [
+          "p-read"
+        ]
+      }
+    },
+    {
+      "name": "a forbid overrides the permit",
+      "partition": "plain",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "plan",
+        "properties": {
+          "classified": true
+        }
+      },
+      "input": {
+        "cedar": [
+          {
+            "uid": {
+              "type": "User",
+              "id": "alice"
+            },
+            "attrs": {},
+            "parents": [
+              {
+                "type": "Group",
+                "id": "finance"
+              }
+            ]
+          },
+          {
+            "uid": {
+              "type": "Group",
+              "id": "finance"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "User",
+              "id": "bob"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      },
+      "expect": {
+        "verdict": "D",
+        "determining": [
+          "f-classified"
+        ]
+      }
+    },
+    {
+      "name": "nothing matched",
+      "partition": "plain",
+      "subject": {
+        "type": "User",
+        "id": "bob"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "input": {
+        "cedar": [
+          {
+            "uid": {
+              "type": "User",
+              "id": "alice"
+            },
+            "attrs": {},
+            "parents": [
+              {
+                "type": "Group",
+                "id": "finance"
+              }
+            ]
+          },
+          {
+            "uid": {
+              "type": "Group",
+              "id": "finance"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "User",
+              "id": "bob"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      },
+      "expect": {
+        "verdict": "A"
+      }
+    },
+    {
+      "name": "an allow beside an error",
+      "partition": "erroring",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "expect": {
+        "verdict": "E",
+        "code": "evaluation_failed"
+      }
+    },
+    {
+      "name": "a forbid beside an error",
+      "partition": "erroring",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "write"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "expect": {
+        "verdict": "D",
+        "determining": [
+          "f-write"
+        ],
+        "beside": "evaluation_failed"
+      }
+    },
+    {
+      "name": "a well-typed request",
+      "partition": "schema",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget",
+        "properties": {
+          "owner": {
+            "__entity": {
+              "type": "User",
+              "id": "alice"
+            }
+          },
+          "classified": false
+        }
+      },
+      "context": {
+        "mfa": true
+      },
+      "input": {
+        "cedar": [
+          {
+            "uid": {
+              "type": "User",
+              "id": "alice"
+            },
+            "attrs": {},
+            "parents": [
+              {
+                "type": "Group",
+                "id": "finance"
+              }
+            ]
+          },
+          {
+            "uid": {
+              "type": "Group",
+              "id": "finance"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "User",
+              "id": "bob"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      },
+      "expect": {
+        "verdict": "P",
+        "determining": [
+          "p-owner"
+        ]
+      }
+    },
+    {
+      "name": "a request the schema refuses",
+      "partition": "schema",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget",
+        "properties": {
+          "owner": {
+            "__entity": {
+              "type": "User",
+              "id": "alice"
+            }
+          },
+          "classified": false
+        }
+      },
+      "context": {
+        "mfa": "yes"
+      },
+      "input": {
+        "cedar": [
+          {
+            "uid": {
+              "type": "User",
+              "id": "alice"
+            },
+            "attrs": {},
+            "parents": [
+              {
+                "type": "Group",
+                "id": "finance"
+              }
+            ]
+          },
+          {
+            "uid": {
+              "type": "Group",
+              "id": "finance"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "User",
+              "id": "bob"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      },
+      "expect": {
+        "verdict": "E",
+        "code": "evaluation_input_rejected"
+      }
+    },
+    {
+      "name": "an entity type the schema does not declare",
+      "partition": "schema",
+      "subject": {
+        "type": "Robot",
+        "id": "r2"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget",
+        "properties": {
+          "owner": {
+            "__entity": {
+              "type": "User",
+              "id": "alice"
+            }
+          },
+          "classified": false
+        }
+      },
+      "context": {
+        "mfa": true
+      },
+      "expect": {
+        "verdict": "E",
+        "code": "evaluation_input_rejected"
+      }
+    },
+    {
+      "name": "one value, two authorities",
+      "partition": "plain",
+      "subject": {
+        "type": "User",
+        "id": "alice",
+        "properties": {
+          "x": 1
+        }
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "input": {
+        "cedar": [
+          {
+            "uid": {
+              "type": "User",
+              "id": "alice"
+            },
+            "attrs": {
+              "x": 2
+            },
+            "parents": [
+              {
+                "type": "Group",
+                "id": "finance"
+              }
+            ]
+          },
+          {
+            "uid": {
+              "type": "Group",
+              "id": "finance"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      },
+      "expect": {
+        "verdict": "E",
+        "code": "evaluation_input_rejected"
+      }
+    },
+    {
+      "name": "an enumerated entity this schema names",
+      "partition": "enumerated",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "paint"
+      },
+      "resource": {
+        "type": "Color",
+        "id": "red"
+      },
+      "expect": {
+        "verdict": "P",
+        "determining": [
+          "p-paint"
+        ]
+      }
+    },
+    {
+      "name": "an enumerated entity this schema does not name",
+      "partition": "enumerated",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "paint"
+      },
+      "resource": {
+        "type": "Color",
+        "id": "green"
+      },
+      "expect": {
+        "verdict": "E",
+        "code": "evaluation_input_rejected"
+      }
+    }
+  ]
+}

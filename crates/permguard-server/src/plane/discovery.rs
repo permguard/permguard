@@ -358,6 +358,11 @@ pub struct PlaneConfiguration {
     /// of things to follow.
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub interfaces: std::collections::BTreeMap<String, InterfaceLink>,
+    /// The runtimes a data plane carries, each with its descriptor's digest, whether this
+    /// deployment serves it and its conformance gate's result (TL-6). Filled by the plane that
+    /// evaluates; absent from one that does not.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<serde_json::Value>,
 }
 
 /// One plane's own configuration: who it is, and what it signs with.
@@ -384,6 +389,7 @@ pub fn plane_configuration(config: &Config, plane: PlaneId) -> PlaneConfiguratio
         jwks_uri,
         streams_endpoint,
         interfaces: std::collections::BTreeMap::new(),
+        languages: Vec::new(),
     }
 }
 

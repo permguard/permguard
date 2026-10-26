@@ -115,6 +115,7 @@
     "interface.DECISIONS_EXPORT_V1": "permguard.decisions.export.v1",
     "interface.EVENTS_EXPORT_V1ALPHA1": "permguard.events.export.v1alpha1",
     "interface.EVENTS_NATIVE_V1ALPHA1": "permguard.api.events.native.v1alpha1",
+    "interface.LANGUAGE_CONFORMANCE_V1": "permguard.language.conformance.v1",
     "interface.PDP_NATIVE_V1": "permguard.api.pdp.native.v1",
     "interface.PDP_TEMPORAL_V1ALPHA1": "permguard.api.pdp.temporal.v1alpha1",
     "interface.PDP_V1_LEGACY": "permguard.pdp.v1",

@@ -311,11 +311,25 @@ curl -s http://127.0.0.1:7443/.well-known/server-configuration | jq
       "configuration": "http://127.0.0.1:7443/.well-known/permguard-pdp-v1-configuration",
       "stage": "v1"
     }
-  }
+  },
+  "languages": [
+    {
+      "name": "cedar",
+      "descriptor_digest": "sha256:…",
+      "experimental": false,
+      "served": true,
+      "conformance": {
+        "gate": "permguard.language.conformance.v1",
+        "production_ready": true,
+        "open": []
+      }
+    }
+  ]
 }
 ```
 
 A plane says who it is, what it signs with, and **which interfaces it exposes**, each with its stage and its own configuration.
+`languages` lists every runtime the build carries, whether this deployment serves it, and its conformance gate: from `production` up a runtime with an open item is not served.
 Follow the link and the interface describes itself:
 
 ```sh

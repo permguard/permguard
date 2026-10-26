@@ -1,0 +1,165 @@
+{
+  "folder": "numbersrange",
+  "files": {
+    "test-numbersrange-0256.yaml": {
+      "sha256": "sha256:57dc6e1dcded2b0d59b2953cc838d4b280aa75415869e65767ca495dc42c9c31",
+      "cases": [
+        {
+          "note": "numbersrange/one",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tnumbers.range(0, 0, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                0
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-numbersrange-0257.yaml": {
+      "sha256": "sha256:2301f5b9301be506680841e1dfb1c66e17d6a1a22b106e05b49cb722c9b2fe8b",
+      "cases": [
+        {
+          "note": "numbersrange/ascending",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tnumbers.range(-2, 3, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                -2,
+                -1,
+                0,
+                1,
+                2,
+                3
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-numbersrange-0258.yaml": {
+      "sha256": "sha256:b7c7d514c17208d9c61cf0059fe988c7f513c51fabe5a4d58fac551377f45bfe",
+      "cases": [
+        {
+          "note": "numbersrange/descending",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tnumbers.range(2, -3, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                1,
+                0,
+                -1,
+                -2,
+                -3
+              ]
+            }
+          ]
+        },
+        {
+          "note": "numbersrange/descending (cheap optimization)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tnumbers.range(5, 2, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                5,
+                4,
+                3,
+                2
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-numbersrange-0259.yaml": {
+      "sha256": "sha256:715d220921876e40bf92ef73c4c348176f06cc9322561a1e663535b2d82fc95e",
+      "cases": [
+        {
+          "note": "numbersrange/precision",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnumbers.range(49649733057, 49649733060, [49649733057, 49649733058, 49649733059, 49649733060])\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-numbersrange-0260.yaml": {
+      "sha256": "sha256:9a6204239e3cb2eb8010301a8b2590a60f8f83ad614419139b82b37461d4bb1c",
+      "cases": [
+        {
+          "note": "numbersrange/error: floating-point number pos 1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnumbers.range(3.14, 4)\n}\n"
+          ],
+          "want_error_code": "eval_type_error",
+          "want_error": "numbers.range: operand 1 must be integer number but got floating-point number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-numbersrange-0261.yaml": {
+      "sha256": "sha256:c3ef188f72ca6a461e3cf3169df29d99990e8e8d282dc420e2096179105ce0dc",
+      "cases": [
+        {
+          "note": "numbersrange/error: floating-point number pos 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnumbers.range(3, 3.14)\n}\n"
+          ],
+          "want_error_code": "eval_type_error",
+          "want_error": "numbers.range: operand 2 must be integer number but got floating-point number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-numbersrange-issue-7269.yaml": {
+      "sha256": "sha256:a96ccbddecf75d8e6c11ae4b3be22869f6e2175b5e5faf6b2175520ee563a1e1",
+      "cases": [
+        {
+          "note": "numbersrange/issue 7269",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if numbers.range(0, 1)\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

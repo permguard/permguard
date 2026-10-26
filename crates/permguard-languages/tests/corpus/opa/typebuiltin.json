@@ -1,0 +1,411 @@
+{
+  "folder": "typebuiltin",
+  "files": {
+    "test-typebuiltin-0828.yaml": {
+      "sha256": "sha256:1f11f373035b4d7c2063badad0b4ff868149ee9f72f846130d3dee9b4af5ba16",
+      "cases": [
+        {
+          "note": "typebuiltin/is_number",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [x, y, z] if {\n\tis_number(-42.0, x)\n\tis_number(0, y)\n\tis_number(100.1, z)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0829.yaml": {
+      "sha256": "sha256:caa33ceb6e4606412e392f5939fc845adc53cbc7eaacc4fe5f046b12e0856df1",
+      "cases": [
+        {
+          "note": "typebuiltin/is_number",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_number(null, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0830.yaml": {
+      "sha256": "sha256:8e79745cfffa25fca5e6b211b12b3cb693a2eb90e1e60fffa93898144506f57f",
+      "cases": [
+        {
+          "note": "typebuiltin/is_number",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_number(false, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0831.yaml": {
+      "sha256": "sha256:02471a07e7a5f4f270e69edb0038f821ec5a100617c8bd6a34698bcf459ed0da",
+      "cases": [
+        {
+          "note": "typebuiltin/is_number",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tarr = [true, 1]\n\tarr[_] = x\n\tis_number(x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-typebuiltin-0832.yaml": {
+      "sha256": "sha256:7f2223ea7f7e0be789496af7234026e9e0f86bf7666c0d702726984f9e6c97da",
+      "cases": [
+        {
+          "note": "typebuiltin/is_string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [x, y, z] if {\n\tis_string(\"Hello\", x)\n\tis_string(\"There\", y)\n\tis_string(\"OPA\", z)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0833.yaml": {
+      "sha256": "sha256:9ff0cb0e733ca66ee8792007b8abdaa8152adc6e0668723bc748ce48bc7bd00a",
+      "cases": [
+        {
+          "note": "typebuiltin/is_string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_string(null, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0834.yaml": {
+      "sha256": "sha256:3f6ad2695b7059cb9ca4324c887a9948ea3bd6843ed21d3e9ec63414a45f9077",
+      "cases": [
+        {
+          "note": "typebuiltin/is_string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_string(false, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0835.yaml": {
+      "sha256": "sha256:b8ceae7511b85161326264850a3b7ea3d95922f2de4d5a59e57080cb14b21f8b",
+      "cases": [
+        {
+          "note": "typebuiltin/is_string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tarr = [true, 1, \"Hey\"]\n\tarr[_] = x\n\tis_string(x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "Hey"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-typebuiltin-0836.yaml": {
+      "sha256": "sha256:da451a0da44ec50a6ffa370465054632cbda0c8b147bbfcf91282c7e30ee2f67",
+      "cases": [
+        {
+          "note": "typebuiltin/is_boolean",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [x, y] if {\n\tis_boolean(true, x)\n\tis_boolean(false, y)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true,
+                true
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0837.yaml": {
+      "sha256": "sha256:3183cbedf996dde640ecb249eefe664fe13615512fd960ae8b56d2cbdcb64280",
+      "cases": [
+        {
+          "note": "typebuiltin/is_boolean",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_boolean(null, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0838.yaml": {
+      "sha256": "sha256:31da4bc6ca5ea65580b17d6be7c50331db0382cbb4f4991a7ee01352427b8a8a",
+      "cases": [
+        {
+          "note": "typebuiltin/is_boolean",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_boolean(\"Hello\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0839.yaml": {
+      "sha256": "sha256:6eaba8a7406c89d84f8ffa0df1c157309a7997e249b4bbeaa004261d2c824ee1",
+      "cases": [
+        {
+          "note": "typebuiltin/is_boolean",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tarr = [false, 1, \"Hey\"]\n\tarr[_] = x\n\tis_boolean(x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-typebuiltin-0840.yaml": {
+      "sha256": "sha256:648809a0173be02fe89964b4dcbf8e3509846940239a1a0637aa60dd4b3f6240",
+      "cases": [
+        {
+          "note": "typebuiltin/is_array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [x, y] if {\n\tis_array([1, 2, 3], x)\n\tis_array([\"a\", \"b\"], y)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true,
+                true
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0841.yaml": {
+      "sha256": "sha256:e7be6369f96569dd2fc6f52e364e1f9af8c5e4da3e8b54322420cffe5cd25afc",
+      "cases": [
+        {
+          "note": "typebuiltin/is_array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_array({1, 2, 3}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0842.yaml": {
+      "sha256": "sha256:8a9c7e232c632ab4dfa09017fba9b9bead3d88bc07eb35c313fad6ceb71c37a6",
+      "cases": [
+        {
+          "note": "typebuiltin/is_set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [x, y] if {\n\tis_set({1, 2, 3}, x)\n\tis_set({\"a\", \"b\"}, y)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true,
+                true
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0843.yaml": {
+      "sha256": "sha256:c3fade7f1ba8623bc6b641fd0e6e0514d7548fdf4226d1d6b282d41508ebe9c2",
+      "cases": [
+        {
+          "note": "typebuiltin/is_set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_set([1, 2, 3], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0844.yaml": {
+      "sha256": "sha256:bdeb19ed64980759f6c9f881567e6956ab86542cd4d9fed711cd3df3356f4a6c",
+      "cases": [
+        {
+          "note": "typebuiltin/is_object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local0__ = {\"foo\": yy | yy = 1}\n\tis_object(__local0__, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0845.yaml": {
+      "sha256": "sha256:27f87cfd7392b2f19239c0439c760d548762a1c2dece83c1481d925b49fef201",
+      "cases": [
+        {
+          "note": "typebuiltin/is_object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_object(\"foo\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0846.yaml": {
+      "sha256": "sha256:bd333ddc7f5178be13a892f94eec4cd1685f491e3b756a7af46cb5ab7ba1f78f",
+      "cases": [
+        {
+          "note": "typebuiltin/is_null",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_null(null, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-typebuiltin-0847.yaml": {
+      "sha256": "sha256:55a92b9a331c999dc3dd78239f5c75a11eb71306ec1a6efff24b3330de97f4ab",
+      "cases": [
+        {
+          "note": "typebuiltin/is_null",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tis_null(true, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,2075 @@
+{
+  "folder": "virtualdocs",
+  "files": {
+    "test-virtualdocs-0620.yaml": {
+      "sha256": "sha256:3fec37910557dd4e6d53be268be44612827ff182498c52202a725b50b38783c9",
+      "cases": [
+        {
+          "note": "virtualdocs/input: set 1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[1]\n}\n\nq contains x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0621.yaml": {
+      "sha256": "sha256:b89c774b54f725c16bbed7bb2f4db19114692317a79c4da9c140869650ded6c0",
+      "cases": [
+        {
+          "note": "virtualdocs/input: set 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[1] = x\n}\n\nq contains x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0622.yaml": {
+      "sha256": "sha256:64088eafbff482f23bfd0ef10f4ed2594f51205f38c9de2a8d13247b706df8d6",
+      "cases": [
+        {
+          "note": "virtualdocs/input: set embedded",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.generated.q[2]\n\tx = {\"b\": [__local0__]}\n}\n\nq contains x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "b": [
+                    2
+                  ]
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0623.yaml": {
+      "sha256": "sha256:7bb0a27a0ab767bc654d001da4a80300e160c14e19e6ad77637c4bb685d38405",
+      "cases": [
+        {
+          "note": "virtualdocs/input: set undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[1000]\n}\n\nq contains x if {\n\tdata.a[x] = y\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0624.yaml": {
+      "sha256": "sha256:b5e4effb1bcf19617ecfbdc5d770afcfe74a1cbe17381075d46d3db4a5c2b3df",
+      "cases": [
+        {
+          "note": "virtualdocs/input: set dereference",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := y if {\n\tx = [1]\n\tdata.generated.q[x][0] = y\n}\n\nq contains [x] if {\n\tdata.a[_] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0625.yaml": {
+      "sha256": "sha256:a4da1cb8196575b739d373481a7fb1cda008497f61284f827681d158dd705e01",
+      "cases": [
+        {
+          "note": "virtualdocs/input: set ground var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tx = 1\n\tdata.generated.q[x]\n}\n\nq contains y if {\n\tdata.a[y] = i\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0626.yaml": {
+      "sha256": "sha256:8e4b893586b980d48e1e9e76a175bff6599dff83ad474a1647010ceb5d8836ab",
+      "cases": [
+        {
+          "note": "virtualdocs/input: set ground composite (1)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tz = [[1, 2], 2]\n\tdata.generated.q[z]\n}\n\nq contains [x, y] if {\n\ty = 2\n\tx = [1, y]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0627.yaml": {
+      "sha256": "sha256:a64e0eac9999f7a65ad13eaea875296dbb92e9458422e850c1dcaf2a5dffa9d5",
+      "cases": [
+        {
+          "note": "virtualdocs/input: set ground composite (2)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\ty = 2\n\tz = [[1, y], y]\n\tdata.generated.q[z]\n}\n\nq contains [x, y] if {\n\ty = 2\n\tx = [1, y]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0628.yaml": {
+      "sha256": "sha256:375413b71c759c90d66f40124195cb5e9a5bf7d0d0ae2be591d1491d56e83041",
+      "cases": [
+        {
+          "note": "virtualdocs/input: set ground composite (3)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\ty = 2\n\tx = [1, y]\n\tz = [x, y]\n\tdata.generated.q[z]\n}\n\nq contains [x, y] if {\n\ty = 2\n\tx = [1, y]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0629.yaml": {
+      "sha256": "sha256:062787ae5573ca3e02e6c7ba1c5978d6dbe3caad9cd86c8a32a4838cf0fd3db7",
+      "cases": [
+        {
+          "note": "virtualdocs/input: set partially ground composite",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains u if {\n\ty = 2\n\tdata.generated.q[z]\n\tz = [x, y]\n\tx = [1, u]\n}\n\nq contains [x, y] if {\n\ty = 2\n\tx = [1, y]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0630.yaml": {
+      "sha256": "sha256:f97b628bd734a3c34c060aeff665b0dbf32fa77c4ab35f40b25fefea4bf76ad6",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object 1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[1] = 2\n}\n\nq[i] := x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0631.yaml": {
+      "sha256": "sha256:86ed06f8911d446b57f91eb47412c2dc808b58bcfd031155316d0a35187b3233",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[1] = 0\n}\n\nq[x] := i if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0632.yaml": {
+      "sha256": "sha256:ea58594ff69a61b797b901ed8f24dd89b08536c33a34d97835db048a28a9ba80",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object embedded 1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.generated.q[3]\n\t__local1__ = data.generated.q[2]\n\tx = [1, __local0__, __local1__]\n}\n\nq[i] := x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  4,
+                  3
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0633.yaml": {
+      "sha256": "sha256:aeaa9384104c9be2796a252df324626c7fd8646f93726b2caad0104359d9bf9e",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object embedded 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.generated.q[3]\n\t__local1__ = data.generated.q[2]\n\tx = {\"a\": [__local0__], \"b\": [__local1__]}\n}\n\nq[i] := x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "a": [
+                    4
+                  ],
+                  "b": [
+                    3
+                  ]
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0634.yaml": {
+      "sha256": "sha256:9e852f46ff41ece4c65346e75b9abcaa6b30f5de42e72bb20497e80286596b76",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object undefined val",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[1] = 9999\n}\n\nq[i] := x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0635.yaml": {
+      "sha256": "sha256:6acc11269d7b1cc9c88dc3869cab1e12fc34108acebf4463629755884d78614b",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object undefined key 1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[9999] = 2\n}\n\nq[i] := x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0636.yaml": {
+      "sha256": "sha256:25d1e2c9e07b2383a8d8379519418228c037bfb67bc58411ea93018b954849b9",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object undefined key 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q.foo = 2\n}\n\nq[i] := x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0637.yaml": {
+      "sha256": "sha256:f14bc74ab85b4a832beae6e9dd3a14ba538ea00b60eda3bc83b3a274dec88a25",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object dereference ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[0].x[1] = false\n}\n\nq[i] := x if {\n\tx = data.c[i]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0638.yaml": {
+      "sha256": "sha256:6d5c34d7973b363e0383debc390ee677c518ea8e97d291a771ef82513dfccfdf",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object dereference ground 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains v if {\n\tx = \"a\"\n\tdata.generated.q[x][y] = v\n}\n\nq[k] := v if {\n\tk = \"a\"\n\tv = data.a\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0639.yaml": {
+      "sha256": "sha256:7d422b32d84d53c2ca4e29f8309fafebd82426e60a9d696d79f6786f230cc351",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object defererence non-ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[0][x][y] = false\n}\n\nq[i] := x if {\n\tx = data.c[i]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0640.yaml": {
+      "sha256": "sha256:87db000a66119c803a75bd8d1df7be0add0157b366284fac6870813ed0f5bc05",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object ground var key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\tx = \"b\"\n\tdata.generated.q[x] = y\n}\n\nq[k] := v if {\n\tx = {\"a\": 1, \"b\": 2}\n\tx[k] = v\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0641.yaml": {
+      "sha256": "sha256:a16ec7cdca4ec25abe12b78490c49b0c717249ab6255e1eb47e357c0112fe6d1",
+      "cases": [
+        {
+          "note": "virtualdocs/input: object non-string key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\tx = 1\n\tdata.generated.q[x] = y\n}\n\nq[k] := v if {\n\tx = {1: 3, 2: 1}\n\tx[k] = v\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0642.yaml": {
+      "sha256": "sha256:2cfc159482386327557813a92123553297eb197c22e22209443fd9743d82cbc2",
+      "cases": [
+        {
+          "note": "virtualdocs/input: variable binding substitution",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[x] := y if {\n\tdata.generated.r[z] = y\n\tdata.generated.q[x] = z\n}\n\nr[k] := v if {\n\tx = {\"a\": 1, \"b\": 2, \"c\": 3, \"d\": 4}\n\tx[k] = v\n}\n\nq[y] := x if {\n\tz = {\"a\": \"a\", \"b\": \"b\", \"d\": \"d\"}\n\tz[y] = x\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "b": 2,
+                "d": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0643.yaml": {
+      "sha256": "sha256:38a197dcc04c812918de763262dcb30cfc46ee12176e1dc62c51b35072ef1970",
+      "cases": [
+        {
+          "note": "virtualdocs/output: set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[x]\n}\n\nq contains y if {\n\tdata.a[i] = y\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0644.yaml": {
+      "sha256": "sha256:a524b547b2f88718c4333675674990cbae2185e53f91bd38755684daf534a638",
+      "cases": [
+        {
+          "note": "virtualdocs/output: set embedded",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\t__local0__ = data.generated.q[i]\n\t{i: [i]} = {i: [__local0__]}\n}\n\nq contains x if {\n\tdata.d.e[i] = x\n}\n"
+          ],
+          "data": {
+            "d": {
+              "e": [
+                "bar",
+                "baz"
+              ]
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                "bar",
+                "baz"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0645.yaml": {
+      "sha256": "sha256:3050618509092bf99a0bf407cc2ee43ee58eb9d57b5b4414c29105d9e27933a4",
+      "cases": [
+        {
+          "note": "virtualdocs/output: set var binding",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[x]\n}\n\nq contains y if {\n\ti = 1\n\tj = 2\n\ty = [i, j]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  2
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0646.yaml": {
+      "sha256": "sha256:7dcbfb124b74b65d871a12afbcdcaee45c8998fdc3b5bed384799288e7e2e6b8",
+      "cases": [
+        {
+          "note": "virtualdocs/output: set dereference",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\tdata.generated.q[x][0] = y\n}\n\nq contains [x] if {\n\tdata.a[_] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0647.yaml": {
+      "sha256": "sha256:d82fa1e097c8f63f10d2ad2053633272588e3c558d4d6e0d7ead017bb3067cf3",
+      "cases": [
+        {
+          "note": "virtualdocs/output: set dereference deep",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\tdata.generated.q[i][j][k][x] = y\n}\n\nq contains {{[1], [2]}, {[3], [4]}}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0648.yaml": {
+      "sha256": "sha256:74537e3dd1e72f44404184e5478c6df9f64538d7176c454657bf345113e144f3",
+      "cases": [
+        {
+          "note": "virtualdocs/output: set falsy values",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[x]\n}\n\nq := {0, \"\", false, null, [], {}, set()}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                null,
+                0,
+                "",
+                [
+
+                ],
+                [
+
+                ],
+                {
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0649.yaml": {
+      "sha256": "sha256:5b60e5c0a529fdb29a415d4bd0370d9c479d17c08b529c0cfdc1ff1248e4dbed",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[x] = 4\n}\n\nq[i] := x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0650.yaml": {
+      "sha256": "sha256:a925913394159960ba4be1f926de332d5332689c86cfc7d3d2ebd3f8c552633a",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object non-string key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[x] = 1\n}\n\nq[k] := 1 if {\n\tdata.a[_] = k\n\tk < 3\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0651.yaml": {
+      "sha256": "sha256:51bc509afb9029c5fab4aa70c9099121aaadd4d479f209383cfb4a74e8f75aaf",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object value",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[x] := y if {\n\tdata.generated.q[x] = y\n}\n\nq[k] := v if {\n\tdata.b[k] = v\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "v1": "hello",
+                "v2": "goodbye"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0652.yaml": {
+      "sha256": "sha256:445a01c7d0a3579d0059a15b6d4ceaad7e613d5fcf6cde8da9a15cecf9c5f95e",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object embedded",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[k] := v if {\n\t__local0__ = data.generated.q[k]\n\t{k: [__local0__]} = {k: [v]}\n}\n\nq[x] := y if {\n\tdata.b[x] = y\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "v1": "hello",
+                "v2": "goodbye"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0653.yaml": {
+      "sha256": "sha256:63b0760beec7a6f3b3a6033cf7208b17e95ddd01cc29f8447b17984d34782031",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object dereference ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\tdata.generated.q[i].x[1] = false\n}\n\nq[i] := x if {\n\tx = data.c[i]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                0
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0654.yaml": {
+      "sha256": "sha256:d14a22b22acacd037e1b7839d04652fb9ebeca421b04942db6225dbd84301579",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object defererence non-ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains r if {\n\tdata.generated.q[x][y][z] = false\n\tr = [x, y, z]\n}\n\nq[i] := x if {\n\tx = data.c[i]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  0,
+                  "x",
+                  1
+                ],
+                [
+                  0,
+                  "z",
+                  "q"
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0655.yaml": {
+      "sha256": "sha256:9f5f33f38eda48b971a00693fd5d276fd1fe83eccd5c421999496e3a4463b379",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object dereference array of refs",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[_0][0].c[_1] = x\n}\n\nq[k] := v if {\n\tdata.d.e[_0] = k\n\tv = [r | r = data.l[_1]]\n}\n"
+          ],
+          "data": {
+            "d": {
+              "e": [
+                "bar",
+                "baz"
+              ]
+            },
+            "l": [
+              {
+                "a": "bob",
+                "b": -1,
+                "c": [
+                  1,
+                  2,
+                  3,
+                  4
+                ]
+              },
+              {
+                "a": "alice",
+                "b": 1,
+                "c": [
+                  2,
+                  3,
+                  4,
+                  5
+                ],
+                "d": null
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0656.yaml": {
+      "sha256": "sha256:08eacd7ed3ed47737a22f2e4e49d51ce73d1060630498f41175473ac985ea337",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object dereference array of refs within object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[_0].x[0].c[_1] = x\n}\n\nq[k] := v if {\n\tdata.d.e[_0] = k\n\t__local0__ = [r | r = data.l[_1]]\n\tv = {\"x\": __local0__}\n}\n"
+          ],
+          "data": {
+            "d": {
+              "e": [
+                "bar",
+                "baz"
+              ]
+            },
+            "l": [
+              {
+                "a": "bob",
+                "b": -1,
+                "c": [
+                  1,
+                  2,
+                  3,
+                  4
+                ]
+              },
+              {
+                "a": "alice",
+                "b": 1,
+                "c": [
+                  2,
+                  3,
+                  4,
+                  5
+                ],
+                "d": null
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0657.yaml": {
+      "sha256": "sha256:022976032976193fbe716b21cd58ef22d96ed3a91f2042a209c818438d8fa0bd",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object dereference object with key refs",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q.bar[1].alice[0] = 1\n}\n\nq[k] := v if {\n\tdata.d.e[_] = k\n\tv = [x | __local0__ = data.l[_].a; x = {__local0__: [1]}]\n}\n"
+          ],
+          "data": {
+            "d": {
+              "e": [
+                "bar",
+                "baz"
+              ]
+            },
+            "l": [
+              {
+                "a": "bob",
+                "b": -1,
+                "c": [
+                  1,
+                  2,
+                  3,
+                  4
+                ]
+              },
+              {
+                "a": "alice",
+                "b": 1,
+                "c": [
+                  2,
+                  3,
+                  4,
+                  5
+                ],
+                "d": null
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0658.yaml": {
+      "sha256": "sha256:7833bb6a09a528db3a8a5fcfd97a526aeec73eef4a405b9d21da086f38d5149b",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object var binding",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains z if {\n\tdata.generated.q[x] = y\n\tz = [x, y]\n}\n\nq[k] := v if {\n\tx = \"a\"\n\ty = \"b\"\n\tk = \"foo\"\n\tv = [x, y]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "foo",
+                  [
+                    "a",
+                    "b"
+                  ]
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0659.yaml": {
+      "sha256": "sha256:59788e18bfd1d3e83da28cd0671157a2ffc9f5cff91a93ce6ac3f2049a15fd7f",
+      "cases": [
+        {
+          "note": "virtualdocs/output: object key var binding",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains z if {\n\tdata.generated.q[x] = y\n\tz = [x, y]\n}\n\nq[k] := v if {\n\tx = \"a\"\n\tv = \"foo\"\n\ty = x\n\tk = y\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a",
+                  "foo"
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0660.yaml": {
+      "sha256": "sha256:039c9e2dde3efdf652364419315ecc6ec8bd785b9b0acb45f483798884de4a98",
+      "cases": [
+        {
+          "note": "virtualdocs/object: self-join",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains [x, y] if {\n\tdata.generated.q[x] = 1\n\tdata.generated.q[y] = x\n}\n\nq[x] := i if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  2,
+                  3
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0661.yaml": {
+      "sha256": "sha256:6e792a423fc501a9213cd254e7eda0689f45bc2a897808e45293fd6783b3c7c4",
+      "cases": [
+        {
+          "note": "virtualdocs/i/o: objects",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[x] = data.generated.r[x]\n}\n\nq[x] := y if {\n\tz = {\"a\": 1, \"b\": 2, \"d\": 4}\n\tz[x] = y\n}\n\nr[k] := v if {\n\tx = {\"a\": 1, \"b\": 2, \"c\": 4, \"d\": 3}\n\tx[k] = v\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "a",
+                "b"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0662.yaml": {
+      "sha256": "sha256:74d452a38e2f55d0be7cd799a8642bf9a66490aa8b97e41d8cd1a685f7716fb8",
+      "cases": [
+        {
+          "note": "virtualdocs/i/o: undefined keys",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\tdata.generated.q[x]\n\tdata.generated.r[x] = y\n}\n\nq contains x if {\n\tz = [\"a\", \"b\", \"c\", \"d\"]\n\tz[y] = x\n}\n\nr[k] := v if {\n\tx = {\"a\": 1, \"b\": 2, \"d\": 4}\n\tx[k] = v\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0663.yaml": {
+      "sha256": "sha256:93c1ec3ed2f8e1aeb699fd240543bdb5d37797edf66c13d685272ef4ffab83fb",
+      "cases": [
+        {
+          "note": "virtualdocs/input: complete array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[1] = 2\n}\n\nq := [1, 2, 3, 4]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0664.yaml": {
+      "sha256": "sha256:9c069e45ed466bc9abf0ea4b71fe9e2954a9b1b6a075c020a00b3caffcaf5928",
+      "cases": [
+        {
+          "note": "virtualdocs/input: complete object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q.b = 2\n}\n\nq := {\"a\": 1, \"b\": 2}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0665.yaml": {
+      "sha256": "sha256:a33cdb0c08a40576234ea37d4ccbf31cd6a4c81f8bed9f75b4dc7460cf5feae9",
+      "cases": [
+        {
+          "note": "virtualdocs/input: complete set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[3]\n}\n\nq := {1, 2, 3, 4}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0666.yaml": {
+      "sha256": "sha256:025d5255dc335be69a34815d5d4a4e08660dec67ceb53af24728cf6aeffffba3",
+      "cases": [
+        {
+          "note": "virtualdocs/input: complete array dereference ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[1][1] = 3\n}\n\nq := [[0, 1], [2, 3]]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0667.yaml": {
+      "sha256": "sha256:4bfa3b28d91264655e9cf085efa680e65f4235c9dfdc9364725c16025b67c6e4",
+      "cases": [
+        {
+          "note": "virtualdocs/input: complete object dereference ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q.b[1] = 4\n}\n\nq := {\"a\": [1, 2], \"b\": [3, 4]}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0668.yaml": {
+      "sha256": "sha256:ac4f4bf587740c4663111276b11b2256361aec593f8e6fd5cba734f35c5ed0c8",
+      "cases": [
+        {
+          "note": "virtualdocs/input: complete array ground index",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tz = [1, 2]\n\tz[i] = y\n\tdata.generated.q[y] = x\n}\n\nq := [1, 2, 3, 4]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0669.yaml": {
+      "sha256": "sha256:e7ec4a1251697b0de985bbc50b2fc2b3964ea5d0e6d727c61b9f45c81850baba",
+      "cases": [
+        {
+          "note": "virtualdocs/input: complete object ground key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tz = [\"b\", \"c\"]\n\tz[i] = y\n\tdata.generated.q[y] = x\n}\n\nq := {\"a\": 1, \"b\": 2, \"c\": 3, \"d\": 4}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0670.yaml": {
+      "sha256": "sha256:ebd7872b979f700ea2b1b5440a39d4554b109d0a29a6aa110f73ebf02a46603d",
+      "cases": [
+        {
+          "note": "virtualdocs/input: complete vars",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q[1][1] = 2\n}\n\nq := [{\"x\": x, \"y\": y}, z] if {\n\tx = 1\n\ty = 2\n\tz = [1, 2, 3]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0671.yaml": {
+      "sha256": "sha256:4b6179fcec4630e9509a38d809c5aba2c23547735f9a41863400c1081e1647d3",
+      "cases": [
+        {
+          "note": "virtualdocs/output: complete array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[i] = e\n\tx = [i, e]\n}\n\nq := [1, 2, 3, 4]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0672.yaml": {
+      "sha256": "sha256:e9943bbd1d1e9f57dc4f45032ebc1851736c9c2ca42c1b6879b8b1f1ec51d4c7",
+      "cases": [
+        {
+          "note": "virtualdocs/output: complete object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[i] = e\n\tx = [i, e]\n}\n\nq := {\"a\": 1, \"b\": 2}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a",
+                  1
+                ],
+                [
+                  "b",
+                  2
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0673.yaml": {
+      "sha256": "sha256:944d890f1921bc694f48b6e795051466d9a896dd16b393ce1f9dd3c9dbc6984d",
+      "cases": [
+        {
+          "note": "virtualdocs/output: complete set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[x]\n}\n\nq := {1, 2, 3, 4}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0674.yaml": {
+      "sha256": "sha256:f87cc7b0c18f5bdeced9556a0a81aaa3fa73f16d2b74511f5c30dc91bc7f5961",
+      "cases": [
+        {
+          "note": "virtualdocs/output: complete array dereference non-ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains r if {\n\tdata.generated.q[i][j] = 2\n\tr = [i, j]\n}\n\nq := [[1, 2], [3, 2]]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  1
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0675.yaml": {
+      "sha256": "sha256:19eec2d1379064e587bc45c1aae3cc582a7add77e6d4386a8fdb96400c39b516",
+      "cases": [
+        {
+          "note": "virtualdocs/output: complete object defererence non-ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains r if {\n\tdata.generated.q[x][y] = 2\n\tr = [x, y]\n}\n\nq := {\"a\": {\"x\": 1}, \"b\": {\"y\": 2}, \"c\": {\"z\": 2}}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "b",
+                  "y"
+                ],
+                [
+                  "c",
+                  "z"
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0676.yaml": {
+      "sha256": "sha256:edb5ce59e501f8d16563397182218d08c129d34d01dcacaab4f365672cc87519",
+      "cases": [
+        {
+          "note": "virtualdocs/output: complete vars",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[_][_] = x\n}\n\nq := [{\"x\": x, \"y\": y}, z] if {\n\tx = 1\n\ty = 2\n\tz = [1, 2, 3]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0677.yaml": {
+      "sha256": "sha256:31a3650d2278dd5c94b6bc000d56178100e15e1c58a110fd797f07478d1db713",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: complete",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q\n}\n\nq := true\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0678.yaml": {
+      "sha256": "sha256:f0f6436b58f904bb2bc21ab9d3bf68bdfce200f812d54508052d9445084eb0b1",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: complete vars",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q\n}\n\nq := x if {\n\tx = true\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0679.yaml": {
+      "sha256": "sha256:62d79557ff9ce31ba9a355a75b7b947da17fe46ecdab0a9fa793ceb4ecba45d2",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: complete incr (error)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q\n}\n\nq := false\n\nq := true\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        }
+      ]
+    },
+    "test-virtualdocs-0680.yaml": {
+      "sha256": "sha256:c8a7df8ef3a7f1a07211e21b66ffdabcbb1bede577d106c379f5ec0b63a876f9",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: complete incr",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnot data.generated.q\n}\n\nq if {\n\tfalse\n}\n\nq := false\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0681.yaml": {
+      "sha256": "sha256:55db5f2a1a32855c952e85bf8792aa1b4effd4a0d25ce2a782fb971cadc88e36",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[x] := y if {\n\tdata.generated.q = o\n\to[x] = y\n}\n\nq[x] := y if {\n\tdata.b[x] = y\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "v1": "hello",
+                "v2": "goodbye"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0682.yaml": {
+      "sha256": "sha256:83fbd9c5634de74f11e7a308af812ad3ebf6690da763d374aa35ecde367c1f1c",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: object incr",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[x] := y if {\n\tdata.generated.q = o\n\to[x] = y\n}\n\nq[x] := y if {\n\tdata.b[x] = y\n}\n\nq[x1] := y1 if {\n\tdata.d.e[y1] = x1\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            },
+            "d": {
+              "e": [
+                "bar",
+                "baz"
+              ]
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "bar": 0,
+                "baz": 1,
+                "v1": "hello",
+                "v2": "goodbye"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0683.yaml": {
+      "sha256": "sha256:53c3aa38317fec688620411b8ffe8d7aeff877d4e36cd162f1297002097b19dc",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: chained",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q = x\n\tx[i] = 4\n}\n\nq[k] := v if {\n\tdata.generated.r = x\n\tx[k] = v\n}\n\nr[k] := v if {\n\tdata.generated.s = x\n\tx[k] = v\n}\n\nr[k] := v if {\n\tdata.generated.t = x\n\tx[v] = k\n}\n\ns := {\"a\": 1, \"b\": 2, \"c\": 4}\n\nt := [\"d\", \"e\", \"g\"]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0684.yaml": {
+      "sha256": "sha256:a4c2c3dacbbc7be883bb516ccba441ee56e4609ba720f6fd70794e21e279b183",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: object var binding",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q = x\n}\n\nq[k] := v if {\n\ti = \"a\"\n\tj = 1\n\tv = [i, j]\n\tk = i\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "a": [
+                    "a",
+                    1
+                  ]
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0685.yaml": {
+      "sha256": "sha256:e81e54f405e4026d93a05e4d31d6babc5c781d918facbbc15be2a0bf33ad0176",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: object composite value",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q = x\n}\n\nq[k] := {\"v\": v} if {\n\ti = \"a\"\n\tj = 1\n\tv = [i, j]\n\tk = i\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "a": {
+                    "v": [
+                      "a",
+                      1
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0686.yaml": {
+      "sha256": "sha256:d2888c5edc941f9d92023eb640bdd5827229eb96e5b9aa3a9bf05ecb528170ab",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: bound ref with long prefix (#238)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q\n\tdata.generated.q\n}\n\nq := x if {\n\tx = data.c[0].z.p\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0687.yaml": {
+      "sha256": "sha256:c7e86bb92bdac73828dc7bc91c44e9c048dfca94694e221caaa2a636e7f53d74",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: object conflict (error)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[x] := y if {\n\txs = [\"a\", \"b\", \"c\", \"a\"]\n\tx = xs[i]\n\ty = data.a[i]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_error_code": "eval_conflict_error",
+          "want_error": "object keys must be unique"
+        }
+      ]
+    },
+    "test-virtualdocs-0688.yaml": {
+      "sha256": "sha256:52606f811712e334623cc90aaf917b3f91ff656121c97e412219cb5bb162949f",
+      "cases": [
+        {
+          "note": "virtualdocs/no suffix: set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q = s\n\ts[x]\n}\n\nq contains x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                "1",
+                "2",
+                "3",
+                "4"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0689.yaml": {
+      "sha256": "sha256:bfa86ad72a16cb86b54c2f015cc041440d6209282362f6abf310b7e487276eaf",
+      "cases": [
+        {
+          "note": "virtualdocs/empty partial set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains 1 if {\n\tdata.a[0] = 100\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0690.yaml": {
+      "sha256": "sha256:fcd26d4712040ee994cb429e61af1ee07fcdfcb6c6c9da29219334fb93e1f627",
+      "cases": [
+        {
+          "note": "virtualdocs/empty partial object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[\"x\"] := 1 if {\n\tdata.a[0] = 100\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0691.yaml": {
+      "sha256": "sha256:b617464eb1391c66c291ffd6126bc0e3957df9f67000dbe1527e46f0fdac3c4c",
+      "cases": [
+        {
+          "note": "virtualdocs/input: non-ground object keys",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tdata.generated.q.a.b = x\n}\n\nq := {x: {y: 1}} if {\n\tx = \"a\"\n\ty = \"b\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0692.yaml": {
+      "sha256": "sha256:f43e478ce21463690cfd94b5c1127b839cff6d8010f386f137efa9ebde3d7acc",
+      "cases": [
+        {
+          "note": "virtualdocs/input: non-ground set elements",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q.c\n}\n\nq := {x, \"b\", z} if {\n\tx = \"a\"\n\tz = \"c\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-virtualdocs-0693.yaml": {
+      "sha256": "sha256:6014181174b73af665df1567e63eccc2b4176793d0b209279426e0b150cca417",
+      "cases": [
+        {
+          "note": "virtualdocs/output: non-ground object keys",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[i][j] = x\n}\n\nq := {x: {x1: 1}, y: {y1: 2}} if {\n\tx = \"a\"\n\ty = \"b\"\n\tx1 = \"a1\"\n\ty1 = \"b1\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-0694.yaml": {
+      "sha256": "sha256:49ebc6ccfbdd85d31e3e69be6ffe3886b659dc04d557b2494757e024c418b033",
+      "cases": [
+        {
+          "note": "virtualdocs/output: non-ground set elements",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[x]\n}\n\nq := {x, \"b\", z} if {\n\tx = \"a\"\n\tz = \"c\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "a",
+                "b",
+                "c"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-virtualdocs-undefined.yaml": {
+      "sha256": "sha256:9738d84d37ede1e1a401b58b29c09c46d755de0676fa7a28c61b2413e0445614",
+      "cases": [
+        {
+          "note": "virtualdocs/undefined: in array literal",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t[1, 2, input]\n} else := false\n"
+          ],
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "virtualdocs/undefined: in set literal",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t{1, 2, input}\n} else := false\n"
+          ],
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "virtualdocs/undefined: in set coprehension body",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := {1 | input}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        },
+        {
+          "note": "virtualdocs/undefined: in array coprehension body",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := [1 | input]\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

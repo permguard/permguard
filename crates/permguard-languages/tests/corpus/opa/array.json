@@ -1,0 +1,305 @@
+{
+  "folder": "array",
+  "files": {
+    "test-array-0041.yaml": {
+      "sha256": "sha256:9e6eb6844c47a8d30ab52db1f0b4b82f633b743cb64dbab49198cbf022949b56",
+      "cases": [
+        {
+          "note": "array/concat",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tarray.concat([1, 2], [3, 4], __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-array-0042.yaml": {
+      "sha256": "sha256:3928314d7d903b596122c1bfccd057367bd0390046ec2587526340613ff020f4",
+      "cases": [
+        {
+          "note": "array/concat: err",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local1__ = data.b\n\tarray.concat(__local1__, [3, 4], __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "array.concat: operand 1 must be array but got object",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-array-0043.yaml": {
+      "sha256": "sha256:40846e1ed38bfa48d220c73411fff2e67eaa74b4eda80bd05c8f7eb9aa5aa977",
+      "cases": [
+        {
+          "note": "array/concat: err rhs",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local1__ = data.b\n\tarray.concat([1, 2], __local1__, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "array.concat: operand 2 must be array but got object",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-array-0044.yaml": {
+      "sha256": "sha256:5121901253c7ac7b420d88dfc7a4889179b0185dee1eabac679b399e258c7f40",
+      "cases": [
+        {
+          "note": "array/slice",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tarray.slice([1, 2, 3, 4, 5], 1, 3, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-array-0045.yaml": {
+      "sha256": "sha256:58b995c9236296e622c7f6124128bdf89224fbe6ba9b0637a7984c7f38590565",
+      "cases": [
+        {
+          "note": "array/slice: empty slice",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tarray.slice([1, 2, 3], 0, 0, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-array-0046.yaml": {
+      "sha256": "sha256:72860f559c223bdec291b83162f75a870496c5840e41d659608998d39a5d8699",
+      "cases": [
+        {
+          "note": "array/slice: negative indices",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tarray.slice([1, 2, 3, 4, 5], -4, -1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-array-0047.yaml": {
+      "sha256": "sha256:9bda31fed24b16d30cf131741d96cf14da6d826802abef9ced0f0bdb2e5912ad",
+      "cases": [
+        {
+          "note": "array/slice: stopIndex < startIndex",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tarray.slice([1, 2, 3, 4, 5], 4, 1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-array-0048.yaml": {
+      "sha256": "sha256:8bafaf9e7f565f732ce17461aaa6f17cd25a75edac4fbc0eb3db201ff0bb456d",
+      "cases": [
+        {
+          "note": "array/slice: clamp startIndex",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tarray.slice([1, 2, 3, 4, 5], -1, 2, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-array-0049.yaml": {
+      "sha256": "sha256:bacbb5b9c0312c00fbe8e11770615ba1d99d6b6f75f8c134a254734c5a67b34d",
+      "cases": [
+        {
+          "note": "array/slice: clamp stopIndex",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tarray.slice([1, 2, 3, 4, 5], 3, 6, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                4,
+                5
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-array-0050.yaml": {
+      "sha256": "sha256:838d5dc1593765e062e83620dfad010ce1cb3b05a76bd24cc6440468aa9d4ec8",
+      "cases": [
+        {
+          "note": "array/slice: clamp both out of range",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tarray.slice([], 1000, 2000, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-array-0051.yaml": {
+      "sha256": "sha256:a1fc58b9706c09dd13e34ecfb9c3286d95c76c52a22293798e3f099295073b1c",
+      "cases": [
+        {
+          "note": "array/slice: clamp both out of range non-empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tarray.slice([1, 2, 3], 1000, 2000, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-array-0052.yaml": {
+      "sha256": "sha256:826416bb81dc542ec796da74860a1f8a47ac15923f880c6335c90d355991fe12",
+      "cases": [
+        {
+          "note": "array/reverse_123",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := array.reverse(data.foo)\n"
+          ],
+          "data": {
+            "foo": [
+              1,
+              2,
+              3
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                2,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "note": "array/reverse_empty",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := array.reverse(data.foo)\n"
+          ],
+          "data": {
+            "foo": [
+
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        },
+        {
+          "note": "array/reverse_object_error",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := array.reverse(data.foo)\n"
+          ],
+          "data": {
+            "foo": {
+              "bar": "baz",
+              "baz": "bar"
+            }
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "array.reverse: operand 1 must be array but got object",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

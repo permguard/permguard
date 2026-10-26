@@ -1,0 +1,25 @@
+{
+  "folder": "indexing",
+  "files": {
+    "array-any.yaml": {
+      "sha256": "sha256:416e84e1bd04aa1ec413211dc6aa932eee1abf41aeffa12eb5c6934ec2801dfb",
+      "cases": [
+        {
+          "note": "indexing on any and arrays",
+          "query": "data.indexing.p = x",
+          "modules": [
+            "package indexing\n\nf(val) if {\n\t[_, _] = val\n}\n\np if {\n\tf([1, [\"foo\", \"bar\"]])\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -33,6 +33,7 @@ mod rego;
 
 pub mod artifact;
 pub mod attestation;
+pub mod conformance;
 pub mod descriptor;
 pub mod evaluate;
 pub mod fanout;

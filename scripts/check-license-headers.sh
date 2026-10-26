@@ -32,6 +32,8 @@ while IFS= read -r file; do
         # Captured volumes: bytes the current code wrote, kept verbatim as the compatibility
         # baseline. A header would make them something no release ever wrote.
         */tests/fixtures/legacy/*) continue ;;
+        # Upstream conformance corpora, vendored verbatim under their own licence (TL-6).
+        */tests/corpus/*) continue ;;
     esac
 
     # Tracked but not on disk: a rename or deletion that has not been committed yet. The header

@@ -1,0 +1,40 @@
+entity Account, AccountGroup, Administrator, UserGroup;
+entity Album, Photo, Video in [Account, Album];
+entity User in [UserGroup];
+
+action addPhoto, listPhotos appliesTo {
+    principal: [User], 
+    resource: [Album], 
+    context: {
+        authenticated: Bool,
+        confidence_score: decimal,
+        source_ip: ipaddr,
+    }
+};
+action comment, delete, edit appliesTo {
+    principal: [User], 
+    resource: [Photo], 
+    context: {
+        authenticated: Bool,
+        confidence_score: decimal,
+        source_ip: ipaddr,
+    }
+};
+action listAlbums appliesTo {
+    principal: [User], 
+    resource: [Account], 
+    context: {
+        authenticated: Bool,
+        confidence_score: decimal,
+        source_ip: ipaddr,
+    }
+};
+action view appliesTo {
+    principal: [User, Administrator], 
+    resource: [Photo, Video], 
+    context: {
+        authenticated: Bool,
+        confidence_score: decimal,
+        source_ip: ipaddr,
+    }
+};

@@ -1,0 +1,308 @@
+{
+  "folder": "comparisonexpr",
+  "files": {
+    "test-comparisonexpr-0608.yaml": {
+      "sha256": "sha256:1ca04ee157ae24e460276d3f5503939216cca51134457bbeaf52728944c79d87",
+      "cases": [
+        {
+          "note": "comparisonexpr/equals",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t1 = 1\n\tdata.a[i] = x\n\tx = 2\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0609.yaml": {
+      "sha256": "sha256:a68eddfa3ca12b119baecfe8cc58623330c39324720afcf3774546f99ada1636",
+      "cases": [
+        {
+          "note": "comparisonexpr/noteq",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t0 != 1\n\tdata.a[i] = x\n\tx != 2\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0610.yaml": {
+      "sha256": "sha256:d00c8395023626a4119e8b06a4f249e5bbe485ff08b3e46e11c6c8662cbd8b87",
+      "cases": [
+        {
+          "note": "comparisonexpr/gt",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t1 > 0\n\tdata.a[i] = x\n\tx > 2\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0611.yaml": {
+      "sha256": "sha256:c49128b1b749619e2307c6c01674bd38d99aca9d16ccc7bf5e6ac0b40abe9b11",
+      "cases": [
+        {
+          "note": "comparisonexpr/gteq",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t1 >= 1\n\tdata.a[i] = x\n\tx >= 4\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0612.yaml": {
+      "sha256": "sha256:d2bb81271a458e094eb1f3187edcf71edafec19a7af876087db7f234cadaf851",
+      "cases": [
+        {
+          "note": "comparisonexpr/lt",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t-1 < 0\n\tdata.a[i] = x\n\tx < 5\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0613.yaml": {
+      "sha256": "sha256:b463659906a600755e07aefdf0b4dda37850b802078d5c043e5c2d4d2dbf288f",
+      "cases": [
+        {
+          "note": "comparisonexpr/lteq",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t-1 <= 0\n\tdata.a[i] = x\n\tx <= 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0614.yaml": {
+      "sha256": "sha256:f245e2bd686b495d437e881f454cbe8a03e55c28bba8ff7b67f4d015b317644e",
+      "cases": [
+        {
+          "note": "comparisonexpr/undefined: equals",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t0 = 1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0615.yaml": {
+      "sha256": "sha256:482810009c883e8783d2b490563c4fe16971c28f3e2b4e052d76b4290d1cf8fc",
+      "cases": [
+        {
+          "note": "comparisonexpr/undefined: noteq",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t0 != 0\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0616.yaml": {
+      "sha256": "sha256:402bafa79f8ff20966b89459501ecdcb9de979fefb22378fd8dbaa7249d87f6f",
+      "cases": [
+        {
+          "note": "comparisonexpr/undefined: gt",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t1 > 2\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0617.yaml": {
+      "sha256": "sha256:49ee5ac7b2ae6b41549d067e20f340eb908d7599636b78bb34ca4d46964f8891",
+      "cases": [
+        {
+          "note": "comparisonexpr/undefined: gteq",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t1 >= 2\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0618.yaml": {
+      "sha256": "sha256:23d1039981705b8f900c2a35bd9a30b1bce9d8172e71462a5dd33bef7a2fcb76",
+      "cases": [
+        {
+          "note": "comparisonexpr/undefined: lt",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t1 < -1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0619.yaml": {
+      "sha256": "sha256:aa7777eeb72e87ccb58869d1746c680a32d6017a88524083340cd7b0dd071c75",
+      "cases": [
+        {
+          "note": "comparisonexpr/undefined: lteq",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t1 <= -1\n}\n"
+          ],
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-comparisonexpr-0620.yaml": {
+      "sha256": "sha256:edef723dcf21cda521e39ae85e7ce6513aec22e05731b680d1105de8a9584338",
+      "cases": [
+        {
+          "note": "comparisonexpr/numbers: int and float comparison",
+          "query": "data.comparison.p = x",
+          "modules": [
+            "package comparison\n\np if {\n\t1 == 1.0\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "comparisonexpr/numbers: int and float array comparison",
+          "query": "data.comparison.p = x",
+          "modules": [
+            "package comparison\n\np if {\n\t[1] == [1.0]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "comparisonexpr/numbers: int and float object comparison",
+          "query": "data.comparison.p = x",
+          "modules": [
+            "package comparison\n\np if {\n\t{1: 1} == {1: 1.0}\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "comparisonexpr/numbers: int and float nested object comparison",
+          "query": "data.comparison.p = x",
+          "modules": [
+            "package comparison\n\np if {\n\t{\"x\": [1, 2, {\"b\": 3.0}]} == {\"x\": [1, 2, {\"b\": 3}]}\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

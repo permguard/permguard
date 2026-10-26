@@ -1,0 +1,165 @@
+{
+  "folder": "planner-ir",
+  "files": {
+    "test-array-ir-unify.yaml": {
+      "sha256": "sha256:9391a6dd89c426dfead311d071caf7c758965d284f47d61b3b1881fe61a3b27e",
+      "cases": [
+        {
+          "note": "ir/unification array and array comprehension",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := foo if {\n\t[foo] = [x | x := 1]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "ir/unification array comprehension and array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := foo if {\n\t[x | x := 1] = [foo]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "ir/fixpoint key/value (negative)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tsome foo\n\tfoo == input.foos[foo]\n}\n"
+          ],
+          "input": {
+            "foos": [
+              "foo"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "ir/fixpoint key/value",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := foo if {\n\tsome foo\n\tfoo == input.foos[foo]\n}\n"
+          ],
+          "input": {
+            "foos": [
+              2,
+              1,
+              0
+            ]
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "test-call-dynamic.yaml": {
+      "sha256": "sha256:7c15e61293fbe69bb9cbe7298b6bfd123724503a6eccb1e9e8f4417db8803fa4",
+      "cases": [
+        {
+          "note": "ir/call_dynamic in comprehension",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tb := input\n\tx := {y | y := data.a[b][_]}\n}\n",
+            "package a\n\nb := {\"foo\", \"bar\"}\n",
+            "package a\n\nc := {\"x\", \"y\"}\n"
+          ],
+          "input": "b",
+          "want_result": [
+            {
+              "x": [
+                "bar",
+                "foo"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        },
+        {
+          "note": "ir/no call-dynamic with mixed partial rules",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := data.a.b[c] if c := \"c\"\n",
+            "package a\n\nb[c] := \"C\" if c := \"c\"\n\nb[\"d\"] := \"D\"\n"
+          ],
+          "want_result": [
+            {
+              "x": "C"
+            }
+          ]
+        },
+        {
+          "note": "ir/call-dynamic with mixed partial rules",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := a[b].c if b := \"b\"\n\na.b.c := \"C\"\n\na.x.d := \"D\"\n"
+          ],
+          "want_result": [
+            {
+              "x": "C"
+            }
+          ]
+        },
+        {
+          "note": "ir/no call-dynamic with mixed partial rules, ref heads",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := a.b[c] if c := \"c\"\n\na.b[c] := \"C\" if c := \"c\"\n\na.b.d := \"D\"\n"
+          ],
+          "want_result": [
+            {
+              "x": "C"
+            }
+          ]
+        },
+        {
+          "note": "ir/call-dynamic with mixed partial rules, ref heads",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := a[b][c] if {\n\tb := \"b\"\n\tc := \"c\"\n}\n\na.b.c := \"C\"\n\na.x.d := \"D\"\n"
+          ],
+          "want_result": [
+            {
+              "x": "C"
+            }
+          ]
+        },
+        {
+          "note": "ir/call-dynamic with ref heads, issue 5839",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := a[b][c].allow if {\n\tb := \"b\"\n\tc := \"c\"\n}\n\na.b.c.allow := true\n\na.x.d.allow := true\n\na.y[x] := \"E\" if x := \"x\"\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "ir/call-dynamic with ref heads, issue 5839, penultimate",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := a[b][c] if {\n\tb := \"b\"\n\tc := \"c\"\n}\n\na.b.c := true\n\na.x.d := true\n\na.y := \"E\"\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

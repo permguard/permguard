@@ -1,0 +1,66 @@
+{
+  "folder": "bitsxor",
+  "files": {
+    "test-bitsxor-0060.yaml": {
+      "sha256": "sha256:10a83855f9e0caf6d9fa919b7738e7fcbafa0d7c7825c5fbea34e725f5474e34",
+      "cases": [
+        {
+          "note": "bitsxor/basic bitwise-xor",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\tbits.xor(42, 3, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                41
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-bitsxor-0061.yaml": {
+      "sha256": "sha256:7ab1e47836c358c0c1eba3341bc271fec290e48cc1d2da70b5755367436b4eb9",
+      "cases": [
+        {
+          "note": "bitsxor/xor same is 0",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\tbits.xor(42, 42, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                0
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-bitsxor-0062.yaml": {
+      "sha256": "sha256:3c3f28c25bff5b0ce212b0044e27db4949c13dee5f138364ab92f1b4b851a3aa",
+      "cases": [
+        {
+          "note": "bitsxor/lhs (float) error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tbits.xor(7.2, 42, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "bits.xor: operand 1 must be integer number but got floating-point number",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

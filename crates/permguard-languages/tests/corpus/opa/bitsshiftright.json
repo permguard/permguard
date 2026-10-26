@@ -1,0 +1,61 @@
+{
+  "folder": "bitsshiftright",
+  "files": {
+    "test-bitsshiftright-0068.yaml": {
+      "sha256": "sha256:8f08098e430a23ea9a150a77f673d1b0059cbb1fe08c624f7fb8766a1f8047e4",
+      "cases": [
+        {
+          "note": "bitsshiftright/basic shift-right",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\tbits.rsh(8, 3, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-bitsshiftright-0069.yaml": {
+      "sha256": "sha256:85120c4d87a030a84a67da205c8222fceab82fa9e5ab15425fde1903dc41288b",
+      "cases": [
+        {
+          "note": "bitsshiftright/lhs (float) error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tbits.rsh(7.2, 42, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "bits.rsh: operand 1 must be integer number but got floating-point number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-bitsshiftright-0070.yaml": {
+      "sha256": "sha256:31d68b0d05ee10a4651070ed25c9f146c2d31cfa1aeb124cb951f57e032642fe",
+      "cases": [
+        {
+          "note": "bitsshiftright/rhs must be unsigned",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tbits.rsh(7, -1, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "bits.rsh: operand 2 must be an unsigned integer number but got a negative integer",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

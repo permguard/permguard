@@ -1,0 +1,199 @@
+{
+  "folder": "defaultkeyword",
+  "files": {
+    "test-default-functions.yaml": {
+      "sha256": "sha256:73646f2b43c7abc5e77b535b9464df92408b99270f2dedc822850053d261c36c",
+      "cases": [
+        {
+          "note": "defaultkeyword/function with var arg",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\ndefault f(_) := 100\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        },
+        {
+          "note": "defaultkeyword/function with var arg, ref head",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\ndefault p.q.r.f(x) := 100\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "p": {
+                  "q": {
+                    "r": {
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "defaultkeyword/function with var arg, ref head query",
+          "query": "data.test.foo = x",
+          "modules": [
+            "package test\n\ndefault p.q.r.f(x) := 100\n\np.q.r.f(x) := x if {\n\tx == 2\n}\n\nfoo if {\n\tp.q.r.f(3) == 100\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-defaultkeyword-0804.yaml": {
+      "sha256": "sha256:1bb77350e6d82f0d3a019ce7703398667ee8e63f38b52a5ae0a2b0255f7eb5a3",
+      "cases": [
+        {
+          "note": "defaultkeyword/undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := 1 if {\n\tfalse\n}\n\ndefault p := 0\n\np := 2 if {\n\tfalse\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 0
+            }
+          ]
+        }
+      ]
+    },
+    "test-defaultkeyword-0805.yaml": {
+      "sha256": "sha256:0ec72a99a4a1641e7df49c3af04962a410a5257f1f732e89e75481ffda6c0b06",
+      "cases": [
+        {
+          "note": "defaultkeyword/defined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\ndefault p := 0\n\np := 1\n\np := 2 if {\n\tfalse\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "test-defaultkeyword-0806.yaml": {
+      "sha256": "sha256:2a7d685025d7b4b67851565bdd1e0a55998f87c995a1a9e1637d13917b2b1425",
+      "cases": [
+        {
+          "note": "defaultkeyword/defined-ooo",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := 1\n\ndefault p := 0\n\np := 2 if {\n\tfalse\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "test-defaultkeyword-0807.yaml": {
+      "sha256": "sha256:0324a2c9a3f4a7872de69793791e3d14f7cbe058dc9d3f1802bc1082eff9ce5a",
+      "cases": [
+        {
+          "note": "defaultkeyword/array comprehension",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := 1 if {\n\tfalse\n}\n\ndefault p := [x | data.a[_] = x]\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                "1",
+                "2",
+                "3",
+                "4"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-defaultkeyword-0808.yaml": {
+      "sha256": "sha256:f887acb21aead6cb0aa5e1601ce264fec745a5a8579e289cce71a84c5cf6c832",
+      "cases": [
+        {
+          "note": "defaultkeyword/object comprehension",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := 1 if {\n\tfalse\n}\n\ndefault p := {x: k | data.d[k][_] = x}\n"
+          ],
+          "data": {
+            "d": {
+              "e": [
+                "bar",
+                "baz"
+              ]
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "bar": "e",
+                "baz": "e"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-defaultkeyword-0809.yaml": {
+      "sha256": "sha256:8c3ab5d274cc8e079382c7f8372e6ac131121b69be70bdeabc0ca256aacd942e",
+      "cases": [
+        {
+          "note": "defaultkeyword/set comprehension",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := 1 if {\n\tfalse\n}\n\ndefault p := {x | data.a[_] = x}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                "1",
+                "2",
+                "3",
+                "4"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "folder": "objectfilteridempotent",
+  "files": {
+    "test-objectfilteridempotent-0319.yaml": {
+      "sha256": "sha256:5bca8012946950a323d5045dac1f6b0693bb6ae0ad89cd1099a94a9436539738",
+      "cases": [
+        {
+          "note": "objectfilteridempotent/TestBuiltinObjectFilterIdempotent",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = {\"a\": 1, \"b\": 2, \"c\": 3}\n\tobject.filter(__local0__, {\"a\"}, __local1__)\n\t__local1__ = {\"a\": 1}\n\tobject.filter(__local0__, {\"b\"}, __local2__)\n\t__local2__ = {\"b\": 2}\n\tobject.filter(__local0__, {\"c\"}, __local3__)\n\t__local3__ = {\"c\": 3}\n\t__local0__ = {\"a\": 1, \"b\": 2, \"c\": 3}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

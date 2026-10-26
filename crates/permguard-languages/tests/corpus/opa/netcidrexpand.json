@@ -1,0 +1,88 @@
+{
+  "folder": "netcidrexpand",
+  "files": {
+    "test-netcidrexpand-0113.yaml": {
+      "sha256": "sha256:450b0d2dff6bf7c42ecc0a68fdae93b743c4f4cd6826bd6ae62cffe45861171b",
+      "cases": [
+        {
+          "note": "netcidrexpand/cidr includes host and broadcast",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_expand(\"192.168.1.1/30\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                "192.168.1.0",
+                "192.168.1.1",
+                "192.168.1.2",
+                "192.168.1.3"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-netcidrexpand-0114.yaml": {
+      "sha256": "sha256:bb79946b748ce4cb0a16d5b4c1b4663ded23692e2c7a1d9ed6dabe05c9b7e431",
+      "cases": [
+        {
+          "note": "netcidrexpand/cidr last octet all 1s",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_expand(\"172.16.100.255/30\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "172.16.100.252",
+                "172.16.100.253",
+                "172.16.100.254",
+                "172.16.100.255"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-netcidrexpand-0115.yaml": {
+      "sha256": "sha256:8fc3dcd97048e50a5b74ce58475e5a54c69598e5837ab66a0339e1f180f69654",
+      "cases": [
+        {
+          "note": "netcidrexpand/cidr all bits",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_expand(\"192.168.1.1/32\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "192.168.1.1"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-netcidrexpand-0116.yaml": {
+      "sha256": "sha256:d13c3a717499e4e996cbe9eee6d952bf3d58acba91648e73d549ed93c506a4ec",
+      "cases": [
+        {
+          "note": "netcidrexpand/cidr invalid mask",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_expand(\"192.168.1.1/33\", x)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "net.cidr_expand: invalid CIDR address: 192.168.1.1/33",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

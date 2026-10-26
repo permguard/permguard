@@ -1,0 +1,2252 @@
+{
+  "folder": "strings",
+  "files": {
+    "test-anyprefixmatch.yaml": {
+      "sha256": "sha256:2d7717a6a91c07388aed598c3ae295a5108ff5be9500e8dfe6c3ff1b2359215b",
+      "cases": [
+        {
+          "note": "strings/any_prefix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "a/",
+              "d/"
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "f/",
+              "d/"
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "a/b/",
+              "a/"
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "d/",
+              "e/f/g"
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "aa/b",
+              "e/f"
+            ],
+            "strings": [
+              "aa/bb/cc",
+              "aa/bb/dd",
+              "ee/ff/gg"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "a/b",
+              "e/f"
+            ],
+            "strings": [
+              "aa/bb/cc",
+              "aa/bb/dd",
+              "ee/ff/gg"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "b/cc"
+            ],
+            "strings": [
+              "aa/bb/cc",
+              "aa/bb/dd",
+              "ee/ff/gg"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "a/b",
+              "e/f"
+            ],
+            "strings": [
+
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+
+            ],
+            "strings": [
+
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefix)\n}\n"
+          ],
+          "input": {
+            "prefix": "a/",
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefix)\n}\n"
+          ],
+          "input": {
+            "prefix": "d/",
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.string, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "a/",
+              "d/"
+            ],
+            "string": "a/b/c"
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.string, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "g/",
+              "d/"
+            ],
+            "string": "a/b/c"
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nstrings_set contains str if {\n\tstr := input.strings[_]\n}\n\nprefixes_set contains prefix if {\n\tprefix := input.prefixes[_]\n}\n\np if {\n\tstrings.any_prefix_match(strings_set, prefixes_set)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "a/",
+              "d/"
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nstrings_set contains str if {\n\tstr := input.strings[_]\n}\n\nprefixes_set contains prefix if {\n\tprefix := input.prefixes[_]\n}\n\np if {\n\tstrings.any_prefix_match(strings_set, prefixes_set)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "f/",
+              "d/"
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/type_error_nostrict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "f/",
+              "d/"
+            ],
+            "strings": [
+              "1",
+              "2",
+              "3"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/type_error_nostrict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "f/",
+              "d/"
+            ],
+            "strings": 1
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/type_error_nostrict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "1",
+              "2"
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/type_error_nostrict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": 1,
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_prefix_match/type_error_strict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "f/",
+              "d/"
+            ],
+            "strings": [
+              1,
+              2,
+              3
+            ]
+          },
+          "want_error": "test-0.rego:4: eval_type_error: strings.any_prefix_match: operand 1 must be array of strings but got array containing number",
+          "strict_error": true
+        },
+        {
+          "note": "strings/any_prefix_match/type_error_strict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "f/",
+              "d/"
+            ],
+            "strings": 1
+          },
+          "want_error": "test-0.rego:4: eval_type_error: strings.any_prefix_match: operand 1 must be one of {string, set, array} but got number",
+          "strict_error": true
+        },
+        {
+          "note": "strings/any_prefix_match/type_error_strict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              1,
+              2
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_error": "test-0.rego:4: eval_type_error: strings.any_prefix_match: operand 2 must be array of strings but got array containing number",
+          "strict_error": true
+        },
+        {
+          "note": "strings/any_prefix_match/type_error_strict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_prefix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": 1,
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_error": "test-0.rego:4: eval_type_error: strings.any_prefix_match: operand 2 must be one of {string, set, array} but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-anysuffixmatch.yaml": {
+      "sha256": "sha256:3435caab91bbf9ee746c0dea6b398d07520d47f961f1dccc01e957d2a8979944",
+      "cases": [
+        {
+          "note": "strings/any_suffix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ],
+            "suffixes": [
+              "/c",
+              "/a"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ],
+            "suffixes": [
+              "/f",
+              "/a"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ],
+            "suffixes": [
+              "/b/c",
+              "/d"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ],
+            "suffixes": [
+              "/a",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "aa/bb/cc",
+              "aa/bb/dd",
+              "ee/ff/gg"
+            ],
+            "suffixes": [
+              "b/cc",
+              "f/g"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "aa/bb/cc",
+              "aa/bb/dd",
+              "ee/ff/gg"
+            ],
+            "suffixes": [
+              "b/c",
+              "f/g"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "aa/bb/cc",
+              "aa/bb/dd",
+              "ee/ff/gg"
+            ],
+            "suffixes": [
+              "aa/b"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "strings": [
+
+            ],
+            "suffixes": [
+              "a/b",
+              "e/f"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ],
+            "suffixes": [
+
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "strings": [
+
+            ],
+            "suffixes": [
+
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffix)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ],
+            "suffix": "/c"
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.suffix)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ],
+            "suffix": "/h"
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.string, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "string": "a/b/c",
+            "suffixes": [
+              "/c",
+              "/a"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.string, input.suffixes)\n}\n"
+          ],
+          "input": {
+            "string": "a/b/g",
+            "suffixes": [
+              "/c",
+              "/a"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nstrings_set contains str if {\n\tstr := input.strings[_]\n}\n\nsuffixes_set contains suffix if {\n\tsuffix := input.suffixes[_]\n}\n\np if {\n\tstrings.any_suffix_match(strings_set, suffixes_set)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ],
+            "suffixes": [
+              "/c",
+              "/a"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/nomatch",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nstrings_set contains str if {\n\tstr := input.strings[_]\n}\n\nsuffixes_set contains suffix if {\n\tsuffix := input.suffixes[_]\n}\n\np if {\n\tstrings.any_suffix_match(strings_set, suffixes_set)\n}\n"
+          ],
+          "input": {
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ],
+            "suffixes": [
+              "/f",
+              "/a"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/type_error_nostrict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "f/",
+              "d/"
+            ],
+            "strings": [
+              1,
+              2,
+              3
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/type_error_nostrict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "f/",
+              "d/"
+            ],
+            "strings": 1
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/type_error_nostrict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              1,
+              2
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/type_error_nostrict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": 1,
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "strings/any_suffix_match/type_error_strict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "f/",
+              "d/"
+            ],
+            "strings": [
+              1,
+              2,
+              3
+            ]
+          },
+          "want_error": "test-0.rego:4: eval_type_error: strings.any_suffix_match: operand 1 must be array of strings but got array containing number",
+          "strict_error": true
+        },
+        {
+          "note": "strings/any_suffix_match/type_error_strict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              "f/",
+              "d/"
+            ],
+            "strings": 1
+          },
+          "want_error": "test-0.rego:4: eval_type_error: strings.any_suffix_match: operand 1 must be one of {string, set, array} but got number",
+          "strict_error": true
+        },
+        {
+          "note": "strings/any_suffix_match/type_error_strict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": [
+              1,
+              2
+            ],
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_error": "test-0.rego:4: eval_type_error: strings.any_suffix_match: operand 2 must be array of strings but got array containing number",
+          "strict_error": true
+        },
+        {
+          "note": "strings/any_suffix_match/type_error_strict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tstrings.any_suffix_match(input.strings, input.prefixes)\n}\n"
+          ],
+          "input": {
+            "prefixes": 1,
+            "strings": [
+              "a/b/c",
+              "a/b/d",
+              "e/f/g"
+            ]
+          },
+          "want_error": "test-0.rego:4: eval_type_error: strings.any_suffix_match: operand 2 must be one of {string, set, array} but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-strings-0877.yaml": {
+      "sha256": "sha256:8ac9a3ee1fc2d0801fa75bf29b97083f769cf9c3d1931f10ecc66fda309f8558",
+      "cases": [
+        {
+          "note": "strings/format_int",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tformat_int(15.5, 16, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "f"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0878.yaml": {
+      "sha256": "sha256:21f325ec6cb5539fe9264ccc1955c9b41b68b533c296c792d46f5368e2e178b0",
+      "cases": [
+        {
+          "note": "strings/format_int: undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tformat_int(15.5, 16, \"10000\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-strings-0879.yaml": {
+      "sha256": "sha256:8e70bb921a4a47d31b5df2e69463a31a8044a4246bf0149ac88902f72adc0f82",
+      "cases": [
+        {
+          "note": "strings/format_int: ref dest",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.numbers[2]\n\tformat_int(3.1, 10, __local0__)\n}\n"
+          ],
+          "data": {
+            "numbers": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0880.yaml": {
+      "sha256": "sha256:9465bfab8df10285e66e92d01db5fe12891f4f42dbe254751a57f333e9160a35",
+      "cases": [
+        {
+          "note": "strings/format_int: ref dest (2)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.numbers[2]\n\tnot format_int(4.1, 10, __local0__)\n}\n"
+          ],
+          "data": {
+            "numbers": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0881.yaml": {
+      "sha256": "sha256:b904fddb2b657dc131a0720d485fc33bc5995341cf8c2d7c93219354ec56d0d5",
+      "cases": [
+        {
+          "note": "strings/format_int: err: bad base",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tformat_int(4.1, 199, x)\n}\n"
+          ],
+          "want_error_code": "eval_type_error",
+          "want_error": "operand 2 must be one of {2, 8, 10, 16}",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-strings-0882.yaml": {
+      "sha256": "sha256:5e09c9545fab96b4cfc0f07574c639ad56d50684a2ba1c165253109d906a8b0e",
+      "cases": [
+        {
+          "note": "strings/concat",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tconcat(\"/\", [\"\", \"foo\", \"bar\", \"0\", \"baz\"], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "/foo/bar/0/baz"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0883.yaml": {
+      "sha256": "sha256:2d52818fc9777ecca5ff140dda97ab60a2e519c2d76fc8f052557429ab958349",
+      "cases": [
+        {
+          "note": "strings/concat: set",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\n# Sets are unordered, so the output is not guaranteed.\n# These are theoretically possible:\npossibilities := {\n\t\"1,2,3\",\n\t\"2,3,1\",\n\t\"3,1,2\",\n\t\"3,2,1\",\n\t\"2,1,3\",\n\t\"1,3,2\",\n}\n\np if {\n\tx := concat(\",\", {\"1\", \"2\", \"3\"})\n\tpossibilities[x]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0884.yaml": {
+      "sha256": "sha256:5dc5badb61e6027e3b0ae7ddbed6629b342b4134eb2b9cca5865b1bdbca5a540",
+      "cases": [
+        {
+          "note": "strings/concat: undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tconcat(\"/\", [\"a\", \"b\"], \"deadbeef\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-strings-0885.yaml": {
+      "sha256": "sha256:47d2376fbd3393eba0ca48470ac30523e3c3bced641bf46f40da9f7264cdd9c2",
+      "cases": [
+        {
+          "note": "strings/concat: ref dest",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.c[0].x[2]\n\tconcat(\"\", [\"f\", \"o\", \"o\"], __local0__)\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  "3.14159"
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0886.yaml": {
+      "sha256": "sha256:ec0757ab52c47e1e534376b994c27d2b60ba081486b82a2b6eb291c17b6c592c",
+      "cases": [
+        {
+          "note": "strings/concat: ref dest (2)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.c[0].x[2]\n\tnot concat(\"\", [\"b\", \"a\", \"r\"], __local0__)\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  "3.14159"
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0887.yaml": {
+      "sha256": "sha256:32ae37adf7d87b9e7d5684fecbfc1d6179e35158e0acb2dcb8c5f1f372fe7f4f",
+      "cases": [
+        {
+          "note": "strings/indexof",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tindexof(\"abcdefgh\", \"cde\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "strings/indexof",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tindexof(\"abcabcabcdefgh\", \"cde\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 8
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0888.yaml": {
+      "sha256": "sha256:78f595a52af44f69518018a4c051eefd7a35de8164a9047012d216bbd99a25fa",
+      "cases": [
+        {
+          "note": "strings/indexof: not found",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tindexof(\"abcdefgh\", \"xyz\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": -1
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0889.yaml": {
+      "sha256": "sha256:1a92c784115c7d7eeeba714757a223be674831254a3a3e2d509e9fb03f83de91",
+      "cases": [
+        {
+          "note": "strings/substring",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"abcdefgh\", 2, 3, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "cde"
+            }
+          ]
+        },
+        {
+          "note": "strings/substring: unicode",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"åäö\", 0, 2, x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "åä"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0890.yaml": {
+      "sha256": "sha256:18ea65729dbd993d730362451558e3f76b3feb60587ebf844a17e8e773d48e40",
+      "cases": [
+        {
+          "note": "strings/substring: remainder",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"abcdefgh\", 2, -1, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "cdefgh"
+            }
+          ]
+        },
+        {
+          "note": "strings/substring: remainder unicode",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"aåäö\", 2, -1, x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "äö"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0891.yaml": {
+      "sha256": "sha256:d8def0c658fe258ec74b9470755cddcaa77239a097baf82c027d49aaa4111fb9",
+      "cases": [
+        {
+          "note": "strings/substring: too long",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"abcdefgh\", 2, 10000, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "cdefgh"
+            }
+          ]
+        },
+        {
+          "note": "strings/substring: too long unicode",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"abcdefghåäö\", 2, 10000, x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "cdefghåäö"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0892.yaml": {
+      "sha256": "sha256:f3122457e010bd70c54ef5cf1637154b0f3717e1e593924dab80ab37d3f6fc47",
+      "cases": [
+        {
+          "note": "strings/substring: offset negative",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"aaa\", -1, -1, x)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "negative offset",
+          "strict_error": true
+        },
+        {
+          "note": "strings/substring: offset negative unicode",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"åäö\", -1, -1, x)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "negative offset",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-strings-0893.yaml": {
+      "sha256": "sha256:26b389cf986c650ae3daae1eb3c50b678beb7a5d5ceb105e9a8689753e30b9d1",
+      "cases": [
+        {
+          "note": "strings/substring: offset too long",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"aaa\", 3, -1, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        },
+        {
+          "note": "strings/substring: offset too long unicode",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"åäö\", 3, -1, x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0894.yaml": {
+      "sha256": "sha256:19cf224b67ccfb5d8c97aca731d2ad25618899a8aab238478c273ffe584a5a22",
+      "cases": [
+        {
+          "note": "strings/substring: offset too long 2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"aaa\", 4, -1, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        },
+        {
+          "note": "strings/substring: offset too long 2 unicode",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsubstring(\"åäö\", 4, -1, x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0895.yaml": {
+      "sha256": "sha256:a58cc936d9d15f3301fbf8af745506ac6b08b6cb1138bdcc54ca80c7271f388a",
+      "cases": [
+        {
+          "note": "strings/contains",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tcontains(\"abcdefgh\", \"defg\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0896.yaml": {
+      "sha256": "sha256:5f55ec33786e6d219ac9aa4963a354052c33f1620d1a883513505b2a69e30888",
+      "cases": [
+        {
+          "note": "strings/contains: undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tcontains(\"abcdefgh\", \"ac\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-strings-0897.yaml": {
+      "sha256": "sha256:755ffdbe2b479adaed580ddc80c7864e35600cfaa16b3ea241fbc324c30a3473",
+      "cases": [
+        {
+          "note": "strings/startswith",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tstartswith(\"abcdefgh\", \"abcd\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0898.yaml": {
+      "sha256": "sha256:9e7d34f4a243800696079a8ab4bd063fa0a9976e5d84431744a5d2220153adc3",
+      "cases": [
+        {
+          "note": "strings/startswith: undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tstartswith(\"abcdefgh\", \"bcd\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-strings-0899.yaml": {
+      "sha256": "sha256:5d6d7cb1d45f3bf2ddbdee21f252b8249d9240db84a195b7cfe607c1abf9d27c",
+      "cases": [
+        {
+          "note": "strings/endswith",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tendswith(\"abcdefgh\", \"fgh\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0900.yaml": {
+      "sha256": "sha256:515005784d69c8db65099536075f3e67370d3e6f9e7a53f139930c113d8633e8",
+      "cases": [
+        {
+          "note": "strings/endswith: undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tendswith(\"abcdefgh\", \"fg\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-strings-0901.yaml": {
+      "sha256": "sha256:f3e12dbaffd304117ff80f3f3a4356c474400d5bb225303991d55ec67213e284",
+      "cases": [
+        {
+          "note": "strings/lower",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tlower(\"AbCdEf\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "abcdef"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0902.yaml": {
+      "sha256": "sha256:b5710b8fa00fb7e88bdd5447a1ae80c7542b56c4bd4e7c5e4d038dd1135604fb",
+      "cases": [
+        {
+          "note": "strings/upper",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tupper(\"AbCdEf\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "ABCDEF"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0903.yaml": {
+      "sha256": "sha256:07bd7fee06155601b75ebe9c1bdb996bbfea7eb2108f948b4005b6748f6e8f97",
+      "cases": [
+        {
+          "note": "strings/split: empty string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsplit(\"\", \".\", [x])\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0904.yaml": {
+      "sha256": "sha256:0c332262a0c9121f6009ded4d12371256a90594595748753e0048e6878fad80d",
+      "cases": [
+        {
+          "note": "strings/split: one",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsplit(\"foo\", \".\", [x])\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "foo"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0905.yaml": {
+      "sha256": "sha256:e4515d77edfa0f9526a1c46736b812e6bb2507b3c44332c9744c698d714c74e6",
+      "cases": [
+        {
+          "note": "strings/split: many",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [x, y] if {\n\tsplit(\"foo.bar.baz\", \".\", [x, \"bar\", y])\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "foo",
+                "baz"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0906.yaml": {
+      "sha256": "sha256:c1d7237aee848c62dbcbd8a7489ec8f30050fa6c83c264626632d6f4c6de92f5",
+      "cases": [
+        {
+          "note": "strings/replace: empty string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\treplace(\"\", \"hi\", \"bye\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0907.yaml": {
+      "sha256": "sha256:bae4c4b346f4376fdd5082c918073c0bb06495b9bb0d882c07c3f3656e2d804f",
+      "cases": [
+        {
+          "note": "strings/replace: one",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\treplace(\"foo.bar\", \".\", \",\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "foo,bar"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0908.yaml": {
+      "sha256": "sha256:64e3b3e0a8c06be2a797d38597c2ca1fba6b23e6d1406fbaced07dadc82772c9",
+      "cases": [
+        {
+          "note": "strings/replace: many",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\treplace(\"foo.bar.baz\", \".\", \",\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "foo,bar,baz"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0909.yaml": {
+      "sha256": "sha256:a3975274d3af81273f74170b68e550857307151cc19d9a05064ba83f7627125d",
+      "cases": [
+        {
+          "note": "strings/replace: overlap",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\treplace(\"foo...bar\", \"..\", \",,\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "foo,,.bar"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0910.yaml": {
+      "sha256": "sha256:ed4d0ec4b0e647f8a393b22f89d089828ee4bcdfe1201d64c08adba4eeaa63a8",
+      "cases": [
+        {
+          "note": "strings/trim: empty string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttrim(\"\", \".\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0911.yaml": {
+      "sha256": "sha256:940eb54775fdf53bf0c2824f3edf990892e58d0f68933b8387365271c7757eef",
+      "cases": [
+        {
+          "note": "strings/trim: end",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttrim(\"foo.bar...\", \".\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "foo.bar"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0912.yaml": {
+      "sha256": "sha256:33164bb3519b0c37e54b0a3326437b9be132ba17271c624c8e9f933e0d407de5",
+      "cases": [
+        {
+          "note": "strings/trim: start",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttrim(\"...foo.bar\", \".\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "foo.bar"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0913.yaml": {
+      "sha256": "sha256:5779472fe9871b19b0be99438b2d1c5620d304bf40c399e3b34e5cc0fa5ae9a9",
+      "cases": [
+        {
+          "note": "strings/trim: both",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttrim(\"...foo.bar...\", \".\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "foo.bar"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0914.yaml": {
+      "sha256": "sha256:e7672df4131aec8cf6bcbb27e3c90ddbe3bcce7bf3159a953da61ad733df84b5",
+      "cases": [
+        {
+          "note": "strings/trim: multi-cutset",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttrim(\"...foo.bar...\", \".fr\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "oo.ba"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0915.yaml": {
+      "sha256": "sha256:b17afc924d702298365086ae53ad5006c84f83e40b463771358ecad4014503aa",
+      "cases": [
+        {
+          "note": "strings/trim: multi-cutset-none",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttrim(\"...foo.bar...\", \".o\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "foo.bar"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0916.yaml": {
+      "sha256": "sha256:63ef1e7846f8475043793a1234f13beb0acb7e936de6e68002f8e3a7094feb11",
+      "cases": [
+        {
+          "note": "strings/sprintf: none",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsprintf(\"hi\", [], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hi"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0917.yaml": {
+      "sha256": "sha256:9fdb571174ae36379e2ef7cacf22188eedddfa1fdee7328384ad9898138e8807",
+      "cases": [
+        {
+          "note": "strings/sprintf: string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsprintf(\"hi %s\", [\"there\"], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hi there"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0918.yaml": {
+      "sha256": "sha256:132fee3adf3391cbfa1b14e75744659aa3a779c825ab965561bb6ec3b5b9449b",
+      "cases": [
+        {
+          "note": "strings/sprintf: int",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsprintf(\"hi %02d\", [5], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hi 05"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0919.yaml": {
+      "sha256": "sha256:325d58a16354f37534951faa347b698e79a0b68da9d1377c4918d588d2ad7e24",
+      "cases": [
+        {
+          "note": "strings/sprintf: hex",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsprintf(\"hi %02X.%02X\", [127, 1], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hi 7F.01"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0920.yaml": {
+      "sha256": "sha256:1dc567a7c0ac78bd8178f1360f87d0061ab0c803cffcbf952c8fd97b4a7c9661",
+      "cases": [
+        {
+          "note": "strings/sprintf: float",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsprintf(\"hi %.2f\", [3.1415], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hi 3.14"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0921.yaml": {
+      "sha256": "sha256:a8458df33768c8912994e51430833670b922e8f7eb1071c3dff895ae6db12d5a",
+      "cases": [
+        {
+          "note": "strings/sprintf: float too big",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsprintf(\"hi %v\", [2e308], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hi 2e308"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0922.yaml": {
+      "sha256": "sha256:a6220b501c247afa0c18adf66f78822441ec09e178dbb6386d2af63b8299f617",
+      "cases": [
+        {
+          "note": "strings/sprintf: bool",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsprintf(\"hi %s\", [true], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hi true"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0923.yaml": {
+      "sha256": "sha256:d0b01b885286f38d62f9e11af5f6525e1562f5f69f5ac03a8782994251e882aa",
+      "cases": [
+        {
+          "note": "strings/sprintf: composite",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsprintf(\"hi %v\", [[\"there\", 5, 3.14]], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hi [\"there\", 5, 3.14]"
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0924.yaml": {
+      "sha256": "sha256:4eee92971d4c37d7f154e2dabba516ef85ffa750729191f048259f14ce7bec3f",
+      "cases": [
+        {
+          "note": "strings/reverse_bar",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.reverse(data.foo)\n"
+          ],
+          "data": {
+            "foo": "bar"
+          },
+          "want_result": [
+            {
+              "x": "rab"
+            }
+          ]
+        },
+        {
+          "note": "strings/reverse_unicode_multi_char_emojii",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.reverse(data.foo)\n"
+          ],
+          "data": {
+            "foo": "2️⃣"
+          },
+          "want_result": [
+            {
+              "x": "⃣️2"
+            }
+          ]
+        },
+        {
+          "note": "strings/reverse_unicode",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.reverse(data.foo)\n"
+          ],
+          "data": {
+            "foo": "1😀𝛾"
+          },
+          "want_result": [
+            {
+              "x": "𝛾😀1"
+            }
+          ]
+        },
+        {
+          "note": "strings/reverse_empty",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.reverse(data.foo)\n"
+          ],
+          "data": {
+            "foo": ""
+          },
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        },
+        {
+          "note": "strings/reverse_number_error",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.reverse(data.foo)\n"
+          ],
+          "data": {
+            "foo": 123
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "reverse: operand 1 must be string but got number",
+          "strict_error": true
+        },
+        {
+          "note": "strings/reverse_object_error",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.reverse(data.foo)\n"
+          ],
+          "data": {
+            "foo": {
+              "bar": "baz"
+            }
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "reverse: operand 1 must be string but got object",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-strings-0925.yaml": {
+      "sha256": "sha256:30df2a2645fbcf028b4893d7dfbdcd5376546fccf808813489b9bc6aa84f72e3",
+      "cases": [
+        {
+          "note": "strings/indexof_n_single_match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := indexof_n(\"dogcat\", \"cat\")\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                3
+              ]
+            }
+          ]
+        },
+        {
+          "note": "strings/indexof_n_multiple_matches",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := indexof_n(\"dogcatdogcat\", \"cat\")\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                3,
+                9
+              ]
+            }
+          ]
+        },
+        {
+          "note": "strings/indexof_n_no_match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := indexof_n(\"dogcat\", \"rabbit\")\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        },
+        {
+          "note": "strings/indexof_n_unicode_matches",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := indexof_n(\"😇😀😇😀😇😀\", \"😀\")\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                1,
+                3,
+                5
+              ]
+            }
+          ]
+        },
+        {
+          "note": "strings/indexof_n_unicode_no_match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := indexof_n(\"😇😀😇😀😇😀\", \"😂\")\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-0926.yaml": {
+      "sha256": "sha256:c3155f42a4d6ba1acb4ec5732ec45234a35382749eeff250e131c537516970e0",
+      "cases": [
+        {
+          "note": "strings/count_single_word_match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.count(\"cheese\", \"e\")\n"
+          ],
+          "want_result": [
+            {
+              "x": 3
+            }
+          ]
+        },
+        {
+          "note": "strings/count_multiple_separate_matches",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.count(\"hello hello hello world\", \"hello\")\n"
+          ],
+          "want_result": [
+            {
+              "x": 3
+            }
+          ]
+        },
+        {
+          "note": "strings/count_n_no_match",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.count(\"dummy\", \"x\")\n"
+          ],
+          "want_result": [
+            {
+              "x": 0
+            }
+          ]
+        }
+      ]
+    },
+    "test-strings-indexof-unicode.yaml": {
+      "sha256": "sha256:4324ec7279395c2e76508b9b05a8af6231e7b5b8b396f970e908b9ce2ca63760",
+      "cases": [
+        {
+          "note": "strings/indexof: unicode char",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tindexof(\"μx\", \"x\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "strings/indexof: unicode chars not found",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tindexof(\"μ\", \"μμ\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": -1
+            }
+          ]
+        },
+        {
+          "note": "strings/indexof: unicode string",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tindexof(\"skön var våren\", \"vår\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 9
+            }
+          ]
+        },
+        {
+          "note": "strings/indexof: unicode string emoji",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tindexof(\"🍧🍨🧁🍰🍮\", \"🍮\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 4
+            }
+          ]
+        },
+        {
+          "note": "strings/indexof: unicode string emojis",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tindexof(\"🍧🍨🧁🍰🍮\", \"🍧🍨🧁🍰🍮\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "folder": "semverisvalid",
+  "files": {
+    "test-semverisvalid-0349.yaml": {
+      "sha256": "sha256:91f9b0e709b71bb98f57aecebc9f4d4a28502f7de7644d59113744f4553f810e",
+      "cases": [
+        {
+          "note": "semverisvalid/valid",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsemver.is_valid(\"1.0.0\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-semverisvalid-0350.yaml": {
+      "sha256": "sha256:08f4ea1d99f25f41aeda19487e71641018a21f63e5949a730530d5e95c181fac",
+      "cases": [
+        {
+          "note": "semverisvalid/invalid version",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsemver.is_valid(\"1\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-semverisvalid-0351.yaml": {
+      "sha256": "sha256:57c8dbe5d7d3bee8a22e230c2e1728282c2cd2f685c1e90da7f127ca3dc77ebb",
+      "cases": [
+        {
+          "note": "semverisvalid/invalid type",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsemver.is_valid(1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

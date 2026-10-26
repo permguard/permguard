@@ -1,0 +1,24 @@
+{
+  "folder": "objectremoveidempotent",
+  "files": {
+    "test-objectremoveidempotent-0298.yaml": {
+      "sha256": "sha256:b69a62e3e2dd1290d8d52566b18621da846fa53b048df467dace105ee8c57183",
+      "cases": [
+        {
+          "note": "objectremoveidempotent/TestBuiltinObjectRemoveIdempotent",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = {\"a\": 1, \"b\": 2, \"c\": 3}\n\tobject.remove(__local0__, {\"a\"}, __local1__)\n\t__local1__ = {\"b\": 2, \"c\": 3}\n\tobject.remove(__local0__, {\"b\"}, __local2__)\n\t__local2__ = {\"a\": 1, \"c\": 3}\n\tobject.remove(__local0__, {\"c\"}, __local3__)\n\t__local3__ = {\"a\": 1, \"b\": 2}\n\t__local0__ = {\"a\": 1, \"b\": 2, \"c\": 3}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

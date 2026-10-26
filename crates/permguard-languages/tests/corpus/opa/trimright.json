@@ -1,0 +1,49 @@
+{
+  "folder": "trimright",
+  "files": {
+    "test-trimright-0368.yaml": {
+      "sha256": "sha256:548aeadf509267d11dc24db2ae64c2a0bc4ef79610572a82328b2f311c8e46ff",
+      "cases": [
+        {
+          "note": "trimright/trims trailing '!¡' from string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\ttrim_right(\"¡¡¡foo, bar!!!\", \"!¡\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "¡¡¡foo, bar"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-trimright-0369.yaml": {
+      "sha256": "sha256:6f17ce9bb5155e172677795716fc161ee3aacd904c5a000d16c5591790080d03",
+      "cases": [
+        {
+          "note": "trimright/trims nothing from string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\ttrim_right(\"!!!foo, bar¡¡¡\", \"!\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "!!!foo, bar¡¡¡"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

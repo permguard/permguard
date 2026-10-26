@@ -253,6 +253,13 @@
               "$ref": "#/components/schemas/InterfaceLink"
             },
             "description": "Interfaces this plane exposes, each pointing at its own configuration; absent when none."
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LanguageListing"
+            },
+            "description": "The runtimes this build carries, each with whether this deployment serves it and its conformance gate's result (TL-6); absent from a plane that evaluates nothing."
           }
         },
         "required": [
@@ -536,6 +543,80 @@
         "description": "One listener of the process and what it demands of its clients (WP-2.11): never its address, certificate or peers.",
         "x-grpc-message": null,
         "x-grpc-note": "Part of the process-level registry, served on the telemetry listener only; `GET /host/v1/status` carries the same members as `HostListener`."
+      },
+      "LanguageListing": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The runtime's manifest name."
+          },
+          "descriptor_digest": {
+            "type": "string",
+            "description": "`sha256:` and the hex digest of the runtime's language descriptor."
+          },
+          "experimental": {
+            "type": "boolean",
+            "description": "Whether serving it takes an explicit opt-in."
+          },
+          "served": {
+            "type": "boolean",
+            "description": "Whether this deployment loads ledgers of this runtime: opted into when experimental, and its gate passing from `production` up."
+          },
+          "conformance": {
+            "$ref": "#/components/schemas/ConformanceGate"
+          }
+        },
+        "required": [
+          "name",
+          "descriptor_digest",
+          "experimental",
+          "served",
+          "conformance"
+        ],
+        "additionalProperties": false,
+        "description": "One runtime of a data plane's discovery document (TL-6).",
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only, as the data plane's document is."
+      },
+      "ConformanceGate": {
+        "type": "object",
+        "properties": {
+          "gate": {
+            "type": "string",
+            "const": "permguard.language.conformance.v1"
+          },
+          "production_ready": {
+            "type": "boolean",
+            "description": "Whether every item of the languages model's conformance gate passes."
+          },
+          "open": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "golden_vectors",
+                "upstream_corpus",
+                "adversarial",
+                "replay",
+                "differential",
+                "fault_injection",
+                "stored_objects",
+                "supply_chain"
+              ]
+            },
+            "description": "The items that do not pass, in the model's order."
+          }
+        },
+        "required": [
+          "gate",
+          "production_ready",
+          "open"
+        ],
+        "additionalProperties": false,
+        "description": "A runtime's conformance gate result (TL-6).",
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only, as the data plane's document is."
       }
     }
   },

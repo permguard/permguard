@@ -178,6 +178,9 @@ pub mod interface {
     /// The archive format `decisions export` writes (WP-6.3b, owner decision of 2026-10-20): a
     /// format identifier, never a record or signature domain.
     pub const DECISIONS_EXPORT_V1: &str = "permguard.decisions.export.v1";
+    /// The languages model's conformance gate, as discovery names the record of each runtime
+    /// (TL-6): a contract identifier, never a record or signature domain.
+    pub const LANGUAGE_CONFORMANCE_V1: &str = "permguard.language.conformance.v1";
 }
 
 /// Media types of ledger objects and transfer bodies.
@@ -500,6 +503,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         (
             "interface.DECISIONS_EXPORT_V1",
             interface::DECISIONS_EXPORT_V1,
+        ),
+        (
+            "interface.LANGUAGE_CONFORMANCE_V1",
+            interface::LANGUAGE_CONFORMANCE_V1,
         ),
         ("media.NOTP_V1_CBOR", media::NOTP_V1_CBOR),
         ("media.MANIFEST_V1_CBOR", media::MANIFEST_V1_CBOR),

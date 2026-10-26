@@ -1,0 +1,357 @@
+{
+  "folder": "partialsetdoc",
+  "files": {
+    "test-issue-3369.yaml": {
+      "sha256": "sha256:2478160fad92733e3699fb5e746e1b323625fddf869e3aa717530e6e99168a2e",
+      "cases": [
+        {
+          "note": "partialsetdoc/unexpected 'var requires evaluation'",
+          "query": "data.x.p[x] = z",
+          "modules": [
+            "package x\n\np contains a if {\n\ta := q\n}\n\nq contains b if {\n\tb := 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                1
+              ],
+              "z": [
+                1
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-issue-3376.yaml": {
+      "sha256": "sha256:991aabad48045298cbc6102c537dacb4b4edcdd60ef5df0ace4feaf8bf113c8d",
+      "cases": [
+        {
+          "note": "partialsetdoc/iteration",
+          "query": "data.foo.p = x",
+          "modules": [
+            "package foo\n\np if {\n\tq[i][j] = v # this fails!\n}\n\nq contains x if {\n\tx = r\n}\n\nr contains x if {\n\tx = [1]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-issue-3819.yaml": {
+      "sha256": "sha256:94e06b60cf8c48d8c5946bac897ff497e52fc6f7bccaac51f3ab35267a4bcec7",
+      "cases": [
+        {
+          "note": "partialsetdoc: object sort while iter",
+          "query": "data.foo.p = x",
+          "modules": [
+            "package foo\n\np contains x if {\n\tdata.a[x] # iterates data.a\n\tq[_]\n}\n\nq contains x if {\n\tx = data.a # inserts data.a into a set, sorts the object keys\n}\n"
+          ],
+          "data": {
+            "a": {
+              "apples": "2",
+              "bananas": "1",
+              "clementines": "3"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                "apples",
+                "bananas",
+                "clementines"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-partialsetdoc-0511.yaml": {
+      "sha256": "sha256:e01625eea37133cb5708b8bfb42ed73f60e8869c6d7f212a13489525208cc368",
+      "cases": [
+        {
+          "note": "partialsetdoc/array values",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.a[i] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                "1",
+                "2",
+                "3",
+                "4"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-partialsetdoc-0512.yaml": {
+      "sha256": "sha256:343fd11e68a4409e490636d1b1ae6dae42f8fab8f7497965a02602411afffc82",
+      "cases": [
+        {
+          "note": "partialsetdoc/array indices",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.a[x] = _\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                0,
+                1,
+                2,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-partialsetdoc-0513.yaml": {
+      "sha256": "sha256:f92b7280c62a9c070a3e827cb57c9901a44d5c52ee1f2b9ce33f7d6bb34266d2",
+      "cases": [
+        {
+          "note": "partialsetdoc/object keys",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.b[x] = _\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                "v1",
+                "v2"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-partialsetdoc-0514.yaml": {
+      "sha256": "sha256:86804dfa192d38ce5580c64054cd272328af1df742a455bc5886c503f45d74c8",
+      "cases": [
+        {
+          "note": "partialsetdoc/object values",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.b[i] = x\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                "goodbye",
+                "hello"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-partialsetdoc-0515.yaml": {
+      "sha256": "sha256:573410eabe6e8680a7d4348abc6b2ba1974d8a58321103a0c384a42614374579",
+      "cases": [
+        {
+          "note": "partialsetdoc/nested composites",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.f[i] = x\n}\n"
+          ],
+          "data": {
+            "f": [
+              {
+                "xs": [
+                  "1"
+                ],
+                "ys": [
+                  "2"
+                ]
+              },
+              {
+                "xs": [
+                  "2"
+                ],
+                "ys": [
+                  "3"
+                ]
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "xs": [
+                    "1"
+                  ],
+                  "ys": [
+                    "2"
+                  ]
+                },
+                {
+                  "xs": [
+                    "2"
+                  ],
+                  "ys": [
+                    "3"
+                  ]
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-partialsetdoc-0516.yaml": {
+      "sha256": "sha256:d969a19f0e717cc072da984ad38b31bfeeaedd713c3cb4be4067b5cfe61c6501",
+      "cases": [
+        {
+          "note": "partialsetdoc/deep ref/heterogeneous",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.c[i][j][k] = x\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                null,
+                false,
+                true,
+                3.14159,
+                "foo"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-partialsetdoc-0517.yaml": {
+      "sha256": "sha256:dc3f4c48683f49003c3940ef4492f10d50f4025686e3e42463f51e14aebf07cb",
+      "cases": [
+        {
+          "note": "partialsetdoc/composite var value",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.a[i]\n\tx = [i, __local0__]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-partialsetdoc-0518.yaml": {
+      "sha256": "sha256:f4c4a2e55585969fe8826958f7d82e94fd0463168e8c45c7946fe64eba27844b",
+      "cases": [
+        {
+          "note": "partialsetdoc/composite key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains [x, {\"y\": y}] if {\n\tx = 1\n\ty = 2\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  {
+                    "y": 2
+                  }
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

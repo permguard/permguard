@@ -1,0 +1,526 @@
+{
+  "folder": "every",
+  "files": {
+    "every.yaml": {
+      "sha256": "sha256:7a5e2d9132e03a10ecab754207c3f17885fb9c364d69bb6875c2d54d98a2e43c",
+      "cases": [
+        {
+          "note": "every/empty domain (array)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery x in [] { x != x }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/empty domain (set)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery x in set() { x != x }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/empty domain (object)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery x in {} { x != x }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/empty domain (partial rule ref)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nl contains 1 if {\n\tfalse\n}\n\np if {\n\tevery x in l { x != x }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/domain undefined (input)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery _ in input { true }\n}\n"
+          ],
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "every/domain undefined (data ref)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery _ in data.foo { true }\n}\n"
+          ],
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "every/domain is call",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery x in numbers.range(1, 10) { x >= 1 }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/simple key/val",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery k, v in [1, 2] { k + 1 == v }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/simple key/val (set)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery k, v in {1, 2} { k == v }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/simple key/val (partial rule ref)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nl contains 1\n\nl contains 2\n\np if {\n\tevery k, v in l { k == v }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/outer bindings",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\ti := 10\n\tevery k, v in [1, 2] { k + v != i }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/simple failure, first",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery v in [1, 2] { v != 1 }\n}\n"
+          ],
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "every/simple failure, last",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery v in [1, 2] { v != 2 }\n}\n"
+          ],
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "every/with: domain",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery v in input { v == 1 } with input as [1, 1, 1]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/with: body",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery v in [1, 2] { v in input } with input as [1, 2, 1, 0]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/followed by another query",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains v if {\n\tevery v in [1, 2] { v < 3 }\n\tv := 10\n\tv > 3\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                10
+              ]
+            }
+          ]
+        },
+        {
+          "note": "every/array with calls",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery v in [1 / 2, 3, 4 + 5] { v < 10 }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/array with calls (fail)",
+          "query": "data.test.q = x",
+          "modules": [
+            "package test\n\np if {\n\tevery v in [1 / 2, 3, 4 + 5] { v < 9 }\n}\n\nq if {\n\tnot p\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "non_iterable_domain.yaml": {
+      "sha256": "sha256:711d86028043c4cd233c748e6e31d338fbbb81465f90a187a26520e34321f0b8",
+      "cases": [
+        {
+          "note": "every/non-iter domain: int",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault p := 1\n\np := 2 if {\n\tevery v in 42 { v > 1 }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "every/non-iter domain: string",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault p := 1\n\np := 2 if {\n\tevery v in \"foobar\" { v > 1 }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "every/non-iter domain: bool",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault p := 1\n\np := 2 if {\n\tevery v in true { v > 1 }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "every/non-iter domain: null",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault p := 1\n\np := 2 if {\n\tevery v in null { v > 1 }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "every/non-iter domain: built-in call",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault p := 1\n\np := 2 if {\n\tevery v in floor(13.37) { v > 1 }\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "every/non-iter domain: function call",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault p := 1\n\np := 2 if {\n\tevery v in foo(1, 2) { v > 1 }\n}\n\nfoo(a, b) := a + b\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "every/non-iter domain: rule ref",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault p := 1\n\np := 2 if {\n\tevery v in q { v > 1 }\n}\n\nq := 1\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "every/non-iter domain: data int",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault p := 1\n\np := 2 if {\n\tevery v in data.iterate_me { v > 1 }\n}\n"
+          ],
+          "data": {
+            "iterate_me": 1
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "every/non-iter domain: input int",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault p := 1\n\np := 2 if {\n\tevery v in input.iterate_me { v > 1 }\n}\n"
+          ],
+          "input": {
+            "iterate_me": 1
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "every/non-iter domain: input int (1st level)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault p := 1\n\np := 2 if {\n\tevery v in input { v > 1 }\n}\n"
+          ],
+          "input": 1,
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "textbook.yaml": {
+      "sha256": "sha256:466d9a52e22215943468c5dd2cdd313d11b809d7ddf6823ecde388302ff92118",
+      "cases": [
+        {
+          "note": "every/example, fail",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery x in input.containers {\n\t\tstartswith(x.image, \"acmecorp.com/\")\n\t}\n}\n"
+          ],
+          "input": {
+            "containers": [
+              {
+                "image": "bitcoin-miner"
+              },
+              {
+                "image": "acmecorp.com/webapp"
+              }
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "every/example, success",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tevery x in input.containers {\n\t\tstartswith(x.image, \"acmecorp.com/\")\n\t}\n}\n"
+          ],
+          "input": {
+            "containers": [
+              {
+                "image": "acmecorp.com/bitcoin-miner"
+              },
+              {
+                "image": "acmecorp.com/webapp"
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/example with two sets",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tcontainers := {c | c := input.containers[_]}\n\tinit_containers := {c | c := input.init_containers[_]}\n\tevery x in containers | init_containers {\n\t\tstartswith(x.image, \"acmecorp.com/\")\n\t}\n}\n"
+          ],
+          "input": {
+            "containers": [
+              {
+                "image": "acmecorp.com/bitcoin-miner"
+              },
+              {
+                "image": "acmecorp.com/webapp"
+              }
+            ],
+            "init_containers": [
+              {
+                "image": "acmecorp.com/bitcoin-miner"
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/example with two sets (fail)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tcontainers := {c | c := input.containers[_]}\n\tinit_containers := {c | c := input.init_containers[_]}\n\tevery x in containers | init_containers {\n\t\tstartswith(x.image, \"acmecorp.com/\")\n\t}\n}\n"
+          ],
+          "input": {
+            "containers": [
+              {
+                "image": "acmecorp.com/bitcoin-miner"
+              },
+              {
+                "image": "acmecorp.com/webapp"
+              }
+            ],
+            "init_containers": [
+              {
+                "image": "bitcoin-miner"
+              }
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "every/example every/some, fail",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nallowed_repos := {\"hooli.com/\", \"acmecorp.net/\"}\n\np if {\n\tevery c in input.containers {\n\t\tsome repo in allowed_repos\n\t\tstartswith(c.image, repo)\n\t}\n}\n"
+          ],
+          "input": {
+            "containers": [
+              {
+                "image": "hooli.com/bitcoin-miner"
+              },
+              {
+                "image": "acmecorp.net/webapp"
+              },
+              {
+                "image": "nginx"
+              }
+            ]
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "every/example every/some, success",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nallowed_repos := {\"hooli.com/\", \"acmecorp.net/\"}\n\np if {\n\tevery c in input.containers {\n\t\tsome repo in allowed_repos\n\t\tstartswith(c.image, repo)\n\t}\n}\n"
+          ],
+          "input": {
+            "containers": [
+              {
+                "image": "hooli.com/bitcoin-miner"
+              },
+              {
+                "image": "acmecorp.net/webapp"
+              },
+              {
+                "image": "hooli.com/nginx"
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "every/example some/every",
+          "query": "data.test.deny = x",
+          "modules": [
+            "package test\n\ndeny if {\n\tsome s in input.servers\n\tevery port in s.ports {\n\t\tport != 443\n\t}\n}\n"
+          ],
+          "input": {
+            "servers": [
+              {
+                "ports": [
+                  "80",
+                  "443"
+                ]
+              },
+              {
+                "ports": [
+                  "80"
+                ]
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

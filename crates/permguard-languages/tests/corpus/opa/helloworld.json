@@ -1,0 +1,35 @@
+{
+  "folder": "helloworld",
+  "files": {
+    "test-helloworld-1.yaml": {
+      "sha256": "sha256:e5091acf61eedc2fda79aad029acad87f3fdde7451039ecffa1062e8d7841f9e",
+      "cases": [
+        {
+          "note": "helloworld/test_case",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := 7 if {\n\tdata.foo == q\n}\n\nq := input.baz\n"
+          ],
+          "data": {
+            "foo": "bar"
+          },
+          "input": {
+            "baz": "bar"
+          },
+          "want_result": [
+            {
+              "x": 7
+            }
+          ]
+        },
+        {
+          "note": "helloworld/another_test_for_builtin_error",
+          "query": "1 / 0",
+          "want_error_code": "eval_builtin_error",
+          "want_error": "div: divide by zero",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

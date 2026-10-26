@@ -81,6 +81,25 @@ jobs:
         # plain run would never compile the tests that cover it.
         run: cargo test --workspace --all-features --locked
 
+  # Deterministic replay on a second platform (TL-6): each runtime's golden vectors and upstream
+  # corpora, and the rest of the languages crate, on Apple silicon — another operating system and
+  # another architecture than the `check` job — against the same expected bytes.
+  languages-macos:
+    name: languages on macOS
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: the languages crate, vectors and corpora included
+        run: cargo test -p permguard-languages --all-features --locked
+
   fuzz:
     name: fuzz every untrusted decoder (short budget)
     # Pull requests only: a short run on every change catches a decoder that panics on its first

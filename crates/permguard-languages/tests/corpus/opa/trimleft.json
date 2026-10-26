@@ -1,0 +1,49 @@
+{
+  "folder": "trimleft",
+  "files": {
+    "test-trimleft-0364.yaml": {
+      "sha256": "sha256:fb65095f61fef764dc6bc737c39d7fb07499da3ccd379e1ff84427d054344ac6",
+      "cases": [
+        {
+          "note": "trimleft/trims leading '!¡' from string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\ttrim_left(\"¡¡¡foo, bar!!!\", \"!¡\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "foo, bar!!!"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-trimleft-0365.yaml": {
+      "sha256": "sha256:76257f4fc7913d80cfb3b5563fe99f33c978548999ecb302bb21afb128ef1c74",
+      "cases": [
+        {
+          "note": "trimleft/trims nothing from string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\ttrim_left(\"!!!foo, bar¡¡¡\", \"¡\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "!!!foo, bar¡¡¡"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

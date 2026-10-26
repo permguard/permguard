@@ -1,0 +1,846 @@
+{
+  "folder": "refheads",
+  "files": {
+    "test-generic-refs.yaml": {
+      "sha256": "sha256:c6a4d1338cf5dcfec1f41b82ec64abfab5c89585bbbed8ef4740509c8fc13b00",
+      "cases": [
+        {
+          "note": "refheads/general, single var",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[q].r := i if q := [\"a\", \"b\", \"c\"][i]\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "r": 0
+                },
+                "b": {
+                  "r": 1
+                },
+                "c": {
+                  "r": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, multiple vars",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[q][r] if q := [\"a\", \"b\", \"c\"][r]\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "0": true
+                },
+                "b": {
+                  "1": true
+                },
+                "c": {
+                  "2": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, deep query",
+          "query": "data.test.p.b = x",
+          "modules": [
+            "package test\n\np[q][r] if q := [\"a\", \"b\", \"c\"][r]\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "1": true
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, overlapping rule, no conflict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[q].r := i if q := [\"a\", \"b\", \"c\"][i]\n\np.a.r := 0\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "r": 0
+                },
+                "b": {
+                  "r": 1
+                },
+                "c": {
+                  "r": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, overlapping rule, different dynamic depths, no conflict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[q].r.s := i if q := [\"a\", \"b\", \"c\"][i]\n\np.d.r := 3\n\np.e := 4\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "r": {
+                    "s": 0
+                  }
+                },
+                "b": {
+                  "r": {
+                    "s": 1
+                  }
+                },
+                "c": {
+                  "r": {
+                    "s": 2
+                  }
+                },
+                "d": {
+                  "r": 3
+                },
+                "e": 4
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, self-conflict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[q].r.s := i if q := [\"a\", \"b\", \"c\", \"b\"][i]\n"
+          ],
+          "want_error_code": "eval_conflict_error"
+        },
+        {
+          "note": "refheads/general, overlapping rule, conflict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[q].r.s := i if q := [\"a\", \"b\", \"c\"][i]\n\np.a.r := 42\n"
+          ],
+          "want_error_code": "eval_conflict_error"
+        },
+        {
+          "note": "refheads/general, overlapping rule, deep override inside other rule object value, conflict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[q].r := v if {\n\tq := \"q\"\n\tv := {\"s\": {\"t\": 1}}\n}\n\np.q.r.s.t := 42\n"
+          ],
+          "want_error_code": "eval_conflict_error"
+        },
+        {
+          "note": "refheads/general, overlapping rule, deep injection into other rule object value, conflict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[q].r := v if {\n\tq := \"q\"\n\tv := {\"s\": {\"t\": 1}}\n}\n\np.q.r.s.u := 42\n"
+          ],
+          "want_error_code": "eval_conflict_error"
+        },
+        {
+          "note": "refheads/general, set leaf (shallow ref)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[q] contains r if {\n\tx := [\"a\", \"b\", \"c\"]\n\tq := x[_]\n\tr := x[_]\n\tq != r\n}\n\np.b contains \"foo\"\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": [
+                  "b",
+                  "c"
+                ],
+                "b": [
+                  "a",
+                  "c",
+                  "foo"
+                ],
+                "c": [
+                  "a",
+                  "b"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, set leaf (other rule defines dynamic ref portion)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np.q contains r if {\n    r := [\"a\", \"b\", \"c\"][_]\n}\n\np[q] := r if {\n    q := \"foo\"\n    r := \"bar\"\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "foo": "bar",
+                "q": [
+                  "a",
+                  "b",
+                  "c"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, set leaf",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[q].r contains s if {\n\tx := [\"a\", \"b\", \"c\"]\n\tq := x[_]\n\ts := x[_]\n\tq != s\n}\n\np.b.r contains \"foo\"\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "r": [
+                    "b",
+                    "c"
+                  ]
+                },
+                "b": {
+                  "r": [
+                    "a",
+                    "c",
+                    "foo"
+                  ]
+                },
+                "c": {
+                  "r": [
+                    "a",
+                    "b"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, set leaf, deep query",
+          "query": "data.test.p.b.r.c = x",
+          "modules": [
+            "package test\n\np[q].r contains s if {\n\tx := [\"a\", \"b\", \"c\"]\n\tq := x[_]\n\ts := x[_]\n\tq != s\n}\n\np.b.r contains \"foo\"\n"
+          ],
+          "want_result": [
+            {
+              "x": "c"
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, input var",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[input.x].r := \"foo\"\n"
+          ],
+          "input": {
+            "x": "bar"
+          },
+          "want_result": [
+            {
+              "x": {
+                "bar": {
+                  "r": "foo"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, external non-ground var",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\na := [x | x := input.x[_]]\n\nb := input.y\n\np[a[b]].r[s] := i if {\n\ts := a[i]\n}\n"
+          ],
+          "input": {
+            "x": [
+              "foo",
+              "bar",
+              "baz"
+            ],
+            "y": 1
+          },
+          "want_result": [
+            {
+              "x": {
+                "bar": {
+                  "r": {
+                    "bar": 1,
+                    "baz": 2,
+                    "foo": 0
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/general, multiple result-set entries",
+          "query": "data.test.p.q[i].s = x",
+          "modules": [
+            "package test\n\np.q[r].s := 1 if r := \"foo\"\n\np.q[r].s := 2 if r := \"bar\"\n"
+          ],
+          "want_result": [
+            {
+              "i": "foo",
+              "x": 1
+            },
+            {
+              "i": "bar",
+              "x": 2
+            }
+          ]
+        }
+      ]
+    },
+    "test-refs-as-rule-heads.yaml": {
+      "sha256": "sha256:b19d4c392a031c09bb2acc6cbf126c9dd0ece24c8cdeb0c2420313cd92864a83",
+      "cases": [
+        {
+          "note": "refheads/single-value",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np.q.r := 1\n\np.q.s := 2\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "q": {
+                  "r": 1,
+                  "s": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/single-value, with var",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np.q.r := 1\n\np.q[s] := 2 if s := \"s\"\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "q": {
+                  "r": 1,
+                  "s": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/single-value, with var, conflict",
+          "query": "data.test.p.q = x",
+          "modules": [
+            "package test\n\np.q.r := 1\n\np.q[s] := 2 if s := \"r\"\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "object keys must be unique"
+        },
+        {
+          "note": "refheads/complete: direct query",
+          "query": "data.test.a.b.c.p = x",
+          "modules": [
+            "package test\n\na.b.c.p := true\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "refheads/complete: direct query q",
+          "query": "data.test.q = x",
+          "modules": [
+            "package test\n\nq := 0\n"
+          ],
+          "want_result": [
+            {
+              "x": 0
+            }
+          ]
+        },
+        {
+          "note": "refheads/complete: full package extent",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\na.b.c.p := true\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": {
+                      "p": true
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/complete+mixed",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\na.b.c.p := 1\n\nq := 0\n\na.b.d := 3\n\np if {\n\tq == 0\n\ta.b.c.p == 1\n\ta.b.d == 3\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "refheads/single-value rule",
+          "query": "data.test.a = x",
+          "modules": [
+            "package test\n\na.b[x] := y if {\n\tx := \"c\"\n\ty := \"d\"\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "b": {
+                  "c": "d"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/multi-value",
+          "query": "data.test.a = x",
+          "modules": [
+            "package test\n\na.b contains x if some x in [1, 2, 3]\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "b": [
+                  1,
+                  2,
+                  3
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/single-value: previously partial object",
+          "query": "data.test.a.b = x",
+          "modules": [
+            "package test\n\na.b[x] := i if some i, x in [1, 2, 3]\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "1": 0,
+                "2": 1,
+                "3": 2
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/multi-value: same rule",
+          "query": "data.test.a = x",
+          "modules": [
+            "package test\n\na.b.c.d contains 1\n",
+            "package test.a\n\nb.c.d contains 2\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "b": {
+                  "c": {
+                    "d": [
+                      1,
+                      2
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/single-value default rule",
+          "query": "data.test.a = x",
+          "modules": [
+            "package test\n\ndefault a.b.c := \"d\"\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "b": {
+                  "c": "d"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/single-value example",
+          "query": "data.test.a = x",
+          "modules": [
+            "package test\n\nq[7] := 8\n\na[x] if q[x]\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "7": true
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/single-value example, false",
+          "query": "data.test.a = x",
+          "modules": [
+            "package test\n\nq[7] := 8 if false\n\na[x] if q[x]\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/mixed example, multiple rules",
+          "query": "data.test.a.b = x",
+          "modules": [
+            "package test\n\na.b.c := \"d\"\n\na.b.e := \"f\"\n\na.b.g contains x if some x in numbers.range(1, 3)\n\na.b.h[x] := 1 if x := \"one\"\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "c": "d",
+                "e": "f",
+                "g": [
+                  1,
+                  2,
+                  3
+                ],
+                "h": {
+                  "one": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "refheads/website-example/partial-obj",
+          "query": "data.example.apps_by_hostname.helium = x",
+          "modules": [
+            "package example\n\napps_by_hostname[hostname] := app if {\n\tsome i\n\tserver := sites[_].servers[_]\n\thostname := server.hostname\n\tapps[i].servers[_] == server.name\n\tapp := apps[i].name\n}\n\nsites := [\n\t{\n\t\t\"region\": \"east\",\n\t\t\"name\": \"prod\",\n\t\t\"servers\": [\n\t\t\t{\n\t\t\t\t\"name\": \"web-0\",\n\t\t\t\t\"hostname\": \"hydrogen\",\n\t\t\t},\n\t\t\t{\n\t\t\t\t\"name\": \"web-1\",\n\t\t\t\t\"hostname\": \"helium\",\n\t\t\t},\n\t\t\t{\n\t\t\t\t\"name\": \"db-0\",\n\t\t\t\t\"hostname\": \"lithium\",\n\t\t\t},\n\t\t],\n\t},\n\t{\n\t\t\"region\": \"west\",\n\t\t\"name\": \"smoke\",\n\t\t\"servers\": [\n\t\t\t{\n\t\t\t\t\"name\": \"web-1000\",\n\t\t\t\t\"hostname\": \"beryllium\",\n\t\t\t},\n\t\t\t{\n\t\t\t\t\"name\": \"web-1001\",\n\t\t\t\t\"hostname\": \"boron\",\n\t\t\t},\n\t\t\t{\n\t\t\t\t\"name\": \"db-1000\",\n\t\t\t\t\"hostname\": \"carbon\",\n\t\t\t},\n\t\t],\n\t},\n\t{\n\t\t\"region\": \"west\",\n\t\t\"name\": \"dev\",\n\t\t\"servers\": [\n\t\t\t{\n\t\t\t\t\"name\": \"web-dev\",\n\t\t\t\t\"hostname\": \"nitrogen\",\n\t\t\t},\n\t\t\t{\n\t\t\t\t\"name\": \"db-dev\",\n\t\t\t\t\"hostname\": \"oxygen\",\n\t\t\t},\n\t\t],\n\t},\n]\n\napps := [\n\t{\n\t\t\"name\": \"web\",\n\t\t\"servers\": [\"web-0\", \"web-1\", \"web-1000\", \"web-1001\", \"web-dev\"],\n\t},\n\t{\n\t\t\"name\": \"mysql\",\n\t\t\"servers\": [\"db-0\", \"db-1000\"],\n\t},\n\t{\n\t\t\"name\": \"mongodb\",\n\t\t\"servers\": [\"db-dev\"],\n\t},\n]\n\ncontainers := [\n\t{\n\t\t\"image\": \"redis\",\n\t\t\"ipaddress\": \"10.0.0.1\",\n\t\t\"name\": \"big_stallman\",\n\t},\n\t{\n\t\t\"image\": \"nginx\",\n\t\t\"ipaddress\": \"10.0.0.2\",\n\t\t\"name\": \"cranky_euclid\",\n\t},\n]\n"
+          ],
+          "want_result": [
+            {
+              "x": "web"
+            }
+          ]
+        },
+        {
+          "note": "refheads/website-example/partial-set",
+          "query": "data.example.public_network = x",
+          "modules": [
+            "package example\n\npublic_network contains net.id if {\n\tsome net in input.networks\n\tnet.public\n}\n"
+          ],
+          "input": {
+            "networks": [
+              {
+                "id": "n1",
+                "public": true
+              },
+              {
+                "id": "n2",
+                "public": false
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                "n1"
+              ]
+            }
+          ]
+        },
+        {
+          "note": "refheads/many-vars",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[a][b][c][d][e] if {\n\tsome a in numbers.range(1, 5)\n\tsome b in numbers.range(1, 5)\n\tsome c in numbers.range(1, 5)\n\tsome d in numbers.range(1, 5)\n\tsome e in numbers.range(1, 5)\n\t(((a + b) + c) + d) + e == 24\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "4": {
+                  "5": {
+                    "5": {
+                      "5": {
+                        "5": true
+                      }
+                    }
+                  }
+                },
+                "5": {
+                  "4": {
+                    "5": {
+                      "5": {
+                        "5": true
+                      }
+                    }
+                  },
+                  "5": {
+                    "4": {
+                      "5": {
+                        "5": true
+                      }
+                    },
+                    "5": {
+                      "4": {
+                        "5": true
+                      },
+                      "5": {
+                        "4": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-regressions.yaml": {
+      "sha256": "sha256:772cdd872971cd937724314c430c9c764238a915736e54b307dd36ac5d69bb44",
+      "cases": [
+        {
+          "note": "regression/ref-not-hashable",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\nms[m.z] := m if {\n\tm := input.xs[y]\n}\n"
+          ],
+          "input": {
+            "xs": {
+              "something": {
+                "z": "a"
+              }
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "ms": {
+                  "a": {
+                    "z": "a"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "regression/function refs and package extent",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\nfoo[\"bar\"](x) := x + 1\n\nx := foo.bar(2)\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "foo": {
+                },
+                "x": 3
+              }
+            }
+          ]
+        },
+        {
+          "note": "regression/rule refs and package extent",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\nbuz[\"quz\"] := 3 if input == 3\n\nx := y if {\n\ty := buz.quz with input as 3\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "buz": {
+                },
+                "x": 3
+              }
+            }
+          ]
+        },
+        {
+          "note": "regression/rule refs and package extents, multiple modules",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\nx := y if {\n\ty := data.test.buz.quz with input as 3\n}\n",
+            "package test.buz\n\nquz := 3 if input == 3\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "buz": {
+                },
+                "x": 3
+              }
+            }
+          ]
+        },
+        {
+          "note": "regression/type checking with ref rules",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nall[0] := [2]\n\nlevel := 1\n\np := y if y := all[level - 1][_]\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "regression/type checking with ref rules, number",
+          "query": "data.test.p[0] = x",
+          "modules": [
+            "package test\n\np[0] := 1\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "regression/type checking with ref rules, bool",
+          "query": "data.test.p[true] = x",
+          "modules": [
+            "package test\n\np[true] := 1\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "regression/full extent with partial object rule with empty indexer lookup result",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\np[x] := 2 if {\n\tx := input # we'll get 0 rules for data.test.p\n\tfalse\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "p": {
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "regression/obj in ref head query",
+          "query": "data.test.p[{\"a\":\"b\"}] = x",
+          "modules": [
+            "package test\n\np[{\"a\": \"b\"}] := true\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "regression/full extent with non-string (number) last term",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\np[0] := true\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "p": {
+                  "0": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "regression/full extent with non-string last term, comparison",
+          "query": "data.test.q = x",
+          "modules": [
+            "package test\n\np[0] := 1\n\nq if p[0] == 1\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "regression/full extent with non-string (boolean) last term",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\np[true] := true\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "p": {
+                  "true": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "note": "regression/full extent with non-string last term, comparison",
+          "query": "data.test.q = x",
+          "modules": [
+            "package test\n\np[true] := false\n\nq if p[true] == false\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "regression/virtual-cache key scope",
+          "query": "data.test.main = x",
+          "modules": [
+            "package test\n\nobj.sub[x][x] contains x if some x in [\"one\", \"two\"]\n\nobj[x][x] contains x if x := \"whatever\"\n\nmain contains x if {\n  [1 | obj.sub[_].one[_]]\n  x := obj.sub[_][_][_]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                "one",
+                "two"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

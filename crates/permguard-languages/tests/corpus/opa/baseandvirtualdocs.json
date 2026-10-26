@@ -1,0 +1,626 @@
+{
+  "folder": "baseandvirtualdocs",
+  "files": {
+    "test-baseandvirtualdocs-0695.yaml": {
+      "sha256": "sha256:c72877ed509c17a07a4238aeba17ebf674667a2a85017330ce84b4d999c88eb5",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/base/virtual",
+          "query": "data.topdown.p = x",
+          "modules": [
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n",
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package topdown.no.base.doc\n\np := true\n",
+            "package topdown.a.b.c.empty\n",
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n",
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n"
+          ],
+          "data": {
+            "topdown": {
+              "a": {
+                "b": {
+                  "c": {
+                    "true": false,
+                    "x": [
+                      100,
+                      200
+                    ],
+                    "z": {
+                      "a": "b"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "c",
+                  "p",
+                  0,
+                  1
+                ],
+                [
+                  "c",
+                  "p",
+                  1,
+                  2
+                ],
+                [
+                  "c",
+                  "q",
+                  0,
+                  3
+                ],
+                [
+                  "c",
+                  "q",
+                  1,
+                  4
+                ],
+                [
+                  "c",
+                  "r",
+                  "a",
+                  1
+                ],
+                [
+                  "c",
+                  "r",
+                  "b",
+                  2
+                ],
+                [
+                  "c",
+                  "s",
+                  "w",
+                  {
+                    "f": 10,
+                    "g": 9.9
+                  }
+                ],
+                [
+                  "c",
+                  "x",
+                  0,
+                  100
+                ],
+                [
+                  "c",
+                  "x",
+                  1,
+                  200
+                ],
+                [
+                  "c",
+                  "z",
+                  "a",
+                  "b"
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-baseandvirtualdocs-0696.yaml": {
+      "sha256": "sha256:a528a3ea0e2e63b8ffe21841a91142d9581e58a2bb611f29d620dfa75a0d9b3c",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/base/virtual: ground key",
+          "query": "data.topdown.q = x",
+          "modules": [
+            "package partial.topdown\n\np contains [\"c\", \"x\", 0, x41] if {\n\tdata.topdown.a.b.c.x[0] = x41\n}\n\np contains [\"c\", \"x\", 1, x41] if {\n\tdata.topdown.a.b.c.x[1] = x41\n}\n\np contains [\"c\", \"z\", \"a\", x41] if {\n\tdata.topdown.a.b.c.z.a = x41\n}\n\np contains [\n\t\"c\", \"p\", 0,\n\t1,\n]\n\np contains [\n\t\"c\", \"p\", 1,\n\t2,\n]\n\np contains [\n\t\"c\", \"q\", 0,\n\t3,\n]\n\np contains [\n\t\"c\", \"q\", 1,\n\t4,\n]\n\np contains [\n\t\"c\", \"r\",\n\t\"a\", 1,\n]\n\np contains [\n\t\"c\", \"r\",\n\t\"b\", 2,\n]\n\np contains [\n\t\"c\", \"s\", \"w\",\n\t{\"f\": 10, \"g\": 9.9},\n]\n\np contains [\n\t\"c\", \"undefined2\", \"p\",\n\ttrue,\n] if {\n\tinput.foo\n}\n\np contains [\"c\", \"x\", 0, x41] if {\n\tdata.topdown.a.b.c.x[0] = x41\n}\n\np contains [\"c\", \"x\", 1, x41] if {\n\tdata.topdown.a.b.c.x[1] = x41\n}\n\np contains [\"c\", \"z\", \"a\", x41] if {\n\tdata.topdown.a.b.c.z.a = x41\n}\n\np contains [\n\t\"c\", \"p\", 0,\n\t1,\n]\n\np contains [\n\t\"c\", \"p\", 1,\n\t2,\n]\n\np contains [\n\t\"c\", \"q\", 0,\n\t3,\n]\n\np contains [\n\t\"c\", \"q\", 1,\n\t4,\n]\n\np contains [\n\t\"c\", \"r\",\n\t\"a\", 1,\n]\n\np contains [\n\t\"c\", \"r\",\n\t\"b\", 2,\n]\n\np contains [\n\t\"c\", \"s\", \"w\",\n\t{\"f\": 10, \"g\": 9.9},\n]\n\np contains [\n\t\"c\", \"undefined2\", \"p\",\n\ttrue,\n] if {\n\tinput.foo\n}\n",
+            "package topdown.a.b.c.empty\n",
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n",
+            "package topdown.no.base.doc\n\np := true\n",
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n",
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\tdata.partial.topdown.p = _result\n}\n",
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n"
+          ],
+          "data": {
+            "topdown": {
+              "a": {
+                "b": {
+                  "c": {
+                    "true": false,
+                    "x": [
+                      100,
+                      200
+                    ],
+                    "z": {
+                      "a": "b"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "c",
+                  "p",
+                  1
+                ],
+                [
+                  "c",
+                  "q",
+                  3
+                ],
+                [
+                  "c",
+                  "x",
+                  100
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-baseandvirtualdocs-0697.yaml": {
+      "sha256": "sha256:a23c274376c50c5cc79a7daa9e5b570b16b132af4bd5bfcb24fef23c558f24fc",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/base/virtual: prefix",
+          "query": "data.topdown.r = x",
+          "modules": [
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n",
+            "package partial.topdown\n\np contains [\"c\", \"x\", 0, x41] if {\n\tdata.topdown.a.b.c.x[0] = x41\n}\n\np contains [\"c\", \"x\", 1, x41] if {\n\tdata.topdown.a.b.c.x[1] = x41\n}\n\np contains [\"c\", \"z\", \"a\", x41] if {\n\tdata.topdown.a.b.c.z.a = x41\n}\n\np contains [\n\t\"c\", \"p\", 0,\n\t1,\n]\n\np contains [\n\t\"c\", \"p\", 1,\n\t2,\n]\n\np contains [\n\t\"c\", \"q\", 0,\n\t3,\n]\n\np contains [\n\t\"c\", \"q\", 1,\n\t4,\n]\n\np contains [\n\t\"c\", \"r\",\n\t\"a\", 1,\n]\n\np contains [\n\t\"c\", \"r\",\n\t\"b\", 2,\n]\n\np contains [\n\t\"c\", \"s\", \"w\",\n\t{\"f\": 10, \"g\": 9.9},\n]\n\np contains [\n\t\"c\", \"undefined2\", \"p\",\n\ttrue,\n] if {\n\tinput.foo\n}\n\np contains [\"c\", \"x\", 0, x41] if {\n\tdata.topdown.a.b.c.x[0] = x41\n}\n\np contains [\"c\", \"x\", 1, x41] if {\n\tdata.topdown.a.b.c.x[1] = x41\n}\n\np contains [\"c\", \"z\", \"a\", x41] if {\n\tdata.topdown.a.b.c.z.a = x41\n}\n\np contains [\n\t\"c\", \"p\", 0,\n\t1,\n]\n\np contains [\n\t\"c\", \"p\", 1,\n\t2,\n]\n\np contains [\n\t\"c\", \"q\", 0,\n\t3,\n]\n\np contains [\n\t\"c\", \"q\", 1,\n\t4,\n]\n\np contains [\n\t\"c\", \"r\",\n\t\"a\", 1,\n]\n\np contains [\n\t\"c\", \"r\",\n\t\"b\", 2,\n]\n\np contains [\n\t\"c\", \"s\", \"w\",\n\t{\"f\": 10, \"g\": 9.9},\n]\n\np contains [\n\t\"c\", \"undefined2\", \"p\",\n\ttrue,\n] if {\n\tinput.foo\n}\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n",
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n",
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = {\n\t\t[\n\t\t\t\"c\", \"p\",\n\t\t\t1,\n\t\t],\n\t\t[\n\t\t\t\"c\", \"q\",\n\t\t\t3,\n\t\t],\n\t\t[\"c\", \"x\", 100],\n\t}\n}\n",
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package topdown.no.base.doc\n\np := true\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n",
+            "package topdown.a.b.c.empty\n"
+          ],
+          "data": {
+            "topdown": {
+              "a": {
+                "b": {
+                  "c": {
+                    "true": false,
+                    "x": [
+                      100,
+                      200
+                    ],
+                    "z": {
+                      "a": "b"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "c",
+                  {
+                    "empty": {
+                    },
+                    "p": [
+                      1,
+                      2
+                    ],
+                    "q": [
+                      3,
+                      4
+                    ],
+                    "r": {
+                      "a": 1,
+                      "b": 2
+                    },
+                    "s": {
+                      "w": {
+                        "f": 10,
+                        "g": 9.9
+                      }
+                    },
+                    "true": false,
+                    "undefined1": {
+                    },
+                    "undefined2": {
+                    },
+                    "x": [
+                      100,
+                      200
+                    ],
+                    "z": {
+                      "a": "b"
+                    }
+                  }
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-baseandvirtualdocs-0698.yaml": {
+      "sha256": "sha256:a082543b8d55fb0483ba215a8dee1e9ba564b662d9122f35961b904a5805a9ae",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/base/virtual: set",
+          "query": "data.topdown.w = x",
+          "modules": [
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\tdata.partial.topdown.r = _result\n}\n",
+            "package topdown.a.b.c.empty\n",
+            "package partial.topdown\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n",
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n",
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n",
+            "package topdown.no.base.doc\n\np := true\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n"
+          ],
+          "data": {
+            "topdown": {
+              "set": {
+                "u": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ]
+              }
+            }
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": {
+                "u": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "v": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-baseandvirtualdocs-0699.yaml": {
+      "sha256": "sha256:cb3d29cb38155f12aacbb1d4d3aefeb13144d7086b02be79985f8ef44c69352c",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/base/virtual: no base",
+          "query": "data.topdown.s = x",
+          "modules": [
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown.no.base.doc\n\np := true\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package topdown.a.b.c.empty\n",
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n",
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = {\"u\": [1, 2, 3, 4], \"v\": {1, 2, 3, 4}}\n}\n",
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n",
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n",
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package partial.topdown\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": {
+                "base": {
+                  "doc": {
+                    "p": true
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-baseandvirtualdocs-0700.yaml": {
+      "sha256": "sha256:6e30f3d9abb9031ecf155f6b0edeecd5bc7b05927fe7e7cd0c56c4a846c70c4a",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/base/virtual: undefined",
+          "query": "data.topdown.t = x",
+          "modules": [
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n",
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package topdown.a.b.c.empty\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n",
+            "package topdown.no.base.doc\n\np := true\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = {\"base\": {\"doc\": {\"p\": true}}}\n}\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package partial.topdown\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n",
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n",
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-baseandvirtualdocs-0701.yaml": {
+      "sha256": "sha256:6c5ddc7a22a7d3a1b55c64a9ab3c5ec651961b724343f0fdf8d91aee9a0698a1",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/base/virtual: undefined-2",
+          "query": "data.topdown.v = x",
+          "modules": [
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = {}\n}\n",
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n",
+            "package topdown.no.base.doc\n\np := true\n",
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n",
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n",
+            "package topdown.a.b.c.empty\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package partial.topdown\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n"
+          ],
+          "data": {
+            "topdown": {
+              "g": {
+                "h": {
+                  "k": [
+                    "1",
+                    "2",
+                    "3"
+                  ]
+                }
+              }
+            }
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": {
+                "h": {
+                  "k": [
+                    "1",
+                    "2",
+                    "3"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-baseandvirtualdocs-0702.yaml": {
+      "sha256": "sha256:ddf4366745a1753597d4bafeb71a0ace2ee33adb4bb1d1b640af045913bdf309",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/base/virtual: missing input value",
+          "query": "data.topdown.u = x",
+          "modules": [
+            "package topdown.no.base.doc\n\np := true\n",
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n",
+            "package topdown.a.b.c.empty\n",
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n",
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package partial.topdown\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = {\"h\": {\"k\": [1, 2, 3]}}\n}\n",
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n",
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-baseandvirtualdocs-0703.yaml": {
+      "sha256": "sha256:6c56365e7795e160d21bc536224e8468c560c96e04f7ab73ce620bf3c03d0aeb",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/iterate ground",
+          "query": "data.topdown.iterate_ground = x",
+          "modules": [
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n",
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n",
+            "package topdown.no.base.doc\n\np := true\n",
+            "package partial.topdown\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n",
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n",
+            "package topdown.a.b.c.empty\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\tdata.topdown.missing.input.value = _result\n}\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+                "p",
+                "r"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-baseandvirtualdocs-0704.yaml": {
+      "sha256": "sha256:1bdf531f07c9c91426b3127d6e335d33a55274dcb78962723ea3da6ff0e41b43",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/base/virtual: conflicts",
+          "query": "data.topdown.conflicts = x",
+          "modules": [
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = {\"p\", \"r\"}\n}\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n",
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n",
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package topdown.no.base.doc\n\np := true\n",
+            "package partial.topdown\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n",
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n",
+            "package topdown.a.b.c.empty\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n"
+          ],
+          "data": {
+            "topdown": {
+              "conflicts": {
+                "k": "foo"
+              }
+            }
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": {
+                "k": "foo"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-baseandvirtualdocs-0705.yaml": {
+      "sha256": "sha256:064d4a6f7321327abc59cb7d015b55b30a8a75a263943cb083c137ab1fad7031",
+      "cases": [
+        {
+          "note": "baseandvirtualdocs/enumerate virtual errors",
+          "query": "data.enum_errors.caller.p = x",
+          "modules": [
+            "package topdown.a.b.c.s\n\nw := {\"f\": 10, \"g\": 9.9}\n",
+            "package topdown.a.b.c.undefined1\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n\nq if {\n\tfalse\n}\n",
+            "package topdown.set\n\nv contains __local6__ if {\n\ttrue\n\t__local6__ = data.topdown.set.u[_]\n}\n",
+            "package enum_errors.a.b.c\n\np := x if {\n\t__local0__ = 1 / 0\n\tx = __local0__\n}\n",
+            "package topdown.a.b.c.empty\n",
+            "package topdown.virtual.constants\n\np := 1\n\nq := 2\n\nr := 1\n",
+            "package topdown.g.h\n\np if {\n\tfalse\n}\n",
+            "package enum_errors.caller\n\np[x] := y if {\n\tdata.enum_errors.a[x] = y\n}\n",
+            "package partial.topdown\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n\nr contains [\"c\", x21] if {\n\tdata.topdown.a.b.c = x21\n}\n",
+            "package topdown.missing.input.value\n\np := __local7__ if {\n\ttrue\n\t__local7__ = input.deadbeef\n}\n",
+            "package topdown.conflicts\n\nk := \"bar\"\n",
+            "package topdown.no.base.doc\n\np := true\n",
+            "package topdown.a.b.c.undefined2\n\np if {\n\tinput.foo\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = {\"k\": \"foo\"}\n}\n",
+            "package topdown\n\np contains [x1, x2, x3, x4] if {\n\tdata.topdown.a.b[x1][x2][x3] = x4\n}\n\nq contains [x1, x2, x3] if {\n\tdata.topdown.a.b[x1][x2][0] = x3\n}\n\nr contains [x1, x2] if {\n\tdata.topdown.a.b[x1] = x2\n}\n\ns := __local1__ if {\n\ttrue\n\t__local1__ = data.topdown.no\n}\n\nt := __local2__ if {\n\ttrue\n\t__local2__ = data.topdown.a.b.c.undefined1\n}\n\nu := __local3__ if {\n\ttrue\n\t__local3__ = data.topdown.missing.input.value\n}\n\nv := __local4__ if {\n\ttrue\n\t__local4__ = data.topdown.g\n}\n\nw := __local5__ if {\n\ttrue\n\t__local5__ = data.topdown.set\n}\n\niterate_ground contains x if {\n\tdata.topdown.virtual.constants[x] = 1\n}\n",
+            "package topdown.a.b.c\n\np := [1, 2]\n\nq := [3, 4]\n\nr[\"a\"] := 1\n\nr[\"b\"] := 2\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": {
+                "b": {
+                  "c": {
+                  }
+                }
+              }
+            }
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "divide by zero",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

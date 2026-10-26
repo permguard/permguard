@@ -19,6 +19,19 @@ is cut.
 
 ### Added
 
+- **A conformance gate per language (TL-6).**
+  `permguard_languages::conformance` records the languages model's eight gate items for Cedar, Rego and Dogwood.
+  The items are golden vectors, upstream corpus parity, adversarial tests, replay on two platforms, the engine-upgrade differential, fault injection, stored objects and the supply chain.
+  Each item passes with the tests and CI jobs that prove it, which a test checks are real tests, or is open with the reason.
+  Cedar and Rego pass every item; Dogwood's golden vectors and its corrupted-store fault are open.
+  Each runtime has a golden vector file of manifests, partitions and requests (`tests/vectors/<runtime>.json`), recorded against its locked engine.
+  An engine upgrade fails until the vectors are recorded again with `PERMGUARD_BLESS=1` and their diff reviewed.
+  Cedar reproduces the 74 requests of the 22 text-format cases of `cedar-policy/cedar-integration-tests` at its 4.11 run.
+  Regorus reproduces 1452 of OPA's `v1.2.0` conformance cases, every folder its own harness passes, 8 set apart by name with the reason.
+  Both corpora are vendored under `tests/corpus` with their source, revision and licence.
+  The Data Plane's discovery document lists each runtime with its descriptor digest, whether this deployment serves it and its gate (`languages[]`).
+  CI runs the languages crate on macOS as well.
+
 - **Image verification at deploy (TD-4).**
   `imageVerification.enabled` starts every Permguard Pod the chart renders with a `verify-image` init container that runs `gh attestation verify` on the digest the Pod runs.
   The digest's attestation must name the repository, the builder workflow `release-build.yml` and the release tag.
@@ -27,11 +40,13 @@ is cut.
   The verifier image is named by digest too, and the GitHub token comes from `imageVerification.tokenSecret`.
   `values-production.yaml` turns it on, and a `regulated` workload refuses to render without it.
   `docker/verifier/Dockerfile` builds the verifier from the pinned `cli/cli` release.
-  No published image passes the defaults yet: 0.1.6's images carry no attestation and no release has been built by `release-build.yml`; 0.1.5 passes with `release-pipeline.yml` and `refs/tags/v0.1.5` (`ops/container-verification.md`).
+  No published image passes the defaults yet: 0.1.6's images carry no attestation and no release has been built by `release-build.yml`.
+  0.1.5 passes with `release-pipeline.yml` and `refs/tags/v0.1.5` (`ops/container-verification.md`).
 
 - **The Compose lab's five profiles (TD-3).**
   `docker-compose.lab.yml` runs `all-in-one`, `split-plane`, `multi-data-plane`, `multi-group` and `temporal-replicas`, started with the profile's name in `COMPOSE_PROFILES`.
-  The lab's own test authority issues every certificate, grants its operator on each volume before the Host first serves, and enrolls each Data Plane over one-time invitations with the exact fingerprints it read from both Hosts.
+  The lab's own test authority issues every certificate and grants its operator on each volume before the Host first serves.
+  It enrolls each Data Plane over one-time invitations, with the exact fingerprints it read from both Hosts.
   A Data Plane holds two memberships with its coordinator: `policy.mirror` on the Control Plane's tree of its zone, and its shipping tasks on its own.
   Every Host is reached by its service name; the ports published on the host's loopback are ephemeral, and nothing depends on a loopback alias or the host's network.
   `scripts/compose-lab.sh` (`task lab:test`) starts each profile on fresh volumes and runs what it must prove, the same on Linux and on macOS.
@@ -655,6 +670,10 @@ is cut.
 
 ### Changed
 
+- **From `production` up, a Data Plane serves only runtimes whose conformance gate passes (TL-6).**
+  A ledger of a runtime with an open item is refused at load, naming the items, even when its experimental runtime is opted into.
+  Dogwood is therefore served only under `development` until its gate passes.
+
 - **The Compose lab's `lab` profile is gone (TD-3).**
   It started both planes on a configuration that predates membership and published the Data Plane on the loopback alias `127.0.0.2`.
   `task lab:up` and `make lab-up` take `PROFILE` (default `split-plane`); Prometheus, Grafana, Loki, Promtail and Tempo start only with the `observability` profile, beside a lab profile or alone.
@@ -982,6 +1001,11 @@ is cut.
 - An identity rotation destroys every retired private key past its grace that the custody still holds, so a key a previous rotation could not destroy is tried again; a key kept is reported as `host.identity_key_kept`, and the public keys and successions stay.
 
 ### Fixed
+
+- **Cedar decides a request whose subject or resource nobody stated (TL-6).**
+  An entity that neither the entity store nor the request's properties state was added to the store with no attributes.
+  A schema that requires attributes then refused the whole request as `evaluation_input_rejected`.
+  The entity is now absent, as Cedar reads it, and the request is decided, as upstream's integration corpus decides it.
 
 - **Decisions answered just after a membership was synced are shipped (TD-3).**
   A member that took its manifest with `host members sync` registered its ship tasks only at its next periodic pass, up to a minute later.

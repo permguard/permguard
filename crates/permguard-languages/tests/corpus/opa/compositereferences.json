@@ -1,0 +1,371 @@
+{
+  "folder": "compositereferences",
+  "files": {
+    "test-compositereferences-0743.yaml": {
+      "sha256": "sha256:ee0255f8562f8b5ab898b2dd0e0790c838e0166055685da5aec302d9c71ae82c",
+      "cases": [
+        {
+          "note": "compositereferences/array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = data.fixture.r[[1, 2]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-compositereferences-0744.yaml": {
+      "sha256": "sha256:9ed46e0a0b381e779d59da60d32fdaad77309fa9a2ae7ed0210d5d46026256dc",
+      "cases": [
+        {
+          "note": "compositereferences/object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = data.fixture.r[{\"foo\": \"bar\"}]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "foo": "bar"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-compositereferences-0745.yaml": {
+      "sha256": "sha256:def41458d6df412e7ac223e3808ce3a2e51f1aeb3965d1c29e70b97c7b3d03ee",
+      "cases": [
+        {
+          "note": "compositereferences/set",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = data.fixture.r[{1, 2}]\n}\n",
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-compositereferences-0746.yaml": {
+      "sha256": "sha256:6d32380c06a0e809bdfdd6bccf0e4da11d555474caedf7440c9db678a4992c83",
+      "cases": [
+        {
+          "note": "compositereferences/unify array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = [x | data.fixture.r[[1, x]]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-compositereferences-0747.yaml": {
+      "sha256": "sha256:9d30b00630504c2a1d62be1289a4276a72dc528b7d773a20a0e5e4af4fdea6a9",
+      "cases": [
+        {
+          "note": "compositereferences/unify object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = [x | data.fixture.r[{\"foo\": x}]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "bar"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-compositereferences-0748.yaml": {
+      "sha256": "sha256:d4c15428f3c49ce4c2c98bb3d184a0c23b2c5af9aca85809ca856b430d1ac640",
+      "cases": [
+        {
+          "note": "compositereferences/unify partial ground array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = [x | data.fixture.p1[[x, 2]]]\n}\n",
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-compositereferences-0749.yaml": {
+      "sha256": "sha256:35f8a3184da6ecb7f7a285a2603541e82268c2de3a00bf6649d02ad51c94056b",
+      "cases": [
+        {
+          "note": "compositereferences/complete doc unify",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = [[x, y] | data.fixture.s[[x, y]]]\n}\n",
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  3
+                ],
+                [
+                  2,
+                  7
+                ],
+                [
+                  [
+                    1,
+                    1
+                  ],
+                  4
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-compositereferences-0750.yaml": {
+      "sha256": "sha256:93bea477754f5c752f490cd443ea66c09dd1d11be87daf5725bcd2bf5643a724",
+      "cases": [
+        {
+          "note": "compositereferences/partial doc unify",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = [[x, y] | data.fixture.r[[x, y]]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  3
+                ],
+                [
+                  2,
+                  7
+                ],
+                [
+                  [
+                    1,
+                    1
+                  ],
+                  4
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-compositereferences-0751.yaml": {
+      "sha256": "sha256:3444696ccea78c8c7661a7027dfaf24eb2b7cac9f8fc4b2c5eb327eb9fb119d2",
+      "cases": [
+        {
+          "note": "compositereferences/empty set",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np if {\n\tdata.fixture.empty[set()]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-compositereferences-0752.yaml": {
+      "sha256": "sha256:e4e273c72b7b9c552a6156e481128fcb2bc050a7350180e9ca73b3f05896b4f3",
+      "cases": [
+        {
+          "note": "compositereferences/ref",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local1__ = data.fixture.foo.bar\n\t__local0__ = data.fixture.r[[__local1__, 3]]\n}\n",
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                3
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-compositereferences-0753.yaml": {
+      "sha256": "sha256:e5a4d0fe05519ba82d442c9a7408b817bf944b7646392d645791208bcc52f2ce",
+      "cases": [
+        {
+          "note": "compositereferences/nested ref",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local1__ = data.fixture.o.foo\n\t__local2__ = data.fixture.foo[__local1__]\n\t__local0__ = data.fixture.r[[__local2__, 3]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                3
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-compositereferences-0754.yaml": {
+      "sha256": "sha256:7ce6c887510ced494add7f69820ba951ea8412628a5a1cc3acca160c5a387110",
+      "cases": [
+        {
+          "note": "compositereferences/comprehension",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local1__ = [x | y = [1, 1]; x = y[_]]\n\t__local0__ = data.fixture.s[[__local1__, 4]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  1
+                ],
+                4
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-compositereferences-0755.yaml": {
+      "sha256": "sha256:f3cce7447f34e19fda585d707a8218dd13f4cd4e007ad2caae2b55442e3f8dfc",
+      "cases": [
+        {
+          "note": "compositereferences/missing array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = data.fixture.r[[1, 4]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-compositereferences-0756.yaml": {
+      "sha256": "sha256:93b849877735d048295fde65a14d885c80e46d12b529ae399208ede2db81804a",
+      "cases": [
+        {
+          "note": "compositereferences/missing object value",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = data.fixture.r[{\"foo\": \"baz\"}]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-compositereferences-0757.yaml": {
+      "sha256": "sha256:e2727146bcbfd60ccce13fa1fd539f9405ce0f7b4a1a9a8735a8119805fd9c39",
+      "cases": [
+        {
+          "note": "compositereferences/missing set",
+          "query": "data.test.p = x",
+          "modules": [
+            "package fixture\n\nempty := {set()}\n\ns := {[1, 2], [1, 3], {\"foo\": \"bar\"}, {1, 2}, [2, 7], [[1, 1], 4]}\n\nr contains x if {\n\tdata.fixture.s[x]\n}\n\na := [1, 2]\n\no := {\"foo\": \"bar\"}\n\nfoo := {\"bar\": 1}\n\np1 contains [1, 2]\n\np1 contains [1, 3]\n\np1 contains [2, 2]\n",
+            "package test\n\np := __local0__ if {\n\ttrue\n\t__local0__ = data.fixture.r[{1, 3}]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    }
+  }
+}

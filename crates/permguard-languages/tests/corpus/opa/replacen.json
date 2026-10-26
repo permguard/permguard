@@ -1,0 +1,120 @@
+{
+  "folder": "replacen",
+  "files": {
+    "test-replacen-0374.yaml": {
+      "sha256": "sha256:011e8e4a613bcbe84aef195ad357b33804bdf1c8c9682dc08457e692ba59efd8",
+      "cases": [
+        {
+          "note": "replacen/replace multiple patterns",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tstrings.replace_n({\"<\": \"&lt;\", \">\": \"&gt;\"}, \"This is <b>HTML</b>!\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "This is &lt;b&gt;HTML&lt;/b&gt;!"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        },
+        {
+          "note": "replacen/replace multiple patterns/overlapping",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.replace_n({\"f\": \"x\", \"foo\": \"xxx\"}, \"foobar\")\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "xoobar"
+            }
+          ]
+        },
+        {
+          "note": "replacen/replace multiple patterns/overlapping/insertion order does not matter",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := strings.replace_n({k: v | k := [\"f\", \"foo\"][i]; v := [\"x\", \"xxx\"][i]}, \"foo\")\n\ty := strings.replace_n({k: v | k := [\"foo\", \"f\"][i]; v := [\"xxx\", \"x\"][i]}, \"foo\")\n\tx == y\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "xoo"
+            }
+          ]
+        }
+      ]
+    },
+    "test-replacen-0375.yaml": {
+      "sha256": "sha256:6bf06b88a6f4dd12f4ebbf23bddcdec9c96af861537f1626ad0023379061501e",
+      "cases": [
+        {
+          "note": "replacen/find no patterns",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tstrings.replace_n({\"old1\": \"new1\", \"old2\": \"new2\"}, \"Everything is new1, new2\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "Everything is new1, new2"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-replacen-bad-operands.yaml": {
+      "sha256": "sha256:cd11dadf7981556e79c6f52ea7b6abd2222b669ee16c78712fab7c46eb76412a",
+      "cases": [
+        {
+          "note": "replacen/bad pattern object operand/non-string key",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.replace_n({2: \"x\" | true}, \"foo\")\n"
+          ],
+          "want_error_code": "eval_type_error",
+          "want_error": "strings.replace_n: operand 1 non-string key found in pattern object",
+          "strict_error": true
+        },
+        {
+          "note": "replacen/bad pattern object operand/non-string value",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.replace_n(data.pattern, \"foo\")\n"
+          ],
+          "data": {
+            "pattern": {
+              "f": 100
+            }
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "strings.replace_n: operand 1 non-string value found in pattern object",
+          "strict_error": true
+        },
+        {
+          "note": "replacen/bad pattern object operand/non-string value",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := strings.replace_n({\"foo\": \"baz\"}, data.string)\n"
+          ],
+          "data": {
+            "string": 100
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "strings.replace_n: operand 2 must be string but got number",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

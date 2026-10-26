@@ -128,6 +128,9 @@ pub fn check_manifest(
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Enabled {
     names: std::collections::BTreeSet<String>,
+    /// Whether a runtime must pass its conformance gate to be served (TL-6): what a `production`
+    /// or `regulated` Host asks.
+    conformance: bool,
 }
 
 impl Enabled {
@@ -155,7 +158,27 @@ impl Enabled {
     {
         Self {
             names: names.into_iter().map(Into::into).collect(),
+            conformance: false,
         }
+    }
+
+    /// The same opt-ins, serving only runtimes whose conformance gate passes (TL-6): a
+    /// `production` or `regulated` Host neither loads nor advertises one with an open item.
+    pub fn requiring_conformance(mut self) -> Self {
+        self.conformance = true;
+        self
+    }
+
+    /// Whether a runtime must pass its conformance gate to be served here.
+    pub fn requires_conformance(&self) -> bool {
+        self.conformance
+    }
+
+    /// Whether this deployment will serve the runtime `name`: opted into when it is
+    /// experimental, and its gate passing when the deployment requires it.
+    pub fn serves(&self, language: &dyn Language) -> bool {
+        (!language.experimental() || self.allows(language.name()))
+            && (!self.conformance || crate::conformance::production_ready(language.name()))
     }
 
     /// Whether this deployment will serve the runtime `name`.
@@ -327,6 +350,20 @@ fn check_enabled(
         let Some(language) = crate::lookup::language(declared) else {
             continue;
         };
+        if enabled.requires_conformance() && !crate::conformance::production_ready(language.name())
+        {
+            let open: Vec<&str> = crate::conformance::open_items(language.name())
+                .into_iter()
+                .map(crate::conformance::Item::name)
+                .collect();
+            return Err(permguard_objects::manifest::ManifestError {
+                detail: format!(
+                    "the runtime `{name}` is `{declared}`, whose conformance gate has open items \
+                     ({}): this Host's assurance profile serves only runtimes whose gate passes",
+                    open.join(", ")
+                ),
+            });
+        }
         if !language.experimental() || enabled.allows(language.name()) {
             continue;
         }
@@ -1110,6 +1147,40 @@ mod tests {
     }
 
     /// The gate asks each language, rather than consulting a list of names kept beside it.
+    /// TL-6: a deployment that requires the conformance gate refuses a runtime whose gate has an
+    /// open item, by name and with the items, whatever it opted into; one that does not serves it.
+    #[test]
+    fn a_runtime_whose_gate_is_open_is_refused_where_the_gate_is_required() {
+        let dogwood = manifest("dogwood", PROFILE_PDP_TEMPORAL_V1ALPHA1);
+        let opted = Enabled::from_names(["dogwood"]);
+        assert!(check_manifest_with(&dogwood, &opted).is_ok());
+        let refused = check_manifest_with(&dogwood, &opted.clone().requiring_conformance())
+            .expect_err("dogwood's gate is open");
+        assert!(
+            refused.detail.contains("golden_vectors"),
+            "{}",
+            refused.detail
+        );
+        assert!(
+            refused.detail.contains("conformance gate"),
+            "{}",
+            refused.detail
+        );
+        // Cedar's gate passes: served either way.
+        let cedar = manifest("cedar", PROFILE_PDP_NATIVE_V1);
+        assert!(
+            check_manifest_with(&cedar, &Enabled::stable_only().requiring_conformance()).is_ok()
+        );
+        let carried = |name| crate::lookup::language(name).expect("carried");
+        let required = Enabled::from_names(["dogwood"]).requiring_conformance();
+        assert!(required.serves(carried("cedar")) && required.serves(carried("rego")));
+        assert!(!required.serves(carried("dogwood")));
+        assert!(
+            !Enabled::stable_only().serves(carried("dogwood")),
+            "not opted into"
+        );
+    }
+
     #[test]
     fn a_language_declares_whether_it_is_experimental() {
         let carried: Vec<&str> = experimental_languages().collect();

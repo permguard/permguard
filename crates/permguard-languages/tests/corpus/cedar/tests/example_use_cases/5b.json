@@ -1,0 +1,214 @@
+{
+ "policies": "tests/example_use_cases/policies_5b.cedar",
+ "entities": "sample-data/sandbox_b/entities.json",
+ "schema": "sample-data/sandbox_b/schema.cedarschema",
+ "shouldValidate": true,
+ "requests": [
+  {
+   "description": "ahmad should be able upload a 1MB PNG",
+   "principal": {
+    "type": "User",
+    "id": "ahmad"
+   },
+   "action": {
+    "type": "Action",
+    "id": "addPhoto"
+   },
+   "resource": {
+    "type": "Album",
+    "id": "alice_vacation"
+   },
+   "context": {
+    "authenticated": true,
+    "photo": {
+     "filetype": "PNG",
+     "filesize_mb": 1
+    }
+   },
+   "decision": "allow",
+   "reason": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "description": "ahmad should not be able to upload a 2MB PNG",
+   "principal": {
+    "type": "User",
+    "id": "ahmad"
+   },
+   "action": {
+    "type": "Action",
+    "id": "addPhoto"
+   },
+   "resource": {
+    "type": "Album",
+    "id": "alice_vacation"
+   },
+   "context": {
+    "authenticated": true,
+    "photo": {
+     "filetype": "PNG",
+     "filesize_mb": 2
+    }
+   },
+   "decision": "deny",
+   "reason": [],
+   "errors": []
+  },
+  {
+   "description": "ahmad should not be able to upload a 1MB GIF",
+   "principal": {
+    "type": "User",
+    "id": "ahmad"
+   },
+   "action": {
+    "type": "Action",
+    "id": "addPhoto"
+   },
+   "resource": {
+    "type": "Album",
+    "id": "alice_vacation"
+   },
+   "context": {
+    "authenticated": true,
+    "photo": {
+     "filetype": "GIF",
+     "filesize_mb": 1
+    }
+   },
+   "decision": "deny",
+   "reason": [],
+   "errors": []
+  },
+  {
+   "description": "ahmad should not be able to upload an 80MB RAW",
+   "principal": {
+    "type": "User",
+    "id": "ahmad"
+   },
+   "action": {
+    "type": "Action",
+    "id": "addPhoto"
+   },
+   "resource": {
+    "type": "Album",
+    "id": "alice_vacation"
+   },
+   "context": {
+    "authenticated": true,
+    "photo": {
+     "filetype": "RAW",
+     "filesize_mb": 80
+    }
+   },
+   "decision": "deny",
+   "reason": [],
+   "errors": []
+  },
+  {
+   "description": "giuseppe should be able upload a 1MB PNG",
+   "principal": {
+    "type": "User",
+    "id": "giuseppe"
+   },
+   "action": {
+    "type": "Action",
+    "id": "addPhoto"
+   },
+   "resource": {
+    "type": "Album",
+    "id": "alice_vacation"
+   },
+   "context": {
+    "authenticated": true,
+    "photo": {
+     "filetype": "PNG",
+     "filesize_mb": 1
+    }
+   },
+   "decision": "allow",
+   "reason": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "description": "giuseppe should not be able to upload a 2MB PNG",
+   "principal": {
+    "type": "User",
+    "id": "giuseppe"
+   },
+   "action": {
+    "type": "Action",
+    "id": "addPhoto"
+   },
+   "resource": {
+    "type": "Album",
+    "id": "alice_vacation"
+   },
+   "context": {
+    "authenticated": true,
+    "photo": {
+     "filetype": "PNG",
+     "filesize_mb": 2
+    }
+   },
+   "decision": "deny",
+   "reason": [],
+   "errors": []
+  },
+  {
+   "description": "giuseppe should not be able to upload a 1MB GIF",
+   "principal": {
+    "type": "User",
+    "id": "giuseppe"
+   },
+   "action": {
+    "type": "Action",
+    "id": "addPhoto"
+   },
+   "resource": {
+    "type": "Album",
+    "id": "alice_vacation"
+   },
+   "context": {
+    "authenticated": true,
+    "photo": {
+     "filetype": "GIF",
+     "filesize_mb": 1
+    }
+   },
+   "decision": "deny",
+   "reason": [],
+   "errors": []
+  },
+  {
+   "description": "giuseppe should be able to upload an 80MB RAW",
+   "principal": {
+    "type": "User",
+    "id": "giuseppe"
+   },
+   "action": {
+    "type": "Action",
+    "id": "addPhoto"
+   },
+   "resource": {
+    "type": "Album",
+    "id": "alice_vacation"
+   },
+   "context": {
+    "authenticated": true,
+    "photo": {
+     "filetype": "RAW",
+     "filesize_mb": 80
+    }
+   },
+   "decision": "allow",
+   "reason": [
+    "policy0"
+   ],
+   "errors": []
+  }
+ ]
+}

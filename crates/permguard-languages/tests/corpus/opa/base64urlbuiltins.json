@@ -1,0 +1,92 @@
+{
+  "folder": "base64urlbuiltins",
+  "files": {
+    "test-base64urlbuiltins-0935.yaml": {
+      "sha256": "sha256:4871246035ca82c48a218d11f72c4e6a8f907adfe75eb171ac975deceb6d9d91",
+      "cases": [
+        {
+          "note": "base64urlbuiltins/encode-1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64url.encode(\"hello\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "aGVsbG8="
+            }
+          ]
+        },
+        {
+          "note": "base64urlbuiltins/encode-2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64url.encode(\"there\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "dGhlcmU="
+            }
+          ]
+        }
+      ]
+    },
+    "test-base64urlbuiltins-0937.yaml": {
+      "sha256": "sha256:8968bf86d7027024bffd8380f0f5f64d05644e927904cd2a90cca604460275f8",
+      "cases": [
+        {
+          "note": "base64urlbuiltins/decode-1 padded string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64url.decode(\"aGVsbG8=\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "hello"
+            }
+          ]
+        },
+        {
+          "note": "base64urlbuiltins/decode-2 non-padded string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64url.decode(\"aGVsbG8\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "hello"
+            }
+          ]
+        }
+      ]
+    },
+    "test-base64urlbuiltins-0939.yaml": {
+      "sha256": "sha256:580567c2dcfd647bbe64bbc81df9435b1f2f93cb91e470992bfe3b35056cbc82",
+      "cases": [
+        {
+          "note": "base64urlbuiltins/encode-1 without padding",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64url.encode_no_pad(\"hello\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "aGVsbG8"
+            }
+          ]
+        },
+        {
+          "note": "base64urlbuiltins/encode-2 without padding",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64url.encode_no_pad(\"there\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "dGhlcmU"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

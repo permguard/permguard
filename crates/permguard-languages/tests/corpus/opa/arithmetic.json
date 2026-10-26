@@ -1,0 +1,523 @@
+{
+  "folder": "arithmetic",
+  "files": {
+    "test-arithmetic-0810.yaml": {
+      "sha256": "sha256:cee6893b93dffd16b83034e62b0a9dd9385459ca5c4db2fed0a25a6c2345bcbd",
+      "cases": [
+        {
+          "note": "arithmetic/plus",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\tdata.a[i] = x\n\t__local0__ = i + x\n\ty = __local0__\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                3,
+                5,
+                7
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-arithmetic-0811.yaml": {
+      "sha256": "sha256:b5b83dd182c3606db582eb026616dcfbac4c9cbf42ff76f42cbbe745dc73d499",
+      "cases": [
+        {
+          "note": "arithmetic/minus",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\tdata.a[i] = x\n\t__local0__ = i - x\n\ty = __local0__\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                -1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-arithmetic-0812.yaml": {
+      "sha256": "sha256:9f79bc17c34b0a162e126b51cb3323a3035bc9a309acc7cb10975c9fe12aa58d",
+      "cases": [
+        {
+          "note": "arithmetic/multiply",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\tdata.a[i] = x\n\t__local0__ = i * x\n\ty = __local0__\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                0,
+                2,
+                6,
+                12
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-arithmetic-0813.yaml": {
+      "sha256": "sha256:5bf72d83b91881fca655a2a818ca2c274cab888d3e98cd56d534bf514de0e172",
+      "cases": [
+        {
+          "note": "arithmetic/divide+round",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains z if {\n\tdata.a[i] = x\n\ty = i / x\n\tround(y, z)\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                0,
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-arithmetic-0814.yaml": {
+      "sha256": "sha256:43af06e0ed73318ee16171212d10c471eebe94117d5f44ca87378e0cc4cf5996",
+      "cases": [
+        {
+          "note": "arithmetic/divide+error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := y if {\n\tdata.a[i] = x\n\t__local0__ = x / i\n\ty = __local0__\n}\n"
+          ],
+          "data": {
+            "a": [
+              1
+            ]
+          },
+          "want_error_code": "eval_builtin_error",
+          "want_error": "divide by zero",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-arithmetic-0815.yaml": {
+      "sha256": "sha256:3590a15e5be8749e134b72aa3c07c59e161c13def1dc02c36fa4b790b67bab48",
+      "cases": [
+        {
+          "note": "arithmetic/abs",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tabs(-10, x)\n\tx = 10\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-arithmetic-0816.yaml": {
+      "sha256": "sha256:3af69159e4157bbfaccaf5df03e0eaa62da60b4d34b12a0e0cd95ecb5d8a7d73",
+      "cases": [
+        {
+          "note": "arithmetic/remainder",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local0__ = 7 % 4\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 3
+            }
+          ]
+        }
+      ]
+    },
+    "test-arithmetic-0817.yaml": {
+      "sha256": "sha256:69ebbb7f6dc3040a8dc01e6e1054855fde4e9032d70fc1e7bae5a811785eee46",
+      "cases": [
+        {
+          "note": "arithmetic/remainder+error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local0__ = 7 % 0\n\tx = __local0__\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "modulo by zero",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-arithmetic-0818.yaml": {
+      "sha256": "sha256:b238127d4e032f27eb91773a8cacea25da5c37199cfca1c9be03069315cd4d64",
+      "cases": [
+        {
+          "note": "arithmetic/remainder+error+floating",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx = 1.1 % 1\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "modulo on floating-point number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-arithmetic-0819.yaml": {
+      "sha256": "sha256:24af9ee49f08fd3fd842e2ed414f54c657b468d385fc4e0b3b1c4b31acac2369",
+      "cases": [
+        {
+          "note": "arithmetic/arity 1 ref dest",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.a[3]\n\tabs(-4, __local0__)\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-arithmetic-0820.yaml": {
+      "sha256": "sha256:b913c82814de16a1238af7d86f8efd775aef6818c8045e6f08e68da6e40e6aaf",
+      "cases": [
+        {
+          "note": "arithmetic/arity 1 ref dest (2)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.a[3]\n\tnot abs(-5, __local0__)\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-arithmetic-0821.yaml": {
+      "sha256": "sha256:6e2f47bd971a7d46e815f08ebeafd56337d30ad3861f195707340d7507e95ba9",
+      "cases": [
+        {
+          "note": "arithmetic/arity 2 ref dest",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = 1 + 2\n\tdata.a[2] = __local0__\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-arithmetic-0822.yaml": {
+      "sha256": "sha256:54d0c4d9be9c8cc0b9b79028b7e7ce74a807a52cadbecc06cae4867ec46673db",
+      "cases": [
+        {
+          "note": "arithmetic/arity 2 ref dest (2)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = 2 + 3\n\tnot data.a[2] = __local0__\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-arithmetic-0823.yaml": {
+      "sha256": "sha256:1a8363acc5b1d038750807f83e7277eb33ef89ff2f002dfad353e4f507ba9e52",
+      "cases": [
+        {
+          "note": "arithmetic/bug 2469 - precision",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = 49649733057 + 1\n\t__local0__ = 49649733058\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-arithmetic-0824.yaml": {
+      "sha256": "sha256:df3e0cc4c52fb0c590d776ba160a2bb4e7e6a7adc90e5921c236348c56c00fb9",
+      "cases": [
+        {
+          "note": "ceil rounds up",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tceil(1.01, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "ceil rounds up (2)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tceil(1.5, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "ceil rounds up (3)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tceil(2222.2222222222, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 2223
+            }
+          ]
+        },
+        {
+          "note": "ceil integer",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tceil(1, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "ceil negative",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tceil(-1.99999, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": -1
+            }
+          ]
+        }
+      ]
+    },
+    "test-arithmetic-0825.yaml": {
+      "sha256": "sha256:79c3203e442e6dab802cf4b6879100785b7f3b6405203ec15c250433a4107868",
+      "cases": [
+        {
+          "note": "floor rounds down",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tfloor(1.01, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "floor rounds down (2)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tfloor(1.5, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "floor rounds down (3)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tfloor(99.99999, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 99
+            }
+          ]
+        },
+        {
+          "note": "floor integer",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tfloor(1, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "floor negative",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tfloor(-1.001, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": -2
+            }
+          ]
+        }
+      ]
+    },
+    "test-arithmetic-minus-type-error.yaml": {
+      "sha256": "sha256:566fb6e75d43ecb41812f84d632168c3d67762c6f41f494c34a604c1539fbe61",
+      "cases": [
+        {
+          "note": "arithmetic/minus/type error",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t{1} - 1\n}\n"
+          ],
+          "want_error_code": "eval_type_error",
+          "want_error": "operand 2 must be set but got number",
+          "strict_error": true
+        },
+        {
+          "note": "arithmetic/minus/type error",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t1 - {1}\n}\n"
+          ],
+          "want_error_code": "eval_type_error",
+          "want_error": "operand 2 must be number but got set",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-big-int-0001.yaml": {
+      "sha256": "sha256:8a7bc2fa54536d582fe1b505ea7ab3783c59188e55c8db5295f66fe6a8bd7504",
+      "cases": [
+        {
+          "note": "arithmetic/big_int",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t28857836529306024611913 != 28857836529306024611912\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

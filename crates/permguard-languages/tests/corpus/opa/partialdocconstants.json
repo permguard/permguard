@@ -1,0 +1,150 @@
+{
+  "folder": "partialdocconstants",
+  "files": {
+    "test-partialdocconstants-0984.yaml": {
+      "sha256": "sha256:0570e3c7b18a836731a6a1f8e9a02112c0308bf30f95f5e16b7e4a4366d21989",
+      "cases": [
+        {
+          "note": "partialdocconstants/obj-1",
+          "query": "data.ex.foo.bar = x",
+          "modules": [
+            "package ex\n\nfoo[\"bar\"] := 0\n\nfoo[\"baz\"] := 1\n\nfoo[\"*\"] := [1, 2, 3] if {\n\tinput.foo = 7\n}\n\nbar contains \"x\"\n\nbar contains \"y\"\n\nbar contains \"*\" if {\n\tinput.foo = 7\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 0
+            }
+          ]
+        }
+      ]
+    },
+    "test-partialdocconstants-0985.yaml": {
+      "sha256": "sha256:5518f7f5c233664b9a977aea3d1a67bf08b6ecdb4c2972531da3cedf2a2d71c5",
+      "cases": [
+        {
+          "note": "partialdocconstants/obj",
+          "query": "data.ex.foo = x",
+          "modules": [
+            "package ex\n\nfoo[\"bar\"] := 0\n\nfoo[\"baz\"] := 1\n\nfoo[\"*\"] := [1, 2, 3] if {\n\tinput.foo = 7\n}\n\nbar contains \"x\"\n\nbar contains \"y\"\n\nbar contains \"*\" if {\n\tinput.foo = 7\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = 0\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "bar": 0,
+                "baz": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-partialdocconstants-0986.yaml": {
+      "sha256": "sha256:b0d1833dc3ece3f40190f2b49044b36e3617e3129eb6925012abc7e101d89b9c",
+      "cases": [
+        {
+          "note": "partialdocconstants/obj-all",
+          "query": "data.ex.foo = x",
+          "modules": [
+            "package partial.ex\n\nfoo[\"bar\"] := 0\n\nfoo[\"baz\"] := 1\n\nfoo[\"*\"] := [1, 2, 3] if {\n\tinput.foo = 7\n}\n",
+            "package ex\n\nfoo[\"bar\"] := 0\n\nfoo[\"baz\"] := 1\n\nfoo[\"*\"] := [1, 2, 3] if {\n\tinput.foo = 7\n}\n\nbar contains \"x\"\n\nbar contains \"y\"\n\nbar contains \"*\" if {\n\tinput.foo = 7\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\tdata.partial.ex.foo = _result\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"foo\": 7}",
+          "want_result": [
+            {
+              "x": {
+                "*": [
+                  1,
+                  2,
+                  3
+                ],
+                "bar": 0,
+                "baz": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-partialdocconstants-0987.yaml": {
+      "sha256": "sha256:1179e75ff1a386d6d0c3b926e6a0f05e1bcaf04367b0181c20fcbe2358da9c5e",
+      "cases": [
+        {
+          "note": "partialdocconstants/set-1",
+          "query": "data.ex.bar.x = x",
+          "modules": [
+            "package topdown_test_partial\n\n__result__ := _result if {\n\tdata.partial.ex.foo = _result\n}\n",
+            "package partial.ex\n\nfoo[\"bar\"] := 0\n\nfoo[\"baz\"] := 1\n\nfoo[\"*\"] := [1, 2, 3] if {\n\tinput.foo = 7\n}\n",
+            "package ex\n\nfoo[\"bar\"] := 0\n\nfoo[\"baz\"] := 1\n\nfoo[\"*\"] := [1, 2, 3] if {\n\tinput.foo = 7\n}\n\nbar contains \"x\"\n\nbar contains \"y\"\n\nbar contains \"*\" if {\n\tinput.foo = 7\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "x"
+            }
+          ]
+        }
+      ]
+    },
+    "test-partialdocconstants-0988.yaml": {
+      "sha256": "sha256:5c503455c23eb58bec18258f4a6a14374644e6d9c2384baaad96c55d313f4ead",
+      "cases": [
+        {
+          "note": "partialdocconstants/set",
+          "query": "data.ex.bar = x",
+          "modules": [
+            "package ex\n\nfoo[\"bar\"] := 0\n\nfoo[\"baz\"] := 1\n\nfoo[\"*\"] := [1, 2, 3] if {\n\tinput.foo = 7\n}\n\nbar contains \"x\"\n\nbar contains \"y\"\n\nbar contains \"*\" if {\n\tinput.foo = 7\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = \"x\"\n}\n",
+            "package partial.ex\n\nfoo[\"bar\"] := 0\n\nfoo[\"baz\"] := 1\n\nfoo[\"*\"] := [1, 2, 3] if {\n\tinput.foo = 7\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "x",
+                "y"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-partialdocconstants-0989.yaml": {
+      "sha256": "sha256:310e63b17e673224f5c3e86a4d9a2f8203bb813bca52a941738c2f80c43d31ca",
+      "cases": [
+        {
+          "note": "partialdocconstants/set-all",
+          "query": "data.ex.bar = x",
+          "modules": [
+            "package ex\n\nfoo[\"bar\"] := 0\n\nfoo[\"baz\"] := 1\n\nfoo[\"*\"] := [1, 2, 3] if {\n\tinput.foo = 7\n}\n\nbar contains \"x\"\n\nbar contains \"y\"\n\nbar contains \"*\" if {\n\tinput.foo = 7\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\tdata.partial.ex.bar = _result\n}\n",
+            "package partial.ex\n\nbar contains \"x\"\n\nbar contains \"y\"\n\nbar contains \"*\" if {\n\tinput.foo = 7\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"foo\": 7}",
+          "want_result": [
+            {
+              "x": [
+                "*",
+                "x",
+                "y"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,160 @@
+{
+  "folder": "inputvalues",
+  "files": {
+    "test-inputvalues-0977.yaml": {
+      "sha256": "sha256:9044b147a94678494f0cad15450dd00c09de0c2819a9fcad049952a9e0ecf2b4",
+      "cases": [
+        {
+          "note": "inputvalues/loopback",
+          "query": "data.z.loopback = x",
+          "modules": [
+            "package z\n\np if {\n\tdata.a[i] = x\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.q[x]\n}\n\nq contains x if {\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.r[x]\n}\n\nr contains x if {\n\t__local1__ = input.req2.bar\n\t__local2__ = input.req1.foo\n\t{\"bar\": [x], \"foo\": __local1__} = {\"bar\": [__local2__], \"foo\": x}\n}\n\ns if {\n\tinput.req3.a.b.x[0] = 1\n}\n\nt if {\n\tinput.req4.a.b.x[0] = 1\n}\n\nu contains x if {\n\tinput.req3.a.b[_] = x\n\tx > 1\n}\n\nw := [[1, 2], [3, 4]]\n\ngt1 if {\n\t__local3__ = input.req1\n\t__local3__ > 1\n}\n\nkeys[x] := y if {\n\tdata.numbers[_] = x\n\tto_number(x, y)\n}\n\nloopback := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n\nsets if {\n\tinput.foo[{1}][1] = 1\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"foo\": 1}",
+          "want_result": [
+            {
+              "x": {
+                "foo": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-inputvalues-0978.yaml": {
+      "sha256": "sha256:1e221805cf57e4d4246b76afb76abe708001e441bb16035bf3995a3c39a958a3",
+      "cases": [
+        {
+          "note": "inputvalues/loopback undefined",
+          "query": "data.z.loopback = x",
+          "modules": [
+            "package z\n\np if {\n\tdata.a[i] = x\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.q[x]\n}\n\nq contains x if {\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.r[x]\n}\n\nr contains x if {\n\t__local1__ = input.req2.bar\n\t__local2__ = input.req1.foo\n\t{\"bar\": [x], \"foo\": __local1__} = {\"bar\": [__local2__], \"foo\": x}\n}\n\ns if {\n\tinput.req3.a.b.x[0] = 1\n}\n\nt if {\n\tinput.req4.a.b.x[0] = 1\n}\n\nu contains x if {\n\tinput.req3.a.b[_] = x\n\tx > 1\n}\n\nw := [[1, 2], [3, 4]]\n\ngt1 if {\n\t__local3__ = input.req1\n\t__local3__ > 1\n}\n\nkeys[x] := y if {\n\tdata.numbers[_] = x\n\tto_number(x, y)\n}\n\nloopback := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n\nsets if {\n\tinput.foo[{1}][1] = 1\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = input\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-inputvalues-0979.yaml": {
+      "sha256": "sha256:9510c4c81dad7b82475c0bccc6dfb26d7e22dd77c75a3b1a8b3cbc72b6907a16",
+      "cases": [
+        {
+          "note": "inputvalues/simple",
+          "query": "data.z.p = x",
+          "modules": [
+            "package z\n\np if {\n\tdata.a[i] = x\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.q[x]\n}\n\nq contains x if {\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.r[x]\n}\n\nr contains x if {\n\t__local1__ = input.req2.bar\n\t__local2__ = input.req1.foo\n\t{\"bar\": [x], \"foo\": __local1__} = {\"bar\": [__local2__], \"foo\": x}\n}\n\ns if {\n\tinput.req3.a.b.x[0] = 1\n}\n\nt if {\n\tinput.req4.a.b.x[0] = 1\n}\n\nu contains x if {\n\tinput.req3.a.b[_] = x\n\tx > 1\n}\n\nw := [[1, 2], [3, 4]]\n\ngt1 if {\n\t__local3__ = input.req1\n\t__local3__ > 1\n}\n\nkeys[x] := y if {\n\tdata.numbers[_] = x\n\tto_number(x, y)\n}\n\nloopback := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n\nsets if {\n\tinput.foo[{1}][1] = 1\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = input\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "input_term": "{\"req1\": {\"foo\": 4}, \"req2\": {\"bar\": 4}}",
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-inputvalues-0980.yaml": {
+      "sha256": "sha256:b2f7bad9fbc4bc3796c7aeea97e18c774aaf69516ebc04d318509f4282fe2f37",
+      "cases": [
+        {
+          "note": "inputvalues/missing",
+          "query": "data.z.p = x",
+          "modules": [
+            "package z\n\np if {\n\tdata.a[i] = x\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.q[x]\n}\n\nq contains x if {\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.r[x]\n}\n\nr contains x if {\n\t__local1__ = input.req2.bar\n\t__local2__ = input.req1.foo\n\t{\"bar\": [x], \"foo\": __local1__} = {\"bar\": [__local2__], \"foo\": x}\n}\n\ns if {\n\tinput.req3.a.b.x[0] = 1\n}\n\nt if {\n\tinput.req4.a.b.x[0] = 1\n}\n\nu contains x if {\n\tinput.req3.a.b[_] = x\n\tx > 1\n}\n\nw := [[1, 2], [3, 4]]\n\ngt1 if {\n\t__local3__ = input.req1\n\t__local3__ > 1\n}\n\nkeys[x] := y if {\n\tdata.numbers[_] = x\n\tto_number(x, y)\n}\n\nloopback := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n\nsets if {\n\tinput.foo[{1}][1] = 1\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\tinput.req1.foo = 1\n\tinput.req2.bar = 1\n\tinput.req1.foo = 1\n\tinput.req2.bar = 1\n\t1 = input.req2.bar\n\t1 = input.req1.foo\n\t_result = true\n}\n\n__result__ := _result if {\n\tinput.req1.foo = 2\n\tinput.req2.bar = 2\n\tinput.req1.foo = 2\n\tinput.req2.bar = 2\n\t2 = input.req2.bar\n\t2 = input.req1.foo\n\t_result = true\n}\n\n__result__ := _result if {\n\tinput.req1.foo = 3\n\tinput.req2.bar = 3\n\tinput.req1.foo = 3\n\tinput.req2.bar = 3\n\t3 = input.req2.bar\n\t3 = input.req1.foo\n\t_result = true\n}\n\n__result__ := _result if {\n\tinput.req1.foo = 4\n\tinput.req2.bar = 4\n\tinput.req1.foo = 4\n\tinput.req2.bar = 4\n\t4 = input.req2.bar\n\t4 = input.req1.foo\n\t_result = true\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "input_term": "{\"req1\": {\"foo\": 4}}",
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-inputvalues-0981.yaml": {
+      "sha256": "sha256:350c6513637307f6ad760f9dc018130ce5bda46c01ca9bc261e2d10e32eceeb0",
+      "cases": [
+        {
+          "note": "inputvalues/namespaced",
+          "query": "data.z.s = x",
+          "modules": [
+            "package z\n\np if {\n\tdata.a[i] = x\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.q[x]\n}\n\nq contains x if {\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.r[x]\n}\n\nr contains x if {\n\t__local1__ = input.req2.bar\n\t__local2__ = input.req1.foo\n\t{\"bar\": [x], \"foo\": __local1__} = {\"bar\": [__local2__], \"foo\": x}\n}\n\ns if {\n\tinput.req3.a.b.x[0] = 1\n}\n\nt if {\n\tinput.req4.a.b.x[0] = 1\n}\n\nu contains x if {\n\tinput.req3.a.b[_] = x\n\tx > 1\n}\n\nw := [[1, 2], [3, 4]]\n\ngt1 if {\n\t__local3__ = input.req1\n\t__local3__ > 1\n}\n\nkeys[x] := y if {\n\tdata.numbers[_] = x\n\tto_number(x, y)\n}\n\nloopback := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n\nsets if {\n\tinput.foo[{1}][1] = 1\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\tinput.req1.foo = 1\n\tinput.req2.bar = 1\n\tinput.req1.foo = 1\n\tinput.req2.bar = 1\n\t1 = input.req2.bar\n\t1 = input.req1.foo\n\t_result = true\n}\n\n__result__ := _result if {\n\tinput.req1.foo = 2\n\tinput.req2.bar = 2\n\tinput.req1.foo = 2\n\tinput.req2.bar = 2\n\t2 = input.req2.bar\n\t2 = input.req1.foo\n\t_result = true\n}\n\n__result__ := _result if {\n\tinput.req1.foo = 3\n\tinput.req2.bar = 3\n\tinput.req1.foo = 3\n\tinput.req2.bar = 3\n\t3 = input.req2.bar\n\t3 = input.req1.foo\n\t_result = true\n}\n\n__result__ := _result if {\n\tinput.req1.foo = 4\n\tinput.req2.bar = 4\n\tinput.req1.foo = 4\n\tinput.req2.bar = 4\n\t4 = input.req2.bar\n\t4 = input.req1.foo\n\t_result = true\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"req3\": {\"a\": {\"b\": {\"x\": [1, 2, 3, 4]}}}}",
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-inputvalues-0982.yaml": {
+      "sha256": "sha256:54251620728996a487aab796af567c26ec074de1d26873b26878c822868e8677",
+      "cases": [
+        {
+          "note": "inputvalues/namespaced with alias",
+          "query": "data.z.t = x",
+          "modules": [
+            "package z\n\np if {\n\tdata.a[i] = x\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.q[x]\n}\n\nq contains x if {\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.r[x]\n}\n\nr contains x if {\n\t__local1__ = input.req2.bar\n\t__local2__ = input.req1.foo\n\t{\"bar\": [x], \"foo\": __local1__} = {\"bar\": [__local2__], \"foo\": x}\n}\n\ns if {\n\tinput.req3.a.b.x[0] = 1\n}\n\nt if {\n\tinput.req4.a.b.x[0] = 1\n}\n\nu contains x if {\n\tinput.req3.a.b[_] = x\n\tx > 1\n}\n\nw := [[1, 2], [3, 4]]\n\ngt1 if {\n\t__local3__ = input.req1\n\t__local3__ > 1\n}\n\nkeys[x] := y if {\n\tdata.numbers[_] = x\n\tto_number(x, y)\n}\n\nloopback := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n\nsets if {\n\tinput.foo[{1}][1] = 1\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\tinput.req3.a.b.x[0] = 1\n\t_result = true\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"req4\": {\"a\": {\"b\": {\"x\": [1, 2, 3, 4]}}}}",
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-inputvalues-0983.yaml": {
+      "sha256": "sha256:c868abc8050d058823e101e3c2bf9035769520f3c5300b71f3dab3b4e74fd818",
+      "cases": [
+        {
+          "note": "inputvalues/input set",
+          "query": "data.z.sets = x",
+          "modules": [
+            "package z\n\np if {\n\tdata.a[i] = x\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.q[x]\n}\n\nq contains x if {\n\tinput.req1.foo = x\n\tinput.req2.bar = x\n\tdata.z.r[x]\n}\n\nr contains x if {\n\t__local1__ = input.req2.bar\n\t__local2__ = input.req1.foo\n\t{\"bar\": [x], \"foo\": __local1__} = {\"bar\": [__local2__], \"foo\": x}\n}\n\ns if {\n\tinput.req3.a.b.x[0] = 1\n}\n\nt if {\n\tinput.req4.a.b.x[0] = 1\n}\n\nu contains x if {\n\tinput.req3.a.b[_] = x\n\tx > 1\n}\n\nw := [[1, 2], [3, 4]]\n\ngt1 if {\n\t__local3__ = input.req1\n\t__local3__ > 1\n}\n\nkeys[x] := y if {\n\tdata.numbers[_] = x\n\tto_number(x, y)\n}\n\nloopback := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n\nsets if {\n\tinput.foo[{1}][1] = 1\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\tinput.req4.a.b.x[0] = 1\n\t_result = true\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"foo\": {{1}}}",
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

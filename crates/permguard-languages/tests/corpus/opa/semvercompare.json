@@ -1,0 +1,94 @@
+{
+  "folder": "semvercompare",
+  "files": {
+    "test-semvercompare-0344.yaml": {
+      "sha256": "sha256:265d34ed3ee2bd98567c717f95f7ff85440afe0267184747413e73ee90bcd382",
+      "cases": [
+        {
+          "note": "semvercompare/a < b",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsemver.compare(\"1.0.0\", \"2.0.0\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": -1
+            }
+          ]
+        }
+      ]
+    },
+    "test-semvercompare-0345.yaml": {
+      "sha256": "sha256:c50657424d939ee7bae68fcf3bff7fa37f4a5a7421960edd6ab04fbe2359aefd",
+      "cases": [
+        {
+          "note": "semvercompare/a > b",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsemver.compare(\"2.0.0\", \"1.0.0\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "test-semvercompare-0346.yaml": {
+      "sha256": "sha256:41d0f317541d197fdf304da60d568d460f215f7d0e4ada9acb56a776b5e75b44",
+      "cases": [
+        {
+          "note": "semvercompare/a == b",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsemver.compare(\"1.0.0\", \"1.0.0\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 0
+            }
+          ]
+        }
+      ]
+    },
+    "test-semvercompare-0347.yaml": {
+      "sha256": "sha256:bc2934a15ea7ee79597d1f4853405b69c360e802ee48de867d886a08ceca1053",
+      "cases": [
+        {
+          "note": "semvercompare/invalid version a",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsemver.compare(\"1\", \"1.0.0\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "semver.compare: operand 1: string \"1\" is not a valid SemVer",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-semvercompare-0348.yaml": {
+      "sha256": "sha256:31207bba6bf42c12c7583006ddd924e7102080c4cb64e9c3ccfecfa33132ee65",
+      "cases": [
+        {
+          "note": "semvercompare/invalid version b",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsemver.compare(\"1.0.0\", \"1\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_builtin_error",
+          "want_error": "semver.compare: operand 2: string \"1\" is not a valid SemVer",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+ "policies": "tests/multi/policies_4.cedar",
+ "entities": "sample-data/sandbox_b/entities.json",
+ "schema": "sample-data/sandbox_b/schema.cedarschema",
+ "shouldValidate": true,
+ "requests": [
+  {
+   "description": "stacey should be able to view this photo for multiple reasons",
+   "principal": {
+    "type": "User",
+    "id": "stacey"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "vacation.jpg"
+   },
+   "context": {
+    "authenticated": true
+   },
+   "decision": "allow",
+   "reason": [
+    "policy0",
+    "policy1"
+   ],
+   "errors": []
+  },
+  {
+   "description": "stacey shouldn't be able to view this photo due to multiple explicit Forbids",
+   "principal": {
+    "type": "User",
+    "id": "stacey"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "alice_w2.jpg"
+   },
+   "context": {
+    "authenticated": false
+   },
+   "decision": "deny",
+   "reason": [
+    "policy2",
+    "policy3"
+   ],
+   "errors": []
+  },
+  {
+   "description": "one explicit Forbid can override multiple Permits",
+   "principal": {
+    "type": "User",
+    "id": "stacey"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "vacation.jpg"
+   },
+   "context": {
+    "authenticated": false
+   },
+   "decision": "deny",
+   "reason": [
+    "policy3"
+   ],
+   "errors": []
+  }
+ ]
+}

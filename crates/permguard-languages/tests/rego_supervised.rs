@@ -17,7 +17,7 @@ mod harness;
 fn main() -> std::process::ExitCode {
     permguard_languages::worker::serve_if_worker();
 
-    let cases: [(&str, harness::Case); 3] = [
+    let cases: [(&str, harness::Case); 4] = [
         (
             "a_rego_partition_decides_in_its_supervised_worker",
             a_rego_partition_decides_in_its_supervised_worker,
@@ -29,6 +29,10 @@ fn main() -> std::process::ExitCode {
         (
             "rego_requires_isolation_from_production",
             rego_requires_isolation_from_production,
+        ),
+        (
+            "a_rego_partition_that_exhausts_its_address_space_fails_closed",
+            a_rego_partition_that_exhausts_its_address_space_fails_closed,
         ),
     ];
     harness::run(&cases)
@@ -115,6 +119,54 @@ fn rego_requires_isolation_from_production() -> bool {
     assert!(
         !isolation_required("cedar", Regulated),
         "Cedar is bounded in-process"
+    );
+    true
+}
+
+/// Memory-pressure fault injection for Rego (TL-6): a partition whose evaluation allocates past its
+/// worker's address space answers `E`, never a verdict, and the pool decides the next request.
+/// Linux enforces `RLIMIT_AS`; elsewhere the case is skipped and said so.
+fn a_rego_partition_that_exhausts_its_address_space_fails_closed() -> bool {
+    if !cfg!(target_os = "linux") {
+        println!("  (RLIMIT_AS is not enforced on this platform)");
+        return false;
+    }
+    use permguard_languages::worker::Limits;
+    let supervisors = Supervisors::new(
+        Limits {
+            address_space: Some(512 * 1024 * 1024),
+            ..Limits::default()
+        },
+        1,
+    );
+    let greedy = supervisors
+        .compile(
+            "rego",
+            &[stored(
+                "01a0-greedy",
+                "package greedy\nimport rego.v1\nallow if { count([x | some x in numbers.range(1, 200000000)]) > 0 }\n",
+            )],
+            &permguard_languages::artifact::Artifacts::default(),
+        )
+        .unwrap_or_else(|why| panic!("compiles in the worker: {why:?}"));
+    let verdict = greedy.evaluate(&query("alice"));
+    assert!(
+        verdict.error().is_some() && verdict.determining().is_empty(),
+        "memory pressure is `E`: {verdict:?}"
+    );
+    let decent = supervisors
+        .compile(
+            "rego",
+            &[stored(
+                "01a0-alice",
+                "package decent\nimport rego.v1\nallow if { input.subject.id == \"alice\" }\n",
+            )],
+            &permguard_languages::artifact::Artifacts::default(),
+        )
+        .unwrap_or_else(|why| panic!("compiles in the worker: {why:?}"));
+    assert!(
+        decent.evaluate(&query("alice")).permitted(),
+        "the pool still decides"
     );
     true
 }

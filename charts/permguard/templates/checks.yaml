@@ -210,12 +210,12 @@ the setting.
 {{- range $section := list "controlPlane" "dataPlane" }}
 {{- $enabled := dig $section "events" "enabled" "" $extra }}
 {{- if and $enabled (ne (toString $enabled) "false") (not $accepted) }}
-{{- fail (printf "%s sets %s.events.enabled and not experimental.dogwood.enabled. The event interfaces carry a contract whose shape is not yet stable and are served only where a deployment has accepted that, so this plane would refuse to start. Set experimental.dogwood.enabled=\"true\", or turn the events block off." $component $section) }}
+{{- fail (printf "%s sets %s.events.enabled and not experimental.dogwood.enabled. The event interfaces carry a contract whose shape is not yet stable and are served only where a deployment has accepted that, so this plane would refuse to start. Set experimental.dogwood.enabled=\"true\", or turn the events block off; a `production` or `regulated` group serves Dogwood ledgers only once its conformance gate passes." $component $section) }}
 {{- end }}
 {{- end }}
 {{- $bare := dig "events" "enabled" "" $extra }}
 {{- if and $bare (ne (toString $bare) "false") (not $accepted) }}
-{{- fail (printf "%s sets events.enabled and not experimental.dogwood.enabled. The event interfaces carry a contract whose shape is not yet stable and are served only where a deployment has accepted that, so this plane would refuse to start. Set experimental.dogwood.enabled=\"true\", or turn the events block off." $component) }}
+{{- fail (printf "%s sets events.enabled and not experimental.dogwood.enabled. The event interfaces carry a contract whose shape is not yet stable and are served only where a deployment has accepted that, so this plane would refuse to start. Set experimental.dogwood.enabled=\"true\", or turn the events block off; a `production` or `regulated` group serves Dogwood ledgers only once its conformance gate passes." $component) }}
 {{- end }}
 {{- end }}
 {{- end }}

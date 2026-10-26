@@ -1,0 +1,1330 @@
+{
+  "folder": "aggregates",
+  "files": {
+    "test-aggregates-0001.yaml": {
+      "sha256": "sha256:5fa25200993fe50435f3ae7c9ed685b7198f01637016052268a9e1ca4d489f06",
+      "cases": [
+        {
+          "note": "aggregates/count",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.a\n\tcount(__local0__, x)\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0002.yaml": {
+      "sha256": "sha256:f6b85a39cf65a7696feed2ddf810c6ab52a71f82dd13ac3cf78714a97491419e",
+      "cases": [
+        {
+          "note": "aggregates/count virtual",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = [y | data.generated.q[y]]\n\tcount(__local0__, x)\n}\n\nq contains x if {\n\tx = data.a[_]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0003.yaml": {
+      "sha256": "sha256:56c102dcb814414be80dfeb9ae1700017efa0b1ac0d3c61bd119cace5003071e",
+      "cases": [
+        {
+          "note": "aggregates/count keys",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.b\n\tcount(__local0__, x)\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0004.yaml": {
+      "sha256": "sha256:5b514da33bf79a5c7fe8cd957f1791053dbabcd5c4ee55d0d442302ecaaa1760",
+      "cases": [
+        {
+          "note": "aggregates/count keys virtual",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = [k | data.generated.q[k] = _]\n\tcount(__local0__, x)\n}\n\nq[k] := v if {\n\tdata.b[k] = v\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0005.yaml": {
+      "sha256": "sha256:5dbbaa52f6d8744f8d8f0556c023f905b0b80152b02b10f023c4da2ddd89ee79",
+      "cases": [
+        {
+          "note": "aggregates/count set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local0__ = data.generated.q\n\tcount(__local0__, x)\n}\n\nq contains x if {\n\tx = data.a[_]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": 4
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0006.yaml": {
+      "sha256": "sha256:a766575ec68b85e4de7ab078f7ffc5631060b9f20780464b516f512b217264e3",
+      "cases": [
+        {
+          "note": "aggregates/sum",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tsum([1, 2, 3, 4], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                10
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0007.yaml": {
+      "sha256": "sha256:2825abc821766b9f437b105ff73fe37c5096a0d9cfed0791e775ec5e955b8b8e",
+      "cases": [
+        {
+          "note": "aggregates/sum set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsum({1, 2, 3, 4}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 10
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0008.yaml": {
+      "sha256": "sha256:8d69c87d3672d258a643692e867d988b53f1efbcb9c3cac8ef56c777cd6a7ee2",
+      "cases": [
+        {
+          "note": "aggregates/sum virtual",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = [y | data.generated.q[y]]\n\tsum(__local0__, x)\n}\n\nq contains x if {\n\tdata.a[_] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                10
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0009.yaml": {
+      "sha256": "sha256:ea6af617ac8dc6e8d0f689c0679eead7bcde8a4f727373ad9dc6fdf3c35dd5a8",
+      "cases": [
+        {
+          "note": "aggregates/sum virtual set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local0__ = data.generated.q\n\tsum(__local0__, x)\n}\n\nq contains x if {\n\tdata.a[_] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": 10
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0010.yaml": {
+      "sha256": "sha256:bffcdf9716cc91d88c31f3d27b2f5c8d97c94f1114d226c511ea8006dee294fe",
+      "cases": [
+        {
+          "note": "aggregates/bug 2469 - precision",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tsum([49649733057, 1], __local0__)\n\t__local0__ = 49649733058\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0011.yaml": {
+      "sha256": "sha256:ac07203f970f7597fccb2812ba912bb8f5d73ac85d9edc9f4fce29278c6cfce1",
+      "cases": [
+        {
+          "note": "aggregates/product",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tproduct([1, 2, 3, 4], 24)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0012.yaml": {
+      "sha256": "sha256:62b4d542c0ad2971d80498cc640a5057bba128ffc1ae0d15e315972b9edb7f76",
+      "cases": [
+        {
+          "note": "aggregates/product set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tproduct({1, 2, 3, 4}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 24
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0013.yaml": {
+      "sha256": "sha256:32c389a11a510f37f0cffcb3c86f701f235f5c6e633936e61cd42aba1b781869",
+      "cases": [
+        {
+          "note": "aggregates/max",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tmax([1, 2, 3, 4], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0014.yaml": {
+      "sha256": "sha256:6d5fa210fd4547aa228f951ae5a7ff06eeb2c2e2a8be4084c912d2853896b87b",
+      "cases": [
+        {
+          "note": "aggregates/max set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tmax({1, 2, 3, 4}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 4
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0015.yaml": {
+      "sha256": "sha256:280f8e2c84a79fb621ba28c115b0318ac4f835ba210f821492fa2f2c6dacec36",
+      "cases": [
+        {
+          "note": "aggregates/max virtual",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = [y | data.generated.q[y]]\n\tmax(__local0__, x)\n}\n\nq contains x if {\n\tdata.a[_] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0016.yaml": {
+      "sha256": "sha256:dbb9f9441b1eebd3f3e9edfb3285635cf14674319d2da26223876049189e5f0d",
+      "cases": [
+        {
+          "note": "aggregates/max virtual set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local0__ = data.generated.q\n\tmax(__local0__, x)\n}\n\nq contains x if {\n\tdata.a[_] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": 4
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0017.yaml": {
+      "sha256": "sha256:cfa8fe6d40bcf98e1cf5aeb4d2460e1e2a4981289a1d3fe866c0651531bbf7bb",
+      "cases": [
+        {
+          "note": "aggregates/min",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tmin([1, 2, 3, 4], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0018.yaml": {
+      "sha256": "sha256:e75b0edb84bca607a083a92b1e97520d0e52a66221a10c6d77154e8c57c45ea0",
+      "cases": [
+        {
+          "note": "aggregates/min dups",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tmin([1, 2, 1, 3, 4], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0019.yaml": {
+      "sha256": "sha256:0c83c1277276df2bf754aff32195d2793d57a4e621fa5bff2163d728451565da",
+      "cases": [
+        {
+          "note": "aggregates/min out-of-order",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tmin([3, 2, 1, 4, 6, -7, 10], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                -7
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0020.yaml": {
+      "sha256": "sha256:7de4698ce39c3d74e55ed78c8c51dcbff4c9d1564d843968d2b30aa4855794ff",
+      "cases": [
+        {
+          "note": "aggregates/min set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tmin({1, 2, 3, 4}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0021.yaml": {
+      "sha256": "sha256:de932c290c8cb7930e90d887928cfd1e2bc48e446f75bc5556d36acad7a1fe3b",
+      "cases": [
+        {
+          "note": "aggregates/min virtual",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = [y | data.generated.q[y]]\n\tmin(__local0__, x)\n}\n\nq contains x if {\n\tdata.a[_] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-aggregates-0022.yaml": {
+      "sha256": "sha256:120cd276edbe49df70df5f908005ac8c391c5fbc0327ec233568f3db86335704",
+      "cases": [
+        {
+          "note": "aggregates/min virtual set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local0__ = data.generated.q\n\tmin(__local0__, x)\n}\n\nq contains x if {\n\tdata.a[_] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0023.yaml": {
+      "sha256": "sha256:a056da90b3813b160f45cd5217454de08d66b72daddb5302d625466bf6232424",
+      "cases": [
+        {
+          "note": "aggregates/reduce ref dest",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.a[3]\n\tmax([1, 2, 3, 4], __local0__)\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0024.yaml": {
+      "sha256": "sha256:db07ec2ae75be7d7e102471bc76db2ff39596d74fb72f1618451c8dae1106323",
+      "cases": [
+        {
+          "note": "aggregates/reduce ref dest (2)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.a[3]\n\tnot max([1, 2, 3, 4, 5], __local0__)\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0025.yaml": {
+      "sha256": "sha256:0280001d1bfd169d2876e6686c108e11bee9c64178882f8a81e4d2e42bcbe225",
+      "cases": [
+        {
+          "note": "aggregates/sort",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsort([4, 3, 2, 1], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0026.yaml": {
+      "sha256": "sha256:5024fff8c61825fe938e7c92b59a975bba28e23dbd6fab3f869f6d30db9087b1",
+      "cases": [
+        {
+          "note": "aggregates/sort set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tsort({1, 2, 3, 4}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0027.yaml": {
+      "sha256": "sha256:807e6c1fcef638933cad9ad6605736b6e6874b6f72a342acedfb24a5f2cf7387",
+      "cases": [
+        {
+          "note": "aggregates/count string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tcount(\"abcde\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 5
+            }
+          ]
+        },
+        {
+          "note": "aggregates/count string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tcount(\"åäö\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 3
+            }
+          ]
+        }
+      ]
+    },
+    "test-aggregates-0028.yaml": {
+      "sha256": "sha256:7c79c2a3b73f00db832bfb946e497a1545eac93b444a769164af7ec185c890b5",
+      "cases": [
+        {
+          "note": "aggregates/count error null",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tcount(input.foo, x)\n}\n"
+          ],
+          "input": {
+            "foo": null
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "operand 1 must be one of {array, object, set, string} but got null",
+          "strict_error": true
+        },
+        {
+          "note": "aggregates/count error number",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tcount(input.foo, x)\n}\n"
+          ],
+          "input": {
+            "foo": 5
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "operand 1 must be one of {array, object, set, string} but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-aggregates-bad-utf8-runes.yaml": {
+      "sha256": "sha256:7db788ed7477372b14104e3403da57397ce0262efc96e8e884f12ca836650e8c",
+      "cases": [
+        {
+          "note": "aggregates/count with invalid utf-8 chars (0xFFFD)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains x if {\n\tx := count(base64.decode(\"2E84ZuPUd7zfvCZSNEchVpDEIj6PL7JfLpIqyxVG16k=\"))\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                30
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-membership.yaml": {
+      "sha256": "sha256:aaf22eac907d892d592e3f03dd5f4089b804904c58e5106a34dbf57b7cc63fd4",
+      "cases": [
+        {
+          "note": "aggregates/member simple, set",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t1 in {1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member simple, array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t1 in [1]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member simple, object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t1 in {\"foo\": 1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member object with key",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t\"foo\", 1 in {\"foo\": 1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member array with index",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t1, \"two\" in [\"one\", \"two\", \"three\"]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member array with index, nested",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t1, 2 in [2] in [false, true]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member array with index, nested, associativity without parens",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t(0, 2 in [2]) in [true]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member object with key, nested, associativity without parens",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t(\"foo\", 2 in {\"foo\": 2}) in [true]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member object with key, nested",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t\"foo\", (2 in {\"bar\": 2}) in {\"foo\": true}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member simple false, set",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := 1 in {2}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member simple false, array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := 1 in [2]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member simple false, object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := 1 in {\"foo\": 2}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member chained",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t{1, 2} in [{1, 2}] in [true]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member with vars",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tx := \"foo\"\n\txs := [\"foo\", \"bar\"]\n\tx in xs\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member with not",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tnot \"foo\" in [\"fox\"]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member operator precedence with other infix operator (+)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t(1 + 1) in [2]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member operator precedence in list (set)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tx := {1, 1 in [2]}\n\tx == {1, false}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member operator precedence in list with parens (set)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tx := {(1, 1 in [2])}\n\tx == {false}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member operator precedence in list (array)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tx := [1, 1 in [2]]\n\tx == [1, false]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member operator precedence in list with parens (array)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tx := [(1, 1 in [2])]\n\tx == [false]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member operator precedence in list (fun args)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tf(1, 1 in [2])\n}\n\nf(_, _) := true\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member operator precedence in list with parens (fun args)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tf((1, 1 in [2]))\n}\n\nf(_) := true\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member composite containee",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\t{\"foo\": {\"baz\": 2000}} in [{\"foo\": {\"baz\": 2000}}]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member non-collection string",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := 1 in \"foo\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member non-collection number",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := \"foo\" in 1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member with key in non-collection (number)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := (1, \"foo\" in 1)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some simple, array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains x if {\n\tsome x in [1, 2, 3]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3
+              ]
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some ground value",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tsome \"foo\" in [\"foo\"]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some containee is call",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tsome numbers.range(1, 1) in [[1]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some non-ground composite containee",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tsome {\"foo\": x} in [{\"foo\": 100}, {\"what\": \"ever\"}]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 100
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some non-ground composite containee, multiple bindings",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tsome {\"foo\": x, \"what\": y} in [{\"foo\": 100, \"what\": \"ever\"}]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 100
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some ground composite containee",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tsome {\"foo\": 100} in [{\"foo\": 100}]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some ground composite containee (false)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tsome {\"foo\": 0} in [{\"foo\": 100}]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "aggregates/member+some+key non-ground value",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tsome \"foo\", x in {\"foo\": 100, \"what\": \"ever\"}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 100
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some+key non-ground key",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tsome x, \"ever\" in {\"foo\": 100, \"what\": \"ever\"}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "what"
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some+key non-ground key+value",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np[k] := v if {\n\tsome k, v in {\"foo\": 100, \"what\": \"ever\"}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "foo": 100,
+                "what": "ever"
+              }
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some+key non-ground, composite key",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tsome {\"foo\": x}, \"ever\" in {{\"foo\": 100}: \"ever\"}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 100
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some+ref",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tsome {\"a\": x} in data.array\n}\n"
+          ],
+          "data": {
+            "array": [
+              {
+                "a": 1
+              },
+              {
+                "b": 2
+              },
+              {
+                "c": 3
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some+key+ref",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := [x, y] if {\n\tsome y, {\"c\": x} in data.array\n}\n"
+          ],
+          "data": {
+            "array": [
+              {
+                "a": 1
+              },
+              {
+                "b": 2
+              },
+              {
+                "c": 3
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some+key+ref with other variable",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := [x, y, i] if {\n\tsome i\n\tsome y, {\"c\": x} in data.object[i]\n}\n"
+          ],
+          "data": {
+            "object": {
+              "array": [
+                {
+                  "a": 1
+                },
+                {
+                  "b": 2
+                },
+                {
+                  "c": 3
+                }
+              ]
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                2,
+                "array"
+              ]
+            }
+          ]
+        },
+        {
+          "note": "aggregates/member+some+with",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains [k, v] if {\n\tsome k, v in input with input.foo as \"bar\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "foo",
+                  "bar"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

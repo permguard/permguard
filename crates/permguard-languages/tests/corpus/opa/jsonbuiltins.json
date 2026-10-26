@@ -1,0 +1,335 @@
+{
+  "folder": "jsonbuiltins",
+  "files": {
+    "test-is-valid.yaml": {
+      "sha256": "sha256:fe4ccc6e8e6a1a213676d50e38a3349f565bf3b5190b54b14cf1ac2641b1f3cc",
+      "cases": [
+        {
+          "note": "jsonbuiltins/json is_valid",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\ndocuments := [\n\t`plainstring`,\n\t`{`,\n\t`{\"json\": \"ok\"}`,\n]\n\np := [x | doc = documents[_]; json.is_valid(doc, x)]\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                false,
+                false,
+                true
+              ]
+            }
+          ],
+          "strict_error": true
+        },
+        {
+          "note": "jsonbuiltins/json is_valid not string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tjson.is_valid(input.foo, x)\n}\n"
+          ],
+          "input": {
+            "foo": 1
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ],
+          "strict_error": true
+        },
+        {
+          "note": "jsonbuiltins/yaml is_valid",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\ndocuments := [\n\t`foo:\n   - qux: bar\n   - baz: 2`,\n\t`foo:\n   - qux: bar\n   - baz: {`,\n\t`{\"json\": \"ok\"}`,\n]\n\np := [x | doc = documents[_]; yaml.is_valid(doc, x)]\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                true,
+                false,
+                true
+              ]
+            }
+          ],
+          "strict_error": true
+        },
+        {
+          "note": "jsonbuiltins/yaml is_valid not string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tyaml.is_valid(input.foo, x)\n}\n"
+          ],
+          "input": {
+            "foo": 1
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ],
+          "strict_error": true
+        }
+      ]
+    },
+    "test-json-marshal-with-options.yaml": {
+      "sha256": "sha256:c26af5e3d38f93e553c541311d2c312389821b6701266f1ebc415dd4f9c89f5c",
+      "cases": [
+        {
+          "note": "jsonbuiltins/marshal_with_options-explicit-indent",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := json.marshal_with_options([1234500000 + 67890, 1e6 * 2, 1e109 / 1e100], {\"indent\": \"  \"})\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "[\n  1234567890,\n  2000000,\n  1000000000\n]"
+            }
+          ]
+        },
+        {
+          "note": "jsonbuiltins/marshal_with_options-empty-object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := json.marshal_with_options([1234500000 + 67890, 1e6 * 2, 1e109 / 1e100], {})\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "[1234567890,2000000,1000000000]"
+            }
+          ]
+        },
+        {
+          "note": "jsonbuiltins/marshal_with_options-defaults",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := json.marshal_with_options([1234500000 + 67890, 1e6 * 2, 1e109 / 1e100], {\"pretty\": true})\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "[\n\t1234567890,\n\t2000000,\n\t1000000000\n]"
+            }
+          ]
+        },
+        {
+          "note": "jsonbuiltins/marshal_with_options-explicit-disable",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := json.marshal_with_options([1234500000 + 67890, 1e6 * 2, 1e109 / 1e100], {\"pretty\": false, \"prefix\": \"NO!\", \"indent\": \"BAD!\"})\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "[1234567890,2000000,1000000000]"
+            }
+          ]
+        },
+        {
+          "note": "jsonbuiltins/marshal_with_options-prefix",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := json.marshal_with_options([1234500000 + 67890, 1e6 * 2, 1e109 / 1e100], {\"prefix\": \"JSON => \"})\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "JSON => [\nJSON => \t1234567890,\nJSON => \t2000000,\nJSON => \t1000000000\nJSON => ]"
+            }
+          ]
+        },
+        {
+          "note": "jsonbuiltins/marshal_with_options-object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := json.marshal_with_options({\"foo\": \"bar\", \"bar\": \"baz\"}, {\"prefix\": \"JSON => \"})\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "JSON => {\nJSON => \t\"bar\": \"baz\",\nJSON => \t\"foo\": \"bar\"\nJSON => }"
+            }
+          ]
+        },
+        {
+          "note": "jsonbuiltins/marshal_with_options-empty-array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := json.marshal_with_options([], {\"indent\": \"    \", \"prefix\": \"---\"})\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "---[]"
+            }
+          ]
+        },
+        {
+          "note": "jsonbuiltins/marshal_with_options-deep-array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := json.marshal_with_options([[[[[[[]]]]]]], {\"indent\": \"    \"})\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "[\n    [\n        [\n            [\n                [\n                    [\n                        []\n                    ]\n                ]\n            ]\n        ]\n    ]\n]"
+            }
+          ]
+        },
+        {
+          "note": "jsonbuiltins/marshal_with_options-invalid-key",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := json.marshal_with_options([], {\"indent\": \"    \", \"include_winning_lottery_numbers\": true})\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "object contained unknown key \"include_winning_lottery_numbers\"",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonbuiltins-0924.yaml": {
+      "sha256": "sha256:634d985105bb13b994d9c737e0b7ebf7d51d809cf45cdcec419db48a92b4c07d",
+      "cases": [
+        {
+          "note": "jsonbuiltins/marshal",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tjson.marshal([{\"foo\": {1, 2, 3}}], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "[{\"foo\":[1,2,3]}]"
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonbuiltins-0925.yaml": {
+      "sha256": "sha256:c18225621756ac0ab3b348ce5d9e0820ced00216e47e01108a9296a5281be4e7",
+      "cases": [
+        {
+          "note": "jsonbuiltins/unmarshal",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tjson.unmarshal(\"[{\\\"foo\\\":[1,2,3]}]\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "foo": [
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonbuiltins-0926.yaml": {
+      "sha256": "sha256:bee45c708af992f39ff41ce4700335282242e9253a09be275a2cec543a9a2f38",
+      "cases": [
+        {
+          "note": "jsonbuiltins/unmarshal-non-string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local0__ = data.a[0]\n\tjson.unmarshal(__local0__, x)\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "operand 1 must be string but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonbuiltins-0927.yaml": {
+      "sha256": "sha256:ab3b7bc8856c0c2e6c5ce3fd6dd5b8329a6d0dffc812bf21be8e100e3a31070f",
+      "cases": [
+        {
+          "note": "jsonbuiltins/yaml round-trip",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := y if {\n\tyaml.marshal([{\"foo\": {1, 2, 3}}], x)\n\tyaml.unmarshal(x, y)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "foo": [
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonbuiltins-0928.yaml": {
+      "sha256": "sha256:11eefedf03d1eee0a417fdb151a5a9ff548b7b51b0995126c2d2cacd271e47ca",
+      "cases": [
+        {
+          "note": "jsonbuiltins/yaml unmarshal error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tyaml.unmarshal(\"[1,2,3\", _)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "yaml: line 1: did not find",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-marshal-large-ints.yaml": {
+      "sha256": "sha256:e863ab4cdb67f5156ce74097e9857e4766cb2085d144d331636b404366e284f6",
+      "cases": [
+        {
+          "note": "jsonbuiltins/marshal large integers",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tjson.marshal([1234500000 + 67890, 1e6 * 2, 1e109 / 1e100], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "[1234567890,2000000,1000000000]"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
