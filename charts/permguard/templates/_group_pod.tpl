@@ -25,6 +25,11 @@ securityContext:
 # and the grace period is the process's `shutdown.timeout` plus the seconds the signal and the
 # endpoint removal take, never a second budget after the hook.
 terminationGracePeriodSeconds: {{ add $g.shutdown.timeoutSeconds 5 }}
+{{- $image := dict "root" $root "repository" $dp.repository "digest" $dp.digest }}
+{{- if or $stateful .claim $root.Values.imageVerification.enabled }}
+initContainers:
+  {{- with include "permguard.verifyImage" $image | trim }}{{ . | nindent 2 }}{{- end }}
+{{- end }}
 {{- if or $stateful .claim }}
 # The orchestrator's claim (WP-1.4): every Pod of a replica moves its volume's claim one
 # generation forward before the server opens it, so a frame a previous Pod appends after that
@@ -33,9 +38,8 @@ terminationGracePeriodSeconds: {{ add $g.shutdown.timeoutSeconds 5 }}
 # served only under a claim. The volume directory is created inside the mount on the first
 # Pod, by this container, for the server's user; the kubelet's fsGroup may add the server's own
 # group to it, never anybody else.
-initContainers:
   - name: claim
-    image: {{ include "permguard.image" (dict "root" $root "repository" $dp.repository) }}
+    image: {{ include "permguard.image" $image }}
     imagePullPolicy: {{ $root.Values.image.pullPolicy }}
     args: ["volume", "claim", "--volume", "/var/lib/permguard/volume", "--next", "--create"]
     securityContext:
@@ -48,7 +52,7 @@ initContainers:
 {{- end }}
 containers:
   - name: data-plane
-    image: {{ include "permguard.image" (dict "root" $root "repository" $dp.repository) }}
+    image: {{ include "permguard.image" $image }}
     imagePullPolicy: {{ $root.Values.image.pullPolicy }}
     args: ["/etc/permguard/config.yml"]
     env:
@@ -115,6 +119,7 @@ containers:
       {{- toYaml . | nindent 6 }}
       {{- end }}
 volumes:
+  {{- with include "permguard.verifyImageVolume" $root | trim }}{{ . | nindent 2 }}{{- end }}
   - name: config
     configMap:
       name: {{ $g.base }}

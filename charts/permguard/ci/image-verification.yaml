@@ -1,0 +1,17 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# What a deployment repository adds to `values-production.yaml` for image verification (TD-4), with
+# placeholder digests: the lint and the rendering tests use it to render the production baseline.
+# A real deployment takes the digests from the release's `provenance-images.txt`.
+imageVerification:
+  verifier:
+    image: registry.example/permguard-verifier@sha256:0000000000000000000000000000000000000000000000000000000000000000
+controlPlane:
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+dataPlane:
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  drainController:
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+allInOne:
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000

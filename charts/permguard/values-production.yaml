@@ -4,6 +4,19 @@
 # A conservative production baseline. Keep environment-specific values (image tag, storage class,
 # allowed namespaces and sizing) in the deployment repository that owns the cluster.
 
+# Only verified images start (TD-4): each Pod's `verify-image` init container checks the digest it
+# runs against the release's signed SLSA provenance. The deployment repository fills in the
+# verifier image and each component's digest — `controlPlane.digest`, `dataPlane.digest`, and
+# `dataPlane.drainController.digest` when the controller is on — from the release's
+# `provenance-images.txt`, and creates the token Secret. No published image passes the defaults yet:
+# see `ops/container-verification.md` for the releases that can and the builder and tag they need.
+imageVerification:
+  enabled: true
+  verifier:
+    image: ""
+  tokenSecret:
+    name: permguard-image-verification
+
 controlPlane:
   # TLS from a `kubernetes.io/tls` Secret the deployment repository creates (WP-2.11); or, behind an
   # ingress or a mesh sidecar that terminates TLS, `terminatedUpstream: true` instead.

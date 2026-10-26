@@ -57,15 +57,72 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 {{- end -}}
 
-{{/* An image reference, with the chart's appVersion as the tag unless one is set. */}}
+{{/*
+An image reference: by its digest when `digest` names one (TD-4: what was verified is what runs),
+else with the chart's appVersion as the tag unless one is set.
+*/}}
 {{- define "permguard.image" -}}
 {{- $registry := .root.Values.image.registry -}}
-{{- $tag := default .root.Chart.AppVersion .root.Values.image.tag -}}
+{{- $name := .repository -}}
 {{- if $registry -}}
-{{- printf "%s/%s:%s" $registry .repository $tag -}}
-{{- else -}}
-{{- printf "%s:%s" .repository $tag -}}
+{{- $name = printf "%s/%s" $registry .repository -}}
 {{- end -}}
+{{- if .digest -}}
+{{- printf "%s@%s" $name .digest -}}
+{{- else -}}
+{{- printf "%s:%s" $name (default .root.Chart.AppVersion .root.Values.image.tag) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The `verify-image` init container (TD-4), first in every Permguard Pod when `imageVerification` is
+on: `gh attestation verify` of the digest the Pod runs, under the release's provenance policy. Takes
+the `permguard.image` dict; renders a list item, or nothing.
+*/}}
+{{- define "permguard.verifyImage" -}}
+{{- $iv := .root.Values.imageVerification -}}
+{{- if $iv.enabled }}
+- name: verify-image
+  image: {{ $iv.verifier.image }}
+  imagePullPolicy: IfNotPresent
+  args:
+    - attestation
+    - verify
+    - {{ printf "oci://%s" (include "permguard.image" .) | quote }}
+    - --repo
+    - {{ $iv.repository | quote }}
+    - --signer-workflow
+    - {{ $iv.signerWorkflow | quote }}
+    - --source-ref
+    - {{ default (printf "refs/tags/v%s" .root.Chart.AppVersion) $iv.sourceRef | quote }}
+    - --deny-self-hosted-runners
+  env:
+    - name: GH_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {{ $iv.tokenSecret.name }}
+          key: {{ $iv.tokenSecret.key }}
+    - name: HOME
+      value: /tmp
+    - name: GH_NO_UPDATE_NOTIFIER
+      value: "1"
+  securityContext:
+    {{- toYaml .root.Values.securityContext | nindent 4 }}
+  resources:
+    {{- toYaml $iv.verifier.resources | nindent 4 }}
+  volumeMounts:
+    - name: verify-image-home
+      mountPath: /tmp
+{{- end }}
+{{- end -}}
+
+{{/* The verifier's writable home, beside a read-only root filesystem: a list item, or nothing. */}}
+{{- define "permguard.verifyImageVolume" -}}
+{{- if .Values.imageVerification.enabled }}
+- name: verify-image-home
+  emptyDir:
+    sizeLimit: 16Mi
+{{- end }}
 {{- end -}}
 
 {{/*

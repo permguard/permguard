@@ -50,9 +50,12 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 if [ "${NO_KIND:-0}" != "1" ]; then
     command -v kind >/dev/null || { echo "chart-takeover: kind is required" >&2; exit 2; }
-    cleanup() { if [ "${KEEP:-0}" != "1" ]; then kind delete cluster --name "${cluster}" >/dev/null 2>&1 || true; fi; }
+    cleanup() { if [ "${KEEP:-0}" != "1" ]; then kind delete cluster --name "${cluster}" >/dev/null 2>&1 || true; rm -f "${TMPDIR:-/tmp}/kubeconfig-${cluster}"; fi; }
     trap cleanup EXIT
     step "a disposable cluster, ${cluster}"
+    # The disposable cluster's own kubeconfig: the caller's, and its current context, are left as they are.
+    export KUBECONFIG="${TMPDIR:-/tmp}/kubeconfig-${cluster}"
+    echo "kubeconfig ${KUBECONFIG}"
     kind delete cluster --name "${cluster}" >/dev/null 2>&1 || true
     kind create cluster --name "${cluster}" --wait 120s
     kind load docker-image "${image}" --name "${cluster}"

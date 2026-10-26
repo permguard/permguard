@@ -512,3 +512,38 @@ The drain controller (TD-2): what it reaches and what it needs.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{- /*
+Image verification at deploy (TD-4).
+
+On, the digest verified is the digest that runs: every enabled component names its image by
+digest, and the verifier itself is named by digest. Its token comes from a Secret. A `regulated`
+workload runs only verified images.
+*/ -}}
+{{- $iv := .Values.imageVerification }}
+{{- range $unit := (include "permguard.configUnits" $ | fromJson).units }}
+{{- if and (eq $unit.assurance.profile "regulated") (not $iv.enabled) }}
+{{- fail (printf "%s: the `regulated` profile runs only images verified before start: set imageVerification.enabled, with imageVerification.verifier.image, imageVerification.tokenSecret and each component's digest." $unit.label) }}
+{{- end }}
+{{- end }}
+{{- if $iv.enabled }}
+{{- if not (regexMatch "@sha256:[0-9a-f]{64}$" ($iv.verifier.image | default "")) }}
+{{- fail (printf "imageVerification.verifier.image is %q: name the verifier by digest, `<registry>/<name>@sha256:<hex>`, or what verifies the images is itself unverified." ($iv.verifier.image | default "")) }}
+{{- end }}
+{{- if not $iv.tokenSecret.name }}
+{{- fail "imageVerification.tokenSecret.name is empty: the attestation API is read with a GitHub token, from a Secret." }}
+{{- end }}
+{{- if not (and $iv.repository $iv.signerWorkflow) }}
+{{- fail "imageVerification names no repository or signerWorkflow: the provenance is checked against both." }}
+{{- end }}
+{{- $components := dict }}
+{{- if .Values.controlPlane.enabled }}{{- $_ := set $components "controlPlane" .Values.controlPlane.digest }}{{- end }}
+{{- if .Values.dataPlane.enabled }}{{- $_ := set $components "dataPlane" .Values.dataPlane.digest }}{{- end }}
+{{- if .Values.allInOne.enabled }}{{- $_ := set $components "allInOne" .Values.allInOne.digest }}{{- end }}
+{{- if and .Values.dataPlane.enabled .Values.dataPlane.drainController.enabled }}{{- $_ := set $components "dataPlane.drainController" .Values.dataPlane.drainController.digest }}{{- end }}
+{{- range $component, $digest := $components }}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" ($digest | default "")) }}
+{{- fail (printf "%s.digest is %q: with imageVerification on, every image is named by its digest, `sha256:<hex>` — a tag the kubelet resolves later is not what was verified." $component ($digest | default "")) }}
+{{- end }}
+{{- end }}
+{{- end }}

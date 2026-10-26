@@ -26,9 +26,41 @@ image:
   tag: ""
   pullSecrets: []
 
+# Image verification at deploy (TD-4). On, every Permguard Pod starts with a `verify-image` init
+# container that runs `gh attestation verify` on the exact digest the Pod runs: the GitHub artifact
+# attestation, its Sigstore signature, its SLSA provenance, the builder workflow, the repository and
+# the tag — the policy the release itself applies (`scripts/verify-provenance.sh`). An image that
+# fails it never starts, so its Pod never becomes Ready.
+#
+# On, each enabled component names its image by digest (`controlPlane.digest`, `dataPlane.digest`,
+# `allInOne.digest`, `dataPlane.drainController.digest`): a tag resolved later by the kubelet is not
+# what was verified. A `regulated` workload refuses to render without it; `values-production.yaml`
+# turns it on.
+imageVerification:
+  enabled: false
+  # The source repository and the builder workflow the provenance must name.
+  repository: permguard/permguard
+  signerWorkflow: permguard/permguard/.github/workflows/release-build.yml
+  # The ref the image was built from. Empty means `refs/tags/v<appVersion>`.
+  sourceRef: ""
+  verifier:
+    # An image whose entrypoint is the GitHub CLI, by digest: `<registry>/<name>@sha256:<hex>`.
+    # `docker/verifier/Dockerfile` builds one from the pinned `cli/cli` release.
+    image: ""
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 256Mi }
+  # The token the attestation API is read with (any GitHub token; no scope is needed for a public
+  # repository), from a Secret: never a value.
+  tokenSecret:
+    name: ""
+    key: token
+
 controlPlane:
   enabled: true
   repository: control-plane
+  # The image's digest, `sha256:<hex>`: what `imageVerification` verifies and the Pod runs.
+  digest: ""
   # One. A control plane's catalog, refs and key ring have a single maintaining process, so two
   # replicas either fight over one volume or diverge behind one Service — a zone created through
   # one pod missing from the other. `templates/checks.yaml` refuses more, rather than letting a
@@ -143,6 +175,8 @@ controlPlane:
 dataPlane:
   enabled: true
   repository: data-plane
+  # The image's digest, `sha256:<hex>`: what `imageVerification` verifies and the Pod runs.
+  digest: ""
   # The data plane is rendered as named groups (TD-1), not as one implicit global plane. Each group
   # has one membership selector and one operating policy, and each of its replicas is a distinct
   # Server: its own Host identity, its own volume. A group gets its own workload, Service,
@@ -290,6 +324,8 @@ dataPlane:
     enabled: false
     schedule: "*/5 * * * *"
     repository: cli
+    # The CLI image's digest, under `imageVerification`.
+    digest: ""
     coordinator: ""
     tls:
       secretName: ""
@@ -362,6 +398,8 @@ dataPlane:
 allInOne:
   enabled: false
   repository: all-in-one
+  # The image's digest, `sha256:<hex>`: what `imageVerification` verifies and the Pod runs.
+  digest: ""
   replicaCount: 1
   # The serving floor of this Host: see `dataPlane.groupDefaults.assurance`.
   assurance:

@@ -140,7 +140,7 @@ tasks:
   check:chart:
     desc: Lint the Helm chart and run its rendering tests; `task test` runs them too, so both need helm.
     cmds:
-      - helm lint charts/permguard --values charts/permguard/values-production.yaml
+      - helm lint charts/permguard --values charts/permguard/values-production.yaml --values charts/permguard/ci/image-verification.yaml
       - cargo test -p permguard-conformance --test chart --locked
 
   check:durability:

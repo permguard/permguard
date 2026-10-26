@@ -196,7 +196,7 @@ check-boundaries: ## Check that every untrusted decoder is registered, bounded a
 	cargo test -p permguard-conformance --test boundaries --locked
 
 check-chart: ## Lint the Helm chart and run its rendering tests; `make test` runs them too, so both need helm.
-	helm lint charts/permguard --values charts/permguard/values-production.yaml
+	helm lint charts/permguard --values charts/permguard/values-production.yaml --values charts/permguard/ci/image-verification.yaml
 	cargo test -p permguard-conformance --test chart --locked
 
 check-durability: ## Check that every durability primitive lives in the storage library or is allow-listed.

@@ -45,11 +45,14 @@ k() { kubectl --namespace "${namespace}" "$@"; }
 log_of() { k logs "$@" 2>/dev/null || true; }
 
 cleanup() {
-    if [ "${KEEP:-0}" != "1" ]; then kind delete cluster --name "${cluster}" >/dev/null 2>&1 || true; fi
+    if [ "${KEEP:-0}" != "1" ]; then kind delete cluster --name "${cluster}" >/dev/null 2>&1 || true; rm -f "${TMPDIR:-/tmp}/kubeconfig-${cluster}"; fi
 }
 trap cleanup EXIT
 
 step "a disposable cluster, ${cluster}"
+# The disposable cluster's own kubeconfig: the caller's, and its current context, are left as they are.
+export KUBECONFIG="${TMPDIR:-/tmp}/kubeconfig-${cluster}"
+echo "kubeconfig ${KUBECONFIG}"
 kind delete cluster --name "${cluster}" >/dev/null 2>&1 || true
 kind create cluster --name "${cluster}" --wait 120s
 for image in "${data_plane}" "${control_plane}" "${cli}"; do

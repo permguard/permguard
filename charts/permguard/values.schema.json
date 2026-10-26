@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "title": "permguard chart values",
-  "description": "Copyright (c) 2022 Nitro Agility S.r.l. SPDX-License-Identifier: Apache-2.0. The data plane groups are closed (TD-1): a key a group does not know is refused rather than ignored. The rest of the values are checked by templates/checks.yaml.",
+  "description": "Copyright (c) 2022 Nitro Agility S.r.l. SPDX-License-Identifier: Apache-2.0. The data plane groups are closed (TD-1): a key a group does not know is refused rather than ignored. The image verification is closed too (TD-4). The rest of the values are checked by templates/checks.yaml.",
   "type": "object",
   "properties": {
     "dataPlane": {
@@ -689,6 +689,51 @@
               "items": {
                 "type": "object"
               }
+            }
+          }
+        }
+      }
+    },
+    "imageVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "signerWorkflow": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/\\.github/workflows/[A-Za-z0-9_.-]+\\.ya?ml$"
+        },
+        "sourceRef": {
+          "type": "string"
+        },
+        "verifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "image": {
+              "type": "string"
+            },
+            "resources": {
+              "type": "object"
+            }
+          }
+        },
+        "tokenSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
             }
           }
         }

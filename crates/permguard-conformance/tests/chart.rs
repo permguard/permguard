@@ -83,6 +83,22 @@ fn render(values: &str) -> Rendered {
     render_with(values, &[]).unwrap_or_else(|error| panic!("the chart renders: {error}"))
 }
 
+/// `render` with image verification on (TD-4), as a `regulated` workload requires: the verifier,
+/// the token Secret and placeholder digests, from `ci/image-verification.yaml`.
+fn render_verified(values: &str) -> Rendered {
+    let filled = chart().join("ci/image-verification.yaml");
+    render_with(
+        values,
+        &[
+            "-f",
+            filled.to_str().expect("UTF-8"),
+            "--set",
+            "imageVerification.enabled=true,imageVerification.tokenSecret.name=gh-token",
+        ],
+    )
+    .unwrap_or_else(|error| panic!("the chart renders: {error}"))
+}
+
 /// Asserts the render fails, and that its message says `why`.
 fn refused(values: &str, why: &str) {
     match render_with(values, &[]) {
@@ -1052,7 +1068,7 @@ dataPlane:
 
 #[test]
 fn a_regulated_group_with_pkcs11_or_kms_custody_renders() {
-    let rendered = render(&format!(
+    let rendered = render_verified(&format!(
         "\
 dataPlane:
   groups:
@@ -1070,7 +1086,7 @@ dataPlane:
             "pin_ref": "hsm-pin"
         })
     );
-    let rendered = render(
+    let rendered = render_verified(
         "\
 dataPlane:
   groups:
@@ -1254,7 +1270,18 @@ fn no_rendered_object_terminates_a_peer_session() {
 #[test]
 fn the_shipped_values_files_render() {
     let production = std::fs::read_to_string(chart().join("values-production.yaml")).unwrap();
-    let rendered = render(&production);
+    // The production baseline verifies images (TD-4): it renders once a deployment names the
+    // verifier and the digests, as `ci/image-verification.yaml` does with placeholders.
+    let error = render_with(&production, &[])
+        .err()
+        .expect("refused as it ships");
+    assert!(
+        error.contains("imageVerification.verifier.image"),
+        "{error}"
+    );
+    let filled = chart().join("ci/image-verification.yaml");
+    let rendered = render_with(&production, &["-f", filled.to_str().unwrap()])
+        .unwrap_or_else(|error| panic!("the filled baseline renders: {error}"));
     let groups = rendered.all("StatefulSet");
     assert!(!groups.is_empty());
     for workload in groups {
@@ -1262,7 +1289,222 @@ fn the_shipped_values_files_render() {
             workload["spec"]["persistentVolumeClaimRetentionPolicy"]["whenScaled"],
             "Retain"
         );
+        let pod = &workload["spec"]["template"]["spec"];
+        assert_eq!(pod["initContainers"][0]["name"], "verify-image");
     }
+}
+
+/// Placeholder digests, as a deployment states them (TD-4).
+const DIGEST: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+fn verified(extra: &str) -> String {
+    format!(
+        "\
+imageVerification:
+  enabled: true
+  verifier: {{ image: \"registry.example/verifier@{DIGEST}\" }}
+  tokenSecret: {{ name: gh-token }}
+controlPlane:
+  digest: \"{DIGEST}\"
+  hostListener: {{ enabled: true, tls: {{ secretName: control-plane-host }} }}
+dataPlane:
+  digest: \"{DIGEST}\"
+  hostListener: {{ enabled: true, tls: {{ secretName: data-plane-host }} }}
+  drainController: {{ enabled: true, digest: \"{DIGEST}\", tls: {{ secretName: reclaim-operator }} }}
+  groups:
+    - name: billing
+      selector: plane/data/zone/billing/*
+    - name: edge
+      selector: plane/data/zone/edge/*
+      assurance: {{ profile: development }}
+      evidence: {{ mode: disabled }}
+      persistence: {{ enabled: false }}
+{extra}"
+    )
+}
+
+/// Asserts `pod` starts with the verifier, which verifies the image every other container runs,
+/// by digest, under the release's provenance policy.
+fn starts_verified(what: &str, pod: &Value) {
+    let init = pod["initContainers"].as_array().expect("init containers");
+    let verify = &init[0];
+    assert_eq!(verify["name"], "verify-image", "{what}");
+    assert_eq!(
+        verify["image"],
+        format!("registry.example/verifier@{DIGEST}"),
+        "{what}"
+    );
+    let image = pod["containers"][0]["image"].as_str().expect("an image");
+    assert!(image.ends_with(&format!("@{DIGEST}")), "{what}: {image}");
+    for other in init
+        .iter()
+        .skip(1)
+        .chain(pod["containers"].as_array().unwrap())
+    {
+        assert_eq!(
+            other["image"], image,
+            "{what}: every Permguard container runs it"
+        );
+    }
+    assert_eq!(
+        verify["args"],
+        json!([
+            "attestation",
+            "verify",
+            format!("oci://{image}"),
+            "--repo",
+            "permguard/permguard",
+            "--signer-workflow",
+            "permguard/permguard/.github/workflows/release-build.yml",
+            "--source-ref",
+            "refs/tags/v0.1.6",
+            "--deny-self-hosted-runners"
+        ]),
+        "{what}"
+    );
+    assert_eq!(
+        verify["env"][0],
+        json!({ "name": "GH_TOKEN", "valueFrom": { "secretKeyRef": { "name": "gh-token", "key": "token" } } }),
+        "{what}: the token from its Secret"
+    );
+    assert_eq!(
+        verify["securityContext"]["readOnlyRootFilesystem"], true,
+        "{what}"
+    );
+    assert!(
+        pod["volumes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|volume| volume["name"] == "verify-image-home"),
+        "{what}: the verifier's home"
+    );
+}
+
+#[test]
+fn image_verification_runs_first_in_every_permguard_pod_on_the_digest_it_runs() {
+    let rendered = render(&verified(""));
+    starts_verified(
+        "control plane",
+        &rendered.get("Deployment", "permguard-control-plane")["spec"]["template"]["spec"],
+    );
+    starts_verified(
+        "stateful group",
+        &rendered.get("StatefulSet", "permguard-data-plane-billing")["spec"]["template"]["spec"],
+    );
+    starts_verified(
+        "stateless group",
+        &rendered.get("Deployment", "permguard-data-plane-edge")["spec"]["template"]["spec"],
+    );
+    starts_verified(
+        "drain controller",
+        &rendered.get("CronJob", "permguard-data-plane-billing-reclaim")["spec"]["jobTemplate"]["spec"]
+            ["template"]["spec"],
+    );
+    let template =
+        rendered.get("ConfigMap", "permguard-data-plane-billing-drain-job")["data"]["job.json"]
+            .as_str()
+            .unwrap()
+            .replace("__CLAIM__", "state-permguard-data-plane-billing-2")
+            .replace("__JOB__", "permguard-data-plane-billing-drain-2")
+            .replace("__ORDINAL__", "2");
+    let job: Value = serde_json::from_str(&template).expect("the template is JSON");
+    starts_verified("drain Job", &job["spec"]["template"]["spec"]);
+    // The claim follows the verification, never precedes it.
+    let stateful =
+        &rendered.get("StatefulSet", "permguard-data-plane-billing")["spec"]["template"]["spec"];
+    assert_eq!(stateful["initContainers"][1]["name"], "claim");
+
+    let all_in_one = render(&format!(
+        "\
+imageVerification:
+  enabled: true
+  verifier: {{ image: \"registry.example/verifier@{DIGEST}\" }}
+  tokenSecret: {{ name: gh-token }}
+allInOne: {{ enabled: true, digest: \"{DIGEST}\", tls: {{ secretName: aio-tls }} }}
+controlPlane: {{ enabled: false }}
+dataPlane: {{ enabled: false }}
+"
+    ));
+    starts_verified(
+        "all-in-one",
+        &all_in_one.get("Deployment", "permguard-all-in-one")["spec"]["template"]["spec"],
+    );
+}
+
+#[test]
+fn image_verification_is_off_by_default_and_changes_nothing() {
+    let rendered = render("");
+    for kind in ["Deployment", "StatefulSet"] {
+        for workload in rendered.all(kind) {
+            let pod = &workload["spec"]["template"]["spec"];
+            let names: Vec<&Value> = pod["initContainers"]
+                .as_array()
+                .map(|init| init.iter().map(|container| &container["name"]).collect())
+                .unwrap_or_default();
+            assert!(!names.contains(&&json!("verify-image")), "{names:?}");
+            let image = pod["containers"][0]["image"].as_str().unwrap();
+            assert!(image.ends_with(":0.1.6"), "{image}");
+        }
+    }
+}
+
+#[test]
+fn image_verification_refuses_a_tag_an_unpinned_verifier_or_no_token() {
+    // A component without its digest: a tag resolved later is not what was verified.
+    for component in ["controlPlane", "dataPlane", "dataPlane.drainController"] {
+        let values = verified("").replace(
+            &match component {
+                "controlPlane" => format!("controlPlane:\n  digest: \"{DIGEST}\"\n"),
+                "dataPlane" => format!("dataPlane:\n  digest: \"{DIGEST}\"\n"),
+                _ => format!("enabled: true, digest: \"{DIGEST}\","),
+            },
+            &match component {
+                "controlPlane" => "controlPlane:\n".to_owned(),
+                "dataPlane" => "dataPlane:\n".to_owned(),
+                _ => "enabled: true,".to_owned(),
+            },
+        );
+        assert_ne!(values, verified(""), "{component}");
+        refused(&values, &format!("{component}.digest is \"\""));
+    }
+    refused(
+        &verified("").replace(&format!("verifier@{DIGEST}"), "verifier:2.98.0"),
+        "name the verifier by digest",
+    );
+    refused(
+        &verified("").replace(
+            "tokenSecret: { name: gh-token }",
+            "tokenSecret: { name: \"\" }",
+        ),
+        "imageVerification.tokenSecret.name is empty",
+    );
+    refused(
+        &verified("").replace(
+            &format!("controlPlane:\n  digest: \"{DIGEST}\""),
+            "controlPlane:\n  digest: latest",
+        ),
+        "controlPlane.digest is \"latest\"",
+    );
+}
+
+#[test]
+fn a_regulated_workload_runs_only_verified_images() {
+    let group = format!(
+        "\
+dataPlane:
+  groups:
+    - name: vault
+      selector: plane/data/*{PKCS11}"
+    );
+    refused(
+        &group,
+        "the `regulated` profile runs only images verified before start",
+    );
+    let rendered = render_verified(&group);
+    let pod =
+        &rendered.get("StatefulSet", "permguard-data-plane-vault")["spec"]["template"]["spec"];
+    assert_eq!(pod["initContainers"][0]["name"], "verify-image");
 }
 
 #[test]

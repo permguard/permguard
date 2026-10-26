@@ -19,6 +19,16 @@ is cut.
 
 ### Added
 
+- **Image verification at deploy (TD-4).**
+  `imageVerification.enabled` starts every Permguard Pod the chart renders with a `verify-image` init container that runs `gh attestation verify` on the digest the Pod runs.
+  The digest's attestation must name the repository, the builder workflow `release-build.yml` and the release tag.
+  An unattested image, or one attested for another repository, builder or ref, never starts, and its Pod never becomes Ready.
+  While it is on, each enabled component names its image by digest: `controlPlane.digest`, `dataPlane.digest`, `allInOne.digest`, `dataPlane.drainController.digest`.
+  The verifier image is named by digest too, and the GitHub token comes from `imageVerification.tokenSecret`.
+  `values-production.yaml` turns it on, and a `regulated` workload refuses to render without it.
+  `docker/verifier/Dockerfile` builds the verifier from the pinned `cli/cli` release.
+  No published image passes the defaults yet: 0.1.6's images carry no attestation and no release has been built by `release-build.yml`; 0.1.5 passes with `release-pipeline.yml` and `refs/tags/v0.1.5` (`ops/container-verification.md`).
+
 - **The Compose lab's five profiles (TD-3).**
   `docker-compose.lab.yml` runs `all-in-one`, `split-plane`, `multi-data-plane`, `multi-group` and `temporal-replicas`, started with the profile's name in `COMPOSE_PROFILES`.
   The lab's own test authority issues every certificate, grants its operator on each volume before the Host first serves, and enrolls each Data Plane over one-time invitations with the exact fingerprints it read from both Hosts.

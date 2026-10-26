@@ -303,6 +303,32 @@ jobs:
       - name: scale a group down and up
         run: ./scripts/chart-e2e.sh permguard/data-plane:e2e
 
+  # Image verification at deploy (TD-4): with the chart's `verify-image` on, an unattested image, an
+  # image attested for another repository, by another builder or from another ref never reaches
+  # Ready, and an attested image passes under its own identity.
+  chart-supply-chain:
+    name: helm chart refuses unverified images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: kind, pinned by digest
+        run: |
+          set -euo pipefail
+          curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+          echo "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  kind" | sha256sum --check
+          sudo install -m 0755 kind /usr/local/bin/kind
+      - name: the verifier image
+        run: docker build -f docker/verifier/Dockerfile -t permguard/verifier:e2e docker/verifier
+      - name: unverified images never reach Ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/chart-supply-chain.sh permguard/verifier:e2e
+
   # The Compose lab's five profiles, each enrolled by the lab's own authority and checked — the same
   # script and the same assertions on Linux and on macOS (TD-3, F-24, F-25, F-26). The image is built
   # once, here, and the macOS job runs that very image.
@@ -410,7 +436,7 @@ jobs:
           tls="--set controlPlane.tls.secretName=permguard-control-plane-tls,dataPlane.tls.terminatedUpstream=true,allInOne.tls.secretName=permguard-all-in-one-tls"
           for values in \
             "${tls}" \
-            "--values charts/permguard/values-production.yaml" \
+            "--values charts/permguard/values-production.yaml --values charts/permguard/ci/image-verification.yaml" \
             "${tls} --set allInOne.enabled=true,controlPlane.enabled=false,dataPlane.enabled=false" \
             "${tls} --set persistence.enabled=true" \
             "${tls} --set dataPlane.replicaCount=1" \

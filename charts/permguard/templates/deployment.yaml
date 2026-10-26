@@ -60,12 +60,17 @@ spec:
       # Long enough for readiness to go false, the load balancer to notice, and connections in
       # flight to finish. The process drains on SIGTERM; this is the time it is given to.
       terminationGracePeriodSeconds: 30
-      {{- if include "permguard.persists" (dict "root" $ "plane" $plane) }}
-      # The orchestrator's claim (WP-1.4), moved forward before every Pod's server opens the
-      # volume, as for a data plane group: from `production` a volume is served only under one.
+      {{- $image := dict "root" $ "repository" $plane.repository "digest" $plane.digest }}
+      {{- $persists := include "permguard.persists" (dict "root" $ "plane" $plane) }}
+      {{- if or $persists $.Values.imageVerification.enabled }}
       initContainers:
+        {{- with include "permguard.verifyImage" $image | trim }}{{ . | nindent 8 }}{{- end }}
+      {{- end }}
+      {{- if $persists }}
+        # The orchestrator's claim (WP-1.4), moved forward before every Pod's server opens the
+        # volume, as for a data plane group: from `production` a volume is served only under one.
         - name: claim
-          image: {{ include "permguard.image" (dict "root" $ "repository" $plane.repository) }}
+          image: {{ include "permguard.image" $image }}
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           args: ["volume", "claim", "--volume", "/var/lib/permguard/volume", "--next", "--create"]
           securityContext:
@@ -78,7 +83,7 @@ spec:
       {{- end }}
       containers:
         - name: {{ $component }}
-          image: {{ include "permguard.image" (dict "root" $ "repository" $plane.repository) }}
+          image: {{ include "permguard.image" $image }}
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           args: ["/etc/permguard/config.yml"]
           # The decision and event streams are named by the Host's `host_id` and run (WP-6.1,
@@ -136,6 +141,7 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        {{- with include "permguard.verifyImageVolume" $ | trim }}{{ . | nindent 8 }}{{- end }}
         - name: config
           configMap:
             name: {{ include "permguard.fullname" $ }}-{{ $component }}
@@ -253,11 +259,16 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: 30
-      {{- if include "permguard.persists" (dict "root" . "plane" .Values.allInOne) }}
-      # The orchestrator's claim (WP-1.4), moved forward before every Pod's server opens the volume.
+      {{- $image := dict "root" . "repository" .Values.allInOne.repository "digest" .Values.allInOne.digest }}
+      {{- $persists := include "permguard.persists" (dict "root" . "plane" .Values.allInOne) }}
+      {{- if or $persists .Values.imageVerification.enabled }}
       initContainers:
+        {{- with include "permguard.verifyImage" $image | trim }}{{ . | nindent 8 }}{{- end }}
+      {{- end }}
+      {{- if $persists }}
+        # The orchestrator's claim (WP-1.4), moved forward before every Pod's server opens the volume.
         - name: claim
-          image: {{ include "permguard.image" (dict "root" . "repository" .Values.allInOne.repository) }}
+          image: {{ include "permguard.image" $image }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["volume", "claim", "--volume", "/var/lib/permguard/volume", "--next", "--create"]
           securityContext:
@@ -270,7 +281,7 @@ spec:
       {{- end }}
       containers:
         - name: all-in-one
-          image: {{ include "permguard.image" (dict "root" . "repository" .Values.allInOne.repository) }}
+          image: {{ include "permguard.image" $image }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["/etc/permguard/config.yml"]
           env:
@@ -320,6 +331,7 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        {{- with include "permguard.verifyImageVolume" . | trim }}{{ . | nindent 8 }}{{- end }}
         - name: config
           configMap:
             name: {{ include "permguard.fullname" . }}-all-in-one

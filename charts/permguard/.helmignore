@@ -1,0 +1,5 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Values for the lint and the rendering tests, not for a release.
+ci/
