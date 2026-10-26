@@ -100,6 +100,41 @@ jobs:
       - name: the languages crate, vectors and corpora included
         run: cargo test -p permguard-languages --all-features --locked
 
+  # The release benchmark's harness on every change (TS-3), so it cannot rot between releases: the
+  # binaries built in release mode from this commit, a short ladder, every interface and evidence
+  # mode, and the report kept as an artifact. A release runs the full ladder on what it published.
+  benchmark:
+    name: benchmark (short ladder)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: the release binaries and the harness
+        run: cargo build --release --locked -p permguard-all-in-one -p permguard-cli -p permguard-conformance --bins
+      - name: a short ladder, every interface and evidence mode
+        run: |
+          target/release/permguard-bench run \
+            --server target/release/permguard-all-in-one --cli target/release/permguard \
+            --storage-class "github-hosted runner, ephemeral disk" \
+            --directory "${RUNNER_TEMP}/permguard-bench" \
+            --ladder 1,8,64,256 --step-seconds 3 --warmup-seconds 2 \
+            --revision "${GITHUB_SHA}" --out permguard-benchmark.json
+          # Informative here: the serving gate is what holds a candidate to the objective.
+          target/release/permguard-bench capacity permguard-benchmark.json ||
+            echo "::warning title=Capacity::an interface and evidence mode met the objective at no step of the short ladder"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark
+          path: permguard-benchmark.json
+          if-no-files-found: error
+
   fuzz:
     name: fuzz every untrusted decoder (short budget)
     # Pull requests only: a short run on every change catches a decoder that panics on its first

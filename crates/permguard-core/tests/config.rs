@@ -2505,3 +2505,88 @@ fn test_a_transfer_session_is_open_at_most_an_hour() {
         "{refused:#}"
     );
 }
+
+/// TS-3: evaluation runs on a pool of its own, sized to the Host's cores unless a deployment sets
+/// it, with a bounded queue in front; the storage pool keeps `max_blocking`.
+#[test]
+fn test_the_evaluation_pool_defaults_to_the_cores_and_is_configured_apart_from_storage() {
+    let defaults = config(&[], &[], &[]);
+    assert_eq!(defaults.evaluation_concurrency(), host_cores());
+    assert_eq!(defaults.evaluation_queue(), default_max_blocking());
+    assert_eq!(defaults.max_blocking(), default_max_blocking());
+
+    let set = config(
+        &[(SETTING_EVALUATION_CONCURRENCY, "3")],
+        &[(SETTING_EVALUATION_QUEUE, "0")],
+        &[],
+    );
+    assert_eq!(
+        (set.evaluation_concurrency(), set.evaluation_queue()),
+        (3, 0)
+    );
+    let effective: std::collections::BTreeMap<String, Option<String>> = set
+        .effective_settings()
+        .into_iter()
+        .map(|setting| (setting.key, setting.value))
+        .collect();
+    assert_eq!(
+        effective[SETTING_EVALUATION_CONCURRENCY].as_deref(),
+        Some("3")
+    );
+    // Unset, the value in force is the cores, rendered — never an empty setting.
+    let effective: std::collections::BTreeMap<String, Option<String>> = defaults
+        .effective_settings()
+        .into_iter()
+        .map(|setting| (setting.key, setting.value))
+        .collect();
+    assert_eq!(
+        effective[SETTING_EVALUATION_CONCURRENCY].as_deref(),
+        Some(host_cores().to_string().as_str())
+    );
+}
+
+#[test]
+fn test_an_evaluation_pool_of_no_slots_is_refused() {
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_environment(pairs(&[(SETTING_EVALUATION_CONCURRENCY, "0")])),
+    );
+    let error = refused.expect_err("zero slots decide nothing").to_string();
+    assert!(error.contains(SETTING_EVALUATION_CONCURRENCY), "{error}");
+}
+
+/// The two pools draw on the runtime's blocking threads: asking for more than it lends would let
+/// one wait invisibly behind the other.
+#[test]
+fn test_pools_that_together_exceed_the_runtimes_blocking_threads_are_refused() {
+    let fits = config(
+        &[
+            (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+            (SETTING_ASSURANCE_PROFILE, "development"),
+            (SETTING_EVALUATION_CONCURRENCY, "256"),
+            (SETTING_MAX_BLOCKING, "128"),
+        ],
+        &[],
+        &[],
+    );
+    assert!(fits.validate().is_ok());
+    let over = config(
+        &[
+            (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+            (SETTING_ASSURANCE_PROFILE, "development"),
+            (SETTING_EVALUATION_CONCURRENCY, "257"),
+            (SETTING_MAX_BLOCKING, "128"),
+        ],
+        &[],
+        &[],
+    );
+    let error = over
+        .validate()
+        .expect_err("more than the runtime lends")
+        .to_string();
+    assert!(
+        error.contains(&RUNTIME_BLOCKING_THREADS.to_string()),
+        "{error}"
+    );
+}

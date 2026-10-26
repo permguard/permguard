@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **A release benchmark, published with every release (TS-3).**
+  `permguard-bench run` starts the release's own `permguard-all-in-one` on loopback, applies `examples/basics` with the release's own CLI, and measures the native PDP over HTTP and gRPC, with the decision log off and `required`, on a ladder of offered concurrency.
+  The report (`permguard.bench.report.v1`) names the platform, the storage class with a measured `fsync` probe, the dataset and its digest, and per step p50/p95/p99 latency, throughput, CPU seconds, peak RSS, refusals by code and errors, with the refusal point of each run.
+  The release pipeline measures the Linux binaries it published and attaches `permguard-benchmark.json` to the release; CI runs a short ladder on every change.
+  `permguard-bench capacity <report>` reads off the concurrency each interface and evidence mode sustained within the published objective (`bench/slo.json`), less its headroom: capacity is configured from a report of the platform it runs on, never from a number measured elsewhere.
+
 - **A conformance gate per language (TL-6).**
   `permguard_languages::conformance` records the languages model's eight gate items for Cedar, Rego and Dogwood.
   The items are golden vectors, upstream corpus parity, adversarial tests, replay on two platforms, the engine-upgrade differential, fault injection, stored objects and the supply chain.
@@ -669,6 +675,16 @@ is cut.
   A denial at a listener's gate (`unauthenticated`, `forbidden`) is reported with its code and no class over REST as over gRPC, exit 64.
 
 ### Changed
+
+- **Policy evaluation, decision records and loads run on pools of their own (TS-3).**
+  `dataPlane.decisions.evaluation_concurrency` (`PERMGUARD_EVALUATION_CONCURRENCY`) bounds the evaluations running at once, by default the Host's logical cores.
+  A burst wider than that waits in `dataPlane.decisions.evaluation_queue` (`PERMGUARD_EVALUATION_QUEUE`, default 64) no longer than the request's deadline, and past it the plane answers `503` `evaluation_at_capacity` at once.
+  Decision records, with the group flush they wait on, take slots of their own, as many as `max_blocking`; loads, temporal staging and replay keep `max_blocking`'s other pool.
+  Under `required` evidence a plane past its records' bound now refuses `decision_unrecordable` instead of `load_at_capacity`: records waiting for their flush no longer take the slots the next request's load needs.
+  The evaluation slots and twice `max_blocking` may not exceed the runtime's 512 blocking threads; a configuration that asks for more is refused at start.
+  A `max_blocking` above 224 on an 8-core Host, valid before, is therefore refused: halve it, since it now sizes two pools.
+  The pools report `permguard_evaluation_*` (with `_queued`) and `permguard_evidence_*` beside `permguard_blocking_*`.
+  An evaluation's wait in the queue no longer counts against the deadline the quarantine breaker judges it by.
 
 - **From `production` up, a Data Plane serves only runtimes whose conformance gate passes (TL-6).**
   A ledger of a runtime with an open item is refused at load, naming the items, even when its experimental runtime is opted into.

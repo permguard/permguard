@@ -538,6 +538,10 @@ pub struct Decider {
     single_flight: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<()>>>>>,
     /// The bound on concurrent blocking work — see [`Decider::with_blocking`].
     blocking: crate::blocking::Blocking,
+    /// The pool evaluations run on, apart from the disk work — see [`Decider::with_evaluation`].
+    evaluation: crate::blocking::Blocking,
+    /// The pool decision records and their flush run on — see [`Decider::with_evidence`].
+    evidence: crate::blocking::Blocking,
     /// Profiles whose evaluation keeps overrunning its deadline — see
     /// [`crate::authz::quarantine`].
     quarantine: Arc<super::quarantine::Quarantine>,
@@ -591,6 +595,17 @@ impl Decider {
             // composition root replaces it with the configured size.
             blocking: crate::blocking::Blocking::new(
                 permguard_core::config::default_max_blocking(),
+                metrics_for_pool.clone(),
+            ),
+            // The same reasoning for evaluation: a pool sized to the cores, a burst queued in
+            // front of it, replaced by the composition root with the configured one.
+            evaluation: crate::blocking::Blocking::evaluation(
+                permguard_core::config::host_cores(),
+                permguard_core::config::default_max_blocking(),
+                metrics_for_pool.clone(),
+            ),
+            evidence: crate::blocking::Blocking::evidence(
+                permguard_core::config::default_max_blocking(),
                 metrics_for_pool,
             ),
             quarantine: Arc::new(super::quarantine::Quarantine::new()),
@@ -628,6 +643,27 @@ impl Decider {
     /// refuses immediately instead of letting the runtime's queue grow behind it.
     pub fn with_blocking(mut self, blocking: crate::blocking::Blocking) -> Self {
         self.blocking = blocking;
+
+        self
+    }
+
+    /// The pool policy evaluation runs on (TS-3).
+    ///
+    /// Apart from [`Decider::with_blocking`]'s disk work, so neither can take the other's capacity:
+    /// a stalled disk holds storage permits and evaluations still run; a burst of evaluations
+    /// waits in its own queue and the flushes that settle answered decisions still run.
+    pub fn with_evaluation(mut self, evaluation: crate::blocking::Blocking) -> Self {
+        self.evaluation = evaluation;
+
+        self
+    }
+
+    /// The pool decision records run on (TS-3): the append and the group flush the record waits
+    /// for, apart from the loads [`Decider::with_blocking`] bounds. Under `required` evidence every
+    /// answered decision holds a slot here until its flush; sharing the loads' slots let those
+    /// waits refuse the next request's load.
+    pub fn with_evidence(mut self, evidence: crate::blocking::Blocking) -> Self {
+        self.evidence = evidence;
 
         self
     }
@@ -1080,11 +1116,16 @@ impl Decider {
             guarded.clone(),
             deadline,
             tokio::runtime::Handle::current(),
+            // When the evaluation asked for a slot: the time it then waited in the queue is load,
+            // not slowness, and the breaker below must not count it.
+            std::time::Instant::now(),
         );
+        // On the evaluation pool, waiting for a slot no longer than the decision's own deadline:
+        // a request that cannot start before it would be abandoned is refused instead.
         let evaluated = self
-            .blocking
-            .run(&[], move || {
-                let (quarantine, guarded, deadline, runtime) = watching;
+            .evaluation
+            .run_until(&[], deadline, move || {
+                let (quarantine, guarded, deadline, runtime, queued_at) = watching;
                 // The reservation is handed over here and nowhere earlier. This closure runs only
                 // when a permit was taken, so a request refused at capacity drops `probe` with the
                 // closure and gives the reservation back instead of stranding it.
@@ -1096,7 +1137,13 @@ impl Decider {
                 // did not overrun this profile. The timer itself belongs to the
                 // runtime, so dropping the caller cannot cancel the breaker
                 // observation while synchronous provider work keeps running.
-                let watch = deadline.map(|deadline| quarantine.watch(guarded, deadline, &runtime));
+                //
+                // Its deadline is the request's, moved by the time the evaluation waited in the
+                // queue: a burst wider than the cores delays when an evaluation starts, and an
+                // evaluation that started late is not a slow one (TS-3).
+                let waited = queued_at.elapsed();
+                let watch =
+                    deadline.map(|deadline| quarantine.watch(guarded, deadline + waited, &runtime));
                 let outcome = plan.run();
                 if let Some(watch) = watch {
                     watch.finish();
@@ -1118,8 +1165,8 @@ impl Decider {
                         format!(
                             "{held}. An evaluation is synchronous and a provider inside one cannot \
                              be interrupted, so this plane bounds how many may run at once and \
-                             refuses beyond it rather than queueing behind work that may not \
-                             return"
+                             how many may wait, and refuses beyond that rather than queueing \
+                             without limit behind work that may not return"
                         ),
                     )
                 }
@@ -2134,7 +2181,7 @@ impl Decider {
         // queue the pool exists to refuse — reached from the ordinary decision path, which is the
         // busiest one there is.
         let written = self
-            .blocking
+            .evidence
             .run(&[], move || journal.record_located(&decided.borrowed()))
             .await;
         let written = match written {

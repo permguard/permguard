@@ -500,15 +500,31 @@ pub const SETTING_AUTHZ_CACHE_ZONE_BYTES: &str = "PERMGUARD_AUTHZ_CACHE_ZONE_BYT
 /// either way the answer is a refusal rather than a stalled worker.
 pub const SETTING_AUTHZ_MAX_EVALUATIONS: &str = "PERMGUARD_AUTHZ_MAX_EVALUATIONS";
 
-/// How many pieces of blocking work this plane may have in flight at once.
+/// How many pieces of storage work of each kind this plane may have in flight at once.
 ///
-/// Evaluating a policy and writing a decision record both wait — on a CPU that is not yielding, on
-/// a disk that has not finished — and neither may run on a runtime worker. They run on a pool, and
-/// this is its size: reached, the plane refuses immediately rather than queueing behind work it
-/// cannot bound. It is the number that decides whether a stalled disk or a provider that stopped
-/// returning shows up as refusals while the plane can still produce them, or as a plane that
-/// accumulates until memory decides, so it is worth being able to set.
+/// Loading a ledger, replaying temporal history and writing a decision record wait on a disk, and
+/// none of it may run on a runtime worker. Loads and replay run on one pool, decision records and
+/// the group flush they wait on on another, and this is the size of each: reached, the
+/// plane refuses immediately rather than queueing behind work it cannot bound. It is the number
+/// that decides whether a stalled disk shows up as refusals while the plane can still produce them,
+/// or as a plane that accumulates until memory decides, so it is worth being able to set. Policy
+/// evaluation runs on a pool of its own, [`SETTING_EVALUATION_CONCURRENCY`] (TS-3).
 pub const SETTING_MAX_BLOCKING: &str = "PERMGUARD_MAX_BLOCKING";
+
+/// How many policy evaluations run at once (TS-3, P5 separate pools).
+///
+/// Evaluation is CPU work that does not yield: more of it running at once than there are cores only
+/// makes each slower. It therefore runs on a pool of its own, apart from the disk work
+/// [`SETTING_MAX_BLOCKING`] bounds, so that a stalled disk cannot take the evaluation's capacity
+/// and a hung evaluation cannot take the disk's. Unset, it is the Host's logical cores, read at
+/// start: a number derived from the machine, never one measured elsewhere.
+pub const SETTING_EVALUATION_CONCURRENCY: &str = "PERMGUARD_EVALUATION_CONCURRENCY";
+
+/// How many evaluations may wait for one of the [`SETTING_EVALUATION_CONCURRENCY`] slots.
+///
+/// A burst wider than the cores waits here, each request no longer than its own deadline; past
+/// this many the plane refuses at once, typed, rather than queueing work it cannot bound.
+pub const SETTING_EVALUATION_QUEUE: &str = "PERMGUARD_EVALUATION_QUEUE";
 
 /// Runtime setting keys for the decision log: what a plane records about what it decided, and
 /// where it sends it.
@@ -1015,6 +1031,22 @@ const DEFAULT_AUTHZ_MAX_EVALUATIONS: usize = 256;
 /// has stopped returning cannot take the process with it.
 const DEFAULT_MAX_BLOCKING: usize = 64;
 
+/// The default burst of evaluations that may wait for a core: as many as the storage pool may run,
+/// so the default plane admits as much evaluation work at once as it did before the pools were
+/// separated. A protective bound, not a capacity promise: a deployment sizes it from its own
+/// benchmark report.
+const DEFAULT_EVALUATION_QUEUE: usize = DEFAULT_MAX_BLOCKING;
+
+/// The most threads the runtime lends blocking work (Tokio's default). The two pools take theirs
+/// from it, so together they may not ask for more: a pool whose permits outnumber the threads
+/// would queue invisibly behind the other, which is the starvation the separation exists to end.
+pub const RUNTIME_BLOCKING_THREADS: usize = 512;
+
+/// The Host's logical cores, read once: the evaluation pool's default size.
+pub fn host_cores() -> usize {
+    std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+}
+
 /// The default bound, for a component built before a configuration is read.
 pub fn default_max_blocking() -> usize {
     DEFAULT_MAX_BLOCKING
@@ -1394,6 +1426,9 @@ pub struct Config {
     authz_cache_zone_bytes: Option<u64>,
     authz_max_evaluations: usize,
     max_blocking: usize,
+    /// `None`: the Host's cores.
+    evaluation_concurrency: Option<usize>,
+    evaluation_queue: usize,
     log_enabled: bool,
     /// `log.enabled` and `log.mode` as some layer stated them, so a contradiction between two
     /// layers is refused like one within a layer (WP-6.1).
@@ -1610,6 +1645,8 @@ impl Default for Config {
             authz_cache_zone_bytes: None,
             authz_max_evaluations: DEFAULT_AUTHZ_MAX_EVALUATIONS,
             max_blocking: DEFAULT_MAX_BLOCKING,
+            evaluation_concurrency: None,
+            evaluation_queue: DEFAULT_EVALUATION_QUEUE,
             log_enabled: false,
             log_enabled_stated: None,
             log_mode_stated: None,
@@ -2174,6 +2211,7 @@ produce: use `EdDSA` or `ES256`"
 
         self.validate_development()?;
         self.validate_shutdown()?;
+        self.validate_pools()?;
         self.validate_admin_advertised_url()?;
         self.validate_host_identity()?;
         self.validate_admin_access()?;
@@ -2273,6 +2311,26 @@ produce: use `EdDSA` or `ES256`"
                 self.shutdown_drain_timeout,
                 MIN_SHUTDOWN_RELEASE,
                 self.shutdown_timeout
+            );
+        }
+        Ok(())
+    }
+
+    /// The blocking pools draw on one runtime's threads: together they may not ask for more than it
+    /// lends (TS-3). The evaluation pool's slots, and `max_blocking` twice — once for loads and
+    /// replay, once for decision records. Necessary, not sufficient: the runtime's other blocking
+    /// work (file reads, the mirror loop, audit sinks) takes threads too, so a configuration near
+    /// the ceiling can still wait on them.
+    fn validate_pools(&self) -> Result<()> {
+        let asked = self.evaluation_concurrency() + 2 * self.max_blocking;
+        if asked > RUNTIME_BLOCKING_THREADS {
+            bail!(
+                "{SETTING_EVALUATION_CONCURRENCY} ({}) and twice {SETTING_MAX_BLOCKING} ({}, for \
+                 loads and for decision records) together ask for {asked} blocking threads, more \
+                 than the runtime's {RUNTIME_BLOCKING_THREADS}: one pool would wait invisibly \
+                 behind another",
+                self.evaluation_concurrency(),
+                self.max_blocking
             );
         }
         Ok(())
@@ -4003,6 +4061,16 @@ produce: use `EdDSA` or `ES256`"
         self.max_blocking
     }
 
+    /// How many evaluations run at once — see [`SETTING_EVALUATION_CONCURRENCY`].
+    pub fn evaluation_concurrency(&self) -> usize {
+        self.evaluation_concurrency.unwrap_or_else(host_cores)
+    }
+
+    /// How many evaluations may wait for a slot — see [`SETTING_EVALUATION_QUEUE`].
+    pub fn evaluation_queue(&self) -> usize {
+        self.evaluation_queue
+    }
+
     /// How often the synchronization loop runs.
     pub fn mirrors_interval(&self) -> Duration {
         self.mirrors_interval
@@ -4570,6 +4638,8 @@ produce: use `EdDSA` or `ES256`"
             SETTING_AUTHZ_CACHE_ZONE_BYTES => n(self.authz_cache_zone_bytes()),
             SETTING_AUTHZ_MAX_EVALUATIONS => n(self.authz_max_evaluations),
             SETTING_MAX_BLOCKING => n(self.max_blocking),
+            SETTING_EVALUATION_CONCURRENCY => n(self.evaluation_concurrency()),
+            SETTING_EVALUATION_QUEUE => n(self.evaluation_queue),
             SETTING_LOG_ENABLED => b(self.log_enabled),
             SETTING_LOG_MODE => Some(self.log_mode().as_str().to_owned()),
             SETTING_LOG_SPOOL_DIRECTORY => Some(self.log_spool_directory.clone()),
@@ -5662,6 +5732,23 @@ produce: use `EdDSA` or `ES256`"
                 );
             }
         }
+        if let Some(value) = settings.get(SETTING_EVALUATION_CONCURRENCY) {
+            let concurrency: usize = value
+                .parse()
+                .with_context(|| format!("reading {SETTING_EVALUATION_CONCURRENCY}"))?;
+            if concurrency == 0 {
+                anyhow::bail!(
+                    "reading {SETTING_EVALUATION_CONCURRENCY}: no evaluation slot means no request \
+                     can ever be decided"
+                );
+            }
+            self.evaluation_concurrency = Some(concurrency);
+        }
+        if let Some(value) = settings.get(SETTING_EVALUATION_QUEUE) {
+            self.evaluation_queue = value
+                .parse()
+                .with_context(|| format!("reading {SETTING_EVALUATION_QUEUE}"))?;
+        }
         if let Some(value) = settings.get(SETTING_AUTHZ_MAX_EVALUATIONS) {
             self.authz_max_evaluations = value
                 .parse()
@@ -6393,6 +6480,8 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_LOG_SPOOL_BYTES,
     SETTING_LOG_SPOOL_DIRECTORY,
     SETTING_MAX_BLOCKING,
+    SETTING_EVALUATION_CONCURRENCY,
+    SETTING_EVALUATION_QUEUE,
     SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
     SETTING_RESPONSE_SIGNING_ENABLED,
     SETTING_RESPONSE_SIGNING_VALIDITY,

@@ -5265,3 +5265,176 @@ mod signed_response {
         assert_eq!(refused["code"], "unauthenticated", "{refused}");
     }
 }
+
+/// Holds every slot of `pool` with work that runs until the returned sender drops.
+async fn hold_all(
+    pool: &permguard_data_plane::blocking::Blocking,
+) -> Vec<std::sync::mpsc::Sender<()>> {
+    let mut releases = Vec::new();
+    for _ in 0..pool.capacity() {
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let pool = pool.clone();
+        tokio::spawn(async move { pool.run(&[], move || held.recv().ok()).await });
+        releases.push(release);
+    }
+    for _ in 0..400 {
+        if pool.in_flight() == pool.capacity() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(pool.in_flight(), pool.capacity(), "every slot is held");
+    releases
+}
+
+/// TS-3, P5 separate pools: evaluation and storage are bounded apart. With every evaluation slot
+/// held, a decision is refused `evaluation_at_capacity` while the storage pool stays free; with every
+/// storage slot held, the load is refused `load_at_capacity` and the evaluation pool is untouched.
+/// Neither borrows the other's capacity, so neither can starve the other.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn evaluation_and_storage_are_bounded_apart() {
+    use permguard_data_plane::blocking::Blocking;
+
+    let root = scratch("pools").join("mirrors");
+    let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+    );
+    let evaluation = Blocking::evaluation(1, 0, Metrics::none());
+    let storage = Blocking::new(2, Metrics::none());
+    let decider = Arc::new(
+        Decider::new(
+            root.to_path_buf(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_blocking(storage.clone())
+        .with_evaluation(evaluation.clone()),
+    );
+    let request = ask("acme", "main-ledger", "alice", "read");
+    assert!(
+        decider
+            .decide(&request, None)
+            .await
+            .expect("both pools free")
+            .decision
+    );
+
+    let releases = hold_all(&evaluation).await;
+    let refused = decider
+        .decide(&request, None)
+        .await
+        .expect_err("no evaluation slot and no queue");
+    assert_eq!(refused.code(), "evaluation_at_capacity");
+    assert_eq!(
+        storage.in_flight(),
+        0,
+        "the load ran and returned its storage slot"
+    );
+    drop(releases);
+    for _ in 0..400 {
+        if evaluation.in_flight() == 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+
+    let releases = hold_all(&storage).await;
+    let refused = decider
+        .decide(&request, None)
+        .await
+        .expect_err("no storage slot for the load");
+    assert_eq!(refused.code(), "load_at_capacity");
+    assert_eq!(
+        evaluation.in_flight(),
+        0,
+        "the evaluation pool was not used"
+    );
+    drop(releases);
+}
+
+/// TS-3: decision records and the flush they wait on hold slots of their own. With every evidence
+/// slot held, a `required` plane refuses the decision unrecorded — never answers it — while the
+/// load and the evaluation it needed ran on their own pools and gave their slots back; a record
+/// waiting for its flush can therefore never refuse the next request's load.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn records_wait_for_their_flush_on_slots_of_their_own() {
+    use permguard_data_plane::blocking::Blocking;
+
+    let root = scratch("evidence-pool").join("mirrors");
+    let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+    );
+    let spool = scratch("evidence-pool-spool");
+    let journal = Journal::open(
+        &spool,
+        "plane",
+        Epoch {
+            version: "0.1.0".to_owned(),
+            build: None,
+            engines: BTreeMap::new(),
+            sampling: "1.0".to_owned(),
+        },
+        WhenFull::Closed,
+        Bounds {
+            bytes: 64 * 1024 * 1024,
+            age: std::time::Duration::from_secs(3600),
+            segment_bytes: 1024 * 1024,
+        },
+        permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+        Metrics::none(),
+    )
+    .expect("the journal opens");
+    let storage = Blocking::new(2, Metrics::none());
+    let evaluation = Blocking::evaluation(2, 0, Metrics::none());
+    let evidence = Blocking::evidence(1, Metrics::none());
+    let decider = Arc::new(
+        Decider::new(
+            root.to_path_buf(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_journal(
+            Some(Arc::new(journal)),
+            subjects(),
+            permguard_core::decisions::IncludeSection::default(),
+        )
+        .with_blocking(storage.clone())
+        .with_evaluation(evaluation.clone())
+        .with_evidence(evidence.clone()),
+    );
+    let request = ask("acme", "main-ledger", "alice", "read");
+    assert!(
+        decider
+            .decide(&request, None)
+            .await
+            .expect("every pool free: decided and recorded")
+            .decision
+    );
+
+    let releases = hold_all(&evidence).await;
+    let refused = decider
+        .decide(&request, None)
+        .await
+        .expect_err("no evidence slot: refused, never answered unrecorded");
+    assert_eq!(refused.code(), "decision_unrecordable");
+    assert_eq!(
+        (storage.in_flight(), evaluation.in_flight()),
+        (0, 0),
+        "the load and the evaluation ran on their own pools and gave their slots back"
+    );
+    drop(releases);
+}

@@ -319,6 +319,9 @@ pub mod format {
     /// The wrapping algorithm of a key-encryption key in a PKCS#11 token (WP-3.2): AES-GCM in
     /// the token, `iv ‖ ciphertext ‖ tag`, the wrap context as associated data.
     pub const PKCS11_KEK_WRAP_V1: &str = "permguard.pkcs11-aes-gcm.v1";
+    /// The release benchmark's report (TS-3): a document `permguard-bench` writes and a release
+    /// publishes, not a file the Host writes or a signature domain.
+    pub const BENCH_REPORT_V1: &str = "permguard.bench.report.v1";
 }
 
 /// The 8-byte magics opening every file the storage library writes (`permguard_host::storage`).
@@ -682,6 +685,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("format.SECRET_KEK_WRAP_V1", format::SECRET_KEK_WRAP_V1),
         ("format.TRANSIT_KEK_WRAP_V1", format::TRANSIT_KEK_WRAP_V1),
         ("format.PKCS11_KEK_WRAP_V1", format::PKCS11_KEK_WRAP_V1),
+        ("format.BENCH_REPORT_V1", format::BENCH_REPORT_V1),
         ("magic.JOURNAL_SEGMENT", magic::JOURNAL_SEGMENT),
         ("magic.SNAPSHOT", magic::SNAPSHOT),
         ("magic.TOMBSTONE", magic::TOMBSTONE),

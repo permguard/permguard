@@ -559,3 +559,4 @@ zig-out/
 # release from a tree with untracked paths in it, which is the right rule and the reason both of
 # these are listed rather than cleaned up by hand.
 prebuilt/
+/permguard-benchmark.json

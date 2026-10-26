@@ -94,7 +94,10 @@ pub mod pdp_native {
     pub const LEDGER_EMPTY: &str = "ledger_empty";
     pub const LEDGER_DAMAGED: &str = "ledger_damaged";
     pub const PROFILE_UNKNOWN: &str = "profile_unknown";
-    /// A cold load found the loading pool full.
+    /// A load found the storage pool full. The load runs on every request — it reads the ledger's
+    /// ref, so a synchronization is visible at once — and under `required` evidence the decision
+    /// records waiting for their flush hold the same pool, so this is the code a plane past its
+    /// storage capacity answers most (TS-3).
     pub const LOAD_AT_CAPACITY: &str = "load_at_capacity";
     /// A cold load of the ledger failed.
     pub const LOAD_FAILED: &str = "load_failed";

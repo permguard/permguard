@@ -20,6 +20,17 @@ tasks:
         cargo build {{if .PKG}}-p {{.PKG}}{{else}}--workspace{{end}}
         {{if .RELEASE}}--release{{end}} {{.ARGS}}
 
+  bench:release:
+    desc: The release benchmark on this machine — release binaries, every interface and evidence mode, report in permguard-benchmark.json. STORAGE names the volume's storage class.
+    cmds:
+      - cargo build --release --locked -p permguard-all-in-one -p permguard-cli -p permguard-conformance --bins
+      - >-
+        target/release/permguard-bench run
+        --server target/release/permguard-all-in-one --cli target/release/permguard
+        --storage-class "{{.STORAGE | default "unspecified local storage"}}"
+        --out permguard-benchmark.json {{.ARGS}}
+      - target/release/permguard-bench capacity permguard-benchmark.json
+
   bench:server:
     desc: Run the control plane for capacity benchmarks — release build, limits raised out of the way.
     cmds:

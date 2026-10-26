@@ -105,6 +105,105 @@ jobs:
       MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
       MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
 
+  # The release benchmark (TS-3, H-09): the Linux binaries this release published, measured on a
+  # GitHub-hosted runner over every served interface and evidence mode, a full ladder. It compiles
+  # the harness, so it holds a read-only token; the report is attached by the job after it. It
+  # reports on a release already published and never blocks it: a run that does not complete
+  # leaves a note in the report's place, so no release is silently without one.
+  benchmark:
+    name: Benchmark what was published
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+        with:
+          toolchain: "1.97"
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: The published server and CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "${GITHUB_REF_NAME}" --dir published \
+            --pattern 'permguard_all_in_one_Linux_x86_64.tar.gz' --pattern 'permguard_cli_Linux_x86_64.tar.gz'
+          mkdir -p shipped
+          for archive in published/*.tar.gz; do tar -xzf "${archive}" -C shipped; done
+          install -m 0755 "$(find shipped -type f -name permguard-all-in-one)" ./permguard-all-in-one
+          install -m 0755 "$(find shipped -type f -name permguard)" ./permguard
+      - name: The harness
+        run: cargo build --release --locked -p permguard-conformance --bin permguard-bench
+      - name: Measure
+        run: |
+          target/release/permguard-bench run \
+            --server ./permguard-all-in-one --cli ./permguard \
+            --storage-class "github-hosted runner, ephemeral disk" \
+            --directory "${RUNNER_TEMP}/permguard-bench" \
+            --revision "${GITHUB_SHA}" --out permguard-benchmark.json
+          # The capacity is read off the report whatever it says; the report is what is published.
+          { target/release/permguard-bench capacity permguard-benchmark.json ||
+            echo 'an interface and evidence mode met the objective at no step'; } | tee capacity.txt
+      - name: Say what did not complete
+        if: always()
+        run: |
+          if [ ! -s permguard-benchmark.json ]; then
+            printf 'the release benchmark of %s (%s) did not complete; see the workflow run %s\n' \
+              "${GITHUB_REF_NAME}" "${GITHUB_SHA}" "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              > permguard-benchmark.txt
+          fi
+          [ -s capacity.txt ] || echo 'no capacity was read off a report' > capacity.txt
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark
+          path: |
+            permguard-benchmark.json
+            permguard-benchmark.txt
+            capacity.txt
+          retention-days: 1
+          if-no-files-found: error
+
+  # Attaches the report. Separate from the measurement because writing to the release needs a token
+  # that may write, and a job that compiles must not hold one.
+  publish-benchmark:
+    name: Publish the benchmark report
+    needs: [build, benchmark]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: benchmark
+      - name: Attach the report to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The report, or the note that says why there is none: a release is never silently
+          # without either.
+          if [ -s permguard-benchmark.json ]; then
+            gh release upload "${GITHUB_REF_NAME}" permguard-benchmark.json --clobber
+          else
+            gh release upload "${GITHUB_REF_NAME}" permguard-benchmark.txt --clobber
+            echo "::warning title=No benchmark report::$(cat permguard-benchmark.txt)"
+          fi
+          {
+            echo "## Benchmark"
+            echo
+            echo '```'
+            cat capacity.txt
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   # An independent rebuild, compared byte for byte with what was published. Never blocking:
   # provenance says where an artifact came from, reproducibility says anyone can get the same bytes,
   # and only the second claim depends on this job. It runs on a fresh runner without the build cache,

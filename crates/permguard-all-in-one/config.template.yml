@@ -346,6 +346,11 @@ dataPlane:
   #     partitions: "64"       # compiled partitions held at once (one ledger contributes one per partition)
   #     bytes: "256M"          # what they may weigh; accepts k/M/G
   #   max_evaluations: "256"   # the most evaluations one boxcarred request may carry
+  #   # Pools, so none starves another (TS-3). Size them from your own benchmark report
+  #   # (`permguard-bench capacity`), not from a number measured on another machine.
+  #   evaluation_concurrency: "8"  # evaluations running at once; unset, the Host's logical cores
+  #   evaluation_queue: "64"       # evaluations waiting for a slot, each within its deadline
+  #   max_blocking: "64"           # loads and replay at once, and decision records at once
 
   #   # A signed response, when a request sends `request_nonce`: a JWS under the plane's
   #   # `data.attest` ring, addressed to the authenticated caller. On by default where that ring is

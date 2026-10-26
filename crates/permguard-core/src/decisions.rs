@@ -42,7 +42,8 @@ use serde::Deserialize;
 
 use crate::config::{
     SETTING_AUTHZ_CACHE_BYTES, SETTING_AUTHZ_CACHE_PARTITIONS, SETTING_AUTHZ_CACHE_ZONE_BYTES,
-    SETTING_AUTHZ_CACHE_ZONE_PARTITIONS, SETTING_AUTHZ_MAX_EVALUATIONS, SETTING_LOG_BATCH_BYTES,
+    SETTING_AUTHZ_CACHE_ZONE_PARTITIONS, SETTING_AUTHZ_MAX_EVALUATIONS,
+    SETTING_EVALUATION_CONCURRENCY, SETTING_EVALUATION_QUEUE, SETTING_LOG_BATCH_BYTES,
     SETTING_LOG_BATCH_INTERVAL, SETTING_LOG_COMMITMENT_KEY_REF, SETTING_LOG_COMMITMENT_KEY_VERSION,
     SETTING_LOG_ENABLED, SETTING_LOG_MODE, SETTING_LOG_ON_FULL, SETTING_LOG_PDP_ID,
     SETTING_LOG_SAMPLE_PERMITS, SETTING_LOG_SPOOL_AGE, SETTING_LOG_SPOOL_BYTES,
@@ -83,13 +84,18 @@ pub struct DecisionsSection {
     /// The most evaluations one boxcarred request may carry.
     #[serde(default)]
     max_evaluations: Option<String>,
-    /// How many pieces of blocking work this plane may have in flight at once.
-    ///
-    /// Beside `max_evaluations` because they bound the same request from two directions: that one
-    /// caps how much work a single request may ask for, this one caps how much of it the whole
-    /// plane may be doing. Reached, requests are refused rather than queued.
+    /// How many pieces of storage work of each kind this plane may have in flight at once: loads
+    /// and replay on one pool, decision records and their flush on another. Reached, requests are
+    /// refused rather than queued.
     #[serde(default)]
     max_blocking: Option<String>,
+    /// How many evaluations run at once: the evaluation pool, apart from `max_blocking`'s disk
+    /// work. Unset, the Host's cores.
+    #[serde(default)]
+    evaluation_concurrency: Option<String>,
+    /// How many evaluations may wait for one of those slots before the plane refuses.
+    #[serde(default)]
+    evaluation_queue: Option<String>,
     /// Where the record of each decision goes.
     #[serde(default)]
     log: LogSection,
@@ -354,6 +360,11 @@ impl DecisionsSection {
             ),
             (SETTING_AUTHZ_MAX_EVALUATIONS, self.max_evaluations.as_ref()),
             (SETTING_MAX_BLOCKING, self.max_blocking.as_ref()),
+            (
+                SETTING_EVALUATION_CONCURRENCY,
+                self.evaluation_concurrency.as_ref(),
+            ),
+            (SETTING_EVALUATION_QUEUE, self.evaluation_queue.as_ref()),
             (SETTING_LOG_ENABLED, self.log.enabled.as_ref()),
             (SETTING_LOG_MODE, self.log.mode.as_ref()),
             (SETTING_LOG_PDP_ID, self.log.pdp_id.as_ref()),

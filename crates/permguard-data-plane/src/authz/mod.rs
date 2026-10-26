@@ -115,6 +115,8 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
                 config.authz_max_evaluations(),
             )
             .with_blocking(crate::blocking::shared(context))
+            .with_evaluation(crate::blocking::evaluation(context))
+            .with_evidence(crate::blocking::evidence(context))
             .with_audit(audit::decision_audit(context))
             // The log is opened once for the plane, not once per decider: one process marks each
             // run of a stream once and measures each stream once (WP-6.1).

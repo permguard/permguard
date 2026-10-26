@@ -93,6 +93,7 @@
     "event.DOGWOOD_V1": "permguard.dogwood.event.v1",
     "event.DOGWOOD_V2": "permguard.dogwood.event.v2",
     "format.AUTHZ_SNAPSHOT_V1": "permguard.host.authz.snapshot.v1",
+    "format.BENCH_REPORT_V1": "permguard.bench.report.v1",
     "format.IDENTITY_RESET_PLAN_V1": "permguard.host.identity.reset.offline.v1",
     "format.PKCS11_KEK_WRAP_V1": "permguard.pkcs11-aes-gcm.v1",
     "format.SEALED_KEY_V1": "permguard.sealed-key.v1",

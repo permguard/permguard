@@ -18,6 +18,17 @@ build = "build.rs"
 
 [dependencies]
 axum.workspace = true
+# The release benchmark (`bench`, TS-3): its keep-alive HTTP client, its command line, the example's
+# manifest and tests read as data, and the dataset's digest.
+bytes.workspace = true
+clap.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+permguard-languages.workspace = true
+serde_norway.workspace = true
+sha2.workspace = true
 permguard-control-client.workspace = true
 permguard-core.workspace = true
 prost.workspace = true
@@ -29,7 +40,7 @@ serde_json.workspace = true
 # Line numbers for what the inventory finds: spans carry them only with this feature.
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
 syn = { version = "2.0", features = ["full", "visit"] }
-tokio = { workspace = true, features = ["macros", "net", "rt"] }
+tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
 tonic.workspace = true
 tonic-prost.workspace = true
 
@@ -37,8 +48,6 @@ tonic-prost.workspace = true
 tonic-prost-build.workspace = true
 
 [dev-dependencies]
-# The chart's rendered manifests, read back as data (`chart`).
-serde_norway.workspace = true
 permguard-decisions.workspace = true
 permguard-events.workspace = true
 permguard-host.workspace = true
