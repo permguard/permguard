@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.7] - 2026-10-27
+
 ### Added
 
 - **Every release carries the exit gate's evidence, pinned and attested (WP-7.13).**
