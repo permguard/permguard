@@ -83,7 +83,7 @@ jobs:
       # WP-7.13: what the traceability test checked, every section and finding of the blueprint to
       # the code and the tests above, kept with the run.
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: traceability
           path: target/traceability.json
@@ -145,7 +145,7 @@ jobs:
             --server target/release/permguard-all-in-one --cli target/release/permguard \
             --directory "${RUNNER_TEMP}/permguard-gate" --out permguard-gate.json
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: benchmark
           path: |
@@ -174,7 +174,7 @@ jobs:
         run: ./scripts/fuzz.sh 20
       - name: keep what crashed
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-artifacts
           path: fuzz/artifacts/
@@ -416,14 +416,14 @@ jobs:
         run: NO_BUILD=1 ./scripts/compose-lab.sh
       - name: the image, for the macOS job
         run: docker save permguard/lab:local | gzip > lab-image.tar.gz
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compose-lab-image
           path: lab-image.tar.gz
           retention-days: 1
       - name: the logs of a failed profile
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compose-lab-linux
           path: target/compose-lab
@@ -455,7 +455,7 @@ jobs:
         run: NO_BUILD=1 ./scripts/compose-lab.sh
       - name: the logs of a failed profile
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compose-lab-macos
           path: target/compose-lab
@@ -485,7 +485,7 @@ jobs:
       # Kill the replica while it writes; no stale-writer frame (TD-2, H-05).
       - name: the storage takeover gate
         run: ./scripts/chart-takeover.sh permguard/data-plane:e2e takeover-qualification.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: takeover-qualification
           path: takeover-qualification.json
