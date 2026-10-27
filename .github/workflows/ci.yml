@@ -566,7 +566,7 @@ jobs:
       # has no shell, so the step failed before it validated anything. A container that carries one
       # binary is the point of that image; expecting a shell inside it was the mistake.
       - name: render the chart for validation
-        run: helm template permguard charts/permguard --set controlPlane.tls.secretName=permguard-control-plane-tls,dataPlane.tls.secretName=permguard-data-plane-tls > rendered.yaml
+        run: helm template permguard charts/permguard --values charts/permguard/ci/production-controls.yaml --set controlPlane.tls.secretName=permguard-control-plane-tls,dataPlane.tls.secretName=permguard-data-plane-tls > rendered.yaml
       - uses: docker://ghcr.io/yannh/kubeconform@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e # latest, 2026-08
         with:
           args: -strict -summary -ignore-missing-schemas /github/workspace/rendered.yaml

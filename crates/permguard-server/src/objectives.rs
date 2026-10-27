@@ -225,9 +225,7 @@ fn measure(sources: &Sources) -> Measures {
     let qualification_expired_at = expired(sources.qualification_expires_at, sources.time.now());
     Measures {
         mirror_age: gauge("permguard_sync_mirror_age_seconds"),
-        spool: sources.spool_capacity.and_then(|capacity| {
-            gauge("permguard_decisions_spool_bytes").map(|held| (held, capacity))
-        }),
+        spool: gauge("permguard_decisions_spool_bytes").zip(sources.spool_capacity),
         audit_egress_degraded: sources
             .health
             .lifecycle()

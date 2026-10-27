@@ -149,7 +149,7 @@ pub fn inspect(root: &Path) -> Result<Inspection> {
         return Ok(inspection);
     }
     let device = stat.st_dev;
-    judge(&mut inspection, uid, root, stat.st_uid, stat.st_mode.into());
+    judge(&mut inspection, uid, root, stat.st_uid, mode_of(&stat));
     let fd = rustix::fs::open(
         root,
         OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
@@ -167,6 +167,13 @@ pub fn inspect(root: &Path) -> Result<Inspection> {
 #[cfg(not(unix))]
 pub fn inspect(_root: &Path) -> Result<Inspection> {
     Ok(Inspection::default())
+}
+
+/// The mode bits of `stat`: `mode_t` is a `u16` on macOS and already a `u32` on Linux.
+#[cfg(unix)]
+#[allow(clippy::useless_conversion)]
+fn mode_of(stat: &rustix::fs::Stat) -> u32 {
+    u32::from(stat.st_mode)
 }
 
 /// Judges one entry by its owner and mode.
@@ -226,11 +233,11 @@ fn walk(
         match FileType::from_raw_mode(stat.st_mode) {
             FileType::RegularFile => {
                 inspection.files += 1;
-                judge(inspection, uid, &child, stat.st_uid, stat.st_mode.into());
+                judge(inspection, uid, &child, stat.st_uid, mode_of(&stat));
             }
             FileType::Directory => {
                 inspection.directories += 1;
-                judge(inspection, uid, &child, stat.st_uid, stat.st_mode.into());
+                judge(inspection, uid, &child, stat.st_uid, mode_of(&stat));
                 if stat.st_dev != device {
                     inspection.found(
                         Breach::Escape,
@@ -313,7 +320,7 @@ pub fn narrow(root: &Path) -> Result<u64> {
             if stat.st_uid != uid || !matches!(kind, FileType::Directory | FileType::RegularFile) {
                 continue;
             }
-            if let Some(mode) = private_mode(u32::from(stat.st_mode)) {
+            if let Some(mode) = private_mode(mode_of(&stat)) {
                 rustix::fs::chmodat(dir, name.as_c_str(), mode, AtFlags::empty())
                     .map_err(io(format!("narrowing {}", child.display())))?;
                 *narrowed += 1;
@@ -343,7 +350,7 @@ pub fn narrow(root: &Path) -> Result<u64> {
         return Ok(0);
     }
     let mut narrowed = 0;
-    if let Some(mode) = private_mode(u32::from(stat.st_mode)) {
+    if let Some(mode) = private_mode(mode_of(&stat)) {
         rustix::fs::chmodat(CWD, root, mode, AtFlags::empty()).map_err(|error| {
             StorageError::Io {
                 what: format!("narrowing {}", root.display()),
