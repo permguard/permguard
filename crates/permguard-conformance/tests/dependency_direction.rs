@@ -27,13 +27,14 @@ fn reached() -> BTreeMap<String, BTreeSet<String>> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let output = Command::new(cargo)
         // Every feature: a Plane reached only through one that is off by default still counts.
+        // Not offline: with every feature, cargo reads the manifests of dependencies for other
+        // platforms too, which a runner's cache may not hold; the lockfile still pins them all.
         .args([
             "metadata",
             "--format-version",
             "1",
             "--all-features",
             "--locked",
-            "--offline",
         ])
         .current_dir(&root)
         .output()
