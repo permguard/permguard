@@ -1953,3 +1953,202 @@ fn the_evidence_anchors_answer_over_both_transports() {
         "the same anchors over REST and gRPC"
     );
 }
+
+/// `2-command-line-commands.md` (grants, host identity): an operator issues a grant, lists it,
+/// revokes it in two steps from a private plan file and rotates the Host identity, over REST and
+/// over gRPC; and bootstraps the recovery administrator of a volume offline.
+#[test]
+fn the_grant_and_identity_commands_answer_over_both_transports() {
+    let root = scratch("grants-identity");
+    let pki = Pki::new(&root);
+    let authority = pki.authority();
+    let (operator_certificate, operator_key) = pki.issue("operator", "operator");
+    let tls = OperatorTls {
+        authority: authority.clone(),
+        certificate: operator_certificate,
+        key: operator_key,
+    };
+    let (certificate, key) = pki.issue("host", "127.0.0.1");
+    let host = launch_host(
+        root.join("host"),
+        certificate,
+        key,
+        authority,
+        Role::Coordinator,
+    );
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://127.0.0.1:{}", host.address.port());
+        let call = |args: &[&str]| call(&root, &endpoint, &tls, &words(args));
+        let principal = format!("spiffe://acme/{scheme}-billing");
+
+        let issued = call(&[
+            "host",
+            "grants",
+            "issue",
+            "--principal",
+            &principal,
+            "--operations",
+            "catalog.read,policy.push",
+            "--selector",
+            "plane/control/*",
+        ]);
+        let grant_id = issued["grant"]["grant_id"]
+            .as_str()
+            .expect("a grant id")
+            .to_owned();
+        assert_eq!(issued["grant"]["status"], "active", "{scheme}: {issued}");
+        assert_eq!(issued["grant"]["resource_types"], serde_json::json!(["*"]));
+        assert!(issued["receipt"]["operation_id"].is_string(), "{scheme}");
+        let listed = call(&["host", "grants", "list", "--principal", &principal]);
+        assert_eq!(
+            listed["grants"]
+                .as_array()
+                .expect("grants")
+                .iter()
+                .map(|grant| (grant["grant_id"].as_str(), grant["status"].as_str()))
+                .collect::<Vec<_>>(),
+            vec![(Some(grant_id.as_str()), Some("active"))],
+            "{scheme}: {listed}"
+        );
+
+        // A two-step revocation from a private plan file; the grant is then revoked, terminally.
+        let plan_file = root.join(format!("{scheme}-grant-revoke.json"));
+        let planned = call(&[
+            "host",
+            "grants",
+            "revoke",
+            "plan",
+            &grant_id,
+            "--expected-revision",
+            &listed["revision"].as_u64().expect("a revision").to_string(),
+            "--out",
+            plan_file.to_str().expect("UTF-8"),
+        ]);
+        assert_eq!(written(&plan_file), planned, "{scheme}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&plan_file)
+                .expect("written")
+                .permissions()
+                .mode();
+            assert_eq!(
+                mode & 0o777,
+                0o600,
+                "{scheme}: the plan is the owner's alone"
+            );
+        }
+        call(&[
+            "host",
+            "grants",
+            "revoke",
+            "run",
+            &grant_id,
+            "--confirm-file",
+            plan_file.to_str().expect("UTF-8"),
+        ]);
+        let after = call(&["host", "grants", "list", "--principal", &principal]);
+        assert_eq!(after["grants"][0]["status"], "revoked", "{scheme}: {after}");
+        assert!(after["revision"].as_u64() > listed["revision"].as_u64());
+
+        // The identity rotates to its next epoch online; a rotation from a stale epoch is refused.
+        let shown = call(&["host", "identity", "show"]);
+        let epoch = shown["epoch"].as_u64().expect("an epoch");
+        let rotated = call(&[
+            "host",
+            "identity",
+            "rotate",
+            "--expected-epoch",
+            &epoch.to_string(),
+        ]);
+        assert!(rotated["succession"].is_string(), "{scheme}: {rotated}");
+        let again = call(&["host", "identity", "show"]);
+        assert_eq!(
+            again["epoch"].as_u64(),
+            Some(epoch + 1),
+            "{scheme}: {again}"
+        );
+        assert_eq!(again["host_id"], shown["host_id"], "the same Host");
+        assert_eq!(
+            again["successions"].as_array().map(Vec::len),
+            Some(usize::try_from(epoch).expect("small")),
+            "{scheme}: a succession per rotation"
+        );
+        let stale = cli(
+            &root,
+            &endpoint,
+            &tls,
+            &words(&[
+                "host",
+                "identity",
+                "rotate",
+                "--expected-epoch",
+                &epoch.to_string(),
+            ]),
+        );
+        assert!(
+            !stale.status.success(),
+            "{scheme}: a stale epoch is refused"
+        );
+        let refusal: Value = serde_json::from_slice(&stale.stderr).expect("a JSON refusal");
+        assert_eq!(
+            (refusal["class"].as_str(), refusal["code"].as_str()),
+            (
+                Some("conflict"),
+                Some(permguard_core::codes::host::REVISION_MISMATCH)
+            ),
+            "{scheme}: refused for its epoch, not for anything else: {refusal}"
+        );
+    }
+
+    // The recovery administrator of a volume, offline: committed once, replayed exactly, and
+    // another fingerprint refused.
+    let volume = root.join("offline-volume");
+    std::fs::create_dir_all(&volume).expect("created");
+    // A Server Host volume the server has started on once, and released.
+    drop(Volume::claim(&volume, AssuranceProfile::Development).expect("claimed"));
+    let fingerprint = format!("sha256:{}", "ab".repeat(32));
+    let bootstrap = |fingerprint: &str| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_permguard"));
+        for (name, _) in std::env::vars_os() {
+            if name.to_string_lossy().starts_with("PERMGUARD_") {
+                command.env_remove(name);
+            }
+        }
+        command
+            .current_dir(&root)
+            .env("PERMGUARD_CONFIG", root.join("cli-config.yml"))
+            .args(["-o", "json", "host", "grants", "bootstrap", "--volume"])
+            .arg(&volume)
+            .args(["--fingerprint", fingerprint])
+            .output()
+            .expect("the local CLI runs")
+    };
+    let answered = |output: &Output| -> Value {
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("JSON")
+    };
+    let first = answered(&bootstrap(&fingerprint));
+    assert_eq!(first["fingerprint"], fingerprint.as_str());
+    assert_eq!(
+        first["principal"],
+        format!("cert:{fingerprint}").as_str(),
+        "{first}"
+    );
+    assert_eq!(first["already_there"], false, "{first}");
+    let replayed = answered(&bootstrap(&fingerprint));
+    assert_eq!(replayed["already_there"], true, "{replayed}");
+    let other = bootstrap(&format!("sha256:{}", "cd".repeat(32)));
+    assert_eq!(other.status.code(), Some(64));
+    let refusal: Value = serde_json::from_slice(&other.stderr).expect("a JSON refusal");
+    assert!(
+        refusal["message"]
+            .as_str()
+            .is_some_and(|text| text.contains("another recovery administrator")),
+        "{refusal}"
+    );
+}

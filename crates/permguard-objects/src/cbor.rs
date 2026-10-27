@@ -343,6 +343,41 @@ impl Cursor<'_> {
 mod tests {
     use super::*;
 
+    /// An integer outside -2^63..2^63-1 is refused, never widened or wrapped: a value this codec
+    /// cannot hold in an `i64` has no meaning a signed record could bind.
+    #[test]
+    fn an_integer_beyond_sixty_four_signed_bits_is_refused() {
+        // Major type 0 (unsigned) at 2^63 and at 2^64-1.
+        for bytes in [
+            [0x1b, 0x80, 0, 0, 0, 0, 0, 0, 0],
+            [0x1b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        ] {
+            assert!(
+                matches!(decode_canonical(&bytes), Err(CborError::IntRange)),
+                "{bytes:02x?}"
+            );
+        }
+        // Major type 1 (negative) at -1 - 2^63 and below.
+        for bytes in [
+            [0x3b, 0x80, 0, 0, 0, 0, 0, 0, 0],
+            [0x3b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        ] {
+            assert!(
+                matches!(decode_canonical(&bytes), Err(CborError::IntRange)),
+                "{bytes:02x?}"
+            );
+        }
+        // The bounds themselves are held exactly.
+        assert_eq!(
+            decode_canonical(&[0x1b, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]).unwrap(),
+            Value::Int(i64::MAX)
+        );
+        assert_eq!(
+            decode_canonical(&[0x3b, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]).unwrap(),
+            Value::Int(i64::MIN)
+        );
+    }
+
     #[test]
     fn integers_round_trip_in_shortest_form() {
         for n in [

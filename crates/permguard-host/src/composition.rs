@@ -2119,6 +2119,28 @@ pub trait StreamShipping: Send + Sync {
         let _ = (subscription, resource);
         Ok(None)
     }
+
+    /// Every subscription the coordinator's answers left paused or stopped (F-08): what keeps a
+    /// stream from shipping until its membership moves or an operator acts, so health can name
+    /// it rather than let shipping stop silently. Required of every engine: one that forgot it
+    /// would report nothing, which is the silence this exists to end.
+    fn refused(&self) -> Result<Vec<RefusedShipping>, String>;
+}
+
+/// A subscription that does not ship now because the coordinator refused it (F-08).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefusedShipping {
+    /// The membership whose ship task the subscription is.
+    pub membership_id: [u8; 16],
+    /// `<plane>/<type>`, as the Plane declared the stream.
+    pub stream: String,
+    /// The resource the stream is of.
+    pub resource: String,
+    /// The ship task the subscription is of.
+    pub task_id: String,
+    /// `paused at epoch <n>` until the membership's epoch moves, or `stopped: <reason>` until an
+    /// operator acts.
+    pub state: String,
 }
 
 /// A stream an incomplete drain left behind its required subscriptions (WP-5.8, owner decision

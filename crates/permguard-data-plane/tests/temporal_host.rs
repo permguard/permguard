@@ -581,3 +581,196 @@ fn the_floor_the_plane_measures_is_per_run() {
         "nothing observed before the horizon: nothing goes"
     );
 }
+
+/// One request to the temporal surface, its status and its JSON body.
+async fn ask(router: &axum::Router, method: &str, uri: &str) -> (u16, serde_json::Value) {
+    use http_body_util::BodyExt as _;
+    use tower::ServiceExt as _;
+
+    let response = router
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method(method)
+                .uri(uri)
+                .body(axum::body::Body::empty())
+                .expect("a request"),
+        )
+        .await
+        .expect("answered");
+    let status = response.status().as_u16();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("a body")
+        .to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+    )
+}
+
+/// `2-contract-pdp-temporal-v1alpha1.md` (signers): the Data Plane answers its own journal's
+/// watermarks and which key signed which stretch, the same on `GET /events/v1alpha1/signers` and
+/// `GetSigners`, public keys included, bounded by `from_seq`. Its records are not readable here:
+/// reading events is the Control Plane's surface.
+#[tokio::test]
+async fn the_plane_answers_its_own_signers_and_never_its_records() {
+    use permguard_data_plane::temporal::{grpc, http};
+    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+
+    let host = HostVolume::new("signers");
+    legacy_journal(&host.root, 3);
+    let producer = host.producer();
+    let streams = Arc::new(host.streams(&producer));
+    let first = json!({"kty": "OKP", "crv": "Ed25519", "x": "first-key"});
+    let second = json!({"kty": "OKP", "crv": "Ed25519", "x": "second-key"});
+    streams
+        .note_signer(ZONE_ID, LEDGER_ID, 1, "k1", &first)
+        .expect("noted");
+    streams
+        .note_signer(ZONE_ID, LEDGER_ID, 3, "k2", &second)
+        .expect("noted");
+    streams.mark_signed(ZONE_ID, LEDGER_ID, 2).expect("signed");
+    streams.acknowledge(ZONE_ID, LEDGER_ID, 1).expect("acked");
+    let instance = streams.instance(ZONE_ID, LEDGER_ID).expect("an instance");
+    assert!(!instance.is_empty());
+
+    let metrics = permguard_core::Metrics::none();
+    let mirrors = host.root.join("mirrors");
+    std::fs::create_dir_all(&mirrors).expect("created");
+    let submitter = Arc::new(permguard_data_plane::temporal::submit::Submitter::new(
+        Arc::new(permguard_data_plane::authz::decide::Decider::new(
+            mirrors,
+            Arc::new(permguard_data_plane::authz::cache::Cache::new(
+                64,
+                8 * 1024 * 1024,
+            )),
+            metrics.clone(),
+            None,
+            256,
+        )),
+        Arc::clone(&streams),
+        permguard_data_plane::blocking::Blocking::new(
+            permguard_core::config::default_max_blocking(),
+            metrics.clone(),
+        ),
+        metrics,
+    ));
+    let authorization = Arc::new(permguard_host::composition::Authorization::permissive());
+    let router = http::routes(http::Surface {
+        submitter: Arc::clone(&submitter),
+        disclosure: permguard_core::Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
+        pdp: "test-plane".to_owned(),
+        authorization: Arc::clone(&authorization),
+    });
+
+    let path = format!("/events/v1alpha1/signers?zone={ZONE_ID}&ledger={LEDGER_ID}");
+    let (status, answered) = ask(&router, "GET", &path).await;
+    assert_eq!(status, 200, "{answered}");
+    assert_eq!(answered["producer"]["class"], PRODUCER_CLASS_DATA_PLANE);
+    assert_eq!(answered["producer"]["id"], host.host_hex().as_str());
+    assert_eq!(answered["producer"]["instance"], instance.as_str());
+    assert_eq!(
+        (
+            answered["durable_through"].as_u64(),
+            answered["signed_through"].as_u64(),
+            answered["acked_through"].as_u64()
+        ),
+        (Some(3), Some(2), Some(1))
+    );
+    assert_eq!(
+        answered["spans"],
+        json!([
+            {"from": 1, "kid": "k1", "jwk": first},
+            {"from": 3, "kid": "k2", "jwk": second},
+        ])
+    );
+    let (_, later) = ask(&router, "GET", &format!("{path}&from_seq=3")).await;
+    assert_eq!(
+        later["spans"],
+        json!([{"from": 3, "kid": "k2", "jwk": second}])
+    );
+
+    // The same statements over gRPC.
+    let over_grpc = grpc::TemporalPdpApi {
+        submitter,
+        disclosure: permguard_core::Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
+        pdp: "test-plane".to_owned(),
+        authorization,
+    }
+    .get_signers(tonic::Request::new(
+        permguard_data_plane::v1::GetTemporalSignersRequest {
+            zone: ZONE_ID.to_owned(),
+            ledger: LEDGER_ID.to_owned(),
+            from_seq: 0,
+            until_seq: 0,
+        },
+    ))
+    .await
+    .expect("answered")
+    .into_inner();
+    assert_eq!(over_grpc.producer_class, PRODUCER_CLASS_DATA_PLANE);
+    assert_eq!(over_grpc.producer, host.host_hex());
+    assert_eq!(over_grpc.instance, instance);
+    assert_eq!(
+        (
+            over_grpc.durable_through,
+            over_grpc.signed_through,
+            over_grpc.acked_through
+        ),
+        (3, 2, 1)
+    );
+    assert_eq!(
+        over_grpc
+            .spans
+            .iter()
+            .map(|span| (
+                span.from_seq,
+                span.kid.as_str(),
+                serde_json::from_slice::<serde_json::Value>(&span.jwk).expect("a JWK")
+            ))
+            .collect::<Vec<_>>(),
+        vec![(1, "k1", first), (3, "k2", second)]
+    );
+
+    // A ledger this plane keeps no journal for is not found, and the question creates nothing.
+    let (status, refused) = ask(
+        &router,
+        "GET",
+        &format!("/events/v1alpha1/signers?zone={ZONE_ID}&ledger=invented"),
+    )
+    .await;
+    assert_eq!(status, 404, "{refused}");
+    assert_eq!(
+        refused["code"],
+        permguard_core::codes::stream::STORE_UNKNOWN
+    );
+    assert!(
+        !host
+            .root
+            .join("data/events")
+            .join(ZONE_ID)
+            .join("invented")
+            .exists()
+    );
+    let (status, refused) = ask(&router, "GET", "/events/v1alpha1/signers").await;
+    assert_eq!(status, 400, "{refused}");
+
+    // The records stay the Control Plane's to serve.
+    for uri in [
+        "/events/v1alpha1/records".to_owned(),
+        format!("/events/v1alpha1/records?zone={ZONE_ID}&ledger={LEDGER_ID}"),
+        format!("/zones/{ZONE_ID}/ledgers/{LEDGER_ID}/events/v1alpha1/records"),
+    ] {
+        let (status, _) = ask(&router, "GET", &uri).await;
+        assert_eq!(status, 404, "{uri} is not served here");
+    }
+    let (status, _) = ask(&router, "POST", &path).await;
+    assert_eq!(status, 405, "the signers are read, never written");
+}

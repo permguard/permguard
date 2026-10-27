@@ -789,3 +789,39 @@ fn manifest_for(host_id: [u8; 16]) -> SnapshotManifest {
         encryption_profile: None,
     }
 }
+
+/// `8-architecture-storage-operations.md` (application-consistent snapshot): every root is
+/// flushed, every directory of it, before the prepare answers. A directory deep in a root whose
+/// flush fails refuses the prepare: no token is answered for a snapshot the disk did not make
+/// durable, the operation is aborted rather than left `prepared`, and mutations go on.
+#[tokio::test]
+async fn a_root_that_cannot_be_flushed_refuses_the_prepare() {
+    let (api, root, _) = backed("backup-unflushed", None);
+    let deep = root.join("data").join("deep").join("deeper");
+    std::fs::create_dir_all(&deep).expect("created");
+    {
+        let _failing =
+            permguard_core::fault::inject_exact(&deep, permguard_core::fault::Fault::Fsync);
+        let refused = api
+            .prepare_backup(&admin(), PrepareBackup {})
+            .expect_err("a root was not flushed");
+        assert!(
+            refused
+                .error()
+                .is_some_and(|error| error.code() == codes::common::UNAVAILABLE),
+            "{refused:?}"
+        );
+    }
+    // Nothing is left `prepared` without a barrier behind it.
+    let listed = api.list_backups(&admin()).expect("listed").backups;
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].state, "aborted", "{listed:?}");
+    grant(&api, "after-unflushed")
+        .await
+        .expect("mutations go on");
+    let prepared = api
+        .prepare_backup(&admin(), PrepareBackup {})
+        .expect("the disk flushes again");
+    let (_, manifest) = manifest_of(&prepared);
+    assert_eq!(hex(&manifest.operation_id), prepared.operation_id);
+}

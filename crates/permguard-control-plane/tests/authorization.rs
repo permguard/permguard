@@ -57,6 +57,11 @@ struct Deployment {
     router: axum::Router,
     billing_zone: String,
     people_zone: String,
+    /// The store the router authorises against, its journal, and billing's grant in it: a test
+    /// may withdraw the grant while a push is under way.
+    store: Arc<GrantStore>,
+    mutations: Arc<permguard_host::operations::mutation::Mutations>,
+    billing_grant: permguard_host::authz::GrantId,
 }
 
 fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
@@ -114,9 +119,12 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
     )
     .expect("the volume is claimed");
     let (store, _) = GrantStore::open(&held).expect("the grant store opens");
-    permguard_host::operations::grants::issue(
-        &permguard_host::operations::mutation::Mutations::open_offline(&held, "test")
+    let grant_mutations = Arc::new(
+        permguard_host::operations::mutation::Mutations::open_offline(&held, "test")
             .expect("the mutation journal opens"),
+    );
+    let billing_grant = permguard_host::operations::grants::issue(
+        &grant_mutations,
         &store,
         permguard_host::operations::journal::Initiator::System("test".to_owned()),
         Issue {
@@ -134,7 +142,8 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
         },
         1,
     )
-    .expect("issued");
+    .expect("issued")
+    .grant_id;
     let ref_mutations = std::sync::Arc::new(
         permguard_host::operations::mutation::Mutations::open_offline(&held, "test")
             .expect("the mutation journal opens"),
@@ -148,7 +157,7 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
         .host_id([0x11; 16])
         // Every ref update runs in a mutation transaction (WP-7.12).
         .mutations(ref_mutations)
-        .authorization(Arc::new(Authorization::new(store, public)))
+        .authorization(Arc::new(Authorization::new(Arc::clone(&store), public)))
         .build()
         .register(module.declaration(config))
         .expect("the control plane registers");
@@ -165,6 +174,9 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
         router,
         billing_zone: billing_zone.id,
         people_zone: people_zone.id,
+        store,
+        mutations: grant_mutations,
+        billing_grant,
     }
 }
 
@@ -510,6 +522,20 @@ async fn send_notp(
     peer: Option<Arc<PeerIdentity>>,
     body: &[u8],
 ) -> (StatusCode, http::HeaderMap, String) {
+    let (status, headers, bytes) = send_notp_bytes(router, path, peer, body).await;
+    (
+        status,
+        headers,
+        String::from_utf8_lossy(&bytes).into_owned(),
+    )
+}
+
+async fn send_notp_bytes(
+    router: &axum::Router,
+    path: &str,
+    peer: Option<Arc<PeerIdentity>>,
+    body: &[u8],
+) -> (StatusCode, http::HeaderMap, Vec<u8>) {
     let mut request = Request::builder()
         .method("POST")
         .uri(path)
@@ -528,11 +554,7 @@ async fn send_notp(
         .await
         .expect("the body reads")
         .to_bytes();
-    (
-        status,
-        headers,
-        String::from_utf8_lossy(&bytes).into_owned(),
-    )
+    (status, headers, bytes.to_vec())
 }
 
 #[tokio::test]
@@ -568,4 +590,84 @@ async fn an_explicit_public_grant_opens_exactly_what_it_names_to_anonymous() {
     )
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+}
+
+#[tokio::test]
+async fn a_push_grant_withdrawn_between_negotiation_and_commit_refuses_the_commit() {
+    let deployed = deployment("withdrawn", &[]);
+    let billing = certificate(BILLING);
+    let base = format!("/v1/zones/{}/ledgers/main/notp/push", deployed.billing_zone);
+    let new_head = permguard_objects::Digest::compute(b"a commit");
+    let negotiation = permguard_notp::NegotiatePushRequest {
+        r#ref: "main".to_owned(),
+        new_head: new_head.clone(),
+        expected_ref: None,
+        closure: Vec::new(),
+        request_id: "push-withdrawn".to_owned(),
+    }
+    .encode()
+    .expect("the negotiation encodes");
+    let (status, _, body) = send_notp_bytes(
+        &deployed.router,
+        &format!("{base}/negotiate"),
+        Some(Arc::clone(&billing)),
+        &negotiation,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let negotiated =
+        permguard_notp::NegotiatePushResponse::decode(&body).expect("the negotiation decodes");
+    let commit = permguard_notp::CommitPushRequest {
+        r#ref: "main".to_owned(),
+        new_head: new_head.clone(),
+        expected_ref: None,
+        transfer_id: negotiated.transfer_id,
+        request_id: "push-withdrawn".to_owned(),
+    }
+    .encode()
+    .expect("the commit encodes");
+
+    // Still granted, the commit reaches the engine: it is refused for what it carries (the head
+    // was never uploaded), not for who sends it.
+    let (status, _, body) = send_notp(
+        &deployed.router,
+        &format!("{base}/commit"),
+        Some(Arc::clone(&billing)),
+        &commit,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "granted, the commit is judged on its content: {body}"
+    );
+    let refused: serde_json::Value = serde_json::from_str(&body).expect("JSON");
+    assert!(
+        refused["message"]
+            .as_str()
+            .is_some_and(|message| message.contains(&new_head.to_string())),
+        "the head it carries was never uploaded: {body}"
+    );
+
+    permguard_host::operations::grants::revoke(
+        &deployed.mutations,
+        &deployed.store,
+        permguard_host::operations::journal::Initiator::System("test".to_owned()),
+        deployed.billing_grant,
+        "test",
+        2,
+    )
+    .expect("the grant is revoked");
+
+    // The negotiated session does not carry the grant: the commit is authorised afresh.
+    let (status, _, body) = send_notp(
+        &deployed.router,
+        &format!("{base}/commit"),
+        Some(Arc::clone(&billing)),
+        &commit,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let denial: serde_json::Value = serde_json::from_str(&body).expect("JSON");
+    assert_eq!(denial["code"], "forbidden");
 }

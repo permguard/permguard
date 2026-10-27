@@ -334,4 +334,128 @@ mod tests {
         release.store(true, Ordering::SeqCst);
         audit.stop().await;
     }
+
+    /// The outcomes counted, by their `outcome` label.
+    #[derive(Debug, Default)]
+    struct Outcomes(std::sync::Mutex<Vec<String>>);
+
+    impl permguard_core::metrics::Recorder for Outcomes {
+        fn record(
+            &self,
+            metric: &permguard_core::metrics::Metric,
+            labels: &[permguard_core::metrics::Label<'_>],
+            _value: f64,
+        ) {
+            if metric.name() != measure::AUDIT_RECORDS.name() {
+                return;
+            }
+            for (name, value) in labels {
+                if name.as_str() == labels::OUTCOME.as_str() {
+                    self.0
+                        .lock()
+                        .expect("not poisoned")
+                        .push((*value).to_owned());
+                }
+            }
+        }
+
+        fn snapshot(&self) -> Vec<permguard_core::metrics::Sample> {
+            Vec::new()
+        }
+    }
+
+    /// What the thread's subscriber wrote.
+    #[derive(Clone, Default)]
+    struct Logs(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Logs {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("not poisoned")
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// `3-contract-evidence-decisions.md` (discontinuity reasons): an audit record that cannot be
+    /// queued is dropped visibly, counted `dropped` and logged with the registered reason:
+    /// `queue_full` while the sink holds the worker up, `worker_stopped` once the worker is gone.
+    #[tokio::test]
+    async fn a_dropped_audit_record_names_why_it_was_dropped() {
+        let release = Arc::new(AtomicBool::new(false));
+        let outcomes = Arc::new(Outcomes::default());
+        let logs = Logs::default();
+        let writer = logs.clone();
+        let _subscriber = tracing::subscriber::set_default(
+            tracing_subscriber::fmt()
+                .with_max_level(tracing::Level::WARN)
+                .with_ansi(false)
+                .with_writer(move || writer.clone())
+                .finish(),
+        );
+        let audit = DecisionAudit::start(
+            crate::handles::audit_for_tests(permguard_core::AuditRecorder::new(Arc::new(
+                BlockingSink {
+                    release: Arc::clone(&release),
+                },
+            ))),
+            Metrics::new(Arc::clone(&outcomes) as Arc<dyn permguard_core::metrics::Recorder>),
+            1,
+        );
+
+        // The queue holds MIN_CAPACITY and the worker one more, held by the sink: the rest of
+        // the burst cannot be queued.
+        let burst = MIN_CAPACITY + 64;
+        for index in 0..burst {
+            audit.record("alice".to_owned(), format!("decision {index}"));
+        }
+        let dropped_full = outcomes
+            .0
+            .lock()
+            .expect("not poisoned")
+            .iter()
+            .filter(|outcome| *outcome == "dropped")
+            .count();
+        assert!(
+            dropped_full >= burst - MIN_CAPACITY - 1,
+            "the burst beyond the queue is dropped, and counted: {dropped_full}"
+        );
+        let written =
+            String::from_utf8(logs.0.lock().expect("not poisoned").clone()).expect("UTF-8");
+        assert_eq!(
+            written
+                .lines()
+                .filter(|line| line.contains("authz.audit_dropped")
+                    && line.contains(permguard_core::codes::stream::QUEUE_FULL))
+                .count(),
+            dropped_full,
+            "every drop names queue_full: {written}"
+        );
+
+        release.store(true, Ordering::SeqCst);
+        audit.stop().await;
+        audit.record("alice".to_owned(), "after the stop".to_owned());
+        let written =
+            String::from_utf8(logs.0.lock().expect("not poisoned").clone()).expect("UTF-8");
+        let last = written.lines().last().unwrap_or_default();
+        assert!(
+            last.contains("authz.audit_dropped")
+                && last.contains(permguard_core::codes::stream::WORKER_STOPPED),
+            "a record after the stop names worker_stopped: {last}"
+        );
+        assert_eq!(
+            outcomes
+                .0
+                .lock()
+                .expect("not poisoned")
+                .last()
+                .map(String::as_str),
+            Some("dropped")
+        );
+    }
 }

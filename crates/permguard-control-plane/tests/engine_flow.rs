@@ -155,6 +155,26 @@ fn build_commit_with_id(
     predecessors: Vec<Digest>,
     carried_id: Option<String>,
 ) -> (Vec<Vec<u8>>, Digest) {
+    build_commit_rooted(policy_source, predecessors, carried_id, RootShape::Whole)
+}
+
+/// How the root tree a commit names relates to its manifest.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RootShape {
+    /// The root holds the `manifest` entry the commit names.
+    Whole,
+    /// The root holds no `manifest` entry.
+    NoManifestEntry,
+    /// The commit names another manifest than the root's `manifest` entry.
+    ManifestDiffers,
+}
+
+fn build_commit_rooted(
+    policy_source: &str,
+    predecessors: Vec<Digest>,
+    carried_id: Option<String>,
+    shape: RootShape,
+) -> (Vec<Vec<u8>>, Digest) {
     let policy = Blob {
         media_type: MEDIA_TYPE_POLICY_CEDAR.into(),
         data: policy_source.as_bytes().to_vec(),
@@ -188,28 +208,41 @@ fn build_commit_with_id(
     let partition_bytes = partition.encode().unwrap();
     let partition_digest = Digest::compute(&partition_bytes);
 
-    let root = Tree {
-        entries: vec![
-            TreeEntry {
-                kind: Kind::Tree,
-                digest: partition_digest,
-                name: "cedar".into(),
-                annotations: BTreeMap::new(),
-            },
-            TreeEntry {
-                kind: Kind::Blob,
-                digest: manifest_digest.clone(),
-                name: "manifest".into(),
-                annotations: BTreeMap::new(),
-            },
-        ],
-    };
+    let mut entries = vec![TreeEntry {
+        kind: Kind::Tree,
+        digest: partition_digest,
+        name: "cedar".into(),
+        annotations: BTreeMap::new(),
+    }];
+    if shape != RootShape::NoManifestEntry {
+        entries.push(TreeEntry {
+            kind: Kind::Blob,
+            digest: manifest_digest.clone(),
+            name: "manifest".into(),
+            annotations: BTreeMap::new(),
+        });
+    }
+    let root = Tree { entries };
     let root_bytes = root.encode().unwrap();
     let root_digest = Digest::compute(&root_bytes);
+    // Another manifest than the root's: the same one, described otherwise.
+    let mut other = cedar_manifest();
+    other.description = "another manifest".into();
+    let other_bytes = Blob {
+        media_type: MEDIA_TYPE_MANIFEST.into(),
+        data: other.encode().expect("it encodes"),
+    }
+    .encode()
+    .unwrap();
+    let named = if shape == RootShape::ManifestDiffers {
+        Digest::compute(&other_bytes)
+    } else {
+        manifest_digest
+    };
 
     let commit = Commit {
         tree: root_digest,
-        manifest: manifest_digest,
+        manifest: named,
         predecessors,
         author: "nicola.gallo@nitroagility.com".into(),
         author_at: 1_787_836_800,
@@ -218,16 +251,17 @@ fn build_commit_with_id(
     let commit_bytes = commit.encode().unwrap();
     let head = Digest::compute(&commit_bytes);
 
-    (
-        vec![
-            policy_bytes,
-            manifest_bytes,
-            partition_bytes,
-            root_bytes,
-            commit_bytes,
-        ],
-        head,
-    )
+    let mut objects = vec![
+        policy_bytes,
+        manifest_bytes,
+        partition_bytes,
+        root_bytes,
+        commit_bytes,
+    ];
+    if shape == RootShape::ManifestDiffers {
+        objects.push(other_bytes);
+    }
+    (objects, head)
 }
 
 /// The ref state a push that read `old` as the head names: the current one when its head is
@@ -585,6 +619,34 @@ fn the_refusals_hold() {
         ),
         Err(EngineError::NotFound { .. })
     ));
+}
+
+/// NOTP manifest rules: a commit is checked against its own root. A root without its `manifest`
+/// entry is `manifest_missing`; a commit naming another manifest than the root's entry is
+/// `manifest_mismatch`; neither creates the ref, and the whole commit then pushes.
+#[test]
+fn a_commit_whose_root_holds_no_manifest_or_another_is_refused() {
+    let fixture = Fixture::new("manifest-root");
+    let policy = "permit(principal, action, resource);";
+    let (objects, head) = build_commit_rooted(policy, vec![], None, RootShape::NoManifestEntry);
+    assert!(matches!(
+        try_commit(&fixture, "main", &head, None, &objects),
+        Err(EngineError::Validation {
+            code: "manifest_missing",
+            ..
+        })
+    ));
+    let (objects, head) = build_commit_rooted(policy, vec![], None, RootShape::ManifestDiffers);
+    assert!(matches!(
+        try_commit(&fixture, "main", &head, None, &objects),
+        Err(EngineError::Validation {
+            code: "manifest_mismatch",
+            ..
+        })
+    ));
+    // Neither moved the ref: the whole commit is a creation still.
+    let (objects, head) = build_commit(policy, vec![]);
+    push(&fixture, &objects, &head, None);
 }
 
 #[test]
@@ -2003,6 +2065,49 @@ fn a_caller_keeps_a_bounded_number_of_pushes_open() {
         ..fixture.engine()
     };
     negotiate(&other, 0).expect("another caller opens its own");
+}
+
+/// `2-control-plane-ledger-notp.md` (limits): a ledger keeps a bounded number of transfer sessions
+/// open whoever opens them; once every caller's pushes add up to it, a caller that opened none is
+/// refused too.
+#[test]
+fn a_ledger_keeps_a_bounded_number_of_transfers_open_across_callers() {
+    use permguard_control_plane::transfer::{MAX_OPEN, MAX_OPEN_PER_PRINCIPAL};
+
+    let fixture = Fixture::new("ledger-cap");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    let negotiate = |caller: &str, at: usize| {
+        Engine {
+            caller: caller.into(),
+            ..fixture.engine()
+        }
+        .negotiate_push(&NegotiatePushRequest {
+            request_id: format!("push-{caller}-{at}"),
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: claims(&objects[..1]),
+        })
+    };
+    let callers = MAX_OPEN.div_ceil(MAX_OPEN_PER_PRINCIPAL);
+    let mut opened = 0;
+    for caller in 0..callers {
+        for at in 0..MAX_OPEN_PER_PRINCIPAL {
+            if opened == MAX_OPEN {
+                break;
+            }
+            negotiate(&format!("caller-{caller}"), at).expect("under the ledger's bound");
+            opened += 1;
+        }
+    }
+    assert_eq!(opened, MAX_OPEN);
+    assert!(
+        matches!(
+            negotiate("a-newcomer", 0),
+            Err(EngineError::Unavailable { .. })
+        ),
+        "the ledger's bound holds for a caller with nothing open"
+    );
 }
 
 /// WP-7.12: the ledger's bound holds at upload as well, on what it holds now: a quota lowered

@@ -26,6 +26,10 @@ operations:
   keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }
   secrets: { provider: directory, coordinator_root_ref: zone-root }
   audit: { pseudonym: { enabled: true, key_ref: audit-pseudonym, key_version: "v1" } }
+  # The backups' recovery key (TS-5): generated here, as every lab secret is, and kept on the
+  # volume beside what it protects — a lab's concession; a deployment keeps it apart. Every snapshot
+  # manifest binds its fingerprint, and the restore drill restores only under it.
+  backup: { recovery_key: backup-recovery, encryption_profile: lab-volume-copy, retention: 30d, destruction: LAB-DESTROY }
 
 dataPlane:
   # The decision interface, mutual TLS.

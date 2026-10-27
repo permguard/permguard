@@ -193,6 +193,18 @@ tasks:
       - python3 contracts/vectors/signed_response.py | diff - contracts/vectors/signed-response.json
       - python3 contracts/vectors/host_cli.py | diff - contracts/vectors/host-cli.json
 
+  check:traceability:
+    desc: Check that every section and finding of the blueprint is traced to code and tests (WP-7.13); the report is target/traceability.json.
+    cmds:
+      - cargo test -p permguard-conformance --test traceability {{.CLI_ARGS}}
+
+  traceability:index:
+    desc: Regenerate the blueprint index the traceability check reads, from the knowledge base (KNOWLEDGE=<workspace>/.agents/knowledge/permguard).
+    vars:
+      KNOWLEDGE: '{{.KNOWLEDGE | default "../../.agents/knowledge/permguard"}}'
+    cmds:
+      - python3 scripts/blueprint-index.py {{.KNOWLEDGE}}
+
   check:systems:
     desc: Check that the Makefile and the Taskfile offer the same commands.
     cmds:

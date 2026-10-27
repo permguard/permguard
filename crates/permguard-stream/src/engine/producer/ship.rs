@@ -506,6 +506,15 @@ fn unacknowledged_bytes(
     Ok(bytes)
 }
 
+/// The longest hold-off after `deferrals` earlier deferrals in a row: one second, doubled each
+/// time, capped at five minutes. The hold-off itself is drawn in `[0, ceiling]` (full jitter).
+fn backoff_ceiling(deferrals: u32) -> u64 {
+    BACKOFF_BASE_SECS
+        .checked_shl(deferrals)
+        .unwrap_or(BACKOFF_CAP_SECS)
+        .min(BACKOFF_CAP_SECS)
+}
+
 /// Uniform in `[0, n]`, from the OS random source; 0 when it refuses.
 fn jitter(n: u64) -> u64 {
     use ring::rand::SecureRandom as _;
@@ -885,6 +894,30 @@ impl<C: RecordCodec> Producer<C> {
 }
 
 impl<C: RecordCodec> StreamShipping for Producer<C> {
+    fn refused(&self) -> Result<Vec<composition::RefusedShipping>, String> {
+        let wrap = |error: StreamError| error.to_string();
+        let mut found = Vec::new();
+        for physical in self.every().map_err(wrap)? {
+            // A read: a stream nobody subscribed to yet gains no directory for being asked.
+            let subscriptions = subscriptions_held(&physical.writer().dir).map_err(wrap)?;
+            for subscription in subscriptions {
+                let state = match &subscription.state {
+                    SubscriptionState::Active => continue,
+                    SubscriptionState::Paused { epoch } => format!("paused at epoch {epoch}"),
+                    SubscriptionState::Stopped { reason } => format!("stopped: {reason}"),
+                };
+                found.push(composition::RefusedShipping {
+                    membership_id: subscription.membership_id,
+                    stream: self.stream_name(),
+                    resource: physical.key.resource.clone(),
+                    task_id: subscription.task_id.clone(),
+                    state,
+                });
+            }
+        }
+        Ok(found)
+    }
+
     fn behind(&self) -> Result<Vec<composition::Unshipped>, String> {
         let wrap = |error: StreamError| error.to_string();
         let mut found = Vec::new();
@@ -1262,10 +1295,7 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
         let held = backoff
             .entry(Self::backoff_key(resource, subscribed))
             .or_insert((0, now));
-        let ceiling = BACKOFF_BASE_SECS
-            .checked_shl(held.0)
-            .unwrap_or(BACKOFF_CAP_SECS)
-            .min(BACKOFF_CAP_SECS);
+        let ceiling = backoff_ceiling(held.0);
         held.0 = held.0.saturating_add(1);
         held.1 = now + jitter(ceiling);
         Ok(())
@@ -1294,5 +1324,47 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{backoff_ceiling, jitter};
+
+    /// `5-contract-stream-common.md` (acknowledgement vocabulary): a deferral backs off with
+    /// bounded exponential backoff, one second doubled per deferral up to five minutes, and
+    /// never beyond it however long the deferrals go on.
+    #[test]
+    fn a_deferral_backs_off_exponentially_up_to_its_cap() {
+        let ceilings: Vec<u64> = (0..12).map(backoff_ceiling).collect();
+        assert_eq!(
+            ceilings,
+            vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 300, 300, 300]
+        );
+        for deferrals in [63, 64, 65, 1_000, u32::MAX] {
+            assert_eq!(backoff_ceiling(deferrals), 300, "{deferrals} deferrals");
+        }
+    }
+
+    /// Full jitter: the hold-off is drawn anywhere in `[0, ceiling]`, so producers deferred
+    /// together do not come back together.
+    #[test]
+    fn the_hold_off_is_drawn_across_the_whole_window() {
+        let draws: Vec<u64> = (0..2_000).map(|_| jitter(300)).collect();
+        assert!(
+            draws.iter().all(|draw| *draw <= 300),
+            "never beyond the ceiling"
+        );
+        assert!(
+            draws.iter().any(|draw| *draw < 30),
+            "the bottom of the window"
+        );
+        assert!(
+            draws.iter().any(|draw| *draw > 270),
+            "the top of the window"
+        );
+        let distinct: std::collections::BTreeSet<_> = draws.iter().collect();
+        assert!(distinct.len() > 100, "spread, not a few fixed values");
+        assert_eq!(jitter(0), 0, "a zero ceiling holds nothing off");
     }
 }

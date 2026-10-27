@@ -66,6 +66,8 @@ const EVIDENCE: &str = "evidence";
 const UNSHIPPED_NAMED: usize = 8;
 /// The capability a checkpoint that did not leave the volume in time degrades (WP-5.9).
 const AUDIT_EGRESS: &str = "audit_egress";
+/// The capability a subscription the coordinator refused degrades until it ships again (F-08).
+const EVIDENCE_SHIPPING: &str = "evidence_shipping";
 
 /// What the composition hands the facade for the memberships.
 pub struct MembershipService {
@@ -2283,17 +2285,77 @@ impl HostApi {
 
     /// Ships what this Host's ship tasks have due (WP-5.4): the server's periodic pass.
     pub async fn ship_due(&self) -> usize {
-        let Ok((memberships, connector)) = self.member_side() else {
-            return 0;
+        let shipped = match self.member_side() {
+            Ok((memberships, connector)) => match self.acting_member(memberships, connector) {
+                Ok(member) => {
+                    member
+                        .ship_due(crate::operations::journal::Initiator::System(
+                            "host".to_owned(),
+                        ))
+                        .await
+                }
+                Err(_) => 0,
+            },
+            Err(_) => 0,
         };
-        let Ok(member) = self.acting_member(memberships, connector) else {
-            return 0;
+        // Whether or not this pass could reach a coordinator: what it refused earlier still
+        // keeps those streams from shipping.
+        self.report_refused();
+        shipped
+    }
+
+    /// Names the subscriptions the coordinator refused on the Host's health, `degraded:
+    /// evidence_shipping`, and restores it once none remains (F-08): a refusal never stops
+    /// shipping silently. A stream engine that cannot be read leaves the last report standing.
+    fn report_refused(&self) {
+        let Some(engine) = self.shipping() else {
+            return;
         };
-        member
-            .ship_due(crate::operations::journal::Initiator::System(
-                "host".to_owned(),
-            ))
-            .await
+        let refused = match engine.refused() {
+            Ok(refused) => refused,
+            Err(error) => {
+                tracing::warn!(
+                    event.name = "host.membership.refused_unread",
+                    component = "host",
+                    error = %error,
+                    "the refused subscriptions could not be read: the last report stands and the next pass reads again"
+                );
+                return;
+            }
+        };
+        let lifecycle = self.health.lifecycle();
+        if refused.is_empty() {
+            lifecycle.restore(permguard_core::lifecycle::HOST, EVIDENCE_SHIPPING);
+            return;
+        }
+        let named: Vec<String> = refused
+            .iter()
+            .take(UNSHIPPED_NAMED)
+            .map(|held| {
+                format!(
+                    "{} {} on task {} of membership {}: {}",
+                    held.stream,
+                    held.resource,
+                    held.task_id,
+                    uuid_text(&held.membership_id),
+                    held.state
+                )
+            })
+            .collect();
+        let more = refused.len().saturating_sub(UNSHIPPED_NAMED);
+        lifecycle.degrade(
+            permguard_core::lifecycle::HOST,
+            EVIDENCE_SHIPPING,
+            format!(
+                "shipping refused by the coordinator: {}{}",
+                named.join("; "),
+                if more > 0 {
+                    format!("; and {more} more")
+                } else {
+                    String::new()
+                }
+            ),
+        );
     }
 
     /// The `policy.mirror` tasks of every active membership this Host holds as a member, from

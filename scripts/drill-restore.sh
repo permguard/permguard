@@ -13,7 +13,8 @@
 #   an application-consistent backup of the Data Plane: prepare, the copy, finalize
 #   decisions the backup does not hold, shipped to the coordinator
 #   the Data Plane stops; its volume is lost and the snapshot put back, verified against its
-#   manifest under the pinned identity; the lost Host is fenced and the snapshot restored in `dr`
+#   manifest under the pinned identity; a restore under another recovery key is refused before
+#   anything is written (TS-5); the lost Host is fenced and the snapshot restored in `dr`
 #   the restore rolls the snapshot's producer runs over, so the restored Host never appends to a
 #   run the coordinator holds further; the Host's memberships are fenced on the coordinator (P9)
 #   the Data Plane starts: the same Host, memberships active, serving its ledger, and shipping
@@ -81,5 +82,6 @@ jq -n --argjson result "${result}" --arg image "${PERMGUARD_LAB_IMAGE}" \
                "memberships active after the restore, pinning the coordinator",
                "the ledger served: a permit and a deny, each recorded",
                "shipping resumed: every run shipped whole, the successors held whole by the coordinator beside what it acknowledged before the loss",
+               "the restore resolved the recovery key the manifest binds, and another key was refused before anything was written",
                "volume verify: 0 findings"]}' >"${record}"
 echo "ok: drill-restore (${record})"

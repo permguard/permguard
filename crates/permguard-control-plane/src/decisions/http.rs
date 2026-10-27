@@ -1565,6 +1565,33 @@ mod strict {
             format!("http://plane:6443{SIGNERS_PATH}")
         );
         assert_eq!(body["interface"], read::API);
+        // The common header (WP-7.4a), and the ceilings a read is actually clamped to.
+        assert_eq!(
+            (
+                body["component"].as_str(),
+                body["state"].as_str(),
+                body["stage"].as_str(),
+                body["version"].as_str()
+            ),
+            (
+                Some("control-plane"),
+                Some("bootstrap"),
+                Some("v1"),
+                Some("")
+            )
+        );
+        assert!(
+            body.get("sunset").is_none(),
+            "only a deprecated interface has one"
+        );
+        assert_eq!(
+            body["limits"]["max_records"],
+            permguard_stream::window::MAX_RECORDS as u64
+        );
+        assert_eq!(
+            body["limits"]["max_bytes"],
+            permguard_stream::window::MAX_BYTES
+        );
     }
 
     /// WP-6.3b: a pair naming no run the consumer holds and no legacy stream is `404`, never an

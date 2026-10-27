@@ -1910,6 +1910,10 @@ impl crate::composition::StreamShipping for Shipping {
         self.retained.lock().expect("lock").push(task_ids.to_vec());
         Ok(())
     }
+
+    fn refused(&self) -> Result<Vec<crate::composition::RefusedShipping>, String> {
+        Ok(Vec::new())
+    }
 }
 
 /// WP-5.4: the member's ship pass keeps the subscriptions to the manifest's ship tasks, opens a

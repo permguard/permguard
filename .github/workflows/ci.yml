@@ -80,6 +80,14 @@ jobs:
         # --all-features because `permguard-std` keeps `provision` outside its default set, and a
         # plain run would never compile the tests that cover it.
         run: cargo test --workspace --all-features --locked
+      # WP-7.13: what the traceability test checked, every section and finding of the blueprint to
+      # the code and the tests above, kept with the run.
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: traceability
+          path: target/traceability.json
+          if-no-files-found: error
 
   # Deterministic replay on a second platform (TL-6): each runtime's golden vectors and upstream
   # corpora, and the rest of the languages crate, on Apple silicon — another operating system and

@@ -958,7 +958,21 @@ impl Backups {
         .map_err(storage)?;
         // Every root flushed: what the storage driver snapshots next is what the manifest names.
         for name in ROOTS {
-            sync_tree(&self.root.join(name))?;
+            if let Err(error) = sync_tree(&self.root.join(name)) {
+                // The prepare is refused, so the operation is not left `prepared` with no barrier
+                // behind it: it is aborted as a restart would cut it, which is also what cuts it
+                // should this write fail too. The refused PREPARE the transaction records is its
+                // trail: no separate abort is journaled for an operation that never answered.
+                let _ = write_state(
+                    &operation,
+                    &State {
+                        state: ABORTED.to_owned(),
+                        at: now,
+                        snapshot_id: None,
+                    },
+                );
+                return Err(error);
+            }
         }
         Ok(signed)
     }

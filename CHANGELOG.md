@@ -19,6 +19,18 @@ is cut.
 
 ### Added
 
+- **Every release carries the exit gate's evidence, pinned and attested (WP-7.13).**
+  The release pipeline fuzzes the tagged source for the release budget, ten minutes per target, and attaches `fuzz-release.json`.
+  It attaches the serving gate's `permguard-gate.json` and the `traceability.json` report, which traces every section and finding of the blueprint to the code and tests that implement it and lists every recorded gap.
+  A last job writes `evidence-manifest.json` over the release as published, pinning every file by its SHA-256 to the tagged commit and naming what the gate still lacks, then attests and verifies it.
+  `scripts/verify-evidence.sh` repeats that verification from a downloaded release and fails closed.
+  CI uploads the traceability report on every run, and `task check:traceability` runs the check locally.
+
+- **A subscription the coordinator refused is named on health (F-08).**
+  A ship task answered `unverifiable` pauses until its membership's epoch moves, and one answered `fork`, `gone` or beyond what the producer holds stops until an operator acts.
+  Either keeps the Host `degraded: evidence_shipping`, naming the stream, its resource, its task, its membership and why, after every shipping pass, and the capability is restored once none remains.
+  A paused subscription resumes when the coordinator moves the membership's epoch; a stopped one is dropped when its task leaves the membership's manifest or the membership ends.
+
 - **Storage security and declared service objectives (TS-5).**
   Bootstrap verifies the process runs as a dedicated non-root user and disables core dumps, reading the limit back.
   It walks the volume without following a link and refuses, from `production`, an entry another user owns or may reach, a symbolic link, a FIFO or another filesystem mounted inside.
@@ -1106,6 +1118,10 @@ is cut.
 - An identity rotation destroys every retired private key past its grace that the custody still holds, so a key a previous rotation could not destroy is tried again; a key kept is reported as `host.identity_key_kept`, and the public keys and successions stay.
 
 ### Fixed
+
+- **A backup whose roots could not be flushed is aborted, not left `prepared` (WP-7.13).**
+  A prepare refused because a directory of a root could not be flushed left its operation listed `prepared` until the next restart, with no barrier behind it.
+  It is now recorded `aborted` when the prepare is refused.
 
 - **`limits.concurrent_requests` bounds the whole surface, as documented (TS-4).**
   The bound was applied once per route, so a surface held the configured number of requests on each of its routes at once.

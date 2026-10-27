@@ -209,6 +209,8 @@ gh attestation verify oci://ghcr.io/permguard/permguard/data-plane:<version> \
 Releases up to `0.1.6` were attested by `release-pipeline.yml`; name that file as `--signer-workflow` to verify them.
 `provenance-files.txt` and `provenance-images.txt` in the release list the builder and source of every artifact.
 `reproducibility.txt` holds the verdict of an independent rebuild of the Linux and Windows binaries; a release claims to be reproducible only when it ends with `reproducible: yes`.
+`evidence-manifest.json` pins every file of the release by its SHA-256 to the tagged commit and says whether the exit gate's evidence is complete: the benchmark, the serving gate, both drills, the release fuzz budget, the traceability report, the reproducibility verdict, the provenance and the SBOMs.
+It is attested by `release-pipeline.yml`; `scripts/verify-evidence.sh <directory> permguard/permguard v<version>` checks that attestation for that tag, hashes every file again and fails on anything missing, changed, unnamed or incomplete.
 For container images, see [ops/container-verification.md](ops/container-verification.md).
 
 </details>

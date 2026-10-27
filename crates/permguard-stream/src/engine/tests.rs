@@ -3733,6 +3733,16 @@ fn a_refused_producer_ships_once_approved_without_restart() {
     assert_eq!(held.state, SubscriptionState::Paused { epoch: 1 });
     // The same epoch: still paused, nothing due.
     assert!(producer.due(&refused).expect("due").is_empty());
+    // And said: the paused subscription is what health names meanwhile, never silent.
+    let named = producer.refused().expect("read");
+    assert_eq!(
+        named
+            .iter()
+            .map(|held| (held.task_id.as_str(), held.state.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("decisions", "paused at epoch 1")]
+    );
+    assert_eq!(named[0].resource, resource);
     // Approved: the manifest moves to epoch 2 with the member's pin; the next pass ships.
     let approved = subscribed("decisions", true, 2);
     assert_eq!(
@@ -3751,6 +3761,10 @@ fn a_refused_producer_ships_once_approved_without_restart() {
             .acked(&ledger(1), host.identity.host_id(), run)
             .expect("acked"),
         3
+    );
+    assert!(
+        producer.refused().expect("read").is_empty(),
+        "approved, it ships and nothing is named"
     );
     // A deferral backs the subscription off: not due until its wait passes.
     producer
@@ -3785,6 +3799,15 @@ fn a_refused_producer_ships_once_approved_without_restart() {
         SubscriptionState::Stopped {
             reason: permguard_core::codes::stream::ACK_AHEAD.to_owned()
         }
+    );
+    assert!(
+        producer
+            .refused()
+            .expect("read")
+            .iter()
+            .any(|held| held.task_id == "decisions"
+                && held.state == format!("stopped: {}", permguard_core::codes::stream::ACK_AHEAD)),
+        "a stopped subscription is named until an operator acts"
     );
     // Stopped: never due again, whatever the epoch.
     assert!(

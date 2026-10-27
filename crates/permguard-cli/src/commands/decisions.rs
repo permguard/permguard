@@ -1299,14 +1299,14 @@ mod archive_verify {
     use super::super::host_proof::testing::{Key, sealed};
     use super::*;
 
-    /// Three markers of the run `run`, two hex digits repeated, of the Host `[1; 16]`, chained.
-    fn records_of(run: &str) -> Vec<Value> {
+    /// Three markers of the run `run` of the producer `pdp`, each two hex digits repeated.
+    fn records_by(pdp: &str, run: &str) -> Vec<Value> {
         let mut prev = GENESIS.to_owned();
         (1..=3u64)
             .map(|seq| {
                 let value = Record {
                     v: permguard_decisions::record::VERSION,
-                    stream: Stream::new("01".repeat(16), run.repeat(16)),
+                    stream: Stream::new(pdp.repeat(16), run.repeat(16)),
                     seq,
                     prev: prev.clone(),
                     at: "2026-10-20T10:00:00Z".to_owned(),
@@ -1341,7 +1341,12 @@ mod archive_verify {
 
     /// An export of `scope` of the run `run`, signed by `key`.
     fn archive_of(key: &Key, scope: DecisionArchiveScope, run: &str) -> DecisionArchive {
-        let records = records_of(run);
+        archive_by(key, scope, "01", run)
+    }
+
+    /// An export of `scope` of the run `run` of the producer `pdp`, signed by `key`.
+    fn archive_by(key: &Key, scope: DecisionArchiveScope, pdp: &str, run: &str) -> DecisionArchive {
+        let records = records_by(pdp, run);
         let bytes: Vec<Vec<u8>> = records
             .iter()
             .map(|record| permguard_stream::jcs::canonicalize(record).expect("canonical"))
@@ -1359,7 +1364,7 @@ mod archive_verify {
                 key,
                 permguard_core::domains::protected::DECISION_BATCH,
                 permguard_core::domains::digest::DECISION_RECORD,
-                &"01".repeat(16),
+                &pdp.repeat(16),
                 &run.repeat(16),
                 1,
                 &bytes,
@@ -1676,6 +1681,56 @@ mod archive_verify {
         let (verified, report) = verify_archive(both, &[key.jwk()]).ok().expect("checked");
         assert!(verified, "{:?}", report.verified);
         assert_eq!(report.verified.and_then(|held| held.included), Some(6));
+    }
+
+    /// F-07: a tenant export holding the decisions of two producers, each sealing under its own
+    /// key, verifies with the coordinator's key set as it is published, both keys in one JWKS,
+    /// with nothing merged by hand; the set without one producer's key does not verify.
+    #[test]
+    fn a_tenant_archive_of_two_producers_verifies_with_the_coordinators_key_set() {
+        let (first, second) = (Key::new("k1"), Key::new("k2"));
+        let tenant = scopes()[1].clone();
+        let mut both = archive_by(&first, tenant.clone(), "01", "07");
+        let other = archive_by(&second, tenant, "02", "08");
+        both.records.extend(other.records);
+        both.envelopes.extend(other.envelopes);
+        both.inclusion.extend(other.inclusion);
+
+        let root = written("two-producers", &both, &first);
+        std::fs::write(
+            root.join("keys.json"),
+            serde_json::to_vec(&serde_json::json!({"keys": [first.jwk(), second.jwk()]}))
+                .expect("JSON"),
+        )
+        .expect("written");
+        assert!(
+            verify_file(&globals(&root), "archive.json", "keys.json").is_ok(),
+            "one key set verifies both producers"
+        );
+        let (verified, report) = verify_archive(both.clone(), &[first.jwk(), second.jwk()])
+            .ok()
+            .expect("checked");
+        assert!(verified, "{:?}", report.verified);
+        assert_eq!(report.verified.and_then(|held| held.included), Some(6));
+
+        let (verified, _) = verify_archive(both.clone(), &[first.jwk()])
+            .ok()
+            .expect("checked");
+        assert!(
+            !verified,
+            "the second producer's batch is not signed by the set given"
+        );
+        let refused = verify_file(
+            &globals(&written("one-producer", &both, &first)),
+            "archive.json",
+            "keys.json",
+        )
+        .expect_err("a producer's key missing from the set");
+        assert_eq!(refused.status, crate::failure::EXIT_NOT_READY);
+        assert_eq!(
+            refused.code,
+            permguard_core::codes::client::DECISIONS_UNVERIFIED
+        );
     }
 
     /// After the review: an export always carries its proofs, and is truncated only when it

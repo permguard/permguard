@@ -627,6 +627,20 @@ drill_restore() {
         permguard-data-plane volume claim --volume "${volume}" --next >/dev/null
         listener_env data-plane permguard-data-plane
         local config=/opt/permguard/lab/data-plane.yml restored
+        # TS-5: the snapshot is bound to the recovery key it was taken under, and another key never
+        # restores it: refused before anything is written, no plan issued.
+        local secrets="${volume}/operations/secrets" wrong="${state}/drill/wrong-key.yml" refused
+        head -c 32 /dev/urandom >"${secrets}/backup-recovery-wrong"
+        sed 's/recovery_key: backup-recovery,/recovery_key: backup-recovery-wrong,/' "${config}" >"${wrong}"
+        grep -q 'recovery_key: backup-recovery-wrong,' "${wrong}" || fail "the wrong-key configuration was not written"
+        if refused="$(permguard -o json restore plan --mode dr --reason "the wrong key" \
+            --out "${drill}/wrong.plan" --volume "${volume}" --server-config "${wrong}" 2>&1)"; then
+            fail "a restore under another recovery key was planned: ${refused}"
+        fi
+        grep -q 'recovery_key_mismatch' <<<"${refused}" || fail "the wrong key was refused otherwise: ${refused}"
+        [ ! -e "${drill}/wrong.plan" ] || fail "a plan was issued under the wrong recovery key"
+        rm -f "${secrets}/backup-recovery-wrong" "${wrong}"
+        log "another recovery key is refused before anything is written (recovery_key_mismatch)"
         permguard -o json restore plan --mode dr --reason "the restore drill" --out "${drill}/restore.plan" \
             --volume "${volume}" --server-config "${config}" >/dev/null
         restored="$(permguard -o json restore run --mode dr --confirm-file "${drill}/restore.plan" \
@@ -638,7 +652,8 @@ drill_restore() {
         # snapshot's runs rolled over, so the restored Host appends to none of them.
         jq -e '.streams.runs_rolled_over >= 1 and (.streams.forked | length) == 0' >/dev/null \
             <<<"${restored}" || fail "the restore rolled no producer run over: ${restored}"
-        jq -c '{previous_boot_id, plan_id, runs_rolled_over: .streams.runs_rolled_over}' \
+        jq -c '{previous_boot_id, plan_id, runs_rolled_over: .streams.runs_rolled_over,
+            recovery_key: "verified against the manifest; another key refused"}' \
             <<<"${restored}" >"${drill}/restored.json"
         local verify
         verify="$(permguard-data-plane volume verify --volume "${volume}" 2>&1)" ||

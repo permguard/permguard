@@ -389,6 +389,28 @@ fn plane_built_under(
     journalled: bool,
     build: impl FnOnce(&Path),
 ) -> Plane {
+    // The clock bounds are widened for the tests only, and deliberately: upstream's trace is dated
+    // at the epoch, and what these tests are about is the temporal semantics rather than the skew
+    // rule — which has tests of its own, with the bounds the shipped configuration uses.
+    let bounds = Bounds {
+        retention_minimum: std::time::Duration::MAX,
+        allowed_lateness: std::time::Duration::from_secs(u32::MAX.into()),
+        clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
+        ..Bounds::default()
+    };
+    plane_built_bounded(tag, profile, blocking, metrics, journalled, build, bounds)
+}
+
+/// The same plane, its event journal under `bounds`.
+fn plane_built_bounded(
+    tag: &str,
+    profile: permguard_core::assurance::AssuranceProfile,
+    blocking: Blocking,
+    metrics: Metrics,
+    journalled: bool,
+    build: impl FnOnce(&Path),
+    bounds: Bounds,
+) -> Plane {
     let root = scratch(tag);
     let mirrors = root.join("mirrors");
     std::fs::create_dir_all(&mirrors).expect("the mirrors root is created");
@@ -432,15 +454,6 @@ fn plane_built_under(
         decider
     });
     let events = root.join("events");
-    // The clock bounds are widened for the tests only, and deliberately: upstream's trace is dated
-    // at the epoch, and what these tests are about is the temporal semantics rather than the skew
-    // rule — which has tests of its own below, with the bounds the shipped configuration uses.
-    let bounds = Bounds {
-        retention_minimum: std::time::Duration::MAX,
-        allowed_lateness: std::time::Duration::from_secs(u32::MAX.into()),
-        clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
-        ..Bounds::default()
-    };
     let streams = Arc::new(
         Streams::new(
             events.clone(),
@@ -1091,6 +1104,123 @@ async fn an_event_type_this_plane_does_not_accept_is_refused_by_name() {
             .as_str()
             .is_some_and(|held| held.contains(permguard_languages::event::EVENT_TYPE)),
         "the refusal says what it does accept: {answered}"
+    );
+}
+
+/// The clock bounds the shipped configuration publishes (`clock_skew`, `allowed_lateness`): an
+/// occurrence further ahead of this plane's clock than the skew, or further behind it than the
+/// lateness, is refused with its own code and records nothing; one inside both is accepted.
+#[tokio::test]
+async fn an_occurrence_outside_the_clock_bounds_is_refused_by_its_own_code() {
+    let shipped = Bounds {
+        retention_minimum: std::time::Duration::MAX,
+        ..Bounds::default()
+    };
+    let plane = plane_built_bounded(
+        "clock-bounds",
+        permguard_core::assurance::AssuranceProfile::Development,
+        blocking(),
+        Metrics::none(),
+        false,
+        |mirrors| {
+            provision(mirrors, &manifest());
+        },
+        shipped,
+    );
+    let router = surface(&plane);
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_secs(),
+    )
+    .expect("an instant");
+    let skew = i64::try_from(shipped.clock_skew.as_secs()).expect("seconds");
+    let lateness = i64::try_from(shipped.allowed_lateness.as_secs()).expect("seconds");
+    let login = |at: i64, user: &str| {
+        submission(
+            at,
+            "Drupe::Action::Login",
+            "response",
+            user,
+            json!({"user": user, "server": "s1"}),
+        )
+    };
+
+    let (status, answered) = post(&router, login(now + skew + 600, "ahead")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{answered}");
+    assert_eq!(answered["code"], "event_ahead_of_clock", "{answered}");
+
+    let (status, answered) = post(&router, login(now - lateness - 600, "late")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{answered}");
+    assert_eq!(answered["code"], "event_too_late", "{answered}");
+    let held = |plane: &Plane| {
+        plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+            .expect("the stream reads back")
+            .len()
+    };
+    assert_eq!(held(&plane), 0, "a refused occurrence records nothing");
+
+    let (status, answered) = post(&router, login(now, "in-time")).await;
+    assert_eq!(status, StatusCode::OK, "inside both bounds: {answered}");
+    assert_eq!(
+        held(&plane),
+        1,
+        "only the occurrence inside both bounds is recorded"
+    );
+}
+
+/// A temporal contract whose window can outlive the history this plane keeps is refused before it
+/// decides anything (`history_retention_insufficient`): a retention shorter than the policies'
+/// window, plus the lateness and the skew, would let eviction change what they answer.
+#[tokio::test]
+async fn a_contract_whose_window_outlives_the_retention_is_refused() {
+    let short = Bounds {
+        retention_minimum: std::time::Duration::from_secs(1),
+        ..Bounds::default()
+    };
+    let plane = plane_built_bounded(
+        "retention-short",
+        permguard_core::assurance::AssuranceProfile::Development,
+        blocking(),
+        Metrics::none(),
+        false,
+        |mirrors| {
+            provision(mirrors, &manifest());
+        },
+        short,
+    );
+    let router = surface(&plane);
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_secs(),
+    )
+    .expect("an instant");
+    let (status, answered) = post(
+        &router,
+        submission(
+            now,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
+    assert_eq!(
+        answered["code"], "history_retention_insufficient",
+        "{answered}"
+    );
+    assert!(
+        answered["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("cannot activate its temporal contract")),
+        "{answered}"
     );
 }
 

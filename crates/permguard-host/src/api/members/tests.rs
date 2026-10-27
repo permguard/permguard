@@ -2125,3 +2125,93 @@ async fn a_held_member_is_no_origin_and_one_host_is_never_two() {
     approved(&api, &uuid_text(&two.membership_id), "twice-4").await;
     assert!(api.import_origins(&ledger).is_err());
 }
+
+/// A stream engine whose subscriptions the coordinator refused, as a test sets them.
+#[derive(Default)]
+struct Refusing(std::sync::Mutex<Vec<crate::composition::RefusedShipping>>);
+
+impl crate::composition::StreamShipping for Refusing {
+    fn due(&self, _: &crate::composition::Subscribed<'_>) -> Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
+
+    fn next(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        _: &str,
+        _: u64,
+    ) -> Result<Option<crate::composition::Shipment>, String> {
+        Ok(None)
+    }
+
+    fn answered(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        _: &str,
+        _: &crate::composition::Shipment,
+        _: &[u8],
+    ) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    fn deferred(&self, _: &crate::composition::Subscribed<'_>, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn retain(&self, _: &[u8; 16], _: &[String]) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn refused(&self) -> Result<Vec<crate::composition::RefusedShipping>, String> {
+        Ok(self.0.lock().expect("lock").clone())
+    }
+}
+
+/// F-08: a subscription the coordinator refused keeps the Host `degraded: evidence_shipping`,
+/// naming the stream, its resource, its task and why, for as long as it does not ship; once it
+/// ships again the next pass restores the capability. Shipping never stops silently.
+#[tokio::test]
+async fn a_refused_subscription_is_named_on_health_until_it_ships_again() {
+    let root = scratch("members-refused-shipping");
+    let (mut api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let engine = Arc::new(Refusing::default());
+    {
+        let service = Arc::get_mut(api.memberships.as_mut().expect("memberships"))
+            .expect("the test owns the membership service");
+        service.shipping = Some(Arc::clone(&engine) as Arc<dyn crate::composition::StreamShipping>);
+    }
+    let degraded = |api: &HostApi| {
+        api.status(&admin())
+            .expect("the status")
+            .degraded
+            .into_iter()
+            .find(|held| held.capability == EVIDENCE_SHIPPING)
+    };
+
+    api.ship_due().await;
+    assert!(degraded(&api).is_none(), "nothing refused, nothing named");
+
+    *engine.0.lock().expect("lock") = vec![crate::composition::RefusedShipping {
+        membership_id: [0x5a; 16],
+        stream: "data/decisions".to_owned(),
+        resource: "plane/data/zone/acme/ledger/main".to_owned(),
+        task_id: "decisions".to_owned(),
+        state: "paused at epoch 1".to_owned(),
+    }];
+    api.ship_due().await;
+    let named = degraded(&api).expect("the refusal is named");
+    for part in [
+        "5a5a5a5a-5a5a-5a5a-5a5a-5a5a5a5a5a5a",
+        "data/decisions",
+        "plane/data/zone/acme/ledger/main",
+        "decisions",
+        "paused at epoch 1",
+    ] {
+        assert!(named.reason.contains(part), "{part} in {}", named.reason);
+    }
+
+    // Approved: the subscription ships again, and the next pass restores the capability.
+    engine.0.lock().expect("lock").clear();
+    api.ship_due().await;
+    assert!(degraded(&api).is_none(), "restored once it ships");
+}

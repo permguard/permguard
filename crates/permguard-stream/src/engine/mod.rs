@@ -755,6 +755,14 @@ impl permguard_host::composition::StreamShipping for Served {
         }
         Ok(remaining)
     }
+
+    fn refused(&self) -> Result<Vec<permguard_host::composition::RefusedShipping>, String> {
+        let mut found = Vec::new();
+        for producer in &self.shipping {
+            found.extend(producer.refused()?);
+        }
+        Ok(found)
+    }
 }
 
 /// A lowercase name of letters, digits and inner hyphens.

@@ -12,7 +12,9 @@ on:
 # workflow `release-build.yml`, the release's SLSA Build L3 builder; inside it, only the job that
 # compiles nothing may write a release, push an image or mint the OIDC token that signs an
 # attestation: a job that compiles runs every dependency's build script, and one holding
-# `id-token: write` would let that script sign provenance in this repository's name.
+# `id-token: write` would let that script sign provenance in this repository's name. The one
+# attestation made here, the evidence manifest's, is made by the last job, which compiles nothing
+# either: `scripts/verify-evidence.sh` names this file as its signer.
 permissions:
   contents: read
 
@@ -77,6 +79,17 @@ jobs:
           target/release/permguard-bench gate \
             --server target/release/permguard-all-in-one --cli target/release/permguard \
             --directory "${RUNNER_TEMP}/permguard-gate" --out permguard-gate.json
+      # WP-7.13: the serving gate's verdict and the traceability report the tests wrote, kept for
+      # the evidence manifest the last job pins to the release.
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verified
+          path: |
+            permguard-gate.json
+            target/traceability.json
+          retention-days: 1
+          if-no-files-found: warn
 
   supply-chain:
     name: Advisories, licences, sources
@@ -286,6 +299,114 @@ jobs:
             fi
           done
 
+  # The release fuzz budget (WP-7.13): every coverage-guided target of the tagged source for the
+  # nightly's ten minutes each, bounded by the boundary registry. The targets do not fit one job's
+  # time limit, so they are dealt round-robin to six shards, each writing its own record; the job
+  # after them merges the records and the release passes only when every target ran in a shard that
+  # passed without a crash. Read-only: it compiles.
+  fuzz:
+    name: Fuzz the tagged source for the release budget (shard ${{ matrix.shard }})
+    needs: [verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
+    env:
+      SHARD: ${{ matrix.shard }}
+      SHARDS: 6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+        with:
+          toolchain: nightly
+      - name: cargo-fuzz
+        run: cargo install cargo-fuzz@0.13.2 --locked
+      - name: this shard's targets
+        run: |
+          set -euo pipefail
+          sed -n 's/^name = "\(.*\)"$/\1/p' fuzz/Cargo.toml | grep -v '^permguard-fuzz$' |
+            awk -v shard="${SHARD}" -v shards="${SHARDS}" '(NR - 1) % shards == shard' > shard-targets.txt
+          cat shard-targets.txt
+      - name: every target of the shard, ten minutes each
+        run: |
+          set -euo pipefail
+          mapfile -t targets < shard-targets.txt
+          ./scripts/fuzz.sh 600 "${targets[@]}"
+      - name: the shard's record
+        if: always()
+        run: |
+          set -euo pipefail
+          targets="$(jq -R . shard-targets.txt | jq -s .)"
+          crashes=0
+          if [ -d fuzz/artifacts ]; then
+            crashes="$(find fuzz/artifacts -type f | wc -l | tr -d ' ')"
+          fi
+          jq -n --argjson shard "${SHARD}" --argjson targets "${targets}" \
+            --argjson crashes "${crashes}" --arg result "${{ job.status }}" \
+            '{shard: $shard, seconds_per_target: 600, targets: $targets, crashes: $crashes,
+              result: (if $result == "success" and $crashes == 0 then "passed" else "failed" end)}' \
+            > "fuzz-shard-${SHARD}.json"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-shard-${{ matrix.shard }}
+          path: |
+            fuzz-shard-${{ matrix.shard }}.json
+            fuzz/artifacts/
+          retention-days: 1
+          if-no-files-found: ignore
+
+  # Merges the shards' records into the release's one and attaches it, or the note saying why there
+  # is none. Separate because writing to the release needs a token that may write; it compiles
+  # nothing.
+  publish-fuzz:
+    name: Publish the fuzz record
+    needs: [build, fuzz]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          pattern: fuzz-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Merge the shards and attach the record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          expected="$(sed -n 's/^name = "\(.*\)"$/\1/p' fuzz/Cargo.toml | grep -v '^permguard-fuzz$' | jq -R . | jq -s 'sort')"
+          if compgen -G 'shards/fuzz-shard-*.json' >/dev/null; then
+            # Passed only when all six shards passed and together ran every target, each once.
+            jq -s --arg commit "${GITHUB_SHA}" --arg tag "${GITHUB_REF_NAME}" --argjson expected "${expected}" \
+              '{fuzz: "release budget", commit: $commit, tag: $tag, seconds_per_target: 600,
+                shards: length, targets: ([.[].targets[]] | sort), crashes: ([.[].crashes] | add),
+                missing: ($expected - [.[].targets[]]),
+                result: (if length == 6 and all(.[]; .result == "passed")
+                            and ([.[].targets[]] | sort) == $expected
+                         then "passed" else "failed" end)}' \
+              shards/fuzz-shard-*.json > fuzz-release.json
+            gh release upload "${GITHUB_REF_NAME}" fuzz-release.json --clobber
+          else
+            printf 'the release fuzz budget of %s (%s) did not complete; see the workflow run %s\n' \
+              "${GITHUB_REF_NAME}" "${GITHUB_SHA}" \
+              "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > fuzz-release.txt
+            gh release upload "${GITHUB_REF_NAME}" fuzz-release.txt --clobber
+            echo "::warning title=No fuzz record::$(cat fuzz-release.txt)"
+          fi
+
   # An independent rebuild, compared byte for byte with what was published. Never blocking:
   # provenance says where an artifact came from, reproducibility says anyone can get the same bytes,
   # and only the second claim depends on this job. It runs on a fresh runner without the build cache,
@@ -399,3 +520,76 @@ jobs:
           if [ "$(cat reproducibility.status)" != "0" ]; then
             echo "::warning title=Not reproducible::the independent rebuild did not confirm the published binaries; see reproducibility.txt on the release"
           fi
+
+  # The iteration exit gate's evidence (WP-7.13): the serving gate's verdict and the traceability
+  # report are attached, then every file the release carries is pinned by its SHA-256 to the tagged
+  # commit in `evidence-manifest.json`, which names what the gate still lacks. The manifest is
+  # attested, published and verified the way an auditor would, from the release alone. It compiles
+  # nothing, so it may hold the token that signs. A gate that is incomplete fails this job after
+  # the manifest is published: what is missing is said, never hidden.
+  evidence:
+    name: Pin the release's evidence
+    needs:
+      [verify, build, publish-benchmark, publish-drills, publish-fuzz, publish-reproducibility]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: verified
+          path: verified
+      - name: Attach the serving gate and the traceability report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [ -s verified/target/traceability.json ] && cp verified/target/traceability.json verified/
+          for record in permguard-gate traceability; do
+            if [ -s "verified/${record}.json" ]; then
+              gh release upload "${GITHUB_REF_NAME}" "verified/${record}.json" --clobber
+            else
+              printf 'the %s of %s (%s) was not produced; see the workflow run %s\n' \
+                "${record}" "${GITHUB_REF_NAME}" "${GITHUB_SHA}" \
+                "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > "${record}.txt"
+              gh release upload "${GITHUB_REF_NAME}" "${record}.txt" --clobber
+              echo "::warning title=No ${record} record::$(cat "${record}.txt")"
+            fi
+          done
+      - name: The manifest of the release as published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release download "${GITHUB_REF_NAME}" --dir evidence
+          rm -f evidence/evidence-manifest.json
+          ./scripts/evidence-manifest.sh evidence "${GITHUB_REF_NAME}" "${GITHUB_SHA}" evidence-manifest.json
+          cp evidence-manifest.json evidence/
+      - name: Attest the manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: evidence-manifest.json
+      - name: Publish and verify the manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" evidence-manifest.json --clobber
+          {
+            echo "## Exit gate evidence"
+            echo
+            echo '```'
+            jq '{tag, commit, complete, incomplete, artifacts: (.artifacts | length)}' evidence-manifest.json
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+          ./scripts/verify-evidence.sh evidence "${GITHUB_REPOSITORY}" "${GITHUB_REF_NAME}"
