@@ -1497,7 +1497,7 @@ pub struct Config {
     mirrors_expire_after: Option<Duration>,
     mirrors_reap_grace: Duration,
     mirrors_revocation_objective: Option<Duration>,
-    mirror_sources: Vec<crate::mirrors::MirrorSource>,
+    mirror_local: Option<crate::mirrors::MirrorLocal>,
     mirror_task_selections: Vec<crate::mirrors::MirrorTaskSelection>,
     mirror_aliases: Vec<crate::mirrors::MirrorAlias>,
     otel_enabled: bool,
@@ -1701,7 +1701,7 @@ impl Default for Config {
             mirrors_expire_after: None,
             mirrors_reap_grace: DEFAULT_MIRRORS_REAP_GRACE,
             mirrors_revocation_objective: None,
-            mirror_sources: Vec::new(),
+            mirror_local: None,
             mirror_task_selections: Vec::new(),
             mirror_aliases: Vec::new(),
             otel_enabled: false,
@@ -1847,21 +1847,11 @@ impl Config {
         Ok(())
     }
 
-    /// Attaches the servers this plane mirrors, as the configuration file declared them.
-    ///
-    /// Structured, so it comes from the file only — the same reason realms do. Each source is
-    /// checked for shape here, at startup: a URL that is not a URL should stop a deployment while
-    /// somebody is watching, not surprise a mirror an hour later.
-    pub fn with_mirror_sources(
-        mut self,
-        sources: impl IntoIterator<Item = crate::mirrors::MirrorSource>,
-    ) -> Result<Self> {
-        self.mirror_sources = sources.into_iter().collect();
-        for source in &self.mirror_sources {
-            crate::mirrors::check_source(source)?;
-        }
-
-        Ok(self)
+    /// Attaches the local task's narrowing (WP-7.7), as the file declared it: patterns are
+    /// compiled by the plane that mirrors, where a broken one is refused at startup.
+    pub fn with_mirror_local(mut self, local: Option<crate::mirrors::MirrorLocal>) -> Self {
+        self.mirror_local = local;
+        self
     }
 
     /// Attaches the `policy.mirror` tasks this plane narrows (WP-7.2a), as the file declared them:
@@ -3922,18 +3912,11 @@ produce: use `EdDSA` or `ES256`"
         destination: Option<crate::decisions::LogDestination>,
         include: crate::decisions::IncludeSection,
     ) -> Result<Self> {
-        // The same shape check a mirror source gets, for the same reason: a
-        // URL that is not a URL is a configuration mistake, and a deployment
+        // A URL that is not a URL is a configuration mistake, and a deployment
         // should hear about it before it starts deciding.
         if let Some(destination) = &destination {
-            crate::mirrors::check_source(&crate::mirrors::MirrorSource {
-                url: destination.url.clone(),
-                tls: destination.tls.clone(),
-                zones: Vec::new(),
-                ledgers: Vec::new(),
-                required: true,
-            })
-            .context("reading the decision log's server")?;
+            crate::mirrors::check_server(&destination.url, &destination.tls)
+                .context("reading the decision log's server")?;
         }
         self.log_destination = destination;
         self.log_include = include;
@@ -3947,14 +3930,8 @@ produce: use `EdDSA` or `ES256`"
         destination: Option<crate::decisions::EventDestination>,
     ) -> Result<Self> {
         if let Some(destination) = &destination {
-            crate::mirrors::check_source(&crate::mirrors::MirrorSource {
-                url: destination.url.clone(),
-                tls: destination.tls.clone(),
-                zones: Vec::new(),
-                ledgers: Vec::new(),
-                required: true,
-            })
-            .context("reading the event store's server")?;
+            crate::mirrors::check_server(&destination.url, &destination.tls)
+                .context("reading the event store's server")?;
 
             let scheme = destination
                 .url
@@ -4140,10 +4117,10 @@ produce: use `EdDSA` or `ES256`"
         &self.mirror_task_selections
     }
 
-    /// The servers this plane follows, and the zone and ledger patterns of
-    /// each — as the configuration file declared them.
-    pub fn mirror_sources(&self) -> &[crate::mirrors::MirrorSource] {
-        &self.mirror_sources
+    /// How the local task of a process hosting both Planes is narrowed (WP-7.7): `None`, it
+    /// follows every zone and ledger of its own Control Plane.
+    pub fn mirror_local(&self) -> Option<&crate::mirrors::MirrorLocal> {
+        self.mirror_local.as_ref()
     }
 
     /// Whether spans leave the process over OTLP.

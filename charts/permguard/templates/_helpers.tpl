@@ -220,14 +220,6 @@ Deployment
 {{- end -}}
 
 {{/*
-This release's own control plane, in the cluster.
-
-The Service is named after the release, so only a template knows the address — which is why a
-values file that wrote one was right for exactly one release name. `http`, because the chart has
-no certificate to point at; a deployment that does not trust its own network sets `servers`
-explicitly with `https` and the authority to check.
-*/}}
-{{/*
 Where a component tells the world to reach it.
 
 A pod binds `0.0.0.0` — it has to, or it answers only itself — and `0.0.0.0` is not an address
@@ -248,15 +240,6 @@ controls must not decide what this deployment publishes about itself.
 {{- else -}}
 {{- $scheme := ternary "https" "http" (or (not (empty $plane.tls.secretName)) (eq (toString (dig "public" "http" "tls" "enabled" false $plane.extraConfig)) "true")) -}}
 {{ $scheme }}://{{ include "permguard.fullname" $root }}-{{ $component }}:{{ $plane.ports.http }}
-{{- end -}}
-{{- end -}}
-
-{{- define "permguard.controlPlaneUrl" -}}
-{{- /* `https` once the control plane serves TLS itself (WP-2.11): a mirror then names its CA. */ -}}
-{{- if .Values.allInOne.enabled -}}
-{{ ternary "https" "http" (not (empty .Values.allInOne.tls.secretName)) }}://{{ include "permguard.fullname" . }}-all-in-one:{{ .Values.allInOne.ports.controlHttp }}
-{{- else -}}
-{{ ternary "https" "http" (not (empty .Values.controlPlane.tls.secretName)) }}://{{ include "permguard.fullname" . }}-control-plane:{{ .Values.controlPlane.ports.http }}
 {{- end -}}
 {{- end -}}
 

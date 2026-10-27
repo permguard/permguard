@@ -74,17 +74,10 @@ spec:
 {{- $_ := set $decisions "log" $log }}
 {{- $_ := set $merged.dataPlane "decisions" $decisions }}
 {{- /*
-A data plane that mirrors and names no server follows this release's own control plane: a values
-file cannot write that address, the Service being named after the release.
+A data plane mirrors the `policy.mirror` tasks of its Host's memberships, never a URL (WP-7.7): each
+replica is enrolled with the control plane's Host (the `-membership` ConfigMap below states what it
+may be granted), and the signed manifest binds the coordinator, the scope and the ring.
 */ -}}
-{{- $mirrors := dig "dataPlane" "mirrors" dict $merged }}
-{{- if and $mirrors (not (dig "servers" list $mirrors)) }}
-{{- $server := dict "url" (include "permguard.controlPlaneUrl" $) }}
-{{- if and (hasPrefix "https://" $server.url) $dp.tls.secretName }}
-{{- $_ := set $server "tls" (dict "ca_file" "/etc/permguard-tls/ca.crt") }}
-{{- end }}
-{{- $_ := set $mirrors "servers" (list $server) }}
-{{- end }}
 {{- $configText := toYaml $merged }}
 apiVersion: v1
 kind: ConfigMap

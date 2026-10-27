@@ -32,7 +32,7 @@ is cut.
   A test starts today's server on it, runs every migration to `finalize`, and checks that the same requests get the same decisions before and after.
   Upgrading that layout takes one manual step: the baseline kept the Control Plane's event store (`controlPlane.events.directory: data/events/store`) inside the legacy event history.
   `migrate events` refuses to archive the history while the store is there, naming its files; move the store out and point the configuration at its new place, then archive.
-  The legacy readers and the first-contact paths stay: they are removed once a release has carried the membership-driven paths, as the convergence order requires.
+  The configured URL and its first-contact ring are removed in the same change: see *Removed*.
 
 - **A serving gate before every release, and a failpoint for the no-network invariant (TS-4).**
   `permguard-bench gate` runs the candidate's own binaries over HTTP and gRPC, every workload and evidence mode.
@@ -1048,6 +1048,25 @@ is cut.
   `dataPlane.decisions.cache.zone_partitions` and `zone_bytes` (`PERMGUARD_AUTHZ_CACHE_ZONE_PARTITIONS`, `PERMGUARD_AUTHZ_CACHE_ZONE_BYTES`) default to a quarter of the whole cache's bounds, but never below 4 partitions and 64 MiB unless the whole cache is smaller; a ledger's head is not counted against its zone.
   A deployment with a single zone therefore holds a quarter of the cache's partitions, not all of them: set the two keys to the whole cache's values to keep the previous behaviour.
   A zone over its bound evicts only its own entries, so one zone cannot empty the cache for the others; a bound larger than the whole cache is refused at startup.
+
+### Removed
+
+- **A Data Plane no longer mirrors a configured URL (WP-7.7).**
+  `dataPlane.mirrors.servers`, with its TLS material and the ring a mirror took at first contact, is gone.
+  A file still naming it stops the start, saying what replaces it.
+  v0.1.6 is the last release that mirrors over a URL.
+  A Data Plane in its own process mirrors the `policy.mirror` tasks of its Host's memberships.
+  The signed manifest binds the coordinator, the scope and the ring its heads verify under.
+  An all-in-one mirrors its own Control Plane in-process, verified under its own `control.attest` ring, and `dataPlane.mirrors.local` narrows it by zone and ledger patterns.
+  Upgrading: remove `servers` from every configuration.
+  An all-in-one then serves as before, with nothing else to do.
+  A standalone Data Plane serves again once its Host is enrolled: `permguard host members invite` on the Control Plane's Host, `permguard host members join` on its own.
+  The mirrors a release up to v0.1.6 wrote, `data/mirrors/<zone>/<ledger>`, are never served, and the first mirror round removes them, recorded as `mirror.reaped`.
+  A plane with mirroring on that can follow no task says so at start and every round, rather than quietly serving nothing.
+  Nothing is lost: a mirror is a cache its coordinator fills again.
+  The chart no longer points a data plane group at its release's Control Plane: each replica is enrolled, as the group's `-membership` ConfigMap states.
+  No Plane trusts a key it fetched from `/control-plane/keys` or `/data-plane/keys` any more; the endpoints stay published for operators.
+  The legacy decision shipper no longer borrows the single mirror server as its destination: name it under `dataPlane.decisions.log.server`.
 
 ### Security
 

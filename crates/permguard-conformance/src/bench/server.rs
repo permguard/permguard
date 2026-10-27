@@ -122,8 +122,8 @@ pub fn configuration(ports: (u16, u16, u16), evidence: &str) -> String {
             "    grpc: {{ enabled: true, addr: 127.0.0.1:{data} }}\n",
             "  mirrors:\n",
             "    enabled: \"true\"\n",
+            // Its own Control Plane, in-process (WP-7.7): no URL to follow.
             "    interval: \"1s\"\n",
-            "    servers: [{{ url: \"http://127.0.0.1:{control}\" }}]\n",
             "  decisions:\n",
             "{log}",
             "operations:\n",

@@ -1834,8 +1834,8 @@ fn native_question(
     })
 }
 
-/// The refusal of a ledger two mirrors answer to (WP-7.2a): two authorities, or a configured URL
-/// and a membership, claim one name, and no list order chooses whose policy decides.
+/// The refusal of a ledger two mirrors answer to (WP-7.2a): two authorities claim one name, and no
+/// list order chooses whose policy decides.
 pub(crate) fn contested_ledger(zone: &str, ledger: &str) -> ApiError {
     ApiError::new(
         ErrorClass::Unavailable,

@@ -658,7 +658,7 @@ impl PlaneServer {
                 plane_settings(value, section.keys)
             });
 
-            // The data plane's `mirrors.servers` and `decisions.log.server`
+            // The data plane's `mirrors` lists and `decisions.log.server`
             // are lists and structures, so they cannot ride the setting
             // layers: they are attached as structured configuration, and their
             // shape is checked while somebody is watching.
@@ -673,7 +673,7 @@ impl PlaneServer {
 
             if section.name == "dataPlane" {
                 app = app.with_structured_section(section.name, |config, value| {
-                    let config = config.with_mirror_sources(settings::mirror_sources(value)?)?;
+                    let config = config.with_mirror_local(settings::mirror_local(value)?);
                     let config = config
                         .with_mirror_task_selections(settings::mirror_task_selections(value)?)?;
                     let config = config.with_mirror_aliases(settings::mirror_aliases(value)?)?;

@@ -15,7 +15,7 @@ use permguard_core::decisions::{
     DecisionStoreSection, DecisionsSection, EventStoreSection, EventsSection, IncludeSection,
     LogDestination,
 };
-use permguard_core::mirrors::{MirrorSource, MirrorsSection};
+use permguard_core::mirrors::MirrorsSection;
 use permguard_core::storage::StorageSection;
 use permguard_core::{Config, TlsSettings, TlsVersion, Value};
 
@@ -472,20 +472,19 @@ fn push_tls_settings(settings: &mut Vec<(String, String)>, keys: PlaneTlsKeys, t
     }
 }
 
-/// The servers the data plane follows, out of its own section.
-///
-/// Structured, not flat: a list of servers with their patterns has no sensible
-/// single-variable form, so it arrives beside the layered settings rather than
-/// through them.
-pub fn mirror_sources(value: &Value) -> Result<Vec<MirrorSource>> {
+/// How the local task is narrowed (WP-7.7), from `mirrors.local`; a file still naming the retired
+/// `mirrors.servers` is refused, saying what replaces it.
+pub fn mirror_local(value: &Value) -> Result<Option<permguard_core::mirrors::MirrorLocal>> {
     let section: PlaneSectionConfig =
         serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let Some(mirrors) = section.mirrors.as_ref() else {
+        return Ok(None);
+    };
+    if mirrors.names_servers() {
+        anyhow::bail!(permguard_core::mirrors::SERVERS_RETIRED);
+    }
 
-    Ok(section
-        .mirrors
-        .as_ref()
-        .map(MirrorsSection::sources)
-        .unwrap_or_default())
+    Ok(mirrors.local())
 }
 
 /// The `policy.mirror` tasks this plane narrows (WP-7.2a), from the `mirrors.tasks` list.
@@ -905,7 +904,7 @@ impl EndpointValue {
 
 /// The ledgers a data plane imports history from.
 ///
-/// Structured rather than a scalar for the same reason `mirrors.servers` is: a subscription is
+/// Structured rather than a scalar for the same reason `mirrors.tasks` is: a subscription is
 /// three facts that travel together, and a scalar form would be a string somebody has to parse —
 /// which is a place two spellings become two subscriptions.
 pub fn pull_ledgers(
@@ -1045,7 +1044,7 @@ mod tests {
 
     #[test]
     fn the_data_plane_mirrors_block_becomes_settings_and_the_control_plane_refuses_it() {
-        let block = "mirrors:\n  enabled: \"true\"\n  interval: \"15s\"\n  servers:\n    - url: \"http://127.0.0.1:6443\"\n";
+        let block = "mirrors:\n  enabled: \"true\"\n  interval: \"15s\"\n";
 
         assert_eq!(
             plane_settings(&value(block), PlaneSettingKeys::DATA).expect("the data plane mirrors"),
@@ -1095,23 +1094,31 @@ mod tests {
         );
     }
 
+    /// WP-7.7: the retired server list stops the start, saying what replaces it; the local task's
+    /// narrowing arrives as structured configuration.
     #[test]
-    fn the_servers_arrive_as_structured_configuration_with_their_trust_material() {
-        let sources = mirror_sources(&value(
-            "mirrors:\n  servers:\n    - url: \"grpcs://control:6443\"\n      zones: [\"acme-.*\"]\n      tls:\n        ca_file: tls/ca.pem\n",
+    fn the_server_list_is_refused_and_the_local_narrowing_arrives() {
+        let refused = mirror_local(&value(
+            "mirrors:\n  servers:\n    - url: \"grpcs://control:6443\"\n      zones: [\"acme-.*\"]\n",
         ))
-        .expect("the servers parse");
-
-        assert_eq!(sources.len(), 1);
-        assert_eq!(sources[0].url, "grpcs://control:6443");
-        assert_eq!(sources[0].zones, vec!["acme-.*".to_owned()]);
-        assert_eq!(sources[0].tls.ca_file.as_deref(), Some("tls/ca.pem"));
-
-        // A section with no `mirrors` block follows nothing, and says so plainly.
+        .expect_err("the server list is retired")
+        .to_string();
         assert!(
-            mirror_sources(&value("public:\n  http: 127.0.0.1:7443\n"))
-                .expect("a plane may mirror nothing")
-                .is_empty()
+            refused.contains("is retired") && refused.contains("members join"),
+            "{refused}"
+        );
+
+        let local = mirror_local(&value("mirrors:\n  local:\n    zones: [\"acme-.*\"]\n"))
+            .expect("the local narrowing parses")
+            .expect("declared");
+        assert_eq!(local.zones, vec!["acme-.*".to_owned()]);
+        assert!(local.ledgers.is_empty());
+
+        // A section with no `mirrors` block narrows nothing.
+        assert!(
+            mirror_local(&value("public:\n  http: 127.0.0.1:7443\n"))
+                .expect("a plane may narrow nothing")
+                .is_none()
         );
     }
 

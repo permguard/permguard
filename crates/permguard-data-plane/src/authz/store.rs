@@ -37,8 +37,8 @@ pub struct Identity {
     pub ledger_name: String,
     /// The server this mirror came from — what the audit record names.
     pub server: String,
-    /// The coordinator Host that serves it, as 32 lowercase hex digits (WP-7.2a): absent for a
-    /// mirror of a configured URL, and in an identity written before.
+    /// The coordinator Host that serves it, as 32 lowercase hex digits (WP-7.2a): absent in a
+    /// mirror of a configured URL a release up to v0.1.6 wrote, which is never served (WP-7.7).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authority: Option<String>,
     /// The `policy.mirror` task that listed it, `<membership-id>/<task-id>` (WP-7.2a): only that
@@ -129,11 +129,13 @@ pub fn identity_of(mirror_path: &Path) -> Option<Identity> {
     serde_json::from_slice(&bytes).ok()
 }
 
-/// Every mirror the volume holds, with its names.
+/// Every mirror the volume holds that this plane serves from, with its names.
 ///
 /// A directory without a readable identity file is skipped rather than
 /// guessed at: it is a mirror mid-creation, or one written by something that
-/// is not this loop, and either way it is not something to serve from.
+/// is not this loop, and either way it is not something to serve from. So is
+/// a mirror of a configured URL, in the first shape (WP-7.7): its authority a
+/// URL never proved, it is never served, and the round removes it.
 pub fn mirrors(root: &Path) -> Vec<Mirror> {
     let mut held = Vec::new();
     let Ok(entries) = std::fs::read_dir(root) else {
@@ -144,16 +146,15 @@ pub fn mirrors(root: &Path) -> Vec<Mirror> {
             continue;
         }
         // An authority's directory holds zones (WP-7.2a); any other is a zone of a configured
-        // URL's mirrors.
-        if crate::mirrors::layout::is_authority(&entry.file_name().to_string_lossy()) {
-            let Ok(zones) = std::fs::read_dir(entry.path()) else {
-                continue;
-            };
-            for zone in zones.flatten() {
-                identified_in(&zone.path(), &mut held);
-            }
-        } else {
-            identified_in(&entry.path(), &mut held);
+        // URL's mirrors, retired (WP-7.7).
+        if !crate::mirrors::layout::is_authority(&entry.file_name().to_string_lossy()) {
+            continue;
+        }
+        let Ok(zones) = std::fs::read_dir(entry.path()) else {
+            continue;
+        };
+        for zone in zones.flatten() {
+            identified_in(&zone.path(), &mut held);
         }
     }
     held.sort_by(|left, right| left.path.cmp(&right.path));
@@ -287,9 +288,8 @@ pub fn contests(root: &Path) -> Vec<((String, String), Vec<String>)> {
 
 /// The mirror a request names, if this plane holds it.
 pub fn find(root: &Path, zone: &str, ledger: &str) -> Option<Mirror> {
-    // Exactly one, or none: two mirrors answering to the same names — two authorities, or a
-    // configured URL and a membership, claiming one ledger — are never told apart by the order a
-    // directory lists them in (WP-7.2a). Neither is served until one of them goes, or an alias
+    // Exactly one, or none: two mirrors answering to the same names — two authorities claiming
+    // one ledger — are never told apart by the order a directory lists them in (WP-7.2a). Neither is served until one of them goes, or an alias
     // says which authority the names mean (WP-7.2d).
     let mut answering = answering(root, zone, ledger).into_iter();
     let first = answering.next()?;
@@ -313,20 +313,25 @@ mod tests {
         dir
     }
 
+    const AUTHORITY: &str = "11111111111111111111111111111111";
+
     fn identity(zone: &str, ledger: &str) -> Identity {
         Identity {
-            task: None,
-            authority: None,
+            task: Some("00000000-0000-0000-0000-000000000000/local".to_owned()),
+            authority: Some(AUTHORITY.to_owned()),
             zone_id: format!("{zone}-id"),
             zone_name: zone.to_owned(),
             ledger_id: format!("{ledger}-id"),
             ledger_name: ledger.to_owned(),
-            server: "http://127.0.0.1:6443".to_owned(),
+            server: format!("host:{AUTHORITY}"),
         }
     }
 
     fn provision(root: &Path, zone: &str, ledger: &str) -> PathBuf {
-        let path = root.join(format!("{zone}-id")).join(format!("{ledger}-id"));
+        let path = root
+            .join(AUTHORITY)
+            .join(format!("{zone}-id"))
+            .join(format!("{ledger}-id"));
         std::fs::create_dir_all(&path).expect("the mirror directory is created");
         record(&path, &identity(zone, ledger)).expect("the identity is recorded");
 

@@ -196,18 +196,22 @@ mod tests {
     }
 
     fn mirror(root: &Path, zone: &str, ledger: &str) {
-        let path = root.join(format!("{zone}-id")).join(format!("{ledger}-id"));
+        // A mirror lives under its authority (WP-7.2a); one in the URL shape is never served.
+        let path = root
+            .join("11111111111111111111111111111111")
+            .join(format!("{zone}-id"))
+            .join(format!("{ledger}-id"));
         std::fs::create_dir_all(&path).expect("created");
         store::record(
             &path,
             &store::Identity {
-                task: None,
-                authority: None,
+                task: Some("00000000-0000-0000-0000-000000000000/local".to_owned()),
+                authority: Some("11111111111111111111111111111111".to_owned()),
                 zone_id: format!("{zone}-id"),
                 zone_name: zone.to_owned(),
                 ledger_id: format!("{ledger}-id"),
                 ledger_name: ledger.to_owned(),
-                server: "http://cp".to_owned(),
+                server: "host:11111111111111111111111111111111".to_owned(),
             },
         )
         .expect("recorded");

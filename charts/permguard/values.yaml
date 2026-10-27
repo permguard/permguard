@@ -355,10 +355,10 @@ dataPlane:
   # `controlPlane.extraVolumes`.
   extraVolumes: []
   extraVolumeMounts: []
-  # Extra configuration merged into the generated ConfigMap. This is where a data plane in a cluster
-  # says where its policies come from: mirroring lives under `dataPlane.mirrors`, and the URL alone means
-  # every zone and every ledger that control plane lists. Patterns narrow it; per-server `tls` carries
-  # the authority (and, for mutual TLS, our own certificate) out of a mounted Secret.
+  # Extra configuration merged into the generated ConfigMap. A data plane in a cluster mirrors the
+  # `policy.mirror` tasks of its replicas' memberships (WP-7.7): no URL, TLS root or key here, the
+  # signed manifest binds them. `tasks` narrows them by membership and task ids with zone and ledger
+  # patterns; absent, every task is followed whole.
   #
   # extraConfig:
   #   dataPlane:
@@ -368,12 +368,11 @@ dataPlane:
   #       timeout: "2m"          # per ledger
   #       parallelism: "4"
   #       jitter: "0.1"          # so replicas do not all wake on the same second
-  #       servers:
-  #         - url: "https://permguard-control-plane:6443"
-  #           zones: ["acme-.*"]                   # absent: every zone the server lists
+  #       tasks:
+  #         - membership: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"  # as `host members list` shows it
+  #           task: "policy-mirror"
+  #           zones: ["acme-.*"]                   # absent: every zone the task lists
   #           ledgers: ["main-ledger"]             # absent: every ledger of a matching zone
-  #           tls:
-  #             ca_file: tls/control-plane-ca.pem  # from a Secret mounted on the volume
   #     decisions:
   #       cache:
   #         partitions: "64"   # compiled partitions held in memory at once
@@ -455,16 +454,15 @@ allInOne:
       memory: 96Mi
     limits:
       memory: 384Mi
-  # Extra configuration merged into the generated ConfigMap. An all-in-one that runs at the edge and
-  # follows a control plane elsewhere states it the same way — under `dataPlane.mirrors`, exactly as a
-  # standalone data plane does. One hosting both planes itself has nothing to mirror.
+  # Extra configuration merged into the generated ConfigMap. An all-in-one mirrors its own control
+  # plane in-process, and the tasks of any membership it holds (WP-7.7); `local` narrows the first.
   #
   # extraConfig:
   #   dataPlane:
   #     mirrors:
   #       enabled: "true"
-  #       servers:
-  #         - url: "https://control.acme.com"   # the URL alone: everything it lists
+  #       local:
+  #         zones: ["acme"]   # absent: every zone this process's own control plane holds
   extraConfig: {}
   extraEnv: []
 

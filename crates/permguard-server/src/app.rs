@@ -1406,7 +1406,7 @@ impl App {
         // Realms are structured, not flat settings, so they are attached here rather than merged
         // through the layered pipeline above. They come only from the file today; a database is the
         // same seam tomorrow. Resolution against the server's values happens inside `with_realms`.
-        // Anything else structured — the servers a mirroring plane follows — arrives through
+        // Anything else structured — the tasks a mirroring plane narrows — arrives through
         // `with_structured_section`, claimed by whoever owns the section.
         if let Some((path, parsed)) = &file {
             config = config
@@ -2080,6 +2080,8 @@ impl App {
         // sessions: they route to a slot it fills (WP-7.12). The watches' hub is shared the same
         // way, so a commit's hint reaches every watch of the ledger.
         let mirror_slot = Arc::new(permguard_host::membership::task::Deferred::default());
+        // The same slot serves the local task of a Host running both Planes (WP-7.7).
+        let local_mirror_slot = Arc::clone(&mirror_slot);
         // And `events.import`'s, which the Control Plane serves from the event consumer
         // (WP-6.2c1).
         let import_slot = Arc::new(permguard_host::membership::task::Deferred::default());
@@ -2445,6 +2447,27 @@ impl App {
         if let Some(keys) = operations_ring {
             host = host.ring(permguard_host::composition::HOST_OPERATIONS, keys);
         }
+        // A Host running both Planes mirrors its own Control Plane through a local task beside
+        // its memberships' (WP-7.7): no configured URL, its own `control.attest` the pinned set.
+        let selected: Vec<&'static str> = self
+            .plane_declarations
+            .iter()
+            .filter_map(|declare| declare(config))
+            .map(|(plane, _, _)| plane)
+            .collect();
+        let both_planes_mirror =
+            selected.contains(&"control") && selected.contains(&"data") && config.mirrors_enabled();
+        let local_mirror = both_planes_mirror
+            .then(|| control_signing_keys.clone())
+            .flatten();
+        if both_planes_mirror && local_mirror.is_none() {
+            tracing::warn!(
+                event.name = "sync.local_unavailable",
+                component = "server",
+                "this process hosts both Planes and mirrors, but its Control Plane signs under no \
+                 `control.attest` ring: its own ledgers cannot be verified, so it does not mirror them"
+            );
+        }
         if let Some(keys) = control_signing_keys {
             let keys: Arc<dyn KeyManager> = keys;
             context = context.with_maintained_ring("control-signing", Arc::clone(&keys));
@@ -2455,11 +2478,28 @@ impl App {
             context = context.with_maintained_ring("data-signing", Arc::clone(&keys));
             host = host.ring(permguard_host::composition::DATA_ATTEST, keys);
         }
+        // The member side of `policy.mirror` too (WP-7.2a): the Data Plane's mirror round opens
+        // its task sessions through it, and the local task's beside them (WP-7.7).
+        let members = serving
+            .as_ref()
+            .map(|api| Arc::clone(api) as Arc<dyn permguard_host::composition::MirrorTasks>);
+        let mirror_tasks = match local_mirror {
+            Some(control_attest) => Some(Arc::new(
+                permguard_host::membership::local::LocalMirrors::new(
+                    members,
+                    host_identity.host_id(),
+                    local_mirror_slot as Arc<dyn permguard_host::membership::task::TaskHandler>,
+                    control_attest,
+                ),
+            )
+                as Arc<dyn permguard_host::composition::MirrorTasks>),
+            None => members,
+        };
+        if let Some(tasks) = mirror_tasks {
+            host = host.mirror_tasks(tasks);
+        }
         if let Some(api) = serving {
-            // The member side of `policy.mirror` too (WP-7.2a): the Data Plane's mirror round
-            // opens its task sessions through it.
             host = host
-                .mirror_tasks(Arc::clone(&api) as Arc<dyn permguard_host::composition::MirrorTasks>)
                 // The garbage-collection jobs the Planes provide to the Host API (WP-7.11b).
                 .gc_jobs(api.gc_jobs())
                 .memberships(api);

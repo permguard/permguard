@@ -82,14 +82,10 @@ dataPlane:
     interval: "15s"
     timeout: "1m"
     parallelism: "4"
-    servers:
-      # Mutual TLS is on the shared Control Plane role port.
-      - url: "grpcs://control-plane:6443"
-        tls:
-          ca_file: tls/control-plane-ca.pem
-          cert: tls/control-plane-client.pem
-          key: tls/control-plane-client.key
-          server_name: localhost
+    # The `policy.mirror` tasks of this Host's memberships: enroll it with its Control Plane's
+    # Host (`permguard host members invite` there, `permguard host members join` here) and every
+    # task is followed. No URL, TLS root or key here: the membership binds them (WP-7.7). Narrow
+    # them with `tasks: [{ membership: <id>, task: <id>, zones: [...], ledgers: [...] }]`.
 
   # The decision path, sized for the lab's container limits.
   decisions:
@@ -125,12 +121,6 @@ dataPlane:
       batch: { bytes: "256k", interval: "1s" }
       mode: "required"           # every answered decision has a durable record; one that cannot be is refused
       sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
-      # The secret input commitments are taken under. A different key from the pseudonymisation
-      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
-      # invalidate every commitment with it.
-      commitment:
-        key_ref: decision-commitment
-        key_version: "v1"
       include:
         subject_properties: []    # an allow-list, never "all": name a field to record it
         resource_properties: []
@@ -211,6 +201,8 @@ operations:
     retain: 1d
   secrets:
     provider: directory
+    # The root the per-zone keys derive from: decision input tags and pseudonyms (WP-3.3).
+    coordinator_root_ref: zone-root
   audit:
     sink: file
     retention: 7d

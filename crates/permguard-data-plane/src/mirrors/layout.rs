@@ -13,8 +13,9 @@
 //! two coordinators claiming one pair of ids land in two directories rather than one. An authority
 //! is the 32 lowercase hex digits of a Host id, a zone a UUID with its dashes (the catalog mints
 //! them so), so the two depths never read as each other; a server minting 32-hex zone ids would
-//! be misread, and none of this product does. A ledger mirrored from a configured URL keeps the first shape until
-//! that path is removed (WP-7.7): the dual-reader boundary.
+//! be misread, and none of this product does. A ledger a release up to v0.1.6 mirrored from a
+//! configured URL sits in the first shape: listed here so the round can remove it, and never
+//! served (WP-7.7).
 //!
 //! The same shape the control plane keeps its own ledgers in, on purpose: an
 //! operator who has seen one directory has seen both. Identities, not names,

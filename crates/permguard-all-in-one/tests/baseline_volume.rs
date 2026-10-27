@@ -148,7 +148,6 @@ dataPlane:
   mirrors:
     enabled: \"true\"
     interval: 1s
-    servers: [{{ url: \"http://127.0.0.1:{control}\" }}]
   decisions:
     log:
       enabled: \"true\"
@@ -430,10 +429,44 @@ fn test_the_baseline_volume_refuses_to_start_until_its_key_versions_are_raised()
 fn test_the_baseline_volume_recovers_through_every_migration() {
     let upgrade = Upgrade::new("recovers");
 
-    // The first start migrates what it can itself, and answers as the baseline did.
+    // The baseline mirrored its own Control Plane over a configured URL: its mirrors sit in the
+    // first shape, `data/mirrors/<zone>/<ledger>` (WP-7.7).
+    let mirrors = upgrade.volume.join("data/mirrors");
+    let url_shaped = |root: &Path| -> Vec<String> {
+        std::fs::read_dir(root)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                    .filter(|name| {
+                        !(name.len() == 32 && name.chars().all(|c| c.is_ascii_hexdigit()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    assert!(
+        !url_shaped(&mirrors).is_empty(),
+        "the baseline mirrored over a URL"
+    );
+
+    // The first start migrates what it can itself, removes the URL mirrors, mirrors its own
+    // Control Plane in-process under this Host's authority, and answers as the baseline did.
     let server = upgrade.start().expect("the upgraded server starts");
     answers_as_the_baseline(&upgrade);
     server.stop();
+    assert!(
+        url_shaped(&mirrors).is_empty(),
+        "the URL mirrors are gone: {:?}",
+        url_shaped(&mirrors)
+    );
+    assert_eq!(
+        std::fs::read_dir(&mirrors)
+            .expect("the mirrors root")
+            .count(),
+        1,
+        "one authority, this Host's own"
+    );
 
     // The legacy event history, once its shipper sent it, is archived offline: the production
     // path, which declares the backup. The shipper runs on its own schedule and says nothing when

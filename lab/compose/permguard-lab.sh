@@ -237,15 +237,6 @@ grant_operator() {
     log "${host}: the operator's grants are issued"
 }
 
-# The all-in-one's Data Plane follows its own Control Plane by URL: its certificate reads the
-# catalog, and nothing else.
-grant_self_mirror() {
-    pg --host-endpoint "$(host_endpoint all-in-one)" host grants issue \
-        --principal "${trust_domain}/all-in-one" \
-        --operations catalog.read --selector "plane/control/*" >/dev/null
-    log "all-in-one: its own certificate may read the catalog it mirrors"
-}
-
 zone_id() {
     pg --control-endpoint "$(control_endpoint "$1")" zones list |
         jq -er --arg name "$2" '.zones[] | select(.name == $name) | .id'
@@ -295,7 +286,6 @@ cmd_catalog() {
     mkdir -p "${state}"
     wait_up "${coordinator}"
     once "grants-${coordinator}" grant_operator "${coordinator}"
-    [ "${profile}" = all-in-one ] && once "grants-all-in-one-mirror" grant_self_mirror
     case "${profile}" in
     temporal-replicas)
         once "ledger-acme-agent-governance" ledger_with "${coordinator}" acme agent-governance dogwood-session-access dogwood

@@ -83,16 +83,18 @@ dataPlane:
   # ── What this plane mirrors ──────────────────────────────────────────────────────────────────
   # Sync belongs to the data plane: it is the plane that answers decisions that needs the policies,
   # and a control plane has nothing to mirror. Each followed ledger becomes its own directory under
-  # <working_dir>/mirrors/<zone-id>/<ledger-id>, and they are all kept current at once.
+  # <working_dir>/mirrors/<authority>/<zone-id>/<ledger-id>, and they are all kept current at once.
   #
   # A plane fed by other means — a sidecar running `permguard pull`, a baked image, a mounted
   # volume — leaves this out entirely and serves whatever its volume holds.
   #
-  # The server URL is exact: it is who you trust, whose certificate you check, whose ring signs what
-  # you accept. Zones and ledgers are patterns, matched against what the server actually lists, so a
-  # ledger created tomorrow is followed without touching this file. A pattern describes a whole name:
-  # `main` follows the ledger `main`, never `main-staging`. Naming NEITHER zones NOR ledgers means
-  # everything that server lists — the URL alone is "mirror it all".
+  # What it mirrors is never a URL (WP-7.7: v0.1.6 was the last release that followed one, and a
+  # `servers` list stops the start). It follows the `policy.mirror` tasks of this Host's
+  # memberships, whose signed manifest binds the coordinator, the scope and the ring the heads
+  # verify under, so this file names no server, no TLS root and no key.
+  # Zones and ledgers are patterns, matched against what a task lists, so a ledger created tomorrow
+  # is followed without touching this file. A pattern describes a whole name: `main` follows the
+  # ledger `main`, never `main-staging`.
   # mirrors:
   #   enabled: "true"
   #   interval: "30s"        # how often a round STARTS; a tick that finds the previous one working is skipped
@@ -118,25 +120,12 @@ dataPlane:
   #     - zone: "acme"
   #       ledger: "main-ledger"
   #       authority: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"  # the coordinator Host's id
-  #   servers:
-  #     - url: "http://control-plane:6443"    # everything this server lists: no zones, no ledgers
-  #     - url: "https://control.acme.com"     # narrowed, and reached over TLS
-  #       zones: ["acme-.*"]                  # absent means every zone the server lists
-  #       ledgers: ["main-ledger", "prod"]    # absent means every ledger of a matching zone
-  #       tls:
-  #         ca_file: tls/control-plane-ca.pem   # the authority its certificate is checked against;
-  #                                             # absent means the platform trust store
-  #     - url: "grpcs://control.internal:6443"  # the same NOTP transfer, over gRPC
-  #       zones: ["eu", "us"]                   # several patterns are alternatives
-  #       tls:
-  #         ca_file: tls/control-plane-ca.pem
-  #         cert: tls/control-plane-client.pem  # our own certificate, where the server asks for one
-  #         key: tls/control-plane-client.key   # mutual TLS: material or not, there is no `mtls` flag
-  #         server_name: control-plane          # check the certificate against the name it carries,
-  #                                             # when this plane dials it by another address
-  #
-  # There is deliberately no "skip verification" here: a plane that accepts any certificate is a
-  # plane whose policies come from whoever answers the port, and nobody is watching this one.
+  #   tasks:                 # the membership tasks, each followed whole unless named here;
+  #                          # naming any follows only those named
+  #     - membership: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"  # as `host members list` shows it
+  #       task: "policy-mirror"
+  #       zones: ["acme"]
+  #       ledgers: ["main-ledger"]
 
   # ── What the decision path may spend ─────────────────────────────────────────────────────────
   # A check is answered out of memory: the ledger's policies are read from the volume once,
@@ -208,14 +197,9 @@ dataPlane:
   #     # one at a time. An allow-list, never a deny-list: a field added to a request tomorrow must
   #     # not start being recorded by itself. Their keyed commitments are always recorded, which
   #     # proves what the decision saw without keeping it.
-  #     # The secret input commitments are taken under. Required when the log is on, and a
-  #     # *different* key from the pseudonymisation one: they protect different things, and
-  #     # rotating one to crypto-shred pseudonyms must not invalidate every commitment with it.
-  #     # A commitment keyed by anything public — a hostname, this plane's own name — is a bare
-  #     # digest, and a bare digest of `department=HR` is a dictionary away from `HR`.
-  #     commitment:
-  #       key_ref: decision-commitment      # in the secret store this deployment composes
-  #       key_version: "v1"                 # recorded in every marker, so rotation is legible
+  #     # The input commitments are keyed per ledger by the zone keys derived from
+  #     # `operations.secrets.coordinator_root_ref` (WP-3.3), required when the log is on: a
+  #     # commitment keyed by anything public is a dictionary away from the attribute it hides.
   #     include:
   #       subject_properties: ["department"]
   #       resource_properties: []

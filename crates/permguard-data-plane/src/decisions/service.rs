@@ -198,9 +198,8 @@ impl DecisionService {
                  (dataPlane.keys): they would leave unattributable"
             ));
         };
-        // Where records go. A plane that mirrors exactly one server ships there when the file
-        // names none, because that is the only unambiguous inference; anything else is refused
-        // rather than guessed.
+        // Where records go: the server the file names, and nothing inferred (WP-7.7: a mirror names
+        // no server to infer one from).
         let (url, tls) = destination(context)?;
         // Whichever transport the URL names: a deployment that terminates gRPC and one behind an
         // HTTP proxy ship the same records.
@@ -295,27 +294,11 @@ pub fn destination(
         ));
     }
 
-    // No server named. Exactly one mirror source is unambiguous; anything else
-    // is refused at startup rather than guessed at runtime.
-    let sources = config.mirror_sources();
-    match sources.len() {
-        1 => {
-            let source = &sources[0];
-            Ok((
-                source.url.clone(),
-                tls_of(&source.tls, config.working_dir()),
-            ))
-        }
-        0 => Err(anyhow!(
-            "the decision log is on and names no server, and this plane mirrors none either: say \
-             where records go under `dataPlane.decisions.log.server`"
-        )),
-        many => Err(anyhow!(
-            "the decision log is on and names no server, and this plane mirrors {many} of them: \
-             which one receives the records is not something to guess — name it under \
-             `dataPlane.decisions.log.server`"
-        )),
-    }
+    // No server named: mirrors name none since WP-7.7, so there is nothing to take one from.
+    Err(anyhow!(
+        "the decision log is on and names no server: say where records go under \
+         `dataPlane.decisions.log.server`"
+    ))
 }
 
 /// The trust material for the log's server, resolved against the volume.

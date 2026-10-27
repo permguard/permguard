@@ -3,93 +3,17 @@
 
 //! What this plane follows, with the patterns compiled.
 //!
-//! The declaration lives in the configuration ([`permguard_core::mirrors`]);
-//! deciding whether a name matches is behaviour, and behaviour belongs to
-//! the plane that mirrors. Patterns are **anchored**: `main` follows the
-//! ledger `main` and not `main-staging`, because a configuration an operator
-//! cannot predict is a configuration that eventually follows something
-//! nobody asked for.
-
-use std::path::Path;
+//! The declaration lives in the configuration ([`permguard_core::mirrors`]); deciding whether a
+//! name matches is behaviour, and behaviour belongs to the plane that mirrors. Every source is a
+//! `policy.mirror` task: one of a membership, its scope the coordinator's signed selector, or the
+//! local task of a process hosting both Planes (WP-7.7). The file only narrows them. Patterns are
+//! **anchored**: `main` follows the ledger `main` and not `main-staging`, because a configuration
+//! an operator cannot predict is a configuration that eventually follows something nobody asked
+//! for.
 
 use anyhow::{Context, Result};
-use permguard_control_client::TlsOptions;
-use permguard_core::mirrors::MirrorSource;
-
-/// One server this plane follows, ready to answer questions about names.
-#[derive(Debug, Clone)]
-pub struct Source {
-    url: String,
-    tls: TlsOptions,
-    zones: Patterns,
-    ledgers: Patterns,
-    required: bool,
-}
-
-impl Source {
-    /// Compiles one declared source. A broken pattern is refused here — at
-    /// startup, loudly — rather than becoming a mirror that follows nothing.
-    ///
-    /// The trust material is resolved against `workdir` at the same time: a
-    /// relative path in a configuration file means "next to the volume this
-    /// process was given", exactly as it does for a listener's certificate.
-    pub fn compile(input: &MirrorSource, workdir: &Path) -> Result<Self> {
-        Ok(Self {
-            url: input.url.trim().to_owned(),
-            tls: TlsOptions {
-                ca_file: input.tls.ca_file.as_ref().map(Into::into),
-                cert_file: input.tls.cert.as_ref().map(Into::into),
-                key_file: input.tls.key.as_ref().map(Into::into),
-                server_name: input.tls.server_name.clone(),
-                // Never: see `permguard_core::mirrors::MirrorTls`.
-                skip_verify: false,
-                // A shipper or a mirror presents mutual TLS, never an operator's token (TC-1).
-                key_pem: None,
-                token: None,
-            }
-            .rooted_at(workdir),
-            zones: Patterns::compile(&input.zones, "zone")?,
-            ledgers: Patterns::compile(&input.ledgers, "ledger")?,
-            required: input.required,
-        })
-    }
-
-    /// Whether the plane waits for this server before it accepts work (P2):
-    /// every server is required unless its entry says `required: false`.
-    pub fn required(&self) -> bool {
-        self.required
-    }
-
-    /// Whether this source follows mirror `identity`: both its names match.
-    pub fn follows(&self, identity: &crate::authz::store::Identity) -> bool {
-        self.follows_zone(&identity.zone_name) && self.follows_ledger(&identity.ledger_name)
-    }
-
-    /// The server, exactly as configured.
-    pub fn url(&self) -> &str {
-        &self.url
-    }
-
-    /// How this server is trusted, and who we say we are to it.
-    pub fn tls(&self) -> &TlsOptions {
-        &self.tls
-    }
-
-    /// Whether this source follows a zone of this name.
-    pub fn follows_zone(&self, name: &str) -> bool {
-        self.zones.matches(name)
-    }
-
-    /// Whether it follows a ledger of this name.
-    pub fn follows_ledger(&self, name: &str) -> bool {
-        self.ledgers.matches(name)
-    }
-
-    /// What it was told to follow, for a log line that has to be readable.
-    pub fn patterns(&self) -> (String, String) {
-        (self.zones.describe(), self.ledgers.describe())
-    }
-}
+use permguard_host::composition::MirrorTask;
+use permguard_host::membership::local;
 
 /// A set of name patterns. Empty means everything — so an absent list and a
 /// `.*` behave the same, and neither is a special case anywhere downstream.
@@ -128,11 +52,14 @@ impl Patterns {
     }
 }
 
-/// How the file narrows the `policy.mirror` tasks this plane follows (WP-7.2a): empty, every task
-/// of this Host's memberships is followed whole, its signed selector being the scope.
+/// How the file narrows the `policy.mirror` tasks this plane follows. `mirrors.tasks` narrows the
+/// membership tasks (WP-7.2a): empty, every one is followed whole, its signed selector being the
+/// scope; naming any, only those named are followed. `mirrors.local` narrows the local task
+/// (WP-7.7), which is always followed.
 #[derive(Debug, Clone, Default)]
 pub struct TaskSelections {
     selections: Vec<TaskSelection>,
+    local: Option<(Patterns, Patterns)>,
 }
 
 #[derive(Debug, Clone)]
@@ -145,7 +72,10 @@ struct TaskSelection {
 
 impl TaskSelections {
     /// Compiles the declared narrowing, refusing a broken pattern at startup.
-    pub fn compile(inputs: &[permguard_core::mirrors::MirrorTaskSelection]) -> Result<Self> {
+    pub fn compile(
+        inputs: &[permguard_core::mirrors::MirrorTaskSelection],
+        local: Option<&permguard_core::mirrors::MirrorLocal>,
+    ) -> Result<Self> {
         Ok(Self {
             selections: inputs
                 .iter()
@@ -158,16 +88,33 @@ impl TaskSelections {
                     })
                 })
                 .collect::<Result<_>>()?,
+            local: local
+                .map(|local| {
+                    Ok::<_, anyhow::Error>((
+                        Patterns::compile(&local.zones, "zone")?,
+                        Patterns::compile(&local.ledgers, "ledger")?,
+                    ))
+                })
+                .transpose()?,
         })
     }
 
-    /// Whether the task `task` of membership `membership` is followed at all.
+    /// Whether the task `task` of membership `membership` is followed at all: the local task
+    /// always.
     pub fn follows_task(&self, membership: &[u8; 16], task: &str) -> bool {
-        self.selections.is_empty() || self.selection(membership, task).is_some()
+        is_local(membership, task)
+            || self.selections.is_empty()
+            || self.selection(membership, task).is_some()
     }
 
     /// Whether a ledger the task lists, by its names, is followed.
     pub fn follows(&self, membership: &[u8; 16], task: &str, zone: &str, ledger: &str) -> bool {
+        if is_local(membership, task) {
+            return self
+                .local
+                .as_ref()
+                .is_none_or(|(zones, ledgers)| zones.matches(zone) && ledgers.matches(ledger));
+        }
         if self.selections.is_empty() {
             return true;
         }
@@ -176,9 +123,17 @@ impl TaskSelections {
         })
     }
 
+    /// What the local task follows, for a log line that has to be readable.
+    pub fn local_patterns(&self) -> (String, String) {
+        self.local.as_ref().map_or_else(
+            || ("*".to_owned(), "*".to_owned()),
+            |(zones, ledgers)| (zones.describe(), ledgers.describe()),
+        )
+    }
+
     /// Warns of every narrowing that names no task this Host holds: a mistyped id follows
     /// nothing, and says so rather than staying silent.
-    pub fn report_unmatched(&self, held: &[permguard_host::composition::MirrorTask]) {
+    pub fn report_unmatched(&self, held: &[MirrorTask]) {
         for selection in &self.selections {
             let matched = held.iter().any(|task| {
                 permguard_host::identity::record::uuid_text(&task.membership_id)
@@ -195,6 +150,15 @@ impl TaskSelections {
                 );
             }
         }
+        if self.local.is_some() && !held.iter().any(local::is_local) {
+            tracing::warn!(
+                event.name = "sync.task_unmatched",
+                component = "data-plane",
+                task = local::LOCAL_TASK,
+                "`mirrors.local` narrows the local task, which only a process hosting both Planes \
+                 has"
+            );
+        }
     }
 
     fn selection(&self, membership: &[u8; 16], task: &str) -> Option<&TaskSelection> {
@@ -205,39 +169,8 @@ impl TaskSelections {
     }
 }
 
-/// Compiles every declared source, or refuses the lot.
-pub fn compile(inputs: &[MirrorSource], workdir: &Path) -> Result<Vec<Source>> {
-    let sources: Vec<Source> = inputs
-        .iter()
-        .map(|input| Source::compile(input, workdir))
-        .collect::<Result<_>>()?;
-    check_overlap(&sources)?;
-
-    Ok(sources)
-}
-
-/// Refuses a configuration that names one server twice.
-///
-/// A server URL is an identity: two entries for it would race each other for
-/// the same mirrors, and whichever pattern set won would be decided by list
-/// order. That is unambiguously a mistake, and it is the only thing decidable
-/// here — whether two *different* servers own the same ledger cannot be known
-/// until they are asked, so it is caught where the identities are actually
-/// seen. See `round::contested`.
-fn check_overlap(sources: &[Source]) -> Result<()> {
-    for (index, source) in sources.iter().enumerate() {
-        for other in sources.iter().skip(index + 1) {
-            if source.url() == other.url() {
-                anyhow::bail!(
-                    "`{}` is configured twice: one server is one identity, and two entries for it \
-                     would race each other for the same mirrors",
-                    source.url()
-                );
-            }
-        }
-    }
-
-    Ok(())
+fn is_local(membership: &[u8; 16], task: &str) -> bool {
+    *membership == local::LOCAL_MEMBERSHIP && task == local::LOCAL_TASK
 }
 
 #[cfg(test)]
@@ -245,143 +178,102 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use permguard_core::mirrors::{MirrorLocal, MirrorTaskSelection};
 
-    fn source(zones: &[&str], ledgers: &[&str]) -> Source {
-        Source::compile(
-            &MirrorSource {
-                url: "https://control.acme.com".to_owned(),
-                tls: permguard_core::mirrors::MirrorTls::default(),
+    const MEMBERSHIP: [u8; 16] = [7; 16];
+
+    fn local(zones: &[&str], ledgers: &[&str]) -> TaskSelections {
+        TaskSelections::compile(
+            &[],
+            Some(&MirrorLocal {
                 zones: zones.iter().map(|p| (*p).to_owned()).collect(),
                 ledgers: ledgers.iter().map(|p| (*p).to_owned()).collect(),
-                required: true,
-            },
-            Path::new("/var/lib/permguard"),
+            }),
         )
-        .expect("the source compiles")
+        .expect("the narrowing compiles")
     }
 
-    #[test]
-    fn a_relative_trust_path_resolves_against_the_volume() {
-        let followed = Source::compile(
-            &MirrorSource {
-                url: "grpcs://control:6443".to_owned(),
-                tls: permguard_core::mirrors::MirrorTls {
-                    ca_file: Some("tls/ca.pem".to_owned()),
-                    ..permguard_core::mirrors::MirrorTls::default()
-                },
-                zones: Vec::new(),
-                ledgers: Vec::new(),
-                required: true,
-            },
-            Path::new("/var/lib/permguard"),
-        )
-        .expect("the source compiles");
-
-        assert_eq!(
-            followed.tls().ca_file.as_deref(),
-            Some(Path::new("/var/lib/permguard/tls/ca.pem"))
-        );
-        assert!(!followed.tls().skip_verify, "never offered, never on");
+    fn follows_local(selections: &TaskSelections, zone: &str, ledger: &str) -> bool {
+        selections.follows(&local::LOCAL_MEMBERSHIP, local::LOCAL_TASK, zone, ledger)
     }
 
     #[test]
     fn no_pattern_follows_everything() {
-        let every = source(&[], &[]);
-
-        assert!(every.follows_zone("acme"));
-        assert!(every.follows_ledger("anything"));
-        assert_eq!(every.patterns(), ("*".to_owned(), "*".to_owned()));
+        let every = TaskSelections::compile(&[], None).expect("compiles");
+        assert!(every.follows_task(&local::LOCAL_MEMBERSHIP, local::LOCAL_TASK));
+        assert!(follows_local(&every, "acme", "anything"));
+        assert_eq!(every.local_patterns(), ("*".to_owned(), "*".to_owned()));
+        assert!(follows_local(&local(&[], &[]), "acme", "anything"));
     }
 
     #[test]
     fn patterns_describe_whole_names() {
-        let followed = source(&["acme-.*"], &["main"]);
+        let followed = local(&["acme-.*"], &["main"]);
 
-        assert!(followed.follows_zone("acme-eu"));
+        assert!(follows_local(&followed, "acme-eu", "main"));
         assert!(
-            !followed.follows_zone("not-acme-eu"),
+            !follows_local(&followed, "not-acme-eu", "main"),
             "anchored at the start"
         );
-        assert!(followed.follows_ledger("main"));
         assert!(
-            !followed.follows_ledger("main-staging"),
+            !follows_local(&followed, "acme-eu", "main-staging"),
             "anchored at the end: `main` is not a prefix"
+        );
+        assert_eq!(
+            followed.local_patterns(),
+            ("acme-.*".to_owned(), "main".to_owned())
         );
     }
 
     #[test]
     fn several_patterns_are_alternatives() {
-        let followed = source(&["eu", "us"], &[]);
+        let followed = local(&["eu", "us"], &[]);
 
-        assert!(followed.follows_zone("eu"));
-        assert!(followed.follows_zone("us"));
-        assert!(!followed.follows_zone("apac"));
+        assert!(follows_local(&followed, "eu", "main"));
+        assert!(follows_local(&followed, "us", "main"));
+        assert!(!follows_local(&followed, "apac", "main"));
     }
 
     #[test]
     fn a_broken_pattern_is_refused_where_somebody_is_watching() {
-        let error = Source::compile(
-            &MirrorSource {
-                url: "https://control.acme.com".to_owned(),
-                tls: permguard_core::mirrors::MirrorTls::default(),
+        let error = TaskSelections::compile(
+            &[],
+            Some(&MirrorLocal {
                 zones: vec!["acme-[".to_owned()],
                 ledgers: Vec::new(),
-                required: true,
-            },
-            Path::new("/var/lib/permguard"),
+            }),
         )
         .expect_err("a broken pattern cannot compile")
         .to_string();
 
         assert!(error.contains("zone pattern `acme-[`"), "{error}");
     }
-}
 
-#[cfg(test)]
-mod overlap {
-    #![allow(clippy::expect_used)]
-
-    use super::*;
-
-    fn declared(url: &str, zones: &[&str]) -> MirrorSource {
-        MirrorSource {
-            url: url.to_owned(),
-            tls: permguard_core::mirrors::MirrorTls::default(),
-            zones: zones.iter().map(|pattern| (*pattern).to_owned()).collect(),
-            ledgers: Vec::new(),
-            required: true,
-        }
-    }
-
+    /// WP-7.7: narrowing the membership tasks never leaves the local task out, and narrowing the
+    /// local task never narrows a membership's.
     #[test]
-    fn two_servers_that_each_mirror_everything_are_a_legitimate_shape() {
-        // Two control planes with disjoint zones, each followed by its URL
-        // alone. Whether they really overlap is knowable only by asking them,
-        // and that happens in the round.
-        assert!(
-            compile(
-                &[
-                    declared("https://eu.acme.com", &[]),
-                    declared("https://us.acme.com", &[]),
-                ],
-                Path::new(".")
-            )
-            .is_ok()
-        );
-    }
-
-    #[test]
-    fn the_same_server_named_twice_is_refused_as_itself() {
-        let said = compile(
-            &[
-                declared("https://one.acme.com", &["eu"]),
-                declared("https://one.acme.com", &["us"]),
-            ],
-            Path::new("."),
+    fn the_local_task_and_the_membership_tasks_are_narrowed_apart() {
+        let selections = TaskSelections::compile(
+            &[MirrorTaskSelection {
+                membership: permguard_host::identity::record::uuid_text(&MEMBERSHIP),
+                task: "mirror".to_owned(),
+                zones: vec!["acme".to_owned()],
+                ledgers: Vec::new(),
+            }],
+            Some(&MirrorLocal {
+                zones: vec!["local-zone".to_owned()],
+                ledgers: Vec::new(),
+            }),
         )
-        .expect_err("this configuration is refused")
-        .to_string();
-
-        assert!(said.contains("configured twice"), "{said}");
+        .expect("compiles");
+        assert!(selections.follows_task(&local::LOCAL_MEMBERSHIP, local::LOCAL_TASK));
+        assert!(selections.follows_task(&MEMBERSHIP, "mirror"));
+        assert!(!selections.follows_task(&MEMBERSHIP, "other"));
+        assert!(follows_local(&selections, "local-zone", "main"));
+        assert!(!follows_local(&selections, "acme", "main"));
+        assert!(selections.follows(&MEMBERSHIP, "mirror", "acme", "main"));
+        assert!(!selections.follows(&MEMBERSHIP, "mirror", "local-zone", "main"));
+        // A membership whose id is not the nil one is never the local task, whatever its name.
+        assert!(!selections.follows_task(&MEMBERSHIP, local::LOCAL_TASK));
     }
 }

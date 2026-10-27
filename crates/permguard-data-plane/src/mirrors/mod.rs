@@ -5,11 +5,13 @@
 //!
 //! # What it is
 //!
-//! A lifecycle service with one job: every so often, ask each configured
-//! server what it has, mirror the zones and ledgers this plane follows, and
-//! remove the mirrors it no longer follows. Each ledger gets its own
-//! directory on the volume, and they are all live at once — a PDP serving
-//! four ledgers is four mirrors, not four processes.
+//! A lifecycle service with one job: every so often, ask each coordinator of
+//! this Host's `policy.mirror` tasks what they cover, mirror the zones and
+//! ledgers this plane follows, and remove the mirrors it no longer follows. A
+//! process hosting both Planes also follows its own Control Plane, through
+//! the local task (WP-7.7); a configured URL is no longer a source. Each
+//! ledger gets its own directory on the volume, and they are all live at
+//! once — a PDP serving four ledgers is four mirrors, not four processes.
 //!
 //! # The cadence, honestly
 //!
@@ -58,9 +60,9 @@ use tracing::{debug, info, warn};
 
 const COMPONENT: &str = "data-plane";
 
-/// The service the plane mounts. Does nothing at all when the deployment
-/// configured no servers — a PDP that is fed by other means is a legitimate
-/// deployment, not a misconfiguration.
+/// The service the plane mounts. Does nothing at all when this Host has no
+/// `policy.mirror` task to follow — a PDP that is fed by other means is a
+/// legitimate deployment, not a misconfiguration.
 pub struct MirrorService {
     /// A cadence override, for a test that cannot wait thirty seconds.
     tick: Option<Duration>,
@@ -105,11 +107,22 @@ impl PlaneTask for MirrorService {
     fn start<'a>(&'a self, context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let config = context.config();
-            // The tasks of this Host's memberships come and go with them: a Host that holds any
-            // runs the round, which snapshots them every time (WP-7.2a).
+            // The tasks of this Host's memberships come and go with them, and a process hosting
+            // both Planes has its local task: a Host that has any runs the round, which
+            // snapshots them every time (WP-7.2a, WP-7.7).
             let tasks = crate::handles::mirror_tasks(context);
-            if !config.mirrors_enabled() || (config.mirror_sources().is_empty() && tasks.is_none())
-            {
+            if config.mirrors_enabled() && tasks.is_none() {
+                // Mirroring is on, and this Host can hold no task: no Host listener, so no
+                // membership, and not both Planes, so no local task. Nothing will ever be
+                // mirrored, and a configured URL is no longer a source (WP-7.7).
+                warn!(
+                    event.name = "sync.no_source",
+                    component = COMPONENT,
+                    "mirrors are on and this Host can follow no `policy.mirror` task: give it a \
+                     Host listener and enroll it, or turn mirroring off"
+                );
+            }
+            if !config.mirrors_enabled() || tasks.is_none() {
                 info!(
                     event.name = "sync.disabled",
                     component = COMPONENT,
@@ -126,18 +139,26 @@ impl PlaneTask for MirrorService {
                 return Ok(());
             }
 
-            // Patterns compile here, at startup, where a typo is somebody's
-            // problem to fix now rather than a mirror that follows nothing.
-            let sources = source::compile(config.mirror_sources(), config.working_dir())?;
-            for source in &sources {
-                let (zones, ledgers) = source.patterns();
+            // Patterns compile here, at startup, where a typo is somebody's problem to fix now
+            // rather than a mirror that follows nothing.
+            let selections = source::TaskSelections::compile(
+                config.mirror_task_selections(),
+                config.mirror_local(),
+            )?;
+            if let Some(tasks) = &tasks
+                && tasks
+                    .mirror_tasks()
+                    .iter()
+                    .any(permguard_host::membership::local::is_local)
+            {
+                let (zones, ledgers) = selections.local_patterns();
                 info!(
                     event.name = "sync.following",
                     component = COMPONENT,
-                    server = source.url(),
+                    task = permguard_host::membership::local::LOCAL_TASK,
                     zone.patterns = zones.as_str(),
                     ledger.patterns = ledgers.as_str(),
-                    "following"
+                    "following this Host's own Control Plane"
                 );
             }
 
@@ -146,9 +167,7 @@ impl PlaneTask for MirrorService {
                 .map_err(|error| anyhow!("preparing {}: {error}", root.display()))?;
 
             let interval = self.tick.unwrap_or_else(|| config.mirrors_interval());
-            let selections = source::TaskSelections::compile(config.mirror_task_selections())?;
             let context_for_round = Arc::new(round::Context {
-                sources,
                 tasks,
                 selections,
                 root,
@@ -182,7 +201,6 @@ impl PlaneTask for MirrorService {
             let outcome = round::run(Arc::clone(&context_for_round)).await;
             readiness::report(
                 &health,
-                &context_for_round.sources,
                 &context_for_round.root,
                 expire_after,
                 &outcome,
@@ -243,7 +261,6 @@ impl PlaneTask for MirrorService {
                     }
                     readiness::report(
                         &health,
-                        &context_for_round.sources,
                         &context_for_round.root,
                         expire_after,
                         &outcome,
@@ -300,7 +317,7 @@ impl PlaneTask for MirrorService {
     }
 }
 
-/// The loop's lifecycle state after a round: running, or in backoff when a server did not
+/// The loop's lifecycle state after a round: running, or in backoff when a coordinator did not
 /// answer — the next round is the retry, at the configured cadence.
 fn service_state(outcome: &round::Outcome) -> permguard_core::lifecycle::ServiceState {
     if outcome.unreachable > 0 {
@@ -314,7 +331,7 @@ fn service_state(outcome: &round::Outcome) -> permguard_core::lifecycle::Service
 fn service_reason(outcome: &round::Outcome) -> Option<String> {
     (outcome.unreachable > 0).then(|| {
         format!(
-            "{} server(s) did not answer; retrying at the configured interval",
+            "{} coordinator(s) did not answer; retrying at the configured interval",
             outcome.unreachable
         )
     })
@@ -447,7 +464,7 @@ impl Records for crate::handles::Audit {
 /// or reaped (WP-7.2d).
 async fn audited(recorder: &dyn Records, outcome: &round::Outcome) {
     let target = format!(
-        "{} synchronized, {} blocked, {} failed, {} reaped, {} servers unreachable",
+        "{} synchronized, {} blocked, {} failed, {} reaped, {} coordinators unreachable",
         outcome.synchronized, outcome.blocked, outcome.failed, outcome.reaped, outcome.unreachable
     );
     if let Err(error) = recorder.record_on("ledger.synchronized", &target).await {
@@ -619,7 +636,7 @@ mod tests {
             vec![
                 (
                     "ledger.synchronized",
-                    "0 synchronized, 0 blocked, 0 failed, 1 reaped, 0 servers unreachable"
+                    "0 synchronized, 0 blocked, 0 failed, 1 reaped, 0 coordinators unreachable"
                 ),
                 ("mirror.tombstoned", "a/z/l1"),
                 ("mirror.restored", "a/z/l2"),

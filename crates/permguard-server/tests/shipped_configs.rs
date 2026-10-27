@@ -16,9 +16,8 @@
 use std::path::{Path, PathBuf};
 
 use permguard_core::ConfigFile;
-use permguard_core::mirrors::check_source;
 use permguard_server::plane::settings::{
-    PlaneSettingKeys, SETTING_CONTROL_HTTP_ADDR, SETTING_DATA_HTTP_ADDR, mirror_sources,
+    PlaneSettingKeys, SETTING_CONTROL_HTTP_ADDR, SETTING_DATA_HTTP_ADDR, mirror_local,
     plane_settings, producer_keys,
 };
 
@@ -184,27 +183,21 @@ fn what_a_configuration_says_about_mirroring_is_well_shaped_and_in_the_right_pla
         let Some(value) = file.section("dataPlane") else {
             continue;
         };
-        for source in mirror_sources(value).unwrap_or_else(|error| {
+        // No shipped file names the retired server list (WP-7.7): it would stop the start.
+        mirror_local(value).unwrap_or_else(|error| {
             panic!(
-                "the sync block of {} does not parse: {error:#}",
+                "the sync block of {} does not start: {error:#}",
                 path.display()
             );
-        }) {
-            check_source(&source).unwrap_or_else(|error| {
-                panic!(
-                    "{} follows a server it could never reach: {error:#}",
-                    path.display()
-                );
-            });
-        }
+        });
     }
 }
 
 #[test]
-fn a_data_plane_configuration_that_mirrors_names_the_server_it_mirrors_from() {
-    // Every environment answers the same question — "where do the policies come
-    // from here?" — so every data-plane configuration states it, whether the
-    // block is on or waiting for its trust material.
+fn a_data_plane_configuration_says_where_its_policies_come_from() {
+    // Every environment answers the same question — "where do the policies come from here?" — so
+    // every data-plane configuration declares its `mirrors` block: the source is its Host's
+    // memberships (WP-7.7), never a URL.
     let mut examined = 0;
     for path in shipped() {
         let name = path.to_string_lossy();
@@ -215,12 +208,12 @@ fn a_data_plane_configuration_that_mirrors_names_the_server_it_mirrors_from() {
         let value = file
             .section("dataPlane")
             .expect("a data plane configures its plane");
-        let sources = mirror_sources(value).expect("the sync block parses");
         assert!(
-            !sources.is_empty(),
+            value.get("mirrors").is_some(),
             "{} says nothing about where its policies come from",
             path.display()
         );
+        mirror_local(value).expect("the sync block starts");
         examined += 1;
     }
     assert_eq!(examined, 8, "every environment beside the template");
@@ -465,4 +458,35 @@ fn the_dogwood_variants_are_the_only_shipped_configurations_that_turn_it_on() {
         }
     }
     assert_eq!(variants, 3, "one variant per server crate");
+}
+
+/// Every shipped configuration builds through the server's own layers: a key the server retired or
+/// does not know stops the file here, not on an operator's first start of it. The checks that read
+/// the files a configuration names (its TLS material) are a start's, on the machine it runs on.
+#[test]
+fn every_shipped_configuration_builds_as_the_server_builds_it() {
+    let mut refused = Vec::new();
+    for path in shipped() {
+        let built = ConfigFile::load(&path).and_then(|file| {
+            // The top-level settings, and each Plane section's, as the server layers them.
+            let mut settings = file.settings();
+            for (section, keys) in [
+                ("controlPlane", PlaneSettingKeys::CONTROL),
+                ("dataPlane", PlaneSettingKeys::DATA),
+            ] {
+                if let Some(value) = file.section(section) {
+                    settings.extend(plane_settings(value, keys)?);
+                }
+            }
+            permguard_core::Config::from_layers(
+                permguard_server::plane::build_settings("0.0.0-test"),
+                Vec::<String>::new(),
+                permguard_core::config::Layers::new().with_file(settings),
+            )
+        });
+        if let Err(error) = built {
+            refused.push(format!("{}: {error:#}", path.display()));
+        }
+    }
+    assert!(refused.is_empty(), "{}", refused.join("\n"));
 }

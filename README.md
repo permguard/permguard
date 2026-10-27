@@ -70,6 +70,7 @@ Containers and pods have their own network namespaces; standalone binaries that 
 - **Assurance.** A deployment declares `development`, `production` or `regulated`, and publishes every relaxation it takes.
 
 A Data Plane that mirrors from another Server reaches its Control Plane through an authenticated Host task session, not through an anonymous plane-to-plane call.
+It never follows a configured URL: the membership binds the coordinator, the scope and the ring its heads verify under, and an all-in-one mirrors its own Control Plane in-process.
 
 </details>
 
@@ -653,6 +654,10 @@ cargo run -p permguard-all-in-one --bin permguard-all-in-one -- crates/permguard
 cargo run -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml
 cargo run -p permguard-data-plane --bin permguard-data-plane -- crates/permguard-data-plane/config.local.yml
 ```
+
+The all-in-one mirrors its own Control Plane in-process and serves at once.
+A Data Plane run on its own mirrors nothing until its Host is enrolled with the Control Plane's.
+Run `permguard host members invite` there and `permguard host members join` here, as the Compose lab's `split-plane` profile does.
 
 Server commands accept a config file and optional overrides:
 

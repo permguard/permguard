@@ -137,12 +137,9 @@ dataPlane:
     interval: "15s"        # a cadence somebody watching a terminal can see; the default is 30s
     timeout: "1m"
     parallelism: "4"
-    servers:
-      # This process's own control plane. The URL alone: every zone and every ledger it lists.
-      # The data plane waits for this server before it accepts work: with the server down, a
-      # mirror verified within `expire_after` still counts. `required: false` makes a server
-      # followed but never waited for.
-      - url: "http://127.0.0.1:6443"
+    # This process's own Control Plane, in-process: every zone and every ledger it holds, verified
+    # under this Host's own `control.attest` ring, no URL and no TLS (WP-7.7). Narrow it with
+    #   local: { zones: ["acme"], ledgers: ["main-ledger"] }
 
   # The decision path, sized for a laptop: a handful of ledgers, a small heap.
   decisions:
@@ -171,12 +168,6 @@ dataPlane:
       batch: { bytes: "256k", interval: "1s" }
       mode: "required"           # every answered decision has a durable record; one that cannot be is refused
       sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
-      # The secret input commitments are taken under. A different key from the pseudonymisation
-      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
-      # invalidate every commitment with it.
-      commitment:
-        key_ref: decision-commitment
-        key_version: "v1"
       include:
         subject_properties: []    # an allow-list, never "all": name a field to record it
         resource_properties: []
@@ -249,6 +240,8 @@ operations:
     retain: 1d
   secrets:
     provider: directory
+    # The root the per-zone keys derive from: decision input tags and pseudonyms (WP-3.3).
+    coordinator_root_ref: zone-root
   audit:
     sink: file
     retention: 7d

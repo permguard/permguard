@@ -38,6 +38,7 @@ pub mod contracts;
 pub mod dormancy;
 pub mod egress;
 pub mod import;
+pub mod local;
 pub mod member;
 pub mod progress;
 pub mod record;

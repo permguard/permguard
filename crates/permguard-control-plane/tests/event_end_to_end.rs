@@ -39,6 +39,12 @@ use permguard_events::record::{PRODUCER_CLASS_DATA_PLANE, Record, Stream};
 use permguard_std::keys::{DirectoryKeyManager, KeyPolicy};
 use serde_json::{Value, json};
 
+/// The authority every mirror of these tests lives under (WP-7.2a): a mirror in a configured URL's
+/// shape is never served since WP-7.7.
+const MIRROR_AUTHORITY: &str = "11111111111111111111111111111111";
+/// The task the mirrors of these tests were listed by: the local task.
+const MIRROR_TASK: &str = "00000000-0000-0000-0000-000000000000/local";
+
 const ZONE: &str = "acme";
 const LEDGER: &str = "agent-governance";
 /// What a ledger is keyed by once resolved: records, streams and trust scopes all name these, and
@@ -600,7 +606,10 @@ mod two_planes {
         let manifest =
             permguard_languages::manifest_file::from_yaml(example("manifest.yml").as_bytes())
                 .expect("the example's manifest parses");
-        let path = root.join(format!("{ZONE}-id")).join(format!("{LEDGER}-id"));
+        let path = root
+            .join(MIRROR_AUTHORITY)
+            .join(format!("{ZONE}-id"))
+            .join(format!("{LEDGER}-id"));
         std::fs::create_dir_all(&path).expect("the mirror directory is created");
         let store = FsStore::new(&path);
         let put_blob = |media_type: &str, data: &[u8]| {
@@ -701,8 +710,8 @@ mod two_planes {
         permguard_data_plane::authz::store::record(
             &path,
             &Identity {
-                task: None,
-                authority: None,
+                task: Some(MIRROR_TASK.to_owned()),
+                authority: Some(MIRROR_AUTHORITY.to_owned()),
                 zone_id: format!("{ZONE}-id"),
                 zone_name: ZONE.to_owned(),
                 ledger_id: format!("{LEDGER}-id"),

@@ -1,13 +1,16 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! A synchronization round against a real control plane, in process.
+//! A synchronization round against a real control plane, in process, over `policy.mirror` task
+//! sessions.
 //!
 //! What is asserted is the behaviour an operator depends on: only what the
-//! patterns follow is mirrored, a mirror that is already current does not
-//! move, a mirror the patterns stop following is removed — and, the one that
-//! matters most, **a server that does not answer never causes a deletion**.
-//! Losing a connection is not a reason to lose a policy.
+//! file follows is mirrored, a mirror that is already current does not move,
+//! a mirror its task stops listing is removed — and, the one that matters
+//! most, **a coordinator that does not answer never causes a deletion**.
+//! Losing a connection is not a reason to lose a policy. A mirror of a
+//! configured URL, retired (WP-7.7), is never served and goes at the first
+//! round.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -17,7 +20,6 @@ use std::time::Duration;
 
 use permguard_control_client::TlsOptions;
 use permguard_core::Metrics;
-use permguard_core::mirrors::MirrorSource;
 use permguard_data_plane::mirrors::layout::{self, Mirror};
 use permguard_data_plane::mirrors::{round, source};
 
@@ -161,48 +163,6 @@ fn scratch(tag: &str) -> PathBuf {
     dir
 }
 
-/// One declared source, for a test that needs several.
-fn declared(url: &str, zones: &[&str], ledgers: &[&str]) -> MirrorSource {
-    MirrorSource {
-        url: url.to_owned(),
-        tls: permguard_core::mirrors::MirrorTls::default(),
-        zones: zones.iter().map(|p| (*p).to_owned()).collect(),
-        ledgers: ledgers.iter().map(|p| (*p).to_owned()).collect(),
-        required: true,
-    }
-}
-
-fn context(
-    url: &str,
-    root: &std::path::Path,
-    zones: &[&str],
-    ledgers: &[&str],
-) -> Arc<round::Context> {
-    let declared = MirrorSource {
-        url: url.to_owned(),
-        tls: permguard_core::mirrors::MirrorTls::default(),
-        zones: zones.iter().map(|p| (*p).to_owned()).collect(),
-        ledgers: ledgers.iter().map(|p| (*p).to_owned()).collect(),
-        required: true,
-    };
-    Arc::new(round::Context {
-        tasks: None,
-        selections: Default::default(),
-        // This suite is about mirroring; the decision path has its own.
-        decider: None,
-        sources: source::compile(std::slice::from_ref(&declared), root)
-            .expect("the patterns compile"),
-        root: root.to_path_buf(),
-        deadline: Duration::from_secs(30),
-        stale_after: None,
-        reap_grace: std::time::Duration::ZERO,
-        holds: Default::default(),
-        parallelism: 2,
-        permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
-        metrics: Metrics::none(),
-    })
-}
-
 /// Creates the zones and ledgers a test needs, through the same client the
 /// product uses — so the fixture cannot drift from the API.
 fn provision(url: &str, zone: &str, ledgers: &[&str]) {
@@ -218,253 +178,6 @@ fn provision(url: &str, zone: &str, ledgers: &[&str]) {
             .create_ledger(&created.id, ledger)
             .expect("the ledger is created");
     }
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_round_mirrors_only_what_the_patterns_follow() {
-    let volume = scratch("follow");
-    let plane = plane::start(&volume).await;
-    let url = plane.url.clone();
-    provision(&url, "acme", &["main-ledger", "staging"]);
-    provision(&url, "other", &["main-ledger"]);
-
-    let root = volume.join("mirrors");
-    // Follow the zone `acme` and only its `main-ledger`.
-    let outcome = round::run(context(&url, &root, &["acme"], &["main-ledger"])).await;
-
-    assert_eq!(outcome.unreachable, 0, "the plane answered");
-    assert_eq!(outcome.failed, 0, "nothing failed");
-    let held = layout::on_disk(&root).expect("the mirrors list");
-    assert_eq!(held.len(), 1, "one ledger of one zone: {held:?}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_mirror_the_patterns_stop_following_is_removed() {
-    let volume = scratch("reap");
-    let plane = plane::start(&volume).await;
-    let url = plane.url.clone();
-    provision(&url, "acme", &["main-ledger", "staging"]);
-
-    let root = volume.join("mirrors");
-    round::run(context(&url, &root, &["acme"], &[])).await;
-    assert_eq!(
-        layout::on_disk(&root).expect("lists").len(),
-        2,
-        "both ledgers are followed at first"
-    );
-
-    // Narrow the pattern: the other mirror is no longer wanted.
-    let outcome = round::run(context(&url, &root, &["acme"], &["main-ledger"])).await;
-    assert_eq!(outcome.reaped, 1);
-    let held = layout::on_disk(&root).expect("lists");
-    assert_eq!(held.len(), 1, "{held:?}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_ledger_the_server_deleted_is_removed_here_too() {
-    let volume = scratch("deleted");
-    let plane = plane::start(&volume).await;
-    let url = plane.url.clone();
-    provision(&url, "acme", &["main-ledger", "retired"]);
-
-    let root = volume.join("mirrors");
-    round::run(context(&url, &root, &[], &[])).await;
-    assert_eq!(
-        layout::on_disk(&root).expect("lists").len(),
-        2,
-        "both ledgers are mirrored while the server has both"
-    );
-
-    // The operator deletes one on the server. The next round sees a listing
-    // without it, so the mirror is no longer wanted — and goes.
-    let catalog = permguard_control_client::catalog::client(
-        &url,
-        &TlsOptions::default(),
-        Box::new(permguard_control_client::narrate::Silent),
-    )
-    .expect("the catalog client connects");
-    let zone = catalog.get_zone("acme").expect("the zone is there");
-    let retired = catalog
-        .get_ledger(&zone.id, "retired")
-        .expect("the ledger is there");
-    catalog
-        .delete_ledger(&zone.id, "retired", retired.revision)
-        .expect("the ledger is deleted on the server");
-
-    let outcome = round::run(context(&url, &root, &[], &[])).await;
-    assert_eq!(outcome.reaped, 1, "the deleted ledger's mirror is removed");
-    let held = layout::on_disk(&root).expect("lists");
-    assert_eq!(held.len(), 1, "{held:?}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn an_unreachable_server_never_causes_a_deletion() {
-    let volume = scratch("unreachable");
-    let plane = plane::start(&volume).await;
-    let url = plane.url.clone();
-    provision(&url, "acme", &["main-ledger"]);
-
-    let root = volume.join("mirrors");
-    round::run(context(&url, &root, &[], &[])).await;
-    let before = layout::on_disk(&root).expect("lists");
-    assert_eq!(before.len(), 1);
-
-    // Now point the round at a port where nothing listens. The mirror on disk
-    // must survive: a plane that cannot ask is not a plane that was told to
-    // forget.
-    let outcome = round::run(context("http://127.0.0.1:1", &root, &[], &[])).await;
-    assert_eq!(outcome.unreachable, 1);
-    assert_eq!(
-        outcome.reaped, 0,
-        "nothing is removed on an unanswered server"
-    );
-    assert_eq!(
-        layout::on_disk(&root).expect("lists"),
-        before,
-        "the mirrors are exactly as they were"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_ledger_two_servers_both_claim_is_left_alone_rather_than_taken_by_the_first() {
-    // Two control planes, each holding a zone and ledger of the same *name*.
-    // Names are not what a mirror is addressed by, so whether they collide
-    // depends on the identities they minted — and when they do collide, taking
-    // the first would mean this plane decided whose policies it serves by
-    // configuration order.
-    let volume = scratch("contested");
-    let one = plane::start(&volume.join("one")).await;
-    let two = plane::start(&volume.join("two")).await;
-    provision(&one.url, "acme", &["main-ledger"]);
-    provision(&two.url, "acme", &["main-ledger"]);
-
-    let root = volume.join("mirrors");
-    let sources = vec![declared(&one.url, &[], &[]), declared(&two.url, &[], &[])];
-    let outcome = round::run(Arc::new(round::Context {
-        tasks: None,
-        selections: Default::default(),
-        decider: None,
-        sources: source::compile(&sources, &root).expect("the patterns compile"),
-        root: root.clone(),
-        deadline: Duration::from_secs(30),
-        stale_after: None,
-        reap_grace: std::time::Duration::ZERO,
-        holds: Default::default(),
-        parallelism: 2,
-        permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
-        metrics: Metrics::none(),
-    }))
-    .await;
-
-    // Identities are minted per control plane, so two independent planes do not collide on ids:
-    // the plane mirrors both. Their names do collide, and a request by name answered from
-    // whichever directory lists first would be the list order choosing (WP-7.2a): the name is
-    // contested and reported, while each ledger stays reachable by its own ids.
-    let held = layout::on_disk(&root).expect("lists");
-    assert_eq!(held.len(), 2, "both are followed");
-    assert_eq!(outcome.contested, 1, "the shared name is reported");
-    assert!(
-        permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_none(),
-        "neither answers to the shared name"
-    );
-    for mirror in &held {
-        assert!(
-            permguard_data_plane::authz::store::find(&root, &mirror.zone_id, &mirror.ledger_id)
-                .is_some(),
-            "each answers to its ids"
-        );
-    }
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn one_unreachable_server_does_not_cost_another_server_its_mirrors() {
-    // The case a single-source test cannot see: with two control planes
-    // configured, a partition towards one of them used to delete *its* ledgers
-    // from this plane, because the reaping set was built from whoever
-    // answered. Absence is evidence of deletion only for the server that was
-    // asked.
-    let volume = scratch("partial");
-    let other = plane::start(&volume.join("other")).await;
-    let sources = {
-        let gone = plane::start(&volume.join("gone")).await;
-        provision(&gone.url, "acme", &["main-ledger"]);
-
-        let both = vec![
-            declared(&gone.url, &[], &[]),
-            declared(&other.url, &[], &[]),
-        ];
-        let root = volume.join("mirrors");
-        let outcome = round::run(Arc::new(round::Context {
-            tasks: None,
-            selections: Default::default(),
-            decider: None,
-            sources: source::compile(&both, &root).expect("the patterns compile"),
-            root: root.clone(),
-            deadline: Duration::from_secs(30),
-            stale_after: None,
-            reap_grace: std::time::Duration::ZERO,
-            holds: Default::default(),
-            parallelism: 2,
-            permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
-            metrics: Metrics::none(),
-        }))
-        .await;
-        assert_eq!(outcome.unreachable, 0, "both answered");
-        assert_eq!(
-            layout::on_disk(&root).expect("lists").len(),
-            1,
-            "one server's ledger is mirrored"
-        );
-
-        both
-        // `gone` is dropped here: that control plane is now unreachable.
-    };
-
-    let root = volume.join("mirrors");
-    let before = layout::on_disk(&root).expect("lists");
-    let outcome = round::run(Arc::new(round::Context {
-        tasks: None,
-        selections: Default::default(),
-        decider: None,
-        sources: source::compile(&sources, &root).expect("the patterns compile"),
-        root: root.clone(),
-        deadline: Duration::from_secs(30),
-        stale_after: None,
-        reap_grace: std::time::Duration::ZERO,
-        holds: Default::default(),
-        parallelism: 2,
-        permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
-        metrics: Metrics::none(),
-    }))
-    .await;
-
-    assert_eq!(outcome.unreachable, 1, "one server is gone");
-    assert_eq!(
-        outcome.reaped, 0,
-        "and the mirror belongs to exactly that server"
-    );
-    assert_eq!(
-        layout::on_disk(&root).expect("lists"),
-        before,
-        "so it is exactly where it was"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_second_round_is_idempotent() {
-    let volume = scratch("again");
-    let plane = plane::start(&volume).await;
-    let url = plane.url.clone();
-    provision(&url, "acme", &["main-ledger"]);
-
-    let root = volume.join("mirrors");
-    let first = round::run(context(&url, &root, &[], &[])).await;
-    let second = round::run(context(&url, &root, &[], &[])).await;
-
-    assert_eq!(first.failed, 0);
-    assert_eq!(second.failed, 0);
-    assert_eq!(second.reaped, 0, "nothing to remove the second time");
-    assert_eq!(layout::on_disk(&root).expect("lists").len(), 1);
 }
 
 #[test]
@@ -788,7 +501,6 @@ fn over_tasks_with(
         tasks: Some(Arc::new(held)),
         selections: Default::default(),
         decider: None,
-        sources: Vec::new(),
         root: root.to_path_buf(),
         deadline: Duration::from_secs(30),
         stale_after,
@@ -920,38 +632,45 @@ async fn a_coordinator_that_does_not_answer_costs_none_of_its_mirrors() {
     assert!(!reported.answered && !reported.succeeded());
 }
 
-/// WP-7.2a: the same ledger from a configured URL and from a membership lands in two directories,
-/// and a request naming it is answered from neither: no list order picks whose policy is served.
+/// One `policy.mirror` task of each of `coordinators`, answered from the control plane at `url`.
+fn held_from(url: &str, coordinators: &[[u8; 16]], silent: Vec<[u8; 16]>) -> tasks::Held {
+    tasks::Held {
+        tasks: coordinators
+            .iter()
+            .enumerate()
+            .map(|(at, coordinator)| tasks::task(*coordinator, at as u8 + 1, "mirror", true))
+            .collect(),
+        url: url.to_owned(),
+        silent,
+        asked: Arc::new(std::sync::Mutex::new(Vec::new())),
+        only: Vec::new(),
+        incomplete: false,
+        partial: Vec::new(),
+        unpinned: Vec::new(),
+        reported: Default::default(),
+        slow: None,
+    }
+}
+
+/// WP-7.2a: two coordinators listing a ledger of the same names land in two directories under
+/// their authorities, and a request naming it is answered from neither: no list order picks whose
+/// policy is served; each stays reachable by its ids.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_ledger_both_a_url_and_a_task_offer_is_served_from_neither() {
-    let volume = scratch("url-and-task");
+async fn a_ledger_two_coordinators_list_is_served_from_neither_by_its_names() {
+    let volume = scratch("two-coordinators");
     let plane = plane::start(&volume).await;
     let url = plane.url.clone();
     provision(&url, "acme", &["main-ledger"]);
     let root = volume.join("mirrors");
 
-    round::run(context(&url, &root, &[], &[])).await;
-    assert!(
-        permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_some(),
-        "one mirror answers"
-    );
-    round::run(over_tasks(
+    let outcome = round::run(over_tasks(
         &root,
-        tasks::Held {
-            tasks: vec![tasks::task([0x11; 16], 1, "mirror", true)],
-            url: url.clone(),
-            silent: Vec::new(),
-            asked: Arc::new(std::sync::Mutex::new(Vec::new())),
-            only: Vec::new(),
-            incomplete: false,
-            partial: Vec::new(),
-            unpinned: Vec::new(),
-            reported: Default::default(),
-            slow: None,
-        },
+        held_from(&url, &[[0x11; 16], [0x22; 16]], Vec::new()),
     ))
     .await;
-    assert_eq!(layout::on_disk(&root).expect("lists").len(), 2);
+    let held = layout::on_disk(&root).expect("lists");
+    assert_eq!(held.len(), 2, "one mirror under each authority");
+    assert_eq!(outcome.contested, 1, "every round says so");
     assert!(
         permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_none(),
         "two mirrors answer to one name: neither is chosen"
@@ -961,8 +680,107 @@ async fn a_ledger_both_a_url_and_a_task_offer_is_served_from_neither() {
         2,
         "and the refusal can say why"
     );
-    let outcome = round::run(context(&url, &root, &[], &[])).await;
-    assert_eq!(outcome.contested, 1, "every round says so");
+}
+
+/// WP-7.2a: with two coordinators, one that does not answer costs none of its mirrors, and the
+/// other's stay as they were: absence is evidence only for the coordinator asked.
+#[tokio::test(flavor = "multi_thread")]
+async fn one_silent_coordinator_does_not_cost_another_its_mirrors() {
+    let volume = scratch("two-one-silent");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger"]);
+    let root = volume.join("mirrors");
+    let both = [[0x11; 16], [0x22; 16]];
+
+    round::run(over_tasks(&root, held_from(&url, &both, Vec::new()))).await;
+    let before = layout::on_disk(&root).expect("lists");
+    assert_eq!(before.len(), 2);
+
+    let outcome = round::run(over_tasks(&root, held_from(&url, &both, vec![both[1]]))).await;
+    assert_eq!(outcome.unreachable, 1, "one coordinator is silent");
+    assert_eq!(
+        outcome.reaped, 0,
+        "and nothing is removed on anybody's account"
+    );
+    assert_eq!(layout::on_disk(&root).expect("lists"), before);
+}
+
+/// A second round over the same task moves nothing and removes nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_second_round_is_idempotent() {
+    let volume = scratch("again");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger"]);
+    let root = volume.join("mirrors");
+
+    let first = round::run(over_tasks(
+        &root,
+        held_from(&url, &[[0x11; 16]], Vec::new()),
+    ))
+    .await;
+    let second = round::run(over_tasks(
+        &root,
+        held_from(&url, &[[0x11; 16]], Vec::new()),
+    ))
+    .await;
+
+    assert_eq!(first.failed, 0);
+    assert_eq!(second.failed, 0);
+    assert_eq!(second.reaped, 0, "nothing to remove the second time");
+    assert_eq!(layout::on_disk(&root).expect("lists").len(), 1);
+}
+
+/// WP-7.7: a mirror of a configured URL, in the first shape a release up to v0.1.6 left on the
+/// volume, is never served, and the first round removes it, recorded, whatever the coordinators
+/// answered; one a hold names stays.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_mirror_of_a_configured_url_is_never_served_and_the_first_round_removes_it() {
+    let volume = scratch("retired-url");
+    let root = volume.join("mirrors");
+    let legacy = root.join("zone-id").join("ledger-id");
+    std::fs::create_dir_all(&legacy).expect("the URL-shaped mirror");
+    permguard_data_plane::authz::store::record(
+        &legacy,
+        &permguard_data_plane::authz::store::Identity {
+            task: None,
+            authority: None,
+            zone_id: "zone-id".to_owned(),
+            zone_name: "acme".to_owned(),
+            ledger_id: "ledger-id".to_owned(),
+            ledger_name: "main-ledger".to_owned(),
+            server: "http://127.0.0.1:6443".to_owned(),
+        },
+    )
+    .expect("its identity");
+    assert!(
+        permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_none(),
+        "never served, even before a round"
+    );
+    assert!(
+        permguard_data_plane::authz::store::find(&root, "zone-id", "ledger-id").is_none(),
+        "by its ids neither"
+    );
+    assert_eq!(layout::on_disk(&root).expect("lists").len(), 1);
+
+    // The only coordinator does not answer: the URL mirror goes all the same.
+    let outcome = round::run(over_tasks(
+        &root,
+        held_from("http://127.0.0.1:1", &[[0x11; 16]], vec![[0x11; 16]]),
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 1);
+    assert_eq!(
+        outcome.candidacy,
+        vec![("mirror.reaped", "zone-id/ledger-id".to_owned())],
+        "recorded for the audit trail"
+    );
+    assert!(layout::on_disk(&root).expect("lists").is_empty());
+    assert!(
+        !root.join("zone-id").exists(),
+        "its zone directory goes with it"
+    );
 }
 
 /// WP-7.2a: the file narrows the tasks it follows by membership and task ids with anchored
@@ -975,14 +793,16 @@ async fn the_file_narrows_the_tasks_followed_by_membership_task_and_pattern() {
     provision(&url, "acme", &["main-ledger", "staging"]);
     let root = volume.join("mirrors");
     let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let selections =
-        source::TaskSelections::compile(&[permguard_core::mirrors::MirrorTaskSelection {
+    let selections = source::TaskSelections::compile(
+        &[permguard_core::mirrors::MirrorTaskSelection {
             membership: permguard_host::identity::record::uuid_text(&[1; 16]),
             task: "mirror".to_owned(),
             zones: vec!["acme".to_owned()],
             ledgers: vec!["main-ledger".to_owned()],
-        }])
-        .expect("the patterns compile");
+        }],
+        None,
+    )
+    .expect("the patterns compile");
 
     let outcome = round::run(Arc::new(round::Context {
         tasks: Some(Arc::new(tasks::Held {
@@ -1002,7 +822,6 @@ async fn the_file_narrows_the_tasks_followed_by_membership_task_and_pattern() {
         })),
         selections,
         decider: None,
-        sources: Vec::new(),
         root: root.clone(),
         deadline: Duration::from_secs(30),
         stale_after: None,

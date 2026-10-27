@@ -1,48 +1,29 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! What a mirroring plane follows: which servers, and which of their zones
-//! and ledgers.
+//! What a mirroring plane follows, and how the file narrows it.
 //!
-//! # Why the server is exact and the rest is a pattern
+//! # Sources a membership binds, never a URL
 //!
-//! A server URL is an identity: it is who you trust, whose certificate you
-//! check, and whose key ring signs what you accept. A pattern there would
-//! mean trusting something you cannot name in advance, so it is written out,
-//! exactly, every time.
+//! A Data Plane mirrors the `policy.mirror` tasks of its Host's memberships: the coordinator, its
+//! `control.attest` set and the scope are all bound by the signed manifest, so the file names no
+//! server, no TLS root and no statement key (WP-7.2a). A process hosting both Planes, the
+//! all-in-one, also mirrors its own Control Plane through a local task the Host adds, in-process
+//! and under its own `control.attest` set (WP-7.7). The configured server list, a URL with its
+//! TLS material and the ring taken at first contact, is retired: v0.1.6 was the last release that
+//! followed one, and a file still naming `servers` is refused, saying what replaces it.
 //!
-//! Zones and ledgers are the opposite: they come and go while the deployment
-//! runs, and a plane that had to be reconfigured for every new ledger would
-//! be a plane that is always behind. So they are **patterns**, matched
-//! against what the server actually lists — the plane asks "what do you
-//! have", keeps what matches, and drops what no longer does.
+//! # Narrowing
 //!
-//! # Where the matching happens
-//!
-//! Not here. This crate carries what the file *declared* — the URL and the
-//! patterns as written — because that is configuration; compiling a pattern
-//! and deciding what it follows is behaviour, and it belongs to the plane
-//! that mirrors. It is also why `permguard-core` still depends on four
-//! crates and no more.
-//!
-//! # A structured record, not a flat key
-//!
-//! The server list comes from the configuration file only, for the same
-//! reason realms do: there is no sensible way to state an array of servers
-//! with their patterns in one environment variable, and a half-parsed list
-//! is worse than no list. The *scalars* around it — the interval, the
-//! timeout, how many mirrors run at once — ride the ordinary layered
-//! pipeline, where the environment beats the file and the file beats the
-//! default.
+//! Zones and ledgers come and go while the deployment runs, so the file narrows by anchored
+//! patterns: `mirrors.tasks` per membership task, `mirrors.local` for the local task. Compiling a
+//! pattern and deciding what it follows is behaviour, and it belongs to the plane that mirrors.
 //!
 //! # Where it is declared in the file
 //!
-//! Inside `dataPlane:`, because mirroring is a data plane's own business: it
-//! is the plane that serves decisions that needs the policies, and a control
-//! plane has nothing to mirror. A process that hosts both planes — the
-//! all-in-one — therefore states it in the same place, under its `dataPlane`
-//! section, and the top level stays what it has always been: the settings
-//! both planes share.
+//! Inside `dataPlane:`, because mirroring is a data plane's own business. The *scalars* — the
+//! interval, the timeout, how many mirrors run at once — ride the ordinary layered pipeline, where
+//! the environment beats the file and the file beats the default; the lists come from the file.
 
 use anyhow::{Result, bail};
 use serde::Deserialize;
@@ -53,33 +34,12 @@ use crate::config::{
     SETTING_MIRRORS_REVOCATION_OBJECTIVE, SETTING_MIRRORS_STALE_AFTER, SETTING_MIRRORS_TIMEOUT,
 };
 
-/// One server to follow, as the configuration file declares it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MirrorSource {
-    /// The exact base URL — `https://host[:port]`, or `grpcs://…`. Never a
-    /// pattern: this is an identity, not a search.
-    pub url: String,
-    /// The trust material for reaching it: the authority its certificate is
-    /// checked against, and — where the server asks for one — a certificate of
-    /// our own. Absent means the platform trust store, which is what a public
-    /// certificate needs and a private authority does not.
-    pub tls: MirrorTls,
-    /// The zone-name patterns to follow. Absent means every zone.
-    pub zones: Vec<String>,
-    /// The ledger-name patterns to follow inside a matching zone. Absent
-    /// means every ledger of that zone.
-    pub ledgers: Vec<String>,
-    /// Whether the plane waits for this source before it accepts work (P2). Required unless the
-    /// file says `required: false`: an optional source is followed, and never gates readiness.
-    pub required: bool,
-}
-
 /// A mirroring plane's synchronization loop, as the `dataPlane.sync` block of
 /// the configuration file declares it.
 ///
 /// The scalars come back as setting pairs, so they travel the same layered
 /// pipeline as everything else and an environment variable still wins. The
-/// servers come back as [`MirrorSource`], because a list cannot.
+/// lists come back as structures, because a list cannot.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MirrorsSection {
@@ -107,11 +67,14 @@ pub struct MirrorsSection {
     /// The revocation propagation objective this deployment declares (WP-7.2d).
     #[serde(default)]
     revocation_objective: Option<String>,
-    /// The servers to follow. A list, not a flat setting: an array of servers
-    /// with their patterns has no sensible single-variable form, and a
-    /// half-parsed list is worse than none.
+    /// The retired server list (WP-7.7): read only so a file still naming it is refused with what
+    /// replaces it, rather than with an unknown field.
     #[serde(default)]
-    servers: Vec<MirrorServerSection>,
+    servers: Option<Retired>,
+    /// How the local task of a process hosting both Planes is narrowed (WP-7.7). Absent, it
+    /// follows every zone and ledger of its own Control Plane.
+    #[serde(default)]
+    local: Option<MirrorLocalSection>,
     /// The `policy.mirror` tasks this plane narrows (WP-7.2a). Absent, every task of this Host's
     /// memberships is followed whole: the coordinator's signed selector already scopes it.
     #[serde(default)]
@@ -172,26 +135,44 @@ pub struct MirrorTaskSelection {
     pub ledgers: Vec<String>,
 }
 
-/// One server this plane follows: an exact URL, and the patterns of what to
-/// take from it.
+/// A retired key: whatever it held is read and dropped, so its presence can be refused by name.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct Retired;
+
+impl<'de> Deserialize<'de> for Retired {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        serde::de::IgnoredAny::deserialize(deserializer)?;
+        Ok(Self)
+    }
+}
+
+/// The local task's narrowing, as the file declares it.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MirrorServerSection {
-    /// The exact base URL — never a pattern: this is who you trust.
-    url: String,
-    /// How this server is trusted, and who we say we are to it.
-    #[serde(default)]
-    tls: MirrorTls,
-    /// Zone-name patterns. Absent means every zone the server lists.
+struct MirrorLocalSection {
+    /// Zone-name patterns. Absent means every zone.
     #[serde(default)]
     zones: Vec<String>,
     /// Ledger-name patterns inside a matching zone. Absent means every one.
     #[serde(default)]
     ledgers: Vec<String>,
-    /// Whether readiness waits for this server. Absent means it does.
-    #[serde(default)]
-    required: Option<bool>,
 }
+
+/// How the local task of a process hosting both Planes is narrowed (WP-7.7): anchored zone and
+/// ledger patterns, empty meaning every one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MirrorLocal {
+    pub zones: Vec<String>,
+    pub ledgers: Vec<String>,
+}
+
+/// Why a file naming `dataPlane.mirrors.servers` is refused (WP-7.7).
+pub const SERVERS_RETIRED: &str = "`dataPlane.mirrors.servers` is retired: a Data Plane no longer \
+     mirrors a configured URL (v0.1.6 was the last release that did). A Data Plane in its own \
+     process mirrors the `policy.mirror` tasks of its Host's memberships: enroll it with \
+     `permguard host members join`, and narrow them with `mirrors.tasks`. A process hosting both \
+     Planes mirrors its own Control Plane in-process: remove `servers`, and narrow it with \
+     `mirrors.local`.";
 
 impl MirrorsSection {
     /// The scalars, as pairs for the configuration-file layer.
@@ -240,28 +221,26 @@ impl MirrorsSection {
             .collect()
     }
 
-    /// The servers this plane follows, as declared.
-    pub fn sources(&self) -> Vec<MirrorSource> {
-        self.servers
-            .iter()
-            .map(|server| MirrorSource {
-                url: server.url.clone(),
-                tls: server.tls.clone(),
-                zones: server.zones.clone(),
-                ledgers: server.ledgers.clone(),
-                required: server.required.unwrap_or(true),
-            })
-            .collect()
+    /// Whether the file still names the retired server list (WP-7.7).
+    pub fn names_servers(&self) -> bool {
+        self.servers.is_some()
+    }
+
+    /// The local task's narrowing, as declared (WP-7.7).
+    pub fn local(&self) -> Option<MirrorLocal> {
+        self.local.as_ref().map(|local| MirrorLocal {
+            zones: local.zones.clone(),
+            ledgers: local.ledgers.clone(),
+        })
     }
 }
 
-/// The trust material for one server, as declared. Paths resolve against the
-/// working directory, like every other path in the file.
+/// The trust material for reaching one server, as declared: what a decision log destination
+/// still names (WP-6.5 removes it with the single configured destination). Paths resolve against
+/// the working directory, like every other path in the file.
 ///
-/// There is deliberately no "skip verification" here. A plane that accepts any
-/// certificate is a plane whose policies come from whoever answers the port,
-/// and unlike a CLI run by a human who reads the warning, nobody is watching
-/// this one.
+/// There is deliberately no "skip verification" here: nobody is watching a server process read
+/// the warning.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MirrorTls {
@@ -280,31 +259,26 @@ pub struct MirrorTls {
     pub server_name: Option<String>,
 }
 
-/// Checks one declared source for shape, at startup, where somebody is
-/// watching: a URL that is not a URL is a configuration mistake, and a
-/// deployment should hear about it before it starts serving decisions from a
-/// server it never reached.
-pub fn check_source(input: &MirrorSource) -> Result<()> {
-    let url = input.url.trim().to_owned();
+/// Checks a configured server for shape, at startup, where somebody is watching: what a decision
+/// log or event store destination names (WP-6.5 retires them). A URL that is not a URL is a
+/// configuration mistake, and half a client identity is no client identity.
+pub fn check_server(url: &str, tls: &MirrorTls) -> Result<()> {
+    let url = url.trim();
     if url.is_empty() {
-        bail!("a sync source needs a server URL");
+        bail!("a server needs its URL");
     }
     let Some((scheme, rest)) = url.split_once("://") else {
-        bail!("the sync source `{url}` is not a URL: write https://host[:port]");
+        bail!("the server `{url}` is not a URL: write https://host[:port]");
     };
     if !matches!(scheme, "http" | "https" | "grpc" | "grpcs") {
-        bail!(
-            "the sync source `{url}` names the scheme `{scheme}`: use http, https, grpc or grpcs"
-        );
+        bail!("the server `{url}` names the scheme `{scheme}`: use http, https, grpc or grpcs");
     }
     if rest.is_empty() {
-        bail!("the sync source `{url}` names no host");
+        bail!("the server `{url}` names no host");
     }
-    // Half a client identity is no client identity: a certificate with no key
-    // cannot be presented, and a key with no certificate has nothing to prove.
-    match (&input.tls.cert, &input.tls.key) {
-        (Some(_), None) => bail!("the sync source `{url}` names a certificate but no key"),
-        (None, Some(_)) => bail!("the sync source `{url}` names a key but no certificate"),
+    match (&tls.cert, &tls.key) {
+        (Some(_), None) => bail!("the server `{url}` names a certificate but no key"),
+        (None, Some(_)) => bail!("the server `{url}` names a key but no certificate"),
         _ => {}
     }
 
@@ -339,16 +313,6 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-
-    fn declared(url: &str) -> MirrorSource {
-        MirrorSource {
-            url: url.to_owned(),
-            tls: MirrorTls::default(),
-            zones: Vec::new(),
-            ledgers: Vec::new(),
-            required: true,
-        }
-    }
 
     /// WP-7.2d: the scalars travel as settings, the aliases as a structure, each checked.
     #[test]
@@ -426,37 +390,15 @@ mod tests {
         );
     }
 
+    /// WP-7.7: the retired server list is refused by name; the local task is narrowed by
+    /// patterns, and both lists stay closed.
     #[test]
-    fn a_well_shaped_source_passes() {
-        for url in [
-            "https://control.acme.com",
-            "http://127.0.0.1:6443",
-            "grpcs://control.internal:6443",
-        ] {
-            check_source(&declared(url)).expect(url);
-        }
-    }
-
-    #[test]
-    fn half_a_client_identity_is_refused() {
-        let mut half = declared("https://control.acme.com");
-        half.tls.cert = Some("tls/client.pem".to_owned());
-        let error = check_source(&half).expect_err("a certificate needs its key");
-        assert!(error.to_string().contains("no key"), "{error}");
-
-        let mut other = declared("https://control.acme.com");
-        other.tls.key = Some("tls/client.key".to_owned());
-        let error = check_source(&other).expect_err("a key needs its certificate");
-        assert!(error.to_string().contains("no certificate"), "{error}");
-    }
-
-    #[test]
-    fn the_file_shape_carries_the_trust_material_and_the_scalars_stay_settings() {
+    fn the_server_list_is_retired_and_the_local_task_is_narrowed() {
         let section: MirrorsSection = serde_norway::from_str(
-            "enabled: \"true\"\ninterval: \"15s\"\nservers:\n  - url: \"grpcs://control:6443\"\n    tls:\n      ca_file: tls/ca.pem\n      cert: tls/client.pem\n      key: tls/client.key\n    zones: [\"acme\"]\n",
+            "enabled: \"true\"\ninterval: \"15s\"\nservers:\n  - url: \"grpcs://control:6443\"\n    tls:\n      ca_file: tls/ca.pem\n",
         )
-        .expect("the section parses");
-
+        .expect("the section parses, so the refusal can say why");
+        assert!(section.names_servers());
         assert_eq!(
             section.settings(),
             vec![
@@ -464,24 +406,65 @@ mod tests {
                 (SETTING_MIRRORS_INTERVAL.to_owned(), "15s".to_owned()),
             ]
         );
-        let sources = section.sources();
-        assert_eq!(sources.len(), 1);
-        assert_eq!(sources[0].url, "grpcs://control:6443");
-        assert_eq!(sources[0].zones, vec!["acme".to_owned()]);
-        assert_eq!(sources[0].tls.ca_file.as_deref(), Some("tls/ca.pem"));
-        check_source(&sources[0]).expect("a fully-dressed source is well shaped");
+        assert!(
+            SERVERS_RETIRED.contains("members join") && SERVERS_RETIRED.contains("mirrors.local")
+        );
+
+        let section: MirrorsSection = serde_norway::from_str(
+            "local:\n  zones: [\"acme\"]\n  ledgers: [\"main\", \"gov.*\"]\n",
+        )
+        .expect("the section parses");
+        assert!(!section.names_servers());
+        assert_eq!(
+            section.local(),
+            Some(MirrorLocal {
+                zones: vec!["acme".to_owned()],
+                ledgers: vec!["main".to_owned(), "gov.*".to_owned()],
+            })
+        );
+        assert_eq!(
+            serde_norway::from_str::<MirrorsSection>("enabled: \"true\"\n")
+                .expect("parses")
+                .local(),
+            None
+        );
+        assert!(
+            serde_norway::from_str::<MirrorsSection>("local:\n  url: x\n").is_err(),
+            "the local narrowing is closed"
+        );
     }
 
     #[test]
-    fn a_server_is_named_exactly_and_a_bad_one_is_refused_at_startup() {
+    fn a_configured_server_is_checked_for_shape() {
+        for url in [
+            "https://control.acme.com",
+            "http://127.0.0.1:6443",
+            "grpcs://control.internal:6443",
+        ] {
+            check_server(url, &MirrorTls::default()).expect(url);
+        }
         for (url, expected) in [
-            ("", "needs a server URL"),
+            ("", "needs its URL"),
             ("control.acme.com", "is not a URL"),
             ("ftp://control.acme.com", "names the scheme"),
             ("https://", "names no host"),
         ] {
-            let error = check_source(&declared(url)).expect_err(url).to_string();
+            let error = check_server(url, &MirrorTls::default())
+                .expect_err(url)
+                .to_string();
             assert!(error.contains(expected), "for `{url}`: {error}");
         }
+        let half = MirrorTls {
+            cert: Some("tls/client.pem".to_owned()),
+            ..MirrorTls::default()
+        };
+        let error = check_server("https://control.acme.com", &half).expect_err("no key");
+        assert!(error.to_string().contains("no key"), "{error}");
+        let other = MirrorTls {
+            key: Some("tls/client.key".to_owned()),
+            ..MirrorTls::default()
+        };
+        let error = check_server("https://control.acme.com", &other).expect_err("no certificate");
+        assert!(error.to_string().contains("no certificate"), "{error}");
     }
 }

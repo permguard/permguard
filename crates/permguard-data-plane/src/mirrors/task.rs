@@ -51,8 +51,7 @@ pub async fn list(session: &Shared, task: &MirrorTask) -> Result<ListLedgersAnsw
 /// statements verified under (WP-7.2b).
 pub const RING_BINDING: &str = "RING-BINDING.cose";
 
-/// Pulls one ledger over its task session (WP-7.2b), the same pull a URL mirror runs bound to
-/// the membership: the ring never goes back nor forks at one epoch, checked before anything is
+/// Pulls one ledger over its task session (WP-7.2b), the shared pull bound to the membership: the ring never goes back nor forks at one epoch, checked before anything is
 /// fetched; the statement verifies under the pinned `control.attest` keys only, names the task's
 /// coordinator as its authority and the pin's epoch and key-set digest. The switch, the binding
 /// with it, is the caller's, through the mirror's journal (WP-7.2c).
@@ -81,7 +80,7 @@ pub fn verified_pull(
     Ok(verified)
 }
 
-/// The reads of one ledger over a task session, for the pull a URL mirror runs.
+/// The reads of one ledger over a task session, for the shared pull.
 pub struct TaskRemote {
     session: Shared,
     runtime: tokio::runtime::Handle,
@@ -850,7 +849,6 @@ mod tests {
         let root = scratch("round-journal");
         let reported: Reported = Default::default();
         let context = std::sync::Arc::new(super::super::round::Context {
-            sources: Vec::new(),
             tasks: Some(std::sync::Arc::new(OneTask {
                 ring: ring.clone(),
                 answer: std::sync::Arc::clone(&answer),

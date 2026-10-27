@@ -50,9 +50,10 @@ dataPlane:
     interval: "15s"
     timeout: "1m"
     parallelism: "4"
-    servers:
-      # The control plane started with permguard-control-plane's config.local-experimental.yml.
-      - url: "http://127.0.0.1:6443"
+    # The `policy.mirror` tasks of this Host's memberships: enroll it with its Control Plane's
+    # Host (`permguard host members invite` there, `permguard host members join` here) and every
+    # task is followed. No URL, TLS root or key here: the membership binds them (WP-7.7). Narrow
+    # them with `tasks: [{ membership: <id>, task: <id>, zones: [...], ledgers: [...] }]`.
 
   decisions:
     cache:
@@ -72,9 +73,6 @@ dataPlane:
       batch: { bytes: "256k", interval: "1s" }
       mode: "required"           # every answered decision has a durable record; one that cannot be is refused
       sample: { permits: "1.0" }
-      commitment:
-        key_ref: decision-commitment
-        key_version: "v1"
       include:
         subject_properties: []
         resource_properties: []
@@ -128,6 +126,8 @@ operations:
     retain: 1d
   secrets:
     provider: directory
+    # The root the per-zone keys derive from: decision input tags and pseudonyms (WP-3.3).
+    coordinator_root_ref: zone-root
   audit:
     sink: file
     retention: 7d

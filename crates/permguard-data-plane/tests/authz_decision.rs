@@ -105,6 +105,12 @@ use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND};
 use permguard_objects::semver::Constraint;
 
+/// The authority every mirror of these tests lives under (WP-7.2a): a mirror in a configured URL's
+/// shape is never served since WP-7.7.
+const MIRROR_AUTHORITY: &str = "11111111111111111111111111111111";
+/// The task the mirrors of these tests were listed by: the local task.
+const MIRROR_TASK: &str = "00000000-0000-0000-0000-000000000000/local";
+
 /// One policy, as an author wrote it and the store keeps it.
 struct Policy {
     id: &'static str,
@@ -238,7 +244,10 @@ fn provision(
     manifest: &Manifest,
     contents: &[(&str, Vec<&Policy>, Option<&str>)],
 ) -> Mirror {
-    let path = root.join(uuid_of(zone)).join(uuid_of(ledger));
+    let path = root
+        .join(MIRROR_AUTHORITY)
+        .join(uuid_of(zone))
+        .join(uuid_of(ledger));
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);
 
@@ -327,8 +336,8 @@ fn provision(
     .expect("the checkpoint is written");
 
     let identity = Identity {
-        task: None,
-        authority: None,
+        task: Some(MIRROR_TASK.to_owned()),
+        authority: Some(MIRROR_AUTHORITY.to_owned()),
         zone_id: uuid_of(zone),
         zone_name: zone.to_owned(),
         ledger_id: uuid_of(ledger),
@@ -1309,13 +1318,16 @@ async fn a_ledger_this_plane_does_not_mirror_is_not_found() {
 #[tokio::test]
 async fn a_ledger_with_no_history_is_unavailable_not_a_deny() {
     let root = scratch("empty").join("mirrors");
-    let path = root.join(uuid_of("acme")).join(uuid_of("main-ledger"));
+    let path = root
+        .join(MIRROR_AUTHORITY)
+        .join(uuid_of("acme"))
+        .join(uuid_of("main-ledger"));
     std::fs::create_dir_all(&path).expect("the directory exists");
     permguard_data_plane::authz::store::record(
         &path,
         &Identity {
-            task: None,
-            authority: None,
+            task: Some(MIRROR_TASK.to_owned()),
+            authority: Some(MIRROR_AUTHORITY.to_owned()),
             zone_id: uuid_of("acme"),
             zone_name: "acme".to_owned(),
             ledger_id: uuid_of("main-ledger"),
@@ -2657,8 +2669,8 @@ mod adversarial_ids {
         permguard_data_plane::authz::store::record(
             &mirror.path,
             &Identity {
-                task: None,
-                authority: None,
+                task: Some(MIRROR_TASK.to_owned()),
+                authority: Some(MIRROR_AUTHORITY.to_owned()),
                 zone_id: uuid_of("acme"),
                 zone_name: ZONE.to_owned(),
                 ledger_id: uuid_of("main"),
@@ -4266,7 +4278,7 @@ async fn one_pipeline_authorizes_then_answers_each_question_by_its_own_interface
     assert_eq!(refused.class(), permguard_core::ErrorClass::Unavailable);
 }
 
-/// WP-7.2a: a ledger two mirrors answer to — a configured URL's and a coordinator's — is refused
+/// WP-7.2a: a ledger two mirrors answer to — two coordinators' — is refused
 /// `unavailable`, naming the contest, never answered from whichever directory lists first and
 /// never mistaken for one this plane does not mirror.
 #[tokio::test]
@@ -4297,9 +4309,13 @@ async fn a_ledger_two_mirrors_answer_to_is_refused_as_contested() {
         .await
         .expect("one mirror answers");
 
-    let authority = "11111111111111111111111111111111";
+    // The same ledger under a second authority: two mirrors answer to one name.
+    let authority = "22222222222222222222222222222222";
     copy(
-        &root.join(uuid_of("acme")).join(uuid_of("main-ledger")),
+        &root
+            .join(MIRROR_AUTHORITY)
+            .join(uuid_of("acme"))
+            .join(uuid_of("main-ledger")),
         &root
             .join(authority)
             .join(uuid_of("acme"))

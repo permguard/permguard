@@ -93,16 +93,13 @@ dataPlane:
       # Fixed replicas: autoscaling a group that keeps evidence waits for the drain controller and
       # the recovery Job (TD-2).
   # A replicated mirror needs policies to mirror, or it is three pods answering `deny` to
-  # everything. The URL alone means every zone and every ledger that control plane lists.
+  # everything. Each replica follows the `policy.mirror` tasks of its membership, enrolled with the
+  # control plane's Host (WP-7.7): every zone and ledger the task's signed selector covers.
   extraConfig:
     dataPlane:
       mirrors:
         enabled: "true"
         interval: "30s"
-        # `servers` is deliberately absent: the chart fills in this release's own control plane,
-        # whose Service is named after the release — an address a values file cannot know. Set it
-        # here to follow something else, or to reach it over `https` with an authority to check,
-        # which is what a deployment that does not trust its own network should do.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

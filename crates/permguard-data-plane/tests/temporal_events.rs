@@ -58,6 +58,12 @@ use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND};
 use permguard_objects::semver::Constraint;
 
+/// The authority every mirror of these tests lives under (WP-7.2a): a mirror in a configured URL's
+/// shape is never served since WP-7.7.
+const MIRROR_AUTHORITY: &str = "11111111111111111111111111111111";
+/// The task the mirrors of these tests were listed by: the local task.
+const MIRROR_TASK: &str = "00000000-0000-0000-0000-000000000000/local";
+
 const POLICY: &str = include_str!("fixtures/read-login-not-logout.dw");
 const ACTION_SCHEMA: &str = include_str!("fixtures/read-login-not-logout.cedarschema");
 const EVENT_SCHEMA: &str = include_str!("fixtures/pinned.dwschema");
@@ -217,7 +223,7 @@ fn provision_with(
     (policy_id, policy): (&str, &str),
     artifacts: &[(&str, &str)],
 ) -> Mirror {
-    let path = root.join(ZONE_ID).join(LEDGER_ID);
+    let path = root.join(MIRROR_AUTHORITY).join(ZONE_ID).join(LEDGER_ID);
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);
 
@@ -309,8 +315,8 @@ fn provision_with(
     .expect("the checkpoint is written");
 
     let identity = Identity {
-        task: None,
-        authority: None,
+        task: Some(MIRROR_TASK.to_owned()),
+        authority: Some(MIRROR_AUTHORITY.to_owned()),
         zone_id: ZONE_ID.to_owned(),
         zone_name: ZONE.to_owned(),
         ledger_id: LEDGER_ID.to_owned(),
@@ -1388,7 +1394,7 @@ mod shipped_example {
             permguard_languages::manifest_file::from_yaml(example("manifest.yml").as_bytes())
                 .expect("the example's manifest parses");
 
-        let path = root.join(ZONE_ID).join(LEDGER_ID);
+        let path = root.join(MIRROR_AUTHORITY).join(ZONE_ID).join(LEDGER_ID);
         std::fs::create_dir_all(&path).expect("the mirror directory is created");
         let store = FsStore::new(&path);
         let put_blob = |media_type: &str, data: &[u8]| {
@@ -1490,8 +1496,8 @@ mod shipped_example {
         .expect("the checkpoint is written");
 
         let identity = Identity {
-            task: None,
-            authority: None,
+            task: Some(MIRROR_TASK.to_owned()),
+            authority: Some(MIRROR_AUTHORITY.to_owned()),
             zone_id: ZONE_ID.to_owned(),
             zone_name: ZONE.to_owned(),
             ledger_id: LEDGER_ID.to_owned(),
@@ -1962,9 +1968,9 @@ async fn a_settled_answer_is_returned_after_its_profile_is_gone() {
     // The profile is taken away, not the mirror: the plane still serves this ledger — its
     // identity file is what resolves the canonical key — but nothing here can compile a profile
     // any more, so an answer that needed one could not be produced a second time.
-    // A mirror lives at `<mirrors>/<zone>/<ledger>`, and its identity file beside its policy
-    // state. Everything but that file goes.
-    for zone in std::fs::read_dir(&plane.mirrors).expect("the mirrors root reads") {
+    // A mirror lives at `<mirrors>/<authority>/<zone>/<ledger>`, and its identity file beside its
+    // policy state. Everything but that file goes.
+    for zone in std::fs::read_dir(plane.mirrors.join(MIRROR_AUTHORITY)).expect("the root reads") {
         for ledger in std::fs::read_dir(zone.expect("a zone").path()).expect("the zone reads") {
             for held in std::fs::read_dir(ledger.expect("a ledger").path()).expect("it reads") {
                 let held = held.expect("an entry").path();
@@ -2603,10 +2609,14 @@ mod adversarial_ids {
         // The names a caller addresses the ledger by are the spies; the ids storage is keyed by
         // stay the plane's own.
         permguard_data_plane::authz::store::record(
-            &plane.mirrors.join(ZONE_ID).join(LEDGER_ID),
+            &plane
+                .mirrors
+                .join(MIRROR_AUTHORITY)
+                .join(ZONE_ID)
+                .join(LEDGER_ID),
             &Identity {
-                task: None,
-                authority: None,
+                task: Some(MIRROR_TASK.to_owned()),
+                authority: Some(MIRROR_AUTHORITY.to_owned()),
                 zone_id: ZONE_ID.to_owned(),
                 zone_name: ZONE_SPY.to_owned(),
                 ledger_id: LEDGER_ID.to_owned(),
@@ -4821,13 +4831,24 @@ mod tenant_isolation {
     #[tokio::test]
     async fn a_login_in_one_ledger_permits_nothing_in_another() {
         let plane = plane("tenant-isolation");
-        let other = plane.mirrors.join(ZONE_ID).join(OTHER_LEDGER_ID);
-        copy(&plane.mirrors.join(ZONE_ID).join(LEDGER_ID), &other);
+        let other = plane
+            .mirrors
+            .join(MIRROR_AUTHORITY)
+            .join(ZONE_ID)
+            .join(OTHER_LEDGER_ID);
+        copy(
+            &plane
+                .mirrors
+                .join(MIRROR_AUTHORITY)
+                .join(ZONE_ID)
+                .join(LEDGER_ID),
+            &other,
+        );
         permguard_data_plane::authz::store::record(
             &other,
             &Identity {
-                task: None,
-                authority: None,
+                task: Some(MIRROR_TASK.to_owned()),
+                authority: Some(MIRROR_AUTHORITY.to_owned()),
                 zone_id: ZONE_ID.to_owned(),
                 zone_name: ZONE.to_owned(),
                 ledger_id: OTHER_LEDGER_ID.to_owned(),

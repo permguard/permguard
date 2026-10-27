@@ -36,11 +36,8 @@ dataPlane:
   public:
     http: { addr: 0.0.0.0:7443 }
     grpc: { addr: 0.0.0.0:7443 }
-  # The baseline has no membership: its Data Plane follows its own Control Plane by URL, under the
-  # certificate the lab's authority issued it, which the catalog step grants `catalog.read`.
+  # The baseline has no membership: its Data Plane follows its own Control Plane in-process, every
+  # zone and ledger it holds, verified under this Host's own `control.attest` ring (WP-7.7).
   mirrors:
     enabled: "true"
     interval: 5s
-    servers:
-      - url: https://all-in-one:6443
-        tls: { ca_file: /lab/pki/ca.crt, cert: /lab/pki/all-in-one.crt, key: /lab/pki/all-in-one.key }

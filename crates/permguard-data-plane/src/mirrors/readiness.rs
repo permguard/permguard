@@ -4,16 +4,17 @@
 //! What the mirrors say about this plane's readiness (P2, F-13).
 //!
 //! A Data Plane whose required ledgers are not mirrored and verified is in Load and decides
-//! nothing. The ledgers a source requires are known only once it answers — a source follows zone
-//! and ledger *patterns* — so the rule is by source (session interpretation, status.md): a
-//! required source is satisfied when a round from it succeeded in this process, or when the volume
-//! already holds at least one mirror matching its patterns whose last verified synchronization is
-//! younger than `mirrors.expire_after`, and none matching it older. Otherwise the plane waits,
-//! stalled since the first round that found it so, and the Host lists it in `load` with the reason.
+//! nothing. The ledgers a coordinator's tasks cover are known only once it answers, so the rule is
+//! by coordinator (session interpretation, status.md): a coordinator one of whose `policy.mirror`
+//! tasks is required — the local task of a process hosting both Planes always is (WP-7.7) — is
+//! satisfied when a round from it succeeded in this process, or when the volume already holds at
+//! least one mirror under its authority whose last verified synchronization is younger than
+//! `mirrors.expire_after`, and none under it older. Otherwise the plane waits, stalled since the
+//! first round that found it so, and the Host lists it in `load` with the reason.
 //!
-//! A source that is satisfied once and then lost — the coordinator down, the checkpoints ageing
-//! past the bound — is reported as degraded on a plane that already serves: the phases do not go
-//! back, and the decision path refuses an expired mirror on its own.
+//! A coordinator that is satisfied once and then lost — down, its checkpoints ageing past the
+//! bound — is reported as degraded on a plane that already serves: the phases do not go back, and
+//! the decision path refuses an expired mirror on its own.
 
 use std::path::Path;
 use std::time::{Duration, SystemTime};
@@ -21,41 +22,18 @@ use std::time::{Duration, SystemTime};
 use permguard_core::PlaneHealth;
 
 use super::round::Outcome;
-use super::source::Source;
 use crate::authz::store;
 
-/// The requirement a source is reported under: one per server, by its URL.
-pub fn requirement(source: &Source) -> String {
-    format!("mirrors:{}", source.url())
-}
-
-/// Reports every source from `outcome` and what `root` holds: a required one as satisfied or
+/// Reports every coordinator from `outcome` and what `root` holds: a required one as satisfied or
 /// awaited; an optional one never awaited, but named as degraded once the plane serves without it.
 pub fn report(
     health: &PlaneHealth,
-    sources: &[Source],
     root: &Path,
     expire_after: Option<Duration>,
     outcome: &Outcome,
     now: SystemTime,
 ) {
     let held = store::mirrors(root);
-    for source in sources {
-        let requirement = requirement(source);
-        match satisfied(
-            source.url(),
-            |identity| source.follows(identity),
-            expire_after,
-            outcome,
-            &held,
-        ) {
-            Ok(()) => health.satisfy(&requirement),
-            Err(reason) if source.required() || health.phase().accepts_work() => {
-                health.wait(&requirement, reason, now);
-            }
-            Err(_) => {}
-        }
-    }
     // The coordinators of this Host's `policy.mirror` tasks (WP-7.2a): required when one of
     // their signed tasks is, their mirrors the ones under their authority.
     for (key, required) in &outcome.coordinators {
@@ -77,7 +55,8 @@ pub fn report(
     }
 }
 
-/// Whether `source` is satisfied, or why not, in the terms an operator would fix it in.
+/// Whether the coordinator `key` is satisfied, or why not, in the terms an operator would fix it
+/// in.
 fn satisfied(
     key: &str,
     follows: impl Fn(&store::Identity) -> bool,
@@ -96,16 +75,16 @@ fn satisfied(
         .filter(|mirror| follows(&mirror.identity))
         .collect();
     let round = match this_round {
-        Some(reported) if !reported.answered => "the server did not answer".to_owned(),
+        Some(reported) if !reported.answered => "the coordinator did not answer".to_owned(),
         Some(reported) => format!(
             "{} of its ledgers failed to mirror this round",
             reported.failed
         ),
-        None => "no round has asked the server yet".to_owned(),
+        None => "no round has asked the coordinator yet".to_owned(),
     };
     if matching.is_empty() {
         return Err(format!(
-            "{round}, and the volume holds no mirror matching its patterns"
+            "{round}, and the volume holds no mirror under its authority"
         ));
     }
     let mut fresh = 0;
@@ -138,8 +117,14 @@ mod tests {
 
     use super::*;
     use permguard_core::lifecycle::{Kind, Phase};
-    use permguard_core::mirrors::MirrorSource;
     use permguard_core::{Health, PlaneHealth};
+
+    const CP: &str = "11111111111111111111111111111111";
+    const OTHER: &str = "22222222222222222222222222222222";
+
+    fn key(authority: &str) -> String {
+        format!("host:{authority}")
+    }
 
     fn scratch(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -150,20 +135,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("the scratch directory is created");
         dir
-    }
-
-    fn source(url: &str, required: bool) -> Source {
-        Source::compile(
-            &MirrorSource {
-                url: url.to_owned(),
-                tls: permguard_core::mirrors::MirrorTls::default(),
-                zones: vec!["acme".to_owned()],
-                ledgers: Vec::new(),
-                required,
-            },
-            Path::new("/var/lib/permguard"),
-        )
-        .expect("compiles")
     }
 
     fn plane_in_load() -> (Health, PlaneHealth) {
@@ -177,43 +148,44 @@ mod tests {
         (health.clone(), PlaneHealth::new(health, "data"))
     }
 
-    fn unreachable(url: &str) -> Outcome {
+    /// A round in which each `(authority, required, answered)` coordinator answered or not.
+    fn round(coordinators: &[(&str, bool, bool)]) -> Outcome {
         Outcome {
-            unreachable: 1,
-            sources: vec![super::super::round::SourceOutcome {
-                url: url.to_owned(),
-                answered: false,
-                failed: 0,
-            }],
+            unreachable: coordinators.iter().filter(|(_, _, up)| !up).count(),
+            sources: coordinators
+                .iter()
+                .map(
+                    |(authority, _, answered)| super::super::round::SourceOutcome {
+                        url: key(authority),
+                        answered: *answered,
+                        failed: 0,
+                    },
+                )
+                .collect(),
+            coordinators: coordinators
+                .iter()
+                .map(|(authority, required, _)| (key(authority), *required))
+                .collect(),
             ..Outcome::default()
         }
     }
 
-    fn succeeded(url: &str) -> Outcome {
-        Outcome {
-            synchronized: 1,
-            sources: vec![super::super::round::SourceOutcome {
-                url: url.to_owned(),
-                answered: true,
-                failed: 0,
-            }],
-            ..Outcome::default()
-        }
-    }
-
-    fn mirror(root: &Path, zone: &str, ledger: &str, synced: Option<SystemTime>) {
-        let path = root.join(format!("{zone}-id")).join(format!("{ledger}-id"));
+    fn mirror(root: &Path, authority: &str, zone: &str, synced: Option<SystemTime>) {
+        let path = root
+            .join(authority)
+            .join(format!("{zone}-id"))
+            .join("main-id");
         std::fs::create_dir_all(&path).expect("the mirror directory is created");
         store::record(
             &path,
             &store::Identity {
-                task: None,
-                authority: None,
+                task: Some("00000000-0000-0000-0000-000000000000/local".to_owned()),
+                authority: Some(authority.to_owned()),
                 zone_id: format!("{zone}-id"),
                 zone_name: zone.to_owned(),
-                ledger_id: format!("{ledger}-id"),
-                ledger_name: ledger.to_owned(),
-                server: "http://cp".to_owned(),
+                ledger_id: "main-id".to_owned(),
+                ledger_name: "main".to_owned(),
+                server: key(authority),
             },
         )
         .expect("the identity is written");
@@ -234,10 +206,9 @@ mod tests {
         let now = SystemTime::now();
         report(
             &plane,
-            &[source("http://cp", true)],
             &root,
             Some(Duration::from_secs(600)),
-            &unreachable("http://cp"),
+            &round(&[(CP, true, false)]),
             now,
         );
         health.lifecycle().settle("data");
@@ -246,7 +217,9 @@ mod tests {
         assert_eq!(data.stalled_since, Some(now));
         assert_eq!(
             data.reason.as_deref(),
-            Some("the server did not answer, and the volume holds no mirror matching its patterns")
+            Some(
+                "the coordinator did not answer, and the volume holds no mirror under its authority"
+            )
         );
         assert!(!health.is_ready(), "a required plane in load is not ready");
         assert!(
@@ -258,14 +231,13 @@ mod tests {
     #[test]
     fn f13_the_coordinator_down_with_a_fresh_checkpoint_is_ready() {
         let root = scratch("down-fresh");
-        mirror(&root, "acme", "main", Some(SystemTime::now()));
+        mirror(&root, CP, "acme", Some(SystemTime::now()));
         let (health, plane) = plane_in_load();
         report(
             &plane,
-            &[source("http://cp", true)],
             &root,
             Some(Duration::from_secs(600)),
-            &unreachable("http://cp"),
+            &round(&[(CP, true, false)]),
             SystemTime::now(),
         );
         health.lifecycle().settle("data");
@@ -278,18 +250,17 @@ mod tests {
         let root = scratch("down-stale");
         mirror(
             &root,
+            CP,
             "acme",
-            "main",
             Some(SystemTime::now() - Duration::from_secs(3600)),
         );
         let (health, plane) = plane_in_load();
-        let sources = [source("http://cp", true)];
+        let down = round(&[(CP, true, false)]);
         report(
             &plane,
-            &sources,
             &root,
             Some(Duration::from_secs(600)),
-            &unreachable("http://cp"),
+            &down,
             SystemTime::now(),
         );
         health.lifecycle().settle("data");
@@ -304,71 +275,40 @@ mod tests {
         );
 
         // Without a bound the same checkpoint counts, however old.
-        report(
-            &plane,
-            &sources,
-            &root,
-            None,
-            &unreachable("http://cp"),
-            SystemTime::now(),
-        );
+        report(&plane, &root, None, &down, SystemTime::now());
         assert_eq!(health.lifecycle().phase("data"), Some(Phase::Ready));
 
         // A mirror this plane never verified is not a checkpoint.
         let root = scratch("down-unverified");
-        mirror(&root, "acme", "main", None);
+        mirror(&root, CP, "acme", None);
         let (health, plane) = plane_in_load();
-        report(
-            &plane,
-            &sources,
-            &root,
-            None,
-            &unreachable("http://cp"),
-            SystemTime::now(),
-        );
+        report(&plane, &root, None, &down, SystemTime::now());
         health.lifecycle().settle("data");
         assert_eq!(health.lifecycle().phase("data"), Some(Phase::Load));
     }
 
     #[test]
-    fn a_successful_round_satisfies_and_an_optional_source_never_gates() {
+    fn a_successful_round_satisfies_and_an_optional_coordinator_never_gates() {
         let root = scratch("round");
         let (health, plane) = plane_in_load();
-        let sources = [source("http://cp", true), source("http://other", false)];
         report(
             &plane,
-            &sources,
             &root,
             Some(Duration::from_secs(600)),
-            &Outcome {
-                sources: vec![
-                    super::super::round::SourceOutcome {
-                        url: "http://cp".to_owned(),
-                        answered: true,
-                        failed: 0,
-                    },
-                    super::super::round::SourceOutcome {
-                        url: "http://other".to_owned(),
-                        answered: false,
-                        failed: 0,
-                    },
-                ],
-                ..Outcome::default()
-            },
+            &round(&[(CP, true, true), (OTHER, false, false)]),
             SystemTime::now(),
         );
         health.lifecycle().settle("data");
         assert_eq!(health.lifecycle().phase("data"), Some(Phase::Ready));
         assert!(health.lifecycle().awaiting("data").is_empty());
 
-        // A later round that loses the server degrades a serving plane; it does not go back.
+        // A later round that loses both degrades a serving plane; it does not go back.
         health.set_ready(true);
         report(
             &plane,
-            &sources,
             &root,
             Some(Duration::from_secs(600)),
-            &unreachable("http://cp"),
+            &round(&[(CP, true, false), (OTHER, false, false)]),
             SystemTime::now(),
         );
         let data = health.lifecycle().component("data").expect("listed");
@@ -379,41 +319,43 @@ mod tests {
             .iter()
             .map(|degraded| degraded.capability.as_str())
             .collect();
-        assert_eq!(named, vec!["mirrors:http://cp", "mirrors:http://other"]);
+        assert_eq!(
+            named,
+            vec![
+                format!("mirrors:{}", key(CP)),
+                format!("mirrors:{}", key(OTHER))
+            ]
+        );
         assert!(health.is_ready());
+        // The degradation clears with the next good round.
+        report(
+            &plane,
+            &root,
+            Some(Duration::from_secs(600)),
+            &round(&[(CP, true, true), (OTHER, false, true)]),
+            SystemTime::now(),
+        );
         assert!(
-            report_succeeds_again(&health, &plane, &sources, &root),
-            "the degradation clears with the next good round"
+            health
+                .lifecycle()
+                .component("data")
+                .is_some_and(|data| data.degraded.is_empty())
         );
     }
 
     #[test]
-    fn an_optional_source_is_never_awaited_and_is_named_degraded_once_the_plane_serves() {
+    fn an_optional_coordinator_is_never_awaited_and_is_named_degraded_once_the_plane_serves() {
         let root = scratch("optional");
         let (health, plane) = plane_in_load();
-        let sources = [source("http://other", false)];
-        report(
-            &plane,
-            &sources,
-            &root,
-            None,
-            &unreachable("http://other"),
-            SystemTime::now(),
-        );
+        let down = round(&[(OTHER, false, false)]);
+        report(&plane, &root, None, &down, SystemTime::now());
         assert!(
             health.lifecycle().awaiting("data").is_empty(),
             "never awaited in load"
         );
         health.lifecycle().settle("data");
         health.set_ready(true);
-        report(
-            &plane,
-            &sources,
-            &root,
-            None,
-            &unreachable("http://other"),
-            SystemTime::now(),
-        );
+        report(&plane, &root, None, &down, SystemTime::now());
         let data = health.lifecycle().component("data").expect("listed");
         assert_eq!(data.state.as_str(), "serving");
         assert_eq!(
@@ -424,10 +366,9 @@ mod tests {
         assert!(health.is_ready());
         report(
             &plane,
-            &sources,
             &root,
             None,
-            &succeeded("http://other"),
+            &round(&[(OTHER, false, true)]),
             SystemTime::now(),
         );
         assert!(
@@ -440,103 +381,19 @@ mod tests {
         );
     }
 
-    fn report_succeeds_again(
-        health: &Health,
-        plane: &PlaneHealth,
-        sources: &[Source],
-        root: &Path,
-    ) -> bool {
-        let mut both = succeeded("http://cp");
-        both.sources.extend(succeeded("http://other").sources);
-        report(
-            plane,
-            sources,
-            root,
-            Some(Duration::from_secs(600)),
-            &both,
-            SystemTime::now(),
-        );
-        health
-            .lifecycle()
-            .component("data")
-            .is_some_and(|data| data.degraded.is_empty())
-    }
-
-    /// WP-7.2a: a coordinator whose task is required keeps the plane in load until a round from it
-    /// succeeds or the volume holds a fresh mirror under its authority; one with optional tasks
-    /// only is never awaited.
+    /// WP-7.2a: a fresh mirror under the coordinator's authority satisfies it while it is down;
+    /// one under another authority does not.
     #[test]
-    fn a_required_task_waits_for_its_coordinator_and_an_optional_one_does_not() {
-        let authority = "11111111111111111111111111111111";
-        let key = format!("host:{authority}");
-        let down = |required: bool| Outcome {
-            unreachable: 1,
-            sources: vec![super::super::round::SourceOutcome {
-                url: key.clone(),
-                answered: false,
-                failed: 0,
-            }],
-            coordinators: vec![(key.clone(), required)],
-            ..Outcome::default()
-        };
-
-        let root = scratch("task-required");
-        let (health, plane) = plane_in_load();
-        report(&plane, &[], &root, None, &down(true), SystemTime::now());
-        health.lifecycle().settle("data");
-        let data = health.lifecycle().component("data").expect("listed");
-        assert_eq!(
-            data.state.as_str(),
-            "load",
-            "a required coordinator is awaited"
-        );
-
-        let root = scratch("task-optional");
-        let (health, plane) = plane_in_load();
-        report(&plane, &[], &root, None, &down(false), SystemTime::now());
-        health.lifecycle().settle("data");
-        assert_ne!(
-            health
-                .lifecycle()
-                .component("data")
-                .expect("listed")
-                .state
-                .as_str(),
-            "load",
-            "an optional coordinator is never awaited"
-        );
-
-        // A fresh mirror under its authority satisfies it while it is down; one under another
-        // authority does not.
+    fn only_a_mirror_under_its_own_authority_satisfies_a_coordinator() {
         let root = scratch("task-fresh");
-        for (owner, zone) in [
-            (authority, "acme"),
-            ("22222222222222222222222222222222", "other"),
-        ] {
-            let path = root.join(owner).join(format!("{zone}-id")).join("main-id");
-            std::fs::create_dir_all(&path).expect("the mirror directory is created");
-            store::record(
-                &path,
-                &store::Identity {
-                    task: None,
-                    authority: Some(owner.to_owned()),
-                    zone_id: format!("{zone}-id"),
-                    zone_name: zone.to_owned(),
-                    ledger_id: "main-id".to_owned(),
-                    ledger_name: "main".to_owned(),
-                    server: format!("host:{owner}"),
-                },
-            )
-            .expect("the identity is written");
-            store::touch_synced(&path);
-        }
+        mirror(&root, CP, "acme", Some(SystemTime::now()));
+        mirror(&root, OTHER, "other", Some(SystemTime::now()));
         let (health, plane) = plane_in_load();
         report(
             &plane,
-            &[],
             &root,
             Some(Duration::from_secs(600)),
-            &down(true),
+            &round(&[(CP, true, false)]),
             SystemTime::now(),
         );
         health.lifecycle().settle("data");
@@ -551,34 +408,14 @@ mod tests {
             "its own fresh mirror satisfies it"
         );
 
-        // Another authority's fresh mirror alone does not.
         let elsewhere = scratch("task-elsewhere");
-        let path = elsewhere
-            .join("22222222222222222222222222222222")
-            .join("acme-id")
-            .join("main-id");
-        std::fs::create_dir_all(&path).expect("the mirror directory is created");
-        store::record(
-            &path,
-            &store::Identity {
-                task: None,
-                authority: Some("22222222222222222222222222222222".to_owned()),
-                zone_id: "acme-id".to_owned(),
-                zone_name: "acme".to_owned(),
-                ledger_id: "main-id".to_owned(),
-                ledger_name: "main".to_owned(),
-                server: "host:22222222222222222222222222222222".to_owned(),
-            },
-        )
-        .expect("the identity is written");
-        store::touch_synced(&path);
+        mirror(&elsewhere, OTHER, "acme", Some(SystemTime::now()));
         let (health, plane) = plane_in_load();
         report(
             &plane,
-            &[],
             &elsewhere,
             Some(Duration::from_secs(600)),
-            &down(true),
+            &round(&[(CP, true, false)]),
             SystemTime::now(),
         );
         health.lifecycle().settle("data");

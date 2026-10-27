@@ -2309,6 +2309,17 @@ impl HostApi {
             {
                 continue;
             }
+            // The nil id is the local task's (WP-7.7): a membership minted with it is never
+            // mirrored, so no coordinator can pass a task of its own off as this Host's.
+            if membership_id == crate::membership::local::LOCAL_MEMBERSHIP {
+                tracing::warn!(
+                    event.name = "host.membership.nil_id",
+                    component = "host",
+                    "a membership holds the nil id, which only the local task carries: its tasks \
+                     are not mirrored"
+                );
+                continue;
+            }
             let Some((manifest, ..)) = &held.manifest else {
                 continue;
             };
