@@ -40,6 +40,28 @@ fn json(output: &Output) -> serde_json::Value {
     serde_json::from_slice(&output.stdout).expect("the JSON output parses")
 }
 
+/// Runs `claim` until the volume's lock is not reported held, for at most five seconds.
+///
+/// A child process another test thread spawns holds a copy of every descriptor of this process
+/// between its fork and its exec — the volume's `LOCK` among them, close-on-exec or not — so a lock
+/// this thread has just released can read as held by another process for that instant. Waited
+/// out, and bounded: a lock really held elsewhere is still refused.
+fn waiting_out_a_spawn<T>(
+    mut claim: impl FnMut() -> Result<T, permguard_host::storage::StorageError>,
+) -> Result<T, permguard_host::storage::StorageError> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match claim() {
+            Err(permguard_host::storage::StorageError::Held(_))
+                if std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            claimed => return claimed,
+        }
+    }
+}
+
 /// A provisioned volume under a `file` custody, its rings given their first keys, and the legacy
 /// audit chain of a version-1 server where the server kept it.
 struct Volume {
@@ -145,10 +167,12 @@ impl Volume {
         use permguard_server::offline;
         let config =
             offline::config(env!("CARGO_PKG_VERSION"), Some(&self.config)).expect("the config");
-        let held = permguard_host::storage::volume::Volume::claim(
-            &self.volume,
-            permguard_core::assurance::AssuranceProfile::Development,
-        )
+        let held = waiting_out_a_spawn(|| {
+            permguard_host::storage::volume::Volume::claim(
+                &self.volume,
+                permguard_core::assurance::AssuranceProfile::Development,
+            )
+        })
         .expect("the volume");
         let custodian = offline::custodian(&config, &held).expect("the custody");
         let host_id = permguard_host::identity::host_id_of(&held)
@@ -278,7 +302,8 @@ fn a_receipt_of_another_claim_or_operation_is_refused() {
     let volume = Volume::new("bound", "");
     let plan = volume.dir.join("migrate.plan");
     json(&volume.plan(&plan));
-    permguard_host::storage::volume::set_claim(&volume.volume, 9).expect("claimed");
+    waiting_out_a_spawn(|| permguard_host::storage::volume::set_claim(&volume.volume, 9))
+        .expect("claimed");
     let refused = volume.migrate(&plan);
     assert_eq!(refused.status.code(), Some(64), "{}", stderr(&refused));
     assert!(
@@ -288,7 +313,8 @@ fn a_receipt_of_another_claim_or_operation_is_refused() {
     );
 
     // A restore proves a fence above every claim recorded, the refused run's included.
-    permguard_host::storage::volume::set_claim(&volume.volume, 10).expect("claimed");
+    waiting_out_a_spawn(|| permguard_host::storage::volume::set_claim(&volume.volume, 10))
+        .expect("claimed");
     let restore = volume.dir.join("restore.plan");
     json(&volume.run(&[
         "restore",
@@ -367,7 +393,8 @@ fn a_legacy_location_the_migration_refuses_is_refused_at_plan() {
 #[test]
 fn a_forensic_volume_is_never_migrated() {
     let volume = Volume::new("forensic", "");
-    permguard_host::storage::volume::set_claim(&volume.volume, 9).expect("claimed");
+    waiting_out_a_spawn(|| permguard_host::storage::volume::set_claim(&volume.volume, 9))
+        .expect("claimed");
     let restore = volume.dir.join("restore.plan");
     json(&volume.run(&[
         "restore",

@@ -13,7 +13,7 @@ use axum::body::Body;
 use axum::error_handling::HandleErrorLayer;
 use axum::extract::DefaultBodyLimit;
 use axum_server::Handle;
-use axum_server::accept::DefaultAcceptor;
+use axum_server::accept::{Accept, DefaultAcceptor};
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use http::StatusCode;
 use hyper_util::rt::TokioTimer;
@@ -231,7 +231,7 @@ impl<'a> Listener<'a> {
                         bound_connections(&mut server, &limits);
 
                         server
-                            .acceptor(
+                            .acceptor(NoDelay(
                                 LimitedAcceptor::new(
                                     PeerAcceptor::new(
                                         RustlsAcceptor::new(config)
@@ -240,7 +240,7 @@ impl<'a> Listener<'a> {
                                     limits.clone(),
                                 )
                                 .measured(surface, measuring.clone()),
-                            )
+                            ))
                             .handle(serving)
                             .serve(service)
                             .await
@@ -252,10 +252,10 @@ impl<'a> Listener<'a> {
                         bound_connections(&mut server, &limits);
 
                         server
-                            .acceptor(
+                            .acceptor(NoDelay(
                                 LimitedAcceptor::new(DefaultAcceptor::new(), limits.clone())
                                     .measured(surface, measuring.clone()),
-                            )
+                            ))
                             .handle(serving)
                             .serve(service)
                             .await
@@ -585,4 +585,25 @@ async fn overloaded(
     );
 
     crate::gate::unavailable(permguard_core::limits::OVERLOADED, grpc)
+}
+
+/// Sets `TCP_NODELAY` on every accepted connection, then accepts it as `A` does: an HTTP/2 answer
+/// is several frames (headers, data, trailers), and Nagle's algorithm would hold the last of them
+/// back until the client's delayed acknowledgement, some forty milliseconds on every gRPC call.
+#[derive(Clone, Debug)]
+struct NoDelay<A>(A);
+
+impl<A, S> Accept<tokio::net::TcpStream, S> for NoDelay<A>
+where
+    A: Accept<tokio::net::TcpStream, S>,
+{
+    type Stream = A::Stream;
+    type Service = A::Service;
+    type Future = A::Future;
+
+    fn accept(&self, stream: tokio::net::TcpStream, service: S) -> Self::Future {
+        // A refusal to set the option leaves the connection as it was: slower, never unserved.
+        let _ = stream.set_nodelay(true);
+        self.0.accept(stream, service)
+    }
 }
