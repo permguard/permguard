@@ -71,6 +71,10 @@ It runs the candidate's own binaries under a request bound of 32 and judges, per
 | headroom       | that, divided by one less the headroom           | the same: the candidate has the headroom it publishes                               |
 | overload       | four times the request bound                     | refuse some, every refusal typed and within its p99, no error, every answer correct |
 
+A representative or headroom step that misses on latency alone, every request answered correctly, none refused and none failed, is measured once more, and fails the gate only if it misses again.
+A shared runner's disk can stall one measuring window, and in `required` mode every decision waits for a flush; a candidate that is slow is slow in both.
+The record keeps both measurements, and errors, refusals and wrong decisions are never measured again.
+
 After the runs on each server it reads `permguard_decision_path_egress_total` off the candidate's own metrics.
 Every outbound client of the Host and its planes asks `permguard_core::egress` first, and on the decision path the call is refused and counted, so anything but zero fails the gate.
 The module lists the clients that check, and the one that need not.

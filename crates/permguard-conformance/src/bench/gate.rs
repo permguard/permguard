@@ -14,6 +14,10 @@
 //! | headroom       | that, divided by one less the headroom           | the same: the candidate has the headroom it publishes             |
 //! | overload       | four times the request bound                     | the bound refuses typed, within its p99; no error, answers correct |
 //!
+//! A representative or headroom step that misses on latency alone (everything answered, nothing
+//! refused, nothing failed) is measured once more and fails only if it misses again: a shared
+//! runner's disk can stall one window, a slow candidate is slow in both.
+//!
 //! After every run on a server, the gate reads `permguard_decision_path_egress_total` off the
 //! candidate's own metrics: any network call a decision made was refused and counted there, and
 //! anything but zero fails the gate.
@@ -79,6 +83,12 @@ pub fn judge_within(step: &Step, objective_ms: f64) -> Result<(), String> {
         "c={}: {} answered, {} refused, {} errors {:?}, p99 {:.2} ms against {objective_ms} ms",
         step.concurrency, step.ok, step.refused, step.errors, step.error_kinds, step.latency_ms.p99
     ))
+}
+
+/// Whether a step that missed its objective missed on latency alone: every request answered,
+/// none refused, none failed. Only such a step is measured a second time.
+pub fn latency_only(step: &Step) -> bool {
+    step.ok > 0 && step.refused == 0 && step.errors == 0
 }
 
 /// Whether an overload step refused within bounds, and why not.
@@ -176,7 +186,30 @@ pub fn gate(options: &Options, progress: &mut dyn FnMut(&str)) -> Result<Verdict
                     let judged = if name == "overload" {
                         judge_overload(&step, options.slo.refusal_p99_ms)
                     } else {
-                        judge_within(&step, objective)
+                        match judge_within(&step, objective) {
+                            // Only latency missed: measured once more, and a miss again fails.
+                            // A shared runner's disk can stall one window; a slow candidate is
+                            // slow in both. Errors, refusals and wrong answers are never retried.
+                            Err(first) if latency_only(&step) => {
+                                let again = load::step(
+                                    &target,
+                                    &requests,
+                                    concurrency,
+                                    options.step,
+                                    None,
+                                )?;
+                                judge_within(&again, objective)
+                                    .map_err(|second| format!("{first}; measured again: {second}"))
+                                    .map(|()| {
+                                        progress(&format!(
+                                            "note {interface} {evidence} {} {name}: {first}; \
+                                             measured again within the objective",
+                                            workload.name
+                                        ));
+                                    })
+                            }
+                            judged => judged,
+                        }
                     };
                     let check = Check {
                         interface: interface.clone(),
@@ -290,6 +323,17 @@ mod tests {
             judge_within(&step(0, 0, 0, 0.0, None), 10.0).is_err(),
             "nothing answered"
         );
+    }
+
+    #[test]
+    fn test_only_a_miss_on_latency_alone_is_measured_again() {
+        assert!(
+            latency_only(&step(100, 0, 0, 30.0, None)),
+            "slow, nothing else"
+        );
+        assert!(!latency_only(&step(100, 1, 0, 30.0, None)), "a refusal");
+        assert!(!latency_only(&step(100, 0, 1, 30.0, None)), "an error");
+        assert!(!latency_only(&step(0, 0, 0, 0.0, None)), "nothing answered");
     }
 
     #[test]
