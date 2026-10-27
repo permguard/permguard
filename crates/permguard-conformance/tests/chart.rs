@@ -41,6 +41,15 @@ fn chart() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../charts/permguard")
 }
 
+/// The release the chart deploys by default: its `appVersion`, which every release moves.
+fn app_version() -> String {
+    let text = std::fs::read_to_string(chart().join("Chart.yaml")).expect("Chart.yaml is readable");
+    text.lines()
+        .find_map(|line| line.strip_prefix("appVersion:"))
+        .map(|value| value.trim().trim_matches('"').to_owned())
+        .expect("Chart.yaml names its appVersion")
+}
+
 fn scratch(tag: &str) -> PathBuf {
     let directory = std::env::temp_dir().join(format!(
         "pg-chart-{tag}-{}-{:?}",
@@ -1402,7 +1411,7 @@ fn starts_verified(what: &str, pod: &Value) {
             "--signer-workflow",
             "permguard/permguard/.github/workflows/release-build.yml",
             "--source-ref",
-            "refs/tags/v0.1.6",
+            format!("refs/tags/v{}", app_version()),
             "--deny-self-hosted-runners"
         ]),
         "{what}"
@@ -1489,7 +1498,7 @@ fn image_verification_is_off_by_default_and_changes_nothing() {
                 .unwrap_or_default();
             assert!(!names.contains(&&json!("verify-image")), "{names:?}");
             let image = pod["containers"][0]["image"].as_str().unwrap();
-            assert!(image.ends_with(":0.1.6"), "{image}");
+            assert!(image.ends_with(&format!(":{}", app_version())), "{image}");
         }
     }
 }
