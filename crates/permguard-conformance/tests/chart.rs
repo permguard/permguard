@@ -32,6 +32,11 @@ dataPlane:
   tls: { secretName: data-plane-tls }
 ";
 
+/// The storage, backup and objectives declarations every `production` render needs (TS-5).
+fn production_controls() -> PathBuf {
+    chart().join("ci/production-controls.yaml")
+}
+
 fn chart() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../charts/permguard")
 }
@@ -62,6 +67,8 @@ fn render_with(values: &str, extra: &[&str]) -> Result<Rendered, String> {
         .arg(chart())
         .args(["--namespace", "pg", "-f"])
         .arg(&base)
+        .arg("-f")
+        .arg(production_controls())
         .arg("-f")
         .arg(&file)
         .args(extra)
@@ -2177,4 +2184,145 @@ persistence: { enabled: true }
     let pod = &rendered.get("Deployment", "permguard-all-in-one")["spec"]["template"]["spec"];
     assert_eq!(pod["initContainers"][0]["name"], "claim");
     assert!(env_of(&pod["containers"][0]).contains(&working_dir));
+}
+
+/// TS-5: every Host's configuration carries the release's storage, backup and objectives
+/// declarations, a unit's `extraConfig` over them; every pod runs non-root, unprivileged, and the
+/// kubelet applies the fsGroup to the mount's root only.
+#[test]
+fn every_host_declares_its_storage_backups_and_objectives_and_runs_non_root() {
+    let rendered = render(TWO_GROUPS);
+    for name in ["permguard-control-plane", "permguard-data-plane-billing"] {
+        let config = rendered.config(name);
+        assert_eq!(
+            config["storage"]["qualified"][0]["evidence"], "QUAL-CI",
+            "{name}"
+        );
+        assert_eq!(config["operations"]["backup"]["retention"], "90d", "{name}");
+        assert_eq!(config["objectives"]["key_recovery_owner"], "ci", "{name}");
+    }
+    let pod =
+        &rendered.get("StatefulSet", "permguard-data-plane-billing")["spec"]["template"]["spec"];
+    assert_eq!(pod["securityContext"]["runAsNonRoot"], true);
+    assert_eq!(pod["securityContext"]["runAsUser"], 65532);
+    assert_eq!(
+        pod["securityContext"]["fsGroupChangePolicy"],
+        "OnRootMismatch"
+    );
+    let container = &pod["containers"][0]["securityContext"];
+    assert_eq!(container["privileged"], false);
+    assert_eq!(container["allowPrivilegeEscalation"], false);
+    // A unit's own configuration wins over the release's.
+    let own = render(
+        "\
+controlPlane:
+  extraConfig: { objectives: { key_recovery_owner: platform-team } }
+",
+    );
+    assert_eq!(
+        own.config("permguard-control-plane")["objectives"]["key_recovery_owner"],
+        "platform-team"
+    );
+}
+
+/// TS-5: from `production` a Host without qualified storage is refused at render, as Bootstrap
+/// refuses it; `production` accepts the published compatibility mode, `regulated` never; a
+/// qualified entry names its encryption mechanism, revision and expiry.
+#[test]
+fn a_production_host_without_qualified_storage_is_refused() {
+    refused(
+        "\
+hostControls:
+  storage: { qualified: [] }
+",
+        "serves only on qualified storage",
+    );
+    // TS-5: the compatibility mode relaxes nothing from `production`.
+    refused(
+        "\
+hostControls:
+  storage: { compatibility_mode: \"true\", qualified: [] }
+",
+        "relaxes nothing from `production`",
+    );
+    refused(
+        "\
+hostControls:
+  storage:
+    qualified:
+      - { storage_class: fast, driver: csi, filesystem: ext4, version: \"6.8\", evidence: Q-1, revision: \"1\", expires_at: \"2027-01-01T00:00:00Z\" }
+",
+        "names its encryption",
+    );
+    render(
+        "\
+hostControls:
+  storage:
+    qualified:
+      - { storage_class: fast, driver: csi, filesystem: ext4, version: \"6.8\", evidence: Q-1, encryption: kms, revision: \"1\", expires_at: \"2027-01-01T00:00:00Z\" }
+",
+    );
+    refused(
+        "\
+hostControls:
+  storage: { qualified: [] }
+controlPlane:
+  assurance: { profile: regulated, custody: { provider: kms, kms: { address: \"https://kms\", tokenRef: t } } }
+",
+        "serves only on qualified storage",
+    );
+}
+
+/// TS-5: from `production` a backup policy left incomplete, an objective left out, a root or
+/// privileged pod, or the fsGroup re-applied at every remount is refused at render.
+#[test]
+fn a_production_host_missing_a_control_is_refused() {
+    for (values, why) in [
+        (
+            "hostControls:\n  backup: { recovery_key: null }\n",
+            "encrypts every backup under a recovery key",
+        ),
+        (
+            "hostControls:\n  backup: { recovery_key: null, recovery_key_id: \"kms:x\" }\n",
+            "a provider's recovery_key_id alone proves no key",
+        ),
+        (
+            "hostControls:\n  backup: { destruction: null }\n",
+            "hostControls.backup.destruction",
+        ),
+        (
+            "hostControls:\n  objectives: { mirror_staleness: null }\n",
+            "hostControls.objectives.mirror_staleness",
+        ),
+        (
+            "podSecurityContext: { runAsUser: 0 }\n",
+            "dedicated non-root user",
+        ),
+        (
+            "podSecurityContext: { runAsNonRoot: false }\n",
+            "dedicated non-root user",
+        ),
+        (
+            "securityContext: { privileged: true }\n",
+            "runs unprivileged",
+        ),
+        (
+            "securityContext: { allowPrivilegeEscalation: true }\n",
+            "runs unprivileged",
+        ),
+        (
+            "podSecurityContext: { fsGroupChangePolicy: Always }\n",
+            "fsGroupChangePolicy OnRootMismatch",
+        ),
+    ] {
+        refused(values, why);
+    }
+    // Below `production` the Host reports what it would refuse, and the chart lets it.
+    render(
+        "\
+controlPlane: { assurance: { profile: development } }
+dataPlane: { groupDefaults: { assurance: { profile: development } }, groups: [ { name: dev, selector: plane/data/*, evidence: { mode: disabled }, persistence: { enabled: false } } ] }
+hostControls: { storage: {}, backup: {}, objectives: {} }
+",
+    );
 }

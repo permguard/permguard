@@ -203,6 +203,8 @@ const SHAPED: &[&str] = &[
     "GcReport",
     "GcEntry",
     "GcKept",
+    // Where the volume stands, in the status (TS-5).
+    "HostStorage",
 ];
 
 /// Every message outside [`SHAPED`] is empty: no field number is assigned ahead of the contract.

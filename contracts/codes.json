@@ -1505,6 +1505,154 @@
       "contract": "1-architecture/8-architecture-storage-operations.md",
       "kind": "log"
     },
+    "storage.OWNER": {
+      "code": "storage_owner",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.MODE": {
+      "code": "storage_mode",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.LINK": {
+      "code": "storage_link",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.FILE_KIND": {
+      "code": "storage_file_kind",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PATH_ESCAPE": {
+      "code": "storage_path_escape",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.RUN_AS_ROOT": {
+      "code": "storage_run_as_root",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.CORE_DUMPS": {
+      "code": "storage_core_dumps",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_FLUSH": {
+      "code": "storage_probe_flush",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_PERMISSIONS": {
+      "code": "storage_probe_permissions",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_LOCK": {
+      "code": "storage_probe_lock",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_RENAME": {
+      "code": "storage_probe_rename",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_IDENTITY": {
+      "code": "storage_probe_identity",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_HARD_LINK": {
+      "code": "storage_probe_hard_link",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_TORN_APPEND": {
+      "code": "storage_probe_torn_append",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_RESERVATION": {
+      "code": "storage_probe_reservation",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.FREE_BYTES": {
+      "code": "storage_free_bytes",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.FREE_INODES": {
+      "code": "storage_free_inodes",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.UNQUALIFIED": {
+      "code": "storage_unqualified",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.QUALIFICATION_INCOMPLETE": {
+      "code": "storage_qualification_incomplete",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.QUALIFICATION_STALE": {
+      "code": "storage_qualification_stale",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.BACKUP_POLICY_INCOMPLETE": {
+      "code": "backup_policy_incomplete",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.RECOVERY_KEY_MISMATCH": {
+      "code": "recovery_key_mismatch",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "storage.RECOVERY_KEY_MISSING": {
+      "code": "recovery_key_missing",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "storage.SNAPSHOT_UNBOUND": {
+      "code": "snapshot_unbound",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "storage.RECOVERY_KEY_WEAK": {
+      "code": "recovery_key_weak",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.RECOVERY_KEY_SHARED": {
+      "code": "recovery_key_shared",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.OBJECTIVES_INCOMPLETE": {
+      "code": "objectives_incomplete",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.OBJECTIVES_INCONSISTENT": {
+      "code": "objectives_inconsistent",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.OBJECTIVE_MARGIN": {
+      "code": "objective_margin",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
     "stream.ACK_AHEAD": {
       "code": "ack_ahead",
       "contract": "6-contracts/5-contract-stream-common.md",

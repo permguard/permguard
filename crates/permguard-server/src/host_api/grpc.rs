@@ -730,6 +730,10 @@ impl OperationsService for Served {
                     tls_min_version: listener.tls_min_version,
                 })
                 .collect(),
+            storage: status.storage.map(|storage| v1::HostStorage {
+                qualification: storage.qualification,
+                evidence: storage.evidence,
+            }),
         }))
     }
 

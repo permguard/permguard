@@ -467,6 +467,8 @@ pub fn server_configuration_document(
         assurance: config.assurance().report(&config.relaxations_in_force()),
         peer_sessions: config.peer_sessions(),
         listeners: super::listeners::listeners(config),
+        storage: config.storage_report().cloned(),
+        objectives: config.objectives_report().cloned(),
     };
 
     // A document assembled from values cannot be malformed by one of them; a document assembled
@@ -521,6 +523,13 @@ pub struct ServerConfiguration {
     /// The operations ring as a JWKS, when this deployment publishes keys at all.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub jwks_uri: Option<String>,
+    /// Where the volume stands (TS-5): its qualification and evidence id, once Bootstrap
+    /// qualified it; nothing about the provider or its keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage: Option<permguard_core::volume::StorageReport>,
+    /// The service objectives Bootstrap validated and their validation state (TS-5).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objectives: Option<permguard_core::objectives::ObjectivesReport>,
 }
 
 /// Whether a selected plane gates readiness: every one does unless `runtime.optional_planes` names it.

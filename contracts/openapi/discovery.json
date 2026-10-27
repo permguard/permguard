@@ -352,6 +352,14 @@
               "$ref": "#/components/schemas/Listener"
             },
             "description": "Every listener of the process, sorted by name, with its class and what it demands of its clients (WP-2.11)."
+          },
+          "storage": {
+            "$ref": "#/components/schemas/StorageReport",
+            "description": "Where the volume stands, once Bootstrap qualified it (TS-5): its qualification and evidence id, never the provider, the encryption mechanism or a secret."
+          },
+          "objectives": {
+            "$ref": "#/components/schemas/ObjectivesReport",
+            "description": "The service objectives Bootstrap validated and their validation state (TS-5)."
           }
         },
         "required": [
@@ -617,6 +625,108 @@
         "description": "A runtime's conformance gate result (TL-6).",
         "x-grpc-message": null,
         "x-grpc-note": "REST-only, as the data plane's document is."
+      },
+      "StorageReport": {
+        "type": "object",
+        "required": [
+          "qualification"
+        ],
+        "additionalProperties": false,
+        "description": "What discovery publishes of the volume (TS-5).",
+        "x-grpc-message": null,
+        "x-grpc-note": "Published by the process-level registry only.",
+        "properties": {
+          "qualification": {
+            "type": "string",
+            "enum": [
+              "qualified",
+              "compatibility_mode",
+              "unqualified"
+            ],
+            "description": "How the volume's storage tuple is qualified under the profile in force."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "The evidence id of a qualified volume."
+          }
+        }
+      },
+      "ObjectivesReport": {
+        "type": "object",
+        "required": [
+          "validation"
+        ],
+        "additionalProperties": false,
+        "description": "The service objectives as discovery publishes them (TS-5).",
+        "x-grpc-message": null,
+        "x-grpc-note": "Published by the process-level registry and the Host status.",
+        "properties": {
+          "validation": {
+            "type": "string",
+            "enum": [
+              "validated",
+              "incomplete"
+            ],
+            "description": "`validated`: every objective declared and consistent with its subsystem; `incomplete`: accepted below `production` with some left out or inconsistent."
+          },
+          "data_loss_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The maximum acknowledged data loss."
+          },
+          "recovery_time_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The recovery time objective."
+          },
+          "max_volume_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The maximum volume size the recovery time was sized for."
+          },
+          "membership_offline_grace_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The longest a membership may stay offline."
+          },
+          "mirror_staleness_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The policy mirror staleness objective."
+          },
+          "evidence_shipping_lag_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The evidence shipping lag objective."
+          },
+          "spool_headroom_percent": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The share of the decision spool kept free.",
+            "maximum": 90
+          },
+          "checkpoint_export_lag_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The audit checkpoint export lag objective."
+          },
+          "backup_interval_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The longest time between two backups."
+          },
+          "restore_test_interval_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The longest time between two restore drills."
+          },
+          "key_recovery_owner": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Who owns recovering the keys: a label, never a secret."
+          }
+        }
       }
     }
   },

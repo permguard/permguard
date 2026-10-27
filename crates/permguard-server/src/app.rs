@@ -1613,6 +1613,34 @@ impl App {
             None => signal::process_shutdown(),
         };
 
+        // The process and the volume are private before the claim writes or reads anything on it
+        // (TS-5): core dumps disabled, no root, every entry the process's own and owner-only, no
+        // link. A volume not yet created has nothing to judge, and is created owner-only. From
+        // `production` a shortfall stops Bootstrap; below, each is logged with its code.
+        let hardened =
+            permguard_host::hardening::harden(config.working_dir(), config.assurance().profile())
+                .with_context(|| {
+                format!(
+                    "verifying the process and the volume at {} are private",
+                    config.working_dir().display()
+                )
+            })?;
+        for shortfall in &hardened.reported {
+            tracing::warn!(
+                event.name = "host.hardening_reported",
+                code = shortfall.code,
+                detail = %shortfall.detail,
+                "accepted under `development`, refused from `production`"
+            );
+        }
+        tracing::info!(
+            event.name = "host.hardened",
+            directories = hardened.directories,
+            files = hardened.files,
+            reported = hardened.reported.len(),
+            "the process and the volume were verified private"
+        );
+
         // The volume is claimed before anything writes to it — the provisioner, the stores — and
         // held until this returns: a second process on the same mount fails here instead of writing
         // beside this one. The configuration states no assurance profile yet (WP-07), so a volume
@@ -1645,19 +1673,6 @@ impl App {
             );
         }
 
-        // No subsystem is served while a migration is between two sides, and no layout this build
-        // does not read is served at all (WP-1.9): an interrupted migration is landed by its
-        // command, a downgrade is possible only where every active layout is understood.
-        // The rings' own layouts are always read here: this build lays them out (WP-3.1).
-        let mut layouts = self.layouts.clone();
-        layouts.extend(permguard_host::keys::migration::layouts());
-        layouts.extend(permguard_host::audit::jsonl::layouts());
-        layouts.extend(permguard_decisions::archive::layouts());
-        layouts.extend(permguard_events::archive::layouts());
-        permguard_host::storage::migrate::check_servable(&volume, &layouts).with_context(|| {
-            format!("checking the layouts on {}", config.working_dir().display())
-        })?;
-
         // The Host's one time service (WP-2.12), opened against the high-water mark the volume
         // keeps: a clock set back across a restart is in anomaly from here on.
         let time = Arc::new(
@@ -1674,6 +1689,41 @@ impl App {
                 )
             })?,
         );
+
+        // The filesystem prerequisites probed and the volume's tuple qualified (WP-1.3, TS-5): a
+        // failed probe is refused under every profile, an unqualified, incomplete or stale record
+        // from `production`. Discovery publishes the qualification and its evidence id only.
+        let storage = self
+            .load(config_file)?
+            .volume()
+            .with_context(|| format!("in the configuration file {}", config_file.display()))?;
+        let standing = qualify_volume(&volume, &storage, config.assurance().profile(), time.now())
+            .with_context(|| {
+                format!(
+                    "qualifying the volume at {} for the `{}` profile",
+                    config.working_dir().display(),
+                    config.assurance().profile()
+                )
+            })?;
+        let config = &config
+            .clone()
+            .with_storage_report(permguard_core::volume::StorageReport {
+                qualification: standing.as_str().to_owned(),
+                evidence: standing.evidence().map(str::to_owned),
+            });
+
+        // No subsystem is served while a migration is between two sides, and no layout this build
+        // does not read is served at all (WP-1.9): an interrupted migration is landed by its
+        // command, a downgrade is possible only where every active layout is understood.
+        // The rings' own layouts are always read here: this build lays them out (WP-3.1).
+        let mut layouts = self.layouts.clone();
+        layouts.extend(permguard_host::keys::migration::layouts());
+        layouts.extend(permguard_host::audit::jsonl::layouts());
+        layouts.extend(permguard_decisions::archive::layouts());
+        layouts.extend(permguard_events::archive::layouts());
+        permguard_host::storage::migrate::check_servable(&volume, &layouts).with_context(|| {
+            format!("checking the layouts on {}", config.working_dir().display())
+        })?;
 
         if let Some(provisioner) = &self.provisioner {
             provisioner(config).with_context(|| {
@@ -1692,6 +1742,47 @@ impl App {
         // key-encryption key of the `file` custody included (WP-3.2).
         let resolved = self.secrets_for(config)?;
         let secrets = resolved.as_deref().or(self.secrets.as_deref());
+        // The backups' recovery key (TS-5): resolved, its id its fingerprint, which every snapshot
+        // manifest binds from here on; from `production` the whole backup policy is declared.
+        let recovery_key_id = crate::offline::recovery_key_id_from(config, secrets)
+            .context("resolving the backups' recovery key")?;
+        let shortfalls =
+            crate::offline::backup_policy_shortfalls(config, recovery_key_id.as_deref());
+        if !shortfalls.is_empty() {
+            if config
+                .assurance()
+                .profile()
+                .at_least(permguard_core::assurance::AssuranceProfile::Production)
+            {
+                bail!(
+                    "{}: from the `{}` profile every backup is encrypted under a recovery key and \
+                     kept under a tested retention and destruction policy; declare {}",
+                    permguard_core::codes::storage::BACKUP_POLICY_INCOMPLETE,
+                    config.assurance().profile(),
+                    shortfalls.join(", ")
+                );
+            }
+            tracing::warn!(
+                event.name = "host.backup_policy_incomplete",
+                code = permguard_core::codes::storage::BACKUP_POLICY_INCOMPLETE,
+                missing = %shortfalls.join(", "),
+                "accepted under `development`, refused from `production`"
+            );
+        }
+        let config = &match recovery_key_id {
+            Some(id) => config.clone().with_backup_recovery_key_id(id),
+            None => config.clone(),
+        };
+        // The service objectives (TS-5): bounded whatever the profile; from `production` every one
+        // declared and consistent with the subsystem bounds that act on it.
+        let objectives = self
+            .load(config_file)?
+            .objectives()
+            .with_context(|| format!("in the configuration file {}", config_file.display()))?;
+        let validation = objectives_checked(config, &objectives, &storage)?;
+        let config = &config
+            .clone()
+            .with_objectives_report(objectives.report(validation));
         // The identity's witness before the custody writes the key-encryption key's.
         identity_witness_checked(config, &volume)?;
         // Each ring's provider, from its custody (WP-3.2): the identity's first.
@@ -2045,6 +2136,10 @@ impl App {
             .health()
             .lifecycle()
             .set_host_id(host_identity.host_id_text());
+        // `host status` publishes where the volume stands, the compatibility mode included (TS-5).
+        if let Some(report) = config.storage_report() {
+            context.health().lifecycle().set_storage(report.clone());
+        }
         mutations.observe(context.health().clone());
 
         if let Some(catalog) = catalog {
@@ -2340,6 +2435,32 @@ impl App {
         let _ticking = crate::time::tick(Arc::clone(&time));
         // The ended days a stopped process left unsealed, sealed now and every hour after.
         let _sweeping = crate::checkpoints::sweep(Arc::clone(&audit_engine));
+        // Readiness held while a measured lag or headroom is past its objective's margin (TS-5).
+        let _objectives = crate::objectives::drive(
+            objectives.clone(),
+            crate::objectives::Sources {
+                health: context.health().clone(),
+                metrics: context.metrics().clone(),
+                backups: Arc::clone(&backups),
+                spool_capacity: (crate::plane::discovery::plane_enabled(config, "data")
+                    && config.log_enabled())
+                .then(|| config.log_spool_bytes()),
+                time: Arc::clone(&time),
+                volume_created: volume_created(&volume, &time),
+                qualification_expires_at: match &standing {
+                    permguard_host::storage::qualify::Standing::Qualified {
+                        expires_at, ..
+                    } if config
+                        .assurance()
+                        .profile()
+                        .at_least(permguard_core::assurance::AssuranceProfile::Production) =>
+                    {
+                        *expires_at
+                    }
+                    _ => None,
+                },
+            },
+        );
         // The streams' garbage collection, at start and every hour, off the request path (WP-5.6b).
         let _pruning =
             crate::stream_gc::drive(prunables, Arc::clone(&audit_engine), Arc::clone(&time));
@@ -2543,6 +2664,134 @@ impl App {
 
         Ok(())
     }
+}
+
+/// The service objectives judged under the profile (TS-5): missing or inconsistent ones refused
+/// from `production`, reported below. Answers the validation state discovery publishes.
+fn objectives_checked(
+    config: &Config,
+    objectives: &permguard_core::objectives::Objectives,
+    storage: &permguard_core::volume::VolumeConfig,
+) -> Result<&'static str> {
+    use permguard_core::codes::storage as codes;
+
+    let data = crate::plane::discovery::plane_enabled(config, "data");
+    let limits = permguard_core::objectives::Limits {
+        mirrors_stale_after: (data && config.mirrors_enabled())
+            .then(|| config.mirrors_stale_after()),
+        decision_spool_age: (data && config.log_enabled()).then(|| config.log_spool_age()),
+        audit_checkpoints_max_lag: config.audit_checkpoints_max_lag(),
+        backup_retention: config.backup_retention(),
+        host_quota_bytes: storage.quotas.host.bytes,
+    };
+    let missing = objectives.missing();
+    let inconsistent = objectives.inconsistencies(&limits);
+    let production = config
+        .assurance()
+        .profile()
+        .at_least(permguard_core::assurance::AssuranceProfile::Production);
+    if production && !missing.is_empty() {
+        bail!(
+            "{}: from the `{}` profile every service objective is declared; add {} to \
+             `objectives`",
+            codes::OBJECTIVES_INCOMPLETE,
+            config.assurance().profile(),
+            missing.join(", ")
+        );
+    }
+    if production && !inconsistent.is_empty() {
+        bail!(
+            "{}: {}",
+            codes::OBJECTIVES_INCONSISTENT,
+            inconsistent.join("; ")
+        );
+    }
+    if !missing.is_empty() {
+        tracing::warn!(
+            event.name = "host.objectives_incomplete",
+            code = codes::OBJECTIVES_INCOMPLETE,
+            missing = %missing.join(", "),
+            "accepted under `development`, refused from `production`"
+        );
+    }
+    for found in &inconsistent {
+        tracing::warn!(
+            event.name = "host.objectives_inconsistent",
+            code = codes::OBJECTIVES_INCONSISTENT,
+            detail = %found,
+            "accepted under `development`, refused from `production`"
+        );
+    }
+    Ok(if missing.is_empty() && inconsistent.is_empty() {
+        "validated"
+    } else {
+        "incomplete"
+    })
+}
+
+/// When the volume was created, in seconds: its `VOLUME_ID`, written once, at creation. Read from
+/// the file, so a restart never moves it; the guarded time when it cannot be read.
+fn volume_created(
+    volume: &permguard_host::storage::volume::Volume,
+    time: &permguard_host::time::TimeGuard,
+) -> u64 {
+    std::fs::symlink_metadata(
+        volume
+            .host()
+            .path()
+            .join(permguard_host::storage::volume::VOLUME_ID),
+    )
+    .and_then(|metadata| metadata.modified())
+    .ok()
+    .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+    .map_or_else(|| time.now_secs(), |since| since.as_secs())
+}
+
+/// Probes the filesystem under the volume's `host/state` and qualifies its tuple for `profile`
+/// (WP-1.3, TS-5) at `now`, the Host's guarded time, logging what was found; the refusal carries
+/// the reason's registered code.
+fn qualify_volume(
+    volume: &permguard_host::storage::volume::Volume,
+    storage: &permguard_core::volume::VolumeConfig,
+    profile: permguard_core::assurance::AssuranceProfile,
+    now: i64,
+) -> Result<permguard_host::storage::qualify::Standing> {
+    use permguard_host::storage::{probe, qualify};
+
+    let state = volume
+        .host()
+        .subdir("state", true)
+        .context("opening the state directory the probe works in")?;
+    let report = probe::probe(
+        &state,
+        &probe::Request {
+            floors: storage.floors,
+            reserve_bytes: 0,
+        },
+    )?;
+    let tuple = qualify::running_tuple(&report.identity, storage);
+    let standing = qualify::qualify(&report.identity, storage, profile, now)?;
+    tracing::info!(
+        event.name = "volume.qualified",
+        qualification = standing.as_str(),
+        evidence = standing.evidence().unwrap_or(""),
+        storage_class = %tuple.storage_class,
+        driver = %tuple.driver,
+        filesystem = %tuple.filesystem,
+        version = %tuple.version,
+        device = %report.identity.device,
+        "the volume passed the probe"
+    );
+    if !matches!(standing, qualify::Standing::Qualified { .. }) {
+        tracing::warn!(
+            event.name = "volume.unqualified",
+            code = permguard_core::codes::storage::UNQUALIFIED,
+            qualification = standing.as_str(),
+            "the volume is not qualified: accepted below `production`, or under its published \
+             compatibility mode, and never under `regulated`"
+        );
+    }
+    Ok(standing)
 }
 
 /// The Host identity's witness on `volume`, checked against `config` before anything is written

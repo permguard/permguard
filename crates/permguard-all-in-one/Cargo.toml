@@ -39,3 +39,8 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
 # evaluation path the Data Plane serves them at.
 permguard-languages.workspace = true
 serde_json.workspace = true
+# The secret canaries (TS-5): the recovery key's fingerprint, the secret type, and the base64 forms
+# a canary is searched in.
+base64.workspace = true
+permguard-core.workspace = true
+permguard-host.workspace = true

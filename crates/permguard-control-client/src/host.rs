@@ -27,7 +27,7 @@ use permguard_host::api::members::{
 };
 use permguard_host::api::sessions::PeerSessionsView;
 use permguard_host::api::status::{
-    Assurance, ComponentView, DegradedView, ListenerView, StatusView,
+    Assurance, ComponentView, DegradedView, ListenerView, StatusView, StorageView,
 };
 use permguard_host::api::streams::{
     AnchorList, AnchorView, ConsumerRun, Frontier, GapEntry, GapList, ProducerRun, ResourceState,
@@ -1247,6 +1247,10 @@ fn status_of(answer: proto::GetStatusResponse) -> StatusView {
                 tls_min_version: listener.tls_min_version,
             })
             .collect(),
+        storage: answer.storage.map(|storage| StorageView {
+            qualification: storage.qualification,
+            evidence: storage.evidence,
+        }),
     }
 }
 

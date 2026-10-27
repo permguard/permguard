@@ -44,6 +44,7 @@ pub mod listener;
 pub mod logging;
 pub mod metrics;
 pub mod mirrors;
+pub mod objectives;
 pub mod peer;
 pub mod plane;
 pub mod pseudonym;

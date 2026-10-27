@@ -256,3 +256,18 @@ key: /etc/permguard-tls/tls.key
 terminated_upstream: true
 {{- end }}
 {{- end }}
+
+{{/*
+What every Host of the release declares of its storage, backups and service objectives (TS-5), as
+configuration: `hostControls.storage` is the `storage` section, `hostControls.backup` the
+`operations.backup` section and `hostControls.objectives` the `objectives` section. A unit's
+`extraConfig` is merged over it.
+*/}}
+{{- define "permguard.hostControlsConfig" -}}
+{{- $controls := .Values.hostControls | default dict }}
+{{- $config := dict }}
+{{- with $controls.storage }}{{- $_ := set $config "storage" (deepCopy .) }}{{- end }}
+{{- with $controls.backup }}{{- $_ := set $config "operations" (dict "backup" (deepCopy .)) }}{{- end }}
+{{- with $controls.objectives }}{{- $_ := set $config "objectives" (deepCopy .) }}{{- end }}
+{{- toYaml $config }}
+{{- end }}

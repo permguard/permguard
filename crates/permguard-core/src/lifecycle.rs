@@ -215,6 +215,11 @@ struct Registry {
     /// The Host's id, UUID text, once its identity is open (WP-7.4a): what the process document
     /// names.
     host_id: Option<String>,
+    /// What holds readiness while the phases stay where they are (TS-5): a measured lag or
+    /// headroom past its objective's margin, by objective, with the reason.
+    holds: BTreeMap<String, String>,
+    /// Where the volume stands, once Bootstrap qualified it (TS-5): what `host status` publishes.
+    storage: Option<crate::volume::StorageReport>,
 }
 
 /// The name the Host reports under.
@@ -236,6 +241,16 @@ impl Lifecycle {
     /// The Host's id, when its identity is open.
     pub fn host_id(&self) -> Option<String> {
         self.lock().host_id.clone()
+    }
+
+    /// Records where the volume stands once Bootstrap qualified it (TS-5).
+    pub fn set_storage(&self, report: crate::volume::StorageReport) {
+        self.lock().storage = Some(report);
+    }
+
+    /// Where the volume stands, once Bootstrap qualified it.
+    pub fn storage(&self) -> Option<crate::volume::StorageReport> {
+        self.lock().storage.clone()
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Registry> {
@@ -555,13 +570,50 @@ impl Lifecycle {
         }
     }
 
-    /// Whether the process accepts work: the Host and every required Plane are Ready or Serving.
+    /// Whether the process accepts work: the Host and every required Plane are Ready or Serving,
+    /// and nothing holds readiness.
     pub fn ready(&self) -> bool {
-        self.lock()
-            .components
-            .values()
-            .filter(|component| component.kind != Kind::Service && component.required)
-            .all(|component| matches!(component.state, State::Phase(phase) if phase.accepts_work()))
+        let registry = self.lock();
+        registry.holds.is_empty()
+            && registry
+                .components
+                .values()
+                .filter(|component| component.kind != Kind::Service && component.required)
+                .all(|component| {
+                    matches!(component.state, State::Phase(phase) if phase.accepts_work())
+                })
+    }
+
+    /// Holds readiness for `objective` (TS-5): the phases stay, what serves keeps serving, and the
+    /// readiness probe answers not ready until [`Lifecycle::release`]. The Host reports it
+    /// degraded on `objective.<objective>`, with the reason.
+    pub fn hold(&self, objective: &str, reason: impl Into<String>) {
+        let reason = reason.into();
+        let mut registry = self.lock();
+        registry.holds.insert(objective.to_owned(), reason.clone());
+        if let Some(host) = registry.components.get_mut(HOST) {
+            let capability = format!("objective.{objective}");
+            host.degraded
+                .retain(|degraded| degraded.capability != capability);
+            host.degraded.push(Degraded { capability, reason });
+        }
+    }
+
+    /// Releases a [`Lifecycle::hold`]; nothing when `objective` held nothing.
+    pub fn release(&self, objective: &str) {
+        let mut registry = self.lock();
+        if registry.holds.remove(objective).is_some()
+            && let Some(host) = registry.components.get_mut(HOST)
+        {
+            let capability = format!("objective.{objective}");
+            host.degraded
+                .retain(|degraded| degraded.capability != capability);
+        }
+    }
+
+    /// What holds readiness, by objective.
+    pub fn holds(&self) -> BTreeMap<String, String> {
+        self.lock().holds.clone()
     }
 }
 
@@ -815,5 +867,39 @@ mod tests {
         assert_eq!(mirrors.last_success, Some(now));
         let names: Vec<String> = lifecycle.components().into_iter().map(|c| c.name).collect();
         assert_eq!(names, vec!["host", "mirrors"], "the Host first");
+    }
+
+    /// TS-5: a hold makes a ready process not ready without moving any phase, and the Host says
+    /// why; releasing it restores readiness.
+    #[test]
+    fn a_hold_takes_readiness_away_and_its_release_gives_it_back() {
+        let lifecycle = Lifecycle::new();
+        lifecycle.advance(HOST, Phase::Ready);
+        assert!(lifecycle.ready());
+        lifecycle.hold(
+            "mirror_staleness",
+            "the stalest mirror is 250s old, past 240s",
+        );
+        assert!(!lifecycle.ready());
+        assert_eq!(lifecycle.phase(HOST), Some(Phase::Ready), "the phase stays");
+        let host = lifecycle.component(HOST).expect("the Host");
+        assert_eq!(host.degraded.len(), 1);
+        assert_eq!(host.degraded[0].capability, "objective.mirror_staleness");
+        lifecycle.hold("mirror_staleness", "now 260s");
+        assert_eq!(
+            lifecycle.component(HOST).expect("the Host").degraded.len(),
+            1,
+            "one reason per objective"
+        );
+        lifecycle.release("mirror_staleness");
+        lifecycle.release("never held");
+        assert!(lifecycle.ready());
+        assert!(
+            lifecycle
+                .component(HOST)
+                .expect("the Host")
+                .degraded
+                .is_empty()
+        );
     }
 }

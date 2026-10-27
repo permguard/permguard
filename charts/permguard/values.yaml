@@ -474,6 +474,10 @@ podSecurityContext:
   runAsUser: 65532
   runAsGroup: 65532
   fsGroup: 65532
+  # The kubelet applies the fsGroup once, to the mount's root, and never again: the default policy
+  # re-grants the group read and write on every file at every remount, and the Host refuses a
+  # volume its group can read (TS-5).
+  fsGroupChangePolicy: OnRootMismatch
   seccompProfile:
     type: RuntimeDefault
 
@@ -605,3 +609,41 @@ serviceAccount:
 
 commonLabels: {}
 commonAnnotations: {}
+
+# What every Host of this release declares of its storage, backups and service objectives (TS-5),
+# in the configuration's own syntax, merged under each unit's `extraConfig`. From `production` the
+# chart refuses to render without them, as Bootstrap would refuse to start:
+#
+# - `storage`: the volume's qualified tuple (`qualified`, each entry with its `evidence`,
+#   `encryption` mechanism, evidence `revision` and `expires_at`; `compatibility_mode` relaxes
+#   nothing from `production`); `volume.storage_class` and `volume.driver`; `quotas.host.bytes`.
+# - `backup`: `recovery_key` (a secret reference, at least 128 bits, no other key's),
+#   `encryption_profile`, `retention` and `destruction` (the tested procedure's evidence id).
+# - `objectives`: `data_loss`, `recovery_time`, `max_volume_size`, `membership_offline_grace`,
+#   `mirror_staleness`, `evidence_shipping_lag`, `spool_headroom`, `checkpoint_export_lag`,
+#   `backup_interval`, `restore_test_interval` and `key_recovery_owner`.
+hostControls:
+  storage: {}
+  #   volume: { storage_class: fast-ssd, driver: ebs.csi.aws.com }
+  #   qualified:
+  #     - { storage_class: fast-ssd, driver: ebs.csi.aws.com, filesystem: ext4, version: "6.8",
+  #         evidence: QUAL-2026-01, encryption: aws-kms-ebs, revision: "3",
+  #         expires_at: "2027-06-30T00:00:00Z" }
+  #   quotas: { host: { bytes: 80G } }
+  backup: {}
+  #   recovery_key: backup-recovery
+  #   encryption_profile: aes-256-gcm
+  #   retention: 90d
+  #   destruction: DESTROY-2026-01
+  objectives: {}
+  #   data_loss: 0s
+  #   recovery_time: 1h
+  #   max_volume_size: 100G
+  #   membership_offline_grace: 24h
+  #   mirror_staleness: 1h
+  #   evidence_shipping_lag: 1d
+  #   spool_headroom: 20%
+  #   checkpoint_export_lag: 1d
+  #   backup_interval: 1d
+  #   restore_test_interval: 30d
+  #   key_recovery_owner: security-team

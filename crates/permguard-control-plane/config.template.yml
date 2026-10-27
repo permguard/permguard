@@ -34,11 +34,16 @@ autogenerate: false
 working_dir: /var/lib/permguard/control-plane
 
 # The volume under working_dir, as the startup probe and the qualification registry read it.
-# Its keys are checked when the file is read (a misspelled one is refused); its values are
-# validated and enforced once the Host composition lands (WP-2.1).
-# The filesystem and its version are detected, never configured. A tuple not listed under
-# `qualified` is refused under `production` unless `compatibility_mode` is on, which is then
-# published, and is always refused under `regulated`.
+# Bootstrap probes the filesystem under host/state/fs-probe and qualifies the volume's tuple before
+# anything is read from it (TS-5); discovery publishes the qualification and its evidence id only.
+# The filesystem and its version are detected, never configured. From `production` a tuple not
+# listed under `qualified` is refused; `compatibility_mode` relaxes nothing there, and below it is
+# the published name of running on an unqualified platform. A qualified entry also proves
+# encryption at rest: it names its `encryption` mechanism, the evidence `revision` and when it
+# `expires_at`; an incomplete entry is refused, and one that expires while serving takes the Host
+# out of Ready. Bootstrap also verifies the volume is
+# private: owned by the process's non-root user, directories 0700, files 0600, no symbolic link,
+# nothing mounted inside; from `production` a breach stops the start, below it is logged.
 # storage:
 #   volume:
 #     storage_class: fast-ssd          # the storage class the volume comes from
@@ -49,10 +54,36 @@ working_dir: /var/lib/permguard/control-plane
 #       filesystem: ext4
 #       version: "6.8"                # a release, or a prefix of releases ending at . or -
 #       evidence: QUAL-2026-01         # where the crash and takeover tests are recorded
+#       encryption: aws-kms-ebs        # the encryption-at-rest mechanism the evidence proves
+#       revision: "3"                  # the evidence's revision
+#       expires_at: "2027-06-30T00:00:00Z"  # past it the entry is stale
 #   compatibility_mode: false
 #   floors:
 #     free_bytes: 64M                  # the default
 #     free_inodes: "1000"              # the default
+#   quotas:
+#     host:
+#       bytes: 80G                     # at most objectives.max_volume_size, from `production`
+
+# The service objectives this deployment declares (TS-5). Every value is bounded; from
+# `production` every one is required and cross-validated: a subsystem bound that alarms on it does
+# so by four fifths of it (mirrors.stale_after, the decision spool's age, the checkpoints' max_lag),
+# backup_interval is shorter than operations.backup.retention, restore_test_interval at most it,
+# and storage.quotas.host.bytes at most max_volume_size. Discovery publishes the values; readiness
+# is held while the stalest mirror, the spool's headroom, the checkpoints or the newest backup is
+# past its margin.
+# objectives:
+#   data_loss: 0s                      # acknowledged writes are flushed first
+#   recovery_time: 1h
+#   max_volume_size: 100G
+#   membership_offline_grace: 24h
+#   mirror_staleness: 1h
+#   evidence_shipping_lag: 1d
+#   spool_headroom: 20%
+#   checkpoint_export_lag: 1d
+#   backup_interval: 1d
+#   restore_test_interval: 30d
+#   key_recovery_owner: security-team  # who recovers the keys: a label, never a secret
 
 log:
   level: info
@@ -215,6 +246,19 @@ host:
 #   transfer_ttl: "15m"         # how long a transfer session stays open; at most 1h
 
 operations:
+  # The backups (TS-5): encrypted under a recovery key separate from every other, kept for a
+  # declared retention and destroyed by a tested procedure; from `production` all four are
+  # required. The key is named by secret reference — at least 128 bits, no other key's — and its
+  # id, what every snapshot manifest binds and `restore` checks before it writes, is its
+  # fingerprint. Below `production` a provider's `recovery_key_id` may stand alone; from it the
+  # Host and every restore resolve the key itself, and a backup must be finalized within
+  # objectives.backup_interval of the last, or of the volume's creation.
+  # backup:
+  #   recovery_key: backup-recovery    # a secret reference, resolved by operations.secrets
+  #   # recovery_key_id: "kms:..."     # a provider's key id: below `production` only
+  #   encryption_profile: aes-256-gcm
+  #   retention: 90d
+  #   destruction: DESTROY-2026-01     # the tested destruction procedure's evidence id
   keys:
     enabled: true
     publish_ahead: 1h

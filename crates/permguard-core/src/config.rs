@@ -351,6 +351,14 @@ pub const SETTING_BACKUP_RECOVERY_KEY_ID: &str = "PERMGUARD_BACKUP_RECOVERY_KEY_
 /// The encryption profile of the deployment's backups, bound in every snapshot manifest beside the
 /// recovery-key id (WP-7.8). Unset: the manifest names none.
 pub const SETTING_BACKUP_ENCRYPTION_PROFILE: &str = "PERMGUARD_BACKUP_ENCRYPTION_PROFILE";
+/// The secret reference of the recovery key backups are encrypted under (TS-5): its id is the key's
+/// fingerprint, which every snapshot manifest binds and a restore verifies before it writes.
+pub const SETTING_BACKUP_RECOVERY_KEY: &str = "PERMGUARD_BACKUP_RECOVERY_KEY";
+/// How long a backup is kept before it is destroyed (TS-5); required from `production`.
+pub const SETTING_BACKUP_RETENTION: &str = "PERMGUARD_BACKUP_RETENTION";
+/// The evidence id of the tested procedure that destroys an expired backup (TS-5); required from
+/// `production`.
+pub const SETTING_BACKUP_DESTRUCTION: &str = "PERMGUARD_BACKUP_DESTRUCTION";
 /// Whether refused operations are recorded in the audit trail as well as the log.
 ///
 /// Off by default: the trail records what changed the world, and a caller's mistakes change
@@ -1498,6 +1506,8 @@ pub struct Config {
     mirrors_reap_grace: Duration,
     mirrors_revocation_objective: Option<Duration>,
     mirror_local: Option<crate::mirrors::MirrorLocal>,
+    storage_report: Option<crate::volume::StorageReport>,
+    objectives_report: Option<crate::objectives::ObjectivesReport>,
     mirror_task_selections: Vec<crate::mirrors::MirrorTaskSelection>,
     mirror_aliases: Vec<crate::mirrors::MirrorAlias>,
     otel_enabled: bool,
@@ -1516,6 +1526,9 @@ pub struct Config {
     stream_acknowledged_retention: Duration,
     backup_recovery_key_id: Option<String>,
     backup_encryption_profile: Option<String>,
+    backup_recovery_key: Option<SecretRef>,
+    backup_retention: Option<Duration>,
+    backup_destruction: Option<String>,
     audit_pseudonym_enabled: bool,
     audit_pseudonym_key_ref: Option<SecretRef>,
     audit_pseudonym_key_version: String,
@@ -1702,6 +1715,8 @@ impl Default for Config {
             mirrors_reap_grace: DEFAULT_MIRRORS_REAP_GRACE,
             mirrors_revocation_objective: None,
             mirror_local: None,
+            storage_report: None,
+            objectives_report: None,
             mirror_task_selections: Vec::new(),
             mirror_aliases: Vec::new(),
             otel_enabled: false,
@@ -1720,6 +1735,9 @@ impl Default for Config {
             stream_acknowledged_retention: Duration::ZERO,
             backup_recovery_key_id: None,
             backup_encryption_profile: None,
+            backup_recovery_key: None,
+            backup_retention: None,
+            backup_destruction: None,
             audit_pseudonym_enabled: false,
             audit_pseudonym_key_ref: None,
             audit_pseudonym_key_version: DEFAULT_KEY_VERSION.to_owned(),
@@ -1845,6 +1863,13 @@ impl Config {
         }
 
         Ok(())
+    }
+
+    /// Attaches where the volume stands, as Bootstrap qualified it (TS-5): what discovery
+    /// publishes of the storage.
+    pub fn with_storage_report(mut self, report: crate::volume::StorageReport) -> Self {
+        self.storage_report = Some(report);
+        self
     }
 
     /// Attaches the local task's narrowing (WP-7.7), as the file declared it: patterns are
@@ -3608,6 +3633,28 @@ produce: use `EdDSA` or `ES256`"
         self.backup_encryption_profile.as_deref()
     }
 
+    /// The recovery key backups are encrypted under, by reference (TS-5). `None`: none declared.
+    pub fn backup_recovery_key(&self) -> Option<&SecretRef> {
+        self.backup_recovery_key.as_ref()
+    }
+
+    /// How long a backup is kept before it is destroyed (TS-5). `None`: none declared.
+    pub fn backup_retention(&self) -> Option<Duration> {
+        self.backup_retention
+    }
+
+    /// The evidence id of the tested destruction procedure (TS-5). `None`: none declared.
+    pub fn backup_destruction(&self) -> Option<&str> {
+        self.backup_destruction.as_deref()
+    }
+
+    /// Binds the recovery-key id Bootstrap derived from the key itself (TS-5): what every snapshot
+    /// manifest names from then on.
+    pub fn with_backup_recovery_key_id(mut self, id: String) -> Self {
+        self.backup_recovery_key_id = Some(id);
+        self
+    }
+
     /// Returns the largest NOTP transfer batch, in bytes.
     pub fn notp_max_batch_bytes(&self) -> u64 {
         self.notp_max_batch_bytes
@@ -4123,6 +4170,22 @@ produce: use `EdDSA` or `ES256`"
         self.mirror_local.as_ref()
     }
 
+    /// Where the volume stands, once Bootstrap qualified it (TS-5); `None` before.
+    pub fn storage_report(&self) -> Option<&crate::volume::StorageReport> {
+        self.storage_report.as_ref()
+    }
+
+    /// The service objectives Bootstrap validated (TS-5); `None` before.
+    pub fn objectives_report(&self) -> Option<&crate::objectives::ObjectivesReport> {
+        self.objectives_report.as_ref()
+    }
+
+    /// Attaches the service objectives Bootstrap validated (TS-5): what discovery publishes.
+    pub fn with_objectives_report(mut self, report: crate::objectives::ObjectivesReport) -> Self {
+        self.objectives_report = Some(report);
+        self
+    }
+
     /// Whether spans leave the process over OTLP.
     pub fn otel_enabled(&self) -> bool {
         self.otel_enabled
@@ -4604,6 +4667,12 @@ produce: use `EdDSA` or `ES256`"
             SETTING_STREAM_ACKNOWLEDGED_RETENTION => d(self.stream_acknowledged_retention),
             SETTING_BACKUP_RECOVERY_KEY_ID => self.backup_recovery_key_id.clone(),
             SETTING_BACKUP_ENCRYPTION_PROFILE => self.backup_encryption_profile.clone(),
+            SETTING_BACKUP_RECOVERY_KEY => self
+                .backup_recovery_key
+                .as_ref()
+                .map(|reference| reference.name().to_owned()),
+            SETTING_BACKUP_RETENTION => self.backup_retention.and_then(d),
+            SETTING_BACKUP_DESTRUCTION => self.backup_destruction.clone(),
             SETTING_AUDIT_REFUSALS => b(self.audit_refusals),
             SETTING_NOTP_MAX_BATCH_BYTES => n(self.notp_max_batch_bytes),
             SETTING_NOTP_MAX_BATCH_OBJECTS => n(self.notp_max_batch_objects),
@@ -5932,10 +6001,25 @@ produce: use `EdDSA` or `ES256`"
                 SETTING_BACKUP_ENCRYPTION_PROFILE,
                 &mut self.backup_encryption_profile,
             ),
+            (SETTING_BACKUP_DESTRUCTION, &mut self.backup_destruction),
         ] {
             if let Some(value) = settings.get(key) {
                 *held = Some(backup_label(key, value)?);
             }
+        }
+        if let Some(value) = settings.get(SETTING_BACKUP_RECOVERY_KEY) {
+            self.backup_recovery_key = Some(SecretRef::new(backup_label(
+                SETTING_BACKUP_RECOVERY_KEY,
+                value,
+            )?));
+        }
+        if let Some(value) = settings.get(SETTING_BACKUP_RETENTION) {
+            let retention = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_BACKUP_RETENTION}"))?;
+            if retention.is_zero() {
+                bail!("reading {SETTING_BACKUP_RETENTION}: a backup is kept for some time");
+            }
+            self.backup_retention = Some(retention);
         }
 
         if let Some(value) = settings.get(SETTING_STREAM_CURSOR_TTL) {
@@ -6383,6 +6467,9 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_STREAM_ACKNOWLEDGED_RETENTION,
     SETTING_BACKUP_RECOVERY_KEY_ID,
     SETTING_BACKUP_ENCRYPTION_PROFILE,
+    SETTING_BACKUP_RECOVERY_KEY,
+    SETTING_BACKUP_RETENTION,
+    SETTING_BACKUP_DESTRUCTION,
     SETTING_AUDIT_SINK,
     SETTING_AUTHZ_CACHE_BYTES,
     SETTING_AUTHZ_CACHE_PARTITIONS,

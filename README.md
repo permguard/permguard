@@ -687,6 +687,29 @@ Each server crate (`permguard-all-in-one`, `permguard-control-plane`, `permguard
 </details>
 
 <details>
+<summary><b>Production storage, backups and service objectives</b></summary>
+
+From the `production` profile a Host proves its storage, its backups and its objectives before it is Ready, and refuses to start otherwise.
+Below it, every shortfall is logged with its code and the Host starts.
+
+| Check at Bootstrap                                                                                         | Refused with                                                           |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| the process runs as a dedicated non-root user, core dumps disabled and read back                           | `storage_run_as_root`, `storage_core_dumps`                            |
+| every volume entry is the process's own, directories `0700`, files `0600`, no link, nothing mounted inside | `storage_owner`, `storage_mode`, `storage_link`, `storage_path_escape` |
+| the filesystem probe passes and the volume's tuple is qualified with its encryption mechanism and evidence | `storage_probe_*`, `storage_unqualified`, `storage_qualification_*`    |
+| the backups have a recovery key, an encryption profile, a retention and a tested destruction procedure     | `backup_policy_incomplete`, `recovery_key_mismatch`                    |
+| every service objective is declared and consistent with the bounds that act on it                          | `objectives_incomplete`, `objectives_inconsistent`                     |
+
+`storage.qualified`, `operations.backup` and `objectives` are documented in each `config.template.yml`; the chart takes them as `hostControls`.
+From `production` the volume runs only on a qualified tuple: `storage.compatibility_mode` relaxes nothing there.
+A restore resolves the recovery key itself and checks it against the one the snapshot's manifest binds, before it writes anything.
+From `production` a backup must be finalized within `objectives.backup_interval` of the last one, or of the volume's creation, or readiness is held.
+Discovery publishes the storage qualification with its evidence id, and the objectives with their validation state, never a provider's detail or a secret.
+Readiness is held while a measured lag or headroom is past four fifths of its objective.
+
+</details>
+
+<details>
 <summary><b>CLI workflow</b></summary>
 
 Create and manage remote state:

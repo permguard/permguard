@@ -104,6 +104,18 @@ pub struct StatusView {
     /// Every listener of the process, sorted by name, and what it demands of its clients
     /// (WP-2.11).
     pub listeners: Vec<ListenerView>,
+    /// Where the volume stands (TS-5): its qualification and evidence id, `null` before Bootstrap
+    /// qualified it; the compatibility mode is published here, as the storage document requires.
+    pub storage: Option<StorageView>,
+}
+
+/// The volume's qualification as `host status` publishes it (TS-5): nothing about the provider.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorageView {
+    /// `qualified`, `compatibility_mode` or `unqualified`.
+    pub qualification: String,
+    /// The evidence id of a qualified volume; present even when null.
+    pub evidence: Option<String>,
 }
 
 /// One listener of the process (WP-2.11): never its address, certificate or peers.
@@ -152,6 +164,10 @@ impl HostApi {
             assurance: self.assurance.clone(),
             peer_sessions: self.peer_sessions(),
             listeners: self.listeners.iter().map(Into::into).collect(),
+            storage: self.health.lifecycle().storage().map(|report| StorageView {
+                qualification: report.qualification,
+                evidence: report.evidence,
+            }),
         }
     }
 }

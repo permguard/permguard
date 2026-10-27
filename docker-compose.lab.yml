@@ -32,6 +32,11 @@ x-lab: &lab
     context: .
     dockerfile: lab/compose/Dockerfile
   entrypoint: ["bash", "/opt/permguard/lab/permguard-lab.sh"]
+  # The image's own non-root user, which owns each Host's volume, every capability dropped and no
+  # way to gain one (TS-5): what the chart's security contexts state, in Compose's terms.
+  user: "65532:65532"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
 
 x-mounts:
   # The lab's authority writes it; a Host only reads it. One volume holds every Host's listener key

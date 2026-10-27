@@ -35,6 +35,7 @@ pub mod dir;
 pub mod format;
 pub mod journal;
 pub mod migrate;
+pub mod private;
 pub mod probe;
 pub mod qualify;
 pub mod quota;

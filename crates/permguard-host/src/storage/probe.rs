@@ -67,6 +67,32 @@ pub enum Reason {
     FreeInodes,
     /// The volume's tuple is not qualified for the profile in force.
     UnknownTuple,
+    /// The qualified entry does not name its encryption mechanism, revision or expiry (TS-5).
+    QualificationIncomplete,
+    /// The qualified entry is past its expiry (TS-5).
+    QualificationStale,
+}
+
+impl Reason {
+    /// The registered code Bootstrap refuses with.
+    pub fn code(self) -> &'static str {
+        use permguard_core::codes::storage;
+        match self {
+            Self::Flush => storage::PROBE_FLUSH,
+            Self::Permissions => storage::PROBE_PERMISSIONS,
+            Self::Lock => storage::PROBE_LOCK,
+            Self::Rename => storage::PROBE_RENAME,
+            Self::Identity => storage::PROBE_IDENTITY,
+            Self::HardLink => storage::PROBE_HARD_LINK,
+            Self::TornAppend => storage::PROBE_TORN_APPEND,
+            Self::Reservation => storage::PROBE_RESERVATION,
+            Self::FreeBytes => storage::FREE_BYTES,
+            Self::FreeInodes => storage::FREE_INODES,
+            Self::UnknownTuple => storage::UNQUALIFIED,
+            Self::QualificationIncomplete => storage::QUALIFICATION_INCOMPLETE,
+            Self::QualificationStale => storage::QUALIFICATION_STALE,
+        }
+    }
 }
 
 /// A volume the Host does not run on, and why.
@@ -78,7 +104,13 @@ pub struct Unsupported {
 
 impl std::fmt::Display for Unsupported {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unsupported volume ({:?}): {}", self.reason, self.detail)
+        write!(
+            f,
+            "{}: unsupported volume ({:?}): {}",
+            self.reason.code(),
+            self.reason,
+            self.detail
+        )
     }
 }
 

@@ -23,6 +23,7 @@ pub mod host_api;
 pub mod legacy_events;
 pub mod legacy_spool;
 pub mod logging;
+pub mod objectives;
 pub mod offline;
 pub mod plane;
 pub mod prestop;

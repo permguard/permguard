@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const KEK: &str = "0123456789abcdef0123456789abcdef";
+/// The backups' recovery key (TS-5).
+const RECOVERY_KEY: &[u8] = b"the right recovery key";
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -70,13 +72,15 @@ impl Snapshot {
         let secrets = dir.join("secrets");
         std::fs::create_dir_all(&secrets).expect("the secrets directory");
         std::fs::write(secrets.join("host-kek"), KEK).expect("the key-encryption key");
+        // From `production` every restore resolves the backups' recovery key (TS-5).
+        std::fs::write(secrets.join("recovery"), RECOVERY_KEY).expect("the recovery key");
         let config = dir.join("server.yml");
         std::fs::write(
             &config,
             format!(
                 "public:\n  http: 0.0.0.0:5556\n{assurance}operations:\n  secrets:\n    \
                  provider: directory\n    directory: {}\n  keys:\n    custody: file\n    \
-                 kek_ref: host-kek\n",
+                 kek_ref: host-kek\n  backup:\n    recovery_key: recovery\n",
                 secrets.display()
             ),
         )
@@ -655,4 +659,128 @@ fn a_missing_ring_key_refuses_the_run_before_any_write() {
     // Unspent: the key back, the restore runs under the same plan.
     std::fs::rename(&moved, &private).expect("the key back");
     json(&snapshot.restore("clone", &plan));
+}
+
+/// Lays out what a snapshot taken inside the barrier holds (TS-5): a backup still `prepared`, its
+/// manifest binding `recovery_key_id`.
+fn prepared_backup(snapshot: &Snapshot, recovery_key_id: Option<&str>) {
+    use permguard_host::operations::backup::{self, SnapshotManifest, State};
+
+    let held = snapshot.held();
+    let backups = held
+        .host()
+        .subdir(backup::DIRECTORY, true)
+        .expect("backups");
+    let dir = backups.subdir("0190aaaa", true).expect("the backup");
+    let manifest = SnapshotManifest {
+        operation_id: [1; 16],
+        volume_id: held.id(),
+        host_id: [3; 16],
+        revisions: std::collections::BTreeMap::from([("mutations".to_owned(), 1)]),
+        roots: Vec::new(),
+        at: 1_800_000_000,
+        inventory_digest: [0; 32],
+        recovery_key_id: recovery_key_id.map(str::to_owned),
+        encryption_profile: Some("aes-256-gcm".to_owned()),
+    };
+    // Read unverified by the restore: any signature bytes do.
+    let envelope = permguard_objects::cose::Sign1::sign_with(
+        permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+        permguard_core::domains::protected::SNAPSHOT_MANIFEST,
+        b"kid",
+        manifest.encode().expect("encodes"),
+        |_| Ok(vec![0; 64]),
+    )
+    .expect("signs")
+    .encode()
+    .expect("encodes");
+    permguard_host::storage::write::replace_bytes(&dir, backup::MANIFEST, &envelope)
+        .expect("the manifest");
+    backup::write_state(
+        &dir,
+        &State {
+            state: backup::PREPARED.to_owned(),
+            at: 1_800_000_000,
+            snapshot_id: None,
+        },
+    )
+    .expect("the state");
+}
+
+/// Names `key` as the backups' recovery key in the snapshot's server configuration, or none.
+fn recovery_key(snapshot: &Snapshot, key: Option<&str>) {
+    let text = std::fs::read_to_string(&snapshot.config).expect("reads");
+    // The backup section is the last one, when it is there.
+    let mut text = text
+        .split_once("  backup:\n")
+        .map_or(text.as_str(), |(kept, _)| kept)
+        .to_owned();
+    if let Some(key) = key {
+        text.push_str(&format!("  backup:\n    recovery_key: {key}\n"));
+    }
+    std::fs::write(&snapshot.config, text).expect("writes");
+}
+
+/// TS-5: a restore proceeds only with the recovery key the snapshot's manifest binds: none, or
+/// another, is refused before anything is written, the plan never issued; the right one plans and
+/// runs.
+#[test]
+fn a_restore_needs_the_recovery_key_the_snapshot_binds() {
+    let snapshot = Snapshot::new("recovery-key", "");
+    let secrets = snapshot.dir.join("secrets");
+    std::fs::write(secrets.join("other"), b"another recovery key").expect("another key");
+    let bound = permguard_host::operations::backup::recovery_key_id(RECOVERY_KEY);
+    prepared_backup(&snapshot, Some(&bound));
+    snapshot.claim(snapshot.boot().generation + 1);
+    let plan = snapshot.dir.join("restore.plan");
+
+    recovery_key(&snapshot, None);
+    let refused = snapshot.plan("dr", &plan);
+    assert!(!refused.status.success());
+    assert!(
+        stderr(&refused).contains("recovery_key_missing"),
+        "{}",
+        stderr(&refused)
+    );
+    assert!(!plan.exists(), "no plan issued");
+
+    recovery_key(&snapshot, Some("other"));
+    let refused = snapshot.plan("dr", &plan);
+    assert!(!refused.status.success());
+    assert!(
+        stderr(&refused).contains("recovery_key_mismatch"),
+        "{}",
+        stderr(&refused)
+    );
+    assert!(stderr(&refused).contains(&bound), "{}", stderr(&refused));
+    assert!(!plan.exists(), "no plan issued");
+
+    recovery_key(&snapshot, Some("recovery"));
+    json(&snapshot.plan("dr", &plan));
+    json(&snapshot.restore("dr", &plan));
+    assert!(snapshot.marker().is_some(), "restored");
+}
+
+/// TS-5: the run checks the key again: a configuration changed after the plan to another key
+/// refuses the run, the plan unspent and nothing recorded.
+#[test]
+fn a_wrong_recovery_key_refuses_the_run_before_any_write() {
+    let snapshot = Snapshot::new("recovery-key-run", "");
+    let secrets = snapshot.dir.join("secrets");
+    std::fs::write(secrets.join("other"), b"another recovery key").expect("another key");
+    let bound = permguard_host::operations::backup::recovery_key_id(RECOVERY_KEY);
+    prepared_backup(&snapshot, Some(&bound));
+    snapshot.claim(snapshot.boot().generation + 1);
+    let plan = snapshot.dir.join("restore.plan");
+    recovery_key(&snapshot, Some("recovery"));
+    json(&snapshot.plan("dr", &plan));
+    recovery_key(&snapshot, Some("other"));
+    let refused = snapshot.restore("dr", &plan);
+    assert!(!refused.status.success());
+    assert!(
+        stderr(&refused).contains("recovery_key_mismatch"),
+        "{}",
+        stderr(&refused)
+    );
+    assert_eq!(snapshot.marker(), None, "nothing recorded");
 }

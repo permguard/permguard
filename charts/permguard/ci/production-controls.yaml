@@ -1,0 +1,36 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# The storage, backup and objectives declarations a `production` or `regulated` render needs
+# (TS-5), for the chart's CI shapes and conformance tests: a placeholder qualified tuple, and a
+# recovery key by reference. A deployment states its own: its qualified tuple with its evidence,
+# and the secret its recovery key is kept in.
+hostControls:
+  storage:
+    qualified:
+      - storage_class: ci-standard
+        driver: ci.csi.example
+        filesystem: ext4
+        version: "6"
+        evidence: QUAL-CI
+        encryption: ci-dm-crypt
+        revision: "1"
+        expires_at: "2099-01-01T00:00:00Z"
+    quotas: { host: { bytes: 8G } }
+  backup:
+    recovery_key: backup-recovery
+    encryption_profile: aes-256-gcm
+    retention: 90d
+    destruction: DESTROY-CI
+  objectives:
+    data_loss: 0s
+    recovery_time: 1h
+    max_volume_size: 10G
+    membership_offline_grace: 24h
+    mirror_staleness: 1h
+    evidence_shipping_lag: 1d
+    spool_headroom: 20%
+    checkpoint_export_lag: 1d
+    backup_interval: 1d
+    restore_test_interval: 30d
+    key_recovery_owner: ci

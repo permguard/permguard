@@ -397,7 +397,7 @@ above). Dual control is in force by the `regulated` profile itself and has no va
 {{- $_ := set $env (toString $e.name) (toString $e.value) }}
 {{- end }}
 {{- /* What the configuration renders: the extraConfig, with the assurance values over it. */ -}}
-{{- $config := mergeOverwrite (deepCopy $unit.extraConfig) (include "permguard.assuranceConfig" $unit.assurance | fromYaml) }}
+{{- $config := mergeOverwrite (include "permguard.hostControlsConfig" $ | fromYaml) (mergeOverwrite (deepCopy $unit.extraConfig) (include "permguard.assuranceConfig" $unit.assurance | fromYaml)) }}
 {{- $keys := dig "operations" "keys" dict $config }}
 {{- $default := ternary "development" "file" (eq $profile "development") }}
 {{- $host := get $env "PERMGUARD_KEYS_CUSTODY" | default (toString (dig "custody" "" $keys)) | default $default }}
@@ -438,6 +438,48 @@ above). Dual control is in force by the `regulated` profile itself and has no va
 {{- $records := or (and (eq (toString $unit.kind) "dataPlane") (ne (toString $unit.evidence) "disabled")) (and (eq (toString $unit.kind) "allInOne") (or (eq (toString (dig "dataPlane" "decisions" "log" "enabled" "" $config)) "true") (eq (get $env "PERMGUARD_DECISIONS_LOG_ENABLED") "true"))) }}
 {{- if and $records (eq (get $rings "host.operations") "kms") }}
 {{- fail (printf "%s: `host.operations` signs the run a decision record opens, while the decision waits, and a remote KMS is not allowed on the decision path: keep it `pkcs11` (or `file` below `regulated`) where evidence is recorded." $label) }}
+{{- end }}
+{{- /* TS-5: from `production` a Host serves only on qualified storage, whose record proves encryption at rest (the compatibility mode relaxes nothing there), with a complete backup policy and every service objective declared; Bootstrap refuses the same, and refusing here says it at install. */ -}}
+{{- if ne $profile "development" }}
+{{- $storage := dig "storage" dict $config }}
+{{- $qualified := dig "qualified" list $storage }}
+{{- if not $qualified }}
+{{- fail (printf "%s: the `%s` profile serves only on qualified storage: list the volume's tuple with its evidence, encryption mechanism, revision and expiry in hostControls.storage.qualified; storage.compatibility_mode relaxes nothing from `production`." $label $profile) }}
+{{- end }}
+{{- range $entry := $qualified }}
+{{- range $key := list "storage_class" "driver" "filesystem" "version" "evidence" "encryption" "revision" "expires_at" }}
+{{- if not (get $entry $key) }}
+{{- fail (printf "%s: every hostControls.storage.qualified entry names its %s: a record proves encryption at rest only with its mechanism, revision and expiry." $label $key) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- $backup := dig "operations" "backup" dict $config }}
+{{- if not (get $backup "recovery_key") }}
+{{- fail (printf "%s: the `%s` profile encrypts every backup under a recovery key the Host resolves: state hostControls.backup.recovery_key, a secret reference (a provider's recovery_key_id alone proves no key)." $label $profile) }}
+{{- end }}
+{{- range $key := list "encryption_profile" "retention" "destruction" }}
+{{- if not (get $backup $key) }}
+{{- fail (printf "%s: the `%s` profile keeps backups under a declared, tested policy: state hostControls.backup.%s." $label $profile $key) }}
+{{- end }}
+{{- end }}
+{{- $objectives := dig "objectives" dict $config }}
+{{- range $key := list "data_loss" "recovery_time" "max_volume_size" "membership_offline_grace" "mirror_staleness" "evidence_shipping_lag" "spool_headroom" "checkpoint_export_lag" "backup_interval" "restore_test_interval" "key_recovery_owner" }}
+{{- if has (toString (get $objectives $key)) (list "" "<nil>") }}
+{{- fail (printf "%s: the `%s` profile declares every service objective: state hostControls.objectives.%s." $label $profile $key) }}
+{{- end }}
+{{- end }}
+{{- /* The pod runs as a dedicated user that owns its volume, never privileged, and the kubelet never widens the volume's modes on a remount. */ -}}
+{{- $pod := $.Values.podSecurityContext | default dict }}
+{{- $container := $.Values.securityContext | default dict }}
+{{- if or (not $pod.runAsNonRoot) (eq (int (default 0 $pod.runAsUser)) 0) }}
+{{- fail (printf "%s: the `%s` profile runs as a dedicated non-root user: set podSecurityContext.runAsNonRoot and a runAsUser other than 0." $label $profile) }}
+{{- end }}
+{{- if or $container.privileged (ne (toString $container.allowPrivilegeEscalation) "false") }}
+{{- fail (printf "%s: the `%s` profile runs unprivileged: securityContext.privileged false and allowPrivilegeEscalation false." $label $profile) }}
+{{- end }}
+{{- if and $pod.fsGroup (ne (toString $pod.fsGroupChangePolicy) "OnRootMismatch") }}
+{{- fail (printf "%s: with an fsGroup, the `%s` profile keeps podSecurityContext.fsGroupChangePolicy OnRootMismatch: the default re-grants the group on every remount, and the Host refuses a volume its group can read." $label $profile) }}
+{{- end }}
 {{- end }}
 {{- if eq $profile "regulated" }}
 {{- if $.Values.developmentMode }}

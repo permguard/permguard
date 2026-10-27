@@ -1237,6 +1237,15 @@ message GetStatusResponse {
   PeerSessions peer_sessions = 7;
   // Every listener of the process, sorted by name, and what it demands of its clients (WP-2.11).
   repeated HostListener listeners = 8;
+  // Where the volume stands (TS-5), absent before Bootstrap qualified it.
+  optional HostStorage storage = 9;
+}
+
+// The volume's qualification (TS-5): `qualification` is `qualified`, `compatibility_mode` or
+// `unqualified`; `evidence` the evidence id of a qualified volume. Nothing about the provider.
+message HostStorage {
+  string qualification = 1;
+  optional string evidence = 2;
 }
 
 // One listener of the process (WP-2.11): never its address, certificate or peers. `class` is

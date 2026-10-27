@@ -29,7 +29,8 @@ use crate::config::{
     SETTING_AUDIT_DIRECTORY, SETTING_AUDIT_PSEUDONYM_ENABLED, SETTING_AUDIT_PSEUDONYM_KEY_REF,
     SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS, SETTING_AUDIT_RETENTION,
     SETTING_AUDIT_RETENTION_SECURITY, SETTING_AUDIT_SINK, SETTING_AUTOGENERATE,
-    SETTING_BACKUP_ENCRYPTION_PROFILE, SETTING_BACKUP_RECOVERY_KEY_ID, SETTING_DEVELOPMENT_MODE,
+    SETTING_BACKUP_DESTRUCTION, SETTING_BACKUP_ENCRYPTION_PROFILE, SETTING_BACKUP_RECOVERY_KEY,
+    SETTING_BACKUP_RECOVERY_KEY_ID, SETTING_BACKUP_RETENTION, SETTING_DEVELOPMENT_MODE,
     SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS, SETTING_HOST_PEERS, SETTING_ISSUER,
     SETTING_KEYS_CUSTODY, SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED,
     SETTING_KEYS_IDENTITY_CUSTODY, SETTING_KEYS_KEK_PROVIDER, SETTING_KEYS_KEK_REF,
@@ -139,6 +140,10 @@ pub struct ConfigFile {
     /// `realms`; read with [`ConfigFile::volume`].
     #[serde(default)]
     storage: StorageSection,
+    /// The service objectives the deployment declares (TS-5): structured, carried from the file
+    /// only, read with [`ConfigFile::objectives`].
+    #[serde(default)]
+    objectives: crate::objectives::ObjectivesSection,
     /// The issuers this deployment hosts. A list, not a flat setting, so it is carried as structured
     /// configuration rather than through the layered key/value pipeline — realms come from the file
     /// (and, later, a database), never from a single environment variable.
@@ -207,6 +212,15 @@ struct QualifiedSection {
     filesystem: String,
     version: String,
     evidence: String,
+    /// The encryption-at-rest mechanism the evidence proves (TS-5).
+    #[serde(default)]
+    encryption: Option<String>,
+    /// The evidence's revision (TS-5).
+    #[serde(default)]
+    revision: Option<String>,
+    /// When the evidence stops proving anything, RFC 3339 (TS-5).
+    #[serde(default, alias = "expiresAt")]
+    expires_at: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Deserialize)]
@@ -693,6 +707,15 @@ struct BackupSection {
     /// The backups' encryption profile.
     #[serde(default)]
     encryption_profile: Option<String>,
+    /// The recovery key, by secret reference (TS-5).
+    #[serde(default)]
+    recovery_key: Option<String>,
+    /// How long a backup is kept (TS-5).
+    #[serde(default)]
+    retention: Option<String>,
+    /// The evidence id of the tested destruction procedure (TS-5).
+    #[serde(default)]
+    destruction: Option<String>,
 }
 
 /// The Host's evidence streams (WP-5.5).
@@ -1421,6 +1444,18 @@ impl ConfigFile {
                 SETTING_BACKUP_ENCRYPTION_PROFILE,
                 self.operations.backup.encryption_profile.as_ref(),
             ),
+            (
+                SETTING_BACKUP_RECOVERY_KEY,
+                self.operations.backup.recovery_key.as_ref(),
+            ),
+            (
+                SETTING_BACKUP_RETENTION,
+                self.operations.backup.retention.as_ref(),
+            ),
+            (
+                SETTING_BACKUP_DESTRUCTION,
+                self.operations.backup.destruction.as_ref(),
+            ),
             (SETTING_KEYS_ENABLED, self.operations.keys.enabled.as_ref()),
             (
                 SETTING_KEYS_DIRECTORY,
@@ -1755,6 +1790,11 @@ impl ConfigFile {
         Ok(crate::authz::HostAuth { principals, public })
     }
 
+    /// The service objectives the file declares (TS-5), every value read and bounded.
+    pub fn objectives(&self) -> Result<crate::objectives::Objectives> {
+        self.objectives.read()
+    }
+
     pub fn volume(&self) -> Result<crate::volume::VolumeConfig> {
         use crate::volume::{Floors, Limit, QualifiedTuple, Quotas, Tuple, VolumeConfig};
 
@@ -1783,9 +1823,25 @@ impl ConfigFile {
             if qualified.iter().any(|known| known.tuple == tuple) {
                 bail!("storage.qualified[{position}] repeats a tuple listed before it");
             }
+            let optional = |value: &Option<String>, key: &str| -> Result<Option<String>> {
+                value.as_deref().map(|value| part(value, key)).transpose()
+            };
+            let expires_at = optional(&entry.expires_at, "expires_at")?
+                .map(|text| {
+                    crate::time::from_rfc3339(&text).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "storage.qualified[{position}].expires_at: `{text}` is not an RFC 3339 \
+                             time"
+                        )
+                    })
+                })
+                .transpose()?;
             qualified.push(QualifiedTuple {
                 tuple,
                 evidence: part(&entry.evidence, "evidence")?,
+                encryption: optional(&entry.encryption, "encryption")?,
+                revision: optional(&entry.revision, "revision")?,
+                expires_at,
             });
         }
         let compatibility_mode = match &section.compatibility_mode {
@@ -2461,7 +2517,7 @@ mod tests {
     #[test]
     fn test_the_storage_section_reads_declared_values_tuples_and_floors() {
         let file = ConfigFile::parse(
-            "storage:\n  volume:\n    storage_class: fast-ssd\n    driver: ebs.csi.aws.com\n  qualified:\n    - storage_class: fast-ssd\n      driver: ebs.csi.aws.com\n      filesystem: ext4\n      version: 6.8.0\n      evidence: QUAL-2026-01\n  compatibility_mode: \"true\"\n  floors:\n    free_bytes: 2G\n    free_inodes: \"50000\"\n",
+            "storage:\n  volume:\n    storage_class: fast-ssd\n    driver: ebs.csi.aws.com\n  qualified:\n    - storage_class: fast-ssd\n      driver: ebs.csi.aws.com\n      filesystem: ext4\n      version: 6.8.0\n      evidence: QUAL-2026-01\n      encryption: aws-kms\n      revision: \"3\"\n      expires_at: 2027-07-01T00:00:00Z\n  compatibility_mode: \"true\"\n  floors:\n    free_bytes: 2G\n    free_inodes: \"50000\"\n",
         )
         .expect("the file parses");
         let volume = file.volume().expect("the section is valid");
@@ -2470,6 +2526,14 @@ mod tests {
         assert_eq!(volume.qualified.len(), 1);
         assert_eq!(volume.qualified[0].tuple.filesystem, "ext4");
         assert_eq!(volume.qualified[0].evidence, "QUAL-2026-01");
+        assert_eq!(
+            (
+                volume.qualified[0].encryption.as_deref(),
+                volume.qualified[0].revision.as_deref(),
+                volume.qualified[0].expires_at
+            ),
+            (Some("aws-kms"), Some("3"), Some(1_814_400_000))
+        );
         assert!(volume.compatibility_mode);
         assert_eq!(volume.floors.free_bytes, 2 * 1024 * 1024 * 1024);
         assert_eq!(volume.floors.free_inodes, 50_000);
@@ -2527,6 +2591,14 @@ mod tests {
                 "empty evidence",
             ),
             ("storage:\n  compatibility_mode: perhaps\n".to_owned(), "not a boolean"),
+            (
+                "storage:\n  qualified:\n    - storage_class: a\n      driver: b\n      filesystem: ext4\n      version: 6\n      evidence: e\n      expires_at: soon\n".to_owned(),
+                "an expiry that is no time",
+            ),
+            (
+                "storage:\n  qualified:\n    - storage_class: a\n      driver: b\n      filesystem: ext4\n      version: 6\n      evidence: e\n      encryption: \" \"\n".to_owned(),
+                "an empty encryption mechanism",
+            ),
             ("storage:\n  floors:\n    free_bytes: lots\n".to_owned(), "not a size"),
             ("storage:\n  floors:\n    free_inodes: \"0\"\n".to_owned(), "zero inodes"),
             (

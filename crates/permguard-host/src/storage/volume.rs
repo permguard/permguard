@@ -92,6 +92,9 @@ impl Volume {
     }
 
     fn lock(root: &Path) -> Result<Self> {
+        // Whatever this process creates on the volume from here on is its owner's alone, a store
+        // writing through the standard library included (TS-5).
+        super::private::restrict_creation_mask();
         let host = Dir::create_root(root)?.subdir(HOST, true)?;
         let lock = open_lock(&host)?;
         match lock.try_lock() {
@@ -216,6 +219,9 @@ pub fn advance_claim(root: &Path, create: bool) -> Result<Advanced> {
         )));
     }
     let volume = Volume::lock(root)?;
+    // An orchestrator that gives the volume its group may have widened it since the last start:
+    // owner-only again before the next process judges it (TS-5).
+    super::private::narrow(root)?;
     let next = volume.generation.checked_add(1).ok_or_else(|| {
         StorageError::Refused(format!(
             "the volume at {} is claimed at the last generation there is",

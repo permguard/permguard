@@ -43,7 +43,8 @@ RUN apt-get update \
  && groupadd --gid 65532 nonroot \
  && useradd --uid 65532 --gid 65532 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin nonroot \
  && mkdir -p /var/lib/permguard /lab \
- && chown 65532:65532 /var/lib/permguard /lab
+ && chown 65532:65532 /var/lib/permguard /lab \
+ && chmod 0700 /var/lib/permguard
 
 COPY --from=builder /out/ /usr/local/bin/
 COPY LICENSE /usr/share/doc/permguard/

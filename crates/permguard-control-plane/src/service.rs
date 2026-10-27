@@ -1690,6 +1690,8 @@ mod tests {
                 state: "serving".to_owned(),
                 planes,
                 jwks_uri: Some("http://a/server-host/keys".to_owned()),
+                storage: None,
+                objectives: None,
                 // Every member of the block filled: a higher control added and a relaxation.
                 assurance: permguard_core::assurance::Assurance::new(
                     permguard_core::assurance::AssuranceProfile::Development,
@@ -1758,6 +1760,26 @@ mod tests {
                     reason: None,
                 },
                 listeners: Vec::new(),
+                storage: Some(permguard_core::volume::StorageReport {
+                    qualification: "qualified".to_owned(),
+                    evidence: Some("QUAL-2026-01".to_owned()),
+                }),
+                objectives: Some(
+                    permguard_core::objectives::Objectives {
+                        data_loss: Some(std::time::Duration::ZERO),
+                        recovery_time: Some(std::time::Duration::from_secs(3_600)),
+                        max_volume_size: Some(100 << 30),
+                        membership_offline_grace: Some(std::time::Duration::from_secs(86_400)),
+                        mirror_staleness: Some(std::time::Duration::from_secs(300)),
+                        evidence_shipping_lag: Some(std::time::Duration::from_secs(900)),
+                        spool_headroom: Some(20),
+                        checkpoint_export_lag: Some(std::time::Duration::from_secs(3_600)),
+                        backup_interval: Some(std::time::Duration::from_secs(86_400)),
+                        restore_test_interval: Some(std::time::Duration::from_secs(2_592_000)),
+                        key_recovery_owner: Some("security-team".to_owned()),
+                    }
+                    .report("validated"),
+                ),
             },
         );
 

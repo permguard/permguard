@@ -351,6 +351,64 @@ pub mod storage {
     pub const STALE_WRITER: &str = "storage_stale_writer";
     /// A frame carries a claim generation above the volume's claim.
     pub const CLAIM_BEHIND_DATA: &str = "storage_claim_behind_data";
+    /// A volume entry owned by another user than the process's (TS-5).
+    pub const OWNER: &str = "storage_owner";
+    /// A volume entry the group or others may reach: not `0700` or `0600` (TS-5).
+    pub const MODE: &str = "storage_mode";
+    /// A symbolic link on the volume, or a volume root reached through one (TS-5).
+    pub const LINK: &str = "storage_link";
+    /// A volume entry that is neither a directory nor a regular file (TS-5).
+    pub const FILE_KIND: &str = "storage_file_kind";
+    /// A directory of the volume on another filesystem: a mount inside it (TS-5).
+    pub const PATH_ESCAPE: &str = "storage_path_escape";
+    /// The process runs as root, not as a dedicated user (TS-5).
+    pub const RUN_AS_ROOT: &str = "storage_run_as_root";
+    /// Core dumps could not be disabled, or were found enabled (TS-5).
+    pub const CORE_DUMPS: &str = "storage_core_dumps";
+    /// The startup probe could not create, rename, remove or flush a file or directory.
+    pub const PROBE_FLUSH: &str = "storage_probe_flush";
+    /// A file the probe created owner-only did not read back owner-only.
+    pub const PROBE_PERMISSIONS: &str = "storage_probe_permissions";
+    /// The probe's exclusive advisory lock was refused, or granted twice.
+    pub const PROBE_LOCK: &str = "storage_probe_lock";
+    /// The probe's rename did not replace its target and remove its source.
+    pub const PROBE_RENAME: &str = "storage_probe_rename";
+    /// A file did not keep its identity across the probe's rename or link.
+    pub const PROBE_IDENTITY: &str = "storage_probe_identity";
+    /// The probe's hard link was refused, or replaced an existing name.
+    pub const PROBE_HARD_LINK: &str = "storage_probe_hard_link";
+    /// Truncating a flushed file changed the bytes before the cut.
+    pub const PROBE_TORN_APPEND: &str = "storage_probe_torn_append";
+    /// The probe could not reserve blocks a stream declared.
+    pub const PROBE_RESERVATION: &str = "storage_probe_reservation";
+    /// Fewer free bytes than the configured floor.
+    pub const FREE_BYTES: &str = "storage_free_bytes";
+    /// Fewer free inodes than the configured floor.
+    pub const FREE_INODES: &str = "storage_free_inodes";
+    /// The volume's tuple is not qualified for the profile in force.
+    pub const UNQUALIFIED: &str = "storage_unqualified";
+    /// The qualified entry names no encryption mechanism, revision or expiry (TS-5).
+    pub const QUALIFICATION_INCOMPLETE: &str = "storage_qualification_incomplete";
+    /// The qualified entry is past its expiry (TS-5).
+    pub const QUALIFICATION_STALE: &str = "storage_qualification_stale";
+    /// From `production`, the recovery key, encryption profile, retention or destruction procedure of the backups is not declared (TS-5).
+    pub const BACKUP_POLICY_INCOMPLETE: &str = "backup_policy_incomplete";
+    /// The recovery key the configuration resolves is not the one the snapshot or the configuration binds (TS-5).
+    pub const RECOVERY_KEY_MISMATCH: &str = "recovery_key_mismatch";
+    /// The snapshot binds a recovery key and the configuration names none (TS-5).
+    pub const RECOVERY_KEY_MISSING: &str = "recovery_key_missing";
+    /// From `production`, the restored snapshot has no manifest binding its recovery key (TS-5).
+    pub const SNAPSHOT_UNBOUND: &str = "snapshot_unbound";
+    /// The recovery key holds fewer than 16 bytes (TS-5).
+    pub const RECOVERY_KEY_WEAK: &str = "recovery_key_weak";
+    /// The recovery key is a secret another key of the deployment also names (TS-5).
+    pub const RECOVERY_KEY_SHARED: &str = "recovery_key_shared";
+    /// From `production`, a service objective is not declared (TS-5).
+    pub const OBJECTIVES_INCOMPLETE: &str = "objectives_incomplete";
+    /// A service objective contradicts a subsystem bound or the volume's quota (TS-5).
+    pub const OBJECTIVES_INCONSISTENT: &str = "objectives_inconsistent";
+    /// A measured lag or headroom crossed its objective's margin: readiness is held (TS-5).
+    pub const OBJECTIVE_MARGIN: &str = "objective_margin";
 }
 
 /// The Host API, `/host/v1` and `permguard.host.v1` (WP-2.5): what the common envelope refuses
@@ -729,6 +787,35 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::TIMEOUT,
         storage::STALE_WRITER,
         storage::CLAIM_BEHIND_DATA,
+        storage::OWNER,
+        storage::MODE,
+        storage::LINK,
+        storage::FILE_KIND,
+        storage::PATH_ESCAPE,
+        storage::RUN_AS_ROOT,
+        storage::CORE_DUMPS,
+        storage::PROBE_FLUSH,
+        storage::PROBE_PERMISSIONS,
+        storage::PROBE_LOCK,
+        storage::PROBE_RENAME,
+        storage::PROBE_IDENTITY,
+        storage::PROBE_HARD_LINK,
+        storage::PROBE_TORN_APPEND,
+        storage::PROBE_RESERVATION,
+        storage::FREE_BYTES,
+        storage::FREE_INODES,
+        storage::UNQUALIFIED,
+        storage::QUALIFICATION_INCOMPLETE,
+        storage::QUALIFICATION_STALE,
+        storage::BACKUP_POLICY_INCOMPLETE,
+        storage::RECOVERY_KEY_MISMATCH,
+        storage::RECOVERY_KEY_MISSING,
+        storage::SNAPSHOT_UNBOUND,
+        storage::RECOVERY_KEY_WEAK,
+        storage::RECOVERY_KEY_SHARED,
+        storage::OBJECTIVES_INCOMPLETE,
+        storage::OBJECTIVES_INCONSISTENT,
+        storage::OBJECTIVE_MARGIN,
         host::REQUEST_ID_REQUIRED,
         host::REQUEST_ID_REUSED,
         host::REVISION_MISMATCH,

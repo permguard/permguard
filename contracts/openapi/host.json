@@ -6593,6 +6593,11 @@
             },
             "description": "Every listener of the process, sorted by name, with its class and what it demands of its clients (WP-2.11).",
             "x-grpc-field": "listeners"
+          },
+          "storage": {
+            "oneOf": [{ "$ref": "#/components/schemas/HostStorage" }, { "type": "null" }],
+            "description": "Where the volume stands (TS-5): its qualification and evidence id, `null` before Bootstrap qualified it. The compatibility mode is published here.",
+            "x-grpc-field": "storage"
           }
         },
         "required": [
@@ -6603,11 +6608,32 @@
           "components",
           "assurance",
           "peer_sessions",
-          "listeners"
+          "listeners",
+          "storage"
         ],
         "additionalProperties": false,
         "description": "What `GET /host/v1/status` answers.",
         "x-grpc-message": "permguard.host.v1.GetStatusResponse"
+      },
+      "HostStorage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["qualification", "evidence"],
+        "description": "The volume's qualification as `host status` publishes it (TS-5): nothing about the provider.",
+        "x-grpc-message": "permguard.host.v1.HostStorage",
+        "properties": {
+          "qualification": {
+            "type": "string",
+            "enum": ["qualified", "compatibility_mode", "unqualified"],
+            "description": "How the volume's storage tuple is qualified under the profile in force.",
+            "x-grpc-field": "qualification"
+          },
+          "evidence": {
+            "type": ["string", "null"],
+            "description": "The evidence id of a qualified volume.",
+            "x-grpc-field": "evidence"
+          }
+        }
       },
       "HostListener": {
         "type": "object",

@@ -19,6 +19,17 @@ is cut.
 
 ### Added
 
+- **Storage security and declared service objectives (TS-5).**
+  Bootstrap verifies the process runs as a dedicated non-root user and disables core dumps, reading the limit back.
+  It walks the volume without following a link and refuses, from `production`, an entry another user owns or may reach, a symbolic link, a FIFO or another filesystem mounted inside.
+  The filesystem probe and the qualification now run at every start; from `production` a qualified entry names its `encryption` mechanism, `revision` and `expires_at`, and an incomplete or expired one is refused.
+  `operations.backup` gains `recovery_key` (a secret reference whose fingerprint is the id every snapshot manifest binds), `retention` and `destruction`.
+  `restore plan` and `restore run` refuse a missing or wrong recovery key before they write anything.
+  A new top-level `objectives` section declares eleven typed, bounded service objectives, cross-validated against the bounds that act on them.
+  Discovery publishes the storage qualification and the objectives; readiness is held while a measured lag or headroom is past four fifths of its objective.
+  The chart takes the declarations as `hostControls` and refuses a `production` render without them, or with a root or privileged pod; its pods apply the fsGroup with `fsGroupChangePolicy: OnRootMismatch`.
+  The Compose lab runs its Hosts as the image's user with every capability dropped.
+
 - **Restore and split-brain drills, and the baseline volume recovered through every migration (WP-7.7).**
   `scripts/drill-restore.sh` runs the restore drill on the Compose lab's `split-plane` profile.
   It takes an application-consistent backup of the Data Plane, answers decisions the backup does not hold, loses the volume, and restores the verified snapshot in `dr` mode.
@@ -700,6 +711,15 @@ is cut.
   A denial at a listener's gate (`unauthenticated`, `forbidden`) is reported with its code and no class over REST as over gRPC, exit 64.
 
 ### Changed
+
+- **A `production` Host now needs its storage, backups and objectives declared (TS-5).**
+  A deployment upgrading under `production` or `regulated` adds, before it restarts:
+  `storage.qualified` with the volume's tuple and its encryption evidence: `storage.compatibility_mode` no longer admits an unqualified tuple under `production`;
+  `operations.backup` with a recovery key named by secret reference (at least 128 bits, no other key's), an encryption profile, a retention and a destruction procedure;
+  every key of `objectives`, and `storage.quotas.host.bytes` within `objectives.max_volume_size`.
+  A volume a copy or a hand left readable to its group must be narrowed: `chmod -R go-rwx` on the volume directory; `volume claim --next` does it for the entries the process owns.
+  From `production` a restore needs `operations.backup.recovery_key` in `--server-config`, and a backup must be finalized within `objectives.backup_interval`.
+  Processes started with `development` keep starting and log what `production` would refuse.
 
 - **`restore run --mode dr` rolls every producer run over (WP-7.7).**
   A snapshot's runs are behind what its coordinators may have acknowledged before the loss, so a restored Data Plane that appended to them wrote other records at sequences a coordinator already held.

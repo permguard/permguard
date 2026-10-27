@@ -497,16 +497,17 @@ jobs:
       - name: render every shape
         run: |
           set -euo pipefail
-          tls="--set controlPlane.tls.secretName=permguard-control-plane-tls,dataPlane.tls.terminatedUpstream=true,allInOne.tls.secretName=permguard-all-in-one-tls"
+          # From `production` every Host declares its storage, backups and objectives (TS-5).
+          tls="--values charts/permguard/ci/production-controls.yaml --set controlPlane.tls.secretName=permguard-control-plane-tls,dataPlane.tls.terminatedUpstream=true,allInOne.tls.secretName=permguard-all-in-one-tls"
           for values in \
             "${tls}" \
-            "--values charts/permguard/values-production.yaml --values charts/permguard/ci/image-verification.yaml" \
+            "--values charts/permguard/values-production.yaml --values charts/permguard/ci/image-verification.yaml --values charts/permguard/ci/production-controls.yaml" \
             "${tls} --set allInOne.enabled=true,controlPlane.enabled=false,dataPlane.enabled=false" \
             "${tls} --set persistence.enabled=true" \
             "${tls} --set dataPlane.replicaCount=1" \
             "${tls} --set metrics.serviceMonitor.enabled=true" \
             "${tls} --set image.registry=ghcr.io" \
-            "--set developmentMode=true,autogenerate=true"; do
+            "--set developmentMode=true,autogenerate=true,controlPlane.assurance.profile=development,dataPlane.groupDefaults.assurance.profile=development"; do
             echo "helm template ${values}"
             # shellcheck disable=SC2086
             helm template permguard charts/permguard ${values} > /dev/null
@@ -516,7 +517,8 @@ jobs:
       - name: the chart refuses the all-in-one beside the planes
         run: |
           set -euo pipefail
-          tls="--set controlPlane.tls.secretName=permguard-control-plane-tls,dataPlane.tls.terminatedUpstream=true,allInOne.tls.secretName=permguard-all-in-one-tls"
+          # The TS-5 declarations in, so each shape below is refused for its own reason.
+          tls="--values charts/permguard/ci/production-controls.yaml --set controlPlane.tls.secretName=permguard-control-plane-tls,dataPlane.tls.terminatedUpstream=true,allInOne.tls.secretName=permguard-all-in-one-tls"
           # A public listener secured by nothing, outside developmentMode, is refused at render
           # (WP-2.11), and so is one stating both ways at once.
           if helm template permguard charts/permguard > /dev/null 2>&1; then

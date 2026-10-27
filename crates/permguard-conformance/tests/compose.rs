@@ -333,3 +333,36 @@ fn walk(directory: &Path, visit: &mut dyn FnMut(&Path)) {
         }
     }
 }
+
+/// TS-5: every Host of the lab runs as the image's non-root user, with every capability dropped
+/// and no way to gain one, and the image makes the state directory its own, owner-only: the
+/// controls the chart's security contexts state, in Compose's terms.
+#[test]
+fn every_host_runs_non_root_unprivileged_on_a_private_volume() {
+    let all = services(&compose());
+    let hosts = hosts(&all);
+    assert!(!hosts.is_empty());
+    for (name, service) in &hosts {
+        let user = service["user"].as_str().unwrap_or_default();
+        assert!(
+            !user.is_empty() && !user.starts_with("0:") && user != "0" && user != "root",
+            "{name} runs as `{user}`"
+        );
+        assert_eq!(strings(&service["cap_drop"]), ["ALL"], "{name}");
+        assert!(
+            strings(&service["security_opt"])
+                .iter()
+                .any(|option| option == "no-new-privileges:true"),
+            "{name}"
+        );
+        assert!(service["privileged"].as_bool() != Some(true), "{name}");
+    }
+    let dockerfile =
+        std::fs::read_to_string(root().join("lab/compose/Dockerfile")).expect("the Dockerfile");
+    assert!(
+        dockerfile.contains("chown 65532:65532 /var/lib/permguard")
+            && dockerfile.contains("chmod 0700 /var/lib/permguard")
+            && dockerfile.contains("USER 65532:65532"),
+        "the image owns its state directory, owner-only, and runs as its user"
+    );
+}

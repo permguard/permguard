@@ -41,7 +41,7 @@
 //! | 6     | `roots`              | `[{1 name, 2 files, 3 bytes, 4 digest}]`, `host`, `data`, `operations` |
 //! | 7     | `at`                 | seconds                                                        |
 //! | 8     | `inventory_digest`   | 32 bytes, the whole inventory                                  |
-//! | 9     | `recovery_key_id`    | optional, the deployment's recovery-key id                     |
+//! | 9     | `recovery_key_id`    | optional, the recovery key's fingerprint or provider key id    |
 //! | 10    | `encryption_profile` | optional, the backups' encryption profile                      |
 //!
 //! An inventory item is `{1 path, 2 length, 3 sha256 of the content, 4 append}`; a root's digest
@@ -1266,7 +1266,9 @@ fn read_state(dir: &Dir) -> Result<Option<State>, StorageError> {
         .transpose()
 }
 
-fn write_state(dir: &Dir, state: &State) -> Result<(), StorageError> {
+/// Replaces the state view of the backup in `dir`: the backup's own transitions, and a drill or a
+/// test that lays out a snapshot taken inside the barrier.
+pub fn write_state(dir: &Dir, state: &State) -> Result<(), StorageError> {
     let body = state.encode().map_err(StorageError::Corruption)?;
     write::replace_view(dir, STATE, format::VIEW, &body)
 }
@@ -1285,6 +1287,137 @@ fn sync_tree(path: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The id of a recovery key (TS-5): `sha256:` and the unpadded base64url SHA-256 of
+/// [`digest::BACKUP_RECOVERY_KEY`] and the key's bytes. A fingerprint, so the id is never chosen: a
+/// manifest that binds it names exactly one key, and the key proves it holds the id.
+pub fn recovery_key_id(key: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(digest::BACKUP_RECOVERY_KEY.as_bytes());
+    hasher.update(key);
+    format!("sha256:{}", B64.encode(hasher.finalize()))
+}
+
+/// The snapshot manifest of the barrier a restored volume was snapshotted in (TS-5): the newest
+/// backup still `prepared` on it, since the storage driver snapshots the volume between the prepare
+/// and its finalize. Read only — nothing is created, swept or replaced — and unverified: the
+/// restore trusts the volume as far as its fence and scan let it, and this tells it which recovery
+/// key the snapshot was bound to. `None` when the volume holds no prepared backup: a snapshot taken
+/// without the barrier, crash-consistent only.
+pub fn snapshot_manifest(volume: &Volume) -> Result<Option<SnapshotManifest>, String> {
+    let dir = match volume.host().subdir(DIRECTORY, false) {
+        Ok(dir) => dir,
+        Err(StorageError::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(None);
+        }
+        Err(error) => return Err(storage(error)),
+    };
+    let mut newest: Option<(u64, u64, String, SnapshotManifest)> = None;
+    for name in dir.subdirs().map_err(storage)? {
+        let operation = dir.subdir(&name, false).map_err(storage)?;
+        let Some(state) = read_state(&operation).map_err(storage)? else {
+            continue;
+        };
+        if state.state != PREPARED {
+            continue;
+        }
+        let Some(bytes) = operation.read(MANIFEST).map_err(storage)? else {
+            continue;
+        };
+        let envelope = Sign1::decode(&bytes)
+            .map_err(|error| format!("the snapshot manifest of {name}: {error}"))?;
+        let manifest = SnapshotManifest::decode(envelope.payload_unverified())
+            .map_err(|error| format!("the snapshot manifest of {name}: {error}"))?;
+        let order = manifest
+            .revisions
+            .get("mutations")
+            .copied()
+            .unwrap_or_default();
+        let key = (manifest.at, order, name.clone());
+        if newest
+            .as_ref()
+            .is_none_or(|(at, held, held_name, _)| key > (*at, *held, held_name.clone()))
+        {
+            newest = Some((manifest.at, order, name, manifest));
+        }
+    }
+    Ok(newest.map(|(_, _, _, manifest)| manifest))
+}
+
+/// Why a restore does not proceed with the recovery key it was given (TS-5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyRefused {
+    pub code: &'static str,
+    pub detail: String,
+}
+
+impl std::fmt::Display for KeyRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.detail)
+    }
+}
+
+/// Whether a restore may proceed (TS-5), before any writable transition: `snapshot` is what
+/// [`snapshot_manifest`] found, `configured` the id of the recovery key the operator's
+/// configuration resolves — a key's fingerprint, or a qualified provider's key id.
+///
+/// | Snapshot                         | Configured key       | Below `production` | From `production`        |
+/// | -------------------------------- | -------------------- | ------------------ | ------------------------ |
+/// | any                              | not resolved here    | as below           | refused                  |
+/// | binds a key id                   | the same id          | proceeds           | proceeds                 |
+/// | binds a key id                   | another, or none     | refused            | refused                  |
+/// | binds none                       | any                  | proceeds           | refused                  |
+/// | no manifest found                | any                  | proceeds           | proceeds                 |
+///
+/// A volume without a prepared backup is a storage snapshot taken without the barrier: only
+/// crash-consistent, it passes normal recovery, and it was never bound to a key to verify.
+pub fn check_recovery_key(
+    snapshot: Option<&SnapshotManifest>,
+    configured: Option<&str>,
+    resolved: bool,
+    profile: permguard_core::assurance::AssuranceProfile,
+) -> Result<(), KeyRefused> {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_core::codes::storage;
+
+    let production = profile.at_least(AssuranceProfile::Production);
+    let bound = snapshot.and_then(|manifest| manifest.recovery_key_id.as_deref());
+    // From `production` the restore holds the key itself, crash-consistent snapshot or not: a
+    // provider's id is a string, and a string proves no key.
+    if production && !resolved {
+        return Err(KeyRefused {
+            code: storage::RECOVERY_KEY_MISSING,
+            detail: "from `production` a restore resolves the recovery key itself: set \
+                     `operations.backup.recovery_key` in `--server-config`"
+                .to_owned(),
+        });
+    }
+    match (snapshot, bound, configured) {
+        (_, Some(bound), Some(configured)) if bound == configured => Ok(()),
+        (_, Some(bound), Some(configured)) => Err(KeyRefused {
+            code: storage::RECOVERY_KEY_MISMATCH,
+            detail: format!(
+                "the snapshot is bound to the recovery key `{bound}`, and the configuration \
+                 resolves `{configured}`: restore with the key the backup was encrypted under"
+            ),
+        }),
+        (_, Some(bound), None) => Err(KeyRefused {
+            code: storage::RECOVERY_KEY_MISSING,
+            detail: format!(
+                "the snapshot is bound to the recovery key `{bound}`, and the configuration names \
+                 none: set `operations.backup.recovery_key` (or the provider's \
+                 `recovery_key_id`) in `--server-config`"
+            ),
+        }),
+        (Some(_), None, _) if production => Err(KeyRefused {
+            code: storage::SNAPSHOT_UNBOUND,
+            detail: "the snapshot's manifest binds no recovery key, and from `production` every \
+                     backup is encrypted under one"
+                .to_owned(),
+        }),
+        _ => Ok(()),
+    }
 }
 
 /// The COSE_Sign1 `permguard.snapshot.manifest.v1` over `manifest` by the active
@@ -1927,5 +2060,148 @@ mod tests {
         let listed = backups.list().expect("listed");
         assert_eq!(listed[0].state, ABORTED);
         assert_eq!(listed[0].snapshot_id, None);
+    }
+
+    /// TS-5: the id is the key's fingerprint, domain-separated, so two keys never share one.
+    #[test]
+    fn a_recovery_key_id_is_its_fingerprint() {
+        let id = recovery_key_id(b"one key");
+        assert!(id.starts_with("sha256:"), "{id}");
+        assert_eq!(id.len(), "sha256:".len() + 43);
+        assert_eq!(id, recovery_key_id(b"one key"));
+        assert_ne!(id, recovery_key_id(b"another key"));
+        let mut plain = Sha256::new();
+        plain.update(b"one key");
+        assert_ne!(
+            id,
+            format!("sha256:{}", B64.encode(plain.finalize())),
+            "domain-separated"
+        );
+    }
+
+    /// TS-5: a missing or wrong recovery key refuses the restore under every profile; a snapshot
+    /// that binds none, or no manifest at all, only from `production`.
+    #[test]
+    fn a_restore_proceeds_only_with_the_key_the_snapshot_binds() {
+        use permguard_core::codes::storage;
+
+        let bound = SnapshotManifest {
+            recovery_key_id: Some("sha256:right".to_owned()),
+            ..manifest()
+        };
+        let unbound = SnapshotManifest {
+            recovery_key_id: None,
+            ..manifest()
+        };
+        for profile in [
+            AssuranceProfile::Development,
+            AssuranceProfile::Production,
+            AssuranceProfile::Regulated,
+        ] {
+            let production = profile.at_least(AssuranceProfile::Production);
+            assert_eq!(
+                check_recovery_key(Some(&bound), Some("sha256:right"), true, profile),
+                Ok(())
+            );
+            assert_eq!(
+                check_recovery_key(Some(&bound), Some("sha256:wrong"), true, profile)
+                    .expect_err("the wrong key")
+                    .code,
+                storage::RECOVERY_KEY_MISMATCH
+            );
+            assert_eq!(
+                check_recovery_key(Some(&bound), None, true, profile)
+                    .expect_err("no key")
+                    .code,
+                storage::RECOVERY_KEY_MISSING
+            );
+            let checked = check_recovery_key(Some(&unbound), Some("sha256:right"), true, profile);
+            if production {
+                assert_eq!(
+                    checked.expect_err("unbound").code,
+                    storage::SNAPSHOT_UNBOUND
+                );
+            } else {
+                assert_eq!(checked, Ok(()));
+            }
+            // From `production` the key is resolved by the restore itself: an id alone is refused.
+            let id_only = check_recovery_key(Some(&bound), Some("sha256:right"), false, profile);
+            if production {
+                assert_eq!(
+                    id_only.expect_err("an id alone").code,
+                    storage::RECOVERY_KEY_MISSING
+                );
+                assert_eq!(
+                    check_recovery_key(None, None, false, profile)
+                        .expect_err("no key at all")
+                        .code,
+                    storage::RECOVERY_KEY_MISSING
+                );
+            } else {
+                assert_eq!(id_only, Ok(()));
+            }
+            // A crash-consistent snapshot, without the barrier: nothing was bound.
+            assert_eq!(check_recovery_key(None, None, true, profile), Ok(()));
+            assert_eq!(
+                check_recovery_key(None, Some("sha256:right"), true, profile),
+                Ok(())
+            );
+        }
+    }
+
+    /// TS-5: the snapshot a restored volume holds is the newest backup still `prepared`; a
+    /// finalized or aborted one is a backup taken before, and a volume without backups has none.
+    #[test]
+    fn the_snapshot_manifest_is_the_newest_prepared_backup() {
+        use crate::storage::volume::Volume;
+
+        let root = scratch("snapshot-of");
+        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claims");
+        assert_eq!(snapshot_manifest(&volume), Ok(None), "no backups directory");
+        assert!(
+            !volume.host().path().join(DIRECTORY).exists(),
+            "reading created nothing"
+        );
+        let backups = volume.host().subdir(DIRECTORY, true).expect("creates");
+        let write = |name: &str, state: &str, at: u64, key: &str| {
+            let dir = backups.subdir(name, true).expect("creates");
+            let body = SnapshotManifest {
+                at,
+                recovery_key_id: Some(key.to_owned()),
+                ..manifest()
+            }
+            .encode()
+            .expect("encodes");
+            // Read unverified: any signature bytes do.
+            let envelope = Sign1::sign_with(
+                permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+                protected::SNAPSHOT_MANIFEST,
+                b"kid",
+                body,
+                |_| Ok(vec![0; 64]),
+            )
+            .expect("signs")
+            .encode()
+            .expect("encodes");
+            write::replace_bytes(&dir, MANIFEST, &envelope).expect("writes");
+            write_state(
+                &dir,
+                &State {
+                    state: state.to_owned(),
+                    at,
+                    snapshot_id: None,
+                },
+            )
+            .expect("writes");
+        };
+        write("a", FINALIZED, 300, "sha256:finalized");
+        write("b", PREPARED, 100, "sha256:older");
+        write("c", PREPARED, 200, "sha256:snapshot");
+        write("d", ABORTED, 400, "sha256:aborted");
+        let found = snapshot_manifest(&volume)
+            .expect("reads")
+            .expect("a prepared backup");
+        assert_eq!(found.recovery_key_id.as_deref(), Some("sha256:snapshot"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -15,7 +15,8 @@
 //! restored Host never appends to a run a coordinator may hold further, then records the marker;
 //! `forensic` records the marker only; both before the plan is spent;
 //! `clone` spends the plan, runs the offline emergency reset, then records the marker, through
-//! the mutation transaction. A forensic volume is terminal: no later restore but a forensic one,
+//! the mutation transaction. Before either step writes anything, the recovery key the configuration
+//! resolves must be the one the snapshot's manifest binds (TS-5). A forensic volume is terminal: no later restore but a forensic one,
 //! and no offline command that writes, works on it.
 
 use std::path::Path;
@@ -262,6 +263,42 @@ fn scan(held: &Volume, trace: &Trace) -> Result<u64, Failure> {
     Ok(report.files_checked)
 }
 
+/// The recovery key the configuration resolves, checked against the one the restored snapshot's
+/// manifest binds (TS-5), before anything is written: a missing or wrong key, or from `production`
+/// a manifest bound to none, stops the restore here. A volume without a prepared backup is a
+/// crash-consistent snapshot, bound to no key, and is said so.
+fn recovery_key_checked(
+    held: &Volume,
+    config: &permguard_core::Config,
+    trace: &Trace,
+) -> Result<(), Failure> {
+    use permguard_host::operations::backup;
+
+    let snapshot = backup::snapshot_manifest(held).map_err(|error| {
+        Failure::unavailable(format!("reading the snapshot's manifest: {error}"))
+    })?;
+    let configured = permguard_server::offline::recovery_key_id(config)
+        .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
+    backup::check_recovery_key(
+        snapshot.as_ref(),
+        configured.as_deref(),
+        config.backup_recovery_key().is_some(),
+        config.assurance().profile(),
+    )
+    .map_err(|refused| Failure::usage(refused.to_string()))?;
+    match snapshot
+        .as_ref()
+        .map(|manifest| manifest.recovery_key_id.as_deref())
+    {
+        Some(Some(id)) => trace.say(format!("the snapshot's recovery key {id} is the configured one")),
+        Some(None) => trace.say("the snapshot's manifest binds no recovery key"),
+        None => trace.say(
+            "no prepared backup on the volume: a crash-consistent snapshot, bound to no recovery key",
+        ),
+    }
+    Ok(())
+}
+
 /// The configuration a restore or a migration reads, refused when it requires dual control: an
 /// offline plan then needs an approval, which an offline volume cannot collect.
 pub(super) fn config_of(server_config: Option<&Path>) -> Result<permguard_core::Config, Failure> {
@@ -309,6 +346,7 @@ fn plan(
     let boot = restore::fence(&held).map_err(Failure::usage)?;
     let files_checked = scan(&held, trace)?;
     let config = config_of(server_config)?;
+    recovery_key_checked(&held, &config, trace)?;
 
     // The keys a restore needs before any writable transition: the identity and every ring,
     // through the configured custody.
@@ -431,6 +469,8 @@ fn run(
         permguard_host::operations::plan::MAX_ENVELOPE_BYTES,
     )?;
     let config = config_of(server_config)?;
+    // Again at the run: the configuration may have changed since the plan.
+    recovery_key_checked(&held, &config, trace)?;
     let custodian = custodian(&held, server_config)?;
     let time = Arc::new(permguard_host::time::TimeGuard::system(
         config.time_max_clock_skew(),

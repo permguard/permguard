@@ -41,6 +41,8 @@ pub mod digest {
     /// A snapshot's inventory, and each of its roots: the files the snapshot manifest binds
     /// (WP-7.8).
     pub const SNAPSHOT_INVENTORY: &str = "permguard.snapshot.inventory.v1\n";
+    /// A backup recovery key's id: its fingerprint (TS-5).
+    pub const BACKUP_RECOVERY_KEY: &str = "permguard.backup.recovery-key.v1\n";
     /// A ledger or zone export's bundle, as its manifest binds it (WP-7.10).
     pub const LEDGER_EXPORT_BUNDLE: &str = "permguard.ledger.export.bundle.v1\n";
     /// An audit record.
@@ -382,6 +384,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.KEY_SET", digest::KEY_SET),
         ("digest.MIRROR_CLOSURE", digest::MIRROR_CLOSURE),
         ("digest.SNAPSHOT_INVENTORY", digest::SNAPSHOT_INVENTORY),
+        ("digest.BACKUP_RECOVERY_KEY", digest::BACKUP_RECOVERY_KEY),
         ("digest.LEDGER_EXPORT_BUNDLE", digest::LEDGER_EXPORT_BUNDLE),
         ("digest.AUDIT_RECORD", digest::AUDIT_RECORD),
         ("digest.AUDIT_PSEUDONYM", digest::AUDIT_PSEUDONYM),

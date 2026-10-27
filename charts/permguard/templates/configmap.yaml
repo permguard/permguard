@@ -38,6 +38,7 @@ data:
     {{- $public := dict "public" (dict "http" $http "grpc" $grpc) }}
     {{- $_ := set $config $section $public }}
     {{- $merged := mergeOverwrite $config ($plane.extraConfig | default dict) }}
+    {{- $merged = mergeOverwrite (include "permguard.hostControlsConfig" $ | fromYaml) $merged }}
     {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" (include "permguard.planeAssurance" $plane | fromJson) | fromYaml) }}
     {{- with (include "permguard.hostListenerConfig" (dict "listener" $plane.hostListener "advertised" (printf "https://%s-%s-host:%d" (include "permguard.fullname" $) $component (int $plane.hostListener.port))) | fromYaml) }}
     {{- $merged = mergeOverwrite $merged . }}
@@ -74,6 +75,7 @@ data:
     {{- $_ := set $config $section (dict "public" (dict "http" $http "grpc" $grpc)) }}
     {{- end }}
     {{- $merged := mergeOverwrite $config (.Values.allInOne.extraConfig | default dict) }}
+    {{- $merged = mergeOverwrite (include "permguard.hostControlsConfig" . | fromYaml) $merged }}
     {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" (include "permguard.planeAssurance" .Values.allInOne | fromJson) | fromYaml) }}
     {{- with (include "permguard.hostListenerConfig" (dict "listener" .Values.allInOne.hostListener "advertised" (printf "https://%s-all-in-one-host:%d" (include "permguard.fullname" .) (int .Values.allInOne.hostListener.port))) | fromYaml) }}
     {{- $merged = mergeOverwrite $merged . }}

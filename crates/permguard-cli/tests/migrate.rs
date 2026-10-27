@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const KEK: &str = "0123456789abcdef0123456789abcdef";
+/// The backups' recovery key (TS-5).
+const RECOVERY_KEY: &[u8] = b"the right recovery key";
 
 const LEGACY_TRAIL: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -53,13 +55,15 @@ impl Volume {
         let secrets = dir.join("secrets");
         std::fs::create_dir_all(&secrets).expect("the secrets directory");
         std::fs::write(secrets.join("host-kek"), KEK).expect("the key-encryption key");
+        // From `production` every restore resolves the backups' recovery key (TS-5).
+        std::fs::write(secrets.join("recovery"), RECOVERY_KEY).expect("the recovery key");
         let config = dir.join("server.yml");
         std::fs::write(
             &config,
             format!(
                 "public:\n  http: 0.0.0.0:5556\n{assurance}operations:\n  secrets:\n    \
                  provider: directory\n    directory: {}\n  keys:\n    custody: file\n    \
-                 kek_ref: host-kek\n",
+                 kek_ref: host-kek\n  backup:\n    recovery_key: recovery\n",
                 secrets.display()
             ),
         )

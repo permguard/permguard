@@ -60,6 +60,7 @@ spec:
 {{- end }}
 {{- $_ := set $config "dataPlane" (dict "public" (dict "http" $http "grpc" $grpc)) }}
 {{- $merged := mergeOverwrite $config (deepCopy $g.extraConfig) }}
+{{- $merged = mergeOverwrite (include "permguard.hostControlsConfig" $ | fromYaml) $merged }}
 {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" $g.assurance | fromYaml) }}
 {{- /* The Host listener (TD-2): memberships, shipping and the drain receipt need it. */ -}}
 {{- with (include "permguard.hostListenerConfig" (dict "listener" $dp.hostListener) | fromYaml) }}

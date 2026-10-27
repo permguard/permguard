@@ -7,8 +7,8 @@
 //! | ----------------------------------- | ------------------------------------------------------------------------------------------ |
 //! | `storage.volume.storage_class`      | the storage class the volume comes from, declared by the operator                          |
 //! | `storage.volume.driver`             | the driver or provider that attaches it, declared by the operator                          |
-//! | `storage.qualified`                 | the qualified tuples: storage class, driver, filesystem, version and evidence              |
-//! | `storage.compatibility_mode`        | the published compatibility mode for `production`; off by default                          |
+//! | `storage.qualified`                 | the qualified tuples: the tuple, evidence, encryption mechanism, revision and `expires_at` |
+//! | `storage.compatibility_mode`        | the published compatibility mode below `production`; relaxes nothing from it (TS-5)        |
 //! | `storage.floors.free_bytes`         | the free bytes below which the volume is unsupported; 64 MiB by default                    |
 //! | `storage.floors.free_inodes`        | the free inodes below which the volume is unsupported; 1,000 by default                    |
 //! | `storage.floors.maintenance_bytes`  | within the floor, the bytes only GC and retention may use; 16 MiB, or the floor if smaller |
@@ -34,7 +34,7 @@ pub const DEFAULT_MAINTENANCE_BYTES: u64 = 16 * 1024 * 1024;
 pub const DEFAULT_MAINTENANCE_INODES: u64 = 100;
 
 /// A storage class, driver, filesystem and version: what a qualification is about.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Tuple {
     pub storage_class: String,
     pub driver: String,
@@ -43,11 +43,21 @@ pub struct Tuple {
 }
 
 /// A tuple whose crash and forced-takeover tests are recorded as deployment evidence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// From `production` the record also proves encryption at rest (TS-5): the mechanism, the
+/// evidence's revision and when the evidence expires are required, and an expired record is stale.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct QualifiedTuple {
     pub tuple: Tuple,
     /// Where the evidence is recorded: a document, a ticket, a report.
     pub evidence: String,
+    /// The encryption-at-rest mechanism the evidence proves: a provider's KMS, dm-crypt, a
+    /// self-encrypting drive.
+    pub encryption: Option<String>,
+    /// The evidence's revision.
+    pub revision: Option<String>,
+    /// When the evidence stops proving anything, in seconds since the epoch.
+    pub expires_at: Option<i64>,
 }
 
 /// The safety floors of the volume.
@@ -102,4 +112,16 @@ pub struct VolumeConfig {
     pub compatibility_mode: bool,
     pub floors: Floors,
     pub quotas: Quotas,
+}
+
+/// What discovery and `host status` publish of the volume (TS-5): the qualification and the
+/// evidence id, and nothing else — never the provider, the mechanism or anything secret.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageReport {
+    /// `qualified`, `compatibility_mode` or `unqualified`.
+    pub qualification: String,
+    /// The evidence id of a qualified volume.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub evidence: Option<String>,
 }
