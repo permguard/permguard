@@ -282,7 +282,7 @@ says so and its repository is the authority.
 | `prost-derive` | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
 | `prost-types` | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
 | `psm` | 0.1.32 | MIT OR Apache-2.0 | https://github.com/rust-lang/stacker/ |
-| `pulldown-cmark` | 0.13.4 | MIT | https://github.com/raphlinus/pulldown-cmark |
+| `pulldown-cmark` | 0.13.5 | MIT | https://github.com/raphlinus/pulldown-cmark |
 | `pulldown-cmark-to-cmark` | 22.0.3 | Apache-2.0 | https://github.com/Byron/pulldown-cmark-to-cmark |
 | `quote` | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
 | `r-efi` | 5.3.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later | https://github.com/r-efi/r-efi |
