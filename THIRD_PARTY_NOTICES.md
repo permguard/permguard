@@ -336,7 +336,7 @@ says so and its repository is the authority.
 | `serde_spanned` | 1.1.1 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | `serde_with` | 3.24.0 | MIT OR Apache-2.0 | https://github.com/jonasbb/serde_with/ |
 | `serde_with_macros` | 3.24.0 | MIT OR Apache-2.0 | https://github.com/jonasbb/serde_with/ |
-| `sha2` | 0.11.0 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
+| `sha2` | 0.11.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
 | `sha3` | 0.10.9 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
 | `sharded-slab` | 0.1.7 | MIT | https://github.com/hawkw/sharded-slab |
 | `shlex` | 2.0.1 | MIT OR Apache-2.0 | https://github.com/comex/rust-shlex |
