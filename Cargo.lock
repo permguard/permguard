@@ -1706,9 +1706,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.56.0"
+version = "0.59.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6a806f80c1f5560431009ce5ec29b59d38f950e0cd7db5f1b8925e6d8104e21"
+checksum = "1b320ad34c177093d21622edc9215bb608294c2333ff296672c0c8265a5ee60c"
 dependencies = [
  "ahash",
  "bytecount",
@@ -1718,12 +1718,12 @@ dependencies = [
  "fraction 0.17.0",
  "getrandom 0.3.4",
  "itoa",
- "jsonschema-regex 0.56.0",
- "jsonschema-value 0.56.0",
+ "jsonschema-regex 0.59.0",
+ "jsonschema-value 0.59.0",
  "num-cmp",
  "num-traits",
  "percent-encoding",
- "referencing 0.56.0",
+ "referencing 0.59.0",
  "regex",
  "serde",
  "serde_json",
@@ -1743,9 +1743,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.56.0"
+version = "0.59.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb862addfa7782108933abcf842fe25334523a9df5b89ea4d9620e3dd7b42181"
+checksum = "1472f7be79026f79e01a9b172263311e829d7c210d57b39cb57037abc0ce0500"
 dependencies = [
  "regex-syntax",
 ]
@@ -1766,9 +1766,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-value"
-version = "0.56.0"
+version = "0.59.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a05cd404c5ff6e2731dbbf7e290a27417750acfb59e329560a1d0af384c93fb0"
+checksum = "e5a7550a7a84787e715ead0b47e01fa8c6bb7c3413630f91a8f2094c06c2078a"
 dependencies = [
  "ahash",
  "bytecount",
@@ -2612,7 +2612,7 @@ dependencies = [
  "amzn-dogwood-language",
  "base64 0.23.1",
  "cedar-policy",
- "jsonschema 0.56.0",
+ "jsonschema 0.59.0",
  "libc",
  "permguard-core",
  "permguard-events",
@@ -2668,7 +2668,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "opentelemetry 0.32.0",
+ "opentelemetry 0.33.0",
  "opentelemetry-otlp",
  "opentelemetry_sdk 0.33.1",
  "permguard-conformance",
@@ -3274,9 +3274,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.56.0"
+version = "0.59.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3b4a92fac7e28c27de3ad26df2ecb9e652f227b258e845af034052e5b22c96c"
+checksum = "473f4dcca28ead7ee0f8e5b5d0bbae2549f4fc4c958fb20af328961b6c174be3"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -3630,10 +3630,11 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.151"
+version = "1.0.154"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
+checksum = "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6"
 dependencies = [
+ "foldhash 0.2.0",
  "indexmap 2.14.2",
  "itoa",
  "memchr",
@@ -4363,12 +4364,12 @@ dependencies = [
 
 [[package]]
 name = "tracing-opentelemetry"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adbc64cba7137545b8044cb1fe9814f7aacf3c6b5f9b45be8bb5db538befdb26"
+checksum = "0a904802a1b902f43638b677ff2a650847e3b4404101b6c586d648e8c1e3e8fe"
 dependencies = [
  "js-sys",
- "opentelemetry 0.32.0",
+ "opentelemetry 0.33.0",
  "smallvec",
  "tracing",
  "tracing-core",

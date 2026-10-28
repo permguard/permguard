@@ -33,7 +33,7 @@ jobs:
       # The version declared as `rust-version` in Cargo.toml. Building with exactly the minimum is
       # what makes the minimum a fact: a job on `stable` would pass while the declared MSRV quietly
       # stopped compiling.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08
         with:
           toolchain: "1.97"
           components: clippy, rustfmt
@@ -83,7 +83,7 @@ jobs:
       # WP-7.13: what the traceability test checked, every section and finding of the blueprint to
       # the code and the tests above, kept with the run.
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: traceability
           path: target/traceability.json
@@ -98,7 +98,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08
         with:
           toolchain: "1.97"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -117,7 +117,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08
         with:
           toolchain: "1.97"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -145,7 +145,7 @@ jobs:
             --server target/release/permguard-all-in-one --cli target/release/permguard \
             --directory "${RUNNER_TEMP}/permguard-gate" --out permguard-gate.json
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: benchmark
           path: |
@@ -162,7 +162,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # libFuzzer's sanitizer coverage needs nightly; nothing else in this repository does.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08
         with:
           toolchain: nightly
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -174,7 +174,7 @@ jobs:
         run: ./scripts/fuzz.sh 20
       - name: keep what crashed
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-artifacts
           path: fuzz/artifacts/
@@ -313,7 +313,7 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08; the toolchain is chosen by `toolchain:`, not by the ref
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08; the toolchain is chosen by `toolchain:`, not by the ref
         with:
           toolchain: stable
           components: clippy
@@ -336,7 +336,7 @@ jobs:
     # found by the pull request that adds it rather than by a release that cannot build.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08; the toolchain is chosen by `toolchain:`, not by the ref
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08; the toolchain is chosen by `toolchain:`, not by the ref
         with:
           toolchain: "1.97"
           targets: x86_64-pc-windows-gnu
@@ -354,7 +354,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08; the toolchain is chosen by `toolchain:`, not by the ref
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08; the toolchain is chosen by `toolchain:`, not by the ref
         with:
           toolchain: stable
           components: llvm-tools-preview
@@ -364,7 +364,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # The chart's conformance tests (`permguard-conformance/tests/chart.rs`) render it with helm.
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-      - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
         with:
           tool: cargo-llvm-cov
       # Reported, not gated. A coverage threshold buys tests written to move a number; a number in
@@ -437,14 +437,14 @@ jobs:
         run: NO_BUILD=1 ./scripts/compose-lab.sh
       - name: the image, for the macOS job
         run: docker save permguard/lab:local | gzip > lab-image.tar.gz
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compose-lab-image
           path: lab-image.tar.gz
           retention-days: 1
       - name: the logs of a failed profile
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compose-lab-linux
           path: target/compose-lab
@@ -476,7 +476,7 @@ jobs:
         run: NO_BUILD=1 ./scripts/compose-lab.sh
       - name: the logs of a failed profile
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compose-lab-macos
           path: target/compose-lab
@@ -506,7 +506,7 @@ jobs:
       # Kill the replica while it writes; no stale-writer frame (TD-2, H-05).
       - name: the storage takeover gate
         run: ./scripts/chart-takeover.sh permguard/data-plane:e2e takeover-qualification.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: takeover-qualification
           path: takeover-qualification.json
