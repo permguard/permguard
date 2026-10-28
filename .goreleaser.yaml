@@ -31,7 +31,7 @@ builds:
   # Linux is static musl and Windows is GNU, cross-compiled with `cargo zigbuild` on one Linux
   # runner. A Windows binary is staged without its extension and GoReleaser adds `.exe` when it
   # names it in the archive.
-  - id: permguard_cli_image
+  - id: permguard_cli
     builder: prebuilt
     binary: permguard
     goos: &cross_goos [linux, windows]
@@ -39,7 +39,7 @@ builds:
     prebuilt:
       path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard
 
-  - id: permguard_all_in_one_image
+  - id: permguard_all_in_one
     builder: prebuilt
     binary: permguard-all-in-one
     goos: *cross_goos
@@ -47,7 +47,7 @@ builds:
     prebuilt:
       path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-all-in-one
 
-  - id: permguard_control_plane_image
+  - id: permguard_control_plane
     builder: prebuilt
     binary: permguard-control-plane
     goos: *cross_goos
@@ -55,7 +55,7 @@ builds:
     prebuilt:
       path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-control-plane
 
-  - id: permguard_data_plane_image
+  - id: permguard_data_plane
     builder: prebuilt
     binary: permguard-data-plane
     goos: *cross_goos
