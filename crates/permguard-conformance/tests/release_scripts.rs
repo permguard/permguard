@@ -101,7 +101,10 @@ fn run(script: &str, arguments: &[&str], path_prefix: Option<&Path>) -> Output {
         .env("GITHUB_REPOSITORY", "permguard/permguard")
         .env("GITHUB_REF_NAME", "v1.2.3")
         .env("GITHUB_SHA", "0123abcd")
-        .env("VERIFY_PAUSE", "0");
+        .env("VERIFY_PAUSE", "0")
+        // The stand-in `gh` counts its calls in a file, so one verification at a time keeps the
+        // "first two answers are late" fixture exact; the batching is the same code at any width.
+        .env("VERIFY_PARALLEL", "1");
     if let Some(prefix) = path_prefix {
         let path = std::env::var("PATH").unwrap_or_default();
         command.env("PATH", format!("{}:{path}", prefix.display()));

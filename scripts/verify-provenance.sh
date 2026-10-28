@@ -59,18 +59,16 @@ fi
 
 json="${dist}/provenance-${phase}.json"
 summary="${dist}/provenance-${phase}.txt"
-printf '[' > "${json}"
-printf 'provenance policy: source %s@refs/tags/%s (%s), builder %s on a GitHub-hosted runner\n' \
-    "${repository}" "${tag}" "${commit}" "${builder_workflow}" > "${summary}"
-first=1
 
 # An attestation is written a moment before it is verified, and the API that serves it may not
 # have it yet: three attempts, a little apart, before a missing one counts as a failure.
 attempts="${VERIFY_ATTEMPTS:-3}"
 pause="${VERIFY_PAUSE:-5}"
-
+# Verifies one subject and writes its raw result to <out>.json and its lines to <out>.txt; the
+# results are joined below in the listing's order, so the evidence reads the same however many ran
+# at once.
 verify() {
-    local subject="$1" result builder source attempt=1
+    local subject="$1" out="$2" result builder source attempt=1
     until result="$(gh attestation verify "${subject}" \
         --repo "${repository}" \
         --signer-workflow "${builder_workflow}" \
@@ -92,19 +90,16 @@ verify() {
         printf 'error: the attestation of %s does not name its builder and source\n' "${subject}" >&2
         exit 1
     fi
-    [ "${first}" -eq 1 ] || printf ',' >> "${json}"
-    first=0
-    printf '%s' "${result}" >> "${json}"
-    printf '%s\n  builder: %s\n  source:  %s\n' "${subject}" "${builder}" "${source}" >> "${summary}"
+    printf '%s' "${result}" > "${out}.json"
+    printf '%s\n  builder: %s\n  source:  %s\n' "${subject}" "${builder}" "${source}" > "${out}.txt"
 }
-
 # One line of a checksums file: `<sha256>  <name>`, the digest optionally written `sha256:<hex>`.
 # Anything else is refused rather than guessed at: a line read wrongly is an artifact not verified.
 line_pattern='^(sha256:)?([0-9a-f]{64})[[:space:]]+\*?([^[:space:]]+)$'
-
-verified=0
-# Several tags of one image share a digest; it is one artifact, verified once. A newline-separated
-# list rather than an associative array, so the script runs on the bash 3.2 macOS ships.
+# The subjects, in the listing's order. Several tags of one image share a digest; it is one
+# artifact, verified once. A newline-separated list rather than an associative array, so the script
+# runs on the bash 3.2 macOS ships.
+subjects=()
 seen=$'\n'
 while IFS= read -r line || [ -n "${line}" ]; do
     [ -n "${line}" ] || continue
@@ -128,10 +123,41 @@ while IFS= read -r line || [ -n "${line}" ]; do
         *$'\n'"${subject}"$'\n'*) continue ;;
     esac
     seen="${seen}${subject}"$'\n'
-    verify "${subject}"
-    verified=$((verified + 1))
+    subjects+=("${subject}")
 done < "${dist}/${listing}"
-
+# A few at a time, in batches: each verification is a second or two of API round trips, and the
+# twenty-eight files of a release one after another were three and a half minutes of its critical
+# path. A batch waits for all of its members, so a failure is reported by the member that saw it
+# and the script stops at the end of that batch.
+parallel="${VERIFY_PARALLEL:-8}"
+work="$(mktemp -d)"
+index=0
+while [ "${index}" -lt "${#subjects[@]}" ]; do
+    pids=()
+    while [ "${index}" -lt "${#subjects[@]}" ] && [ "${#pids[@]}" -lt "${parallel}" ]; do
+        verify "${subjects[${index}]}" "${work}/${index}" &
+        pids+=("$!")
+        index=$((index + 1))
+    done
+    failed=0
+    for pid in "${pids[@]}"; do
+        wait "${pid}" || failed=1
+    done
+    if [ "${failed}" -ne 0 ]; then
+        exit 1
+    fi
+done
+printf '[' > "${json}"
+printf 'provenance policy: source %s@refs/tags/%s (%s), builder %s on a GitHub-hosted runner\n' \
+    "${repository}" "${tag}" "${commit}" "${builder_workflow}" > "${summary}"
+verified=0
+while [ "${verified}" -lt "${#subjects[@]}" ]; do
+    [ "${verified}" -eq 0 ] || printf ',' >> "${json}"
+    cat "${work}/${verified}.json" >> "${json}"
+    cat "${work}/${verified}.txt" >> "${summary}"
+    verified=$((verified + 1))
+done
+rm -rf "${work}"
 printf ']\n' >> "${json}"
 
 if [ "${verified}" -lt "${minimum}" ]; then
