@@ -35,6 +35,8 @@ service IdentityService {
   rpc PeerChannel(stream PeerFrame) returns (stream PeerFrame);
   // `GET /host/v1/identity`.
   rpc GetIdentity(GetIdentityRequest) returns (GetIdentityResponse);
+  // `POST /host/v1/identity/verify`: prove a pinned peer on a live PeerChannel.
+  rpc VerifyIdentity(VerifyIdentityRequest) returns (VerifyIdentityResponse);
   // `POST /host/v1/identity/rotate`.
   rpc RotateIdentity(RotateIdentityRequest) returns (RotateIdentityResponse);
   // `POST /host/v1/identity/reset/plan`.
@@ -57,6 +59,8 @@ service MembershipService {
   rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
   // `GET /host/v1/members/{id}`.
   rpc GetMember(GetMemberRequest) returns (GetMemberResponse);
+  // `POST /host/v1/members/{id}/verify`: immediate on a member, scheduled on a coordinator.
+  rpc VerifyMember(VerifyMemberRequest) returns (VerifyMemberResponse);
   // `POST /host/v1/members/{id}/approve`.
   rpc ApproveMember(ApproveMemberRequest) returns (ApproveMemberResponse);
   // `POST /host/v1/members/{id}/reject`.
@@ -207,6 +211,20 @@ message GetIdentityResponse {
   repeated bytes successions = 2;
   bytes first_public_key = 3;
   repeated string protocol_versions = 4;
+  string host_id = 5;
+  uint64 epoch = 6;
+  string fingerprint = 7;
+}
+message VerifyIdentityRequest {
+  string address = 1;
+  string host_id = 2;
+  string fingerprint = 3;
+}
+message VerifyIdentityResponse {
+  string host_id = 1;
+  uint64 epoch = 2;
+  string fingerprint = 3;
+  bool verified = 4;
 }
 // `POST /host/v1/identity/rotate` (WP-2.2), under `identity.admin`.
 message RotateIdentityRequest {
@@ -705,6 +723,19 @@ message SyncMembershipRequest {
 message SyncMembershipResponse {
   Member member = 1;
 }
+// `POST /host/v1/members/{id}/verify` (WP-4.8), under `membership.admin`.
+message VerifyMemberRequest {
+  string membership_id = 1;
+  string request_id = 2;
+}
+message VerifyMemberResponse {
+  string membership_id = 1;
+  // `proved` or `scheduled`.
+  string status = 2;
+  optional string scheduled_at = 3;
+  Member member = 4;
+  Receipt receipt = 5;
+}
 // `GET /host/v1/grants?principal&selector`: both filters optional, exact matches.
 message ListGrantsRequest {
   string principal = 1;
@@ -1021,22 +1052,178 @@ message ExportAuditResponse {
   // On the first page, the `keys export` document of `host.operations`; absent after it.
   optional string verification_keys = 11;
 }
+// `GET /host/v1/streams` (WP-5.7a), under `streams.read` on `host`.
 message ListStreamsRequest {}
-message ListStreamsResponse {}
+message ListStreamsResponse {
+  repeated StreamDescriptor streams = 1;
+}
+// One descriptor and role the Host's stream engine serves.
+message StreamDescriptor {
+  string plane = 1;
+  string stream_type = 2;
+  uint32 version = 3;
+  // `producer` or `consumer`.
+  string role = 4;
+  // `evidence` or `history`.
+  string retention = 5;
+  string ring = 6;
+  // The membership task that ships the stream, when one does.
+  optional string task = 7;
+  repeated StreamResource resources = 8;
+}
+// One resource of a stream: `open`, `forked`, `behind` (a drain left records unshipped) or
+// `held` (a consumer).
+message StreamResource {
+  string resource = 1;
+  string state = 2;
+}
+// Batches travel on the membership's task transport; this binding is not served (WP-5.7, owner
+// decision of 2026-10-17).
 message ShipStreamBatchRequest {}
 message ShipStreamBatchResponse {}
-message GetStreamFrontierRequest {}
-message GetStreamFrontierResponse {}
-message ListStreamRecordsRequest {}
-message ListStreamRecordsResponse {}
-message ListStreamSignersRequest {}
-message ListStreamSignersResponse {}
-message ListStreamSubscriptionsRequest {}
-message ListStreamSubscriptionsResponse {}
-message ListStreamGapsRequest {}
-message ListStreamGapsResponse {}
-message ListStreamAnchorsRequest {}
-message ListStreamAnchorsResponse {}
+// The query of a stream read (WP-5.7a), under `streams.read` on `resource`, which is authorized
+// before anything else is read.
+message GetStreamFrontierRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+}
+message GetStreamFrontierResponse {
+  string resource = 1;
+  repeated StreamProducerRun producer = 2;
+  repeated StreamConsumerRun consumer = 3;
+}
+// One run as the producer holds it.
+message StreamProducerRun {
+  // Hex.
+  string run = 1;
+  bool ended = 2;
+  uint64 last_seq = 3;
+  uint64 sealed = 4;
+  // The least acknowledgement of the required subscriptions, when one holds the run.
+  optional uint64 acknowledged = 5;
+  // The first sequence still held: 1 unless a prefix went.
+  uint64 low_watermark = 6;
+}
+// One run as a consumer holds it.
+message StreamConsumerRun {
+  // Hex: the producer Host and its run.
+  string producer = 1;
+  string run = 2;
+  uint64 acked = 3;
+  uint64 oldest_retained = 4;
+}
+message ListStreamRecordsRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+  // A consumer run: its producer Host and run, hex; both empty for the producer's current run.
+  string producer = 4;
+  string run = 5;
+  // The first sequence, 1 when absent.
+  optional uint64 from = 6;
+  // 1 to 1000, 100 when absent.
+  optional uint32 limit = 7;
+}
+message ListStreamRecordsResponse {
+  string resource = 1;
+  string run = 2;
+  repeated StreamRecord records = 3;
+  // Where the next page starts, when the run holds more.
+  optional uint64 next = 4;
+  // The deleted prefix the read started in, never answered as complete.
+  optional StreamGap gap = 5;
+}
+// One record: its bytes and their digest under the stream's record domain.
+message StreamRecord {
+  uint64 seq = 1;
+  bytes record = 2;
+  string digest = 3;
+}
+// What a read below the first sequence still held reaches.
+message StreamGap {
+  uint64 low_watermark = 1;
+  StreamAnchor anchor = 2;
+}
+message ListStreamSignersRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+}
+message ListStreamSignersResponse {
+  repeated StreamRunSigners runs = 1;
+}
+// One run's signer spans, for a role.
+message StreamRunSigners {
+  string role = 1;
+  string producer = 2;
+  string run = 3;
+  repeated StreamSpan spans = 4;
+}
+message StreamSpan {
+  uint64 from_seq = 1;
+  string kid = 2;
+  // The public key as JSON.
+  string jwk = 3;
+}
+message ListStreamSubscriptionsRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+}
+message ListStreamSubscriptionsResponse {
+  repeated StreamSubscription subscriptions = 1;
+}
+// One subscription of the producer and its acknowledgement per run.
+message StreamSubscription {
+  string membership = 1;
+  string task = 2;
+  bool required = 3;
+  // `active`, `paused` or `stopped`.
+  string state = 4;
+  optional string reason = 5;
+  repeated StreamRunAck acked = 6;
+}
+message StreamRunAck {
+  string run = 1;
+  uint64 acked = 2;
+}
+message ListStreamGapsRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+}
+message ListStreamGapsResponse {
+  repeated StreamGapEntry gaps = 1;
+}
+// One run whose prefix went.
+message StreamGapEntry {
+  string role = 1;
+  string producer = 2;
+  string run = 3;
+  uint64 low_watermark = 4;
+}
+message ListStreamAnchorsRequest {
+  string plane = 1;
+  string stream_type = 2;
+  string resource = 3;
+}
+message ListStreamAnchorsResponse {
+  repeated StreamAnchor anchors = 1;
+}
+// One run's prefix anchor (`contracts/cbor/stream.json`, `stream_anchor`).
+message StreamAnchor {
+  string role = 1;
+  string producer = 2;
+  string run = 3;
+  uint64 through = 4;
+  uint64 low_watermark = 5;
+  string terminal_head = 6;
+  // How many deleted batches it covers.
+  uint64 covering = 7;
+  // The anchor's deterministic CBOR.
+  bytes anchor = 8;
+}
 message GetStatusRequest {}
 message GetStatusResponse {
   bool live = 1;
@@ -1050,6 +1237,15 @@ message GetStatusResponse {
   PeerSessions peer_sessions = 7;
   // Every listener of the process, sorted by name, and what it demands of its clients (WP-2.11).
   repeated HostListener listeners = 8;
+  // Where the volume stands (TS-5), absent before Bootstrap qualified it.
+  optional HostStorage storage = 9;
+}
+
+// The volume's qualification (TS-5): `qualification` is `qualified`, `compatibility_mode` or
+// `unqualified`; `evidence` the evidence id of a qualified volume. Nothing about the provider.
+message HostStorage {
+  string qualification = 1;
+  optional string evidence = 2;
 }
 
 // One listener of the process (WP-2.11): never its address, certificate or peers. `class` is
@@ -1138,18 +1334,124 @@ message ConfigRevision {
   string at = 5;
   string by = 6;
 }
+// `POST /host/v1/backup/prepare` (WP-7.8): nothing but the call.
 message PrepareBackupRequest {}
-message PrepareBackupResponse {}
-message FinalizeBackupRequest {}
-message FinalizeBackupResponse {}
-message AbortBackupRequest {}
-message AbortBackupResponse {}
+message PrepareBackupResponse {
+  // The backup: the prepare's operation.
+  string operation_id = 1;
+  // The COSE_Sign1 `permguard.snapshot.manifest.v1`, base64url.
+  string manifest = 2;
+  // The snapshot token, base64url, answered here once.
+  string token = 3;
+  // When the barrier aborts by itself, RFC 3339.
+  string expires_at = 4;
+  Receipt receipt = 5;
+}
+// `POST /host/v1/backup/finalize`.
+message FinalizeBackupRequest {
+  string token = 1;
+  // The storage driver's id of the snapshot it took.
+  string snapshot_id = 2;
+}
+// What a finalize or an abort answers.
+message FinalizeBackupResponse {
+  // The backup it ended.
+  string backup = 1;
+  // `finalized`.
+  string state = 2;
+  optional string snapshot_id = 3;
+  Receipt receipt = 4;
+}
+// `POST /host/v1/backup/abort`.
+message AbortBackupRequest {
+  string token = 1;
+}
+message AbortBackupResponse {
+  string backup = 1;
+  // `aborted`.
+  string state = 2;
+  optional string snapshot_id = 3;
+  Receipt receipt = 4;
+}
+// `GET /host/v1/backups`.
 message ListBackupsRequest {}
-message ListBackupsResponse {}
-message PlanGcRequest {}
-message PlanGcResponse {}
-message RunGcRequest {}
-message RunGcResponse {}
+message ListBackupsResponse {
+  // Newest first.
+  repeated Backup backups = 1;
+}
+// One backup a Host knows.
+message Backup {
+  string operation_id = 1;
+  // When it was prepared, RFC 3339.
+  string at = 2;
+  // `prepared`, `finalized` or `aborted`.
+  string state = 3;
+  optional string snapshot_id = 4;
+  // When it was finalized or aborted, RFC 3339.
+  optional string ended_at = 5;
+  // Its signed manifest, base64url.
+  optional string manifest = 6;
+}
+// `POST /host/v1/gc/{job}/plan` (WP-7.11b), under `gc.manage` on the scope.
+message PlanGcRequest {
+  // `objects`.
+  string job = 1;
+  string request_id = 2;
+  // The Plane's zone or ledger, as a grant names it; the whole Plane when empty.
+  string resource = 3;
+}
+message PlanGcResponse {
+  string job = 1;
+  // The scope the plan names.
+  string resource = 2;
+  string plan_id = 3;
+  string plan_digest = 4;
+  string expires = 5;
+  // The receipt the run presents, COSE_Sign1 `permguard.operation.plan.v1` (WP-3.9).
+  bytes receipt = 6;
+  uint64 approvals_required = 7;
+  // What a run would remove now, and what it would keep and why.
+  GcReport report = 8;
+}
+// `POST /host/v1/gc/{job}/run` (WP-7.11b).
+message RunGcRequest {
+  string job = 1;
+  string request_id = 2;
+  // The receipt the plan step answered.
+  bytes receipt = 3;
+}
+message RunGcResponse {
+  string job = 1;
+  string resource = 2;
+  // The plan the run spent.
+  string plan_id = 3;
+  GcReport report = 4;
+  Receipt receipt = 5;
+}
+// What a garbage-collection plan or run found, resource by resource.
+message GcReport {
+  repeated GcEntry entries = 1;
+  // The resource a run stopped in at its bound.
+  optional string resumes_at = 2;
+  // The resources it could not read, and why: nothing of them was removed.
+  repeated string skipped = 3;
+  // Resources past the report's bound it does not list.
+  uint64 omitted = 4;
+}
+message GcEntry {
+  string resource = 1;
+  uint64 candidates = 2;
+  uint64 candidate_bytes = 3;
+  // Zero for a plan.
+  uint64 removed = 4;
+  uint64 removed_bytes = 5;
+  repeated GcKept kept = 6;
+}
+// What a sweep kept for one reason: `reachable`, `pinned`, `grace`, `held` or `bound`.
+message GcKept {
+  string reason = 1;
+  uint64 count = 2;
+}
 message GetStorageQuotaRequest {}
 message GetStorageQuotaResponse {}
 message ProbeStorageRequest {}

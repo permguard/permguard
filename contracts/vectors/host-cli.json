@@ -1,0 +1,218 @@
+{
+  "coordinator_addresses": [
+    {
+      "administration": "https://coordinator.example:9443",
+      "peer": "https://coordinator.example:9443"
+    },
+    {
+      "administration": "grpcs://coordinator.example:9443",
+      "peer": "https://coordinator.example:9443"
+    }
+  ],
+  "invitation_handoff": {
+    "version": 1,
+    "coordinator": {
+      "address": "https://coordinator.example:9443",
+      "host_id": "0198f2aa-0000-7000-8000-000000000001",
+      "fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "invite_id": "0198f2aa-0000-7000-8000-000000000002",
+    "token": "aW52aXRhdGlvbi10b2tlbg",
+    "requested": {
+      "selector": "plane/data/*",
+      "tasks": [
+        {
+          "version": 1,
+          "task_id": "decisions",
+          "type": "decisions.ship",
+          "provider_role": "member",
+          "consumer_role": "coordinator",
+          "selector": "plane/data/*",
+          "resource_types": [
+            "decision"
+          ],
+          "required": true,
+          "limits": {
+            "max_body_bytes": 1048576,
+            "max_concurrency": 4,
+            "max_rate_per_minute": 600,
+            "max_batch_records": 1000,
+            "retention_seconds": 86400
+          },
+          "assurance_requirements": [
+            "operations.dual_control",
+            "custody.hsm"
+          ]
+        }
+      ]
+    },
+    "expires": "2026-10-16T12:00:00Z"
+  },
+  "pin_store": {
+    "version": 1,
+    "pins": [
+      {
+        "url": "https://coordinator.example:9443",
+        "host_id": "0198f2aa-0000-7000-8000-000000000001",
+        "fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    ]
+  },
+  "membership_tasks": [
+    {
+      "version": 1,
+      "task_id": "decisions",
+      "type": "decisions.ship",
+      "provider_role": "member",
+      "consumer_role": "coordinator",
+      "selector": "plane/data/*",
+      "resource_types": [
+        "decision"
+      ],
+      "required": true,
+      "limits": {
+        "max_body_bytes": 1048576,
+        "max_concurrency": 4,
+        "max_rate_per_minute": 600,
+        "max_batch_records": 1000,
+        "retention_seconds": 86400
+      },
+      "assurance_requirements": [
+        "operations.dual_control",
+        "custody.hsm"
+      ]
+    }
+  ],
+  "membership_narrowing": {
+    "selector": "plane/data/*",
+    "tasks": [
+      {
+        "version": 1,
+        "task_id": "decisions",
+        "type": "decisions.ship",
+        "provider_role": "member",
+        "consumer_role": "coordinator",
+        "selector": "plane/data/*",
+        "resource_types": [
+          "decision"
+        ],
+        "required": true,
+        "limits": {
+          "max_body_bytes": 1048576,
+          "max_concurrency": 4,
+          "max_rate_per_minute": 600,
+          "max_batch_records": 1000,
+          "retention_seconds": 86400
+        },
+        "assurance_requirements": [
+          "operations.dual_control",
+          "custody.hsm"
+        ]
+      }
+    ]
+  },
+  "assurance_result": {
+    "approvals": [
+      {
+        "control": "operations.dual_control",
+        "reason": "independent golden approval",
+        "expires_at": "2099-01-01T00:00:00Z"
+      }
+    ],
+    "evidence": [
+      {
+        "verifier": "golden-verifier",
+        "evidence": "Z29sZGVuLWF0dGVzdGF0aW9u"
+      }
+    ]
+  },
+  "unknown_nested_fields": {
+    "tasks_limits": [
+      {
+        "version": 1,
+        "task_id": "decisions",
+        "type": "decisions.ship",
+        "provider_role": "member",
+        "consumer_role": "coordinator",
+        "selector": "plane/data/*",
+        "resource_types": [
+          "decision"
+        ],
+        "required": true,
+        "limits": {
+          "max_body_bytes": 1048576,
+          "max_concurrency": 4,
+          "max_rate_per_minute": 600,
+          "max_batch_records": 1000,
+          "retention_seconds": 86400,
+          "unexpected": "refuse me"
+        },
+        "assurance_requirements": [
+          "operations.dual_control",
+          "custody.hsm"
+        ]
+      }
+    ],
+    "narrowing_task": {
+      "selector": "plane/data/*",
+      "tasks": [
+        {
+          "version": 1,
+          "task_id": "decisions",
+          "type": "decisions.ship",
+          "provider_role": "member",
+          "consumer_role": "coordinator",
+          "selector": "plane/data/*",
+          "resource_types": [
+            "decision"
+          ],
+          "required": true,
+          "limits": {
+            "max_body_bytes": 1048576,
+            "max_concurrency": 4,
+            "max_rate_per_minute": 600,
+            "max_batch_records": 1000,
+            "retention_seconds": 86400
+          },
+          "assurance_requirements": [
+            "operations.dual_control",
+            "custody.hsm"
+          ],
+          "unexpected": "refuse me"
+        }
+      ]
+    },
+    "assurance_approval": {
+      "approvals": [
+        {
+          "control": "operations.dual_control",
+          "reason": "independent golden approval",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "unexpected": "refuse me"
+        }
+      ],
+      "evidence": [
+        {
+          "verifier": "golden-verifier",
+          "evidence": "Z29sZGVuLWF0dGVzdGF0aW9u"
+        }
+      ]
+    },
+    "assurance_evidence": {
+      "approvals": [
+        {
+          "control": "operations.dual_control",
+          "reason": "independent golden approval",
+          "expires_at": "2099-01-01T00:00:00Z"
+        }
+      ],
+      "evidence": [
+        {
+          "verifier": "golden-verifier",
+          "evidence": "Z29sZGVuLWF0dGVzdGF0aW9u",
+          "unexpected": "refuse me"
+        }
+      ]
+    }
+  }
+}

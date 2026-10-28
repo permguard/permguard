@@ -1,0 +1,66 @@
+{
+  "folder": "bitsand",
+  "files": {
+    "test-bitsand-0055.yaml": {
+      "sha256": "sha256:a874c61223cc3edc7cac61831a31f6b6fb388ef7118aed7995dacdaf19c47c08",
+      "cases": [
+        {
+          "note": "bitsand/basic bitwise-and",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\tbits.and(7, 9, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-bitsand-0056.yaml": {
+      "sha256": "sha256:535c3514dc4f85c681e32c1f2e189335e67710ca6e0c10e3676a6a1a5c463bae",
+      "cases": [
+        {
+          "note": "bitsand/and with zero is and",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\tbits.and(50, 0, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                0
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-bitsand-0057.yaml": {
+      "sha256": "sha256:a42d1ff759858aa90d2a667aaf701da2a4399263d60bf5c0d69bcb08718715aa",
+      "cases": [
+        {
+          "note": "bitsand/lhs (float) error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tbits.and(7.2, 42, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "bits.and: operand 1 must be integer number but got floating-point number",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

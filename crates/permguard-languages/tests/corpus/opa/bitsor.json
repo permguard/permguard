@@ -1,0 +1,66 @@
+{
+  "folder": "bitsor",
+  "files": {
+    "test-bitsor-0052.yaml": {
+      "sha256": "sha256:9aaf9aa5735a3665bedadbe1b76cf9c420187b8a5fdaf15b65d32cd3dda32aba",
+      "cases": [
+        {
+          "note": "bitsor/basic bitwise-or",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\tbits.or(7, 9, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                15
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-bitsor-0053.yaml": {
+      "sha256": "sha256:151086859815c4088bcb09a56ada1caecacbbd13af383ab06a67358a6ea9e9cc",
+      "cases": [
+        {
+          "note": "bitsor/or with zero is value",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\tbits.or(50, 0, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                50
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-bitsor-0054.yaml": {
+      "sha256": "sha256:9c699442bba7de9775ec0f41ad96e1f95e57ee31cf2b93c0dbe563936292fe30",
+      "cases": [
+        {
+          "note": "bitsor/lhs (float) error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tbits.or(7.2, 42, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "bits.or: operand 1 must be integer number but got floating-point number",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

@@ -37,6 +37,12 @@ fn jwks_for(kid: &str, key: &Ed25519KeyPair) -> Vec<u8> {
     .into_bytes()
 }
 
+/// The ref digest of the state at `counter` whose head is `content`'s; the client never computes
+/// one, it compares them.
+fn ref_digest(counter: u64, content: &[u8]) -> Digest {
+    Digest::compute(&[&counter.to_be_bytes()[..], content].concat())
+}
+
 fn statement(counter: u64, content: &[u8]) -> HeadStatement {
     HeadStatement {
         zone: ZONE.into(),
@@ -45,6 +51,10 @@ fn statement(counter: u64, content: &[u8]) -> HeadStatement {
         digest: Digest::compute(content),
         counter,
         signed_at: 1_700_000_000,
+        authority_host_id: [7; 16],
+        ref_digest: ref_digest(counter, content),
+        ring_epoch: 1,
+        key_set_digest: Digest::compute(b"key set"),
     }
 }
 
@@ -59,6 +69,16 @@ fn checkpoint(counter: u64, content: &[u8]) -> Checkpoint {
     Checkpoint {
         head: Digest::compute(content).to_string(),
         counter,
+        ref_digest: Some(ref_digest(counter, content).to_string()),
+        ..Checkpoint::default()
+    }
+}
+
+/// A checkpoint written before the ref digest existed.
+fn legacy_checkpoint(counter: u64, content: &[u8]) -> Checkpoint {
+    Checkpoint {
+        ref_digest: None,
+        ..checkpoint(counter, content)
     }
 }
 
@@ -144,7 +164,7 @@ fn a_key_outside_the_pinned_profile_is_refused_before_any_crypto_runs() {
         ),
     ] {
         let error = refused(wrong.as_bytes(), &envelope, None);
-        assert!(error.contains("pinned Ed25519 profile"), "{error}");
+        assert!(error.contains("not a pinned profile"), "{error}");
     }
 }
 
@@ -219,6 +239,50 @@ fn two_heads_for_one_counter_is_equivocation() {
     assert!(error.contains("equivocation"), "{error}");
 }
 
+/// WP-7.1: the verdict is over the ref digest. The same head at the same counter under another
+/// ref state — another history arriving at it — is an equivocation the head alone cannot see.
+#[test]
+fn another_ref_state_at_one_counter_is_equivocation_even_with_the_same_head() {
+    let key = keypair();
+    let mut forked = statement(5, b"accepted");
+    forked.ref_digest = Digest::compute(b"another history");
+    let error = refused(
+        &jwks_for("k1", &key),
+        &signed(&forked, b"k1", &key),
+        Some(&checkpoint(5, b"accepted")),
+    );
+    assert!(error.contains("equivocation"), "{error}");
+}
+
+/// A checkpoint written before the ref digest falls back to its head: the same head again is a
+/// retry, another head at its counter an equivocation, a lower counter a rollback.
+#[test]
+fn a_checkpoint_without_a_ref_digest_is_judged_on_its_head() {
+    let key = keypair();
+    let jwks = jwks_for("k1", &key);
+    verify_statement(
+        &jwks,
+        &signed(&statement(5, b"accepted"), b"k1", &key),
+        ZONE,
+        LEDGER,
+        REF,
+        Some(&legacy_checkpoint(5, b"accepted")),
+    )
+    .expect("the head it holds is a retry");
+    let error = refused(
+        &jwks,
+        &signed(&statement(5, b"forked"), b"k1", &key),
+        Some(&legacy_checkpoint(5, b"accepted")),
+    );
+    assert!(error.contains("equivocation"), "{error}");
+    let error = refused(
+        &jwks,
+        &signed(&statement(4, b"old"), b"k1", &key),
+        Some(&legacy_checkpoint(5, b"accepted")),
+    );
+    assert!(error.contains("rollback"), "{error}");
+}
+
 #[test]
 fn malformed_inputs_are_parse_errors_never_panics() {
     let key = keypair();
@@ -240,6 +304,14 @@ fn malformed_inputs_are_parse_errors_never_panics() {
     let corrupt = Checkpoint {
         head: "not-a-digest".into(),
         counter: 1,
+        ref_digest: None,
+        ..Checkpoint::default()
+    };
+    let error = refused(&jwks_for("k1", &key), &envelope, Some(&corrupt));
+    assert!(error.contains("checkpoint is corrupt"), "{error}");
+    let corrupt = Checkpoint {
+        ref_digest: Some("not-a-digest".into()),
+        ..checkpoint(1, b"x")
     };
     let error = refused(&jwks_for("k1", &key), &envelope, Some(&corrupt));
     assert!(error.contains("checkpoint is corrupt"), "{error}");
@@ -270,4 +342,40 @@ fn a_bare_thumbprint_kid_selects_only_the_key_it_is_the_thumbprint_of() {
     let other = keypair();
     let error = refused(&jwks_for(&prefixed, &other), &envelope, None);
     assert!(error.contains("has no key"), "{error}");
+}
+
+/// WP-7.1: a head statement is signed in the ring's suite, so a P-256 ring's statement verifies
+/// against its published `EC` key, and a P-256 key published under `EdDSA` does not.
+#[test]
+fn a_p256_ring_statement_verifies_against_its_ec_key() {
+    use permguard_objects::crypto::suite::{SigningKey, Suite};
+
+    let pkcs8 = SigningKey::generate_pkcs8(Suite::P256Sha256V1).expect("a key is minted");
+    let key = SigningKey::from_pkcs8(Suite::P256Sha256V1, &pkcs8).expect("the key reads back");
+    let point = key.public_key().to_vec();
+    let encode = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+    let (x, y) = (encode(&point[1..33]), encode(&point[33..]));
+    let envelope =
+        SignedHead::sign_with(&statement(1, b"x"), Suite::P256Sha256V1, b"p1", |bytes| {
+            key.sign(bytes)
+                .map(|signature| signature.to_vec())
+                .map_err(|error| {
+                    permguard_objects::statement::StatementError::Signer(error.to_string())
+                })
+        })
+        .expect("signs")
+        .encode()
+        .expect("encodes");
+
+    let jwks = format!(
+        r#"{{"keys":[{{"kid":"p1","kty":"EC","crv":"P-256","x":"{x}","y":"{y}","alg":"ES256"}}]}}"#
+    );
+    verify_statement(jwks.as_bytes(), &envelope, ZONE, LEDGER, REF, None)
+        .expect("the P-256 statement verifies");
+
+    let mislabelled = format!(
+        r#"{{"keys":[{{"kid":"p1","kty":"EC","crv":"P-256","x":"{x}","y":"{y}","alg":"EdDSA"}}]}}"#
+    );
+    let error = refused(mislabelled.as_bytes(), &envelope, None);
+    assert!(error.contains("not a pinned profile"), "{error}");
 }

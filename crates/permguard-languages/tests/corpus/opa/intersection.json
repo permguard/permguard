@@ -1,0 +1,110 @@
+{
+  "folder": "intersection",
+  "files": {
+    "test-intersection-0352.yaml": {
+      "sha256": "sha256:1d3edd317254d3c6073168fc94c6490f60bd209a90f4ba2fb41310b8ad1db953",
+      "cases": [
+        {
+          "note": "intersection/intersection_0_sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tintersection(set(), x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-intersection-0353.yaml": {
+      "sha256": "sha256:c11e982dec5ad3b0132a510cb52c35beb886aef25864d581ed74ee6412999803",
+      "cases": [
+        {
+          "note": "intersection/intersection_2_sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tintersection({set(), {1, 2}}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-intersection-0354.yaml": {
+      "sha256": "sha256:ce92849010c57044e345003295859d2b2e0b99233e8569b3ad6434ab19ed1f47",
+      "cases": [
+        {
+          "note": "intersection/intersection_2_sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ts1 = {1, 2, 3}\n\ts2 = {2}\n\tintersection({s1, s2}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-intersection-0355.yaml": {
+      "sha256": "sha256:b30ff6d55c3d1daf2bb6e97acb253dd268c9e7839744fa5422ab0c011b6a12f4",
+      "cases": [
+        {
+          "note": "intersection/intersection_3_sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ts1 = {1, 2, 3}\n\ts2 = {2, 3, 4}\n\ts3 = {4, 5, 6}\n\tintersection({s1, s2, s3}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-intersection-0356.yaml": {
+      "sha256": "sha256:b769c236a55515242ab18f5358aae690415e0ce141185392f5d9229b7be49014",
+      "cases": [
+        {
+          "note": "intersection/intersection_4_sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ts1 = {\"a\", \"b\", \"c\", \"d\"}\n\ts2 = {\"b\", \"c\", \"d\"}\n\ts3 = {\"c\", \"d\"}\n\ts4 = {\"d\"}\n\tintersection({s1, s2, s3, s4}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "d"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

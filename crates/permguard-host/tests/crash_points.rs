@@ -14,12 +14,35 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use permguard_host::storage::crash::{CRASH_AT, POINTS};
+use permguard_host::storage::crash::{CRASH_AT, CRASH_HIT, POINTS};
 use permguard_host::storage::journal::{Journal, Options};
 use permguard_host::storage::write::{Published, publish_immutable, read_view, replace_view};
 use permguard_host::storage::{Dir, format, tombstone, volume};
 
 const DIRECTORY: &str = "PERMGUARD_CRASH_DIRECTORY";
+
+/// Claims the volume at `root`, waiting out a lock another test's child shares for an instant.
+///
+/// A child process another test thread spawns holds a copy of every descriptor of this process
+/// between its fork and its exec — the volume's `LOCK` among them, close-on-exec or not — so a lock
+/// this thread has just released can read as held by another process for that instant. Waited
+/// out, and bounded: a lock really held elsewhere is still refused.
+fn claim_volume(root: &Path) -> volume::Volume {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match volume::Volume::claim(
+            root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        ) {
+            Err(permguard_host::storage::StorageError::Held(_))
+                if std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            claimed => return claimed.expect("claimed"),
+        }
+    }
+}
 
 fn scratch(tag: &str) -> PathBuf {
     let path =
@@ -32,6 +55,11 @@ fn scratch(tag: &str) -> PathBuf {
 /// Runs the child test `child` in a process told to abort at `point`; answers whether it died of
 /// that abort — a panic or an early exit is not a crash at the point.
 fn crash(child: &str, point: &str, directory: &Path) -> bool {
+    crash_at_hit(child, point, 1, directory)
+}
+
+/// [`crash`] at the `hit`-th pass through `point`.
+fn crash_at_hit(child: &str, point: &str, hit: u64, directory: &Path) -> bool {
     let status = Command::new(std::env::current_exe().expect("this binary names itself"))
         .args([
             "--ignored",
@@ -42,6 +70,7 @@ fn crash(child: &str, point: &str, directory: &Path) -> bool {
             "--nocapture",
         ])
         .env(CRASH_AT, point)
+        .env(CRASH_HIT, hit.to_string())
         .env(DIRECTORY, directory)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -99,11 +128,9 @@ fn child_immutable() {
 #[test]
 #[ignore = "started by its parent, with a crash point"]
 fn child_volume() {
-    volume::Volume::claim(
-        Path::new(&std::env::var(DIRECTORY).expect("the parent names the directory")),
-        permguard_core::assurance::AssuranceProfile::Development,
-    )
-    .expect("claimed");
+    claim_volume(Path::new(
+        &std::env::var(DIRECTORY).expect("the parent names the directory"),
+    ));
 }
 
 #[test]
@@ -146,6 +173,21 @@ fn child_unrecorded_failure() {
 #[ignore = "started by its parent, with a crash point"]
 fn child_recovery() {
     drop(Journal::open(directory(), failure_options()).expect("opened"));
+}
+
+/// A prefix deletion (WP-5.6a) of a journal its parent filled: seven frames, one per segment.
+#[test]
+#[ignore = "started by its parent, with a crash point"]
+fn child_prefix() {
+    let (mut journal, _) = Journal::open(directory(), journal_options()).expect("opened");
+    journal.drop_prefix(5, None).expect("dropped");
+}
+
+/// An open that finishes a prefix deletion its parent left: `BASE` written, nothing removed.
+#[test]
+#[ignore = "started by its parent, with a crash point"]
+fn child_open() {
+    drop(Journal::open(directory(), journal_options()).expect("opened"));
 }
 
 #[test]
@@ -397,6 +439,117 @@ fn every_crash_point_of_a_deletion_recovers() {
     }
 }
 
+/// Prefix deletion (WP-5.6a): after a crash at any step — writing `BASE`, any of the segment
+/// deletions, or after them — the journal opens holding exactly the frames the step decides: every
+/// frame while `BASE` is not yet in place, the frames from 5 once it is, each at its index, with no
+/// segment below `BASE` and no tombstone left, and appends continue at the next index.
+#[test]
+fn every_crash_point_of_a_prefix_deletion_recovers() {
+    // The frame the journal starts at after a crash at each step: `BASE`'s temporary is not yet
+    // the view until its rename.
+    let mut rounds: Vec<(&str, u64, u64)> = Vec::new();
+    for point in points("view.") {
+        let first = if matches!(point, "view.temp_written" | "view.temp_flushed") {
+            0
+        } else {
+            5
+        };
+        rounds.push((point, 1, first));
+    }
+    rounds.push(("prefix.base_written", 1, 5));
+    rounds.push(("prefix.segments_removed", 1, 5));
+    // One frame per segment, so five segments go: each tombstone step is crashed at the first
+    // deletion and the last.
+    for point in points("tombstone.") {
+        rounds.extend([(point, 1, 5), (point, 5, 5)]);
+    }
+    for (point, hit, expected) in rounds {
+        let path = scratch(&format!("prefix-{point}-{hit}"));
+        let (mut journal, _) =
+            Journal::open(Dir::open(&path).expect("opened"), journal_options()).expect("created");
+        for index in 0..7u8 {
+            journal.append(1, &[index; 40]).expect("appended");
+        }
+        drop(journal);
+        assert!(
+            crash_at_hit("child_prefix", point, hit, &path),
+            "the child aborted at {point} ({hit})"
+        );
+        assert_recovered(&path, expected, &format!("{point} ({hit})"));
+    }
+
+    // The open that finishes the deletion, crashed after its removals.
+    let path = scratch("prefix-recovered");
+    let (mut journal, _) =
+        Journal::open(Dir::open(&path).expect("opened"), journal_options()).expect("created");
+    for index in 0..7u8 {
+        journal.append(1, &[index; 40]).expect("appended");
+    }
+    drop(journal);
+    replace_view(
+        &Dir::open(&path).expect("opened"),
+        permguard_host::storage::journal::BASE,
+        format::VIEW,
+        &permguard_host::storage::journal::encode_base(5, 0).expect("encoded"),
+    )
+    .expect("BASE written");
+    assert!(
+        crash("child_open", "prefix.recovered", &path),
+        "the child aborted at prefix.recovered"
+    );
+    assert_recovered(&path, 5, "prefix.recovered");
+}
+
+/// The journal at `path` holds the frames from `first` through 6, each its index repeated, starts
+/// with the segment at `first`, keeps no tombstone, `BASE` says `first` (absent when 0), and the
+/// next append is frame 7.
+fn assert_recovered(path: &Path, first: u64, case: &str) {
+    let (mut journal, _) = Journal::open(Dir::open(path).expect("opened"), journal_options())
+        .expect("the journal opens after the crash");
+    assert_eq!(journal.first_index(), first, "{case}");
+    let frames = journal.frames().expect("read");
+    assert_eq!(frames.len() as u64, 7 - first, "{case}");
+    for frame in &frames {
+        assert_eq!(frame.payload, [frame.index as u8; 40], "{case}");
+    }
+    let names: Vec<String> = std::fs::read_dir(path)
+        .expect("listed")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert!(
+        !names.iter().any(|name| name.ends_with(".tomb")),
+        "{case}: {names:?}"
+    );
+    assert_eq!(
+        journal.segments().first().map(String::as_str),
+        Some(format!("seg-{first:020}.pgj").as_str()),
+        "{case}"
+    );
+    let base = read_view(
+        &Dir::open(path).expect("opened"),
+        permguard_host::storage::journal::BASE,
+        format::VIEW,
+    )
+    .expect("read")
+    .map(|body| {
+        permguard_host::storage::journal::decode_base(&body)
+            .expect("decoded")
+            .0
+    });
+    assert_eq!(base, (first > 0).then_some(first), "{case}");
+    assert_eq!(
+        journal.append(2, b"after").expect("appends continue"),
+        7,
+        "{case}"
+    );
+}
+
 /// Volume creation: after a crash at any step, the next claim completes the volume, keeping a
 /// `VOLUME_ID` already written, and every later claim reads the same identity.
 #[test]
@@ -415,11 +568,8 @@ fn every_crash_point_of_a_volume_creation_recovers() {
             "{point}: FORMAT is written last"
         );
 
-        let claimed = volume::Volume::claim(
-            &path,
-            permguard_core::assurance::AssuranceProfile::Development,
-        )
-        .expect("the next claim completes the volume");
+        // The next claim completes the volume.
+        let claimed = claim_volume(&path);
         assert_eq!(
             std::fs::read(host.join(volume::VOLUME_ID)).expect("VOLUME_ID"),
             written,
@@ -427,11 +577,7 @@ fn every_crash_point_of_a_volume_creation_recovers() {
         );
         let id = claimed.id();
         drop(claimed);
-        let again = volume::Volume::claim(
-            &path,
-            permguard_core::assurance::AssuranceProfile::Development,
-        )
-        .expect("claimed again");
+        let again = claim_volume(&path);
         assert_eq!(again.id(), id, "{point}");
     }
 }
@@ -446,6 +592,7 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "journal.",
         "tombstone.",
         "failure.",
+        "prefix.",
         "volume.",
         "migrate.",
         "mutation.",
@@ -464,7 +611,6 @@ mod migrating {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_host::storage::migrate::testing::{NotesV2, SUBSYSTEM, write_note};
     use permguard_host::storage::migrate::{Layout, Phase, Preflight, Reads};
-    use permguard_host::storage::volume::Volume;
 
     const NOW: u64 = 1_800_000_000;
 
@@ -486,7 +632,7 @@ mod migrating {
 
     /// Lays `notes` out at version 1 with two notes on a fresh volume at `root`.
     fn lay_out(root: &Path) {
-        let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(root);
         let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
         layout.declare(1, "data/notes/g1", NOW).expect("declared");
         let old = layout.active(&Reads::only(1)).expect("active");
@@ -496,7 +642,7 @@ mod migrating {
 
     fn migrated(root: &Path) {
         lay_out(root);
-        let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(root);
         Layout::open(&volume, SUBSYSTEM)
             .expect("opens")
             .migrate(&migration(), preflight())
@@ -506,7 +652,7 @@ mod migrating {
     #[test]
     #[ignore = "started by its parent, with a crash point"]
     fn child_migrate() {
-        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(&root());
         Layout::open(&volume, SUBSYSTEM)
             .expect("opens")
             .migrate(&migration(), preflight())
@@ -517,7 +663,7 @@ mod migrating {
     #[test]
     #[ignore = "started by its parent, with a crash point"]
     fn child_abandon() {
-        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(&root());
         let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
         layout
             .migrate(
@@ -535,7 +681,7 @@ mod migrating {
     #[test]
     #[ignore = "started by its parent, with a crash point"]
     fn child_finalize() {
-        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(&root());
         Layout::open(&volume, SUBSYSTEM)
             .expect("opens")
             .finalize(NOW + 1)
@@ -545,7 +691,7 @@ mod migrating {
     #[test]
     #[ignore = "started by its parent, with a crash point"]
     fn child_rollback() {
-        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(&root());
         Layout::open(&volume, SUBSYSTEM)
             .expect("opens")
             .rollback(NOW + 1)
@@ -554,7 +700,7 @@ mod migrating {
 
     /// What a volume must look like on one side or the other, whatever step the crash hit.
     fn assert_on_one_side(root: &Path, point: &str, expect_new: bool) {
-        let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(root);
         let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
         // Opening already completed a finalize or a rollback in progress; a migration between
         // its intent and its commit waits for this.
@@ -650,7 +796,7 @@ mod migrating {
                 "the child aborted at {point}"
             );
             assert_on_one_side(&path, point, true);
-            let volume = Volume::claim(&path, AssuranceProfile::Development).expect("claimed");
+            let volume = claim_volume(&path);
             let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
             // Every finalize point is past the manifest's replacement, so opening the layout
             // completed what the crash left.
@@ -674,7 +820,7 @@ mod migrating {
                 crash("migrating::child_rollback", point, &path),
                 "the child aborted at {point}"
             );
-            let volume = Volume::claim(&path, AssuranceProfile::Development).expect("claimed");
+            let volume = claim_volume(&path);
             let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
             // Every rollback point is past the manifest's return, so opening the layout
             // completed what the crash left.
@@ -699,7 +845,6 @@ mod migrating {
 
 mod mutating {
     use super::*;
-    use permguard_core::assurance::AssuranceProfile;
     use permguard_core::authz::{Principal, Selector};
     use permguard_host::audit::{Class, HOST, trail};
     use permguard_host::authz::{GrantStore, Issue};
@@ -758,7 +903,7 @@ mod mutating {
     }
 
     fn reopen(path: &Path) -> (Volume, std::sync::Arc<GrantStore>, Mutations) {
-        let volume = Volume::claim(path, AssuranceProfile::Development).expect("claimed");
+        let volume = claim_volume(path);
         let (store, _) = GrantStore::open(&volume).expect("the store opens");
         let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
         (volume, store, mutations)

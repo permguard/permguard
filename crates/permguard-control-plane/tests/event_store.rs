@@ -147,6 +147,7 @@ fn records(instance: &str, count: u64, event_type: &str) -> Vec<Value> {
             prev: prev.clone(),
             event_type: event_type.to_owned(),
             event_id: format!("{instance}-{seq}"),
+            source: None,
             occurrence_digest: permguard_events::occurrence_digest_of(&event)
                 .expect("the occurrence digests"),
             kind: kind.to_owned(),
@@ -668,7 +669,16 @@ fn one_occurrence_is_found_by_its_identifier_and_absence_is_an_answer() {
     .expect("stored");
 
     let key = cursor_key();
-    let found = read::get(&store, &tenant(), "i-1-7", &key).expect("it reads");
+    let found = read::get(
+        &read::Sources {
+            store: &store,
+            host: None,
+        },
+        &tenant(),
+        "i-1-7",
+        &key,
+    )
+    .expect("it reads");
     assert_eq!(
         found
             .as_ref()
@@ -678,7 +688,16 @@ fn one_occurrence_is_found_by_its_identifier_and_absence_is_an_answer() {
     );
 
     assert_eq!(
-        read::get(&store, &tenant(), "nothing-like-this", &key).expect("it reads"),
+        read::get(
+            &read::Sources {
+                store: &store,
+                host: None
+            },
+            &tenant(),
+            "nothing-like-this",
+            &key
+        )
+        .expect("it reads"),
         None,
         "a search over a growing ledger concludes rather than running forever"
     );

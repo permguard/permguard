@@ -305,11 +305,29 @@ pub fn streams_route(streams: Vec<permguard_stream::StreamDescriptor>) -> axum::
     )
 }
 
-/// Where one interface publishes what it offers.
+/// Where one interface publishes what it offers, and its stage (WP-7.4a).
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct InterfaceLink {
     /// The address of that interface's own configuration document.
     pub configuration: String,
+    /// `v1alpha1`, `v1` or `deprecated`.
+    pub stage: String,
+    /// When a deprecated interface stops being served, RFC 3339.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sunset: Option<String>,
+}
+
+impl InterfaceLink {
+    /// The link to the served interface `id`'s document at `configuration`; `None` for an id the
+    /// registry does not serve, a retired one included, which no plane lists.
+    pub fn of(id: &str, configuration: String) -> Option<Self> {
+        let registered = permguard_core::stages::served(id).ok()?;
+        Some(Self {
+            configuration,
+            stage: registered.stage.as_str().to_owned(),
+            sunset: registered.stage.sunset().map(str::to_owned),
+        })
+    }
 }
 
 /// One plane's own configuration document — what that plane's public port answers at
@@ -328,6 +346,8 @@ pub struct InterfaceLink {
 pub struct PlaneConfiguration {
     /// `control-plane` or `data-plane`.
     pub plane: String,
+    /// The plane's lifecycle phase, read when the document is answered (WP-7.4a).
+    pub state: String,
     /// Where this plane's signing keys are published.
     pub jwks_uri: String,
     /// Where this plane lists the evidence streams it declares, enabled or not.
@@ -338,6 +358,11 @@ pub struct PlaneConfiguration {
     /// of things to follow.
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub interfaces: std::collections::BTreeMap<String, InterfaceLink>,
+    /// The runtimes a data plane carries, each with its descriptor's digest, whether this
+    /// deployment serves it and its conformance gate's result (TL-6). Filled by the plane that
+    /// evaluates; absent from one that does not.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<serde_json::Value>,
 }
 
 /// One plane's own configuration: who it is, and what it signs with.
@@ -358,9 +383,13 @@ pub fn plane_configuration(config: &Config, plane: PlaneId) -> PlaneConfiguratio
 
     PlaneConfiguration {
         plane: plane.public_name().to_owned(),
+        state: permguard_core::lifecycle::Phase::Bootstrap
+            .as_str()
+            .to_owned(),
         jwks_uri,
         streams_endpoint,
         interfaces: std::collections::BTreeMap::new(),
+        languages: Vec::new(),
     }
 }
 
@@ -369,13 +398,30 @@ pub fn plane_configuration(config: &Config, plane: PlaneId) -> PlaneConfiguratio
 /// hosts, each pointing at **its own** configuration document. Pointers,
 /// never copies: the plane's well-known is the single source of truth, and
 /// the registry only says where the truths are.
-pub fn server_configuration_document(config: &Config) -> String {
+pub fn server_configuration_document(
+    config: &Config,
+    lifecycle: &permguard_core::lifecycle::Lifecycle,
+) -> String {
+    // A plane is listed by its public name and reports its phase under its id (WP-7.4a).
+    let phase_of = |public: &str| {
+        let id = match public {
+            "control-plane" => PlaneId::Control.as_str(),
+            "data-plane" => PlaneId::Data.as_str(),
+            other => other,
+        };
+        lifecycle
+            .phase(id)
+            .unwrap_or(permguard_core::lifecycle::Phase::Bootstrap)
+            .as_str()
+            .to_owned()
+    };
     let mut planes: std::collections::BTreeMap<String, PlaneLink> = discovered_planes(config)
         .into_iter()
         .map(|plane| {
             (
                 plane.id.to_owned(),
                 PlaneLink {
+                    state: phase_of(plane.id),
                     server_configuration: Some(format!(
                         "{}/.well-known/server-configuration",
                         plane.http_base
@@ -391,12 +437,19 @@ pub fn server_configuration_document(config: &Config) -> String {
     // endpoint instead, which is everything there is to say about it.
     for (id, endpoint) in grpc_only_planes(config) {
         planes.entry(id.to_owned()).or_insert(PlaneLink {
+            state: phase_of(id),
             server_configuration: None,
             grpc_endpoint: Some(endpoint),
         });
     }
 
     let registry = ServerConfiguration {
+        host_id: lifecycle.host_id(),
+        state: lifecycle
+            .phase(permguard_core::lifecycle::HOST)
+            .unwrap_or(permguard_core::lifecycle::Phase::Bootstrap)
+            .as_str()
+            .to_owned(),
         planes,
         // The Host's own keys, when the deployment publishes any: the one field of this document
         // that is the process's rather than a plane's, because the operations ring seals what the
@@ -414,6 +467,8 @@ pub fn server_configuration_document(config: &Config) -> String {
         assurance: config.assurance().report(&config.relaxations_in_force()),
         peer_sessions: config.peer_sessions(),
         listeners: super::listeners::listeners(config),
+        storage: config.storage_report().cloned(),
+        objectives: config.objectives_report().cloned(),
     };
 
     // A document assembled from values cannot be malformed by one of them; a document assembled
@@ -437,6 +492,8 @@ pub fn server_configuration_document(config: &Config) -> String {
 /// plane the discovery contract lies about.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PlaneLink {
+    /// The plane's lifecycle phase, read when the document is answered (WP-7.4a).
+    pub state: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_configuration: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -447,6 +504,11 @@ pub struct PlaneLink {
 /// own operational keys are published.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ServerConfiguration {
+    /// The Host's id, UUID text; absent while the Host has no identity (WP-7.4a).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_id: Option<String>,
+    /// The Host's lifecycle phase, read when the document is answered (WP-7.4a).
+    pub state: String,
     pub planes: std::collections::BTreeMap<String, PlaneLink>,
     /// The Host's assurance block (WP-2.8): `{profile, enforcement: local, added_controls[],
     /// relaxations[]}`. Discovery describes; it never grants authority, and the profile is enforced
@@ -461,6 +523,13 @@ pub struct ServerConfiguration {
     /// The operations ring as a JWKS, when this deployment publishes keys at all.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub jwks_uri: Option<String>,
+    /// Where the volume stands (TS-5): its qualification and evidence id, once Bootstrap
+    /// qualified it; nothing about the provider or its keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage: Option<permguard_core::volume::StorageReport>,
+    /// The service objectives Bootstrap validated and their validation state (TS-5).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objectives: Option<permguard_core::objectives::ObjectivesReport>,
 }
 
 /// Whether a selected plane gates readiness: every one does unless `runtime.optional_planes` names it.
@@ -488,6 +557,34 @@ mod document_tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// WP-7.5a, IFACE-08: discovery links only what the stage registry serves, so no Trust
+    /// Anchor interface, nor any other id nobody registered, is ever advertised.
+    #[test]
+    fn discovery_advertises_no_interface_the_registry_does_not_serve() {
+        for id in [
+            "permguard.api.pdp.trust-anchor.v1",
+            "permguard.api.pdp.native.v2",
+            "",
+        ] {
+            assert!(
+                InterfaceLink::of(id, "http://host/x".to_owned()).is_none(),
+                "{id}"
+            );
+        }
+        for registered in permguard_core::stages::REGISTRY {
+            assert!(
+                InterfaceLink::of(registered.id, "http://host/x".to_owned()).is_some(),
+                "{}",
+                registered.id
+            );
+        }
+    }
+
+    /// The process document of `config`, a lifecycle of its own beside it.
+    fn document_of(config: &Config) -> String {
+        server_configuration_document(config, &permguard_core::lifecycle::Lifecycle::new())
+    }
     use crate::plane::build_settings;
     use crate::plane::settings::*;
 
@@ -578,10 +675,11 @@ mod document_tests {
             (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7443"),
         ]);
 
-        let registry = server_configuration_document(&config);
+        let registry =
+            server_configuration_document(&config, &permguard_core::lifecycle::Lifecycle::new());
         assert!(
             registry.contains(
-                "\"control-plane\":{\"server_configuration\":\"http://127.0.0.1:6443/.well-known/server-configuration\"}"
+                "\"control-plane\":{\"state\":\"bootstrap\",\"server_configuration\":\"http://127.0.0.1:6443/.well-known/server-configuration\"}"
             ),
             "{registry}"
         );
@@ -602,7 +700,8 @@ mod document_tests {
             (permguard_core::config::SETTING_KEYS_ENABLED, "true"),
         ]);
 
-        let registry = server_configuration_document(&config);
+        let registry =
+            server_configuration_document(&config, &permguard_core::lifecycle::Lifecycle::new());
         assert!(
             registry.contains("\"jwks_uri\":\"http://127.0.0.1:5443/server-host/keys\""),
             "{registry}"
@@ -614,8 +713,11 @@ mod document_tests {
         // WP-2.8: the profile, `enforcement: local`, the added controls and the relaxations in
         // force, the same block `GET /host/v1/status` carries.
         let production = config_with(&[]);
-        let document: serde_json::Value =
-            serde_json::from_str(&server_configuration_document(&production)).expect("JSON");
+        let document: serde_json::Value = serde_json::from_str(&server_configuration_document(
+            &production,
+            &permguard_core::lifecycle::Lifecycle::new(),
+        ))
+        .expect("JSON");
         assert_eq!(
             document["assurance"],
             serde_json::json!({
@@ -637,8 +739,11 @@ mod document_tests {
             ),
             (permguard_core::config::SETTING_KEYS_ENABLED, "true"),
         ]);
-        let document: serde_json::Value =
-            serde_json::from_str(&server_configuration_document(&development)).expect("JSON");
+        let document: serde_json::Value = serde_json::from_str(&server_configuration_document(
+            &development,
+            &permguard_core::lifecycle::Lifecycle::new(),
+        ))
+        .expect("JSON");
         assert_eq!(
             document["assurance"],
             serde_json::json!({
@@ -650,21 +755,50 @@ mod document_tests {
         );
     }
 
+    /// WP-7.4a, owner decision of 2026-10-21: the process document names the Host by its id once
+    /// its identity is open, the Host's phase, and each plane's, as they are when it is asked for.
+    #[test]
+    fn the_process_document_names_the_host_and_every_state() {
+        use permguard_core::lifecycle::{Kind, Lifecycle, Phase};
+
+        let config = config_with(&[
+            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
+            (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7443"),
+        ]);
+        let lifecycle = Lifecycle::new();
+        let before: serde_json::Value =
+            serde_json::from_str(&server_configuration_document(&config, &lifecycle))
+                .expect("JSON");
+        assert!(before.get("host_id").is_none(), "no identity, no id");
+        assert_eq!(before["state"], "bootstrap");
+
+        lifecycle.set_host_id("01a00000-0000-7000-8000-000000000001");
+        lifecycle.advance(permguard_core::lifecycle::HOST, Phase::Serving);
+        lifecycle.enter("control", Kind::Plane, true, Phase::Ready);
+        lifecycle.enter("data", Kind::Plane, true, Phase::Load);
+        let after: serde_json::Value =
+            serde_json::from_str(&server_configuration_document(&config, &lifecycle))
+                .expect("JSON");
+        assert_eq!(after["host_id"], "01a00000-0000-7000-8000-000000000001");
+        assert_eq!(after["state"], "serving");
+        assert_eq!(after["planes"]["control-plane"]["state"], "ready");
+        assert_eq!(after["planes"]["data-plane"]["state"], "load");
+    }
+
     #[test]
     fn the_registry_publishes_every_listener_and_its_authentication() {
         // WP-2.11: what each listener demands, the Plane public ones included, sorted by name,
         // and nothing that says where it is.
         use permguard_core::config::{SETTING_ASSURANCE_PROFILE, SETTING_TELEMETRY_ADDR};
-        let document: serde_json::Value =
-            serde_json::from_str(&server_configuration_document(&config_with(&[
-                (SETTING_ASSURANCE_PROFILE, "development"),
-                (SETTING_TELEMETRY_ADDR, "127.0.0.1:5443"),
-                (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
-                (SETTING_CONTROL_GRPC_ADDR, "127.0.0.1:6443"),
-                (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7443"),
-                (SETTING_DATA_HTTP_TLS_TERMINATED_UPSTREAM, "true"),
-            ])))
-            .expect("JSON");
+        let document: serde_json::Value = serde_json::from_str(&document_of(&config_with(&[
+            (SETTING_ASSURANCE_PROFILE, "development"),
+            (SETTING_TELEMETRY_ADDR, "127.0.0.1:5443"),
+            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
+            (SETTING_CONTROL_GRPC_ADDR, "127.0.0.1:6443"),
+            (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7443"),
+            (SETTING_DATA_HTTP_TLS_TERMINATED_UPSTREAM, "true"),
+        ])))
+        .expect("JSON");
         assert_eq!(
             document["listeners"],
             serde_json::json!([
@@ -686,8 +820,7 @@ mod document_tests {
         // says `disabled`; a listener without a client CA cannot; a TLS 1.2 floor is a limit.
         let peer_sessions = |pairs: &[(&str, &str)]| {
             let document: serde_json::Value =
-                serde_json::from_str(&server_configuration_document(&config_with(pairs)))
-                    .expect("JSON");
+                serde_json::from_str(&document_of(&config_with(pairs))).expect("JSON");
             document["peer_sessions"].clone()
         };
         use permguard_core::config::{
@@ -765,7 +898,8 @@ mod document_tests {
             host_keys_location(&config).as_deref(),
             Some("https://127.0.0.1:5444/host/v1/keys/host.operations")
         );
-        let registry = server_configuration_document(&config);
+        let registry =
+            server_configuration_document(&config, &permguard_core::lifecycle::Lifecycle::new());
         assert!(
             registry
                 .contains("\"jwks_uri\":\"https://127.0.0.1:5444/host/v1/keys/host.operations\""),
@@ -828,7 +962,7 @@ mod document_tests {
         ]);
         assert_eq!(host_keys_location(&mutual), None);
         assert!(
-            server_configuration_document(&mutual)
+            server_configuration_document(&mutual, &permguard_core::lifecycle::Lifecycle::new())
                 .contains("\"jwks_uri\":\"http://127.0.0.1:5443/server-host/keys\""),
             "the registry keeps the legacy route"
         );
@@ -859,9 +993,10 @@ mod document_tests {
         // Served but unlisted would be a plane the discovery contract lies about.
         let config = config_with(&[(SETTING_DATA_GRPC_ADDR, "127.0.0.1:7443")]);
 
-        let registry = server_configuration_document(&config);
+        let registry =
+            server_configuration_document(&config, &permguard_core::lifecycle::Lifecycle::new());
         assert!(
-            registry.contains("\"data-plane\":{\"grpc_endpoint\":\"http://127.0.0.1:7443\"}"),
+            registry.contains("\"data-plane\":{\"state\":\"bootstrap\",\"grpc_endpoint\":\"http://127.0.0.1:7443\"}"),
             "{registry}"
         );
     }
@@ -875,10 +1010,11 @@ mod document_tests {
             (SETTING_DATA_GRPC_ADDR, "127.0.0.1:7444"),
         ]);
 
-        let registry = server_configuration_document(&config);
+        let registry =
+            server_configuration_document(&config, &permguard_core::lifecycle::Lifecycle::new());
         assert!(
             registry.contains(
-                "\"data-plane\":{\"server_configuration\":\"http://127.0.0.1:7443/.well-known/server-configuration\"}"
+                "\"data-plane\":{\"state\":\"bootstrap\",\"server_configuration\":\"http://127.0.0.1:7443/.well-known/server-configuration\"}"
             ),
             "{registry}"
         );

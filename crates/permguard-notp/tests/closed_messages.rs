@@ -6,12 +6,22 @@
 
 use permguard_notp::pull::*;
 use permguard_notp::push::*;
+use permguard_notp::{ExpectedRef, MirrorOperation, MirrorRequest, TransferId};
 use permguard_objects::cbor::{self, Value};
 use permguard_objects::digest::Digest;
 
 fn digest() -> Digest {
     Digest::compute(b"x")
 }
+
+fn expected() -> Option<ExpectedRef> {
+    Some(ExpectedRef {
+        counter: 1,
+        digest: digest(),
+    })
+}
+
+const TRANSFER: TransferId = [7; 16];
 
 /// The same bytes with one more top-level label, `99`, re-encoded canonically.
 fn with_unknown_label(bytes: &[u8]) -> Vec<u8> {
@@ -42,22 +52,46 @@ fn test_every_message_refuses_an_unknown_label() {
         NegotiatePushRequest {
             r#ref: "main".to_owned(),
             new_head: digest(),
-            expected_old: Some(digest()),
+            expected_ref: expected(),
             closure: vec![ObjectClaim { digest: digest(), size: 1 }],
+            request_id: "push-1".to_owned(),
         } => NegotiatePushRequest,
         NegotiatePushResponse {
             missing: vec![digest()],
             max_batch_bytes: 1,
             max_batch_objects: 1,
             compression: Some("deflate".to_owned()),
+            transfer_id: TRANSFER,
+            reservation: 10,
+            expiry: 20,
         } => NegotiatePushResponse,
-        UploadObjectsRequest { objects: vec![vec![1]], compression: None } => UploadObjectsRequest,
-        UploadObjectsResponse { received: vec![digest()] } => UploadObjectsResponse,
-        CommitPushRequest { r#ref: "main".to_owned(), new_head: digest(), expected_old: None }
-            => CommitPushRequest,
-        CommitPushResponse { head: digest(), counter: 1, statement: vec![1] } => CommitPushResponse,
-        NegotiatePullRequest { r#ref: "main".to_owned(), at: Some(digest()), have: vec![] }
-            => NegotiatePullRequest,
+        UploadObjectsRequest { objects: vec![vec![1]], compression: None, transfer_id: TRANSFER }
+            => UploadObjectsRequest,
+        UploadObjectsResponse { received: vec![digest()], remaining: 1 } => UploadObjectsResponse,
+        CommitPushRequest {
+            r#ref: "main".to_owned(),
+            new_head: digest(),
+            expected_ref: None,
+            transfer_id: TRANSFER,
+            request_id: "commit-1".to_owned(),
+        } => CommitPushRequest,
+        CommitPushResponse { head: digest(), counter: 1, statement: vec![1], ref_digest: digest() }
+            => CommitPushResponse,
+        GetRefResponse { head: digest(), counter: 1, statement: vec![1], ref_digest: digest() }
+            => GetRefResponse,
+        GetRefRequest { r#ref: "main".to_owned() } => GetRefRequest,
+        MirrorRequest {
+            operation: MirrorOperation::NegotiatePull,
+            zone: "zone".to_owned(),
+            ledger: "ledger".to_owned(),
+            body: vec![1],
+        } => MirrorRequest,
+        NegotiatePullRequest {
+            r#ref: "main".to_owned(),
+            at: Some(digest()),
+            have: vec![],
+            checkpoint: expected(),
+        } => NegotiatePullRequest,
         NegotiatePullResponse {
             head: digest(),
             counter: 1,
@@ -66,38 +100,212 @@ fn test_every_message_refuses_an_unknown_label() {
             max_batch_bytes: 1,
             max_batch_objects: 1,
             compression: None,
+            transfer_id: TRANSFER,
+            ref_digest: digest(),
+            expiry: 20,
         } => NegotiatePullResponse,
-        FetchObjectsRequest { digests: vec![digest()], accept_compression: None }
+        FetchObjectsRequest { digests: vec![digest()], accept_compression: None, transfer_id: TRANSFER }
             => FetchObjectsRequest,
-        FetchObjectsResponse { objects: vec![vec![1]], compression: None } => FetchObjectsResponse,
+        FetchObjectsResponse { objects: vec![vec![1]], compression: None, expiry: 20 }
+            => FetchObjectsResponse,
     }
 }
 
-/// An unknown label inside a closure entry is refused too: closed at every level.
+/// An unknown label inside a closure entry or an expected ref is refused too: closed at every
+/// level.
 #[test]
-fn test_a_closure_entry_refuses_an_unknown_label() {
+fn test_a_closure_entry_or_an_expected_ref_refuses_an_unknown_label() {
     let request = NegotiatePushRequest {
         r#ref: "main".to_owned(),
         new_head: digest(),
-        expected_old: None,
+        expected_ref: expected(),
         closure: vec![ObjectClaim {
             digest: digest(),
             size: 1,
         }],
+        request_id: "push-1".to_owned(),
+    };
+    for label in [4, 5] {
+        let Value::Map(mut pairs) =
+            cbor::decode_canonical(&request.encode().expect("encodes")).expect("decodes")
+        else {
+            panic!("a map");
+        };
+        for (key, value) in &mut pairs {
+            if *key != Value::Int(label) {
+                continue;
+            }
+            match value {
+                Value::Array(entries) => {
+                    if let Some(Value::Map(entry)) = entries.first_mut() {
+                        entry.push((Value::Int(99), Value::Int(1)));
+                    }
+                }
+                Value::Map(entry) => entry.push((Value::Int(99), Value::Int(1))),
+                _ => {}
+            }
+        }
+        let bytes = cbor::encode(&Value::Map(pairs)).expect("encodes");
+        assert!(
+            NegotiatePushRequest::decode(&bytes).is_err(),
+            "label {label}"
+        );
+    }
+}
+
+/// Today's `expected_old`, label 3 of a negotiation and a commit, is retired: refused.
+#[test]
+fn test_the_retired_expected_old_is_refused() {
+    let commit = CommitPushRequest {
+        r#ref: "main".to_owned(),
+        new_head: digest(),
+        expected_ref: None,
+        transfer_id: TRANSFER,
+        request_id: "commit-1".to_owned(),
     };
     let Value::Map(mut pairs) =
-        cbor::decode_canonical(&request.encode().expect("encodes")).expect("decodes")
+        cbor::decode_canonical(&commit.encode().expect("encodes")).expect("decodes")
     else {
         panic!("a map");
     };
+    pairs.push((Value::Int(3), Value::Text(digest().to_string())));
+    let bytes = cbor::encode(&Value::Map(pairs)).expect("encodes");
+    assert!(CommitPushRequest::decode(&bytes).is_err());
+}
+
+/// A request id outside its grammar and a transfer id of another length are refused.
+#[test]
+fn test_request_and_transfer_ids_are_held_to_their_form() {
+    let commit = CommitPushRequest {
+        r#ref: "main".to_owned(),
+        new_head: digest(),
+        expected_ref: None,
+        transfer_id: TRANSFER,
+        request_id: String::new(),
+    };
+    assert!(CommitPushRequest::decode(&commit.encode().expect("encodes")).is_err());
+    let long = CommitPushRequest {
+        request_id: "x".repeat(129),
+        ..commit.clone()
+    };
+    assert!(CommitPushRequest::decode(&long.encode().expect("encodes")).is_err());
+    let Value::Map(mut pairs) = cbor::decode_canonical(
+        &CommitPushRequest {
+            request_id: "ok".to_owned(),
+            ..commit
+        }
+        .encode()
+        .expect("encodes"),
+    )
+    .expect("decodes") else {
+        panic!("a map");
+    };
     for (key, value) in &mut pairs {
-        if *key == Value::Int(4)
-            && let Value::Array(entries) = value
-            && let Some(Value::Map(entry)) = entries.first_mut()
-        {
-            entry.push((Value::Int(99), Value::Int(1)));
+        if *key == Value::Int(5) {
+            *value = Value::Bytes(vec![1; 15]);
         }
     }
     let bytes = cbor::encode(&Value::Map(pairs)).expect("encodes");
-    assert!(NegotiatePushRequest::decode(&bytes).is_err());
+    assert!(CommitPushRequest::decode(&bytes).is_err());
+}
+
+/// WP-7.12: a `policy.mirror` message names one of the four reads and its ledger; each round
+/// trips, an operation outside them is refused, and the key ring is asked with an empty body.
+/// WP-7.2a: the fifth, the listing, names no ledger and carries no body.
+#[test]
+fn test_a_mirror_message_names_one_of_its_reads() {
+    for operation in [
+        MirrorOperation::GetRef,
+        MirrorOperation::NegotiatePull,
+        MirrorOperation::FetchObjects,
+        MirrorOperation::KeyRing,
+        MirrorOperation::ListLedgers,
+    ] {
+        let listing = operation == MirrorOperation::ListLedgers;
+        let message = MirrorRequest {
+            operation,
+            zone: if listing { "" } else { "zone" }.to_owned(),
+            ledger: if listing { "" } else { "ledger" }.to_owned(),
+            body: if matches!(
+                operation,
+                MirrorOperation::KeyRing | MirrorOperation::ListLedgers
+            ) {
+                Vec::new()
+            } else {
+                vec![0xa0]
+            },
+        };
+        assert_eq!(
+            MirrorRequest::decode(&message.encode().expect("encodes")).expect("decodes"),
+            message
+        );
+    }
+    let outside = cbor::encode(&Value::Map(vec![
+        (Value::Int(1), Value::Int(6)),
+        (Value::Int(2), Value::Text("zone".to_owned())),
+        (Value::Int(3), Value::Text("ledger".to_owned())),
+        (Value::Int(4), Value::Bytes(Vec::new())),
+    ]))
+    .expect("encodes");
+    assert!(MirrorRequest::decode(&outside).is_err());
+    let keys_with_body = MirrorRequest {
+        operation: MirrorOperation::KeyRing,
+        zone: "zone".to_owned(),
+        ledger: "ledger".to_owned(),
+        body: vec![1],
+    };
+    assert!(MirrorRequest::decode(&keys_with_body.encode().expect("encodes")).is_err());
+    for (zone, ledger, body) in [
+        ("zone", "", vec![]),
+        ("", "ledger", vec![]),
+        ("", "", vec![1]),
+    ] {
+        let listing = MirrorRequest {
+            operation: MirrorOperation::ListLedgers,
+            zone: zone.to_owned(),
+            ledger: ledger.to_owned(),
+            body,
+        };
+        assert!(
+            MirrorRequest::decode(&listing.encode().expect("encodes")).is_err(),
+            "a listing names nothing"
+        );
+    }
+}
+
+/// WP-7.2a: a listing round trips, sorted and each ledger once, and says whether it is complete;
+/// an unsorted or repeated listing, or one past the bound, is refused.
+#[test]
+fn test_a_ledger_listing_is_sorted_bounded_and_says_whether_it_is_complete() {
+    use permguard_notp::{ListLedgersAnswer, ListedLedger, MAX_LISTED_LEDGERS};
+
+    let ledger = |zone: &str, ledger: &str| ListedLedger {
+        zone_id: zone.to_owned(),
+        zone_name: format!("{zone}-name"),
+        ledger_id: ledger.to_owned(),
+        ledger_name: format!("{ledger}-name"),
+    };
+    for complete in [true, false] {
+        let answer = ListLedgersAnswer {
+            ledgers: vec![ledger("a", "1"), ledger("a", "2"), ledger("b", "1")],
+            complete,
+        };
+        assert_eq!(
+            ListLedgersAnswer::decode(&answer.encode().expect("encodes")).expect("decodes"),
+            answer
+        );
+    }
+    for ledgers in [
+        vec![ledger("b", "1"), ledger("a", "1")],
+        vec![ledger("a", "1"), ledger("a", "1")],
+        (0..=MAX_LISTED_LEDGERS)
+            .map(|at| ledger("a", &format!("{at:06}")))
+            .collect(),
+    ] {
+        let answer = ListLedgersAnswer {
+            ledgers,
+            complete: true,
+        };
+        assert!(ListLedgersAnswer::decode(&answer.encode().expect("encodes")).is_err());
+    }
 }

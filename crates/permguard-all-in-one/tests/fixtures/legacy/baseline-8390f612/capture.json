@@ -1,0 +1,18 @@
+{
+  "commit": "8390f61244c304ea9b60d3781700cf76838531be",
+  "zone": "acme",
+  "ledger": "main-ledger",
+  "example": "examples/basics",
+  "decided": {
+    "permit": true,
+    "deny": false,
+    "gateway-permit": true
+  },
+  "temporal": {
+    "ledger": "agent-governance",
+    "example": "examples/dogwood-session-access",
+    "read-before-login": false,
+    "read-inside-window": true
+  },
+  "captured_at": 1793027347
+}

@@ -130,21 +130,7 @@ async fn get_ref(
         .await
         .and_then(|answered| {
             // The advertised ref rides the same framing as everything else.
-            permguard_objects::cbor::encode(&permguard_objects::cbor::Value::Map(vec![
-                (
-                    permguard_objects::cbor::Value::Int(1),
-                    permguard_objects::cbor::Value::Text(answered.head),
-                ),
-                (
-                    permguard_objects::cbor::Value::Int(2),
-                    permguard_objects::cbor::Value::Int(answered.counter as i64),
-                ),
-                (
-                    permguard_objects::cbor::Value::Int(3),
-                    permguard_objects::cbor::Value::Bytes(answered.statement),
-                ),
-            ]))
-            .map_err(|error| unencodable(error).into())
+            answered.encode().map_err(|error| unencodable(error).into())
         });
     answer(&facade, outcome)
 }
@@ -284,6 +270,15 @@ mod tests {
     }
 
     fn testing_routes_with(recorder: Option<crate::handles::Audit>) -> (Router, String, String) {
+        let (facade, zone, ledger) = testing_facade_with(recorder, None);
+        (routes(facade), zone, ledger)
+    }
+
+    /// The facade every surface of a test shares, with the zone and ledger names it serves.
+    fn testing_facade_with(
+        recorder: Option<crate::handles::Audit>,
+        hints: Option<permguard_host::composition::Hints>,
+    ) -> (NotpFacade, String, String) {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -321,6 +316,7 @@ mod tests {
             catalog,
             root.join("zones"),
             keys,
+            [0x11; 16],
             EngineLimits {
                 max_batch_bytes: 8 * 1024 * 1024,
                 max_batch_objects: 1000,
@@ -328,6 +324,12 @@ mod tests {
                 max_push_bytes: 64 * 1024 * 1024,
                 ledger_quota_bytes: 256 * 1024 * 1024,
             },
+            crate::engine::TransferPolicy {
+                ttl: Duration::from_secs(900),
+                grace: Duration::from_secs(3600),
+            },
+            crate::handles::ref_mutations_for_tests(&root.join("volume")),
+            hints,
             permguard_languages::registry::Enabled::everything(),
             true,
             recorder,
@@ -337,7 +339,514 @@ mod tests {
             std::sync::Arc::new(permguard_host::composition::Authorization::permissive()),
         );
 
-        (routes(facade), zone.name, ledger.name)
+        (facade, zone.name, ledger.name)
+    }
+
+    /// Negotiates, uploads and commits `objects` through `routes`, as a REST client does.
+    async fn rest_push(routes: &Router, base: &str, objects: &[Vec<u8>], head: &Digest) {
+        let negotiate = NegotiatePushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: objects
+                .iter()
+                .map(|bytes| ObjectClaim {
+                    digest: Digest::compute(bytes),
+                    size: bytes.len() as u64,
+                })
+                .collect(),
+            request_id: "push-1".into(),
+        };
+        let (status, body) = post(
+            routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiate.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+        let transfer_id = NegotiatePushResponse::decode(&body)
+            .expect("decodes")
+            .transfer_id;
+        let upload = UploadObjectsRequest {
+            objects: objects.to_vec(),
+            compression: None,
+            transfer_id,
+        };
+        let (status, body) = post(
+            routes,
+            &format!("{base}/notp/objects"),
+            upload.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+        let commit = CommitPushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            transfer_id,
+            request_id: "push-1".into(),
+        };
+        let (status, body) = post(
+            routes,
+            &format!("{base}/notp/push/commit"),
+            commit.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    }
+
+    /// WP-7.12: a member pulls over the `policy.mirror` task what a REST client pushed, through
+    /// the same facade, within the resource its session reads; its transfer is its membership's,
+    /// which a REST caller cannot name.
+    #[tokio::test]
+    async fn test_a_member_pulls_over_the_task_what_rest_pushed() {
+        use permguard_host::membership::task::TaskHandler as _;
+        use permguard_notp::{GetRefRequest, MirrorOperation, MirrorRequest};
+
+        let (facade, zone, ledger) = testing_facade_with(None, None);
+        let routes = routes(facade.clone());
+        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let (objects, head) = build_commit();
+        rest_push(&routes, &base, &objects, &head).await;
+
+        let (zone_id, ledger_id) = facade.ledger_ids(&zone, &ledger).expect("the ledger");
+        let mirror = crate::notp::mirror::Mirror {
+            facade: Arc::new(facade.clone()),
+        };
+        let context = |resource: String| permguard_host::membership::task::TaskContext {
+            selector: permguard_core::authz::Selector::under(
+                permguard_core::authz::Resource::host(),
+            ),
+            membership_id: [0x42; 16],
+            task_id: "mirror".to_owned(),
+            task_type: permguard_host::membership::record::TaskType::PolicyMirror,
+            version: 1,
+            epoch: 1,
+            resource,
+            member: [0x43; 16],
+            request_id: "r".to_owned(),
+            limits: permguard_host::membership::record::Limits {
+                max_body_bytes: 1 << 24,
+                max_concurrency: 1,
+                max_rate_per_minute: 60,
+                max_batch_records: 1000,
+                retention_seconds: 60,
+            },
+            channel_binding: [0; 32],
+        };
+        let message = |operation, body: Vec<u8>| {
+            MirrorRequest {
+                operation,
+                zone: zone_id.clone(),
+                ledger: ledger_id.clone(),
+                body,
+            }
+            .encode()
+            .expect("it encodes")
+        };
+        let session = context(format!("plane/control/zone/{zone_id}"));
+
+        let advertised = permguard_notp::GetRefResponse::decode(
+            &mirror
+                .handle(
+                    &session,
+                    &message(
+                        MirrorOperation::GetRef,
+                        GetRefRequest {
+                            r#ref: "main".into(),
+                        }
+                        .encode()
+                        .expect("it encodes"),
+                    ),
+                )
+                .expect("the ref reads"),
+        )
+        .expect("a ref answer");
+        assert_eq!(advertised.head, head);
+
+        let negotiated = NegotiatePullResponse::decode(
+            &mirror
+                .handle(
+                    &session,
+                    &message(
+                        MirrorOperation::NegotiatePull,
+                        NegotiatePullRequest {
+                            r#ref: "main".into(),
+                            at: None,
+                            have: vec![],
+                            checkpoint: None,
+                        }
+                        .encode()
+                        .expect("it encodes"),
+                    ),
+                )
+                .expect("the pull negotiates"),
+        )
+        .expect("a pull answer");
+        assert_eq!(negotiated.missing.len(), objects.len());
+        let fetch = FetchObjectsRequest {
+            digests: negotiated.missing.clone(),
+            accept_compression: None,
+            transfer_id: negotiated.transfer_id,
+        };
+        let fetched = permguard_notp::FetchObjectsResponse::decode(
+            &mirror
+                .handle(
+                    &session,
+                    &message(
+                        MirrorOperation::FetchObjects,
+                        fetch.encode().expect("it encodes"),
+                    ),
+                )
+                .expect("the objects come"),
+        )
+        .expect("a fetch answer");
+        assert_eq!(fetched.objects.len(), objects.len());
+        let keys = mirror
+            .handle(&session, &message(MirrorOperation::KeyRing, Vec::new()))
+            .expect("the key ring");
+        assert!(String::from_utf8_lossy(&keys).contains("\"keys\""));
+
+        // The member's transfer is its membership's: a REST caller naming it learns nothing.
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/objects/fetch"),
+            fetch.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 404, "{}", String::from_utf8_lossy(&body));
+        assert!(String::from_utf8_lossy(&body).contains("transfer_unknown"));
+        // Nor does another membership.
+        let mut stranger = context(format!("plane/control/zone/{zone_id}"));
+        stranger.membership_id = [0x44; 16];
+        assert_eq!(
+            mirror
+                .handle(
+                    &stranger,
+                    &message(
+                        MirrorOperation::FetchObjects,
+                        fetch.encode().expect("it encodes"),
+                    ),
+                )
+                .expect_err("another membership's transfer")
+                .code,
+            "transfer_unknown"
+        );
+
+        // A ledger outside the session's resource is refused before it is read.
+        let elsewhere = context("plane/control/zone/another-zone".to_owned());
+        assert_eq!(
+            mirror
+                .handle(&elsewhere, &message(MirrorOperation::KeyRing, Vec::new()))
+                .expect_err("outside the session's resource")
+                .code,
+            permguard_core::codes::common::FORBIDDEN
+        );
+        // A ledger named by its name, not its id, is not one the session's resource names.
+        let by_name = MirrorRequest {
+            operation: MirrorOperation::KeyRing,
+            zone: zone.clone(),
+            ledger: ledger.clone(),
+            body: Vec::new(),
+        }
+        .encode()
+        .expect("it encodes");
+        assert_eq!(
+            mirror
+                .handle(&context("plane/control".to_owned()), &by_name)
+                .expect_err("names are not ids")
+                .code,
+            permguard_core::codes::common::FORBIDDEN
+        );
+        // WP-7.2a: the listing names every ledger under the session's resource, by ids and names,
+        // and nothing beside it; a listing that names a ledger is refused.
+        let listing = MirrorRequest {
+            operation: MirrorOperation::ListLedgers,
+            zone: String::new(),
+            ledger: String::new(),
+            body: Vec::new(),
+        }
+        .encode()
+        .expect("it encodes");
+        let listed = permguard_notp::ListLedgersAnswer::decode(
+            &mirror.handle(&session, &listing).expect("the ledgers list"),
+        )
+        .expect("a listing");
+        assert!(listed.complete);
+        assert_eq!(
+            listed.ledgers,
+            vec![permguard_notp::ListedLedger {
+                zone_id: zone_id.clone(),
+                zone_name: zone.clone(),
+                ledger_id: ledger_id.clone(),
+                ledger_name: ledger.clone(),
+            }]
+        );
+        let none = permguard_notp::ListLedgersAnswer::decode(
+            &mirror
+                .handle(&elsewhere, &listing)
+                .expect("an empty listing"),
+        )
+        .expect("a listing");
+        assert!(none.ledgers.is_empty() && none.complete);
+        // A task whose signed selector is exact reads exactly its resource: a zone's session lists
+        // none of its ledgers and reads none of them.
+        let mut exact = context(format!("plane/control/zone/{zone_id}"));
+        exact.selector = permguard_core::authz::Selector::exactly(
+            permguard_core::authz::Resource::parse(&exact.resource).expect("a resource"),
+        );
+        let listed_exactly = permguard_notp::ListLedgersAnswer::decode(
+            &mirror.handle(&exact, &listing).expect("an exact listing"),
+        )
+        .expect("a listing");
+        assert!(
+            listed_exactly.ledgers.is_empty(),
+            "nothing below an exact selector"
+        );
+        assert_eq!(
+            mirror
+                .handle(&exact, &message(MirrorOperation::KeyRing, Vec::new()))
+                .expect_err("a ledger below an exact selector")
+                .code,
+            permguard_core::codes::common::FORBIDDEN
+        );
+        assert_eq!(
+            mirror
+                .handle(&session, &message(MirrorOperation::ListLedgers, Vec::new()))
+                .expect_err("a listing names no ledger")
+                .code,
+            permguard_core::codes::notp::BODY_REJECTED
+        );
+        // A message that is not one is refused as such.
+        assert_eq!(
+            mirror
+                .handle(&session, b"not cbor")
+                .expect_err("not a message")
+                .code,
+            permguard_core::codes::notp::BODY_REJECTED
+        );
+    }
+
+    /// WP-7.12: the other direction: negotiated and uploaded over gRPC, committed over REST.
+    #[tokio::test]
+    async fn test_a_transfer_negotiated_over_grpc_commits_over_rest() {
+        use crate::v1::git_like_store_server::GitLikeStore;
+
+        /// The request as the anonymous caller the REST routes of this test see.
+        fn anonymous<T>(message: T) -> tonic::Request<T> {
+            let mut request = tonic::Request::new(message);
+            request
+                .extensions_mut()
+                .insert(Arc::new(permguard_core::authz::Actor::Anonymous));
+            request
+        }
+
+        let (facade, zone, ledger) = testing_facade_with(None, None);
+        let routes = routes(facade.clone());
+        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let (objects, head) = build_commit();
+        let negotiated = GitLikeStore::negotiate_push(
+            &facade,
+            anonymous(crate::v1::NegotiatePushRequest {
+                zone: zone.clone(),
+                ledger: ledger.clone(),
+                r#ref: "main".into(),
+                new_head: head.to_string(),
+                expected_ref: None,
+                closure: objects
+                    .iter()
+                    .map(|bytes| crate::v1::ObjectClaim {
+                        digest: Digest::compute(bytes).to_string(),
+                        size: bytes.len() as u64,
+                    })
+                    .collect(),
+                request_id: "push-1".into(),
+            }),
+        )
+        .await
+        .expect("the gRPC negotiation answers")
+        .into_inner();
+        let transfer_id: [u8; 16] = negotiated.transfer_id.clone().try_into().expect("16 bytes");
+        GitLikeStore::upload_objects(
+            &facade,
+            anonymous(crate::v1::UploadObjectsRequest {
+                zone: zone.clone(),
+                ledger: ledger.clone(),
+                objects: objects.clone(),
+                compression: String::new(),
+                transfer_id: negotiated.transfer_id,
+            }),
+        )
+        .await
+        .expect("the gRPC upload lands");
+        let commit = CommitPushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            transfer_id,
+            request_id: "push-1".into(),
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/commit"),
+            commit.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+        assert_eq!(
+            CommitPushResponse::decode(&body).expect("decodes").counter,
+            1
+        );
+    }
+
+    /// WP-7.12: a commit tells the watches of its ledger (`WatchRefs`): the hint names the ref
+    /// and its new head and counter.
+    #[tokio::test]
+    async fn test_a_commit_hints_the_watches_of_its_ledger() {
+        use permguard_host::membership::record::{
+            Lease, Limits, TaskType, WatchHint, WatchRequest,
+        };
+
+        let hub = Arc::new(permguard_host::membership::watch::Hub::default());
+        let hints = permguard_host::composition::Host::builder()
+            .watch_hub(Arc::clone(&hub))
+            .build()
+            .register(
+                permguard_host::composition::Declaration::new("control")
+                    .handles_task(TaskType::PolicyMirror, 1),
+            )
+            .expect("registers")
+            .hints();
+        let (facade, zone, ledger) = testing_facade_with(None, hints);
+        let (zone_id, ledger_id) = facade.ledger_ids(&zone, &ledger).expect("the ledger");
+        let lease = Lease {
+            membership_id: [1; 16],
+            task_id: "mirror".to_owned(),
+            epoch: 1,
+            coordinator: [2; 16],
+            member: [3; 16],
+            coordinator_boot_id: [4; 16],
+            member_boot_id: [5; 16],
+            selector: permguard_core::authz::Selector::parse("plane/control/*")
+                .expect("a selector"),
+            resource: format!("plane/control/zone/{zone_id}"),
+            limits: Limits {
+                max_body_bytes: 1024,
+                max_concurrency: 1,
+                max_rate_per_minute: 60,
+                max_batch_records: 10,
+                retention_seconds: 60,
+            },
+            issued_at: 0,
+            expires_at: 60,
+            channel_binding: [6; 32],
+            binding_digest: None,
+        };
+        let queue = hub
+            .subscribe(
+                TaskType::PolicyMirror,
+                &lease,
+                &WatchRequest {
+                    positions: Vec::new(),
+                },
+            )
+            .expect("subscribes");
+        let routes = routes(facade);
+        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let (objects, head) = build_commit();
+        rest_push(&routes, &base, &objects, &head).await;
+        assert_eq!(
+            queue.take(),
+            Some(vec![WatchHint {
+                key: format!("{zone_id}/{ledger_id}/main"),
+                head: head.to_string(),
+                counter: 1,
+            }])
+        );
+    }
+
+    /// WP-7.12: one transfer, two surfaces: negotiated and uploaded over REST, committed over
+    /// gRPC, through one facade and one compare-and-swap.
+    #[tokio::test]
+    async fn test_a_transfer_negotiated_over_rest_commits_over_grpc() {
+        let (facade, zone, ledger) = testing_facade_with(None, None);
+        let routes = routes(facade.clone());
+        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let (objects, head) = build_commit();
+        let negotiate = NegotiatePushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: objects
+                .iter()
+                .map(|bytes| ObjectClaim {
+                    digest: Digest::compute(bytes),
+                    size: bytes.len() as u64,
+                })
+                .collect(),
+            request_id: "push-1".into(),
+        };
+        let (_, body) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiate.encode().expect("it encodes"),
+        )
+        .await;
+        let transfer_id = NegotiatePushResponse::decode(&body)
+            .expect("decodes")
+            .transfer_id;
+        let upload = UploadObjectsRequest {
+            objects: objects.clone(),
+            compression: None,
+            transfer_id,
+        };
+        let (status, _) = post(
+            &routes,
+            &format!("{base}/notp/objects"),
+            upload.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 200);
+
+        // The same caller on both surfaces: the transfer is bound to it.
+        let mut request = tonic::Request::new(crate::v1::CommitPushRequest {
+            zone: zone.clone(),
+            ledger: ledger.clone(),
+            r#ref: "main".into(),
+            new_head: head.to_string(),
+            expected_ref: None,
+            transfer_id: transfer_id.to_vec(),
+            request_id: "push-1".into(),
+        });
+        request
+            .extensions_mut()
+            .insert(Arc::new(permguard_core::authz::Actor::Anonymous));
+        let committed =
+            crate::v1::git_like_store_server::GitLikeStore::commit_push(&facade, request)
+                .await
+                .expect("the gRPC commit lands")
+                .into_inner();
+        assert_eq!((committed.head, committed.counter), (head.to_string(), 1));
+
+        // The same commit asked again over REST is the transfer's answer, not a second update.
+        let commit = CommitPushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            transfer_id,
+            request_id: "push-1".into(),
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/commit"),
+            commit.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+        assert_eq!(
+            CommitPushResponse::decode(&body).expect("decodes").counter,
+            1
+        );
     }
 
     /// A NOTP body not declared as one is refused before it is read: a cross-site `text/plain`
@@ -349,6 +858,7 @@ mod tests {
             r#ref: "main".to_owned(),
             at: None,
             have: Vec::new(),
+            checkpoint: None,
         }
         .encode()
         .expect("encodes");
@@ -374,6 +884,173 @@ mod tests {
                 "{media:?}: {text}"
             );
         }
+    }
+
+    /// `(status, body)` of a `GET` of `path`.
+    async fn get_of(routes: &Router, path: &str) -> (u16, Vec<u8>) {
+        let request = HttpRequest::builder()
+            .method("GET")
+            .uri(path)
+            .body(Body::empty())
+            .expect("a request builds");
+        let answer = routes.clone().oneshot(request).await.expect("answers");
+        let status = answer.status().as_u16();
+        let bytes = axum::body::to_bytes(answer.into_body(), usize::MAX)
+            .await
+            .expect("a body");
+        (status, bytes.to_vec())
+    }
+
+    /// A push negotiation of `head` as a REST client sends it.
+    fn negotiation(objects: &[Vec<u8>], head: &Digest, request_id: &str) -> Vec<u8> {
+        NegotiatePushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: objects
+                .iter()
+                .map(|bytes| ObjectClaim {
+                    digest: Digest::compute(bytes),
+                    size: bytes.len() as u64,
+                })
+                .collect(),
+            request_id: request_id.into(),
+        }
+        .encode()
+        .expect("it encodes")
+    }
+
+    /// WP-7.3b, owner decision of 2026-10-21: an archived ledger refuses a push `409`
+    /// `ledger_archived` and keeps answering its refs; restored, it takes pushes again.
+    #[tokio::test]
+    async fn an_archived_ledger_refuses_a_push_and_still_serves() {
+        use permguard_core::catalog::{LedgerState, Selector, Write};
+
+        let (facade, zone, ledger) = testing_facade_with(None, None);
+        let routes = routes(facade.clone());
+        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let (objects, head) = build_commit();
+        rest_push(&routes, &base, &objects, &head).await;
+        let state = |state| {
+            facade
+                .catalog
+                .set_ledger_state_with(
+                    &Selector::parse(&zone),
+                    &Selector::parse(&ledger),
+                    state,
+                    &Write::default(),
+                )
+                .expect("the state is set")
+        };
+
+        // A transfer negotiated while the ledger was active, to upload and commit once it is not.
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiation(&objects, &head, "push-before"),
+        )
+        .await;
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+        let transfer_id = NegotiatePushResponse::decode(&body)
+            .expect("decodes")
+            .transfer_id;
+
+        state(LedgerState::Archived);
+        let archived = |body: &[u8]| {
+            let body: serde_json::Value = serde_json::from_slice(body).expect("a refusal");
+            assert_eq!(body["code"], "ledger_archived", "{body}");
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiation(&objects, &head, "push-archived"),
+        )
+        .await;
+        assert_eq!(status, 409, "{}", String::from_utf8_lossy(&body));
+        archived(&body);
+        let upload = UploadObjectsRequest {
+            objects: objects.clone(),
+            compression: None,
+            transfer_id,
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/objects"),
+            upload.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 409, "{}", String::from_utf8_lossy(&body));
+        archived(&body);
+        let commit = CommitPushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            transfer_id,
+            request_id: "push-before".into(),
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/commit"),
+            commit.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 409, "{}", String::from_utf8_lossy(&body));
+        archived(&body);
+        let (status, _) = get_of(&routes, &format!("{base}/refs/main")).await;
+        assert_eq!(status, 200, "an archived ledger still serves its refs");
+
+        state(LedgerState::Active);
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiation(&objects, &head, "push-restored"),
+        )
+        .await;
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    }
+
+    /// WP-7.3b, owner decision of 2026-10-20: a deleted ledger serves no ref and takes no push,
+    /// and what it held stays on disk.
+    #[tokio::test]
+    async fn a_deleted_ledger_serves_no_ref() {
+        use permguard_core::catalog::Selector;
+
+        let (facade, zone, ledger) = testing_facade_with(None, None);
+        let routes = routes(facade.clone());
+        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let (objects, head) = build_commit();
+        rest_push(&routes, &base, &objects, &head).await;
+        let (zone_id, ledger_id) = facade.ledger_ids(&zone, &ledger).expect("the ledger");
+        facade
+            .catalog
+            .delete_ledger(
+                &Selector::Id(zone_id.clone()),
+                &Selector::Id(ledger_id.clone()),
+            )
+            .expect("deleted");
+
+        let (status, _) = get_of(&routes, &format!("{base}/refs/main")).await;
+        assert_eq!(status, 404);
+        let (status, _) = get_of(
+            &routes,
+            &format!("/v1/zones/{zone_id}/ledgers/{ledger_id}/refs/main"),
+        )
+        .await;
+        assert_eq!(status, 404, "not by its ids either");
+        let (status, _) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiation(&objects, &head, "push-deleted"),
+        )
+        .await;
+        assert_eq!(status, 404);
+        let refs = facade
+            .zones_root
+            .join(&zone_id)
+            .join("ledgers")
+            .join(&ledger_id)
+            .join("refs");
+        assert!(refs.is_dir(), "the deleted ledger's refs stay on disk");
     }
 
     async fn post(routes: &Router, path: &str, body: Vec<u8>) -> (u16, Vec<u8>) {
@@ -424,6 +1101,7 @@ mod tests {
             partitions: BTreeMap::from([(
                 "cedar".to_string(),
                 Partition {
+                    interfaces: Vec::new(),
                     runtime: "cedar".into(),
                     media_types: vec![MEDIA_TYPE_POLICY_CEDAR.to_string()],
                     schema: false,
@@ -550,8 +1228,9 @@ mod tests {
         let request = NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: build_commit().1,
-            expected_old: None,
+            expected_ref: None,
             closure: Vec::new(),
+            request_id: "push-1".into(),
         };
         let (status, _) = post(
             &routes,
@@ -573,7 +1252,7 @@ mod tests {
         let request = NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: objects
                 .iter()
                 .map(|bytes| ObjectClaim {
@@ -581,6 +1260,7 @@ mod tests {
                     size: bytes.len() as u64,
                 })
                 .collect(),
+            request_id: "push-1".into(),
         };
         let (status, body) = post(
             &routes,
@@ -596,6 +1276,7 @@ mod tests {
         let upload = UploadObjectsRequest {
             objects: objects.clone(),
             compression: None,
+            transfer_id: negotiated.transfer_id,
         };
         let (status, body) = post(
             &routes,
@@ -616,7 +1297,9 @@ mod tests {
         let commit = CommitPushRequest {
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: None,
+            expected_ref: None,
+            transfer_id: negotiated.transfer_id,
+            request_id: "push-1".into(),
         };
         let (status, body) = post(
             &routes,
@@ -629,6 +1312,12 @@ mod tests {
         assert_eq!(committed.head, head);
         assert_eq!(committed.counter, 1);
         assert!(!committed.statement.is_empty());
+        let first = permguard_objects::refstate::RefState::first(head.clone());
+        assert_eq!(
+            committed.ref_digest,
+            first.ref_digest().expect("a ref digest"),
+            "the answer names the first state's digest"
+        );
 
         // The advertised ref answers.
         let request = HttpRequest::builder()
@@ -638,12 +1327,28 @@ mod tests {
             .expect("a request builds");
         let answer = routes.clone().oneshot(request).await.expect("answers");
         assert_eq!(answer.status().as_u16(), 200);
+        let bytes = axum::body::to_bytes(answer.into_body(), usize::MAX)
+            .await
+            .expect("a body");
+        let advertised = permguard_notp::GetRefResponse::decode(&bytes).expect("a ref answer");
+        assert_eq!(advertised.ref_digest, committed.ref_digest);
+        let statement = permguard_objects::statement::SignedHead::decode(&advertised.statement)
+            .expect("a statement")
+            .statement_unverified()
+            .expect("a payload");
+        assert_eq!(statement.ref_digest, committed.ref_digest);
+        assert_eq!(statement.authority_host_id, [0x11; 16]);
+        assert_eq!(
+            statement.ring_epoch, 1,
+            "the ring's epoch, bound by the signer"
+        );
 
         // Pull: full clone gets every object back, hash-verified.
         let pull = NegotiatePullRequest {
             r#ref: "main".into(),
             at: None,
             have: vec![],
+            checkpoint: None,
         };
         let (status, body) = post(
             &routes,
@@ -657,6 +1362,7 @@ mod tests {
         let fetch = FetchObjectsRequest {
             digests: negotiated.missing.clone(),
             accept_compression: None,
+            transfer_id: negotiated.transfer_id,
         };
         let (status, body) = post(
             &routes,
@@ -672,10 +1378,10 @@ mod tests {
         // route lives on the plane's discovery surface, /control/keys).
     }
 
-    /// A push whose `security` record fails is committed and answered `mutation_unrecorded`,
-    /// never success (WP-3.6, owner decision): the ref moved, and the caller reads it.
+    /// A push is recorded by the mutation transaction its ref update runs in (WP-7.12), not by
+    /// the plane's own audit handle: a handle whose sink refuses every record does not touch it.
     #[tokio::test]
-    async fn test_a_push_whose_record_fails_is_unrecorded_and_stands() {
+    async fn test_a_push_is_recorded_by_its_mutation_transaction_not_the_planes_handle() {
         use permguard_core::{AuditEvent, AuditRecorder, AuditSink, BoxFuture};
 
         /// A sink that refuses every record.
@@ -704,9 +1410,33 @@ mod tests {
         )));
         let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
         let (objects, head) = build_commit();
+        let negotiate = NegotiatePushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: objects
+                .iter()
+                .map(|bytes| ObjectClaim {
+                    digest: Digest::compute(bytes),
+                    size: bytes.len() as u64,
+                })
+                .collect(),
+            request_id: "push-1".into(),
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            negotiate.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+        let transfer_id = NegotiatePushResponse::decode(&body)
+            .expect("a response decodes")
+            .transfer_id;
         let upload = UploadObjectsRequest {
             objects,
             compression: None,
+            transfer_id,
         };
         let (status, _) = post(
             &routes,
@@ -718,7 +1448,9 @@ mod tests {
         let commit = CommitPushRequest {
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: None,
+            expected_ref: None,
+            transfer_id,
+            request_id: "push-1".into(),
         };
         let (status, body) = post(
             &routes,
@@ -727,8 +1459,7 @@ mod tests {
         )
         .await;
         let body = String::from_utf8_lossy(&body);
-        assert_eq!(status, 500, "{body}");
-        assert!(body.contains("mutation_unrecorded"), "{body}");
+        assert_eq!(status, 200, "{body}");
         let request = HttpRequest::builder()
             .method("GET")
             .uri(format!("{base}/refs/main"))
@@ -779,6 +1510,7 @@ mod tests {
         let bomb = UploadObjectsRequest {
             objects: vec![packed; 32],
             compression: Some("deflate".into()),
+            transfer_id: [0x7a; 16],
         };
 
         let (status, body) = post(
@@ -801,6 +1533,7 @@ mod tests {
             r#ref: "main".into(),
             at: None,
             have: vec![],
+            checkpoint: None,
         };
         let (status, body) = post(
             &routes,

@@ -172,7 +172,7 @@
             }
           },
           "409": {
-            "description": "A conflict: not a fast-forward, or the ref moved since negotiation.",
+            "description": "A conflict: not a fast-forward, or the ref moved since negotiation; the ledger is archived (`ledger_archived`), a push waiting for its restore.",
             "content": {
               "application/json": {
                 "schema": {
@@ -278,7 +278,7 @@
             }
           },
           "409": {
-            "description": "A conflict: not a fast-forward, or the ref moved since negotiation.",
+            "description": "A conflict: not a fast-forward, or the ref moved since negotiation; the ledger is archived (`ledger_archived`), a push waiting for its restore.",
             "content": {
               "application/json": {
                 "schema": {
@@ -384,7 +384,7 @@
             }
           },
           "409": {
-            "description": "A conflict: not a fast-forward, or the ref moved since negotiation.",
+            "description": "A conflict: not a fast-forward, or the ref moved since negotiation; the ledger is archived (`ledger_archived`), a push waiting for its restore.",
             "content": {
               "application/json": {
                 "schema": {

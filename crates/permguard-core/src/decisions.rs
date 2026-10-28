@@ -42,11 +42,13 @@ use serde::Deserialize;
 
 use crate::config::{
     SETTING_AUTHZ_CACHE_BYTES, SETTING_AUTHZ_CACHE_PARTITIONS, SETTING_AUTHZ_CACHE_ZONE_BYTES,
-    SETTING_AUTHZ_CACHE_ZONE_PARTITIONS, SETTING_AUTHZ_MAX_EVALUATIONS, SETTING_LOG_BATCH_BYTES,
+    SETTING_AUTHZ_CACHE_ZONE_PARTITIONS, SETTING_AUTHZ_MAX_EVALUATIONS,
+    SETTING_EVALUATION_CONCURRENCY, SETTING_EVALUATION_QUEUE, SETTING_LOG_BATCH_BYTES,
     SETTING_LOG_BATCH_INTERVAL, SETTING_LOG_COMMITMENT_KEY_REF, SETTING_LOG_COMMITMENT_KEY_VERSION,
-    SETTING_LOG_ENABLED, SETTING_LOG_ON_FULL, SETTING_LOG_PDP_ID, SETTING_LOG_SAMPLE_PERMITS,
-    SETTING_LOG_SPOOL_AGE, SETTING_LOG_SPOOL_BYTES, SETTING_LOG_SPOOL_DIRECTORY,
-    SETTING_MAX_BLOCKING,
+    SETTING_LOG_ENABLED, SETTING_LOG_MODE, SETTING_LOG_ON_FULL, SETTING_LOG_PDP_ID,
+    SETTING_LOG_SAMPLE_PERMITS, SETTING_LOG_SPOOL_AGE, SETTING_LOG_SPOOL_BYTES,
+    SETTING_LOG_SPOOL_DIRECTORY, SETTING_MAX_BLOCKING, SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
+    SETTING_RESPONSE_SIGNING_ENABLED, SETTING_RESPONSE_SIGNING_VALIDITY,
 };
 use crate::config::{
     SETTING_DECISION_STORE_DIRECTORY, SETTING_DECISION_STORE_ENABLED,
@@ -64,6 +66,12 @@ use crate::config::{
     SETTING_EVENTS_GROUP_COMMIT_DELAY, SETTING_EVENTS_PULL_INTERVAL,
     SETTING_EVENTS_PULL_MAX_STALENESS, SETTING_EVENTS_PULL_MODE,
 };
+use crate::config::{
+    SETTING_EVENTS_REPLAY_CONCURRENCY, SETTING_EVENTS_REPLAY_MAX_BYTES,
+    SETTING_EVENTS_REPLAY_MAX_RECORDS, SETTING_EVENTS_REPLAY_PREWARM,
+    SETTING_EVENTS_REPLAY_TIMEOUT, SETTING_EVENTS_WARM_BYTES, SETTING_EVENTS_WARM_PARTITION_BYTES,
+    SETTING_EVENTS_WARM_ZONE_BYTES,
+};
 use crate::mirrors::MirrorTls;
 
 /// The decision path's block, as the file declares it.
@@ -76,16 +84,36 @@ pub struct DecisionsSection {
     /// The most evaluations one boxcarred request may carry.
     #[serde(default)]
     max_evaluations: Option<String>,
-    /// How many pieces of blocking work this plane may have in flight at once.
-    ///
-    /// Beside `max_evaluations` because they bound the same request from two directions: that one
-    /// caps how much work a single request may ask for, this one caps how much of it the whole
-    /// plane may be doing. Reached, requests are refused rather than queued.
+    /// How many pieces of storage work of each kind this plane may have in flight at once: loads
+    /// and replay on one pool, decision records and their flush on another. Reached, requests are
+    /// refused rather than queued.
     #[serde(default)]
     max_blocking: Option<String>,
+    /// How many evaluations run at once: the evaluation pool, apart from `max_blocking`'s disk
+    /// work. Unset, the Host's cores.
+    #[serde(default)]
+    evaluation_concurrency: Option<String>,
+    /// How many evaluations may wait for one of those slots before the plane refuses.
+    #[serde(default)]
+    evaluation_queue: Option<String>,
     /// Where the record of each decision goes.
     #[serde(default)]
     log: LogSection,
+    /// Signed native responses, on request (WP-6.6b).
+    #[serde(default)]
+    response_signing: ResponseSigningSection,
+}
+
+/// Whether a native decision response is signed when a request asks, and its lifetime.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResponseSigningSection {
+    #[serde(default)]
+    enabled: Option<String>,
+    #[serde(default)]
+    validity: Option<String>,
+    #[serde(default)]
+    clock_skew: Option<String>,
 }
 
 /// The in-memory bound: entries, and bytes.
@@ -114,9 +142,10 @@ pub struct LogSection {
     /// Whether decisions are recorded at all.
     #[serde(default)]
     enabled: Option<String>,
-    /// This plane's name in the log. Required when the log is on: falling back
-    /// to a hostname is convenient and wrong the first time two replicas share
-    /// a host.
+    /// What the log promises before an answer: `required` or `disabled` (WP-6.1).
+    #[serde(default)]
+    mode: Option<String>,
+    /// Retired (WP-6.1): read so a file still naming the plane is refused, not ignored.
     #[serde(default)]
     pdp_id: Option<String>,
     /// Where records are shipped.
@@ -128,8 +157,7 @@ pub struct LogSection {
     /// Latency against efficiency: whichever comes first.
     #[serde(default)]
     batch: BatchSection,
-    /// What to do when the spool is full — the one decision only a deployment
-    /// can make.
+    /// What a full log means: only `closed` is taken, `open` is refused (WP-6.1).
     #[serde(default)]
     on_full: Option<String>,
     /// What is written. Denies and errors are never sampled, whatever this says.
@@ -332,7 +360,13 @@ impl DecisionsSection {
             ),
             (SETTING_AUTHZ_MAX_EVALUATIONS, self.max_evaluations.as_ref()),
             (SETTING_MAX_BLOCKING, self.max_blocking.as_ref()),
+            (
+                SETTING_EVALUATION_CONCURRENCY,
+                self.evaluation_concurrency.as_ref(),
+            ),
+            (SETTING_EVALUATION_QUEUE, self.evaluation_queue.as_ref()),
             (SETTING_LOG_ENABLED, self.log.enabled.as_ref()),
+            (SETTING_LOG_MODE, self.log.mode.as_ref()),
             (SETTING_LOG_PDP_ID, self.log.pdp_id.as_ref()),
             (
                 SETTING_LOG_SPOOL_DIRECTORY,
@@ -344,6 +378,18 @@ impl DecisionsSection {
             (SETTING_LOG_BATCH_INTERVAL, self.log.batch.interval.as_ref()),
             (SETTING_LOG_ON_FULL, self.log.on_full.as_ref()),
             (SETTING_LOG_SAMPLE_PERMITS, self.log.sample.permits.as_ref()),
+            (
+                SETTING_RESPONSE_SIGNING_ENABLED,
+                self.response_signing.enabled.as_ref(),
+            ),
+            (
+                SETTING_RESPONSE_SIGNING_VALIDITY,
+                self.response_signing.validity.as_ref(),
+            ),
+            (
+                SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
+                self.response_signing.clock_skew.as_ref(),
+            ),
             (
                 SETTING_LOG_COMMITMENT_KEY_REF,
                 self.log.commitment.key_ref.as_ref(),
@@ -471,6 +517,41 @@ pub struct EventsSection {
     /// Whether this plane also *reads* history other planes recorded.
     #[serde(default)]
     pull: EventsPullSection,
+    /// What warm temporal histories may hold (TL-5).
+    #[serde(default)]
+    warm: EventsWarmSection,
+    /// What a cold history's replay may cost (TL-5).
+    #[serde(default)]
+    replay: EventsReplaySection,
+}
+
+/// The bytes warm temporal histories may hold: the Host's, one zone's, one partition's.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventsWarmSection {
+    #[serde(default)]
+    bytes: Option<String>,
+    #[serde(default)]
+    zone_bytes: Option<String>,
+    #[serde(default)]
+    partition_bytes: Option<String>,
+}
+
+/// The replay plan of a cold history: its records, bytes and time, how many run at once, and how
+/// many recently used histories are replayed after load.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventsReplaySection {
+    #[serde(default)]
+    max_records: Option<String>,
+    #[serde(default)]
+    max_bytes: Option<String>,
+    #[serde(default)]
+    timeout: Option<String>,
+    #[serde(default)]
+    concurrency: Option<String>,
+    #[serde(default)]
+    prewarm: Option<String>,
 }
 
 /// What bounds one ledger's journal.
@@ -592,6 +673,29 @@ impl EventsSection {
                 SETTING_EVENTS_CLOCK_SKEW,
                 self.retention.clock_skew.as_ref(),
             ),
+            (SETTING_EVENTS_WARM_BYTES, self.warm.bytes.as_ref()),
+            (
+                SETTING_EVENTS_WARM_ZONE_BYTES,
+                self.warm.zone_bytes.as_ref(),
+            ),
+            (
+                SETTING_EVENTS_WARM_PARTITION_BYTES,
+                self.warm.partition_bytes.as_ref(),
+            ),
+            (
+                SETTING_EVENTS_REPLAY_MAX_RECORDS,
+                self.replay.max_records.as_ref(),
+            ),
+            (
+                SETTING_EVENTS_REPLAY_MAX_BYTES,
+                self.replay.max_bytes.as_ref(),
+            ),
+            (SETTING_EVENTS_REPLAY_TIMEOUT, self.replay.timeout.as_ref()),
+            (
+                SETTING_EVENTS_REPLAY_CONCURRENCY,
+                self.replay.concurrency.as_ref(),
+            ),
+            (SETTING_EVENTS_REPLAY_PREWARM, self.replay.prewarm.as_ref()),
             (SETTING_EVENTS_PULL_MODE, self.pull.mode.as_ref()),
             (SETTING_EVENTS_PULL_INTERVAL, self.pull.interval.as_ref()),
             (
@@ -672,7 +776,7 @@ mod tests {
     #[test]
     fn the_log_carries_its_own_client_identity_not_the_mirrors() {
         let section: DecisionsSection = serde_norway::from_str(
-            "log:\n  enabled: \"true\"\n  pdp_id: plane-a\n  server:\n    url: \"grpcs://control:6443\"\n    tls:\n      ca_file: tls/ca.pem\n      cert: tls/decision-log-client.pem\n      key: tls/decision-log-client.key\n",
+            "log:\n  enabled: \"true\"\n  mode: required\n  server:\n    url: \"grpcs://control:6443\"\n    tls:\n      ca_file: tls/ca.pem\n      cert: tls/decision-log-client.pem\n      key: tls/decision-log-client.key\n",
         )
         .expect("the section parses");
 
@@ -686,7 +790,7 @@ mod tests {
         assert!(
             section
                 .settings()
-                .contains(&(SETTING_LOG_PDP_ID.to_owned(), "plane-a".to_owned()))
+                .contains(&(SETTING_LOG_MODE.to_owned(), "required".to_owned()))
         );
     }
 
@@ -702,6 +806,36 @@ mod tests {
         assert!(
             section.include().resource_properties.is_empty(),
             "an allow-list, never a deny-list"
+        );
+    }
+
+    /// TL-5: the warm-state budgets and the replay plan are members of the events block.
+    #[test]
+    fn the_warm_and_replay_blocks_become_the_settings_the_plane_reads() {
+        let section: EventsSection = serde_norway::from_str(
+            "warm:\n  bytes: 512M\n  zone_bytes: 128M\n  partition_bytes: 32M\nreplay:\n  max_records: \"5000\"\n  max_bytes: 8M\n  timeout: 500ms\n  concurrency: \"2\"\n  prewarm: \"16\"\n",
+        )
+        .expect("the section parses");
+        let settings = section.settings();
+
+        for expected in [
+            (SETTING_EVENTS_WARM_BYTES, "512M"),
+            (SETTING_EVENTS_WARM_ZONE_BYTES, "128M"),
+            (SETTING_EVENTS_WARM_PARTITION_BYTES, "32M"),
+            (SETTING_EVENTS_REPLAY_MAX_RECORDS, "5000"),
+            (SETTING_EVENTS_REPLAY_MAX_BYTES, "8M"),
+            (SETTING_EVENTS_REPLAY_TIMEOUT, "500ms"),
+            (SETTING_EVENTS_REPLAY_CONCURRENCY, "2"),
+            (SETTING_EVENTS_REPLAY_PREWARM, "16"),
+        ] {
+            assert!(
+                settings.contains(&(expected.0.to_owned(), expected.1.to_owned())),
+                "{expected:?} in {settings:?}"
+            );
+        }
+        assert!(
+            serde_norway::from_str::<EventsSection>("warm:\n  count: \"256\"\n").is_err(),
+            "a count of histories is not a member: the bound is bytes"
         );
     }
 

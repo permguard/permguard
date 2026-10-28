@@ -666,7 +666,7 @@ pub struct RingPin {
 }
 
 impl RingPin {
-    fn value(&self) -> Result<Value, RecordError> {
+    pub(crate) fn value(&self) -> Result<Value, RecordError> {
         Ok(Value::Map(
             vec![
                 (Value::Int(1), Value::Text(self.owner.as_str().to_owned())),
@@ -681,7 +681,7 @@ impl RingPin {
         ))
     }
 
-    fn read(value: Value) -> Result<Self, RecordError> {
+    pub(crate) fn read(value: Value) -> Result<Self, RecordError> {
         let mut map = Labelled::from_value(value, "a ring pin")?;
         let pin = Self {
             owner: map.text(1)?.parse()?,

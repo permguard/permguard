@@ -38,6 +38,8 @@ permguard-decisions.workspace = true
 # The durable event journal and the record contract the temporal interface writes.
 permguard-events.workspace = true
 permguard-stream.workspace = true
+# The `policy.mirror` task messages a mirror round carries over its session (WP-7.2a).
+permguard-notp.workspace = true
 # The randomness the shipping backoff's jitter comes from: a deterministic jitter is no jitter
 # once every plane in a fleet runs the same build.
 ring.workspace = true
@@ -62,6 +64,8 @@ tonic-prost.workspace = true
 tonic-prost-build.workspace = true
 
 [dev-dependencies]
+# Decoding a signed response's parts, as a PEP would (WP-6.6b).
+base64.workspace = true
 # Transport parity, fault injection and the boundary registry, shared by every plane.
 permguard-conformance.workspace = true
 # Capturing what a decision logs, to prove identifiers stay out of it (P10, H-13).
@@ -71,7 +75,8 @@ permguard-control-plane.workspace = true
 # cannot drift from the files the lab's README tells a reader to apply.
 serde_norway.workspace = true
 permguard-control-client.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# `start_paused` lets the mirror service's wait be tested without waiting (WP-7.2c).
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 http.workspace = true
 http-body-util.workspace = true
 permguard-std.workspace = true

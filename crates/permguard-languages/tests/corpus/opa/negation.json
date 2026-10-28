@@ -1,0 +1,148 @@
+{
+  "folder": "negation",
+  "files": {
+    "test-negation-0777.yaml": {
+      "sha256": "sha256:aa67774bf5a7997c2951ee13b8010fad10d2ddd4eddb0cccb4c471a97633f169",
+      "cases": [
+        {
+          "note": "negation/neg: constants",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnot true = false\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-negation-0778.yaml": {
+      "sha256": "sha256:d31c397bb0670e21ddad35e314cfa823b27b34c3954300fe145ffaef2c205c3c",
+      "cases": [
+        {
+          "note": "negation/neg: constants",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnot true = true\n}\n"
+          ],
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-negation-0779.yaml": {
+      "sha256": "sha256:04cd589a8a151cca61df25cab86babc49de7ed27dde58896f61af1e135008400",
+      "cases": [
+        {
+          "note": "negation/neg: set contains",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnot data.generated.q.v0\n}\n\nq contains x if {\n\tdata.b[x] = v\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-negation-0780.yaml": {
+      "sha256": "sha256:dc0af97e809302739b6119962ddf383e2c9dcf8d415aa9607823b4d4b6d12002",
+      "cases": [
+        {
+          "note": "negation/neg: set contains undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnot data.generated.q.v2\n}\n\nq contains x if {\n\tdata.b[x] = v\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-negation-data-ref-with-var.yaml": {
+      "sha256": "sha256:ff54819fc31725d611081f524a227b384efdf052002f0db1f4ae46ab92737fc4",
+      "cases": [
+        {
+          "note": "negation/pos: ref with variable",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := y if {\n\ty := \"v0\"\n\tnot data.test.q[y]\n}\n\nq contains x if {\n\tdata.b[x] = v\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": "v0"
+            }
+          ]
+        },
+        {
+          "note": "negation/neg: ref with variable",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := y if {\n\ty := \"v1\"\n\tnot data.test.q[y]\n}\n\nq contains x if {\n\tdata.b[x] = v\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "negation/neg: ref with variable (hit) and virtual doc (miss))",
+          "query": "data.foo.p = x",
+          "modules": [
+            "package foo\n\np if {\n\tk := \"p\"\n\tnot data.bar[k]\n}\n",
+            "package bar\n\np := 7\n"
+          ],
+          "data": {
+            "bar": {
+              "q": "8"
+            }
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "negation/neg: ref with variable (miss) and virtual doc (hit)",
+          "query": "data.foo.p = x",
+          "modules": [
+            "package foo\n\np if {\n\tk := \"q\"\n\tnot data.bar[k]\n}\n",
+            "package bar\n\np := 7\n"
+          ],
+          "data": {
+            "bar": {
+              "q": "8"
+            }
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    }
+  }
+}

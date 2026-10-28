@@ -36,6 +36,12 @@ use permguard_objects::manifest::Manifest;
 use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND};
 
+/// The authority every mirror of these tests lives under (WP-7.2a): a mirror in a configured URL's
+/// shape is never served since WP-7.7.
+const MIRROR_AUTHORITY: &str = "11111111111111111111111111111111";
+/// The task the mirrors of these tests were listed by: the local task.
+const MIRROR_TASK: &str = "00000000-0000-0000-0000-000000000000/local";
+
 const ZONE: &str = "delivery";
 const LEDGER: &str = "the-example";
 
@@ -227,7 +233,10 @@ fn policies(
 /// example's own commit, a verified checkpoint, and the identity file.
 fn provision(root: &Path, name: &str) -> Manifest {
     let manifest = manifest(name);
-    let path = root.join(format!("{ZONE}-id")).join(format!("{LEDGER}-id"));
+    let path = root
+        .join(MIRROR_AUTHORITY)
+        .join(format!("{ZONE}-id"))
+        .join(format!("{LEDGER}-id"));
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);
 
@@ -360,6 +369,8 @@ fn provision(root: &Path, name: &str) -> Manifest {
         &permguard_control_client::checkpoint::Checkpoint {
             head: head.to_string(),
             counter: 1,
+            ref_digest: None,
+            ..Default::default()
         },
     )
     .expect("the checkpoint is written");
@@ -367,6 +378,8 @@ fn provision(root: &Path, name: &str) -> Manifest {
     permguard_data_plane::authz::store::record(
         &path,
         &Identity {
+            task: Some(MIRROR_TASK.to_owned()),
+            authority: Some(MIRROR_AUTHORITY.to_owned()),
             zone_id: format!("{ZONE}-id"),
             zone_name: ZONE.to_owned(),
             ledger_id: format!("{LEDGER}-id"),
@@ -526,6 +539,111 @@ async fn every_example_decides_the_way_its_cases_say_it_does() {
     }
 
     assert!(checked > 12, "only {checked} cases were decided");
+}
+
+/// Corrupted-cache fault injection (TL-6): every policy object of a mirror altered on disk after
+/// its partitions compiled — the commit, the manifest and the checkpoint left as they were. A cold
+/// load, a restart's empty cache, refuses the ledger rather than compiling altered bytes; the warm
+/// partitions, compiled from the verified objects and cached under the same commit, decide as they
+/// did. For each runtime of the example: Cedar and Rego.
+#[tokio::test]
+async fn a_corrupted_mirror_fails_a_cold_load_and_never_changes_a_warm_answer() {
+    let name = "basics";
+    let root = scratch("corrupted").join("mirrors");
+    provision(&root, name);
+    let warm = Arc::new(Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::none(),
+        None,
+        256,
+    ));
+    // One permitted case of each partition's runtime, decided while the mirror is intact.
+    let permitted: Vec<Case> = cases(name)
+        .into_iter()
+        .map(|(_, case)| case)
+        .filter(|case| {
+            case.expect.decision.as_deref() == Some("permit") && case.expect.error.is_none()
+        })
+        .collect();
+    assert!(!permitted.is_empty(), "the example permits something");
+    for case in &permitted {
+        let answer = warm
+            .decide(&request(name, case), None)
+            .await
+            .expect("decided");
+        assert!(answer.decision, "{}: permitted while intact", case.name);
+    }
+
+    // Every policy object of the mirror, stored compressed: one byte of its content flipped and
+    // stored again under the same name.
+    let mut altered = std::collections::BTreeSet::new();
+    let mut pending = vec![root.clone()];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory).expect("readable") {
+            let path = entry.expect("an entry").path();
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            if !path.components().any(|part| part.as_os_str() == "objects") {
+                continue;
+            }
+            let stored = std::fs::read(&path).expect("an object");
+            let Ok(mut bytes) = permguard_objects::compress::inflate(
+                &stored,
+                permguard_objects::limits::MAX_OBJECT_BYTES,
+            ) else {
+                continue;
+            };
+            let media_type = match permguard_objects::object::decode(&bytes) {
+                Ok(permguard_objects::object::Object::Blob(blob)) => blob.media_type,
+                _ => continue,
+            };
+            if media_type != registry::MEDIA_TYPE_POLICY_CEDAR
+                && media_type != registry::MEDIA_TYPE_POLICY_REGO
+            {
+                continue;
+            }
+            let last = bytes.len() - 1;
+            bytes[last] ^= 0x01;
+            std::fs::write(&path, permguard_objects::compress::deflate(&bytes)).expect("rewritten");
+            altered.insert(media_type);
+        }
+    }
+    assert_eq!(
+        altered.len(),
+        2,
+        "a policy object of each runtime altered: {altered:?}"
+    );
+
+    let cold = Arc::new(Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::none(),
+        None,
+        256,
+    ));
+    for case in &permitted {
+        match cold.decide(&request(name, case), None).await {
+            Err(_) => {}
+            Ok(answer) => panic!(
+                "{}: a cold load answered from altered objects: decision {}",
+                case.name, answer.decision
+            ),
+        }
+        let answer = warm
+            .decide(&request(name, case), None)
+            .await
+            .unwrap_or_else(|error| {
+                panic!("{}: the warm partitions refused: {error:?}", case.name)
+            });
+        assert!(
+            answer.decision,
+            "{}: the warm partition answered differently after the corruption",
+            case.name
+        );
+    }
 }
 
 /// The point of the release pipeline's three partitions: a profile compiles what it

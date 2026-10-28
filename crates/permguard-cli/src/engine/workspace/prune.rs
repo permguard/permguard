@@ -253,6 +253,8 @@ mod tests {
             &permguard_control_client::checkpoint::Checkpoint {
                 head: commit.to_string(),
                 counter: 1,
+                ref_digest: None,
+                ..Default::default()
             },
         )
         .expect("the checkpoint is written");

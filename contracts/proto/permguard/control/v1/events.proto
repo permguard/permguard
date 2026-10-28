@@ -127,6 +127,15 @@ message GetEventConfigurationResponse {
   repeated string event_types = 4;
   repeated string capabilities = 5;
   EventOffsets offsets = 6;
+  // The common header (WP-7.4a): the product version `/version` publishes, the serving
+  // component, its lifecycle phase, the interface's stage, and its sunset when deprecated.
+  string version = 7;
+  string component = 8;
+  string state = 9;
+  string stage = 10;
+  optional string sunset = 11;
+  // The interface's ceilings, by name; empty when it publishes none.
+  map<string, uint64> limits = 12;
 }
 
 message IngestBatchRequest {
@@ -218,7 +227,10 @@ message ListRecordsResponse {
   string oldest_available = 4;
   // The exclusive end this read observed, opaque.
   string high_watermark = 5;
-  // The envelopes attesting these records, when asked for.
+  // The envelopes attesting these records, when asked for, each JSON naming its
+  // `format`: `legacy-jws-v1`, a legacy store's batch JWS with its members
+  // unchanged, or `host-batch-v1`, `{format, signature}` with the batch the
+  // producing Host's engine sealed (WP-6.2b).
   repeated bytes proof = 6;
   // One inclusion path per record, as JSON, when asked for.
   repeated bytes inclusion = 7;

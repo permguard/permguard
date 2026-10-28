@@ -1,0 +1,347 @@
+{
+  "folder": "objectfilter",
+  "files": {
+    "test-objectfilter-0300.yaml": {
+      "sha256": "sha256:e9b66bb49c239df8852db4538a49c147a9881202e64e7cdf036cb54a10693a7d",
+      "cases": [
+        {
+          "note": "objectfilter/base",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.filter({\"a\": {\"b\": {\"c\": 7, \"d\": 8}}, \"e\": 9}, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 7,
+                    "d": 8
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectfilter-0301.yaml": {
+      "sha256": "sha256:1619ba8b697ddbdf9db2c9ae57fa661ab56dba5272821e0cf7a46b9696c686cc",
+      "cases": [
+        {
+          "note": "objectfilter/multiple roots set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.filter({\"a\": 1, \"b\": 2, \"c\": 3, \"e\": 9}, {\"a\", \"e\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "e": 9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectfilter-0302.yaml": {
+      "sha256": "sha256:745d2bdb60f32a60180d65f2a1382959bd8ed362a90739ccf7c3cb68f7dd4fe3",
+      "cases": [
+        {
+          "note": "objectfilter/multiple roots array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.filter({\"a\": 1, \"b\": 2, \"c\": 3, \"e\": 9}, [\"a\", \"e\"], __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "e": 9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectfilter-0303.yaml": {
+      "sha256": "sha256:9026863fc4758d40b56f03b89b6909df3f22aca588ca686d1b3694bf39ea80bc",
+      "cases": [
+        {
+          "note": "objectfilter/multiple roots object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.filter({\"a\": 1, \"b\": 2, \"c\": 3, \"e\": 9}, {\"a\": \"foo\", \"e\": \"\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "e": 9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectfilter-0304.yaml": {
+      "sha256": "sha256:6b3f765c1220b9c0dc012dee77a81386609f7574f34fddbb21f80967d6b885c4",
+      "cases": [
+        {
+          "note": "objectfilter/duplicate roots",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.filter({\"a\": {\"b\": {\"c\": 7, \"d\": 8}}, \"e\": 9}, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 7,
+                    "d": 8
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectfilter-0305.yaml": {
+      "sha256": "sha256:a831745c6334d890b8a76ce478d4ff49774e0e9d56a275a1a2966488715f3d31",
+      "cases": [
+        {
+          "note": "objectfilter/empty roots set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.filter({\"a\": 7}, set(), __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectfilter-0306.yaml": {
+      "sha256": "sha256:054474a11156fdbadfcb009f960446dc57b81e4c6e88eb934d16029c562133d0",
+      "cases": [
+        {
+          "note": "objectfilter/empty roots array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.filter({\"a\": 7}, [], __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectfilter-0307.yaml": {
+      "sha256": "sha256:5a9e7e2ed8ec8e2613559e0f1752029b3f8ee0cf893bf03aeee339f377ead56c",
+      "cases": [
+        {
+          "note": "objectfilter/empty roots object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.filter({\"a\": 7}, {}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectfilter-0308.yaml": {
+      "sha256": "sha256:c69f2d9f6aa3e1d5ee8d363d5a41902f489a8b1ab260c8de6510674618205615",
+      "cases": [
+        {
+          "note": "objectfilter/empty object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.filter({}, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectfilter-0309.yaml": {
+      "sha256": "sha256:eeb3d50a2c9b1bceed1e50ccb50da1523637cdf4d66027278322fe34f8d9f8b6",
+      "cases": [
+        {
+          "note": "objectfilter/error invalid object param type array input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.filter(__local2__, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": [\"a\"]}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.filter: operand 1 must be object but got array",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectfilter-0310.yaml": {
+      "sha256": "sha256:153fe71dd641e834334ca55e17ab5bd270267ac298b087b44e913eb07fb4dc8d",
+      "cases": [
+        {
+          "note": "objectfilter/error invalid object param type bool input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.filter(__local2__, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": false}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.filter: operand 1 must be object but got boolean",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectfilter-0311.yaml": {
+      "sha256": "sha256:6ffa8a2e88ec40e3b05ddc98235d6c39f125323c8329ac99116f31b5d3c3d927",
+      "cases": [
+        {
+          "note": "objectfilter/error invalid object param type number input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.filter(__local2__, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": 123}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.filter: operand 1 must be object but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectfilter-0312.yaml": {
+      "sha256": "sha256:d7c6e44afe228a4b4428c3709a387c085c75d064d5e3fb386568dedda7d6f668",
+      "cases": [
+        {
+          "note": "objectfilter/error invalid object param type string input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.filter(__local2__, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": \"foo\"}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.filter: operand 1 must be object but got string",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectfilter-0313.yaml": {
+      "sha256": "sha256:459d47c665b1f2d16efc9a6aced658971f1c7279ad0a04a4d2af20e64a0cfd90",
+      "cases": [
+        {
+          "note": "objectfilter/error invalid object param type nil input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.filter(__local2__, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": null}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.filter: operand 1 must be object but got null",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectfilter-0314.yaml": {
+      "sha256": "sha256:ec47bafa984468181d56aea8e437c29fa01c51737cb9858df70dbe7c62567de7",
+      "cases": [
+        {
+          "note": "objectfilter/error invalid key param type string input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.filter({\"a\": 1}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": \"foo\"}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.filter: operand 2 must be one of {object, set, array} but got string",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectfilter-0315.yaml": {
+      "sha256": "sha256:983f7af99c53448110f9b5aa34a2f6b217b0afa5e09d3b27d130a7b79b0c31d5",
+      "cases": [
+        {
+          "note": "objectfilter/error invalid key param type boolean input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.filter({\"a\": 1}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": true}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.filter: operand 2 must be one of {object, set, array} but got boolean",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectfilter-0316.yaml": {
+      "sha256": "sha256:5063999895af54aa049c3a52d6fbe5d000da9f2d3f02cf52c12490a6979975fb",
+      "cases": [
+        {
+          "note": "objectfilter/error invalid key param type number input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.filter({\"a\": 1}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": 22}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.filter: operand 2 must be one of {object, set, array} but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectfilter-0317.yaml": {
+      "sha256": "sha256:856893d74020c62fe717ab3a9540b76cd8148d343d568d1968ab6513dadfa434",
+      "cases": [
+        {
+          "note": "objectfilter/error invalid key param type nil input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.filter({\"a\": 1}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": null}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.filter: operand 2 must be one of {object, set, array} but got null",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

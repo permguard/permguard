@@ -8,11 +8,14 @@
 //! | ------------ | -------------------------------------------------------------------------- |
 //! | [`journal`]  | the entries of `host/audit/mutations/`, byte for byte                      |
 //! | [`mutation`] | the engine: intent, audit intent, apply, commit, audit outcome, recovery  |
+//! | [`backup`]   | the application-consistent snapshot: its barrier, manifest and verification |
 //! | [`grants`]   | the grant store as a domain, and its operations outside the Host API      |
 //!
 //! `TODO(WP-3.1)`: the key rings adopt the engine when their journal exists (owner decision of
 //! 2026-10-07); a later domain uses the same [`mutation::Mutations::run`].
 
+pub mod backup;
+pub mod drain;
 pub mod grants;
 pub mod journal;
 pub mod mutation;

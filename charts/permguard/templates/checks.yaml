@@ -38,9 +38,8 @@ The second is the quieter mistake, and it is why this refuses replicas rather th
 storage. Until a control plane can elect a leader or keep its catalog in something that arbitrates,
 it is one replica — and an all-in-one IS a control plane.
 
-A data plane holds no authority: it mirrors a ledger and answers from it. It may be replicated as
-soon as its state is its own, which today means `dataPlane.persistence.enabled=false` — each
-replica mirrors into its own volume, which is what a mirror is for.
+A data plane holds no authority: it mirrors a ledger and answers from it, and each replica of a
+group keeps its own volume (`templates/data-plane-groups.yaml`), so its groups may be replicated.
 */ -}}
 {{- $authority := "a control plane's catalog, refs and key ring have one maintaining process: replicas either fight over one volume or diverge behind one Service. Keep it at 1 until the state lives in something that arbitrates." }}
 {{- range $component, $plane := dict "controlPlane" .Values.controlPlane "allInOne" .Values.allInOne }}
@@ -54,87 +53,14 @@ replica mirrors into its own volume, which is what a mirror is for.
 {{- end }}
 {{- end }}
 {{- /*
-A replicated temporal plane whose replicas cannot synchronously see each other's history is not
-highly available: it is several planes answering the same question differently.
-
-Each replica owns its journal. `shared-eventual` and `shared-bounded` make those journals converge,
-but neither closes the request-time race: a pod may have completed a successful pull immediately
-before another pod records a login, so its imported history is fresh and still missing that login.
-Per-replica volumes protect writer identity; they do not provide read-your-writes.
-
-Check the serving topology before checking its storage shape, so every route to multiple temporal
-replicas receives the same actionable refusal instead of being told to change a volume setting that
-the next check would reject too.
-*/ -}}
-{{- if .Values.dataPlane.enabled }}
-{{- $many := or (gt (int .Values.dataPlane.replicaCount) 1) (and .Values.dataPlane.autoscaling .Values.dataPlane.autoscaling.enabled (gt (int .Values.dataPlane.autoscaling.maxReplicas) 1)) }}
-{{- if $many }}
-{{- $extra := .Values.dataPlane.extraConfig | default dict }}
-{{- $nested := dig "dataPlane" "events" "enabled" "" $extra }}
-{{- $flat := dig "events" "enabled" "" $extra }}
-{{- $temporal := or (and $nested (ne (toString $nested) "false")) (and $flat (ne (toString $flat) "false")) }}
-{{- if $temporal }}
-{{- fail "the data plane serves the temporal interface and can run more than one replica: pull modes converge asynchronously and cannot guarantee that a decision on pod B observes an event just recorded on pod A. Run one temporal replica until history ownership/routing or a globally ordered watermark is implemented; neither shared pull nor per-replica storage provides request-time coherence." }}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- if and .Values.dataPlane.enabled (include "permguard.persists" (dict "root" . "plane" .Values.dataPlane)) }}
-{{- /*
-Two different pieces of advice, because the same combination has two causes.
-
-A mirroring data plane may drop persistence: each replica re-mirrors into its own empty volume, and
-a mirror is exactly the thing that can be rebuilt. A *temporal* one may not — its event journal is
-the history its own policies decide against, and another check refuses it without a volume. Telling
-that plane to disable persistence sends the operator round a circle between two refusals, which is
-how a message meant to help becomes the reason somebody gives up and edits the templates.
-
-The strongly consistent topology for a temporal data plane today is one replica with its own
-volume. The chart can create one volume per replica, but storage isolation alone does not make the
-histories synchronously visible between those replicas.
-*/ -}}
-{{- $extra := .Values.dataPlane.extraConfig | default dict }}
-{{- $temporal := false }}
-{{- $nested := dig "dataPlane" "events" "enabled" "" $extra }}
-{{- if and $nested (ne (toString $nested) "false") }}
-{{- $temporal = true }}
-{{- end }}
-{{- $flat := dig "events" "enabled" "" $extra }}
-{{- if and $flat (ne (toString $flat) "false") }}
-{{- $temporal = true }}
-{{- end }}
-{{- $mirror := "this chart gives a component ONE PersistentVolumeClaim and mounts it in every replica. A data plane may be replicated, but each replica needs its own state: set dataPlane.persistence.enabled=false and let each mirror into its own volume." }}
-{{- if $temporal }}
-{{- $mirror = "this plane serves the temporal interface, whose event journal is the history its own policies decide against. It cannot share one claim across replicas, and separate claims would still expose different request-time histories. Keep dataPlane.replicaCount=1." }}
-{{- end }}
-{{- $perReplica := .Values.persistence.perReplica }}
-{{- if and (gt (int .Values.dataPlane.replicaCount) 1) (not $perReplica) }}
-{{- fail (printf "dataPlane.replicaCount=%v with persistence.enabled=true: %s" .Values.dataPlane.replicaCount $mirror) }}
-{{- end }}
-{{- /*
-Autoscaling stays refused even per replica, and for a reason the replica count does not share.
-
-A volume per replica makes an added pod safe: it gets its own journal and its own producer identity.
-Removing one is what has no answer. That pod's journal is history its policies decided against, and
-records it has not yet shipped are still in it — so scaling in either abandons a claim nobody will
-read again or discards unshipped events, and which of the two it is depends on timing. A controller
-that adds and removes pods on load cannot be told the difference, so it is not given the choice.
-*/ -}}
-{{- if and .Values.dataPlane.autoscaling .Values.dataPlane.autoscaling.enabled (gt (int .Values.dataPlane.autoscaling.maxReplicas) 1) }}
-{{- if $perReplica }}
-{{- fail (printf "dataPlane.autoscaling scales to %v with persistence.perReplica=true: a replica that is scaled away leaves a journal behind, and unshipped records with it. Set a fixed dataPlane.replicaCount instead" .Values.dataPlane.autoscaling.maxReplicas) }}
-{{- else }}
-{{- fail (printf "dataPlane.autoscaling scales to %v with persistence.enabled=true: %s" .Values.dataPlane.autoscaling.maxReplicas $mirror) }}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- /*
 `perReplica` without anything to keep per replica is a values file that says something it does not
-mean, and the workload it produces — a StatefulSet whose pods share nothing — is not what the person
+mean (data plane groups keep a volume per replica whenever they keep one, so it is the control
+plane's switch), and the workload it produces — a StatefulSet whose pods share nothing — is not what the person
 who set it was asking for.
 */ -}}
 {{- if .Values.persistence.perReplica }}
 {{- $keeps := false }}
-{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane "all-in-one" .Values.allInOne }}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane "all-in-one" .Values.allInOne }}
 {{- if and $plane.enabled (include "permguard.persists" (dict "root" $ "plane" $plane)) }}
 {{- $keeps = true }}
 {{- end }}
@@ -145,35 +71,26 @@ who set it was asking for.
 {{- end }}
 
 {{- /*
-A decision log's producer name, and the two ways to take it back.
+The producer names a deployment can no longer set.
 
-`pdp_id` names the producer of every record a pod writes. Two producers under one name write two
-records at a single (stream, seq), which closes the stream at the far end and ends the audit trail —
-so the chart takes it from `metadata.name` through the downward API, and neither a values file nor
-an extra environment variable may pin it. The env check matters most: the chart sets the variable
-first and merges `extraEnv` after it, so a second entry with the same name simply wins.
-
-Replicas are replicas however they arrive, so an autoscaler that can reach more than one counts.
+The decision and event streams are named by the Host's `host_id` and the run of its stream (WP-6.1,
+WP-6.2), and the server refuses to start where `decisions.log.pdp_id` or `events.producer_id` is
+still set, in a file or in the environment. Refused here too, so a values file naming one fails at
+install rather than at the pod's first start.
 */ -}}
-{{- range $component, $plane := dict "controlPlane" .Values.controlPlane "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- range $plane := (include "permguard.configUnits" $ | fromJson).units }}
+{{- $component := $plane.label }}
 {{- if $plane.enabled }}
-{{- $many := or (gt (int $plane.replicaCount) 1) (and $plane.autoscaling $plane.autoscaling.enabled (gt (int $plane.autoscaling.maxReplicas) 1)) }}
-{{- if $many }}
-{{- $pinned := dig "dataPlane" "decisions" "log" "pdp_id" (dig "decisions" "log" "pdp_id" "" ($plane.extraConfig | default dict)) ($plane.extraConfig | default dict) }}
-{{- if $pinned }}
-{{- fail (printf "%s.extraConfig pins the decision log's pdp_id to %q while this component can run more than one replica: two producers under one name write two records at one sequence number and close the stream. Leave it unset — the chart takes it from the pod name." $component $pinned) }}
+{{- $config := $plane.extraConfig | default dict }}
+{{- if or (dig "dataPlane" "decisions" "log" "pdp_id" "" $config) (dig "decisions" "log" "pdp_id" "" $config) }}
+{{- fail (printf "%s.extraConfig sets the decision log's pdp_id, which is retired: decision records are named by the Host's host_id and the run of its stream. Remove it." $component) }}
 {{- end }}
-{{- $pinnedProducer := dig "dataPlane" "events" "producer_id" (dig "events" "producer_id" "" ($plane.extraConfig | default dict)) ($plane.extraConfig | default dict) }}
-{{- if $pinnedProducer }}
-{{- fail (printf "%s.extraConfig pins the event producer_id to %q while this component can run more than one replica: an event producer id owns a hash chain and the history the plane's own policies read, so two pods under one name would each append to a stream the other also claims. Leave it unset — the chart takes it from the pod name." $component $pinnedProducer) }}
+{{- if or (dig "dataPlane" "events" "producer_id" "" $config) (dig "events" "producer_id" "" $config) }}
+{{- fail (printf "%s.extraConfig sets the event producer_id, which is retired: event records are named by the Host's host_id and the run of its stream. Remove it." $component) }}
 {{- end }}
 {{- range $env := ($plane.extraEnv | default list) }}
-{{- if eq $env.name "PERMGUARD_DECISIONS_LOG_PDP_ID" }}
-{{- fail (printf "%s.extraEnv redefines PERMGUARD_DECISIONS_LOG_PDP_ID while this component can run more than one replica. The chart sets it from the pod name and merges extraEnv after it, so this would win — and every replica would produce records under one name." $component) }}
-{{- end }}
-{{- if eq $env.name "PERMGUARD_EVENTS_PRODUCER_ID" }}
-{{- fail (printf "%s.extraEnv redefines PERMGUARD_EVENTS_PRODUCER_ID while this component can run more than one replica. The chart sets it from the pod name and merges extraEnv after it, so this would win — and every replica would append to one event stream under one name." $component) }}
-{{- end }}
+{{- if has $env.name (list "PERMGUARD_DECISIONS_LOG_PDP_ID" "PERMGUARD_EVENTS_PRODUCER_ID") }}
+{{- fail (printf "%s.extraEnv sets %s, which is retired: the streams are named by the Host's host_id and run. Remove it." $component $env.name) }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -191,12 +108,15 @@ The chart cannot check that a ring, a commitment secret and a pseudonymisation k
 they arrive as secrets it never sees — but it can refuse the one combination that is wrong however
 they arrive.
 */ -}}
-{{- range $component, $plane := dict "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- range $plane := (include "permguard.configUnits" $ | fromJson).units }}
+{{- if ne $plane.kind "controlPlane" }}
+{{- $component := $plane.label }}
 {{- if $plane.enabled }}
 {{- $log := dig "dataPlane" "decisions" "log" "enabled" "" ($plane.extraConfig | default dict) }}
 {{- if and $log (ne (toString $log) "false") }}
-{{- if not (include "permguard.persists" (dict "root" $ "plane" $plane)) }}
-{{- fail (printf "%s enables the decision log with ephemeral state: the signing ring and the spool live on the volume, and a restart mints a new ring whose batches the control plane will refuse. Set %s.persistence.enabled=true — and remember that this chart gives a component one claim, so the log and replicas need a StatefulSet, not a Deployment." $component $component) }}
+{{- if not $plane.persists }}
+{{- fail (printf "%s enables the decision log with ephemeral state: the signing ring and the spool live on the volume, and a restart mints a new ring whose batches the control plane will refuse. Set %s.persistence.enabled=true." $component $component) }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -214,12 +134,15 @@ be re-derived; it is an input.
 The chart cannot check that a signing ring was supplied, but it can refuse the one combination that
 is wrong however the rest arrives.
 */ -}}
-{{- range $component, $plane := dict "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- range $plane := (include "permguard.configUnits" $ | fromJson).units }}
+{{- if ne $plane.kind "controlPlane" }}
+{{- $component := $plane.label }}
 {{- if $plane.enabled }}
 {{- $events := dig "dataPlane" "events" "enabled" (dig "events" "enabled" "" ($plane.extraConfig | default dict)) ($plane.extraConfig | default dict) }}
 {{- if and $events (ne (toString $events) "false") }}
-{{- if not (include "permguard.persists" (dict "root" $ "plane" $plane)) }}
-{{- fail (printf "%s enables the temporal interface with ephemeral state: the event journal is the history its own policies decide against, and a restart would silently change what they answer. Set %s.persistence.enabled=true — and remember that this chart gives a component one claim, so a journal and replicas need a StatefulSet, not a Deployment." $component $component) }}
+{{- if not $plane.persists }}
+{{- fail (printf "%s enables the temporal interface with ephemeral state: the event journal is the history its own policies decide against, and a restart would silently change what they answer. Set %s.persistence.enabled=true." $component $component) }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -233,33 +156,35 @@ of those modes with no subscriptions ranges over an empty imported history — `
 every decision closed, and `shared-eventual` quietly answers as though the other planes had never
 recorded anything. Both are configuration mistakes that look like a working deployment.
 */ -}}
-{{- range $component, $plane := dict "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- range $plane := (include "permguard.configUnits" $ | fromJson).units }}
+{{- if ne $plane.kind "controlPlane" }}
+{{- $component := $plane.label }}
 {{- if $plane.enabled }}
 {{- $pull := dig "dataPlane" "events" "pull" (dig "events" "pull" dict ($plane.extraConfig | default dict)) ($plane.extraConfig | default dict) }}
 {{- $mode := toString (dig "mode" "local" ($pull | default dict)) }}
 {{- if and (ne $mode "local") (not (dig "ledgers" list ($pull | default dict))) }}
 {{- fail (printf "%s sets events.pull.mode=%q and subscribes to no ledgers: a shared mode decides against history other planes recorded, and this one has been told to read none of it. Name the ledgers under events.pull.ledgers, or use `local`." $component $mode) }}
 {{- end }}
-{{- if and (ne $mode "local") (not (dig "producer_keys" list ($pull | default dict))) }}
-{{- fail (printf "%s sets events.pull.mode=%q and declares no events.pull.producer_keys: imported records must be verified by a key bound to their exact producer and allowed zone/ledger. Add bound producer keys, or use `local`." $component $mode) }}
+{{- if dig "producer_keys" list ($pull | default dict) }}
+{{- fail (printf "%s sets events.pull.producer_keys, which is retired: a shared mode decides on the history the Host imports over events.import, verified under the membership's pinned rings. Remove it." $component) }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
 
 {{- /*
-An event store with no bounded producer authority.
+An event store naming producer key files, which are retired.
 
-Decision-log keys only prove cryptographic possession; they do not authorize an event producer to
-claim a producer identity or a tenant. Event ingest therefore has its own mandatory, structured
-trust policy. Catch an absent list while rendering instead of producing a pod that refuses startup.
+Events arrive over the Host's `events.ship` (WP-6.2), and the event store trusts only the signing
+ring of a data plane in the same process for what its legacy journals still ship. The server refuses
+`controlPlane.events.producer_keys` at start; refused here too, at install.
 */ -}}
 {{- range $component, $plane := dict "controlPlane" .Values.controlPlane "allInOne" .Values.allInOne }}
 {{- if $plane.enabled }}
 {{- $extra := $plane.extraConfig | default dict }}
 {{- $events := dig "controlPlane" "events" dict $extra | default dict }}
-{{- $enabled := dig "enabled" "" $events }}
-{{- if and $enabled (ne (toString $enabled) "false") (not (dig "producer_keys" list $events)) }}
-{{- fail (printf "%s enables controlPlane.events but declares no controlPlane.events.producer_keys. Event keys must be bound to an exact producer and an allowed zone/ledger; the decision-log trust list is not an event-ingestion policy." $component) }}
+{{- if dig "producer_keys" list $events }}
+{{- fail (printf "%s sets controlPlane.events.producer_keys, which is retired: events arrive over the Host's events.ship. Remove it." $component) }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -276,7 +201,8 @@ Refused here rather than discovered as a CrashLoopBackOff. A chart that renders 
 process cannot start has told an operator nothing they can act on; a `helm template` that fails names
 the setting.
 */ -}}
-{{- range $component, $plane := dict "controlPlane" .Values.controlPlane "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- range $plane := (include "permguard.configUnits" $ | fromJson).units }}
+{{- $component := $plane.label }}
 {{- if $plane.enabled }}
 {{- $extra := $plane.extraConfig | default dict }}
 {{- $dogwood := dig "experimental" "dogwood" "enabled" "" $extra }}
@@ -284,12 +210,12 @@ the setting.
 {{- range $section := list "controlPlane" "dataPlane" }}
 {{- $enabled := dig $section "events" "enabled" "" $extra }}
 {{- if and $enabled (ne (toString $enabled) "false") (not $accepted) }}
-{{- fail (printf "%s sets %s.events.enabled and not experimental.dogwood.enabled. The event interfaces carry a contract whose shape is not yet stable and are served only where a deployment has accepted that, so this plane would refuse to start. Set experimental.dogwood.enabled=\"true\", or turn the events block off." $component $section) }}
+{{- fail (printf "%s sets %s.events.enabled and not experimental.dogwood.enabled. The event interfaces carry a contract whose shape is not yet stable and are served only where a deployment has accepted that, so this plane would refuse to start. Set experimental.dogwood.enabled=\"true\", or turn the events block off; a `production` or `regulated` group serves Dogwood ledgers only once its conformance gate passes." $component $section) }}
 {{- end }}
 {{- end }}
 {{- $bare := dig "events" "enabled" "" $extra }}
 {{- if and $bare (ne (toString $bare) "false") (not $accepted) }}
-{{- fail (printf "%s sets events.enabled and not experimental.dogwood.enabled. The event interfaces carry a contract whose shape is not yet stable and are served only where a deployment has accepted that, so this plane would refuse to start. Set experimental.dogwood.enabled=\"true\", or turn the events block off." $component) }}
+{{- fail (printf "%s sets events.enabled and not experimental.dogwood.enabled. The event interfaces carry a contract whose shape is not yet stable and are served only where a deployment has accepted that, so this plane would refuse to start. Set experimental.dogwood.enabled=\"true\", or turn the events block off; a `production` or `regulated` group serves Dogwood ledgers only once its conformance gate passes." $component) }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -311,6 +237,360 @@ the `production` profile up. Said here, at render, rather than as a pod that nev
 {{- if not (or $plane.tls.secretName $plane.tls.terminatedUpstream) }}
 {{- fail (printf "%s serves its public listener on every interface and %s.tls states neither a Secret (%s.tls.secretName, a kubernetes.io/tls Secret) nor that an ingress or a mesh sidecar terminates TLS in front of it (%s.tls.terminatedUpstream=true): outside developmentMode the process refuses a public listener in the clear." $component $component $component $component) }}
 {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /*
+The data plane's groups (TD-1).
+
+A group is one membership selector and one operating policy, and the chart refuses the values that
+would make two groups serve the same resources, a group reach wider than its membership, a stream it
+must keep live on a volume that does not survive a restart, or a claim that may hold unshipped
+evidence be deleted by Kubernetes rather than by a verified operation.
+*/ -}}
+{{- if .Values.dataPlane.enabled }}
+{{- $resolved := include "permguard.dataPlaneGroups" . | fromJson }}
+{{- if and .Values.dataPlane.groups $resolved.legacy }}
+{{- fail (printf "dataPlane.groups is set and so is dataPlane.%s: the single-group keys describe the one group an empty `groups` renders, and beside `groups` they would be two sources of truth. Move them into the group they belong to." (first $resolved.legacy)) }}
+{{- end }}
+{{- $fullname := include "permguard.fullname" . }}
+{{- $seen := dict }}
+{{- $parsed := list }}
+{{- range $g := $resolved.groups }}
+{{- if not (regexMatch "^[a-z]([-a-z0-9]*[a-z0-9])?$" $g.name) }}
+{{- fail (printf "dataPlane.groups: %q is not a group name: lowercase letters, digits and `-`, starting with a letter and ending with a letter or a digit." $g.name) }}
+{{- end }}
+{{- if hasKey $seen $g.name }}
+{{- fail (printf "dataPlane.groups: duplicate group name %q: a name labels one group's workload, Service, membership and policy, and two groups sharing it would select each other's replicas." $g.name) }}
+{{- end }}
+{{- $_ := set $seen $g.name true }}
+{{- /* A StatefulSet's name, with the revision hash Kubernetes appends to a pod label, fits 63. */ -}}
+{{- if gt (len $g.base) 52 }}
+{{- fail (printf "dataPlane.groups[%s]: the workload name %q is too long (%d characters, at most 52): shorten the group name or the release name." $g.name $g.base (len $g.base)) }}
+{{- end }}
+{{- $selector := include "permguard.selector" $g.selector | fromJson }}
+{{- if not $selector.valid }}
+{{- fail (printf "dataPlane.groups[%s]: %q is not a selector: `plane/data`, `plane/data/zone/<id>` or `plane/data/zone/<id>/ledger/<id>`, optionally ending in `/*`, each id 1 to 128 of `A-Z a-z 0-9 - _ . :`." $g.name $g.selector) }}
+{{- end }}
+{{- if not $selector.data }}
+{{- fail (printf "dataPlane.groups[%s]: the selector %q reaches outside the data plane: a data plane group's membership is under `plane/data`." $g.name $g.selector) }}
+{{- end }}
+{{- $parsed = append $parsed (dict "name" $g.name "selector" $selector) }}
+{{- /* Its tasks: known types, each within the membership. */ -}}
+{{- range $task := $g.tasks }}
+{{- $type := toString $task.type }}
+{{- if not (has $type (list "policy.mirror" "decisions.ship" "events.ship" "events.import" "audit.checkpoints" "zone.secrets")) }}
+{{- fail (printf "dataPlane.groups[%s].tasks: %q is not a membership task: policy.mirror, decisions.ship, events.ship, events.import, audit.checkpoints or zone.secrets." $g.name $type) }}
+{{- end }}
+{{- if and (not (has $type (list "policy.mirror" "decisions.ship" "events.ship"))) (not $task.resourceTypes) }}
+{{- fail (printf "dataPlane.groups[%s].tasks: %s states its resourceTypes: the chart has no default for it." $g.name $type) }}
+{{- end }}
+{{- with $task.selector }}
+{{- $narrow := include "permguard.selector" . | fromJson }}
+{{- $within := and $narrow.valid (include "permguard.selectorContains" (dict "selector" $selector "resource" $narrow.prefix)) (or (not $narrow.descendants) $selector.descendants) }}
+{{- if not $within }}
+{{- fail (printf "dataPlane.groups[%s].tasks: the %s selector %q is wider than its membership %q: a task selector is contained by the membership selector." $g.name $type . $g.selector) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* Evidence: a known mode, one the profile allows, and one source. */ -}}
+{{- if eq $g.evidence "best-effort" }}
+{{- fail (printf "dataPlane.groups[%s]: evidence.mode is best-effort, which this build does not serve: its loss record is not defined yet (WP-6.1), and the server refuses it. Use required, or disabled under development." $g.name) }}
+{{- end }}
+{{- if not (has $g.evidence (list "required" "disabled")) }}
+{{- fail (printf "dataPlane.groups[%s]: evidence.mode is %q: required or disabled." $g.name $g.evidence) }}
+{{- end }}
+{{- if and (ne $g.assurance.profile "development") (ne $g.evidence "required") }}
+{{- fail (printf "dataPlane.groups[%s]: a `%s` group answers only with recorded decisions, and its evidence mode is `%s`: `production` permits `best-effort` per ledger with a recorded risk acceptance, never for a whole group, and `regulated` permits `required` only." $g.name $g.assurance.profile $g.evidence) }}
+{{- end }}
+{{- $stated := dig "dataPlane" "decisions" "log" dict $g.extraConfig }}
+{{- $enabled := ternary "false" "true" (eq $g.evidence "disabled") }}
+{{- if or (and (hasKey $stated "enabled") (ne (toString $stated.enabled) $enabled)) (and (hasKey $stated "mode") (ne (toString $stated.mode) $g.evidence)) (and (hasKey $stated "on_full") (ne (toString $stated.on_full) "closed")) }}
+{{- fail (printf "dataPlane.groups[%s]: the decision log is stated in extraConfig and by evidence.mode=%s, two sources of the same setting: the chart renders the log from the mode, so remove it from extraConfig." $g.name $g.evidence) }}
+{{- end }}
+{{- /* Storage: what must survive a restart keeps a volume, and only a verified operation deletes one. */ -}}
+{{- if and (not $g.persistence.enabled) (or (ne $g.evidence "disabled") $g.temporal) }}
+{{- fail (printf "dataPlane.groups[%s]: %s without persistent storage: a decision spool or an event journal on a volume that does not survive a restart loses evidence or changes what policies decide. Keep persistence.enabled, or record no evidence (evidence.mode=disabled, development only) and keep no history." $g.name (ternary "keeps temporal history" (printf "records evidence (%s)" $g.evidence) $g.temporal)) }}
+{{- end }}
+{{- if $g.persistence.enabled }}
+{{- range $when := list "whenScaled" "whenDeleted" }}
+{{- if ne (get $g.persistence $when) "Retain" }}
+{{- fail (printf "dataPlane.groups[%s]: persistence.retention.%s is %q (or retainOnScaleDown is false): a claim may hold evidence a replica did not ship, and its deletion is a separate verified operation, never a side effect of scaling or uninstalling. Keep Retain." $g.name $when (get $g.persistence $when)) }}
+{{- end }}
+{{- end }}
+{{- range $mode := $g.persistence.accessModes }}
+{{- if has (toString $mode) (list "ReadWriteMany" "ReadOnlyMany") }}
+{{- fail (printf "dataPlane.groups[%s]: persistence.accessModes names %s: one volume has one writer, the replica that owns it. Use ReadWriteOncePod or ReadWriteOnce." $g.name $mode) }}
+{{- end }}
+{{- end }}
+{{- if and $g.autoscaling.enabled (gt (int $g.autoscaling.maxReplicas) 1) }}
+{{- /*
+An autoscaler removes replicas on load, and a replica that keeps a volume may leave evidence it did
+not ship: it needs drain recovery (the drain controller), a stabilization long enough for a drain
+and its recovery Job, and storage whose takeover is qualified (TD-2).
+*/ -}}
+{{- $dc := $.Values.dataPlane.drainController }}
+{{- if not $dc.enabled }}
+{{- fail (printf "dataPlane.groups[%s]: autoscaling a group that keeps a volume needs drain recovery: enable dataPlane.drainController, or a replica scaled away could leave evidence nobody ships. Otherwise set a fixed replicas count." $g.name) }}
+{{- end }}
+{{- /* The controller's period, from its schedule: every minute, or every N minutes. */ -}}
+{{- $period := 0 }}
+{{- if eq (toString $dc.schedule) "* * * * *" }}
+{{- $period = 60 }}
+{{- else if regexMatch "^\\*/[0-9]+ \\* \\* \\* \\*$" (toString $dc.schedule) }}
+{{- $period = mul (int (regexFind "[0-9]+" (toString $dc.schedule))) 60 }}
+{{- else }}
+{{- fail (printf "dataPlane.groups[%s]: autoscaling a group that keeps a volume needs the drain controller's period, and its schedule %q is neither `* * * * *` nor `*/N * * * *`." $g.name $dc.schedule) }}
+{{- end }}
+{{- $budget := add (int $g.shutdown.timeoutSeconds) (int $dc.jobDeadlineSeconds) (int $period) }}
+{{- if lt (int $g.autoscaling.scaleDownStabilizationSeconds) (int $budget) }}
+{{- fail (printf "dataPlane.groups[%s]: autoscaling.scaleDownStabilizationSeconds is %d, less than a drain, the controller's period and its recovery Job (%d seconds): the autoscaler would remove the next replica before the last one's evidence is recovered." $g.name (int $g.autoscaling.scaleDownStabilizationSeconds) (int $budget)) }}
+{{- end }}
+{{- $t := $g.persistence.takeover }}
+{{- if not (and $t.qualified $t.driver $t.storageClass $t.evidence) }}
+{{- fail (printf "dataPlane.groups[%s]: autoscaling a group that keeps a volume needs its storage takeover qualified: persistence.takeover.qualified with the driver, the storageClass and the evidence of a qualification run that the storage revokes the old writer before attaching the successor. A lease or an expired heartbeat alone is not fencing." $g.name) }}
+{{- end }}
+{{- if ne $t.storageClass $g.persistence.storageClass }}
+{{- fail (printf "dataPlane.groups[%s]: persistence.takeover.storageClass is %q and the group's claims use %q: the qualification is of the storage class the claims are made from." $g.name $t.storageClass $g.persistence.storageClass) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* Temporal history: replicated only under a declared shared consistency. */ -}}
+{{- $many := or (gt (int $g.replicas) 1) (and $g.autoscaling.enabled (gt (int $g.autoscaling.maxReplicas) 1)) }}
+{{- if and $g.temporal $many (not (has $g.pullMode (list "shared-eventual" "shared-bounded"))) }}
+{{- fail (printf "dataPlane.groups[%s] keeps temporal history and runs more than one replica without a declared shared consistency: each replica owns its journal, so without events.pull.mode shared-eventual or shared-bounded (and its ledgers) two replicas answer the same question from different histories. Declare the consistency, which discovery publishes, or run one replica." $g.name) }}
+{{- end }}
+{{- /* One shutdown budget, with time left to seal and release the volume after the drain. */ -}}
+{{- if or (lt (int $g.shutdown.timeoutSeconds) 2) (gt (add (int $g.shutdown.drainTimeoutSeconds) 1) (int $g.shutdown.timeoutSeconds)) }}
+{{- fail (printf "dataPlane.groups[%s]: shutdown.drainTimeoutSeconds (%d) leaves less than one second of shutdown.timeoutSeconds (%d): the drain runs inside the budget and the process still has to seal and release its volume." $g.name (int $g.shutdown.drainTimeoutSeconds) (int $g.shutdown.timeoutSeconds)) }}
+{{- end }}
+{{- end }}
+{{- /* Two groups never serve the same resources: neither selector contains the other's start. */ -}}
+{{- range $i, $a := $parsed }}
+{{- range $j, $b := $parsed }}
+{{- if lt $i $j }}
+{{- if or (include "permguard.selectorContains" (dict "selector" $a.selector "resource" $b.selector.prefix)) (include "permguard.selectorContains" (dict "selector" $b.selector "resource" $a.selector.prefix)) }}
+{{- fail (printf "dataPlane.groups: the selectors of %s and %s overlap: two groups would serve, route and be granted the same resources. Make them disjoint." $a.name $b.name) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /*
+Values that contradict a Host's assurance profile (TD-1).
+
+The profile is checked at Bootstrap; refusing here says it at install, naming the value. Custody is
+read as the server reads it: the environment over the file, a ring's own custody over the Host's,
+and the profile's default when nothing is stated (`development` under `development`, `file`
+above). Dual control is in force by the `regulated` profile itself and has no value to refuse.
+*/ -}}
+{{- range $unit := (include "permguard.configUnits" $ | fromJson).units }}
+{{- $label := $unit.label }}
+{{- $profile := $unit.assurance.profile }}
+{{- if not (has $profile (list "development" "production" "regulated")) }}
+{{- fail (printf "%s: %q is not an assurance profile: development, production or regulated." $label $profile) }}
+{{- end }}
+{{- $env := dict }}
+{{- range $e := $unit.extraEnv }}
+{{- $_ := set $env (toString $e.name) (toString $e.value) }}
+{{- end }}
+{{- /* What the configuration renders: the extraConfig, with the assurance values over it. */ -}}
+{{- $config := mergeOverwrite (include "permguard.hostControlsConfig" $ | fromYaml) (mergeOverwrite (deepCopy $unit.extraConfig) (include "permguard.assuranceConfig" $unit.assurance | fromYaml)) }}
+{{- $keys := dig "operations" "keys" dict $config }}
+{{- $default := ternary "development" "file" (eq $profile "development") }}
+{{- $host := get $env "PERMGUARD_KEYS_CUSTODY" | default (toString (dig "custody" "" $keys)) | default $default }}
+{{- $rings := dict
+      "host.identity" (get $env "PERMGUARD_KEYS_IDENTITY_CUSTODY" | default (toString (dig "rings" "host.identity" "custody" "" $keys)) | default $host)
+      "host.operations" (get $env "PERMGUARD_KEYS_OPERATIONS_CUSTODY" | default (toString (dig "rings" "host.operations" "custody" "" $keys)) | default $host)
+}}
+{{- $custodies := list $host (get $rings "host.identity") (get $rings "host.operations") }}
+{{- if and (ne $profile "development") (has "development" $custodies) }}
+{{- fail (printf "%s: the `development` custody keeps private keys in plaintext files, which the `%s` profile refuses: use `file` (envelope-encrypted) or, better, `pkcs11` or `kms`." $label $profile) }}
+{{- end }}
+{{- /* Two sources of the same custody: the assurance values and the configuration. */ -}}
+{{- $stated := dig "operations" "keys" dict $unit.extraConfig }}
+{{- $values := $unit.assurance.custody | default dict }}
+{{- range $pair := list (list "provider" (dig "custody" "" $stated)) (list "identity" (dig "rings" "host.identity" "custody" "" $stated)) (list "operations" (dig "rings" "host.operations" "custody" "" $stated)) }}
+{{- $fromValues := toString (get $values (index $pair 0)) }}
+{{- $fromConfig := toString (index $pair 1) }}
+{{- if and $fromValues $fromConfig (ne $fromValues $fromConfig) }}
+{{- fail (printf "%s: assurance.custody.%s is `%s` and extraConfig says `%s`, two sources of the same custody: state it once, in assurance.custody." $label (index $pair 0) $fromValues $fromConfig) }}
+{{- end }}
+{{- end }}
+{{- /* What each custody needs stated, at every profile, as Bootstrap checks it. */ -}}
+{{- if has "pkcs11" $custodies }}
+{{- if not (and (get $env "PERMGUARD_KEYS_PKCS11_MODULE" | default (dig "pkcs11" "module" "" $keys)) (get $env "PERMGUARD_KEYS_PKCS11_TOKEN_LABEL" | default (dig "pkcs11" "token_label" "" $keys)) (get $env "PERMGUARD_KEYS_PKCS11_PIN_REF" | default (dig "pkcs11" "pin_ref" "" $keys))) }}
+{{- fail (printf "%s: the pkcs11 custody states pkcs11.module, pkcs11.tokenLabel and pkcs11.pinRef, the token it holds its keys in." $label) }}
+{{- end }}
+{{- end }}
+{{- if has "kms" $custodies }}
+{{- $address := toString (get $env "PERMGUARD_KEYS_KMS_ADDRESS" | default (dig "kms" "address" "" $keys)) }}
+{{- if not (and $address (get $env "PERMGUARD_KEYS_KMS_TOKEN_REF" | default (dig "kms" "token_ref" "" $keys))) }}
+{{- fail (printf "%s: the kms custody states kms.address and kms.tokenRef, the KMS that holds its keys." $label) }}
+{{- end }}
+{{- if not (or (hasPrefix "https://" $address) (and $.Values.developmentMode (hasPrefix "http://" $address))) }}
+{{- fail (printf "%s: kms.address is `https://`: a token and wrapped keys never cross plain HTTP outside development." $label) }}
+{{- end }}
+{{- end }}
+{{- /* TS-4: a Data Plane that records its decisions opens a stream's run under `host.operations` while a decision waits, and a remote KMS is not allowed on the decision path; the server refuses it at start. */ -}}
+{{- $records := or (and (eq (toString $unit.kind) "dataPlane") (ne (toString $unit.evidence) "disabled")) (and (eq (toString $unit.kind) "allInOne") (or (eq (toString (dig "dataPlane" "decisions" "log" "enabled" "" $config)) "true") (eq (get $env "PERMGUARD_DECISIONS_LOG_ENABLED") "true"))) }}
+{{- if and $records (eq (get $rings "host.operations") "kms") }}
+{{- fail (printf "%s: `host.operations` signs the run a decision record opens, while the decision waits, and a remote KMS is not allowed on the decision path: keep it `pkcs11` (or `file` below `regulated`) where evidence is recorded." $label) }}
+{{- end }}
+{{- /* TS-5: from `production` a Host serves only on qualified storage, whose record proves encryption at rest (the compatibility mode relaxes nothing there), with a complete backup policy and every service objective declared; Bootstrap refuses the same, and refusing here says it at install. */ -}}
+{{- if ne $profile "development" }}
+{{- $storage := dig "storage" dict $config }}
+{{- $qualified := dig "qualified" list $storage }}
+{{- if not $qualified }}
+{{- fail (printf "%s: the `%s` profile serves only on qualified storage: list the volume's tuple with its evidence, encryption mechanism, revision and expiry in hostControls.storage.qualified; storage.compatibility_mode relaxes nothing from `production`." $label $profile) }}
+{{- end }}
+{{- range $entry := $qualified }}
+{{- range $key := list "storage_class" "driver" "filesystem" "version" "evidence" "encryption" "revision" "expires_at" }}
+{{- if not (get $entry $key) }}
+{{- fail (printf "%s: every hostControls.storage.qualified entry names its %s: a record proves encryption at rest only with its mechanism, revision and expiry." $label $key) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- $backup := dig "operations" "backup" dict $config }}
+{{- if not (get $backup "recovery_key") }}
+{{- fail (printf "%s: the `%s` profile encrypts every backup under a recovery key the Host resolves: state hostControls.backup.recovery_key, a secret reference (a provider's recovery_key_id alone proves no key)." $label $profile) }}
+{{- end }}
+{{- range $key := list "encryption_profile" "retention" "destruction" }}
+{{- if not (get $backup $key) }}
+{{- fail (printf "%s: the `%s` profile keeps backups under a declared, tested policy: state hostControls.backup.%s." $label $profile $key) }}
+{{- end }}
+{{- end }}
+{{- $objectives := dig "objectives" dict $config }}
+{{- range $key := list "data_loss" "recovery_time" "max_volume_size" "membership_offline_grace" "mirror_staleness" "evidence_shipping_lag" "spool_headroom" "checkpoint_export_lag" "backup_interval" "restore_test_interval" "key_recovery_owner" }}
+{{- if has (toString (get $objectives $key)) (list "" "<nil>") }}
+{{- fail (printf "%s: the `%s` profile declares every service objective: state hostControls.objectives.%s." $label $profile $key) }}
+{{- end }}
+{{- end }}
+{{- /* The pod runs as a dedicated user that owns its volume, never privileged, and the kubelet never widens the volume's modes on a remount. */ -}}
+{{- $pod := $.Values.podSecurityContext | default dict }}
+{{- $container := $.Values.securityContext | default dict }}
+{{- if or (not $pod.runAsNonRoot) (eq (int (default 0 $pod.runAsUser)) 0) }}
+{{- fail (printf "%s: the `%s` profile runs as a dedicated non-root user: set podSecurityContext.runAsNonRoot and a runAsUser other than 0." $label $profile) }}
+{{- end }}
+{{- if or $container.privileged (ne (toString $container.allowPrivilegeEscalation) "false") }}
+{{- fail (printf "%s: the `%s` profile runs unprivileged: securityContext.privileged false and allowPrivilegeEscalation false." $label $profile) }}
+{{- end }}
+{{- if and $pod.fsGroup (ne (toString $pod.fsGroupChangePolicy) "OnRootMismatch") }}
+{{- fail (printf "%s: with an fsGroup, the `%s` profile keeps podSecurityContext.fsGroupChangePolicy OnRootMismatch: the default re-grants the group on every remount, and the Host refuses a volume its group can read." $label $profile) }}
+{{- end }}
+{{- end }}
+{{- if eq $profile "regulated" }}
+{{- if $.Values.developmentMode }}
+{{- fail (printf "%s: the `regulated` profile is not served in developmentMode, which is somebody's laptop." $label) }}
+{{- end }}
+{{- range $ring := list "host.identity" "host.operations" }}
+{{- if not (has (get $rings $ring) (list "pkcs11" "kms")) }}
+{{- fail (printf "%s: the `regulated` profile keeps `%s` in HSM or KMS custody (pkcs11 or kms), and its custody is `%s`: state assurance.custody (provider, or the ring's own identity/operations) with its references." $label $ring (get $rings $ring)) }}
+{{- end }}
+{{- end }}
+{{- if and $unit.tls $unit.tls.terminatedUpstream }}
+{{- fail (printf "%s: the `regulated` profile serves TLS end to end, and its public listener is terminated upstream." $label) }}
+{{- end }}
+{{- $twelve := regexMatch "\"min_version\":(\"[vV]?1[._]?2\"|1\\.2|12)[,}]" (toJson $config) }}
+{{- range $name, $value := $env }}
+{{- if and (hasSuffix "_TLS_MIN_VERSION" $name) (regexMatch "^[vV]?1[._]?2$" $value) }}
+{{- $twelve = true }}
+{{- end }}
+{{- end }}
+{{- if $twelve }}
+{{- fail (printf "%s: a TLS minimum of 1.2 is stated, and the `regulated` profile is TLS 1.3 only." $label) }}
+{{- end }}
+{{- range $runtime, $settings := (dig "experimental" dict $config) }}
+{{- $on := dig "enabled" "" ($settings | default dict) }}
+{{- if and $on (ne (toString $on) "false") }}
+{{- fail (printf "%s: the experimental runtime %s is opted into, and the `regulated` profile never serves experimental runtimes." $label $runtime) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+
+{{- /*
+The Host listener (TD-2): mutual TLS from a Secret, and one source for it.
+*/ -}}
+{{- range $label, $plane := dict "controlPlane" .Values.controlPlane "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- if and $plane.enabled $plane.hostListener $plane.hostListener.enabled (not $plane.hostListener.tls.secretName) }}
+{{- fail (printf "%s.hostListener is enabled and names no tls.secretName: the Host listener serves mutual TLS only, from a kubernetes.io/tls Secret with ca.crt." $label) }}
+{{- end }}
+{{- end }}
+{{- range $unit := (include "permguard.configUnits" $ | fromJson).units }}
+{{- $listener := (ternary $.Values.controlPlane.hostListener (ternary $.Values.allInOne.hostListener $.Values.dataPlane.hostListener (eq $unit.kind "allInOne")) (eq $unit.kind "controlPlane")) }}
+{{- if hasKey ($unit.extraConfig | default dict) "telemetry" }}
+{{- fail (printf "%s: extraConfig states `telemetry`, the older spelling of the `host` section the chart renders: write it as `host`, or the server sees the section twice." $unit.label) }}
+{{- end }}
+{{- if and $listener.enabled (hasKey ($unit.extraConfig | default dict) "admin") }}
+{{- fail (printf "%s: extraConfig states `admin` and hostListener is enabled, two sources of the Host listener: state it in hostListener." $unit.label) }}
+{{- end }}
+{{- end }}
+
+{{- /*
+The drain controller (TD-2): what it reaches and what it needs.
+*/ -}}
+{{- if and .Values.dataPlane.enabled .Values.dataPlane.drainController.enabled }}
+{{- $dc := .Values.dataPlane.drainController }}
+{{- if not .Values.dataPlane.hostListener.enabled }}
+{{- fail "dataPlane.drainController needs dataPlane.hostListener: a replica without its Host listener holds no membership and issues no drain receipt, so no claim of it could ever be reclaimed." }}
+{{- end }}
+{{- if not $dc.tls.secretName }}
+{{- fail "dataPlane.drainController.tls.secretName names no Secret: the controller presents an operator's client certificate to the coordinator's Host listener, and verifies it against the Secret's ca.crt." }}
+{{- end }}
+{{- if and (not $dc.coordinator) (not (and .Values.controlPlane.enabled .Values.controlPlane.hostListener.enabled)) }}
+{{- fail "dataPlane.drainController names no coordinator and this release's control plane serves no Host listener: set dataPlane.drainController.coordinator to the coordinator's Host listener, or enable controlPlane.hostListener." }}
+{{- end }}
+{{- if and $dc.coordinator (not (hasPrefix "https://" $dc.coordinator)) }}
+{{- fail (printf "dataPlane.drainController.coordinator is %q: the coordinator's Host listener is reached over https only." $dc.coordinator) }}
+{{- end }}
+{{- if or (lt (int $dc.jobDeadlineSeconds) 30) (not $dc.schedule) }}
+{{- fail "dataPlane.drainController needs a schedule and a jobDeadlineSeconds of at least 30: the drain Job's deadline is what a forced timeout is." }}
+{{- end }}
+{{- range $g := (include "permguard.dataPlaneGroups" $ | fromJson).groups }}
+{{- if and $g.persistence.enabled (lt (int $dc.jobDeadlineSeconds) (add (int $g.shutdown.timeoutSeconds) 60)) }}
+{{- fail (printf "dataPlane.groups[%s]: dataPlane.drainController.jobDeadlineSeconds (%d) is shorter than the group's shutdown budget plus a minute to start (%d): every drain Job would end as a forced timeout and no claim could ever be reclaimed." $g.name (int $dc.jobDeadlineSeconds) (add (int $g.shutdown.timeoutSeconds) 60)) }}
+{{- end }}
+{{- if and $g.persistence.enabled (gt (len $g.base) 44) }}
+{{- fail (printf "dataPlane.groups[%s]: with the drain controller the workload name %q is at most 44 characters, for its CronJob's: shorten the group name or the release name." $g.name $g.base) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /*
+Image verification at deploy (TD-4).
+
+On, the digest verified is the digest that runs: every enabled component names its image by
+digest, and the verifier itself is named by digest. Its token comes from a Secret. A `regulated`
+workload runs only verified images.
+*/ -}}
+{{- $iv := .Values.imageVerification }}
+{{- range $unit := (include "permguard.configUnits" $ | fromJson).units }}
+{{- if and (eq $unit.assurance.profile "regulated") (not $iv.enabled) }}
+{{- fail (printf "%s: the `regulated` profile runs only images verified before start: set imageVerification.enabled, with imageVerification.verifier.image, imageVerification.tokenSecret and each component's digest." $unit.label) }}
+{{- end }}
+{{- end }}
+{{- if $iv.enabled }}
+{{- if not (regexMatch "@sha256:[0-9a-f]{64}$" ($iv.verifier.image | default "")) }}
+{{- fail (printf "imageVerification.verifier.image is %q: name the verifier by digest, `<registry>/<name>@sha256:<hex>`, or what verifies the images is itself unverified." ($iv.verifier.image | default "")) }}
+{{- end }}
+{{- if not $iv.tokenSecret.name }}
+{{- fail "imageVerification.tokenSecret.name is empty: the attestation API is read with a GitHub token, from a Secret." }}
+{{- end }}
+{{- if not (and $iv.repository $iv.signerWorkflow) }}
+{{- fail "imageVerification names no repository or signerWorkflow: the provenance is checked against both." }}
+{{- end }}
+{{- $components := dict }}
+{{- if .Values.controlPlane.enabled }}{{- $_ := set $components "controlPlane" .Values.controlPlane.digest }}{{- end }}
+{{- if .Values.dataPlane.enabled }}{{- $_ := set $components "dataPlane" .Values.dataPlane.digest }}{{- end }}
+{{- if .Values.allInOne.enabled }}{{- $_ := set $components "allInOne" .Values.allInOne.digest }}{{- end }}
+{{- if and .Values.dataPlane.enabled .Values.dataPlane.drainController.enabled }}{{- $_ := set $components "dataPlane.drainController" .Values.dataPlane.drainController.digest }}{{- end }}
+{{- range $component, $digest := $components }}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" ($digest | default "")) }}
+{{- fail (printf "%s.digest is %q: with imageVerification on, every image is named by its digest, `sha256:<hex>` — a tag the kubelet resolves later is not what was verified." $component ($digest | default "")) }}
 {{- end }}
 {{- end }}
 {{- end }}

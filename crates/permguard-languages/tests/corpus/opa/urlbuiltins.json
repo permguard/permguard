@@ -1,0 +1,214 @@
+{
+  "folder": "urlbuiltins",
+  "files": {
+    "test-urlbuiltins-0939.yaml": {
+      "sha256": "sha256:f0b32aeb9d0711eb5a31a7d9f932c415d0704507dcedc556afbd67c8d54d7d0b",
+      "cases": [
+        {
+          "note": "urlbuiltins/encode",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\turlquery.encode(\"a=b+1\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "a%3Db%2B1"
+            }
+          ]
+        }
+      ]
+    },
+    "test-urlbuiltins-0940.yaml": {
+      "sha256": "sha256:6c46b03f0d44b3e6e8e1b14e1d90687180e31ac8a94e8bd30233eb378a99d861",
+      "cases": [
+        {
+          "note": "urlbuiltins/encode empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\turlquery.encode(\"\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        }
+      ]
+    },
+    "test-urlbuiltins-0941.yaml": {
+      "sha256": "sha256:4aaf15a9f5537be0641434683ceddd52fe78840152a20be40f1350ef7816706f",
+      "cases": [
+        {
+          "note": "urlbuiltins/decode",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\turlquery.decode(\"a%3Db%2B1\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "a=b+1"
+            }
+          ]
+        }
+      ]
+    },
+    "test-urlbuiltins-0942.yaml": {
+      "sha256": "sha256:0a6f3208117d19e033d5640a0fb5d35da9b03bebd99b542555e98c76dcae9cb6",
+      "cases": [
+        {
+          "note": "urlbuiltins/encode_object empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\turlquery.encode_object({}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        }
+      ]
+    },
+    "test-urlbuiltins-0943.yaml": {
+      "sha256": "sha256:4cf89dd9f2c956d5c66399ad568ee5fde6d2a90ea779500c2091e842e130ccaf",
+      "cases": [
+        {
+          "note": "urlbuiltins/encode_object strings",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\turlquery.encode_object({\"a\": \"b\", \"c\": \"d\"}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "a=b&c=d"
+            }
+          ]
+        }
+      ]
+    },
+    "test-urlbuiltins-0944.yaml": {
+      "sha256": "sha256:228cf6ce464d054d58f3a574c51bd4c3dc7893eab20009bdecd84316d1970a6b",
+      "cases": [
+        {
+          "note": "urlbuiltins/encode_object escape",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\turlquery.encode_object({\"a\": \"c=b+1\"}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "a=c%3Db%2B1"
+            }
+          ]
+        }
+      ]
+    },
+    "test-urlbuiltins-0945.yaml": {
+      "sha256": "sha256:df5273f3a164548b512fa02656db5fdf8a66bba0a4566c4266367d1493c9768d",
+      "cases": [
+        {
+          "note": "urlbuiltins/encode_object array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\turlquery.encode_object({\"a\": [\"b+1\", \"c+2\"]}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "a=b%2B1&a=c%2B2"
+            }
+          ]
+        }
+      ]
+    },
+    "test-urlbuiltins-0946.yaml": {
+      "sha256": "sha256:f09c4d3d65add3c75a2011dbc8a0ea393b8f223cf8515e3c4f829c1bdb5761ed",
+      "cases": [
+        {
+          "note": "urlbuiltins/encode_object set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\turlquery.encode_object({\"a\": {\"b+1\"}}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "a=b%2B1"
+            }
+          ]
+        }
+      ]
+    },
+    "test-urlbuiltins-1076.yaml": {
+      "sha256": "sha256:e09b1fe6e26d75739ce4a78a568984ebb9b73639deae2baea93e2ffdb057ffa9",
+      "cases": [
+        {
+          "note": "urlbuiltins/decode_object multiple",
+          "query": "data.decode_object.p = x",
+          "modules": [
+            "package decode_object\n\np := x if {\n\tx = urlquery.decode_object(\"a=value_a1&b=value_b&a=value_a2\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": [
+                  "value_a1",
+                  "value_a2"
+                ],
+                "b": [
+                  "value_b"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "note": "urlbuiltins/decode_object empty parameter",
+          "query": "data.decode_object.p = x",
+          "modules": [
+            "package decode_object\n\np := x if {\n\tx = urlquery.decode_object(\"a=value_a1&b\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": [
+                  "value_a1"
+                ],
+                "b": [
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "note": "urlbuiltins/decode_object empty string",
+          "query": "data.decode_object.p = x",
+          "modules": [
+            "package decode_object\n\np := x if {\n\tx = urlquery.decode_object(\"\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

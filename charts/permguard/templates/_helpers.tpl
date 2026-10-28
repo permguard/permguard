@@ -57,15 +57,72 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 {{- end -}}
 
-{{/* An image reference, with the chart's appVersion as the tag unless one is set. */}}
+{{/*
+An image reference: by its digest when `digest` names one (TD-4: what was verified is what runs),
+else with the chart's appVersion as the tag unless one is set.
+*/}}
 {{- define "permguard.image" -}}
 {{- $registry := .root.Values.image.registry -}}
-{{- $tag := default .root.Chart.AppVersion .root.Values.image.tag -}}
+{{- $name := .repository -}}
 {{- if $registry -}}
-{{- printf "%s/%s:%s" $registry .repository $tag -}}
-{{- else -}}
-{{- printf "%s:%s" .repository $tag -}}
+{{- $name = printf "%s/%s" $registry .repository -}}
 {{- end -}}
+{{- if .digest -}}
+{{- printf "%s@%s" $name .digest -}}
+{{- else -}}
+{{- printf "%s:%s" $name (default .root.Chart.AppVersion .root.Values.image.tag) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The `verify-image` init container (TD-4), first in every Permguard Pod when `imageVerification` is
+on: `gh attestation verify` of the digest the Pod runs, under the release's provenance policy. Takes
+the `permguard.image` dict; renders a list item, or nothing.
+*/}}
+{{- define "permguard.verifyImage" -}}
+{{- $iv := .root.Values.imageVerification -}}
+{{- if $iv.enabled }}
+- name: verify-image
+  image: {{ $iv.verifier.image }}
+  imagePullPolicy: IfNotPresent
+  args:
+    - attestation
+    - verify
+    - {{ printf "oci://%s" (include "permguard.image" .) | quote }}
+    - --repo
+    - {{ $iv.repository | quote }}
+    - --signer-workflow
+    - {{ $iv.signerWorkflow | quote }}
+    - --source-ref
+    - {{ default (printf "refs/tags/v%s" .root.Chart.AppVersion) $iv.sourceRef | quote }}
+    - --deny-self-hosted-runners
+  env:
+    - name: GH_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {{ $iv.tokenSecret.name }}
+          key: {{ $iv.tokenSecret.key }}
+    - name: HOME
+      value: /tmp
+    - name: GH_NO_UPDATE_NOTIFIER
+      value: "1"
+  securityContext:
+    {{- toYaml .root.Values.securityContext | nindent 4 }}
+  resources:
+    {{- toYaml $iv.verifier.resources | nindent 4 }}
+  volumeMounts:
+    - name: verify-image-home
+      mountPath: /tmp
+{{- end }}
+{{- end -}}
+
+{{/* The verifier's writable home, beside a read-only root filesystem: a list item, or nothing. */}}
+{{- define "permguard.verifyImageVolume" -}}
+{{- if .Values.imageVerification.enabled }}
+- name: verify-image-home
+  emptyDir:
+    sizeLimit: 16Mi
+{{- end }}
 {{- end -}}
 
 {{/*
@@ -163,14 +220,6 @@ Deployment
 {{- end -}}
 
 {{/*
-This release's own control plane, in the cluster.
-
-The Service is named after the release, so only a template knows the address — which is why a
-values file that wrote one was right for exactly one release name. `http`, because the chart has
-no certificate to point at; a deployment that does not trust its own network sets `servers`
-explicitly with `https` and the authority to check.
-*/}}
-{{/*
 Where a component tells the world to reach it.
 
 A pod binds `0.0.0.0` — it has to, or it answers only itself — and `0.0.0.0` is not an address
@@ -194,15 +243,6 @@ controls must not decide what this deployment publishes about itself.
 {{- end -}}
 {{- end -}}
 
-{{- define "permguard.controlPlaneUrl" -}}
-{{- /* `https` once the control plane serves TLS itself (WP-2.11): a mirror then names its CA. */ -}}
-{{- if .Values.allInOne.enabled -}}
-{{ ternary "https" "http" (not (empty .Values.allInOne.tls.secretName)) }}://{{ include "permguard.fullname" . }}-all-in-one:{{ .Values.allInOne.ports.controlHttp }}
-{{- else -}}
-{{ ternary "https" "http" (not (empty .Values.controlPlane.tls.secretName)) }}://{{ include "permguard.fullname" . }}-control-plane:{{ .Values.controlPlane.ports.http }}
-{{- end -}}
-{{- end -}}
-
 {{/*
 The TLS block of a public listener (WP-2.11), from a component's `tls` values: the mounted Secret's
 certificate and key, or the declaration that an ingress or a sidecar terminates TLS in front of it.
@@ -215,4 +255,19 @@ key: /etc/permguard-tls/tls.key
 {{- else if .terminatedUpstream }}
 terminated_upstream: true
 {{- end }}
+{{- end }}
+
+{{/*
+What every Host of the release declares of its storage, backups and service objectives (TS-5), as
+configuration: `hostControls.storage` is the `storage` section, `hostControls.backup` the
+`operations.backup` section and `hostControls.objectives` the `objectives` section. A unit's
+`extraConfig` is merged over it.
+*/}}
+{{- define "permguard.hostControlsConfig" -}}
+{{- $controls := .Values.hostControls | default dict }}
+{{- $config := dict }}
+{{- with $controls.storage }}{{- $_ := set $config "storage" (deepCopy .) }}{{- end }}
+{{- with $controls.backup }}{{- $_ := set $config "operations" (dict "backup" (deepCopy .)) }}{{- end }}
+{{- with $controls.objectives }}{{- $_ := set $config "objectives" (deepCopy .) }}{{- end }}
+{{- toYaml $config }}
 {{- end }}

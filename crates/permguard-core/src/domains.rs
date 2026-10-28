@@ -35,6 +35,16 @@
 pub mod digest {
     /// A ring's public-set digest.
     pub const KEY_SET: &str = "permguard.key-set.v1\n";
+    /// The closure a mirror verified, as its checkpoint names it: the sorted digests of every
+    /// object reachable from the head (WP-7.2c).
+    pub const MIRROR_CLOSURE: &str = "permguard.mirror.closure.v1\n";
+    /// A snapshot's inventory, and each of its roots: the files the snapshot manifest binds
+    /// (WP-7.8).
+    pub const SNAPSHOT_INVENTORY: &str = "permguard.snapshot.inventory.v1\n";
+    /// A backup recovery key's id: its fingerprint (TS-5).
+    pub const BACKUP_RECOVERY_KEY: &str = "permguard.backup.recovery-key.v1\n";
+    /// A ledger or zone export's bundle, as its manifest binds it (WP-7.10).
+    pub const LEDGER_EXPORT_BUNDLE: &str = "permguard.ledger.export.bundle.v1\n";
     /// An audit record.
     pub const AUDIT_RECORD: &str = "permguard.audit.record.v1\n";
     /// An audit pseudonym.
@@ -130,11 +140,16 @@ pub mod protected {
     /// The Host's attestation of one principal's approval of a plan (WP-3.9).
     pub const OPERATION_APPROVAL: &str = "permguard.operation.approval.v1";
     pub const SNAPSHOT_MANIFEST: &str = "permguard.snapshot.manifest.v1";
+    /// A member Host's statement that its drain completed, under `host.operations` (TD-2).
+    pub const DRAIN_RECEIPT: &str = "permguard.drain.receipt.v1";
     pub const LEDGER_EXPORT: &str = "permguard.ledger.export.v1";
     pub const STREAM_RUN: &str = "permguard.stream.run.v1";
     pub const AUDIT_CHECKPOINT: &str = "permguard.audit.checkpoint.v1";
     pub const DECISION_BATCH: &str = "permguard.decision.batch.v1";
     pub const EVENT_BATCH: &str = "permguard.event.batch.v1";
+    /// The coordinator's observation checkpoint of an `events.import` resource, under
+    /// `control.attest` (WP-6.2c).
+    pub const EVENT_IMPORT_CHECKPOINT: &str = "permguard.event.import-checkpoint.v1";
     pub const DECISION_RESPONSE: &str = "permguard.decision.response.v1";
     /// The NOTP head statement, a COSE content type rather than a bare name.
     pub const NOTP_HEAD: &str = "application/vnd.permguard.head.v1+cbor";
@@ -162,6 +177,12 @@ pub mod interface {
     pub const EVENTS_NATIVE_V1ALPHA1: &str = "permguard.api.events.native.v1alpha1";
     /// The archive format `events export` writes.
     pub const EVENTS_EXPORT_V1ALPHA1: &str = "permguard.events.export.v1alpha1";
+    /// The archive format `decisions export` writes (WP-6.3b, owner decision of 2026-10-20): a
+    /// format identifier, never a record or signature domain.
+    pub const DECISIONS_EXPORT_V1: &str = "permguard.decisions.export.v1";
+    /// The languages model's conformance gate, as discovery names the record of each runtime
+    /// (TL-6): a contract identifier, never a record or signature domain.
+    pub const LANGUAGE_CONFORMANCE_V1: &str = "permguard.language.conformance.v1";
 }
 
 /// Media types of ledger objects and transfer bodies.
@@ -181,6 +202,7 @@ pub mod media {
     pub const DOGWOOD_EVENT_SCHEMA: &str = "application/vnd.permguard.dogwood.event-schema";
     pub const DOGWOOD_MACROS: &str = "application/vnd.permguard.dogwood.macros";
     pub const DOGWOOD_PROVIDERS: &str = "application/vnd.permguard.dogwood.providers";
+    pub const DOGWOOD_PROJECTIONS: &str = "application/vnd.permguard.dogwood.projections";
     pub const DOGWOOD_PROVIDER_RHAI: &str = "application/vnd.permguard.dogwood.provider.rhai";
 }
 
@@ -195,6 +217,8 @@ pub mod artifact {
     pub const DOGWOOD_MACROS_V1: &str = "permguard.dogwood.macros.v1";
     pub const DOGWOOD_PROVIDERS_V1: &str = "permguard.dogwood.providers.v1";
     pub const DOGWOOD_PROVIDER_RHAI_V1: &str = "permguard.dogwood.provider.rhai.v1";
+    /// The fields a version 2 partition projects to one side only (TL-5c).
+    pub const DOGWOOD_PROJECTIONS_V1: &str = "permguard.dogwood.projections.v1";
 }
 
 /// Registered partition-input types a request asserts.
@@ -206,6 +230,8 @@ pub mod input {
 /// Registered event types a temporal occurrence carries.
 pub mod event {
     pub const DOGWOOD_V1: &str = "permguard.dogwood.event.v1";
+    /// One canonical field map, projected by the server (TL-5c, owner decision of 2026-10-21).
+    pub const DOGWOOD_V2: &str = "permguard.dogwood.event.v2";
 }
 
 /// Registered producer classes of event streams.
@@ -228,6 +254,9 @@ pub mod capability {
     pub const PDP_V1_PRINCIPAL: &str = "urn:permguard:pdp:v1:principal";
     pub const PDP_V1_STRUCTURED_REASONS: &str = "urn:permguard:pdp:v1:structured-reasons";
     pub const PDP_V1_BOXCARRING: &str = "urn:permguard:pdp:v1:boxcarring";
+    /// A request may ask for a response signed under `data.attest` (WP-6.6b): listed exactly
+    /// when signing is enabled.
+    pub const PDP_V1_SIGNED_RESPONSE: &str = "urn:permguard:pdp:v1:signed-response";
     pub const TEMPORAL_V1ALPHA1_STORE_IN_PAYLOAD: &str =
         "urn:permguard:pdp:temporal:v1alpha1:store-in-payload";
     pub const TEMPORAL_V1ALPHA1_TYPED_EVENTS: &str =
@@ -292,6 +321,9 @@ pub mod format {
     /// The wrapping algorithm of a key-encryption key in a PKCS#11 token (WP-3.2): AES-GCM in
     /// the token, `iv ‖ ciphertext ‖ tag`, the wrap context as associated data.
     pub const PKCS11_KEK_WRAP_V1: &str = "permguard.pkcs11-aes-gcm.v1";
+    /// The release benchmark's report (TS-3): a document `permguard-bench` writes and a release
+    /// publishes, not a file the Host writes or a signature domain.
+    pub const BENCH_REPORT_V1: &str = "permguard.bench.report.v1";
 }
 
 /// The 8-byte magics opening every file the storage library writes (`permguard_host::storage`).
@@ -350,6 +382,10 @@ pub mod kdf {
 pub fn all() -> Vec<(&'static str, &'static str)> {
     vec![
         ("digest.KEY_SET", digest::KEY_SET),
+        ("digest.MIRROR_CLOSURE", digest::MIRROR_CLOSURE),
+        ("digest.SNAPSHOT_INVENTORY", digest::SNAPSHOT_INVENTORY),
+        ("digest.BACKUP_RECOVERY_KEY", digest::BACKUP_RECOVERY_KEY),
+        ("digest.LEDGER_EXPORT_BUNDLE", digest::LEDGER_EXPORT_BUNDLE),
         ("digest.AUDIT_RECORD", digest::AUDIT_RECORD),
         ("digest.AUDIT_PSEUDONYM", digest::AUDIT_PSEUDONYM),
         ("digest.AUDIT_CHECKPOINT", digest::AUDIT_CHECKPOINT),
@@ -438,11 +474,16 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             protected::OPERATION_APPROVAL,
         ),
         ("protected.SNAPSHOT_MANIFEST", protected::SNAPSHOT_MANIFEST),
+        ("protected.DRAIN_RECEIPT", protected::DRAIN_RECEIPT),
         ("protected.LEDGER_EXPORT", protected::LEDGER_EXPORT),
         ("protected.STREAM_RUN", protected::STREAM_RUN),
         ("protected.AUDIT_CHECKPOINT", protected::AUDIT_CHECKPOINT),
         ("protected.DECISION_BATCH", protected::DECISION_BATCH),
         ("protected.EVENT_BATCH", protected::EVENT_BATCH),
+        (
+            "protected.EVENT_IMPORT_CHECKPOINT",
+            protected::EVENT_IMPORT_CHECKPOINT,
+        ),
         ("protected.DECISION_RESPONSE", protected::DECISION_RESPONSE),
         ("protected.NOTP_HEAD", protected::NOTP_HEAD),
         ("record.DECISION_V1", record::DECISION_V1),
@@ -465,6 +506,14 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             "interface.EVENTS_EXPORT_V1ALPHA1",
             interface::EVENTS_EXPORT_V1ALPHA1,
         ),
+        (
+            "interface.DECISIONS_EXPORT_V1",
+            interface::DECISIONS_EXPORT_V1,
+        ),
+        (
+            "interface.LANGUAGE_CONFORMANCE_V1",
+            interface::LANGUAGE_CONFORMANCE_V1,
+        ),
         ("media.NOTP_V1_CBOR", media::NOTP_V1_CBOR),
         ("media.MANIFEST_V1_CBOR", media::MANIFEST_V1_CBOR),
         ("media.POLICY_PREFIX", media::POLICY_PREFIX),
@@ -481,6 +530,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("media.DOGWOOD_EVENT_SCHEMA", media::DOGWOOD_EVENT_SCHEMA),
         ("media.DOGWOOD_MACROS", media::DOGWOOD_MACROS),
         ("media.DOGWOOD_PROVIDERS", media::DOGWOOD_PROVIDERS),
+        ("media.DOGWOOD_PROJECTIONS", media::DOGWOOD_PROJECTIONS),
         ("media.DOGWOOD_PROVIDER_RHAI", media::DOGWOOD_PROVIDER_RHAI),
         ("artifact.CEDAR_SCHEMA_V1", artifact::CEDAR_SCHEMA_V1),
         ("artifact.REGO_SCHEMA_V1", artifact::REGO_SCHEMA_V1),
@@ -502,9 +552,14 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             "artifact.DOGWOOD_PROVIDER_RHAI_V1",
             artifact::DOGWOOD_PROVIDER_RHAI_V1,
         ),
+        (
+            "artifact.DOGWOOD_PROJECTIONS_V1",
+            artifact::DOGWOOD_PROJECTIONS_V1,
+        ),
         ("input.CEDAR_ENTITIES_V1", input::CEDAR_ENTITIES_V1),
         ("input.REGO_DATA_V1", input::REGO_DATA_V1),
         ("event.DOGWOOD_V1", event::DOGWOOD_V1),
+        ("event.DOGWOOD_V2", event::DOGWOOD_V2),
         ("producer.DATA_PLANE_V1", producer::DATA_PLANE_V1),
         ("subject.HOST_V1_PREFIX", subject::HOST_V1_PREFIX),
         ("capability.PDP_V1_PREFIX", capability::PDP_V1_PREFIX),
@@ -528,6 +583,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         (
             "capability.PDP_V1_BOXCARRING",
             capability::PDP_V1_BOXCARRING,
+        ),
+        (
+            "capability.PDP_V1_SIGNED_RESPONSE",
+            capability::PDP_V1_SIGNED_RESPONSE,
         ),
         (
             "capability.TEMPORAL_V1ALPHA1_STORE_IN_PAYLOAD",
@@ -629,6 +688,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("format.SECRET_KEK_WRAP_V1", format::SECRET_KEK_WRAP_V1),
         ("format.TRANSIT_KEK_WRAP_V1", format::TRANSIT_KEK_WRAP_V1),
         ("format.PKCS11_KEK_WRAP_V1", format::PKCS11_KEK_WRAP_V1),
+        ("format.BENCH_REPORT_V1", format::BENCH_REPORT_V1),
         ("magic.JOURNAL_SEGMENT", magic::JOURNAL_SEGMENT),
         ("magic.SNAPSHOT", magic::SNAPSHOT),
         ("magic.TOMBSTONE", magic::TOMBSTONE),

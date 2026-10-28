@@ -445,6 +445,82 @@
         { "label": 4, "name": "tuples", "type": "array<map:zone_tuple>", "occurs": "required", "note": "at most 64, in order" },
         { "label": 5, "name": "resource", "type": "text", "occurs": "required", "note": "the session's resource, canonical, at most 512 bytes; kept per resource as `progress/<membership_id>/<task_id>.<sha256(resource)>.zone` on both sides" }
       ]
+    },
+    "import_request": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "action", "type": "text", "occurs": "required", "note": "`origins` or `batch` (WP-6.2c1)" },
+        { "label": 2, "name": "host_id", "type": "bytes", "occurs": "optional", "note": "with `batch` only: the origin's 16 bytes" },
+        { "label": 3, "name": "run", "type": "bytes", "occurs": "optional", "note": "with `batch` only: the run's 16 bytes" },
+        { "label": 4, "name": "seq", "type": "uint", "occurs": "optional", "note": "with `batch` only: the sequence, from 1, whose batch is asked" }
+      ]
+    },
+    "import_origins": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "checkpoint", "type": "bytes", "occurs": "required", "note": "the `import_checkpoint`, a COSE_Sign1 under the coordinator's `control.attest`, content type `permguard.event.import-checkpoint.v1`" },
+        { "label": 2, "name": "origins", "type": "array<map:import_origin>", "occurs": "required", "note": "every required origin, at most 64, by host_id, each once" }
+      ]
+    },
+    "import_origin": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "host_id", "type": "bytes", "occurs": "required", "note": "the origin's 16 bytes" },
+        { "label": 2, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "its membership with the coordinator, 16 bytes" },
+        { "label": 3, "name": "manifest", "type": "bytes", "occurs": "required", "note": "the manifest in force, its envelope as the coordinator signed it" }
+      ]
+    },
+    "import_checkpoint": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "coordinator", "type": "bytes", "occurs": "required", "note": "the coordinator's host_id, 16 bytes" },
+        { "label": 2, "name": "resource", "type": "text", "occurs": "required", "note": "the ledger the session reads, at most 512 bytes" },
+        { "label": 3, "name": "revision", "type": "bytes", "occurs": "required", "note": "32 bytes: SHA-256 of the required-origin set" },
+        { "label": 4, "name": "origins", "type": "array<map:checkpoint_origin>", "occurs": "required", "note": "every required origin, at most 64, by host_id, each once" },
+        { "label": 5, "name": "issued_at", "type": "uint", "occurs": "required", "note": "the coordinator's clock when it signed" },
+        { "label": 6, "name": "channel_binding", "type": "bytes", "occurs": "required", "note": "32 bytes: the session lease's channel binding" },
+        { "label": 7, "name": "ring_epoch", "type": "uint", "occurs": "required", "note": "the `control.attest` epoch it was signed under" },
+        { "label": 8, "name": "key_set_digest", "type": "bytes", "occurs": "required", "note": "32 bytes: the digest of that key set" }
+      ]
+    },
+    "checkpoint_origin": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "host_id", "type": "bytes", "occurs": "required", "note": "the origin's 16 bytes" },
+        { "label": 2, "name": "runs", "type": "array<map:checkpoint_run>", "occurs": "required", "note": "each run the coordinator holds, by run id, each once; at most 1024 over the checkpoint" },
+        { "label": 3, "name": "pins", "type": "array<map:ring_pin>", "occurs": "required", "note": "the origin's own `data.attest` pins over its membership's manifests, at most 64, none retiring: what its batches verify under (WP-6.2c2a)" }
+      ]
+    },
+    "checkpoint_run": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "run", "type": "bytes", "occurs": "required", "note": "the run's 16 bytes" },
+        { "label": 2, "name": "acked", "type": "uint", "occurs": "required", "note": "the last sequence the coordinator admitted" },
+        { "label": 3, "name": "oldest_retained", "type": "uint", "occurs": "required", "note": "the first sequence it still holds, from 1 to acked + 1" },
+        { "label": 4, "name": "admitted_at", "type": "uint", "occurs": "optional", "note": "the coordinator's clock when it admitted the run's last batch" }
+      ]
+    },
+    "import_state": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "the membership the checkpoint came over, 16 bytes (WP-6.2c2a)" },
+        { "label": 2, "name": "revision", "type": "bytes", "occurs": "required", "note": "32 bytes: the origin set's revision the checkpoint signs" },
+        { "label": 3, "name": "checkpoint", "type": "bytes", "occurs": "required", "note": "the `import_checkpoint` as signed" },
+        { "label": 4, "name": "verified_at", "type": "uint", "occurs": "required", "note": "the member's clock when it verified the checkpoint: what freshness counts from" },
+        { "label": 5, "name": "gaps", "type": "array<map:import_gap>", "occurs": "required", "note": "at most 1024, by origin, run and first sequence, each once" }
+      ]
+    },
+    "import_gap": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "origin", "type": "bytes", "occurs": "required", "note": "the origin's 16 bytes" },
+        { "label": 2, "name": "run", "type": "bytes", "occurs": "required", "note": "the run's 16 bytes" },
+        { "label": 3, "name": "from", "type": "uint", "occurs": "required", "note": "the first sequence missing, from 1" },
+        { "label": 4, "name": "through", "type": "uint", "occurs": "optional", "note": "the last sequence missing, when known" },
+        { "label": 5, "name": "reason", "type": "text", "occurs": "required", "note": "`retention`, `unverifiable` or `fork`" },
+        { "label": 6, "name": "detected_at", "type": "uint", "occurs": "required", "note": "the member's clock when it was first found" },
+        { "label": 7, "name": "revision", "type": "bytes", "occurs": "required", "note": "32 bytes: the origin set's revision it was found under" }
+      ]
     }
   },
   "arrays": {
@@ -457,5 +533,5 @@
       { "position": 1, "name": "evidence", "type": "bytes", "note": "digested under `permguard.membership.assurance-evidence.v1\\n`, never kept" }
     ]
   },
-  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer", "task_progress", "progress_answer", "kept_progress", "last_session", "watch_request", "watch_event", "replay_entry", "ring_statement", "cutover", "acknowledgement", "delivered", "zone_request", "zone_delivery", "zone_receipt"]
+  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer", "task_progress", "progress_answer", "kept_progress", "last_session", "watch_request", "watch_event", "replay_entry", "ring_statement", "cutover", "acknowledgement", "delivered", "zone_request", "zone_delivery", "zone_receipt", "import_request", "import_origins", "import_checkpoint", "import_state"]
 }

@@ -1,0 +1,7 @@
+{
+  "zone_id": "01a178c1-d7af-78ab-9195-c77cd8f078ad",
+  "zone_name": "acme",
+  "ledger_id": "01a178c1-d8d4-7e99-b87f-bad0ddb3a927",
+  "ledger_name": "agent-governance",
+  "server": "http://127.0.0.1:26443"
+}

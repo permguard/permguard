@@ -1,6 +1,6 @@
 {
   "artifact": "Ledger manifest (application/vnd.permguard.manifest.v1+cbor)",
-  "authority": "6-contracts/6-contract-ledger-notp.md#objects (manifest and the partition today row); crates/permguard-objects/src/manifest.rs (KEY_*, META_*, REQ_*, RUNTIME_*, PARTITION_*, ARTIFACT_*, INPUT_*, PROFILE_* constants)",
+  "authority": "6-contracts/6-contract-ledger-notp.md#objects (manifest and the partition row); crates/permguard-objects/src/manifest.rs (KEY_*, META_*, REQ_*, RUNTIME_*, PARTITION_*, ARTIFACT_*, INPUT_*, PROFILE_* constants)",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "manifest": {
@@ -44,7 +44,8 @@
         { "label": 3, "name": "schema", "type": "bool", "occurs": "required", "note": "false whenever artifacts is present" },
         { "label": 4, "name": "input", "type": "map:input", "occurs": "optional", "note": "absent when the partition accepts no input" },
         { "label": 5, "name": "artifacts", "type": "array<map:artifact>", "occurs": "optional", "note": "absent when the partition declares none; types unique" },
-        { "label": 6, "name": "history", "type": "text", "occurs": "optional", "note": "the history scope, today only global" }
+        { "label": 6, "name": "history", "type": "text", "occurs": "optional", "note": "the history scope, today only global" },
+        { "label": 7, "name": "interfaces", "type": "array<text>", "occurs": "optional", "note": "the interface ids the partition promises, sorted and unique, at least one; absent in a legacy manifest, whose interfaces are inferred (WP-7.1)" }
       ]
     },
     "input": {

@@ -1,0 +1,56 @@
+{
+  "folder": "embeddedvirtualdoc",
+  "files": {
+    "test-embeddedvirtualdoc-0976.yaml": {
+      "sha256": "sha256:cdec658af200759f82c9e9a08f3bb4b8520bf2b5d813fe40647b4567fe5b22e4",
+      "cases": [
+        {
+          "note": "embeddedvirtualdoc/deep embedded vdoc",
+          "query": "data.b.c.d.p = x",
+          "modules": [
+            "package b.c.d\n\np contains x if {\n\tdata.a[i] = x\n\tdata.b.c.d.q[x]\n}\n\nq contains x if {\n\tdata.g[j][k] = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "g": {
+              "a": [
+                "1",
+                "0",
+                "0",
+                "0"
+              ],
+              "b": [
+                "0",
+                "2",
+                "0",
+                "0"
+              ],
+              "c": [
+                "0",
+                "0",
+                "0",
+                "4"
+              ]
+            }
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+                "1",
+                "2",
+                "4"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

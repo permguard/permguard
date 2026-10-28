@@ -1,0 +1,70 @@
+{
+  "folder": "regexsplit",
+  "files": {
+    "test-regexsplit-0862.yaml": {
+      "sha256": "sha256:8ac09da08f3f3cf7fd916f3e786c125772b9e4442d2976bb30edfb7859251f3d",
+      "cases": [
+        {
+          "note": "regexsplit/regex.split: empty string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tregex.split(\"^[a-z]+\\\\[[0-9]+\\\\]$\", \"\", [x])\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        }
+      ]
+    },
+    "test-regexsplit-0863.yaml": {
+      "sha256": "sha256:e03526a95f13663d94c3e9b4bb91b41f26bbbdf424c7a446e846428895e2d8c1",
+      "cases": [
+        {
+          "note": "regexsplit/regex.split: non-repeat pattern",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [v, w, x, y] if {\n\tregex.split(\"a\", \"banana\", [v, w, x, y])\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "b",
+                "n",
+                "n",
+                ""
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-regexsplit-0864.yaml": {
+      "sha256": "sha256:d15d9940427d36cfc8d351e97f4e5168a26a06c5ef6e2a5cca19e56f3c5c34ff",
+      "cases": [
+        {
+          "note": "regexsplit/regex.split: repeat pattern",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [v, w] if {\n\tregex.split(\"z+\", \"pizza\", [v, w])\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "pi",
+                "a"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

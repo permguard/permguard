@@ -57,6 +57,7 @@ fn discovery_routes(context: &PlaneContext<'_>) -> Router {
     struct Discovery {
         document: permguard_server::plane::PlaneConfiguration,
         keys: Option<std::sync::Arc<dyn permguard_core::keys::PublicSet>>,
+        health: permguard_core::PlaneHealth,
     }
 
     /// Serialized by the response type, not by hand. A document that could not be rendered is a
@@ -64,7 +65,10 @@ fn discovery_routes(context: &PlaneContext<'_>) -> Router {
     async fn configuration(
         State(state): State<Discovery>,
     ) -> Json<permguard_server::plane::PlaneConfiguration> {
-        Json(state.document)
+        // The phase as it is now, not as it was when the document was composed (WP-7.4a).
+        let mut document = state.document;
+        document.state = state.health.phase().as_str().to_owned();
+        Json(document)
     }
 
     /// Three states, three answers. A composed ring that reads is the JWKS with the cache header
@@ -115,6 +119,7 @@ fn discovery_routes(context: &PlaneContext<'_>) -> Router {
     let state = Discovery {
         document: data_plane_configuration(context),
         keys: crate::handles::public_keys(context),
+        health: context.health(),
     };
 
     Router::new()
@@ -150,22 +155,30 @@ fn data_plane_configuration(
         context.config(),
         permguard_server::plane::PlaneId::Data,
     );
-    configuration.interfaces.insert(
-        permguard_languages::request::INTERFACE.to_owned(),
-        permguard_server::plane::InterfaceLink {
-            configuration: format!("{base}{}", permguard_languages::request::CONFIGURATION_PATH),
-        },
-    );
+    // Every runtime this build carries, and what this deployment does with it: discovery reads the
+    // conformance gate (TL-6), so a caller learns a runtime is not served here, and why, from the
+    // document rather than from a refused load.
+    configuration.languages = authz::languages(context.config());
+    if let Some(link) = permguard_server::plane::InterfaceLink::of(
+        permguard_languages::request::INTERFACE,
+        format!("{base}{}", permguard_languages::request::CONFIGURATION_PATH),
+    ) {
+        configuration
+            .interfaces
+            .insert(permguard_languages::request::INTERFACE.to_owned(), link);
+    }
     // The second interface is listed only when it is served. A plane's discovery document is a
     // promise about what answers here, and listing an interface a caller then cannot reach is
     // exactly the failure the three-layer chain exists to prevent.
-    if temporal::served(context.config()) {
-        configuration.interfaces.insert(
-            permguard_languages::temporal::INTERFACE.to_owned(),
-            permguard_server::plane::InterfaceLink {
-                configuration: format!("{base}{}", temporal::configuration::CONFIGURATION_PATH),
-            },
-        );
+    if temporal::served(context.config())
+        && let Some(link) = permguard_server::plane::InterfaceLink::of(
+            permguard_languages::temporal::INTERFACE,
+            format!("{base}{}", temporal::configuration::CONFIGURATION_PATH),
+        )
+    {
+        configuration
+            .interfaces
+            .insert(permguard_languages::temporal::INTERFACE.to_owned(), link);
     }
 
     configuration
@@ -183,6 +196,8 @@ fn temporal_routes(context: &PlaneContext<'_>) -> Router {
         disclosure: context.config().error_detail(),
         pdp: base_url.clone(),
         base_url,
+        describer: permguard_core::stages::Describer::of_plane(context, "data-plane"),
+        authorization: crate::handles::authorization(context),
     })
 }
 
@@ -229,6 +244,7 @@ impl PlaneModule for DataPlaneModule {
                 decider: authz::decider(context),
                 disclosure: context.config().error_detail(),
                 base_url: authz::base_url(context),
+                describer: permguard_core::stages::Describer::of_plane(context, "data-plane"),
                 authorization: crate::handles::authorization(context),
             }))
             // The temporal interface, when this deployment serves one. Merged rather than always
@@ -308,12 +324,26 @@ impl PlaneModule for DataPlaneModule {
             commit: state.commit,
             health: state.health,
         }));
+        // The evaluation interfaces over gRPC are served only where their partial parity with
+        // REST is permitted (WP-7.5b, IFACE-06): a profile that requires the strict protobuf
+        // decoder, which this build does not have, gets them over REST alone. The plane's own
+        // service above stays.
+        if !evaluation_over_grpc(context) {
+            tracing::warn!(
+                event.name = "data_plane.grpc_evaluation_disabled",
+                component = "data-plane",
+                "the evaluation interfaces are not served over gRPC: the assurance in force \
+                 requires a strict protobuf decoder, and this build has none"
+            );
+            return grpc.routes().into_axum_router();
+        }
         // The same contract as the HTTP surface, field for field: a deployment
         // picks a transport, not a set of semantics.
         grpc.add_service(PolicyDecisionPointServer::new(authz::grpc::PdpApi {
             decider: authz::decider(context),
             disclosure: context.config().error_detail(),
             base_url: authz::base_url(context),
+            describer: permguard_core::stages::Describer::of_plane(context, "data-plane"),
             authorization: crate::handles::authorization(context),
         }));
         // And the temporal interface, on the same terms and only when it is served.
@@ -323,13 +353,22 @@ impl PlaneModule for DataPlaneModule {
                     submitter,
                     disclosure: context.config().error_detail(),
                     base_url: authz::base_url(context),
+                    describer: permguard_core::stages::Describer::of_plane(context, "data-plane"),
                     pdp: authz::base_url(context),
+                    authorization: crate::handles::authorization(context),
                 },
             ));
         }
 
         grpc.routes().into_axum_router()
     }
+}
+
+/// Whether this plane serves its evaluation interfaces over gRPC: not where the assurance in
+/// force requires the strict protobuf decoder (`regulated`, or the control added above
+/// `production`).
+pub(crate) fn evaluation_over_grpc(context: &PlaneContext<'_>) -> bool {
+    context.config().grpc_evaluation_permitted()
 }
 
 /// What every answer about this plane is built from.

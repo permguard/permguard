@@ -45,6 +45,13 @@ use super::value;
 /// The registered name of this event input.
 pub const EVENT_TYPE: &str = permguard_core::domains::event::DOGWOOD_V1;
 
+/// The registered name of the event's version 2: one canonical field map (DOGWOOD-05).
+pub const EVENT_TYPE_V2: &str = permguard_core::domains::event::DOGWOOD_V2;
+
+/// Every registered Dogwood event version, version 1 first: what a store accepts and a plane
+/// advertises, each with its own validator ([`read_typed`]).
+pub const EVENT_TYPES: &[&str] = &[EVENT_TYPE, EVENT_TYPE_V2];
+
 /// The logged field Dogwood files the request principal under.
 pub const CALLER_PRINCIPAL: &str = "callerPrincipal";
 /// The logged field Dogwood files the request resource under.
@@ -136,6 +143,38 @@ pub struct AttributedEntity {
     pub parents: Vec<EntityRef>,
 }
 
+impl Occurrence {
+    /// The bytes this occurrence's content spells: what a warm engine that observed it is charged
+    /// for, scaled by the measured factor (DOGWOOD-08).
+    pub fn weight(&self) -> usize {
+        let reference = |entity: &EntityRef| entity.kind.len() + entity.id.len();
+        let values = |bag: &BTreeMap<String, DogwoodValue>| -> usize {
+            bag.iter()
+                .map(|(key, value)| key.len() + super::value::canonical(value).len())
+                .sum()
+        };
+
+        self.event_id.len()
+            + self.kind.len()
+            + self.action.len()
+            + reference(&self.principal)
+            + reference(&self.resource)
+            + values(&self.logged)
+            + values(&self.request_context)
+            + self
+                .entities
+                .iter()
+                .map(|entity| {
+                    reference(&entity.uid)
+                        + values(&entity.attrs)
+                        + entity.parents.iter().map(reference).sum::<usize>()
+                })
+                .sum::<usize>()
+            + self.occurred_at.len()
+            + self.fields.as_ref().map_or(0, values)
+    }
+}
+
 /// Why an occurrence is not one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Malformed {
@@ -173,6 +212,9 @@ pub struct Occurrence {
     pub logged: BTreeMap<String, DogwoodValue>,
     pub request_context: BTreeMap<String, DogwoodValue>,
     pub entities: Vec<AttributedEntity>,
+    /// The canonical field map of a version 2 occurrence, which the partition projects into
+    /// `logged` and `request_context` by its schemas; `None` for version 1, which carries the two.
+    pub fields: Option<BTreeMap<String, DogwoodValue>>,
     /// The instant, as the canonical text the caller sent.
     pub occurred_at: String,
     /// The same instant as the signed epoch seconds Dogwood's windows are measured in.
@@ -248,9 +290,71 @@ impl OccurrenceBody {
             logged,
             request_context,
             entities,
+            fields: None,
             occurred_at,
             occurred_at_epoch,
         })
+    }
+}
+
+/// One version 2 occurrence, as the wire carries it: version 1's members with one canonical
+/// `fields` map in place of `logged` and `request_context` (DOGWOOD-05).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OccurrenceBodyV2 {
+    #[serde(default)]
+    pub event_id: Option<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub action: Option<String>,
+    #[serde(default)]
+    pub principal: Option<EntityUidBody>,
+    #[serde(default)]
+    pub resource: Option<EntityUidBody>,
+    /// Every field of the occurrence, once: the server builds what the history logs and what the
+    /// request reads from it.
+    #[serde(default)]
+    pub fields: Map<String, Json>,
+    #[serde(default)]
+    pub entities: Vec<EntityBody>,
+    #[serde(default)]
+    pub occurred_at: Option<String>,
+}
+
+impl OccurrenceBodyV2 {
+    /// The occurrence, its fields not yet projected: that needs the partition's schemas.
+    pub fn read(&self) -> Result<Occurrence, Malformed> {
+        let common = OccurrenceBody {
+            event_id: self.event_id.clone(),
+            kind: self.kind.clone(),
+            action: self.action.clone(),
+            principal: self.principal.clone(),
+            resource: self.resource.clone(),
+            logged: Map::new(),
+            request_context: Map::new(),
+            entities: self.entities.clone(),
+            occurred_at: self.occurred_at.clone(),
+        };
+        let mut occurrence = common.read()?;
+        occurrence.fields = Some(bag(&self.fields, "fields")?);
+
+        Ok(occurrence)
+    }
+}
+
+/// Reads a stored or submitted occurrence of either version, by its registered event type.
+pub fn read_typed(event_type: &str, data: &Json) -> Result<Occurrence, String> {
+    match event_type {
+        EVENT_TYPE => serde_json::from_value::<OccurrenceBody>(data.clone())
+            .map_err(|error| error.to_string())?
+            .read()
+            .map_err(|malformed| malformed.to_string()),
+        EVENT_TYPE_V2 => serde_json::from_value::<OccurrenceBodyV2>(data.clone())
+            .map_err(|error| error.to_string())?
+            .read()
+            .map_err(|malformed| malformed.to_string()),
+        other => Err(format!("`{other}` is not a Dogwood event type")),
     }
 }
 
@@ -535,6 +639,47 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// TL-5c: each version by its own reader; version 2 carries no bags and version 1 no map.
+    #[test]
+    fn each_event_version_is_read_by_its_own_contract() {
+        let common = serde_json::json!({
+            "event_id": "e1",
+            "kind": "request",
+            "action": "Acme::Action::Read",
+            "principal": "Acme::User::\"alice\"",
+            "resource": "Acme::Doc::\"d\"",
+            "occurred_at": "2026-10-21T10:00:00Z",
+        });
+        let with = |key: &str, value: Json| {
+            let mut body = common.clone();
+            body[key] = value;
+            body
+        };
+
+        let v1 = read_typed(
+            EVENT_TYPE,
+            &with("logged", serde_json::json!({"input": {"a": 1}})),
+        )
+        .expect("version 1 reads");
+        assert!(v1.fields.is_none());
+        assert!(v1.logged.contains_key("input"));
+        let v2 = read_typed(
+            EVENT_TYPE_V2,
+            &with("fields", serde_json::json!({"input": {"a": 1}})),
+        )
+        .expect("version 2 reads");
+        assert!(v2.logged.is_empty() && v2.request_context.is_empty());
+        assert!(
+            v2.fields
+                .as_ref()
+                .is_some_and(|fields| fields.contains_key("input"))
+        );
+
+        assert!(read_typed(EVENT_TYPE_V2, &with("logged", serde_json::json!({}))).is_err());
+        assert!(read_typed(EVENT_TYPE, &with("fields", serde_json::json!({}))).is_err());
+        assert!(read_typed("permguard.dogwood.event.v3", &common).is_err());
+    }
     use serde_json::json;
 
     fn body(overrides: Json) -> OccurrenceBody {

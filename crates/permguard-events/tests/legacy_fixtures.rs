@@ -122,3 +122,91 @@ fn test_the_v1_event_journal_fixture_is_read_by_the_current_code() {
     }
     verify(&work);
 }
+
+/// WP-6.2d: the fixture is refused while its two records are unacknowledged, and once its shipper
+/// had them acknowledged and no window reads them it migrates into its archive, which the current
+/// journal reads: the same two records, every file but the lock byte for byte.
+#[test]
+fn test_the_v1_event_journal_fixture_migrates_into_its_archive() {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_events::archive::{self, Standing};
+    use permguard_host::storage::volume::Volume;
+
+    let root = std::env::temp_dir().join(format!(
+        "permguard-legacy-event-archive-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    let history = root.join("data/events");
+    let journal = history.join("zone-a/ledger-a");
+    copy_dir(Path::new(FIXTURE), &journal);
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("the volume");
+    // After the records' time: no window reads them.
+    let horizon = permguard_events::index::epoch_seconds("2026-10-02T00:00:00Z").expect("instant");
+    let bounds = Bounds::default();
+
+    // Its two records unshipped: never archived.
+    assert_eq!(
+        archive::standing(&volume, &history, bounds, horizon).expect("read"),
+        Standing::Undrained
+    );
+    archive::archive(
+        &volume,
+        &history,
+        bounds,
+        horizon,
+        AssuranceProfile::Development,
+        None,
+        1_800_000_000,
+    )
+    .expect_err("two records unshipped");
+
+    // Signed and acknowledged through its head, as the legacy shipper leaves it.
+    {
+        let mut opened = Journal::open(&journal, stream(), bounds).expect("the fixture opens");
+        opened.mark_signed(2).expect("signed");
+        opened.acknowledge(2).expect("acknowledged");
+    }
+    assert_eq!(
+        archive::standing(&volume, &history, bounds, horizon).expect("read"),
+        Standing::Drained
+    );
+    let before: Vec<(String, Vec<u8>)> = fs::read_dir(&journal)
+        .expect("the fixture")
+        .map(|entry| entry.expect("an entry"))
+        .filter(|entry| entry.file_type().expect("a type").is_file() && entry.file_name() != "LOCK")
+        .map(|entry| {
+            (
+                entry.file_name().to_string_lossy().into_owned(),
+                fs::read(entry.path()).expect("read"),
+            )
+        })
+        .collect();
+    assert!(before.len() >= 5, "the fixture's files: {}", before.len());
+    archive::archive(
+        &volume,
+        &history,
+        bounds,
+        horizon,
+        AssuranceProfile::Development,
+        None,
+        1_800_000_000,
+    )
+    .expect("archived");
+
+    let archived = root.join(archive::TARGET).join("zone-a/ledger-a");
+    for (name, bytes) in &before {
+        assert_eq!(
+            &fs::read(archived.join(name)).expect("carried"),
+            bytes,
+            "{name} byte for byte"
+        );
+    }
+    assert!(!archived.join("LOCK").exists(), "the lock is dropped");
+    drop(volume);
+    let read = Journal::open(&archived, stream(), bounds).expect("the archive opens");
+    let records = read.read_from(0, 10).expect("the records read");
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[1]["event_id"], "evt-2");
+    let _ = fs::remove_dir_all(root);
+}

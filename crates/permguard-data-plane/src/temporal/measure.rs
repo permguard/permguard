@@ -88,19 +88,22 @@ pub const LAST_SHIPPED: Metric = Metric::gauge(
     "The earliest, across ledgers, of when an event batch last landed on the control plane, in Unix seconds; 0 while no ledger has shipped.",
 );
 
-/// Import rounds, by outcome: `ok`, `quarantined`.
+/// Import rounds, by outcome: `ok`, `quarantined`. Retired with the HTTP pull (WP-6.2c2b2): no
+/// longer emitted, the name kept.
 pub const IMPORTS: Metric = Metric::counter(
     "permguard_temporal_imports_total",
     "Event import rounds, by outcome.",
 );
 
-/// Records imported from other planes, by zone and ledger.
+/// Records imported from other planes, by zone and ledger. Retired with the HTTP pull
+/// (WP-6.2c2b2): no longer emitted, the name kept.
 pub const IMPORTED: Metric = Metric::counter(
     "permguard_temporal_imported_records_total",
     "Event records imported from other planes.",
 );
 
-/// Times a subscription fell behind what the control plane still holds.
+/// Times a subscription fell behind what the control plane still holds. Retired with the HTTP pull
+/// (WP-6.2c2b2): no longer emitted, the name kept; the Host keeps its gaps in the import state.
 ///
 /// Expected retention behaviour rather than corruption — and worth counting, because a
 /// subscription that keeps falling behind is one whose plane is offline longer than the store

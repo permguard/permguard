@@ -1,0 +1,389 @@
+{
+  "folder": "example",
+  "files": {
+    "test-example-1070.yaml": {
+      "sha256": "sha256:423a1a6b0cf89f194178598e4f5407b0bc257b9491945d16be1103c3db48cc5e",
+      "cases": [
+        {
+          "note": "example/public servers",
+          "query": "data.opa.example.public_servers = x",
+          "modules": [
+            "package opa.example\n\npublic_servers contains server if {\n\tserver = data.servers[_]\n\tserver.ports[_] = data.ports[i].id\n\tdata.ports[i].networks[_] = data.networks[j].id\n\tdata.networks[j].public = true\n}\n\nviolations contains server if {\n\tserver = data.servers[_]\n\tserver.protocols[_] = \"http\"\n\tdata.opa.example.public_servers[server]\n}\n"
+          ],
+          "data": {
+            "networks": [
+              {
+                "id": "n1",
+                "public": false
+              },
+              {
+                "id": "n2",
+                "public": false
+              },
+              {
+                "id": "n3",
+                "public": true
+              }
+            ],
+            "ports": [
+              {
+                "id": "p1",
+                "networks": [
+                  "n1"
+                ]
+              },
+              {
+                "id": "p2",
+                "networks": [
+                  "n3"
+                ]
+              },
+              {
+                "id": "p3",
+                "networks": [
+                  "n2"
+                ]
+              }
+            ],
+            "servers": [
+              {
+                "id": "s1",
+                "name": "app",
+                "ports": [
+                  "p1",
+                  "p2",
+                  "p3"
+                ],
+                "protocols": [
+                  "https",
+                  "ssh"
+                ]
+              },
+              {
+                "id": "s2",
+                "name": "db",
+                "ports": [
+                  "p3"
+                ],
+                "protocols": [
+                  "mysql"
+                ]
+              },
+              {
+                "id": "s3",
+                "name": "cache",
+                "ports": [
+                  "p3"
+                ],
+                "protocols": [
+                  "memcache",
+                  "http"
+                ]
+              },
+              {
+                "id": "s4",
+                "name": "dev",
+                "ports": [
+                  "p1",
+                  "p2"
+                ],
+                "protocols": [
+                  "http"
+                ]
+              }
+            ]
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+                {
+                  "id": "s1",
+                  "name": "app",
+                  "ports": [
+                    "p1",
+                    "p2",
+                    "p3"
+                  ],
+                  "protocols": [
+                    "https",
+                    "ssh"
+                  ]
+                },
+                {
+                  "id": "s4",
+                  "name": "dev",
+                  "ports": [
+                    "p1",
+                    "p2"
+                  ],
+                  "protocols": [
+                    "http"
+                  ]
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-example-1071.yaml": {
+      "sha256": "sha256:bb330a410956b95bd28f02649f9e18bdfa572b48c197530d87edc47c4dba27c6",
+      "cases": [
+        {
+          "note": "example/violations",
+          "query": "data.opa.example.violations = x",
+          "modules": [
+            "package opa.example\n\npublic_servers contains server if {\n\tserver = data.servers[_]\n\tserver.ports[_] = data.ports[i].id\n\tdata.ports[i].networks[_] = data.networks[j].id\n\tdata.networks[j].public = true\n}\n\nviolations contains server if {\n\tserver = data.servers[_]\n\tserver.protocols[_] = \"http\"\n\tdata.opa.example.public_servers[server]\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = {{\"id\": \"s1\", \"name\": \"app\", \"ports\": [\"p1\", \"p2\", \"p3\"], \"protocols\": [\"https\", \"ssh\"]}, {\"id\": \"s4\", \"name\": \"dev\", \"ports\": [\"p1\", \"p2\"], \"protocols\": [\"http\"]}}\n}\n"
+          ],
+          "data": {
+            "networks": [
+              {
+                "id": "n1",
+                "public": false
+              },
+              {
+                "id": "n2",
+                "public": false
+              },
+              {
+                "id": "n3",
+                "public": true
+              }
+            ],
+            "ports": [
+              {
+                "id": "p1",
+                "networks": [
+                  "n1"
+                ]
+              },
+              {
+                "id": "p2",
+                "networks": [
+                  "n3"
+                ]
+              },
+              {
+                "id": "p3",
+                "networks": [
+                  "n2"
+                ]
+              }
+            ],
+            "servers": [
+              {
+                "id": "s1",
+                "name": "app",
+                "ports": [
+                  "p1",
+                  "p2",
+                  "p3"
+                ],
+                "protocols": [
+                  "https",
+                  "ssh"
+                ]
+              },
+              {
+                "id": "s2",
+                "name": "db",
+                "ports": [
+                  "p3"
+                ],
+                "protocols": [
+                  "mysql"
+                ]
+              },
+              {
+                "id": "s3",
+                "name": "cache",
+                "ports": [
+                  "p3"
+                ],
+                "protocols": [
+                  "memcache",
+                  "http"
+                ]
+              },
+              {
+                "id": "s4",
+                "name": "dev",
+                "ports": [
+                  "p1",
+                  "p2"
+                ],
+                "protocols": [
+                  "http"
+                ]
+              }
+            ]
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": [
+                {
+                  "id": "s4",
+                  "name": "dev",
+                  "ports": [
+                    "p1",
+                    "p2"
+                  ],
+                  "protocols": [
+                    "http"
+                  ]
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-example-1072.yaml": {
+      "sha256": "sha256:740a0a44bf9ff9a53c26c2531aca6d3d784ba244b03bebba6170f2eeb53b3871",
+      "cases": [
+        {
+          "note": "example/both",
+          "query": "data.opa.example = x",
+          "modules": [
+            "package opa.example\n\npublic_servers contains server if {\n\tserver = data.servers[_]\n\tserver.ports[_] = data.ports[i].id\n\tdata.ports[i].networks[_] = data.networks[j].id\n\tdata.networks[j].public = true\n}\n\nviolations contains server if {\n\tserver = data.servers[_]\n\tserver.protocols[_] = \"http\"\n\tdata.opa.example.public_servers[server]\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = {{\"id\": \"s4\", \"name\": \"dev\", \"ports\": [\"p1\", \"p2\"], \"protocols\": [\"http\"]}}\n}\n"
+          ],
+          "data": {
+            "networks": [
+              {
+                "id": "n1",
+                "public": false
+              },
+              {
+                "id": "n2",
+                "public": false
+              },
+              {
+                "id": "n3",
+                "public": true
+              }
+            ],
+            "ports": [
+              {
+                "id": "p1",
+                "networks": [
+                  "n1"
+                ]
+              },
+              {
+                "id": "p2",
+                "networks": [
+                  "n3"
+                ]
+              },
+              {
+                "id": "p3",
+                "networks": [
+                  "n2"
+                ]
+              }
+            ],
+            "servers": [
+              {
+                "id": "s1",
+                "name": "app",
+                "ports": [
+                  "p1",
+                  "p2",
+                  "p3"
+                ],
+                "protocols": [
+                  "https",
+                  "ssh"
+                ]
+              },
+              {
+                "id": "s2",
+                "name": "db",
+                "ports": [
+                  "p3"
+                ],
+                "protocols": [
+                  "mysql"
+                ]
+              },
+              {
+                "id": "s3",
+                "name": "cache",
+                "ports": [
+                  "p3"
+                ],
+                "protocols": [
+                  "memcache",
+                  "http"
+                ]
+              },
+              {
+                "id": "s4",
+                "name": "dev",
+                "ports": [
+                  "p1",
+                  "p2"
+                ],
+                "protocols": [
+                  "http"
+                ]
+              }
+            ]
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": {
+                "public_servers": [
+                  {
+                    "id": "s1",
+                    "name": "app",
+                    "ports": [
+                      "p1",
+                      "p2",
+                      "p3"
+                    ],
+                    "protocols": [
+                      "https",
+                      "ssh"
+                    ]
+                  },
+                  {
+                    "id": "s4",
+                    "name": "dev",
+                    "ports": [
+                      "p1",
+                      "p2"
+                    ],
+                    "protocols": [
+                      "http"
+                    ]
+                  }
+                ],
+                "violations": [
+                  {
+                    "id": "s4",
+                    "name": "dev",
+                    "ports": [
+                      "p1",
+                      "p2"
+                    ],
+                    "protocols": [
+                      "http"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

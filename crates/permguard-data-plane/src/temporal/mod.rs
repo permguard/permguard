@@ -46,8 +46,8 @@
 //! | [`streams`] | the journals, one per ledger: identity, dedup, watermarks, replay |
 //! | [`shipper`] | one round of shipping a contiguous signed batch to the control plane |
 //! | [`service`] | the loop that runs those rounds, and the eviction that follows them |
-//! | [`pull`] | importing verified history other planes recorded, when a deployment opts in |
-//! | [`mod@imports`] | where that history lives, and the two kinds of duplicate it is deduplicated by |
+//! | [`imported`] | the history the Host imports over `events.import`, read for shared decisions |
+//! | [`mod@imports`] | what the retired HTTP pull imported, read-only until it is archived |
 //! | [`submit`] | the one path both transports call |
 //! | [`configuration`] | what this plane publishes about the interface |
 //! | [`http`] / [`grpc`] | the two bindings, which share the path above and add nothing to it |
@@ -55,15 +55,19 @@
 
 pub mod configuration;
 pub mod grpc;
+pub mod host;
 pub mod http;
+pub mod imported;
 pub mod imports;
+pub mod logical;
 pub mod measure;
-pub mod pull;
 pub mod sequencer;
 pub mod service;
 pub mod shipper;
 pub mod streams;
 pub mod submit;
+#[doc(hidden)]
+pub mod testing;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -74,6 +78,10 @@ use permguard_events::journal::Bounds;
 
 use streams::Streams;
 use submit::Submitter;
+
+/// Where the plane keeps what it remembers of each ledger on the Host's event stream, below the
+/// working directory (WP-6.2a).
+pub const PLANE_DIRECTORY: &str = "planes/data/temporal";
 
 /// The one submitter this process has.
 ///
@@ -102,13 +110,23 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
             if !served(config) {
                 return None;
             }
-            let producer_id = config.events_producer_id().trim().to_owned();
-            if producer_id.is_empty() {
-                // Refused rather than defaulted. The startup check below says so before the
-                // process gets this far; this is the second line of the same rule, so a build that
-                // reached here without it does not invent a producer identity.
+            let unavailable = |why: &str| {
+                tracing::error!(
+                    event.name = "temporal.log_unavailable",
+                    component = "temporal",
+                    "the temporal interface cannot record its events: {why}"
+                );
+            };
+            // The producer is the Host's (WP-6.2a, owner decisions of 2026-10-18): its stream
+            // engine, its id and its run; no configured producer id is read.
+            let Some(producer) = crate::handles::event_producer(context) else {
+                unavailable("the Host composes no stream engine producing `data/events`");
                 return None;
-            }
+            };
+            let Some(host_id) = crate::handles::host_id(context) else {
+                unavailable("the Host composes no identity to name the event stream with");
+                return None;
+            };
             let directory: PathBuf = config.events_directory();
             let bounds = Bounds {
                 max_bytes: config.events_max_bytes(),
@@ -119,16 +137,30 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
                 clock_skew: config.events_clock_skew(),
             };
 
+            // The legacy journals and the retired pull's store, archived by the volume once no
+            // loaded window reads them (WP-6.2d): never opened again, their old generation left
+            // as `migrate finalize` finds it.
+            let archived =
+                permguard_events::archive::archived(crate::handles::events_legacy_layout(context));
             let submitter = Submitter::new(
                 crate::authz::decider(context),
                 Arc::new(
-                    Streams::with_group_commit(
+                    match Streams::with_group_commit(
                         directory.clone(),
-                        producer_id,
+                        config.working_dir().join(PLANE_DIRECTORY),
+                        streams::HostSide { producer, host_id },
                         bounds,
                         config.events_group_commit_delay(),
-                    )
-                    .with_metrics(context.metrics().clone()),
+                    ) {
+                        Ok(streams) if archived => streams
+                            .without_legacy()
+                            .with_metrics(context.metrics().clone()),
+                        Ok(streams) => streams.with_metrics(context.metrics().clone()),
+                        Err(error) => {
+                            unavailable(&error.to_string());
+                            return None;
+                        }
+                    },
                 ),
                 crate::blocking::shared(context),
                 context.metrics().clone(),
@@ -137,16 +169,91 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
             // turning it on changes what the policies mean, and that is a decision rather than a
             // default that shifts when a second plane appears.
             let consistency = config.events_pull_mode();
-            let submitter = match consistency.is_shared() {
-                true => submitter.with_shared_history(
+            let submitter = match (consistency.is_shared(), archived) {
+                (true, false) => submitter.with_shared_history(
                     consistency,
                     imports(config),
                     config.events_pull_max_staleness(),
                 ),
-                false => submitter,
+                (true, true) => {
+                    submitter.with_shared_mode(consistency, config.events_pull_max_staleness())
+                }
+                (false, _) => submitter,
             };
+            // The origins the member Host imports over `events.import`, from its consumer
+            // (WP-6.2c2b1): what a shared mode decides on and measures its freshness from.
+            let submitter = match (
+                consistency.is_shared(),
+                crate::handles::event_consumer(context),
+            ) {
+                (true, Some(consumer)) => match imported::Imported::new(
+                    consumer,
+                    host_id,
+                    config.working_dir().join(PLANE_DIRECTORY),
+                ) {
+                    Ok(imported) => {
+                        // The local half of the logical index reads this plane's own journal
+                        // (WP-6.4b).
+                        let local = Arc::clone(submitter.streams()) as Arc<dyn imported::Local>;
+                        submitter.with_imported(Arc::new(imported.with_local(local)))
+                    }
+                    Err(error) => {
+                        unavailable(&error.to_string());
+                        return None;
+                    }
+                },
+                (true, None) => {
+                    // Said once: the freshness in force is the HTTP pull's last read, not a
+                    // verified checkpoint (after the review).
+                    tracing::warn!(
+                        event.name = "temporal.import_unavailable",
+                        component = "temporal",
+                        "a shared mode with no Host consumer of `data/events`: no import reaches \
+                         this plane, so `shared-bounded` refuses every decision and \
+                         `shared-eventual` decides on its own history and what the retired HTTP \
+                         pull imported before"
+                    );
+                    submitter
+                }
+                _ => submitter,
+            };
+            // The warm-state budget and the replay plan the deployment states (TL-5).
+            let submitter = submitter
+                .with_warm(permguard_languages::warm::Budget::new(
+                    permguard_languages::warm::Limits {
+                        host: config.events_warm_bytes(),
+                        zone: config.events_warm_zone_bytes(),
+                        partition: config.events_warm_partition_bytes(),
+                    },
+                ))
+                .with_replay(submit::ReplayPlan::of(config));
+            let submitter = Arc::new(submitter);
+            // Prewarm, in the background and claiming nothing: readiness is untouched, and a
+            // submission that arrives first replays its own history (DOGWOOD-03).
+            let prewarm = config.events_replay_prewarm();
+            if prewarm > 0 {
+                let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+                    tracing::warn!(
+                        event.name = "temporal.prewarm_skipped",
+                        component = "temporal",
+                        "`events.replay.prewarm` is set and no runtime is running to replay in: \
+                         histories are replayed by the submissions that need them"
+                    );
+                    return Some(submitter);
+                };
+                let warming = Arc::clone(&submitter);
+                runtime.spawn(async move {
+                    let warmed = warming.prewarm(prewarm).await;
+                    tracing::info!(
+                        event.name = "temporal.prewarmed",
+                        component = "temporal",
+                        warmed,
+                        "recently used histories replayed after load"
+                    );
+                });
+            }
 
-            Some(Arc::new(submitter))
+            Some(submitter)
         })
         .clone()
 }
@@ -159,7 +266,9 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
 /// would place it inside this plane's own sequence and hash chain, which would be a claim that
 /// this plane recorded it — and the next batch this plane signed would attest that claim.
 pub fn imports(config: &permguard_core::Config) -> Arc<imports::Imports> {
-    let root = config.events_directory().join("pull");
+    let root = config
+        .events_directory()
+        .join(permguard_events::archive::PULL);
     let stores = IMPORTS.get_or_init(|| Mutex::new(BTreeMap::new()));
     let mut stores = match stores.lock() {
         Ok(stores) => stores,
@@ -232,84 +341,27 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
             config.events_pull_mode().as_str()
         );
     }
-    if config.events_pull_mode().is_shared() {
-        let sources = config.events_pull_producer_keys();
-        if sources.is_empty() {
+    // The HTTP pull is retired (WP-6.2c2b2, owner decision of 2026-10-19): the imported history
+    // arrives over `events.import`, verified under the membership's pins. A configuration still
+    // naming its key files is refused, so no deployment believes they are in force.
+    if config.events_pull_producer_keys_declared() {
+        anyhow::bail!(
+            "`dataPlane.events.pull.producer_keys` is retired: the history a shared mode decides \
+             on is imported by the Host over `events.import`, from its coordinator, verified \
+             under the membership's pinned rings. Remove it"
+        );
+    }
+    // One ledger, one import: a ledger named twice is a configuration mistake.
+    let mut subscribed = std::collections::BTreeSet::new();
+    for subscription in config.events_pull_ledgers() {
+        if !subscribed.insert((&subscription.zone, &subscription.ledger)) {
             anyhow::bail!(
-                "`dataPlane.events.pull.mode` is `{}` and no producer trust is configured. Name \
-                 each accepted producer and its zone/ledger scope under \
-                 `dataPlane.events.pull.producer_keys`; imported history is never verified \
-                 against an unbound key list",
-                config.events_pull_mode().as_str()
+                "the shared event ledger `{}/{}` is declared more than once under \
+                 `dataPlane.events.pull.ledgers`: name it once",
+                subscription.zone,
+                subscription.ledger
             );
         }
-        for source in sources {
-            if source.path.trim().is_empty()
-                || source.producer.trim().is_empty()
-                || source.zone.trim().is_empty()
-                || source.ledger.trim().is_empty()
-                || source.producer == "*"
-            {
-                anyhow::bail!(
-                    "every pull producer key names a non-empty `path`, exact `producer`, and \
-                    `zone`/`ledger` (which may be `*`)"
-                );
-            }
-            let resolved = config.working_dir().join(&source.path);
-            let text = std::fs::read_to_string(&resolved).map_err(|error| {
-                anyhow::anyhow!(
-                    "reading pull producer `{}` from {}: {error}",
-                    source.producer,
-                    resolved.display()
-                )
-            })?;
-            let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
-                anyhow::anyhow!("parsing pull producer keys {}: {error}", resolved.display())
-            })?;
-            let set = parsed.get("keys").cloned().unwrap_or(parsed);
-            let keys: Vec<permguard_core::Jwk> = serde_json::from_value(set).map_err(|error| {
-                anyhow::anyhow!("{} is not a JWKS: {error}", resolved.display())
-            })?;
-            if keys.is_empty() {
-                anyhow::bail!(
-                    "pull producer `{}` publishes no keys in {}",
-                    source.producer,
-                    resolved.display()
-                );
-            }
-        }
-        let mut subscribed = std::collections::BTreeSet::new();
-        for subscription in config.events_pull_ledgers() {
-            if !subscribed.insert((&subscription.zone, &subscription.ledger)) {
-                anyhow::bail!(
-                    "the shared event subscription `{}/{}` is declared more than once. One tenant \
-                     has one cursor and one canonical event-type selection: combine its types in \
-                     one entry",
-                    subscription.zone,
-                    subscription.ledger
-                );
-            }
-            let covered = sources.iter().any(|source| {
-                (source.zone == "*" || source.zone == subscription.zone)
-                    && (source.ledger == "*" || source.ledger == subscription.ledger)
-            });
-            if !covered {
-                anyhow::bail!(
-                    "the shared event subscription `{}/{}` has no producer key authorized for \
-                     that tenant. Add a bound entry under \
-                     `dataPlane.events.pull.producer_keys`, or remove the subscription",
-                    subscription.zone,
-                    subscription.ledger
-                );
-            }
-        }
-    }
-    if config.events_producer_id().trim().is_empty() {
-        anyhow::bail!(
-            "the temporal interface is enabled and `dataPlane.events.producer_id` is not set. A \
-             producer id owns a hash chain: two planes sharing one would each append to a stream \
-             the other also claims, and neither history could then be verified. Name this plane"
-        );
     }
     // The retention floor has to cover Dogwood's own default look-back plus what a journal must
     // allow for lateness and skew, or the first ledger loaded would be refused at its first
@@ -334,4 +386,26 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Authorizes `event.submit` on the store `request` names, before anything is read or written,
+/// and answers the source the occurrence is recorded under with the ids authorized (WP-6.2a,
+/// owner decision of 2026-10-18): the principal the gate authorized, never a value the caller
+/// writes.
+pub(crate) fn gate(
+    authorization: &permguard_host::composition::Authorization,
+    actor: &permguard_core::authz::Actor,
+    root: &std::path::Path,
+    request: &permguard_languages::temporal::SubmitRequest,
+) -> Result<(String, Option<(String, String)>), permguard_core::AccessDenial> {
+    let store = request.store.as_ref();
+    let authorized = crate::authz::gate::submission(
+        authorization,
+        actor,
+        root,
+        store.and_then(|store| store.zone.as_deref()),
+        store.and_then(|store| store.ledger.as_deref()),
+    )?;
+    let source = actor.principal()?.to_string();
+    Ok((source, authorized))
 }

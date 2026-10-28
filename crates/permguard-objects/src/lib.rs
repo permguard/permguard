@@ -26,9 +26,11 @@ pub mod limits;
 pub mod manifest;
 pub mod object;
 pub mod policy_id;
+pub mod refstate;
 pub mod semver;
 pub mod statement;
 
 pub use digest::Digest;
 pub use object::{Blob, Commit, Kind, Tree, TreeEntry};
+pub use refstate::RefState;
 pub use statement::{Freshness, HeadStatement};

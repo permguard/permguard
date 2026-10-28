@@ -1,10 +1,15 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The writing half: a decision becomes a record, at the position the chain
-//! demands, on a disk that will still have it after a restart.
+//! The version 1 spool's writing half, and the record bodies both logs share.
 //!
-//! # What happens per decision
+//! Since WP-6.1 a plane records on the Host's stream ([`super::host`]): this journal is
+//! opened only to drain a spool an earlier release left ([`Journal::drain`], every write
+//! refused), and by the tests of the spool itself. The record bodies below —
+//! [`decision_body`], [`marker_body`], the commitments and the sampling — are what the Host log
+//! writes too.
+//!
+//! # What happened per decision, on the spool
 //!
 //! ```text
 //! sampled out? ──► nothing is written, and nothing is claimed
@@ -61,6 +66,11 @@ pub struct Decided<'a> {
     pub zone: &'a str,
     /// The ledger that answered.
     pub ledger: &'a str,
+    /// The zone's id: with the ledger's, the resource of the Host stream the record lands on
+    /// (WP-6.1).
+    pub zone_id: &'a str,
+    /// The ledger's id.
+    pub ledger_id: &'a str,
     /// The zone and the ledger as their 16 UUID bytes: the scope input tags are keyed by
     /// (WP-3.3). Absent for a ledger whose ids are not UUIDs: its tags are then `unavailable`.
     pub scope: Option<permguard_decisions::commitment::Scope>,
@@ -110,6 +120,14 @@ pub struct Decided<'a> {
     pub latency_us: u64,
     /// The occurrence this decision was made about, for a temporal one.
     pub event: Option<permguard_decisions::record::EventRef>,
+    /// The exact interface the question was asked through (IFACE-05).
+    pub interface: Option<String>,
+    /// Who asked, as the transport authenticated them, already pseudonymised (IFACE-04).
+    pub actor: Option<(String, String)>,
+    /// The canonical question, for the commitment: never written in clear.
+    pub question: Option<Value>,
+    /// Each partition of the profile and its runtime's descriptor digest.
+    pub descriptors: std::collections::BTreeMap<String, String>,
 }
 
 /// The members that say *what* was decided, as opposed to the occasion of
@@ -125,7 +143,11 @@ pub struct Decided<'a> {
 /// and the last two are correlation the caller chose; none of them changes what
 /// was asked or what was answered. The context itself is still covered, because
 /// `inputs` commits to the whole of it.
-const DECIDES: [&str; 10] = [
+///
+/// The evidence binding of IFACE-04 and IFACE-05 is part of it: the same handle under another
+/// interface, another actor, another question or another runtime is another decision. A record
+/// written before those members carries none, and its identity is what it always was.
+const DECIDES: [&str; 14] = [
     "id",
     "store",
     "subject",
@@ -136,6 +158,10 @@ const DECIDES: [&str; 10] = [
     "decision",
     "policies",
     "reason",
+    "interface",
+    "actor",
+    "question",
+    "descriptors",
 ];
 
 /// How a decision record names the logical write it is.
@@ -184,7 +210,8 @@ pub enum Written {
     SampledOut,
     /// The spool reached a bound, so the stream ended and a new one began.
     ///
-    /// The decision itself was still answered — this is the `open` behaviour.
+    /// The decision itself was still answered: the version 1 spool's `open` behaviour, which no
+    /// plane configures since WP-6.1.
     Discontinued {
         /// How many written records were discarded.
         lost: u64,
@@ -428,6 +455,8 @@ pub struct Journal {
     group: Arc<GroupCommit>,
     /// The flusher, joined on drop so a test tears down cleanly.
     flusher: Option<std::thread::JoinHandle<()>>,
+    /// Set on a legacy spool opened only for its shipper (WP-6.1): nothing is written to it.
+    draining: bool,
 }
 
 impl Drop for Journal {
@@ -447,6 +476,58 @@ impl Journal {
     /// rate, build or commitment key, and a reader cannot say what the log
     /// claims to be complete about.
     pub fn open(
+        directory: impl AsRef<std::path::Path>,
+        pdp_id: impl Into<String>,
+        epoch: Epoch,
+        when_full: WhenFull,
+        bounds: Bounds,
+        commitment: Commitment,
+        metrics: Metrics,
+    ) -> Result<Self, SpoolError> {
+        let journal = Self::opened(
+            directory, pdp_id, epoch, when_full, bounds, commitment, metrics,
+        )?;
+        journal.mark(None)?;
+        journal.publish();
+
+        Ok(journal)
+    }
+
+    /// Opens a legacy version 1 spool for its shipper alone, writing nothing (WP-6.1, owner
+    /// decision of 2026-10-16): what it holds unacknowledged is shipped until it is empty, and
+    /// every write is refused, decisions being recorded on the Host's stream.
+    pub fn drain(
+        directory: impl AsRef<std::path::Path>,
+        bounds: Bounds,
+        metrics: Metrics,
+    ) -> Result<Self, SpoolError> {
+        let mut journal = Self::opened(
+            directory,
+            String::new(),
+            Epoch {
+                version: String::new(),
+                build: None,
+                engines: BTreeMap::new(),
+                sampling: "1.0".to_owned(),
+            },
+            WhenFull::Closed,
+            bounds,
+            Commitment::with_scoped_mac(String::new(), |_, _| None),
+            metrics,
+        )?;
+        journal.draining = true;
+        journal.publish();
+
+        Ok(journal)
+    }
+
+    /// Whether the spool holds anything its shipper has still to send: an unacknowledged record,
+    /// or the terminal record of a stream that ended.
+    pub fn holds_unshipped(&self) -> Result<bool, SpoolError> {
+        Ok(!self.pending(1)?.is_empty())
+    }
+
+    fn opened(
         directory: impl AsRef<std::path::Path>,
         pdp_id: impl Into<String>,
         epoch: Epoch,
@@ -477,9 +558,8 @@ impl Journal {
             state: spool,
             group,
             flusher: Some(flusher),
+            draining: false,
         };
-        journal.mark(None)?;
-        journal.publish();
 
         Ok(journal)
     }
@@ -508,7 +588,10 @@ impl Journal {
     pub fn record(&self, decided: &Decided<'_>) -> Result<Written, SpoolError> {
         // Denies and errors are never sampled, whatever the rate says: a log
         // that drops refusals is not an audit trail.
-        if decided.permit && !self.keep_permit(decided.id) {
+        if self.draining {
+            return Err(drained());
+        }
+        if decided.permit && !keeps_permit(self.permit_rate, decided.id) {
             self.metrics.count(&measure::SAMPLED_OUT, &[]);
             return Ok(Written::SampledOut);
         }
@@ -602,6 +685,9 @@ impl Journal {
     /// A rate declared only in a batch envelope would leave the records that
     /// straddle a reload describing themselves two ways.
     pub fn re_mark(&mut self, epoch: Epoch) -> Result<(), SpoolError> {
+        if self.draining {
+            return Err(drained());
+        }
         if epoch == self.epoch {
             return Ok(());
         }
@@ -829,17 +915,7 @@ impl Journal {
             seq,
             prev,
             at: now(),
-            body: Body::Marker(Box::new(MarkerBody {
-                predecessor,
-                pdp: self.build(),
-                sampling: Sampling {
-                    permits: self.epoch.sampling.clone(),
-                },
-                commitments: Commitments {
-                    alg: commitment::COMMITMENT_ALGORITHM.to_owned(),
-                    key_version: self.commitment.version().to_owned(),
-                },
-            })),
+            body: marker_body(&self.epoch, &self.commitment, predecessor),
         }
         .to_value()
         .map_err(|error| SpoolError::Malformed(error.to_string()))
@@ -859,59 +935,7 @@ impl Journal {
             seq,
             prev,
             at: decided.at.clone(),
-            body: Body::Decision(Box::new(DecisionBody {
-                id: decided.id.to_owned(),
-                pdp: Build {
-                    version: self.epoch.version.clone(),
-                    build: None,
-                    engines: None,
-                },
-                store: StoreRef {
-                    zone: decided.zone.to_owned(),
-                    ledger: decided.ledger.to_owned(),
-                    commit: decided.commit.to_owned(),
-                    counter: decided.counter,
-                    profile: decided.profile.to_owned(),
-                },
-                subject: party(
-                    &decided.subject,
-                    Self::normalized_map(decided.subject_properties.clone()),
-                ),
-                resource: party(
-                    &decided.resource,
-                    Self::normalized_map(decided.resource_properties.clone()),
-                ),
-                action: ActionRef {
-                    name: decided.action.clone(),
-                },
-                principal: decided
-                    .principal
-                    .as_ref()
-                    .map(|principal| party(principal, None)),
-                inputs: Inputs {
-                    context: self.commit_to(decided.scope.as_ref(), decided.context.as_ref()),
-                    partition_inputs: self
-                        .commit_to(decided.scope.as_ref(), decided.partition_inputs.as_ref()),
-                    absent: decided.absent_inputs.clone(),
-                    external: Vec::new(),
-                },
-                decision: decided.permit,
-                outcome: Some(decided.outcome),
-                causes: (!decided.causes.is_empty())
-                    .then(|| decided.causes.iter().map(|&code| code.to_owned()).collect()),
-                policies: decided.policies.clone(),
-                reason: Reason {
-                    code: decided.reason.clone(),
-                },
-                trace: decided.trace.as_ref().map(|(trace_id, span_id)| Trace {
-                    trace_id: trace_id.clone(),
-                    span_id: span_id.clone(),
-                }),
-                request_id: decided.request_id.clone(),
-                context: Self::normalized_map(decided.included_context.clone()),
-                latency_us: decided.latency_us,
-                event: decided.event.clone(),
-            })),
+            body: decision_body(&self.epoch, &self.commitment, decided),
         }
         .to_value()
         .map_err(|error| SpoolError::Malformed(error.to_string()))
@@ -935,74 +959,6 @@ impl Journal {
         }
         .to_value()
         .map_err(|error| SpoolError::Malformed(error.to_string()))
-    }
-
-    fn build(&self) -> Build {
-        Build {
-            version: self.epoch.version.clone(),
-            build: self.epoch.build.clone(),
-            engines: if self.epoch.engines.is_empty() {
-                None
-            } else {
-                Some(self.epoch.engines.clone())
-            },
-        }
-    }
-
-    /// Commits to a caller-supplied value, whatever it carries.
-    ///
-    /// Normalised first, so the commitment is **total**: a caller who put a
-    /// float in the context must not be able to make the record silently
-    /// non-committal about what the decision saw — that would hand whoever is
-    /// being audited a way to degrade their own audit trail.
-    fn commit_to(
-        &self,
-        scope: Option<&permguard_decisions::commitment::Scope>,
-        value: Option<&Value>,
-    ) -> Option<String> {
-        value.and_then(|value| {
-            self.commitment
-                .commit_in(scope, &permguard_decisions::jcs::normalized(value))
-                .ok()
-        })
-    }
-
-    /// A caller-supplied map, made canonicalisable.
-    ///
-    /// The `include`d cleartext fields travel inside the record, and the
-    /// record is digested canonically: a float among them would otherwise fail
-    /// the append — a refusal (`closed`) or an unrecorded decision (`open`)
-    /// that the caller chose the trigger for.
-    fn normalized_map(
-        map: Option<serde_json::Map<String, Value>>,
-    ) -> Option<serde_json::Map<String, Value>> {
-        map.map(|map| {
-            map.into_iter()
-                .map(|(key, value)| {
-                    let value = permguard_decisions::jcs::normalized(&value);
-                    (key, value)
-                })
-                .collect()
-        })
-    }
-
-    /// Whether this permit is one of the recorded ones.
-    ///
-    /// Derived from the decision's own handle rather than from a random draw,
-    /// so the same decision is sampled the same way wherever the question is
-    /// asked again — and so a plane cannot be made to record more by retrying.
-    fn keep_permit(&self, id: &str) -> bool {
-        if self.permit_rate >= 1.0 {
-            return true;
-        }
-        if self.permit_rate <= 0.0 {
-            return false;
-        }
-        let bucket = id.bytes().fold(0u64, |hash, byte| {
-            hash.wrapping_mul(31).wrapping_add(u64::from(byte))
-        });
-
-        (bucket % 10_000) < (self.permit_rate * 10_000.0) as u64
     }
 
     fn publish(&self) {
@@ -1074,6 +1030,173 @@ fn flush_loop(spool: &Mutex<Spool>, group: &GroupCommit) {
     }
 }
 
+/// What the Journal of a drained legacy spool answers a write: never one (WP-6.1).
+fn drained() -> SpoolError {
+    SpoolError::Malformed(
+        "a legacy spool is only drained by its shipper; decisions are recorded on the Host's \
+         stream"
+            .to_owned(),
+    )
+}
+
+/// The build an epoch declares.
+fn build_of(epoch: &Epoch) -> Build {
+    Build {
+        version: epoch.version.clone(),
+        build: epoch.build.clone(),
+        engines: if epoch.engines.is_empty() {
+            None
+        } else {
+            Some(epoch.engines.clone())
+        },
+    }
+}
+
+/// The body of the marker that governs the records after it.
+pub(super) fn marker_body(
+    epoch: &Epoch,
+    commitment: &Commitment,
+    predecessor: Option<Predecessor>,
+) -> Body {
+    Body::Marker(Box::new(MarkerBody {
+        predecessor,
+        pdp: build_of(epoch),
+        sampling: Sampling {
+            permits: epoch.sampling.clone(),
+        },
+        commitments: Commitments {
+            alg: commitment::COMMITMENT_ALGORITHM.to_owned(),
+            key_version: commitment.version().to_owned(),
+        },
+    }))
+}
+
+/// The body of one decision's record.
+pub(super) fn decision_body(epoch: &Epoch, commitment: &Commitment, decided: &Decided<'_>) -> Body {
+    Body::Decision(Box::new(DecisionBody {
+        id: decided.id.to_owned(),
+        pdp: Build {
+            version: epoch.version.clone(),
+            build: None,
+            engines: None,
+        },
+        store: StoreRef {
+            zone: decided.zone.to_owned(),
+            ledger: decided.ledger.to_owned(),
+            commit: decided.commit.to_owned(),
+            counter: decided.counter,
+            profile: decided.profile.to_owned(),
+        },
+        subject: party(
+            &decided.subject,
+            normalized_map(decided.subject_properties.clone()),
+        ),
+        resource: party(
+            &decided.resource,
+            normalized_map(decided.resource_properties.clone()),
+        ),
+        action: ActionRef {
+            name: decided.action.clone(),
+        },
+        principal: decided
+            .principal
+            .as_ref()
+            .map(|principal| party(principal, None)),
+        inputs: Inputs {
+            context: commit_to(commitment, decided.scope.as_ref(), decided.context.as_ref()),
+            partition_inputs: commit_to(
+                commitment,
+                decided.scope.as_ref(),
+                decided.partition_inputs.as_ref(),
+            ),
+            absent: decided.absent_inputs.clone(),
+            external: Vec::new(),
+        },
+        decision: decided.permit,
+        outcome: Some(decided.outcome),
+        causes: (!decided.causes.is_empty())
+            .then(|| decided.causes.iter().map(|&code| code.to_owned()).collect()),
+        policies: decided.policies.clone(),
+        reason: Reason {
+            code: decided.reason.clone(),
+        },
+        trace: decided.trace.as_ref().map(|(trace_id, span_id)| Trace {
+            trace_id: trace_id.clone(),
+            span_id: span_id.clone(),
+        }),
+        request_id: decided.request_id.clone(),
+        context: normalized_map(decided.included_context.clone()),
+        latency_us: decided.latency_us,
+        event: decided.event.clone(),
+        interface: decided.interface.clone(),
+        actor: decided.actor.as_ref().map(|actor| party(actor, None)),
+        // Committed as `inputs` are, under the same key and with the same caveat: without the
+        // ledger's key it reads `unavailable`. `commit_to` normalises first, so canonicalising
+        // cannot fail and the member is never silently dropped.
+        question: commit_to(
+            commitment,
+            decided.scope.as_ref(),
+            decided.question.as_ref(),
+        ),
+        descriptors: (!decided.descriptors.is_empty()).then(|| decided.descriptors.clone()),
+    }))
+}
+
+/// Commits to a caller-supplied value, whatever it carries.
+///
+/// Normalised first, so the commitment is **total**: a caller who put a
+/// float in the context must not be able to make the record silently
+/// non-committal about what the decision saw — that would hand whoever is
+/// being audited a way to degrade their own audit trail.
+fn commit_to(
+    commitment: &Commitment,
+    scope: Option<&permguard_decisions::commitment::Scope>,
+    value: Option<&Value>,
+) -> Option<String> {
+    value.and_then(|value| {
+        commitment
+            .commit_in(scope, &permguard_decisions::jcs::normalized(value))
+            .ok()
+    })
+}
+
+/// A caller-supplied map, made canonicalisable.
+///
+/// The `include`d cleartext fields travel inside the record, and the
+/// record is digested canonically: a float among them would otherwise fail
+/// the append — a refusal that the caller chose the trigger for.
+fn normalized_map(
+    map: Option<serde_json::Map<String, Value>>,
+) -> Option<serde_json::Map<String, Value>> {
+    map.map(|map| {
+        map.into_iter()
+            .map(|(key, value)| {
+                let value = permguard_decisions::jcs::normalized(&value);
+                (key, value)
+            })
+            .collect()
+    })
+}
+
+/// Whether the permit `id` is one of the recorded ones at `rate`.
+///
+/// Derived from the decision's own handle rather than from a random draw,
+/// so the same decision is sampled the same way wherever the question is
+/// asked again — and so a plane cannot be made to record more by retrying.
+pub(super) fn keeps_permit(rate: f64, id: &str) -> bool {
+    if rate >= 1.0 {
+        return true;
+    }
+    if rate <= 0.0 {
+        return false;
+    }
+    let bucket = id.bytes().fold(0u64, |hash, byte| {
+        hash.wrapping_mul(31).wrapping_add(u64::from(byte))
+    });
+
+    (bucket % 10_000) < (rate * 10_000.0) as u64
+}
+
 fn party(pair: &(String, String), properties: Option<serde_json::Map<String, Value>>) -> Party {
     Party {
         kind: pair.0.clone(),
@@ -1088,7 +1211,7 @@ fn poisoned<T>(_: std::sync::PoisonError<T>) -> SpoolError {
     )
 }
 
-fn now() -> String {
+pub(super) fn now() -> String {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|since| since.as_secs() as i64)

@@ -252,6 +252,24 @@ impl Coordinating {
 }
 
 impl Service for Coordinating {
+    fn established(&self, session: &Session) -> Result<(), Refusal> {
+        let Some(named) = session.membership_id.as_deref() else {
+            return Ok(());
+        };
+        let Some((id, _)) = self
+            .store
+            .memberships()
+            .into_iter()
+            .find(|(id, _)| uuid_text(id) == named)
+        else {
+            return Ok(());
+        };
+        self.store
+            .satisfy_verification(&id, &session.peer)
+            .map(|_| ())
+            .map_err(of)
+    }
+
     fn serve(
         &self,
         session: &Session,
@@ -289,6 +307,15 @@ impl Service for Coordinating {
             return Err(refusal(
                 codes::common::UNAVAILABLE,
                 "this Host's identity was reset",
+            ));
+        }
+        // A reset under way takes no task session before it asks its coordinators (WP-4.9). A
+        // session that passed this check as the fence landed is one opened just before the run:
+        // the revocation ends it at its next frame.
+        if self.store.is_fenced() {
+            return Err(refusal(
+                codes::common::UNAVAILABLE,
+                "an identity reset is under way on this Host",
             ));
         }
         self.open_lease(session, peer, exporter, request)

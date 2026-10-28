@@ -8,6 +8,7 @@
 //! | `scripts/verify-provenance.sh` | both phases pass on a complete release and name the builder; an empty, malformed or short listing fails; an image is verified once per digest; a slow attestation is retried, a missing one fails |
 //! | `scripts/extract-shipped.sh` | the 16 published Linux and Windows archives become the layout the build stages; a stray file fails |
 //! | `scripts/compare-rebuild.sh` | identical builds read `reproducible: yes`; one altered byte reads `reproducible: no` and exits 3 |
+//! | `scripts/evidence-manifest.sh`, `scripts/verify-evidence.sh` | a complete release pins every file and verifies, its attestation first; a changed, missing or unnamed file and an incomplete gate are refused |
 //!
 //! Each script runs under `bash`, whichever the machine has: the release runners carry bash 5, a
 //! Mac carries 3.2, and the scripts are written for both.
@@ -377,4 +378,286 @@ fn test_published_archives_round_trip_into_a_reproducibility_verdict() {
         None,
     );
     assert!(!stray.status.success(), "a stray file was skipped silently");
+}
+
+/// A release directory holding every piece of evidence the exit gate requires, each passing.
+fn complete_evidence(directory: &Path) {
+    std::fs::create_dir_all(directory).expect("the release directory");
+    for name in ["permguard-benchmark.json", "traceability.json"] {
+        std::fs::write(directory.join(name), r#"{"report": true}"#).expect("written");
+    }
+    std::fs::write(directory.join("permguard-gate.json"), r#"{"passed": true}"#).expect("written");
+    for name in [
+        "drill-split-brain.json",
+        "drill-restore.json",
+        "fuzz-release.json",
+    ] {
+        std::fs::write(directory.join(name), r#"{"result": "passed"}"#).expect("written");
+    }
+    std::fs::write(
+        directory.join("reproducibility.txt"),
+        "permguard 0123 0123\nreproducible: yes\n",
+    )
+    .expect("written");
+    for name in [
+        "checksums.txt",
+        "provenance-files.json",
+        "provenance-images.json",
+        "permguard_cli_Linux_x86_64.tar.gz.sbom.json",
+        "permguard_cli_Linux_x86_64.tar.gz",
+    ] {
+        std::fs::write(directory.join(name), name).expect("written");
+    }
+}
+
+/// WP-7.13: the evidence manifest pins every file of the release to the commit and is complete only
+/// when every piece of evidence is there and passed; the verifier recomputes every digest and fails
+/// closed on a changed, missing or unnamed file and on an incomplete gate.
+#[test]
+fn the_evidence_manifest_pins_the_release_and_its_verification_fails_closed() {
+    let root = scratch("evidence");
+    let release = root.join("release");
+    complete_evidence(&release);
+    let made = run(
+        "evidence-manifest.sh",
+        &[release.to_str().expect("utf-8"), "v1.2.3", "0123abcd"],
+        None,
+    );
+    assert!(made.status.success(), "{}", text(&made));
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(release.join("evidence-manifest.json")).expect("the manifest"),
+    )
+    .expect("JSON");
+    assert_eq!(manifest["schema"], "permguard.evidence-manifest.v1");
+    assert_eq!(manifest["commit"], "0123abcd");
+    assert_eq!(manifest["complete"], true, "{manifest}");
+    assert_eq!(
+        manifest["artifacts"].as_array().expect("artifacts").len(),
+        12
+    );
+
+    // The attestation of the manifest is checked first when a repository is named.
+    let gh = stand_in_gh(&root, 0);
+    let verified = run(
+        "verify-evidence.sh",
+        &[
+            release.to_str().expect("utf-8"),
+            "permguard/permguard",
+            "v1.2.3",
+        ],
+        Some(&gh),
+    );
+    assert!(verified.status.success(), "{}", text(&verified));
+    assert!(
+        text(&verified).contains("\"verified\": true"),
+        "{}",
+        text(&verified)
+    );
+    let called = std::fs::read_to_string(root.join("gh.log")).expect("gh was called");
+    assert!(
+        called.contains("attestation verify")
+            && called.contains(
+                "--signer-workflow permguard/permguard/.github/workflows/release-pipeline.yml"
+            )
+            && called.contains("--source-ref refs/tags/v1.2.3")
+            && called.contains("--deny-self-hosted-runners"),
+        "the manifest is the release pipeline's own: {called}"
+    );
+    // An attestation that does not verify refuses the evidence before any digest is read.
+    std::fs::remove_file(root.join("gh.count")).expect("reset");
+    let unattested = run(
+        "verify-evidence.sh",
+        &[
+            release.to_str().expect("utf-8"),
+            "permguard/permguard",
+            "v1.2.3",
+        ],
+        Some(&stand_in_gh(&root, 1)),
+    );
+    assert!(!unattested.status.success());
+    assert!(
+        text(&unattested).contains("attestation does not verify"),
+        "{}",
+        text(&unattested)
+    );
+
+    let verify = || {
+        run(
+            "verify-evidence.sh",
+            &[
+                release.to_str().expect("utf-8"),
+                "permguard/permguard",
+                "v1.2.3",
+            ],
+            Some(&gh),
+        )
+    };
+    // Another release's tag: the manifest is not the one asked about.
+    let other = run(
+        "verify-evidence.sh",
+        &[
+            release.to_str().expect("utf-8"),
+            "permguard/permguard",
+            "v9.9.9",
+        ],
+        Some(&gh),
+    );
+    assert!(!other.status.success());
+    assert!(
+        text(&other).contains("is not a permguard.evidence-manifest.v1 of v9.9.9"),
+        "{}",
+        text(&other)
+    );
+    // The repository and the tag are required: nothing verifies unattested.
+    let unnamed = run(
+        "verify-evidence.sh",
+        &[release.to_str().expect("utf-8")],
+        Some(&gh),
+    );
+    assert!(!unnamed.status.success());
+    // A manifest of another shape fails closed rather than reading as empty.
+    let held = std::fs::read(release.join("evidence-manifest.json")).expect("the manifest");
+    let shape: serde_json::Value = serde_json::from_slice(&held).expect("JSON");
+    for (what, edit) in [
+        (
+            "only its schema",
+            serde_json::json!({"schema": "permguard.evidence-manifest.v1", "tag": "v1.2.3"}),
+        ),
+        ("incomplete null", {
+            let mut edited = shape.clone();
+            edited["incomplete"] = serde_json::Value::Null;
+            edited
+        }),
+        ("artifacts null", {
+            let mut edited = shape.clone();
+            edited["artifacts"] = serde_json::Value::Null;
+            edited
+        }),
+        ("complete false", {
+            let mut edited = shape.clone();
+            edited["complete"] = serde_json::json!(false);
+            edited
+        }),
+        ("a name outside the directory", {
+            let mut edited = shape.clone();
+            edited["artifacts"][0]["name"] = serde_json::json!("../checksums.txt");
+            edited
+        }),
+    ] {
+        std::fs::write(
+            release.join("evidence-manifest.json"),
+            serde_json::to_vec(&edit).expect("JSON"),
+        )
+        .expect("written");
+        let refused = verify();
+        assert!(!refused.status.success(), "{what}: {}", text(&refused));
+        assert!(
+            text(&refused).contains("is not a permguard.evidence-manifest.v1"),
+            "{what}: {}",
+            text(&refused)
+        );
+    }
+    std::fs::write(release.join("evidence-manifest.json"), &held).expect("restored");
+    assert!(verify().status.success());
+    // One byte changed in a shipped file.
+    let archive = release.join("permguard_cli_Linux_x86_64.tar.gz");
+    std::fs::write(&archive, "altered").expect("altered");
+    let refused = verify();
+    assert!(!refused.status.success());
+    assert!(
+        text(&refused).contains("its digest changed"),
+        "{}",
+        text(&refused)
+    );
+    std::fs::write(&archive, "permguard_cli_Linux_x86_64.tar.gz").expect("restored");
+    assert!(verify().status.success());
+
+    // A file the manifest does not name.
+    std::fs::write(release.join("added-later.bin"), "x").expect("written");
+    let refused = verify();
+    assert!(!refused.status.success());
+    assert!(
+        text(&refused).contains("not named by the manifest"),
+        "{}",
+        text(&refused)
+    );
+    std::fs::remove_file(release.join("added-later.bin")).expect("removed");
+
+    // A file the manifest names, gone.
+    std::fs::remove_file(release.join("checksums.txt")).expect("removed");
+    let refused = verify();
+    assert!(!refused.status.success());
+    assert!(
+        text(&refused).contains("checksums.txt: missing"),
+        "{}",
+        text(&refused)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WP-7.13: a piece of evidence missing, replaced by its note, or not passed leaves the gate
+/// incomplete; the manifest says which, and the verifier refuses it.
+#[test]
+fn an_incomplete_gate_is_named_in_the_manifest_and_refused_by_the_verifier() {
+    let root = scratch("evidence-incomplete");
+    let release = root.join("release");
+    complete_evidence(&release);
+    std::fs::remove_file(release.join("drill-restore.json")).expect("removed");
+    std::fs::write(
+        release.join("drill-restore.txt"),
+        "the drill did not complete",
+    )
+    .expect("note");
+    std::fs::write(release.join("fuzz-release.json"), r#"{"result": "failed"}"#).expect("failed");
+    std::fs::write(release.join("permguard-gate.json"), r#"{"passed": false}"#).expect("failed");
+    std::fs::remove_file(release.join("traceability.json")).expect("removed");
+    std::fs::remove_file(release.join("permguard_cli_Linux_x86_64.tar.gz.sbom.json"))
+        .expect("removed");
+    std::fs::write(
+        release.join("reproducibility.txt"),
+        "reproducible: no — this release does not claim to be reproducible\n",
+    )
+    .expect("not reproducible");
+    let made = run(
+        "evidence-manifest.sh",
+        &[release.to_str().expect("utf-8"), "v1.2.3", "0123abcd"],
+        None,
+    );
+    assert!(
+        made.status.success(),
+        "the manifest is still written: {}",
+        text(&made)
+    );
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(release.join("evidence-manifest.json")).expect("the manifest"),
+    )
+    .expect("JSON");
+    assert_eq!(manifest["complete"], false);
+    let incomplete = manifest["incomplete"].to_string();
+    for expected in [
+        "drill-restore.json: not produced; drill-restore.txt says why",
+        "fuzz-release.json: result is \\\"failed\\\"",
+        "the serving gate did not pass",
+        "traceability.json: missing",
+        "no SBOM",
+        "the independent rebuild did not reproduce the release",
+    ] {
+        assert!(incomplete.contains(expected), "{expected} in {incomplete}");
+    }
+    let refused = run(
+        "verify-evidence.sh",
+        &[
+            release.to_str().expect("utf-8"),
+            "permguard/permguard",
+            "v1.2.3",
+        ],
+        Some(&stand_in_gh(&root, 0)),
+    );
+    assert!(!refused.status.success());
+    assert!(
+        text(&refused).contains("the gate is incomplete"),
+        "{}",
+        text(&refused)
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }

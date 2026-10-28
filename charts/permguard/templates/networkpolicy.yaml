@@ -3,7 +3,8 @@ Copyright (c) 2022 Nitro Agility S.r.l.
 SPDX-License-Identifier: Apache-2.0
 */}}
 {{/*
-One NetworkPolicy per running component, default-on.
+One NetworkPolicy per running component, default-on; each data plane group has its own
+(`data-plane-groups.yaml`).
 
 What it always does is close every port the pod does not serve: selected pods
 accept ingress only on the public ports and the Server Host operations port. What the values
@@ -21,9 +22,6 @@ break those or grow into an allow-everything.
 {{- $components := dict }}
 {{- if .Values.controlPlane.enabled }}
 {{- $_ := set $components "control-plane" (list .Values.controlPlane.ports.http .Values.controlPlane.ports.grpc .Values.controlPlane.ports.telemetry) }}
-{{- end }}
-{{- if .Values.dataPlane.enabled }}
-{{- $_ := set $components "data-plane" (list .Values.dataPlane.ports.http .Values.dataPlane.ports.grpc .Values.dataPlane.ports.telemetry) }}
 {{- end }}
 {{- if .Values.allInOne.enabled }}
 {{- $_ := set $components "all-in-one" (list .Values.allInOne.ports.controlHttp .Values.allInOne.ports.dataHttp .Values.allInOne.ports.telemetry) }}
@@ -59,6 +57,16 @@ spec:
       from:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+    {{- $listener := (ternary $.Values.controlPlane.hostListener $.Values.allInOne.hostListener (eq $component "control-plane")) }}
+    {{- if $listener.enabled }}
+    - ports:
+        - port: {{ int $listener.port }}
+          protocol: TCP
+      {{- with $.Values.networkPolicy.host.from }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
 ---
 {{- end }}
 {{- end }}

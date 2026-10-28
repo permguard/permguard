@@ -3,6 +3,9 @@
 
 //! Where imported history lives, and why it is not the journal.
 //!
+//! Read-only since WP-6.2c2b2: the HTTP pull that wrote it is retired, shared decisions still read
+//! what it holds, and WP-6.2d archives it.
+//!
 //! # Two stores, on purpose
 //!
 //! ```text

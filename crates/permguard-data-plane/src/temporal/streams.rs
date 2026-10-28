@@ -1,96 +1,98 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The journals this plane writes: one per tenant ledger, and what each one remembers.
+//! The event log this plane writes: one stream per tenant ledger on the Host's producer, and
+//! what the plane remembers about each (WP-6.2a, owner decisions of 2026-10-18).
 //!
 //! # One stream per ledger, not one per process
 //!
-//! A cryptographic stream is owned by one producer instance and one tenant ledger, so a plane
-//! serving three ledgers writes three chains. Not one shared chain: a shared chain would make a
+//! A cryptographic stream is owned by one producer and one tenant ledger, so a plane serving
+//! three ledgers writes three streams. Not one shared stream: a shared stream would make a
 //! tenant's history depend on another tenant's writes, so verifying one would require reading the
 //! other, and shipping one would leak that the other exists.
 //!
-//! The producer identity is bound **server-side** and never taken from a caller. In this release
-//! the class is the data plane's own and the id is this plane's configured identity; the instance
-//! is minted when a journal is first created and kept in its state from then on, so a restart that
-//! can prove continuation keeps its sequence and one that cannot gets a new instance rather than
-//! reusing a sequence.
+//! The producer identity is the Host's, never taken from a caller nor configured: a record names
+//! the `host_id` and the run the Host's producer gives it, its sequence and the digest before it,
+//! filled under the lock that hands sequences out (see [`super::host`]).
+//!
+//! # The legacy journal
+//!
+//! A ledger an earlier release journalled keeps that journal: the first part of the ledger's
+//! history, shipped by the old shipper until it is empty and evicted as before, never appended
+//! to. The Host runs' local ordinals follow its last sequence.
 //!
 //! # One flush for a batch, never one receipt before its flush
 //!
 //! An `fsync` costs about the same for one record as for a hundred, and the durable-before-observed
 //! rule means every submission pays for one. So submissions that overlap in time are written
 //! together and flushed once: the first to arrive leads, whoever arrives while it is writing joins
-//! its batch, and none of them is answered until the single flush covering all of them returns.
+//! its batch, and none of them is answered until the single append covering all of them returns.
 //! What is amortised is the cost; what is never relaxed is the rule.
 //!
-//! # What is kept in memory, and what is not
+//! # Who an occurrence is
 //!
-//! The journal itself is on disk and is the authority. What is held here is a small index of the
-//! event ids seen recently in each ledger, which is what makes a client retry idempotent without a
-//! disk scan — bounded, and rebuilt from the journal's tail when a journal is opened, so a restart
-//! does not turn a retry into a duplicate.
+//! `(resource, source, event_id)`: the authenticated principal that submitted it and the id it
+//! chose. The same id from another source is another occurrence. An entry of the legacy journal,
+//! which names no source, matches its id from any source, as it did before the upgrade.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use permguard_core::Metrics;
-use permguard_events::journal::{Bounds, Journal, JournalError};
-use permguard_events::record::{PRODUCER_CLASS_DATA_PLANE, Producer, Record, Stream};
+use permguard_events::journal::{Bounds, Journal, JournalError, KnownOccurrence};
+use permguard_events::record::{PRODUCER_CLASS_DATA_PLANE, Producer, Record};
+use permguard_host::composition::{StreamFloor, StreamProducer};
 
-/// How many recent event ids one ledger keeps in memory, as a cache and not as the horizon.
-///
-/// A client retry usually arrives within seconds of its original, so this covers the common case
-/// without touching the disk. It is bounded because it is memory a caller can grow: an index that
-/// kept every id would be a way to make a plane allocate by sending events.
-///
-/// It is **not** how long a retry stays recognisable. It used to be, and that was a silent
-/// double-count waiting to happen: an id repeated after a few thousand others fell out of the
-/// window, was read as a new occurrence, and was counted a second time by a history whose whole
-/// purpose is counting occurrences. Recognition now lives on the volume, keyed by the id, and
-/// lasts exactly as long as the record does — see [`permguard_events::journal::KnownOccurrence`].
-pub const RECENT_EVENT_IDS: usize = 4096;
+use super::host::HostLedger;
+
+/// How long a measure of a stream's pressure is trusted before it is taken again.
+const PRESSURE_FOR: Duration = Duration::from_secs(1);
 
 /// What happened to an occurrence this ledger had already seen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Seen {
-    /// This id is new here.
+    /// This occurrence is new here.
     Fresh,
-    /// The same id and the same occurrence: one logical occurrence, and the stored position.
+    /// The same occurrence: one logical occurrence, and the stored position.
     Idempotent { seq: u64 },
-    /// The same id carrying different content. Never resolved by choosing one.
+    /// The same key carrying different content. Never resolved by choosing one.
     Conflict { seq: u64, stored_digest: String },
 }
 
-/// One ledger's journal, and what this process remembers about it.
+/// One ledger's streams, and what this process remembers about them.
 struct Held {
-    journal: Journal,
-    /// Recently seen `(event_id, occurrence_digest, seq)`, newest last.
-    recent: VecDeque<(String, String, u64)>,
+    /// The journal an earlier release wrote, read only.
+    legacy: Option<Journal>,
+    host: HostLedger,
+    /// The stream's pressure as last measured, and when.
+    pressure: Option<(Instant, Option<&'static str>)>,
+    /// The `observed_at` of the last record appended, in epoch seconds: no later record is
+    /// observed before it. Read from the stream's tail on the first append after opening.
+    last_observed: Option<i64>,
 }
 
 /// The largest number of records one flush covers.
 ///
-/// Not a throughput knob: a bound on how long one leader may hold a ledger's journal, so a burst
-/// cannot turn into a single writer that never lets go. Whatever does not fit is the next batch's,
-/// which forms while this one flushes.
+/// Not a throughput knob: a bound on how long one leader may hold a ledger, so a burst cannot turn
+/// into a single writer that never lets go. Whatever does not fit is the next batch's, which forms
+/// while this one flushes.
 const MAX_BATCH: usize = 1_024;
 
 /// One submission waiting to be written, and the ticket its writer will collect an answer by.
 type Waiting = (u64, Record);
 
-/// What one writer collects: what the journal did, and the record it did it to.
+/// What one writer collects: what the append did, and the record it did it to.
 ///
-/// The record comes back because the journal fills part of it in — the sequence, the link to the
+/// The record comes back because the append fills part of it in — the sequence, the link to the
 /// record before it, and the stream identity, none of which a caller may choose — and its writer
 /// goes on to log and answer from exactly what was written rather than from what it proposed.
 pub type Answered = (Written, Record);
 
 /// One ledger's group-commit gate: who is forming a batch, and what has been written for whom.
 ///
-/// Separate from the journal's own lock on purpose. If forming a batch and writing it were under
+/// Separate from the ledger's own lock on purpose. If forming a batch and writing it were under
 /// one lock, nobody could join a batch while it was being written — which is the whole of what
 /// group commit is.
 #[derive(Default)]
@@ -178,41 +180,68 @@ impl Drop for Leadership {
     }
 }
 
-/// One ledger's open journal, shared by everything that writes to or reads it.
-type OpenJournal = Arc<Mutex<Held>>;
+/// One ledger's open streams, shared by everything that writes to or reads them.
+type OpenLedger = Arc<Mutex<Held>>;
 
-/// Every journal this plane has open, by `(zone, ledger)`.
-type OpenJournals = Mutex<BTreeMap<(String, String), OpenJournal>>;
+/// Every ledger this plane has open, by `(zone, ledger)`.
+type OpenLedgers = Mutex<BTreeMap<(String, String), OpenLedger>>;
 
 /// The gate one ledger's first opener holds while it opens.
 type Opening = Arc<Mutex<()>>;
 
-/// Every journal this plane has open, by ledger.
+/// The Host's side of the event log: its producer of `data/events` and its id.
+#[derive(Debug, Clone)]
+pub struct HostSide {
+    pub producer: StreamProducer,
+    pub host_id: [u8; 16],
+}
+
+/// The floor this plane registers on `data/events`: per resource and run, the last sequence no
+/// loaded window reads any more, as the plane last measured it; a run it has not measured is kept
+/// whole. Read by the Host's garbage collection without touching a ledger's lock.
+#[derive(Debug, Default)]
+pub struct Floors(Mutex<BTreeMap<(String, [u8; 16]), u64>>);
+
+impl StreamFloor for Floors {
+    fn retention_safe(&self, resource: &str, run: &[u8; 16]) -> Option<u64> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&(resource.to_owned(), *run))
+            .copied()
+    }
+}
+
+/// Every ledger this plane has open.
 pub struct Streams {
+    /// Where the legacy journals are.
     root: PathBuf,
-    producer: Producer,
+    /// Whether they are read: not once the volume archived them (WP-6.2d), their old generation
+    /// waiting in `root` for `migrate finalize`, never opened.
+    legacy: bool,
+    /// Where the plane keeps what it remembers of each ledger on the Host.
+    planes: PathBuf,
+    host: HostSide,
+    floors: Arc<Floors>,
     bounds: Bounds,
-    open: OpenJournals,
-    /// One group-commit gate per ledger, created with its journal.
+    open: OpenLedgers,
+    /// One group-commit gate per ledger, created with its streams.
     gates: Mutex<BTreeMap<(String, String), Arc<Gate>>>,
-    /// One turn-taker per ledger, created with its journal.
+    /// One turn-taker per ledger, created with its streams.
     ///
     /// Created here rather than on first use, and this is not tidiness: its starting mark is "every
-    /// record this journal holds has been applied", which is only true at the moment the journal is
-    /// opened. A sequencer created later would take its mark from a journal that had already moved,
+    /// record this ledger holds has been applied", which is only true at the moment the ledger is
+    /// opened. A sequencer created later would take its mark from a ledger that had already moved,
     /// and the sequences in flight would never be ordered against each other.
     sequencers: crate::temporal::sequencer::Sequencers,
     /// One opener per ledger.
     ///
-    /// A journal takes an exclusive lock on its own directory when it is opened — that is what
-    /// makes "one writer per stream" a property of the filesystem rather than of this process's
-    /// discipline. It also means two threads that both find a ledger closed cannot both open it:
-    /// the second would be refused by the lock the first is holding, and a first request that
-    /// happened to arrive alongside another would fail for no reason a caller could act on. So the
-    /// first opens and the rest wait for it, per ledger, leaving other ledgers' first requests
-    /// free to proceed in parallel.
+    /// A legacy journal takes an exclusive lock on its own directory when it is opened. Two
+    /// threads that both find a ledger closed cannot both open it: the second would be refused by
+    /// the lock the first is holding. So the first opens and the rest wait for it, per ledger,
+    /// leaving other ledgers' first requests free to proceed in parallel.
     opening: Mutex<BTreeMap<(String, String), Opening>>,
-    /// What the journals count about themselves — flushes, and how many records each covered.
+    /// What the streams count about themselves — flushes, and how many records each covered.
     metrics: Metrics,
     /// How long a leader may keep a batch open once submissions are demonstrably overlapping.
     ///
@@ -235,27 +264,41 @@ pub struct Routed<'a> {
 }
 
 impl Streams {
-    /// The journals under `<volume>/data/events`, written as this producer.
-    pub fn new(root: PathBuf, producer_id: String, bounds: Bounds) -> Self {
-        Self::with_group_commit(root, producer_id, bounds, Duration::ZERO)
+    /// The ledgers whose legacy journals are under `root`, recorded on `host`'s producer with
+    /// what the plane remembers under `planes`; the floor is registered on the producer, so a
+    /// producer that keeps none refuses.
+    pub fn new(
+        root: PathBuf,
+        planes: PathBuf,
+        host: HostSide,
+        bounds: Bounds,
+    ) -> Result<Self, JournalError> {
+        Self::with_group_commit(root, planes, host, bounds, Duration::ZERO)
     }
 
-    /// The same journals, told how long a batch may keep forming.
+    /// The same, told how long a batch may keep forming.
     pub fn with_group_commit(
         root: PathBuf,
-        producer_id: String,
+        planes: PathBuf,
+        host: HostSide,
         bounds: Bounds,
         group_commit_max_delay: Duration,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, JournalError> {
+        let floors = Arc::new(Floors::default());
+        host.producer
+            .retain_above(Arc::clone(&floors) as Arc<dyn StreamFloor>)
+            .map_err(|error| {
+                JournalError::Io(format!(
+                    "the Host's event producer keeps no floor, so it would delete history a \
+                     loaded window still reads: {error}"
+                ))
+            })?;
+        Ok(Self {
             root,
-            producer: Producer {
-                class: PRODUCER_CLASS_DATA_PLANE.to_owned(),
-                id: producer_id,
-                // Minted per process start. A journal that recovers its own instance from `STATE`
-                // keeps that one; this is what a fresh journal is created with.
-                instance: permguard_decisions::instance::mint(),
-            },
+            legacy: true,
+            planes,
+            host,
+            floors,
             bounds,
             open: Mutex::new(BTreeMap::new()),
             gates: Mutex::new(BTreeMap::new()),
@@ -263,37 +306,55 @@ impl Streams {
             opening: Mutex::new(BTreeMap::new()),
             metrics: Metrics::none(),
             group_commit_max_delay,
-        }
+        })
     }
 
-    /// The same journals, recording what they do to the deployment's metrics.
+    /// The same ledgers with no legacy journal: the volume archived them (WP-6.2d), and none is
+    /// opened, shipped or evicted.
+    pub fn without_legacy(mut self) -> Self {
+        self.legacy = false;
+
+        self
+    }
+
+    /// The same ledgers, recording what they do to the deployment's metrics.
     pub fn with_metrics(mut self, metrics: Metrics) -> Self {
         self.metrics = metrics;
 
         self
     }
 
-    /// Where this plane keeps its event journals.
+    /// Where this plane keeps its legacy event journals.
     pub fn root(&self) -> &Path {
         &self.root
     }
 
-    /// The producer identity this plane writes as.
-    pub fn producer(&self) -> &Producer {
-        &self.producer
+    /// The producer identity this plane writes as: the Host's id, the run filled per record.
+    pub fn producer(&self) -> Producer {
+        Producer {
+            class: PRODUCER_CLASS_DATA_PLANE.to_owned(),
+            id: self
+                .host
+                .host_id
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect(),
+            instance: String::new(),
+        }
     }
 
-    /// The bounds every journal here is opened with.
+    /// The floor this plane registered on the Host's producer, as last measured.
+    pub fn floors(&self) -> &Arc<Floors> {
+        &self.floors
+    }
+
+    /// The bounds the streams here are held to.
     pub fn bounds(&self) -> Bounds {
         self.bounds
     }
 
-    /// The journal for one ledger, opening it on first use.
-    ///
-    /// Opened once and kept: the journal holds an exclusive lock on its directory for as long as
-    /// it lives, which is what makes "one writer per stream" a property of the filesystem rather
-    /// than of this process's discipline.
-    fn held(&self, zone: &str, ledger: &str) -> Result<OpenJournal, JournalError> {
+    /// The streams of one ledger, opening them on first use.
+    fn held(&self, zone: &str, ledger: &str) -> Result<OpenLedger, JournalError> {
         let key = (zone.to_owned(), ledger.to_owned());
         if let Some(held) = self.already_open(&key)? {
             return Ok(held);
@@ -301,8 +362,8 @@ impl Streams {
 
         // Closed, as far as this thread has seen. One thread per ledger does the opening; the rest
         // wait here and find it open below. The registry's own lock is *not* held across the open:
-        // a ledger whose journal is slow to recover would otherwise stall every other ledger's
-        // requests, which only need that lock for a moment.
+        // a ledger slow to recover would otherwise stall every other ledger's requests, which only
+        // need that lock for a moment.
         let opening = {
             let mut opening = match self.opening.lock() {
                 Ok(opening) => opening,
@@ -319,46 +380,69 @@ impl Streams {
             return Ok(held);
         }
 
-        let stream = Stream {
-            producer: self.producer.clone(),
-            zone: zone.to_owned(),
-            ledger: ledger.to_owned(),
-        };
-        // One directory per stream, named by what the stream is. A tenant's history is separable
-        // by construction, so exporting or deleting one ledger's events never touches another's.
-        let directory = self.root.join(zone).join(ledger);
-        let journal = Journal::open(&directory, stream, self.bounds)?;
-        let recent = recent_of(&journal)?;
-        // The journal owns the durable order, so new submissions start after its recovered tail.
+        let legacy = self.legacy_journal(zone, ledger)?;
+        let legacy_through = legacy
+            .as_ref()
+            .map_or(0, |journal| journal.next_position().0.saturating_sub(1));
+        let host = HostLedger::open(
+            self.host.producer.clone(),
+            self.host.host_id,
+            zone,
+            ledger,
+            super::host::directory(&self.planes, zone, ledger),
+            legacy_through,
+        )?;
+        // The ledger owns the durable order, so new submissions start after its recovered tail.
         // Engine histories are rebuilt lazily by `Submitter::ensure_history` before an occurrence
-        // is applied; opening a journal must not claim that policy state has already been replayed.
-        let (next, _) = journal.next_position();
-        let _ = self.sequencers.of(zone, ledger, next.saturating_sub(1));
+        // is applied; opening a ledger must not claim that policy state has already been replayed.
+        let _ = self.sequencers.of(zone, ledger, host.last());
 
         let mut open = self
             .open
             .lock()
-            .map_err(|_| JournalError::Io("the journal registry is poisoned".to_owned()))?;
+            .map_err(|_| JournalError::Io("the ledger registry is poisoned".to_owned()))?;
 
         Ok(Arc::clone(open.entry(key).or_insert_with(|| {
-            Arc::new(Mutex::new(Held { journal, recent }))
+            Arc::new(Mutex::new(Held {
+                last_observed: None,
+                legacy,
+                host,
+                pressure: None,
+            }))
         })))
     }
 
-    /// The journal for one ledger if this process already has it open.
-    fn already_open(&self, key: &(String, String)) -> Result<Option<OpenJournal>, JournalError> {
+    /// The legacy journal of one ledger, when an earlier release wrote one: never created here.
+    fn legacy_journal(&self, zone: &str, ledger: &str) -> Result<Option<Journal>, JournalError> {
+        if !self.legacy {
+            return Ok(None);
+        }
+        let directory = self.root.join(zone).join(ledger);
+        if !directory
+            .join(permguard_events::journal::STATE_FILE)
+            .exists()
+        {
+            return Ok(None);
+        }
+        let stream = permguard_events::journal::stream_of(&directory)?;
+        Journal::open(&directory, stream, self.bounds).map(Some)
+    }
+
+    /// The streams of one ledger if this process already has them open.
+    fn already_open(&self, key: &(String, String)) -> Result<Option<OpenLedger>, JournalError> {
         let open = self
             .open
             .lock()
-            .map_err(|_| JournalError::Io("the journal registry is poisoned".to_owned()))?;
+            .map_err(|_| JournalError::Io("the ledger registry is poisoned".to_owned()))?;
 
         Ok(open.get(key).map(Arc::clone))
     }
 
-    /// Appends one record durably, unless its id was already seen here.
+    /// Appends one record durably, unless its occurrence was already seen here.
     ///
-    /// The whole write is under the ledger's own lock, so two concurrent submissions of one id
-    /// cannot both find it fresh: the second sees the first's record, and answers idempotently.
+    /// The whole write is under the ledger's own lock, so two concurrent submissions of one
+    /// occurrence cannot both find it fresh: the second sees the first's, and answers
+    /// idempotently.
     ///
     /// # One flush, several records
     ///
@@ -367,7 +451,7 @@ impl Streams {
     /// an answer for them. Nobody is answered before the flush that covers their record returns —
     /// what a batch amortises is the cost of the flush, never the rule that a receipt follows it.
     pub fn append(&self, zone: &str, ledger: &str, record: Record) -> Result<Answered, Failed> {
-        let journal = self.held(zone, ledger).map_err(Failed::Journal)?;
+        let held = self.held(zone, ledger).map_err(Failed::Journal)?;
         let gate = self.gate(zone, ledger).map_err(Failed::Journal)?;
 
         let ticket = {
@@ -400,22 +484,17 @@ impl Streams {
             ticket
         };
 
-        self.lead(&journal, &gate, ticket)
+        self.lead(&held, &gate, ticket)
     }
 
     /// Forms one batch, writes it, flushes it once, and answers everybody in it.
-    fn lead(
-        &self,
-        journal: &OpenJournal,
-        gate: &Arc<Gate>,
-        ticket: u64,
-    ) -> Result<Answered, Failed> {
+    fn lead(&self, held: &OpenLedger, gate: &Arc<Gate>, ticket: u64) -> Result<Answered, Failed> {
         let taken = self.form(gate);
         let leadership = Leadership {
             gate: Arc::clone(gate),
             tickets: taken.iter().map(|(ticket, _)| *ticket).collect(),
         };
-        let results = self.write(journal, taken);
+        let results = self.write(held, taken);
 
         match leadership.publish(results, ticket) {
             Some(answer) => answer,
@@ -462,24 +541,77 @@ impl Streams {
         batch.waiting.drain(..keep).collect()
     }
 
-    /// Writes a whole batch under one journal lock, then flushes it once.
+    /// Writes a whole batch under the ledger's lock, in one append to the Host's producer.
     fn write(
         &self,
-        journal: &OpenJournal,
+        held: &OpenLedger,
         taken: Vec<Waiting>,
     ) -> Vec<(u64, Result<Answered, Failed>)> {
         let covered = taken.len();
         let mut results = Vec::with_capacity(taken.len());
-        let mut held = match journal.lock() {
+        let mut held = match held.lock() {
             Ok(held) => held,
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        let mut wrote = false;
-        for (ticket, mut record) in taken {
+        // A stream past its bounds takes nothing: temporal history is never dropped to make room,
+        // so the submission is refused rather than recorded somewhere it cannot be kept.
+        if let Some(code) = self.pressure_of(&mut held) {
+            tracing::warn!(
+                event.name = "temporal.stream_pressure",
+                component = "temporal",
+                code,
+                "the event stream holds more than its bounds allow unacknowledged: submissions \
+                 are refused until it is shipped"
+            );
+            return taken
+                .into_iter()
+                .map(|(ticket, _)| (ticket, Err(Failed::Journal(JournalError::Full))))
+                .collect();
+        }
+
+        // Records an earlier append made durable without their entries are caught up first:
+        // checked against entries that lag, a retry of them would be appended again.
+        if let Err(error) = held.host.repaired() {
+            let reason = error.to_string();
+            return taken
+                .into_iter()
+                .map(|(ticket, _)| {
+                    (
+                        ticket,
+                        Err(Failed::Journal(JournalError::Io(format!(
+                            "the ledger's entries cannot be caught up with its stream: {reason}"
+                        )))),
+                    )
+                })
+                .collect();
+        }
+
+        let mut fresh: Vec<(u64, Record)> = Vec::new();
+        // The same occurrence twice in this batch: the second is the first's retry, answered with
+        // the position the first is given; `(ticket, record, index of the first in fresh)`.
+        let mut retries: Vec<(u64, Record, usize)> = Vec::new();
+        for (ticket, record) in taken {
+            if let Some(first) = fresh.iter().position(|(_, first)| {
+                first.event_id == record.event_id && first.source == record.source
+            }) {
+                if fresh[first].1.occurrence_digest == record.occurrence_digest {
+                    retries.push((ticket, record, first));
+                } else {
+                    let stored_digest = fresh[first].1.occurrence_digest.clone();
+                    results.push((
+                        ticket,
+                        Err(Failed::Conflict {
+                            seq: 0,
+                            stored_digest,
+                        }),
+                    ));
+                }
+                continue;
+            }
             let already = match seen(
-                &held.journal,
-                &held.recent,
+                &held,
+                record.source.as_deref(),
                 &record.event_id,
                 &record.occurrence_digest,
             ) {
@@ -492,117 +624,100 @@ impl Streams {
                 }
             };
             match already {
-                Seen::Fresh => {}
+                Seen::Fresh => fresh.push((ticket, record)),
                 Seen::Idempotent { seq } => {
                     results.push((ticket, Ok((Written::Idempotent { seq }, record))));
-                    continue;
                 }
                 Seen::Conflict { seq, stored_digest } => {
                     results.push((ticket, Err(Failed::Conflict { seq, stored_digest })));
-                    continue;
                 }
-            }
-
-            // Read for each record in turn, not once for the batch: a record that is refused
-            // leaves the journal exactly where it was, so the next one takes the position the
-            // refused one would have had rather than a gap.
-            let (seq, prev) = held.journal.next_position();
-            record.seq = seq;
-            record.prev = prev;
-            // The instance is the journal's, not this process's guess: a journal that recovered an
-            // earlier incarnation continues that one, and a record claiming otherwise would break
-            // the chain it is being appended to.
-            record.stream = held.journal.stream().clone();
-
-            let value = match record.to_value() {
-                Ok(value) => value,
-                Err(error) => {
-                    results.push((ticket, Err(Failed::Digest(error))));
-                    continue;
-                }
-            };
-            match held.journal.append_unsynced(&value) {
-                Ok(appended) => {
-                    // The journal tail has advanced even if the addressed occurrence entry below
-                    // cannot be written. Keep the id in the in-process dedup window first, so a
-                    // retry before restart cannot append the same logical occurrence again. On a
-                    // restart `Journal::open` reconciles this durable tail into the addressed
-                    // index before accepting traffic.
-                    held.recent.push_back((
-                        record.event_id.clone(),
-                        record.occurrence_digest.clone(),
-                        appended.seq,
-                    ));
-                    while held.recent.len() > RECENT_EVENT_IDS {
-                        held.recent.pop_front();
-                    }
-                    // What makes the retry recognisable, on the volume rather than only in this
-                    // process's window. Written before the flush below, so a record that becomes
-                    // durable is never durable without the entry that identifies it.
-                    if let Err(error) = held.journal.record_occurrence(
-                        &permguard_events::journal::KnownOccurrence {
-                            event_id: record.event_id.clone(),
-                            seq: appended.seq,
-                            occurrence_digest: record.occurrence_digest.clone(),
-                            decision_id: None,
-                            // Not answered yet, so nothing to recognise a completed retry by:
-                            // both are filled in with the outcome.
-                            profile: None,
-                            kind: None,
-                            // The answer is not known yet; it is filled in once given.
-                            response: serde_json::Value::Null,
-                        },
-                    ) {
-                        results.push((ticket, Err(Failed::Journal(error))));
-                        continue;
-                    }
-                    wrote = true;
-                    let written = Written::Appended {
-                        seq: appended.seq,
-                        digest: appended.digest,
-                        instance: record.stream.producer.instance.clone(),
-                    };
-                    results.push((ticket, Ok((written, record))));
-                }
-                Err(error) => results.push((ticket, Err(Failed::Journal(error)))),
             }
         }
-
-        // One flush for the whole batch, before anybody in it is told anything.
-        if wrote {
-            self.metrics.count(&super::measure::FLUSHES, &[]);
-            self.metrics
-                .observe(&super::measure::BATCH_RECORDS, &[], covered as f64);
-        }
-        if wrote && let Err(error) = held.journal.sync() {
-            let reason = error.to_string();
-            for (_, result) in results.iter_mut() {
-                if matches!(result, Ok((Written::Appended { .. }, _))) {
-                    // On disk but not proven to be: this record is not durable, and a submission
-                    // that is not durable is refused rather than acknowledged.
-                    *result = Err(Failed::Journal(JournalError::Io(format!(
-                        "the batch containing this record could not be flushed: {reason}"
-                    ))));
-                }
-            }
-
+        if fresh.is_empty() {
             return results;
         }
-        // Commit the addressed idempotency entries after the journal. There is no atomic rename
-        // spanning both paths; journal-first makes the append-only record authoritative, and
-        // `Journal::open` repairs any occurrence-index tail left behind by a crash here.
-        if wrote && let Err(error) = held.journal.sync_occurrences() {
-            let reason = error.to_string();
-            for (_, result) in results.iter_mut() {
-                if matches!(result, Ok((Written::Appended { .. }, _))) {
-                    *result = Err(Failed::Journal(JournalError::Io(format!(
-                        "this record's retry entry could not be flushed: {reason}"
-                    ))));
+
+        let (tickets, mut records): (Vec<u64>, Vec<Record>) = fresh.into_iter().unzip();
+        // Observation follows the sequence. Each submission stamped its `observed_at` when it
+        // arrived, before it had a sequence, so two of them racing across a second boundary could
+        // be sequenced in the opposite order of their observation, and the later one would sort
+        // before the earlier one already applied: refused out of order for nothing it did. Here,
+        // under the ledger's lock and in sequence order, no record is observed before the one
+        // ahead of it by the width of that race; an instant is only ever moved forward, to the
+        // instant of that record, and never across a clock that moved further than a race could.
+        let floor = observed_floor(&held, &mut records);
+        let max_record_bytes = u32::try_from(self.bounds.max_record_bytes)
+            .unwrap_or(u32::MAX)
+            .min(permguard_events::stream::descriptor().max_record_bytes);
+        match held.host.append(records, max_record_bytes) {
+            Ok(placed) => {
+                held.last_observed = floor;
+                self.metrics.count(&super::measure::FLUSHES, &[]);
+                self.metrics
+                    .observe(&super::measure::BATCH_RECORDS, &[], covered as f64);
+                for (ticket, record, first) in retries {
+                    let seq = placed.get(first).map_or(0, |(placed, _)| placed.ordinal);
+                    results.push((ticket, Ok((Written::Idempotent { seq }, record))));
+                }
+                for (ticket, (placed, record)) in tickets.into_iter().zip(placed) {
+                    results.push((
+                        ticket,
+                        Ok((
+                            Written::Appended {
+                                seq: placed.ordinal,
+                                digest: placed.digest,
+                                instance: placed.run,
+                            },
+                            record,
+                        )),
+                    ));
+                }
+            }
+            Err(error) => {
+                let reason = error.to_string();
+                for ticket in tickets
+                    .into_iter()
+                    .chain(retries.into_iter().map(|(ticket, ..)| ticket))
+                {
+                    results.push((
+                        ticket,
+                        Err(Failed::Journal(JournalError::Io(format!(
+                            "the Host's event stream refused the append: {reason}"
+                        )))),
+                    ));
                 }
             }
         }
 
         results
+    }
+
+    /// The pressure of `held`'s stream, measured again once the last measure is old.
+    fn pressure_of(&self, held: &mut Held) -> Option<&'static str> {
+        if let Some((at, pressure)) = held.pressure
+            && at.elapsed() < PRESSURE_FOR
+        {
+            return pressure;
+        }
+        let measured = match self.host.producer.pressure(
+            held.host.resource(),
+            self.bounds.max_bytes,
+            u64::MAX,
+        ) {
+            Ok(pressure) => pressure,
+            Err(error) => {
+                tracing::warn!(
+                    event.name = "temporal.pressure_unknown",
+                    component = "temporal",
+                    error = error.as_str(),
+                    "the event stream's pressure cannot be measured: its submissions are refused \
+                     until it can"
+                );
+                Some(permguard_core::codes::stream::STORE_UNAVAILABLE)
+            }
+        };
+        held.pressure = Some((Instant::now(), measured));
+        measured
     }
 
     /// One ledger's group-commit gate, created on first use.
@@ -616,48 +731,44 @@ impl Streams {
         Ok(Arc::clone(gates.entry(key).or_default()))
     }
 
-    /// This ledger's turn-taker, so its histories observe the journal's order.
+    /// This ledger's turn-taker, so its histories observe the ledger's order.
     ///
-    /// Opening the journal is part of the ask: the sequencer's starting mark comes from the
-    /// journal, and a caller that had not opened it yet would be handed one starting from nothing.
+    /// Opening the ledger is part of the ask: the sequencer's starting mark comes from it, and a
+    /// caller that had not opened it yet would be handed one starting from nothing.
     pub fn sequencer(
         &self,
         zone: &str,
         ledger: &str,
     ) -> Result<Arc<crate::temporal::sequencer::Sequencer>, JournalError> {
         let held = self.held(zone, ledger)?;
-        let applied_through = {
-            let held = held
-                .lock()
-                .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-            let (next, _) = held.journal.next_position();
-            next.saturating_sub(1)
-        };
+        let applied_through = lock(&held)?.host.last();
 
         Ok(self.sequencers.of(zone, ledger, applied_through))
     }
 
-    /// The instance this ledger's journal is writing as.
+    /// The run this ledger's stream last wrote in, or the legacy journal's instance before it.
     pub fn instance(&self, zone: &str, ledger: &str) -> Result<String, JournalError> {
         let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        Ok(held.journal.stream().producer.instance.clone())
+        let held = lock(&held)?;
+        Ok(held.host.current_run().unwrap_or_else(|| {
+            held.legacy
+                .as_ref()
+                .map(|journal| journal.stream().producer.instance.clone())
+                .unwrap_or_default()
+        }))
     }
 
-    /// How many bytes one ledger's journal holds.
+    /// How many bytes one ledger's legacy journal holds.
     pub fn bytes(&self, zone: &str, ledger: &str) -> Result<u64, JournalError> {
         let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        held.journal.bytes()
+        let held = lock(&held)?;
+        held.legacy.as_ref().map_or(Ok(0), Journal::bytes)
     }
 
-    /// The records after `seq`, for the shipper and for replay.
+    /// The records after local position `after`, the legacy journal's first: the ledger's
+    /// history in its local order. A record's own `seq` is its place on its stream — the legacy
+    /// journal's, which is also its local position, or its Host run's, which is not past the
+    /// first run: what orders them here is the local position.
     pub fn read_from(
         &self,
         zone: &str,
@@ -666,43 +777,69 @@ impl Streams {
         limit: usize,
     ) -> Result<Vec<serde_json::Value>, JournalError> {
         let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        held.journal.read_from(after, limit)
+        let held = lock(&held)?;
+        let mut records = match &held.legacy {
+            Some(journal) if after < held.host.legacy_through() => {
+                journal.read_from(after, limit)?
+            }
+            _ => Vec::new(),
+        };
+        if records.len() < limit {
+            records.extend(
+                held.host
+                    .read_from(after, limit - records.len())?
+                    .into_iter()
+                    .map(|(_, record)| record),
+            );
+        }
+        Ok(records)
     }
 
-    /// The record at one exact sequence, for completing an interrupted idempotent submission.
+    /// The legacy journal's records after `after`, for its shipper and its eviction.
+    pub fn legacy_read_from(
+        &self,
+        zone: &str,
+        ledger: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<serde_json::Value>, JournalError> {
+        self.with_legacy(zone, ledger, |journal| journal.read_from(after, limit))
+    }
+
+    /// The record at one exact local position, for completing an interrupted idempotent
+    /// submission.
     pub fn record_at(
         &self,
         zone: &str,
         ledger: &str,
         sequence: u64,
     ) -> Result<serde_json::Value, JournalError> {
-        let records = self.read_from(zone, ledger, sequence.saturating_sub(1), 1)?;
-        let record = records.into_iter().next().ok_or_else(|| {
+        let held = self.held(zone, ledger)?;
+        let held = lock(&held)?;
+        let found = if sequence <= held.host.legacy_through() {
+            match &held.legacy {
+                Some(journal) => journal
+                    .read_from(sequence.saturating_sub(1), 1)?
+                    .into_iter()
+                    .next()
+                    .filter(|record| {
+                        record.get("seq").and_then(serde_json::Value::as_u64) == Some(sequence)
+                    }),
+                None => None,
+            }
+        } else {
+            held.host.record_at(sequence)?
+        };
+        found.ok_or_else(|| {
             JournalError::Corrupt(format!(
-                "the occurrence index names sequence {sequence}, but the journal does not hold it"
+                "the occurrence entry names position {sequence}, but the ledger does not hold it"
             ))
-        })?;
-        if record.get("seq").and_then(serde_json::Value::as_u64) != Some(sequence) {
-            return Err(JournalError::Corrupt(format!(
-                "the occurrence index names sequence {sequence}, but the next retained record is \
-                 at {}",
-                record
-                    .get("seq")
-                    .and_then(serde_json::Value::as_u64)
-                    .map_or_else(|| "no sequence".to_owned(), |held| held.to_string())
-            )));
-        }
-
-        Ok(record)
+        })
     }
 
-    /// The records one temporal question needs, by their coordinates in this ledger's journal.
+    /// The records one temporal question needs, by their local positions.
     ///
-    /// A range scan over the index rather than a read of the ledger: one history partition, one
+    /// A range scan over the indexes rather than a read of the ledger: one history partition, one
     /// event type, one time range. What makes deciding against a history cost what the history's
     /// relevant part costs, rather than what the tenant's whole traffic costs.
     pub fn scan(
@@ -710,26 +847,48 @@ impl Streams {
         zone: &str,
         ledger: &str,
         query: &permguard_events::index::Query,
-    ) -> Result<Vec<serde_json::Value>, JournalError> {
+    ) -> Result<Vec<(u64, serde_json::Value)>, JournalError> {
         let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        held.journal.scan(query)
+        let held = lock(&held)?;
+        let mut found = match &held.legacy {
+            Some(journal) => journal
+                .scan(query)?
+                .into_iter()
+                .filter_map(|record| {
+                    let seq = record.get("seq").and_then(serde_json::Value::as_u64)?;
+                    Some((seq, record))
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+        found.extend(held.host.scan(query)?);
+        Ok(found)
     }
 
-    /// Marks records through `seq` as covered by a signed batch.
+    /// Runs `read` on one ledger's legacy journal; a ledger without one answers as an empty one
+    /// would be refused.
+    fn with_legacy<T>(
+        &self,
+        zone: &str,
+        ledger: &str,
+        read: impl FnOnce(&mut Journal) -> Result<T, JournalError>,
+    ) -> Result<T, JournalError> {
+        let held = self.held(zone, ledger)?;
+        let mut held = lock(&held)?;
+        match held.legacy.as_mut() {
+            Some(journal) => read(journal),
+            None => Err(JournalError::Io(format!(
+                "`{zone}/{ledger}` holds no legacy journal"
+            ))),
+        }
+    }
+
+    /// Marks the legacy journal's records through `seq` as covered by a signed batch.
     pub fn mark_signed(&self, zone: &str, ledger: &str, through: u64) -> Result<(), JournalError> {
-        let held = self.held(zone, ledger)?;
-        let mut held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        held.journal.mark_signed(through)
+        self.with_legacy(zone, ledger, |journal| journal.mark_signed(through))
     }
 
-    /// Persists the signed checkpoint covering a batch, and marks that range signed.
+    /// Persists the signed checkpoint covering a legacy batch, and marks that range signed.
     pub fn checkpoint(
         &self,
         zone: &str,
@@ -738,15 +897,12 @@ impl Streams {
         last_seq: u64,
         jws: &str,
     ) -> Result<(), JournalError> {
-        let held = self.held(zone, ledger)?;
-        let mut held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        held.journal.checkpoint(first_seq, last_seq, jws)
+        self.with_legacy(zone, ledger, |journal| {
+            journal.checkpoint(first_seq, last_seq, jws)
+        })
     }
 
-    /// Records which key signed the checkpoint starting at `first_seq`, beside the journal.
+    /// Records which key signed the legacy checkpoint starting at `first_seq`.
     pub fn note_signer(
         &self,
         zone: &str,
@@ -755,47 +911,38 @@ impl Streams {
         kid: &str,
         jwk: &serde_json::Value,
     ) -> Result<(), JournalError> {
-        let held = self.held(zone, ledger)?;
-        let mut held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        held.journal.note_signer(first_seq, kid, jwk)
+        self.with_legacy(zone, ledger, |journal| {
+            journal.note_signer(first_seq, kid, jwk)
+        })
     }
 
-    /// Which key signed which stretch of one stream, as recorded so far.
+    /// Which key signed which stretch of one ledger's legacy journal.
     pub fn signers(
         &self,
         zone: &str,
         ledger: &str,
     ) -> Result<permguard_stream::Signers, JournalError> {
-        let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        Ok(held.journal.signers().clone())
+        self.with_legacy(zone, ledger, |journal| Ok(journal.signers().clone()))
     }
 
     /// Keeps the answer given for one occurrence, so a retry is answered rather than refused.
     ///
     /// The entry already exists — the write path made it durable before this record was
     /// acknowledged, because that is what makes the retry *recognisable*. This fills in the answer
-    /// that was not known yet at that point.
+    /// that was not known yet at that point. A legacy journal's entry is copied beside the Host
+    /// stream's with its answer: the legacy journal is never written.
     pub fn record_outcome(
         &self,
         zone: &str,
         ledger: &str,
+        source: &str,
         event_id: &str,
         routed: Routed<'_>,
         response: &serde_json::Value,
     ) -> Result<(), JournalError> {
         let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        let Some(mut known) = held.journal.occurrence(event_id)? else {
+        let mut held = lock(&held)?;
+        let Some(mut known) = known_in(&held, source, event_id)? else {
             return Err(JournalError::Io(format!(
                 "`{event_id}` has no entry to keep an answer in"
             )));
@@ -806,24 +953,22 @@ impl Streams {
         // entry has no answer to recognise.
         known.profile = Some(routed.profile.to_owned());
         known.kind = Some(routed.kind.to_owned());
-
-        held.journal.record_occurrence(&known)?;
         // A response may leave only after the idempotency answer is durable. Otherwise a crash
-        // can occur after the caller saw success but before the outcome index reaches disk, and a
-        // retry is then recognised as the same event without being able to reproduce its answer.
-        held.journal.sync_occurrences()
+        // can occur after the caller saw success but before the outcome reaches disk, and a retry
+        // is then recognised as the same event without being able to reproduce its answer.
+        held.host.keep_occurrence(&known)
     }
 
-    /// Settles which directory a ledger's journal lives in when its identifiers changed shape.
+    /// Settles which directory a ledger's legacy journal lives in when its identifiers changed
+    /// shape.
     ///
     /// # Why this exists
     ///
-    /// A journal is kept under the pair the caller named, and a caller may name a ledger by its
+    /// A journal was kept under the pair the caller named, and a caller may name a ledger by its
     /// identifier or by its display name — both resolve to one mirror. Keying storage by whichever
     /// arrived first therefore let one ledger own *two* journals: two sequences, two histories, two
     /// idempotency indexes, each invisible to the other. Storage is keyed canonically now, and this
-    /// is what stands between an existing name-keyed journal and being silently abandoned for an
-    /// empty one under the identifier.
+    /// is what stands between an existing name-keyed journal and being silently abandoned.
     ///
     /// Idempotent by construction: once the canonical directory exists there is nothing to do, so
     /// every later call is a stat.
@@ -832,7 +977,9 @@ impl Streams {
         canonical: (&str, &str),
         display: (&str, &str),
     ) -> Result<(), JournalError> {
-        if canonical == display {
+        // An archived legacy (WP-6.2d) is an old generation nothing moves inside, and a pair of
+        // journals there is no longer read, so no longer ambiguous.
+        if !self.legacy || canonical == display {
             return Ok(());
         }
         let target = self.root.join(canonical.0).join(canonical.1);
@@ -900,14 +1047,12 @@ impl Streams {
         &self,
         zone: &str,
         ledger: &str,
+        source: &str,
         event_id: &str,
-    ) -> Result<Option<permguard_events::journal::KnownOccurrence>, JournalError> {
+    ) -> Result<Option<KnownOccurrence>, JournalError> {
         let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        held.journal.occurrence(event_id)
+        let held = lock(&held)?;
+        known_in(&held, source, event_id)
     }
 
     /// The answer given for one occurrence, when this ledger still holds it.
@@ -915,16 +1060,11 @@ impl Streams {
         &self,
         zone: &str,
         ledger: &str,
+        source: &str,
         event_id: &str,
     ) -> Result<Option<serde_json::Value>, JournalError> {
-        let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        Ok(held
-            .journal
-            .occurrence(event_id)?
+        Ok(self
+            .known(zone, ledger, source, event_id)?
             .map(|known| known.response)
             .filter(|response| !response.is_null()))
     }
@@ -934,13 +1074,12 @@ impl Streams {
         &self,
         zone: &str,
         ledger: &str,
+        source: &str,
         event_id: &str,
     ) -> Result<String, JournalError> {
         let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-        let Some(mut known) = held.journal.occurrence(event_id)? else {
+        let mut held = lock(&held)?;
+        let Some(mut known) = known_in(&held, source, event_id)? else {
             return Err(JournalError::Corrupt(format!(
                 "`{event_id}` has no occurrence entry from which to reserve a decision id"
             )));
@@ -951,52 +1090,38 @@ impl Streams {
 
         let decision_id = permguard_decisions::instance::mint();
         known.decision_id = Some(decision_id.clone());
-        held.journal.record_occurrence(&known)?;
-        held.journal.sync_occurrences()?;
+        held.host.keep_occurrence(&known)?;
 
         Ok(decision_id)
     }
 
-    /// The signed checkpoints one ledger's journal holds.
+    /// The signed checkpoints one ledger's legacy journal holds.
     pub fn checkpoints(&self, zone: &str, ledger: &str) -> Result<Vec<PathBuf>, JournalError> {
-        let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        Ok(held
-            .journal
-            .checkpoints()?
-            .into_iter()
-            .map(|(_, path)| path)
-            .collect())
+        self.with_legacy(zone, ledger, |journal| {
+            Ok(journal
+                .checkpoints()?
+                .into_iter()
+                .map(|(_, path)| path)
+                .collect())
+        })
     }
 
-    /// Marks records through `seq` as accepted by the control plane.
+    /// Marks the legacy journal's records through `seq` as accepted by the control plane.
     pub fn acknowledge(&self, zone: &str, ledger: &str, through: u64) -> Result<(), JournalError> {
-        let held = self.held(zone, ledger)?;
-        let mut held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        held.journal.acknowledge(through)
+        self.with_legacy(zone, ledger, |journal| journal.acknowledge(through))
     }
 
-    /// The watermarks one ledger's journal is at.
+    /// The watermarks one ledger's legacy journal is at.
     pub fn state(
         &self,
         zone: &str,
         ledger: &str,
     ) -> Result<permguard_events::journal::State, JournalError> {
-        let held = self.held(zone, ledger)?;
-        let held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        Ok(held.journal.state().clone())
+        self.with_legacy(zone, ledger, |journal| Ok(journal.state().clone()))
     }
 
-    /// The digest of the record at `seq`, which the next batch must name as its predecessor.
+    /// The digest of the legacy journal's record at `seq`, which its next batch must name as its
+    /// predecessor.
     ///
     /// Genesis for `0`, which is where a stream begins. Read from the journal rather than kept in
     /// memory, because it is asked for once per shipping round and a number this plane cached
@@ -1005,7 +1130,7 @@ impl Streams {
         if seq == 0 {
             return Ok(permguard_events::GENESIS.to_owned());
         }
-        let records = self.read_from(zone, ledger, seq.saturating_sub(1), 1)?;
+        let records = self.legacy_read_from(zone, ledger, seq.saturating_sub(1), 1)?;
         let Some(record) = records.first() else {
             return Err(JournalError::Malformed(format!(
                 "sequence {seq} is acknowledged and no longer here to be digested"
@@ -1015,7 +1140,8 @@ impl Streams {
         permguard_events::digest_of(record).map_err(JournalError::Digest)
     }
 
-    /// Evicts what both the control plane has and no loaded policy could still read.
+    /// Evicts from the legacy journal what both the control plane has and no loaded policy could
+    /// still read.
     ///
     /// Two bounds, and the stricter wins. `retention_safe_through` is the policy-derived one: the
     /// last sequence whose occurrence is older than the retention every loaded partition's
@@ -1026,49 +1152,50 @@ impl Streams {
         ledger: &str,
         retention_safe_through: u64,
     ) -> Result<u64, JournalError> {
-        let held = self.held(zone, ledger)?;
-        let mut held = held
-            .lock()
-            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
-
-        let deletable = held.journal.deletable_through(retention_safe_through);
-
-        held.journal.evict(deletable)
+        self.with_legacy(zone, ledger, |journal| {
+            let deletable = journal.deletable_through(retention_safe_through);
+            journal.evict(deletable)
+        })
     }
 
-    /// The ledgers this plane has journals for, whether or not they are open.
+    /// The ledgers this plane has legacy journals for, whether or not they are open.
     ///
     /// Read off the filesystem rather than from what this process happens to have opened: after a
-    /// restart the shipper has to find every stream with unshipped records, including the ones no
+    /// restart the shipper has to find every journal with unshipped records, including the ones no
     /// request has touched yet.
     pub fn ledgers(&self) -> Vec<(String, String)> {
-        let mut found = Vec::new();
-        let Ok(zones) = std::fs::read_dir(&self.root) else {
-            return found;
-        };
-        for zone in zones.flatten() {
-            let Ok(name) = zone.file_name().into_string() else {
-                continue;
-            };
-            let Ok(ledgers) = std::fs::read_dir(zone.path()) else {
-                continue;
-            };
-            for ledger in ledgers.flatten() {
-                if !ledger
-                    .path()
-                    .join(permguard_events::journal::STATE_FILE)
-                    .exists()
-                {
-                    continue;
-                }
-                if let Ok(held) = ledger.file_name().into_string() {
-                    found.push((name.clone(), held));
-                }
+        if !self.legacy {
+            return Vec::new();
+        }
+        children_holding(&self.root, permguard_events::journal::STATE_FILE)
+    }
+
+    /// The ledgers this plane has recorded on the Host's producer, whether or not they are open.
+    pub fn host_ledgers(&self) -> Vec<(String, String)> {
+        children_holding(&self.planes, super::host::LEGACY_MARK)
+    }
+
+    /// Measures, for every ledger on the Host, the floor no loaded window reads below — what was
+    /// observed before `horizon` (epoch seconds) — and what the producer deleted is forgotten:
+    /// what the Host's garbage collection then reads, without touching a ledger.
+    pub fn refresh_floors(&self, horizon: i64) -> Result<(), JournalError> {
+        for (zone, ledger) in self.host_ledgers() {
+            let held = self.held(&zone, &ledger)?;
+            let mut held = lock(&held)?;
+            held.host.forget_deleted()?;
+            let resource = held.host.resource().to_string();
+            let safe = held.host.retention_safe(horizon)?;
+            let mut floors = self
+                .floors
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            floors.retain(|(held, _), _| held != &resource);
+            for (run, through) in safe {
+                floors.insert((resource.clone(), run), through);
             }
         }
-        found.sort();
-
-        found
+        Ok(())
     }
 }
 
@@ -1117,38 +1244,23 @@ impl std::fmt::Display for Failed {
 
 impl std::error::Error for Failed {}
 
-/// Whether this id has been seen here, and whether it carried the same occurrence.
+/// Whether this occurrence has been seen here, and whether it carried the same content.
 ///
-/// Two places are consulted, and the order is the point. The in-memory window answers the common
-/// case — a retry arrives seconds after its original — without touching the disk. The volume
-/// answers everything else, and it is the authority: recognition used to *end* at the window, so
-/// an id repeated after a few thousand others was accepted as a new occurrence and counted twice.
-/// A silent double-count is the one outcome a temporal history must never produce, so a miss in
-/// the window is a question for the volume rather than an answer.
+/// The Host stream's entries first, keyed by source and id; then a legacy journal's, which name no
+/// source and match the id from any, as they did before the upgrade. A miss in both is new; a
+/// read that fails is an error, never a miss: assuming fresh is how one occurrence gets counted
+/// twice.
 fn seen(
-    journal: &Journal,
-    recent: &VecDeque<(String, String, u64)>,
+    held: &Held,
+    source: Option<&str>,
     event_id: &str,
     digest: &str,
 ) -> Result<Seen, JournalError> {
-    // Newest first: a retry matches its own original, and an id reused after a very long time
-    // matches the most recent use of it.
-    for (held_id, held_digest, seq) in recent.iter().rev() {
-        if held_id != event_id {
-            continue;
-        }
-
-        return Ok(if held_digest == digest {
-            Seen::Idempotent { seq: *seq }
-        } else {
-            Seen::Conflict {
-                seq: *seq,
-                stored_digest: held_digest.clone(),
-            }
-        });
-    }
-
-    let Some(known) = journal.occurrence(event_id)? else {
+    let known = match source {
+        Some(source) => known_in(held, source, event_id)?,
+        None => held.host.occurrence(None, event_id)?,
+    };
+    let Some(known) = known else {
         return Ok(Seen::Fresh);
     };
 
@@ -1162,27 +1274,150 @@ fn seen(
     })
 }
 
-/// The dedup index, rebuilt from the journal's tail.
-///
-/// Without this a restart turns every in-flight retry into a duplicate: the client resends an id
-/// the journal already holds, this process has no memory of it, and the same occurrence is
-/// recorded twice under one id — which is exactly the state the conflict rule exists to make
-/// impossible.
-fn recent_of(journal: &Journal) -> Result<VecDeque<(String, String, u64)>, JournalError> {
-    let (next, _) = journal.next_position();
-    let after = next.saturating_sub(RECENT_EVENT_IDS as u64);
-    let records = journal.read_from(after, RECENT_EVENT_IDS)?;
+/// The local half of the logical index (WP-6.4b): this plane's own records, as the import reads
+/// them.
+impl super::imported::Local for Streams {
+    fn copy(
+        &self,
+        zone: &str,
+        ledger: &str,
+        source: &str,
+        event_id: &str,
+    ) -> Result<Option<serde_json::Value>, JournalError> {
+        match self.known(zone, ledger, source, event_id)? {
+            // Recorded under exactly that source: a legacy entry, or one nobody vouched for, keys by
+            // this plane's origin instead and is another occurrence.
+            Some(known) if known.source.as_deref() == Some(source) => {
+                self.record_at(zone, ledger, known.seq).map(Some)
+            }
+            _ => Ok(None),
+        }
+    }
 
-    Ok(records
-        .iter()
-        .filter_map(|record| {
-            Some((
-                record.get("event_id")?.as_str()?.to_owned(),
-                record.get("occurrence_digest")?.as_str()?.to_owned(),
-                record.get("seq")?.as_u64()?,
-            ))
-        })
-        .collect())
+    /// Read under the ledger's lock, as `read_from` is. A legacy journal is read from its start
+    /// per page; only a rebuilt logical index reads it whole, once.
+    fn after(
+        &self,
+        zone: &str,
+        ledger: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<(u64, serde_json::Value)>, JournalError> {
+        let held = self.held(zone, ledger)?;
+        let held = lock(&held)?;
+        let mut records: Vec<(u64, serde_json::Value)> = match &held.legacy {
+            // A legacy record's own sequence is its local position.
+            Some(journal) if after < held.host.legacy_through() => journal
+                .read_from(after, limit)?
+                .into_iter()
+                .filter_map(|record| {
+                    let position = record.get("seq").and_then(serde_json::Value::as_u64)?;
+                    Some((position, record))
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        if records.len() < limit {
+            records.extend(held.host.read_from(after, limit - records.len())?);
+        }
+        Ok(records)
+    }
+}
+
+/// The entry of `event_id` from `source`: the Host stream's, then a legacy entry kept beside it,
+/// then the legacy journal's.
+fn known_in(
+    held: &Held,
+    source: &str,
+    event_id: &str,
+) -> Result<Option<KnownOccurrence>, JournalError> {
+    if let Some(known) = held.host.occurrence(Some(source), event_id)? {
+        return Ok(Some(known));
+    }
+    if let Some(known) = held.host.occurrence(None, event_id)? {
+        return Ok(Some(known));
+    }
+    match &held.legacy {
+        Some(journal) => journal.occurrence(event_id),
+        None => Ok(None),
+    }
+}
+
+fn lock(held: &OpenLedger) -> Result<MutexGuard<'_, Held>, JournalError> {
+    held.lock()
+        .map_err(|_| JournalError::Io("the ledger is poisoned".to_owned()))
+}
+
+/// The `<zone>/<ledger>` directories below `root` holding `marker`.
+fn children_holding(root: &Path, marker: &str) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    let Ok(zones) = std::fs::read_dir(root) else {
+        return found;
+    };
+    for zone in zones.flatten() {
+        let Ok(name) = zone.file_name().into_string() else {
+            continue;
+        };
+        let Ok(ledgers) = std::fs::read_dir(zone.path()) else {
+            continue;
+        };
+        for ledger in ledgers.flatten() {
+            if !ledger.path().join(marker).exists() {
+                continue;
+            }
+            if let Ok(held) = ledger.file_name().into_string() {
+                found.push((name.clone(), held));
+            }
+        }
+    }
+    found.sort();
+
+    found
+}
+
+/// How far an `observed_at` is moved forward to follow the record sequenced ahead of it: the
+/// width of the race between a submission's stamp and its sequence, which is the time a request
+/// spends between arriving and joining a batch. A record ahead by more than this is not a race but
+/// a clock that moved, and nothing is carried forward from it: the submission keeps its own stamp
+/// and is judged against the history as it stands.
+const OBSERVED_LIFT_SECS: i64 = 30;
+
+/// Moves each record's `observed_at` forward to the latest one ahead of it where it is earlier by
+/// no more than [`OBSERVED_LIFT_SECS`], in the order the records are about to be sequenced, and
+/// answers the latest instant.
+///
+/// The floor starts at the last record this process appended, or, on the first append after
+/// opening, at the stream's tail as stored. An instant that cannot be read is left as it is: the
+/// record's own validation refuses it.
+fn observed_floor(held: &Held, records: &mut [Record]) -> Option<i64> {
+    let mut floor = held.last_observed.or_else(|| {
+        let tail = held.host.last();
+        (tail > 0)
+            .then(|| held.host.record_at(tail).ok().flatten())
+            .flatten()
+            .and_then(|record| {
+                record
+                    .get("observed_at")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(permguard_events::index::epoch_seconds)
+            })
+    });
+    for record in records.iter_mut() {
+        let Some(at) = permguard_events::index::epoch_seconds(&record.observed_at) else {
+            continue;
+        };
+        match floor {
+            Some(before) if at < before => {
+                if before - at <= OBSERVED_LIFT_SECS
+                    && let Some(moved) = permguard_events::index::render_epoch_seconds(before)
+                {
+                    record.observed_at = moved;
+                }
+            }
+            _ => floor = Some(at),
+        }
+    }
+    floor
 }
 
 #[cfg(test)]
@@ -1190,7 +1425,26 @@ mod tests {
     use super::*;
     use permguard_core::Recorder;
     use permguard_core::metrics::Reading;
+    use permguard_events::record::Stream;
     use serde_json::json;
+
+    /// Streams over a producer in memory, under a directory nothing else is using.
+    fn on_host(tag: &str, delay: Duration) -> Streams {
+        let root = scratch(tag);
+        Streams::with_group_commit(
+            root.join("events"),
+            root.join("planes"),
+            HostSide {
+                producer: StreamProducer::over(Arc::new(
+                    crate::temporal::testing::MemoryProducer::default(),
+                )),
+                host_id: [0xab; 16],
+            },
+            Bounds::default(),
+            delay,
+        )
+        .expect("the floor is registered")
+    }
 
     /// A directory nothing else is using.
     fn scratch(tag: &str) -> PathBuf {
@@ -1210,6 +1464,7 @@ mod tests {
         let at = permguard_events::index::render_epoch_seconds(1_700_000_000 + id as i64)
             .expect("an instant");
 
+        let event = json!({"event_id": format!("e-{id}"), "kind": "response"});
         Record {
             v: 1,
             record_type: permguard_events::RECORD_TYPE.to_owned(),
@@ -1227,7 +1482,8 @@ mod tests {
             prev: String::new(),
             event_type: "permguard.dogwood.event.v1".to_owned(),
             event_id: format!("e-{id}"),
-            occurrence_digest: format!("sha256:{id:064x}"),
+            source: None,
+            occurrence_digest: permguard_events::occurrence_digest_of(&event).expect("a digest"),
             kind: "response".to_owned(),
             profile: "temporal".to_owned(),
             policy_partitions: vec!["governance".to_owned()],
@@ -1235,7 +1491,7 @@ mod tests {
             history_key: None,
             occurred_at: at.clone(),
             observed_at: at,
-            event: json!({"event_id": format!("e-{id}"), "kind": "response"}),
+            event,
         }
     }
 
@@ -1267,13 +1523,8 @@ mod tests {
     fn submissions_that_overlap_share_a_flush_and_none_of_them_is_lost() {
         let registry = Arc::new(permguard_std::metrics::Registry::new());
         let streams = Arc::new(
-            Streams::with_group_commit(
-                scratch("batched"),
-                "plane-1".to_owned(),
-                Bounds::default(),
-                Duration::from_millis(20),
-            )
-            .with_metrics(Metrics::new(Arc::clone(&registry) as Arc<dyn Recorder>)),
+            on_host("batched", Duration::from_millis(20))
+                .with_metrics(Metrics::new(Arc::clone(&registry) as Arc<dyn Recorder>)),
         );
 
         // Every writer waits for every other before submitting, so "concurrent" is a property of
@@ -1337,11 +1588,7 @@ mod tests {
     /// which is the latency a deployment buys the amortisation with.
     #[test]
     fn a_zero_delay_still_writes_everything_exactly_once() {
-        let streams = Arc::new(Streams::new(
-            scratch("unbatched"),
-            "plane-1".to_owned(),
-            Bounds::default(),
-        ));
+        let streams = Arc::new(on_host("unbatched", Duration::ZERO));
 
         let mut writers = Vec::new();
         for id in 0..20u64 {
@@ -1370,12 +1617,7 @@ mod tests {
     /// sees the first's record, in the same pass, before either is flushed.
     #[test]
     fn one_occurrence_twice_in_a_batch_is_recorded_once() {
-        let streams = Arc::new(Streams::with_group_commit(
-            scratch("retried"),
-            "plane-1".to_owned(),
-            Bounds::default(),
-            Duration::from_millis(20),
-        ));
+        let streams = Arc::new(on_host("retried", Duration::from_millis(20)));
 
         let mut writers = Vec::new();
         for _ in 0..8 {
@@ -1414,12 +1656,7 @@ mod tests {
     /// One event id carrying different content is a conflict, and does not take the batch with it.
     #[test]
     fn a_conflict_fails_alone_and_the_rest_of_its_batch_is_written() {
-        let streams = Streams::with_group_commit(
-            scratch("conflict"),
-            "plane-1".to_owned(),
-            Bounds::default(),
-            Duration::ZERO,
-        );
+        let streams = on_host("conflict", Duration::ZERO);
 
         streams
             .append("acme", "main", occurrence(1))
@@ -1427,7 +1664,9 @@ mod tests {
 
         // The same id, different content.
         let mut impostor = occurrence(1);
-        impostor.occurrence_digest = format!("sha256:{:064x}", 99);
+        impostor.event["kind"] = json!("request");
+        impostor.occurrence_digest =
+            permguard_events::occurrence_digest_of(&impostor.event).expect("a digest");
         let refused = streams
             .append("acme", "main", impostor)
             .expect_err("one id, two occurrences, is never resolved by choosing one");
@@ -1440,5 +1679,151 @@ mod tests {
             .read_from("acme", "main", 0, 100)
             .expect("the journal reads back");
         assert_eq!(records.len(), 2, "the conflict was refused, not recorded");
+    }
+
+    /// Streams over `producer`, under a directory nothing else is using.
+    fn over(tag: &str, producer: &Arc<crate::temporal::testing::MemoryProducer>) -> Streams {
+        let root = scratch(tag);
+        Streams::new(
+            root.join("events"),
+            root.join("planes"),
+            HostSide {
+                producer: StreamProducer::over(
+                    Arc::clone(producer) as Arc<dyn permguard_host::composition::StreamAppender>
+                ),
+                host_id: [0xab; 16],
+            },
+            Bounds::default(),
+        )
+        .expect("the floor is registered")
+    }
+
+    /// A stream past its bounds takes nothing, and neither does one whose pressure cannot be
+    /// measured; the measure is trusted a second, then taken again.
+    #[test]
+    fn a_stream_under_pressure_or_unmeasured_refuses_and_records_nothing() {
+        let producer = Arc::new(crate::temporal::testing::MemoryProducer::default());
+        let streams = over("pressure", &producer);
+        *producer.pressure.lock().expect("the lock") =
+            Some(permguard_core::codes::stream::SPOOL_FULL);
+        let refused = streams
+            .append("acme", "main", occurrence(1))
+            .expect_err("past its bounds");
+        assert!(
+            matches!(refused, Failed::Journal(JournalError::Full)),
+            "{refused}"
+        );
+        // Relieved, and still refused while the measure is trusted.
+        *producer.pressure.lock().expect("the lock") = None;
+        assert!(streams.append("acme", "main", occurrence(1)).is_err());
+        std::thread::sleep(PRESSURE_FOR + Duration::from_millis(100));
+        streams
+            .append("acme", "main", occurrence(1))
+            .expect("measured again");
+
+        let producer = Arc::new(crate::temporal::testing::MemoryProducer::default());
+        let streams = over("pressure-unknown", &producer);
+        *producer.pressure_error.lock().expect("the lock") = Some("no ring".to_owned());
+        let refused = streams
+            .append("acme", "main", occurrence(1))
+            .expect_err("unmeasured is refused");
+        assert!(
+            matches!(refused, Failed::Journal(JournalError::Full)),
+            "{refused}"
+        );
+        assert!(
+            streams
+                .read_from("acme", "main", 0, 10)
+                .expect("read")
+                .is_empty(),
+            "nothing recorded"
+        );
+    }
+
+    /// Records an append made durable without their entries are caught up before the next write,
+    /// so a retry of them is the stored position rather than a second record.
+    #[test]
+    fn a_retry_after_entries_failed_is_recognised_not_recorded_twice() {
+        let producer = Arc::new(crate::temporal::testing::MemoryProducer::default());
+        let root = scratch("entries-failed");
+        let streams = Streams::new(
+            root.join("events"),
+            root.join("planes"),
+            HostSide {
+                producer: StreamProducer::over(
+                    Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamAppender>
+                ),
+                host_id: [0xab; 16],
+            },
+            Bounds::default(),
+        )
+        .expect("the floor is registered");
+        // The ledger open, so what fails below is the entries of a durable record.
+        streams
+            .append("acme", "main", occurrence(0))
+            .expect("durable");
+        {
+            let _failing = permguard_core::fault::inject(
+                root.join("planes"),
+                permguard_core::fault::Fault::WriteFails,
+            );
+            streams
+                .append("acme", "main", occurrence(1))
+                .expect_err("durable on the stream, its entries not");
+        }
+        let (retried, _) = streams
+            .append("acme", "main", occurrence(1))
+            .expect("the retry is answered");
+        assert_eq!(retried, Written::Idempotent { seq: 2 });
+        assert_eq!(
+            streams
+                .read_from("acme", "main", 0, 10)
+                .expect("read")
+                .len(),
+            2,
+            "one record per occurrence"
+        );
+    }
+
+    /// One id from two sources in one batch is two occurrences, both recorded; the same id from
+    /// the same source twice is the first's retry.
+    #[test]
+    fn one_id_from_two_sources_in_a_batch_is_two_occurrences() {
+        let streams = on_host("two-sources", Duration::ZERO);
+        let held = streams.held("acme", "main").expect("opened");
+        let from = |source: &str| {
+            let mut record = occurrence(7);
+            record.source = Some(source.to_owned());
+            record
+        };
+        let results = streams.write(
+            &held,
+            vec![(0, from("alice")), (1, from("bob")), (2, from("alice"))],
+        );
+        let written: Vec<Written> = results
+            .into_iter()
+            .map(|(_, result)| result.expect("each is an answer").0)
+            .collect();
+        assert!(
+            written
+                .iter()
+                .filter(|written| matches!(written, Written::Appended { .. }))
+                .count()
+                == 2,
+            "{written:?}"
+        );
+        assert!(
+            written
+                .iter()
+                .any(|written| matches!(written, Written::Idempotent { .. })),
+            "{written:?}"
+        );
+        assert_eq!(
+            streams
+                .read_from("acme", "main", 0, 10)
+                .expect("read")
+                .len(),
+            2
+        );
     }
 }

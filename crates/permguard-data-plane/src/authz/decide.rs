@@ -42,6 +42,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use permguard_core::{ApiError, ErrorClass, Metrics, Subject};
+use permguard_languages::attestation::{Evidence, EvidenceMode, EvidenceStatus};
 use permguard_languages::request::{Asking, PartitionTarget};
 use permguard_languages::{Query, resolve};
 use tracing::{debug, info, warn};
@@ -106,6 +107,20 @@ impl Loading {
         ledger: &str,
         profile: &str,
     ) -> Result<Loaded, ApiError> {
+        let contested = store::contested(root, zone, ledger);
+        if !contested.is_empty() {
+            self.metrics.count(
+                &super::measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, "ledger_contested")],
+            );
+            warn!(
+                event.name = "authz.ledger_contested",
+                component = COMPONENT,
+                mirrors = contested.join(", ").as_str(),
+                "two mirrors answer to the ledger a request named: neither is served"
+            );
+            return Err(contested_ledger(zone, ledger));
+        }
         let mirror = store::find(root, zone, ledger).ok_or_else(|| {
             self.metrics.count(
                 &super::measure::REFUSALS,
@@ -163,6 +178,23 @@ impl Loading {
                     bound.as_secs()
                 ),
             ));
+        }
+
+        // Staleness, on every request (WP-7.2d, F-14): still answered, and counted, so a
+        // dashboard sees how many decisions a stale mirror is making.
+        if let Some(bound) = self.stale_after
+            && let Some(age) = store::synced_age(&mirror.path)
+            && age >= bound
+        {
+            self.metrics.count(&super::measure::STALE_SERVED, &[]);
+            debug!(
+                event.name = "authz.ledger_stale",
+                component = COMPONENT,
+                ledger = mirror.log_id().as_str(),
+                age.seconds = age.as_secs(),
+                bound.seconds = bound.as_secs(),
+                "answering from a mirror past the deployment's staleness bound"
+            );
         }
 
         let head = self.head(&mirror)?;
@@ -254,9 +286,21 @@ impl Loading {
             .partitions_of(profile)
             .map_err(|refusal| self.refuse(mirror, &refusal))?;
 
+        // The interface this profile asks of each partition: its compile is keyed by it. The
+        // profile exists, `partitions_of` having found it; a key never carries an empty interface.
+        let Some(interface) =
+            head.manifest.profiles.get(profile).map(|declared| {
+                permguard_objects::manifest::interface_of(&declared.r#type).to_owned()
+            })
+        else {
+            return Err(self.refuse(
+                mirror,
+                &snapshot::Refusal::Unknown(format!("this ledger declares no profile `{profile}`")),
+            ));
+        };
         let mut compiled = Vec::new();
         for name in names {
-            let key = partition_key(mirror, head, &name);
+            let key = partition_key(mirror, head, &name, &interface, self.profile, &self.enabled);
             if let Some(held) = self.cache.partition(&key) {
                 self.metrics.count(
                     &super::measure::CACHE_LOOKUPS,
@@ -336,6 +380,12 @@ impl Loading {
                 ErrorClass::Validation,
                 permguard_core::codes::pdp_native::PROFILE_UNKNOWN,
             ),
+            // A retired interface, refused under its own code and never served (WP-7.4a).
+            Refusal::Retired(_) => (
+                permguard_core::codes::common::INTERFACE_RETIRED,
+                ErrorClass::Validation,
+                permguard_core::codes::common::INTERFACE_RETIRED,
+            ),
         };
         self.metrics.count(
             &super::measure::REFUSALS,
@@ -405,6 +455,9 @@ pub struct TemporalDecision<'a> {
     pub latency_us: u64,
     /// Where the occurrence this decision was made about sits.
     pub event: permguard_decisions::record::EventRef,
+    /// The principal the submission authenticated as (IFACE-04): the source the occurrence is
+    /// recorded under, never a value of the payload.
+    pub actor: Option<&'a str>,
 }
 
 /// The half of a decider that loading needs.
@@ -416,6 +469,7 @@ struct Loading {
     cache: Arc<Cache>,
     metrics: Metrics,
     expire_after: Option<std::time::Duration>,
+    stale_after: Option<std::time::Duration>,
     enabled: permguard_languages::registry::Enabled,
     profile: permguard_core::assurance::AssuranceProfile,
     supervisors: Arc<permguard_languages::worker::Supervisors>,
@@ -445,7 +499,9 @@ pub struct Decider {
     audit: Option<AuditTarget>,
     max_evaluations: usize,
     /// Where decisions are recorded, when this plane keeps a log.
-    journal: Option<Arc<crate::decisions::Journal>>,
+    journal: Option<Arc<dyn crate::decisions::DecisionRecorder>>,
+    /// Signed responses, when this plane offers them (WP-6.6b).
+    response_signing: Option<super::signing::ResponseSigning>,
     /// Which caller-supplied attributes this plane may record in clear.
     include: permguard_core::decisions::IncludeSection,
     /// Turns an identifier into the zone's shared token before it ever leaves this plane
@@ -454,6 +510,9 @@ pub struct Decider {
     /// How old a mirror's last verified synchronization may grow before this
     /// plane refuses to answer from it. `None`: no bound.
     expire_after: Option<std::time::Duration>,
+    /// How old it may grow before an answer from it is counted as stale (WP-7.2d). `None`: no
+    /// bound.
+    stale_after: Option<std::time::Duration>,
     /// How long one decision may spend deciding. `None`: no bound, which is what a decider built
     /// for a test that is about something else wants.
     budget: Option<std::time::Duration>,
@@ -479,6 +538,10 @@ pub struct Decider {
     single_flight: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<()>>>>>,
     /// The bound on concurrent blocking work — see [`Decider::with_blocking`].
     blocking: crate::blocking::Blocking,
+    /// The pool evaluations run on, apart from the disk work — see [`Decider::with_evaluation`].
+    evaluation: crate::blocking::Blocking,
+    /// The pool decision records and their flush run on — see [`Decider::with_evidence`].
+    evidence: crate::blocking::Blocking,
     /// Profiles whose evaluation keeps overrunning its deadline — see
     /// [`crate::authz::quarantine`].
     quarantine: Arc<super::quarantine::Quarantine>,
@@ -490,6 +553,11 @@ enum AuditTarget {
 }
 
 impl Decider {
+    /// The most evaluations one boxcar request carries (WP-7.4a, published by discovery).
+    pub fn max_evaluations(&self) -> usize {
+        self.max_evaluations
+    }
+
     /// Builds the decider from the plane's configuration.
     pub fn new(
         root: PathBuf,
@@ -507,9 +575,11 @@ impl Decider {
             audit: recorder.map(AuditTarget::Direct),
             max_evaluations: max_evaluations.max(1),
             journal: None,
+            response_signing: None,
             include: permguard_core::decisions::IncludeSection::default(),
             subjects: None,
             expire_after: None,
+            stale_after: None,
             budget: None,
             // Everything this build carries, unless a deployment says otherwise. A decider built
             // by a test is about something else, and should see what was compiled in.
@@ -524,6 +594,17 @@ impl Decider {
             // and a deployment that has not thought about the number still gets one. The
             // composition root replaces it with the configured size.
             blocking: crate::blocking::Blocking::new(
+                permguard_core::config::default_max_blocking(),
+                metrics_for_pool.clone(),
+            ),
+            // The same reasoning for evaluation: a pool sized to the cores, a burst queued in
+            // front of it, replaced by the composition root with the configured one.
+            evaluation: crate::blocking::Blocking::evaluation(
+                permguard_core::config::host_cores(),
+                permguard_core::config::default_max_blocking(),
+                metrics_for_pool.clone(),
+            ),
+            evidence: crate::blocking::Blocking::evidence(
                 permguard_core::config::default_max_blocking(),
                 metrics_for_pool,
             ),
@@ -566,12 +647,34 @@ impl Decider {
         self
     }
 
+    /// The pool policy evaluation runs on (TS-3).
+    ///
+    /// Apart from [`Decider::with_blocking`]'s disk work, so neither can take the other's capacity:
+    /// a stalled disk holds storage permits and evaluations still run; a burst of evaluations
+    /// waits in its own queue and the flushes that settle answered decisions still run.
+    pub fn with_evaluation(mut self, evaluation: crate::blocking::Blocking) -> Self {
+        self.evaluation = evaluation;
+
+        self
+    }
+
+    /// The pool decision records run on (TS-3): the append and the group flush the record waits
+    /// for, apart from the loads [`Decider::with_blocking`] bounds. Under `required` evidence every
+    /// answered decision holds a slot here until its flush; sharing the loads' slots let those
+    /// waits refuse the next request's load.
+    pub fn with_evidence(mut self, evidence: crate::blocking::Blocking) -> Self {
+        self.evidence = evidence;
+
+        self
+    }
+
     /// The half of this decider that loading needs, cheap to move onto a blocking thread.
     fn clone_for_loading(&self) -> Loading {
         Loading {
             cache: Arc::clone(&self.cache),
             metrics: self.metrics.clone(),
             expire_after: self.expire_after,
+            stale_after: self.stale_after,
             enabled: self.enabled.clone(),
             profile: self.profile,
             supervisors: Arc::clone(&self.supervisors),
@@ -630,14 +733,23 @@ impl Decider {
         self
     }
 
+    /// The staleness bound every request checks (WP-7.2d, F-14): an answer from a mirror past it
+    /// is still given, and counted, the alarm being the round's.
+    pub fn with_staleness(mut self, stale_after: Option<std::time::Duration>) -> Self {
+        self.stale_after = stale_after;
+
+        self
+    }
+
     /// Records every decision this decider answers.
     ///
     /// Separate from [`Self::new`] because a plane that keeps no log is the
-    /// ordinary case, and because the journal is a singleton the plane opens
-    /// once — a decider that built its own would open a second spool.
+    /// ordinary case, and because the log is a singleton the plane opens
+    /// once — a decider that built its own would mark and measure every
+    /// stream a second time.
     pub fn with_journal(
         mut self,
-        journal: Option<Arc<crate::decisions::Journal>>,
+        journal: Option<Arc<dyn crate::decisions::DecisionRecorder>>,
         subjects: Option<Arc<permguard_host::secrets::ZoneHandle>>,
         include: permguard_core::decisions::IncludeSection,
     ) -> Self {
@@ -646,6 +758,22 @@ impl Decider {
         self.include = include;
 
         self
+    }
+
+    /// Signs a native response when a request asks for one (WP-6.6b); `None` refuses every such
+    /// request as `response_signing_unavailable`.
+    pub fn with_response_signing(
+        mut self,
+        signing: Option<super::signing::ResponseSigning>,
+    ) -> Self {
+        self.response_signing = signing;
+
+        self
+    }
+
+    /// Response signing as this plane offers it: what discovery publishes.
+    pub fn response_signing(&self) -> Option<&super::signing::ResponseSigning> {
+        self.response_signing.as_ref()
     }
 
     /// The mirrors root, for the surfaces that report on what is held.
@@ -712,8 +840,13 @@ impl Decider {
         // Every partition the ledger declares, not only the default profile's:
         // whatever a caller asks for should already be in memory.
         let mut compiled = 0;
-        for name in head.manifest.partitions.keys() {
-            let key = partition_key(mirror, &head, name);
+        for (name, interface) in head.manifest.partitions.keys().flat_map(|name| {
+            interfaces_of(&head, name)
+                .into_iter()
+                .map(move |interface| (name, interface))
+        }) {
+            // Compiled for every interface it promises (IFACE-01).
+            let key = partition_key(mirror, &head, name, &interface, self.profile, &self.enabled);
             if self.cache.partition(&key).is_some() {
                 continue;
             }
@@ -792,8 +925,25 @@ impl Decider {
         trace: Option<TraceContext>,
         authorized: Option<&(String, String)>,
     ) -> Result<CheckResponse, ApiError> {
+        self.decide_signed(request, trace, authorized, Asker::default())
+            .await
+    }
+
+    /// [`Self::decide_as`], for a request whose caller the transport authenticated as
+    /// `asker.audience` and whose request digest it took before touching the body (WP-6.6b): what
+    /// a signed response binds.
+    pub async fn decide_signed(
+        &self,
+        request: &CheckRequest,
+        trace: Option<TraceContext>,
+        authorized: Option<&(String, String)>,
+        asker: Asker,
+    ) -> Result<CheckResponse, ApiError> {
         let started = Instant::now();
-        let outcome = self.answer(request, trace, authorized).await;
+        // The decision path (TS-4): nothing below may reach the network, and whatever tries is
+        // refused and counted.
+        let outcome =
+            permguard_core::egress::decision(self.answer(request, trace, authorized, asker)).await;
         self.metrics.observe(
             &super::measure::REQUEST_SECONDS,
             &[],
@@ -809,10 +959,14 @@ impl Decider {
         request: &CheckRequest,
         trace: Option<TraceContext>,
         authorized: Option<&(String, String)>,
+        asker: Asker,
     ) -> Result<CheckResponse, ApiError> {
         // The decision's own clock, which the log records: how long the plane
         // took, separate from how long the transport took.
         let started = Instant::now();
+        // Who asked, as the transport authenticated them: the record's actor (IFACE-04), kept
+        // apart from the request's `principal`, which is only what the caller asserted.
+        let actor = asker.actor.clone();
         // Shared, never copied. The plan below runs on a blocking thread and needs the request to
         // outlive this frame; cloning it copied every evaluation's subject, resource and context
         // a second time, on top of the entity stores the contract already shares.
@@ -825,6 +979,45 @@ impl Decider {
             // bad request, not a decision.
             ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
         })?);
+        // A nonce asks for a signed answer (WP-6.6): one this plane cannot sign — no signer, no
+        // authenticated audience, no request digest — is refused before anything is decided or
+        // recorded, never answered unsigned.
+        let signed = match &request.request_nonce {
+            None => None,
+            Some(nonce) => {
+                let Some(signing) = self.response_signing.clone() else {
+                    return Err(self.signing_unavailable(
+                        "the request asks for a signed response, and this plane has no signer for \
+                         one",
+                    ));
+                };
+                let Some(audience) = asker.audience else {
+                    return Err(self.signing_unavailable(
+                        "the request asks for a signed response, and no authenticated caller is \
+                         there to address it to",
+                    ));
+                };
+                // Taken by the transport from what the caller sent, before anything was filled in:
+                // never recomputed here, where the body may no longer be the caller's.
+                let Some(request_digest) = asker.request_digest else {
+                    return Err(self.signing_unavailable(
+                        "the request digest of what the caller sent was not taken",
+                    ));
+                };
+                // The clock and the key, before anything is decided or recorded.
+                if let Err(error) = signing.signer.ready() {
+                    return Err(
+                        self.signing_unavailable(&format!("the signer cannot sign now: {error}"))
+                    );
+                }
+                Some(Signed {
+                    signing,
+                    audience,
+                    nonce: nonce.clone(),
+                    request_digest,
+                })
+            }
+        };
 
         let Loaded {
             mirror,
@@ -844,6 +1037,14 @@ impl Decider {
                 ErrorClass::Unavailable,
                 permguard_core::codes::common::UNAVAILABLE,
                 "the store the request names changed while the request was authorized; retry",
+            ));
+        }
+        // A signature names the authority of the head statement it was decided under: a mirror
+        // pulled before that was kept signs nothing, refused before anything is decided.
+        if signed.is_some() && (head.authority_host_id.is_none() || head.reference.is_none()) {
+            return Err(self.signing_unavailable(
+                "this ledger's mirror was pulled before it kept the authority of its head \
+                 statement; it signs from its next pull",
             ));
         }
 
@@ -918,11 +1119,16 @@ impl Decider {
             guarded.clone(),
             deadline,
             tokio::runtime::Handle::current(),
+            // When the evaluation asked for a slot: the time it then waited in the queue is load,
+            // not slowness, and the breaker below must not count it.
+            std::time::Instant::now(),
         );
+        // On the evaluation pool, waiting for a slot no longer than the decision's own deadline:
+        // a request that cannot start before it would be abandoned is refused instead.
         let evaluated = self
-            .blocking
-            .run(&[], move || {
-                let (quarantine, guarded, deadline, runtime) = watching;
+            .evaluation
+            .run_until(&[], deadline, move || {
+                let (quarantine, guarded, deadline, runtime, queued_at) = watching;
                 // The reservation is handed over here and nowhere earlier. This closure runs only
                 // when a permit was taken, so a request refused at capacity drops `probe` with the
                 // closure and gives the reservation back instead of stranding it.
@@ -934,7 +1140,13 @@ impl Decider {
                 // did not overrun this profile. The timer itself belongs to the
                 // runtime, so dropping the caller cannot cancel the breaker
                 // observation while synchronous provider work keeps running.
-                let watch = deadline.map(|deadline| quarantine.watch(guarded, deadline, &runtime));
+                //
+                // Its deadline is the request's, moved by the time the evaluation waited in the
+                // queue: a burst wider than the cores delays when an evaluation starts, and an
+                // evaluation that started late is not a slow one (TS-3).
+                let waited = queued_at.elapsed();
+                let watch =
+                    deadline.map(|deadline| quarantine.watch(guarded, deadline + waited, &runtime));
                 let outcome = plan.run();
                 if let Some(watch) = watch {
                     watch.finish();
@@ -956,8 +1168,8 @@ impl Decider {
                         format!(
                             "{held}. An evaluation is synchronous and a provider inside one cannot \
                              be interrupted, so this plane bounds how many may run at once and \
-                             refuses beyond it rather than queueing behind work that may not \
-                             return"
+                             how many may wait, and refuses beyond that rather than queueing \
+                             without limit behind work that may not return"
                         ),
                     )
                 }
@@ -1042,15 +1254,18 @@ impl Decider {
 
         // Before the answer leaves: a plane told to refuse rather than decide
         // unrecorded must refuse *here*, where the answer has not gone out yet.
-        self.journal(
-            &resolved,
-            &mirror,
-            &head,
-            &evaluated,
-            trace.as_ref(),
-            started,
-        )
-        .await?;
+        let evidence = self
+            .journal(
+                &resolved,
+                &mirror,
+                &head,
+                &evaluated,
+                trace.as_ref(),
+                actor.as_deref(),
+                started,
+            )
+            .await?;
+
         self.record(&resolved, &mirror, &head, &evaluated).await;
 
         // Recorded, and only now refused: the native contract answers an indeterminate result
@@ -1105,7 +1320,18 @@ impl Decider {
             return Err(ApiError::new(class, code, message).with_internal(causes.join("; ")));
         }
 
-        let decisions: Vec<Decision> = evaluated.into_iter().map(|held| held.decision).collect();
+        // What became of each record, on the decision it is the record of (WP-6.6).
+        let decisions: Vec<Decision> = evaluated
+            .into_iter()
+            .zip(evidence)
+            .map(|(held, evidence)| {
+                let mut decision = held.decision;
+                if let Some(context) = decision.context.as_mut() {
+                    context.evidence = Some(evidence);
+                }
+                decision
+            })
+            .collect();
         // The whole request's context. A plain request has one decision, and that is its
         // context. A batch has several, and its context is derived from the verdict its semantic
         // produced — never copied from one of them.
@@ -1118,7 +1344,7 @@ impl Decider {
                 .unwrap_or_default()
         };
 
-        Ok(CheckResponse {
+        let mut response = CheckResponse {
             decision: overall,
             request_id: resolved.request_id.clone(),
             context: Some(context),
@@ -1127,7 +1353,116 @@ impl Decider {
             } else {
                 None
             },
-        })
+            attestation: None,
+        };
+        if let Some(signed) = signed {
+            response.attestation =
+                Some(self.attest(&response, signed, &mirror, &head, &resolved.profile)?);
+        }
+
+        Ok(response)
+    }
+
+    /// The refusal of a request for a signature this plane cannot make.
+    fn signing_unavailable(&self, reason: &str) -> ApiError {
+        self.metrics.count(
+            &super::measure::REFUSALS,
+            &[(
+                permguard_core::metrics::labels::REASON,
+                permguard_core::codes::pdp_native::RESPONSE_SIGNING_UNAVAILABLE,
+            )],
+        );
+        ApiError::new(
+            ErrorClass::Unavailable,
+            permguard_core::codes::pdp_native::RESPONSE_SIGNING_UNAVAILABLE,
+            format!("{reason}: this plane answers no request for a signature unsigned"),
+        )
+    }
+
+    /// Signs `response` for the request `signed` describes (WP-6.6b): the payload binds the
+    /// request and response digests, the audience, the exact policy state, the decision, its
+    /// evidence and a lifetime; checked whole before the Host signs its JCS bytes.
+    fn attest(
+        &self,
+        response: &CheckResponse,
+        signed: Signed,
+        mirror: &store::Mirror,
+        head: &Head,
+        profile: &str,
+    ) -> Result<permguard_languages::attestation::Attestation, ApiError> {
+        use permguard_languages::attestation::{Payload, Policy, response_digest};
+
+        let (Some(authority), Some(reference)) =
+            (head.authority_host_id.clone(), head.reference.clone())
+        else {
+            return Err(self.signing_unavailable(
+                "this ledger's mirror was pulled before it kept the authority of its head \
+                 statement; it signs from its next pull",
+            ));
+        };
+        // One request id per evaluation answered, in response order; the single endpoint's one.
+        // A batch's evidence is its last evaluation's record: every evaluation's own evidence is
+        // bound through the response digest (decided autonomously, 2026-10-22).
+        let (request_ids, evidence) = match &response.evaluations {
+            Some(evaluations) => (
+                evaluations
+                    .iter()
+                    .map(|decision| decision.request_id.clone())
+                    .collect(),
+                evaluations
+                    .last()
+                    .and_then(|decision| decision.context.as_ref())
+                    .and_then(|context| context.evidence.clone()),
+            ),
+            None => (
+                vec![response.request_id.clone()],
+                response
+                    .context
+                    .as_ref()
+                    .and_then(|context| context.evidence.clone()),
+            ),
+        };
+        let Some(evidence) = evidence else {
+            return Err(self.signing_unavailable("the decision names no evidence to sign"));
+        };
+        let response_digest = response_digest(response).map_err(|error| {
+            self.signing_unavailable(&format!("the response digest cannot be taken: {error}"))
+        })?;
+        let issued = signed.signing.signer.now();
+        let validity = i64::try_from(signed.signing.validity.as_secs()).unwrap_or(i64::MAX);
+        let payload = Payload {
+            v: permguard_languages::attestation::PAYLOAD_VERSION,
+            interface: permguard_languages::request::INTERFACE.to_owned(),
+            request_digest: signed.request_digest,
+            request_nonce: signed.nonce,
+            request_ids,
+            audience: signed.audience,
+            policy: Policy {
+                authority_host_id: authority,
+                zone_id: mirror.identity.zone_id.clone(),
+                ledger_id: mirror.identity.ledger_id.clone(),
+                reference,
+                commit: head.commit.clone(),
+                counter: head.counter.to_string(),
+                profile: profile.to_owned(),
+            },
+            decision: response.decision,
+            response_digest,
+            evidence,
+            issued_at: permguard_core::time::to_rfc3339(issued),
+            expires_at: permguard_core::time::to_rfc3339(issued.saturating_add(validity)),
+        };
+        payload.check().map_err(|reason| {
+            self.signing_unavailable(&format!("the signed payload would not be exact: {reason}"))
+        })?;
+        let bytes = payload.canonical().map_err(|error| {
+            self.signing_unavailable(&format!("the payload cannot be written: {error}"))
+        })?;
+        signed
+            .signing
+            .signer
+            .sign(&bytes)
+            .map_err(|error| self.signing_unavailable(&format!("the signer refused: {error}")))
     }
 
     /// The ledger a request names, loaded: its mirror, its verified head, and the compiled
@@ -1284,6 +1619,41 @@ impl Decider {
     }
 }
 
+/// Who asked, as the transport saw it (WP-6.6b): the authenticated principal a signed response is
+/// addressed to, and the request digest taken before the transport touched the body.
+#[derive(Debug, Clone, Default)]
+pub struct Asker {
+    /// `ActorContext.authorization_principal`, copied exactly; `None` for nobody authenticated.
+    pub audience: Option<String>,
+    /// The request digest, taken before a header filled anything in.
+    pub request_digest: Option<String>,
+    /// The principal the transport authorized the request as, the reserved anonymous one
+    /// included: what the decision record names as its actor (IFACE-04), whether or not a
+    /// signature is asked for. `None` where no transport authenticated the request.
+    pub actor: Option<String>,
+}
+
+impl Asker {
+    /// `audience`, and the request digest of `request` as it stands now: to be called before a
+    /// transport fills anything into the body. A digest that cannot be taken is absent, and a
+    /// request for a signature is then refused.
+    pub fn of(audience: Option<String>, request: &CheckRequest) -> Self {
+        Self {
+            audience,
+            request_digest: permguard_languages::attestation::request_digest(request).ok(),
+            actor: None,
+        }
+    }
+}
+
+/// A request for a signature, once it is known it can be made.
+struct Signed {
+    signing: super::signing::ResponseSigning,
+    audience: String,
+    nonce: String,
+    request_digest: String,
+}
+
 /// The zone and the ledger of `mirror` as their 16 UUID bytes: the scope its records' tags and
 /// pseudonyms are keyed by (WP-3.3); `None` for ids that are not UUIDs.
 fn scope_of(mirror: &store::Mirror) -> Option<permguard_decisions::commitment::Scope> {
@@ -1309,6 +1679,8 @@ struct OwnedDecided {
     at: String,
     zone: String,
     ledger: String,
+    zone_id: String,
+    ledger_id: String,
     scope: Option<permguard_decisions::commitment::Scope>,
     commit: String,
     counter: u64,
@@ -1334,29 +1706,145 @@ struct OwnedDecided {
     latency_us: u64,
     /// The occurrence this decision was made about, for a temporal one.
     event: Option<permguard_decisions::record::EventRef>,
+    /// The evidence binding (IFACE-04, IFACE-05): the interface, the pseudonymised actor, the
+    /// canonical question to commit to, and the descriptor of each partition of the profile.
+    interface: String,
+    actor: Option<(String, String)>,
+    question: serde_json::Value,
+    descriptors: std::collections::BTreeMap<String, String>,
 }
 
-/// The compiled-cache key of one partition: its ledger, its commit, its name, and the descriptor
-/// digest of the runtime that compiles it. An engine upgrade, a feature or a limit is a new key, so
-/// a program compiled by another build is never served. A partition whose runtime this build does
-/// not carry gets a key nothing is ever kept under: compiling it is refused.
-fn partition_key(mirror: &store::Mirror, head: &Head, partition: &str) -> String {
-    let descriptor = head
-        .manifest
+/// The compiled-cache key of one partition (IFACE-03): its ledger, its commit, its name, the
+/// interface it is compiled for, the descriptor digest of the runtime that compiles it, the
+/// assurance profile and the enabled contracts. An engine upgrade, a feature or a limit is a new
+/// key, so a program compiled by another build is never served. A partition whose runtime this
+/// build does not carry gets a key nothing is ever kept under: compiling it is refused.
+fn partition_key(
+    mirror: &store::Mirror,
+    head: &Head,
+    partition: &str,
+    interface: &str,
+    profile: permguard_core::assurance::AssuranceProfile,
+    enabled: &permguard_languages::registry::Enabled,
+) -> String {
+    let descriptor = descriptor_of(head, partition).unwrap_or("not-carried");
+
+    let options = enabled.names().collect::<Vec<_>>().join(",");
+    Cache::partition_key(
+        &mirror.identity.zone_id,
+        &mirror.identity.ledger_id,
+        &head.commit,
+        partition,
+        &super::cache::Compiled {
+            interface,
+            descriptor,
+            profile: profile.as_str(),
+            options: &options,
+        },
+    )
+}
+
+/// The interfaces `partition` of `head` is compiled for: those it promises, or, for a legacy
+/// partition promising none, the one its runtime implements (IFACE-01).
+fn interfaces_of(head: &Head, partition: &str) -> Vec<String> {
+    let Some(declared) = head.manifest.partitions.get(partition) else {
+        return Vec::new();
+    };
+    if !declared.interfaces.is_empty() {
+        return declared
+            .interfaces
+            .iter()
+            .map(|id| permguard_objects::manifest::interface_of(id).to_owned())
+            .collect();
+    }
+    head.manifest
+        .runtimes
+        .get(&declared.runtime)
+        .and_then(|runtime| permguard_languages::lookup::language(&runtime.language.name))
+        .map(permguard_languages::registry::implemented_interfaces)
+        .unwrap_or_default()
+}
+
+/// The descriptor digest of the runtime `partition` of `head` names, when this build carries it.
+fn descriptor_of(head: &Head, partition: &str) -> Option<&'static str> {
+    head.manifest
         .partitions
         .get(partition)
         .and_then(|declared| head.manifest.runtimes.get(&declared.runtime))
         .and_then(|runtime| {
             permguard_languages::descriptor::descriptor_digest(&runtime.language.name)
         })
-        .unwrap_or("not-carried");
+}
 
-    Cache::partition_key(
-        &mirror.identity.zone_id,
-        &mirror.identity.ledger_id,
-        &head.commit,
-        partition,
-        descriptor,
+/// Each partition of `profile`, with the descriptor digest of the runtime that evaluated it: the
+/// semantics a record was decided under (IFACE-05).
+///
+/// A partition whose runtime this build does not carry is left out rather than named
+/// `not-carried`: the load gate refuses such a partition, so no decision is recorded under it.
+fn descriptors_of(head: &Head, profile: &str) -> std::collections::BTreeMap<String, String> {
+    head.manifest
+        .profiles
+        .get(profile)
+        .map(|declared| {
+            declared
+                .partitions
+                .iter()
+                .filter_map(|partition| {
+                    descriptor_of(head, partition)
+                        .map(|digest| (partition.clone(), digest.to_owned()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The store a question was asked of, by its immutable ids.
+fn store_of(mirror: &store::Mirror, profile: &str) -> serde_json::Value {
+    serde_json::json!({
+        "zone_id": mirror.identity.zone_id,
+        "ledger_id": mirror.identity.ledger_id,
+        "profile": profile,
+    })
+}
+
+/// One native evaluation as the canonical question the record commits to (IFACE-05): the
+/// interface, the store, and what was asked, the asserted principal apart from the actor.
+fn native_question(
+    mirror: &store::Mirror,
+    profile: &str,
+    query: &Asking,
+    asserted_principal: Option<&str>,
+) -> serde_json::Value {
+    let entity = |entity: &permguard_languages::Entity| {
+        serde_json::json!({
+            "type": entity.kind,
+            "id": entity.id,
+            "properties": entity.properties,
+        })
+    };
+    serde_json::json!({
+        "interface": permguard_core::domains::interface::PDP_NATIVE_V1,
+        "store": store_of(mirror, profile),
+        "subject": entity(&query.subject),
+        "resource": entity(&query.resource),
+        "action": {"name": query.action.name, "properties": query.action.properties},
+        "context": query.context,
+        "partition_inputs": serde_json::to_value(&*query.partition_inputs).ok(),
+        "asserted_principal": asserted_principal,
+    })
+}
+
+/// The refusal of a ledger two mirrors answer to (WP-7.2a): two authorities claim one name, and no
+/// list order chooses whose policy decides.
+pub(crate) fn contested_ledger(zone: &str, ledger: &str) -> ApiError {
+    ApiError::new(
+        ErrorClass::Unavailable,
+        permguard_core::codes::common::UNAVAILABLE,
+        format!(
+            "more than one mirror answers to `{zone}/{ledger}`: neither is served until one of \
+             them is no longer followed, or an alias in `mirrors.aliases` names the authority it \
+             means"
+        ),
     )
 }
 
@@ -1408,6 +1896,8 @@ impl OwnedDecided {
             at: self.at.clone(),
             zone: self.zone.as_str(),
             ledger: self.ledger.as_str(),
+            zone_id: self.zone_id.as_str(),
+            ledger_id: self.ledger_id.as_str(),
             scope: self.scope,
             commit: self.commit.as_str(),
             counter: self.counter,
@@ -1431,6 +1921,10 @@ impl OwnedDecided {
             request_id: self.request_id.clone(),
             latency_us: self.latency_us,
             event: self.event.clone(),
+            interface: Some(self.interface.clone()),
+            actor: self.actor.clone(),
+            question: Some(self.question.clone()),
+            descriptors: self.descriptors.clone(),
         }
     }
 }
@@ -1443,14 +1937,11 @@ impl Decider {
     /// after the answer has gone — is a decision the deployment believes was
     /// logged and was not.
     ///
-    /// **`on_full: closed` refuses the decision**, and that is the whole
-    /// difference between the two modes: a deployment that said it would rather
-    /// not decide than decide unrecorded gets exactly that. Answering anyway
-    /// and writing a warning would make the setting a comment.
-    ///
-    /// Other write failures follow the same availability contract: `closed`
-    /// refuses the request before the answer leaves, while `open` reports the
-    /// incident and keeps answering.
+    /// **`required` refuses the decision** it cannot record (WP-6.1): a
+    /// deployment that said it would rather not decide than decide unrecorded
+    /// gets exactly that, `unavailable` before the answer leaves. Answering
+    /// anyway and writing a warning would make the setting a comment.
+    #[allow(clippy::too_many_arguments)]
     async fn journal(
         &self,
         resolved: &Resolved,
@@ -1458,10 +1949,12 @@ impl Decider {
         head: &Head,
         evaluated: &[Evaluated],
         trace: Option<&TraceContext>,
+        actor: Option<&str>,
         started: Instant,
-    ) -> Result<(), ApiError> {
+    ) -> Result<Vec<Evidence>, ApiError> {
         let Some(journal) = &self.journal else {
-            return Ok(());
+            // No log: nothing is promised, and every decision says so.
+            return Ok(evaluated.iter().map(|_| Evidence::disabled()).collect());
         };
         // Pseudonymised here, at the source, under the zone's shared key: the control plane never
         // holds a raw identifier, neither does any consumer of the log, and every replica of the
@@ -1478,6 +1971,12 @@ impl Decider {
         };
         let at = now_rfc3339();
         let latency_us = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
+        let mut evidence = Vec::with_capacity(evaluated.len());
+        let actor = match actor {
+            Some(principal) => Some(("Actor".to_owned(), token("actor", principal)?)),
+            None => None,
+        };
+        let descriptors = descriptors_of(head, &resolved.profile);
 
         // **One record per evaluation**, not one per request. A boxcarred
         // request carries several questions about several subjects, resources
@@ -1507,6 +2006,9 @@ impl Decider {
                 // versioned record shape and name-to-id resolution at the read boundary.
                 zone: mirror.identity.zone_name.clone(),
                 ledger: mirror.identity.ledger_name.clone(),
+                // The ids name the Host stream the record lands on (WP-6.1).
+                zone_id: mirror.identity.zone_id.clone(),
+                ledger_id: mirror.identity.ledger_id.clone(),
                 scope,
                 commit: head.commit.clone(),
                 counter: head.counter,
@@ -1560,12 +2062,21 @@ impl Decider {
                 // A stateless decision was made about a request, not about an occurrence. Left
                 // absent rather than filled with something that stands in for one.
                 event: None,
+                interface: permguard_core::domains::interface::PDP_NATIVE_V1.to_owned(),
+                actor: actor.clone(),
+                question: native_question(
+                    mirror,
+                    &resolved.profile,
+                    &query,
+                    resolved.principal.as_deref(),
+                ),
+                descriptors: descriptors.clone(),
             };
 
-            self.write(Arc::clone(journal), decided).await?;
+            evidence.push(self.write(Arc::clone(journal), decided).await?);
         }
 
-        Ok(())
+        Ok(evidence)
     }
 
     /// Records one **temporal** decision, linked to the occurrence it was made about.
@@ -1598,6 +2109,8 @@ impl Decider {
             at: now_rfc3339(),
             zone: at.mirror.identity.zone_name.clone(),
             ledger: at.mirror.identity.ledger_name.clone(),
+            zone_id: at.mirror.identity.zone_id.clone(),
+            ledger_id: at.mirror.identity.ledger_id.clone(),
             scope,
             commit: at.head.commit.clone(),
             counter: at.head.counter,
@@ -1624,21 +2137,45 @@ impl Decider {
             request_id: at.request_id.map(ToOwned::to_owned),
             latency_us: at.latency_us,
             event: Some(at.event.clone()),
+            interface: permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1.to_owned(),
+            actor: match at.actor {
+                Some(principal) => Some(("Actor".to_owned(), token("actor", principal)?)),
+                None => None,
+            },
+            question: serde_json::json!({
+                "interface": permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1,
+                "store": store_of(at.mirror, at.profile),
+                "event_id": at.event.event_id,
+                "event_type": at.event.event_type,
+                "subject": {"type": at.subject.0, "id": at.subject.1},
+                "resource": {"type": at.resource.0, "id": at.resource.1},
+                "action": at.action,
+                "event": at.context,
+            }),
+            descriptors: descriptors_of(at.head, at.profile),
         };
         let Some(journal) = &self.journal else {
             return Ok(());
         };
 
-        self.write(Arc::clone(journal), decided).await
+        self.write(Arc::clone(journal), decided).await.map(|_| ())
     }
 
-    /// Writes one record, and decides what a failure to write means.
+    /// Writes one record, decides what a failure to write means, and answers what became of the
+    /// record: the evidence its decision carries.
     async fn write(
         &self,
-        journal: Arc<crate::decisions::Journal>,
+        journal: Arc<dyn crate::decisions::DecisionRecorder>,
         decided: OwnedDecided,
-    ) -> Result<(), ApiError> {
+    ) -> Result<Evidence, ApiError> {
         let refuses_unrecorded = journal.refuses_unrecorded();
+        // A log that refuses rather than answer unrecorded is the `required` mode; one that
+        // answers anyway promises only an attempt.
+        let mode = if refuses_unrecorded {
+            EvidenceMode::Required
+        } else {
+            EvidenceMode::BestEffort
+        };
         // The record's own id, drawn by this plane: written beside the request's id — the span every
         // record of this request runs in — it is how a log line leads to the audit record, and back.
         let decision_id = decided.id.clone();
@@ -1647,8 +2184,8 @@ impl Decider {
         // queue the pool exists to refuse — reached from the ordinary decision path, which is the
         // busiest one there is.
         let written = self
-            .blocking
-            .run(&[], move || journal.record(&decided.borrowed()))
+            .evidence
+            .run(&[], move || journal.record_located(&decided.borrowed()))
             .await;
         let written = match written {
             Ok(written) => Ok(written),
@@ -1664,7 +2201,7 @@ impl Decider {
         };
 
         match written {
-            Ok(Ok(crate::decisions::Written::Refused(reason))) => {
+            Ok(Ok((crate::decisions::Written::Refused(reason), _))) => {
                 warn!(
                     event.name = "authz.unrecordable",
                     component = COMPONENT,
@@ -1676,7 +2213,7 @@ impl Decider {
 
                 Err(self.unrecordable(reason.as_str()))
             }
-            Ok(Ok(_)) => {
+            Ok(Ok((written, position))) => {
                 debug!(
                     event.name = "authz.decision_recorded",
                     component = COMPONENT,
@@ -1684,7 +2221,20 @@ impl Decider {
                     "a decision was recorded"
                 );
 
-                Ok(())
+                Ok(match (written, position) {
+                    (
+                        crate::decisions::Written::Recorded { .. }
+                        | crate::decisions::Written::AlreadyRecorded { .. },
+                        Some(position),
+                    ) => Evidence::durable(mode, decision_id, position),
+                    (crate::decisions::Written::SampledOut, _) => {
+                        Evidence::unrecorded(mode, EvidenceStatus::SampledOut)
+                    }
+                    // Recorded somewhere the recorder cannot name, or in a stream that replaced
+                    // one whose records were discarded: nothing this answer can cite, said as a
+                    // loss rather than claimed durable.
+                    _ => Evidence::unrecorded(mode, EvidenceStatus::Dropped),
+                })
             }
             Ok(Err(error)) => {
                 self.journal_error(refuses_unrecorded, &decision_id, error.to_string())
@@ -1702,7 +2252,7 @@ impl Decider {
         refuses_unrecorded: bool,
         decision_id: &str,
         reason: String,
-    ) -> Result<(), ApiError> {
+    ) -> Result<Evidence, ApiError> {
         if refuses_unrecorded {
             warn!(
                 event.name = "authz.unrecordable",
@@ -1724,7 +2274,11 @@ impl Decider {
             "a decision was answered and its log record was not written"
         );
 
-        Ok(())
+        // Answered unrecorded, which only a log that answers anyway does: a counted loss.
+        Ok(Evidence::unrecorded(
+            EvidenceMode::BestEffort,
+            EvidenceStatus::Dropped,
+        ))
     }
 
     fn unrecordable(&self, reason: &str) -> ApiError {
@@ -1908,6 +2462,8 @@ impl Plan {
                     reason_user: Some(reason_user(permit)),
                     policies: outcome.determining().to_vec(),
                     absent_inputs,
+                    // Filled once the journal said what became of the record.
+                    evidence: None,
                 }),
             },
             resolution: outcome.resolution,
@@ -2056,6 +2612,8 @@ fn batch_context(
         reason_user: Some(reason_user(overall)),
         policies,
         absent_inputs,
+        // No record is of a batch: its evaluations each carry their own.
+        evidence: None,
     }
 }
 
@@ -2125,6 +2683,7 @@ mod tests {
                 reason_user: None,
                 policies: policies.iter().map(|policy| (*policy).to_owned()).collect(),
                 absent_inputs: Vec::new(),
+                evidence: None,
             }),
         };
         let batch = vec![

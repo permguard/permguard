@@ -257,6 +257,115 @@ fn the_temporal_interface_needs_both_switches_and_says_so_when_it_has_one() {
 /// A discovery document is a promise about what answers here. Listing an interface a client then
 /// cannot reach is the failure the three-layer discovery chain exists to prevent, so the link and
 /// the route are decided by one predicate rather than by two that could drift.
+/// WP-7.4a, owner decision of 2026-10-21: the plane document carries the plane's phase as it is
+/// when it is asked for, and lists the native PDP with its stage.
+#[tokio::test]
+async fn a_plane_document_carries_its_phase() {
+    use permguard_core::lifecycle::{Kind, Phase};
+
+    let config = deployed();
+    let storage = MemoryStorage::new();
+    let audit = RecordingAuditSink::new();
+    let server = ServerContext::new(identity(), &config, &storage, &audit);
+    let context = PlaneContext::new(&server, "data");
+    let routes = permguard_data_plane::module().http_routes(&context);
+    let state = |document: &str| -> serde_json::Value {
+        serde_json::from_str::<serde_json::Value>(document).expect("JSON")["state"].clone()
+    };
+
+    let (_, before) = get(routes.clone(), "/.well-known/server-configuration").await;
+    server
+        .health()
+        .lifecycle()
+        .enter("data", Kind::Plane, true, Phase::Serving);
+    let (status, after) = get(routes, "/.well-known/server-configuration").await;
+    assert_eq!(status, 200);
+    assert_ne!(state(&before), state(&after), "read when asked: {before}");
+    assert_eq!(state(&after), "serving");
+    let document: serde_json::Value = serde_json::from_str(&after).expect("JSON");
+    assert_eq!(
+        document["interfaces"][permguard_languages::request::INTERFACE]["stage"],
+        "v1"
+    );
+}
+
+/// TL-6: the plane's document lists every runtime this build carries with its conformance gate's
+/// result and whether this deployment serves it; from `production` up a runtime with an open item
+/// is not served, opted into or not.
+#[tokio::test]
+async fn discovery_publishes_each_runtimes_gate_and_whether_it_is_served() {
+    use permguard_core::config::{SETTING_ASSURANCE_PROFILE, SETTING_EXPERIMENTAL_DOGWOOD};
+
+    let storage = MemoryStorage::new();
+    let audit = RecordingAuditSink::new();
+    let listed = |config: &Config| {
+        let languages = permguard_data_plane::authz::languages(config);
+        languages
+            .iter()
+            .map(|language| {
+                (
+                    language["name"].as_str().expect("a name").to_owned(),
+                    language["served"].as_bool().expect("served"),
+                )
+            })
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+
+    let development = deployed_with(&[
+        (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
+        (SETTING_ASSURANCE_PROFILE, "development"),
+    ]);
+    let server = ServerContext::new(identity(), &development, &storage, &audit);
+    let context = PlaneContext::new(&server, "data");
+    let (status, document) = get(
+        permguard_data_plane::module().http_routes(&context),
+        "/.well-known/server-configuration",
+    )
+    .await;
+    assert_eq!(status, 200);
+    let document: serde_json::Value = serde_json::from_str(&document).expect("JSON");
+    let dogwood = document["languages"]
+        .as_array()
+        .expect("languages")
+        .iter()
+        .find(|language| language["name"] == "dogwood")
+        .expect("dogwood is listed");
+    assert_eq!(
+        dogwood["conformance"],
+        serde_json::json!({
+            "gate": "permguard.language.conformance.v1",
+            "production_ready": false,
+            "open": ["golden_vectors", "fault_injection"]
+        })
+    );
+    assert!(
+        dogwood["descriptor_digest"]
+            .as_str()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    assert_eq!(
+        listed(&development),
+        [("cedar", true), ("dogwood", true), ("rego", true)]
+            .map(|(name, served)| (name.to_owned(), served))
+            .into(),
+        "development serves what it opted into"
+    );
+
+    let production = deployed_with(&[
+        (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
+        (SETTING_ASSURANCE_PROFILE, "production"),
+    ]);
+    assert_eq!(
+        listed(&production),
+        [("cedar", true), ("dogwood", false), ("rego", true)]
+            .map(|(name, served)| (name.to_owned(), served))
+            .into(),
+        "production serves only runtimes whose gate passes"
+    );
+    assert!(permguard_data_plane::authz::enabled(&production).requires_conformance());
+    assert!(!permguard_data_plane::authz::enabled(&development).requires_conformance());
+}
+
 #[tokio::test]
 async fn discovery_lists_the_temporal_interface_only_where_it_is_served() {
     use permguard_core::config::SETTING_EVENTS_ENABLED;
@@ -295,5 +404,120 @@ async fn discovery_lists_the_temporal_interface_only_where_it_is_served() {
     assert!(
         document["interfaces"][temporal].is_null(),
         "half-configured is not served, so it is not advertised: {document}"
+    );
+}
+
+/// WP-6.2c2b2: the HTTP pull is retired. A shared mode with its ledgers starts without any key
+/// file; a configuration still naming the pull's producer keys is refused by name.
+#[test]
+fn a_shared_mode_needs_no_pull_keys_and_naming_them_is_refused() {
+    use permguard_core::config::{
+        SETTING_EVENTS_ENABLED, SETTING_EVENTS_PULL_MODE, SETTING_EXPERIMENTAL_DOGWOOD,
+    };
+
+    let module = permguard_data_plane::module();
+    let shared = deployed_with(&[
+        (SETTING_EVENTS_ENABLED, "true"),
+        (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
+        (SETTING_EVENTS_PULL_MODE, "shared-bounded"),
+    ])
+    .with_pull_ledgers(vec![permguard_core::config::PullSubscription {
+        zone: "zone-1".to_owned(),
+        ledger: "ledger-1".to_owned(),
+        event_types: vec![permguard_core::domains::event::DOGWOOD_V1.to_owned()],
+    }]);
+    module
+        .startup_check(&shared)
+        .expect("no key file is needed any more");
+    let refused = module
+        .startup_check(&shared.clone().with_pull_producer_keys(vec![
+            permguard_core::decisions::EventProducerSource {
+                path: "trust/peer.jwks".to_owned(),
+                producer: "peer".to_owned(),
+                zone: "zone-1".to_owned(),
+                ledger: "ledger-1".to_owned(),
+            },
+        ]))
+        .expect_err("the retired keys are refused");
+    let said = refused.to_string();
+    assert!(
+        said.contains("dataPlane.events.pull.producer_keys"),
+        "{said}"
+    );
+    assert!(said.contains("retired"), "{said}");
+    // One ledger, one import.
+    let ledger = permguard_core::config::PullSubscription {
+        zone: "zone-1".to_owned(),
+        ledger: "ledger-1".to_owned(),
+        event_types: Vec::new(),
+    };
+    let twice = module
+        .startup_check(&shared.with_pull_ledgers(vec![ledger.clone(), ledger]))
+        .expect_err("a ledger named twice");
+    assert!(twice.to_string().contains("more than once"), "{twice}");
+}
+
+/// WP-7.2d (F-17): the aliases the configuration assigns are the ones the plane's lookups resolve
+/// through — the gate, the decision path and the round all ask `store` — from the moment its
+/// decider exists.
+#[test]
+fn the_configured_aliases_are_what_the_plane_resolves_through() {
+    let volume = std::env::temp_dir().join(format!("pg-module-aliases-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&volume);
+    std::fs::create_dir_all(&volume).expect("the volume");
+    let config = Config::from_layers(
+        permguard_server::plane::build_settings("0.0.0-test"),
+        vec![permguard_server::plane::SETTING_RUNTIME_PLANES],
+        permguard_core::config::Layers {
+            file: [(
+                permguard_core::config::SETTING_WORKING_DIR.to_owned(),
+                volume.display().to_string(),
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        },
+    )
+    .expect("the test configuration builds")
+    .with_mirror_aliases(vec![permguard_core::mirrors::MirrorAlias {
+        zone: "acme".to_owned(),
+        ledger: "main".to_owned(),
+        authority: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb".to_owned(),
+    }])
+    .expect("one alias");
+    let root = config.mirrors_directory();
+    for authority in ["a", "b"] {
+        let hex = authority.repeat(32);
+        let path = root.join(&hex).join("zone-id").join("ledger-id");
+        std::fs::create_dir_all(&path).expect("the mirror");
+        permguard_data_plane::authz::store::record(
+            &path,
+            &permguard_data_plane::authz::store::Identity {
+                zone_id: "zone-id".to_owned(),
+                zone_name: "acme".to_owned(),
+                ledger_id: "ledger-id".to_owned(),
+                ledger_name: "main".to_owned(),
+                server: format!("host:{hex}"),
+                authority: Some(hex.clone()),
+                task: Some(format!("m/{authority}")),
+            },
+        )
+        .expect("the identity");
+    }
+    assert!(
+        permguard_data_plane::authz::store::find(&root, "acme", "main").is_none(),
+        "contested until the plane assigns its aliases"
+    );
+
+    let storage = MemoryStorage::new();
+    let audit = RecordingAuditSink::new();
+    let server = ServerContext::new(identity(), &config, &storage, &audit);
+    let context = PlaneContext::new(&server, "data");
+    let _decider = permguard_data_plane::authz::decider(&context);
+    let found = permguard_data_plane::authz::store::find(&root, "acme", "main")
+        .expect("the alias resolves the pair");
+    assert_eq!(
+        found.identity.authority.as_deref(),
+        Some("b".repeat(32).as_str())
     );
 }

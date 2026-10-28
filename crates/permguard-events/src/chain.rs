@@ -197,6 +197,7 @@ mod tests {
                 prev: prev.clone(),
                 event_type: "permguard.dogwood.event.v1".to_owned(),
                 event_id: format!("e{seq}"),
+                source: None,
                 occurrence_digest: GENESIS.to_owned(),
                 kind: "request".to_owned(),
                 profile: "temporal".to_owned(),

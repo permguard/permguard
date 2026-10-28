@@ -20,6 +20,8 @@ pub struct RefAnswer {
     pub counter: u64,
     /// The COSE_Sign1 envelope of the head statement.
     pub statement: Vec<u8>,
+    /// The digest of the ref's state, which the statement binds.
+    pub ref_digest: String,
 }
 
 /// A remote ledger, addressed and authenticated by the implementation.

@@ -1,0 +1,1625 @@
+{
+  "folder": "units",
+  "files": {
+    "test-issue-4856.yaml": {
+      "sha256": "sha256:92e3e1347ef1affc15927e773dceb30fb50048b6340582594f149ae08c23bc2c",
+      "cases": [
+        {
+          "note": "units_parse/exact comparison - regression case 1",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"500m\") == 0.5\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/exact comparison - regression case 2",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"0.0005K\") == 0.5\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/exact comparison - regression case 3",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"0.0000005M\") == 0.5\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-parse-bytes-comparisons.yaml": {
+      "sha256": "sha256:f074b52a0e15601f2568bd6274be48f3ce9585434d19e5d1f8a2b76e3e455086",
+      "cases": [
+        {
+          "note": "units_parse_bytes/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"8kb\") > units.parse_bytes(\"7kb\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"8gb\") > units.parse_bytes(\"8mb\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"1234kb\") < units.parse_bytes(\"1gb\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"1024\") == units.parse_bytes(\"1KiB\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"2MiB\") == units.parse_bytes(\"2097152\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"3MiB\") > units.parse_bytes(\"3MB\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"2MiB\") == units.parse_bytes(\"2Mi\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"4Mi\") > units.parse_bytes(\"4M\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"4.1Mi\") > units.parse_bytes(\"4Mi\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"128Gi\") == units.parse_bytes(\"137438953472\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-parse-bytes-errors.yaml": {
+      "sha256": "sha256:323fef2e6f83f2012ea68d3ff962736a6de76a14f56aefeb08c04492af780716",
+      "cases": [
+        {
+          "note": "units_parse_bytes/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse_bytes: no byte amount provided",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse_bytes/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"GB\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse_bytes: no byte amount provided",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse_bytes/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"foo\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse_bytes: no byte amount provided",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse_bytes/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"0.0.0\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse_bytes: could not parse byte amount to a number",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse_bytes/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\".5.2\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse_bytes: could not parse byte amount to a number",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse_bytes/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100 kb\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse_bytes: spaces not allowed in resource strings",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse_bytes/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\" 327MiB \")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse_bytes: spaces not allowed in resource strings",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-parse-bytes.yaml": {
+      "sha256": "sha256:0d41f2893aa6ce06981794d6935d7d4937ab22651bd5d2376c84abba78f47efb",
+      "cases": [
+        {
+          "note": "units_parse_bytes/removes quotes and lowercases string",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"\\\"100TIB\\\"\") == 109951162777600\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/zero",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"0\") == 0\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/zero float",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"0.0\") == 0\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/zero bare float",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\".0\") == 0\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/raw number",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"12345\") == 12345\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/10 kilobytes uppercase",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"10KB\") == 10000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/10 KiB uppercase",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"10KIB\") == 10240\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/10 KB lowercase",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"10kb\") == 10000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/10 KiB mixed case",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"10Kib\") == 10240\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/200 megabytes as mb",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"200mb\") == 200000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/300 GiB",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"300GiB\") == 322122547200\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/1.1 KB floating point",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"1.1KB\") == 1100\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/1.1 KiB floating point rounded",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"1.1KiB\") == 1126\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/.5 KB bare floating point",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\".5KB\") == 500\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 kilobytes as k",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100k\") == 100000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 kilobytes as kb",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100kb\") == 100000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 kibibytes as ki",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100ki\") == 102400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 kibibytes as kib",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100kib\") == 102400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 megabytes as m",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100m\") == 100000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 megabytes as mb",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100mb\") == 100000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 mebibytes as mi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100mi\") == 104857600\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 mebibytes as mib",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100mib\") == 104857600\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 gigabytes as g",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100g\") == 100000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 gigabytes as gb",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100gb\") == 100000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 gibibytes as gi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100gi\") == 107374182400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 gibibytes as gib",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100gib\") == 107374182400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 terabytes as t",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100t\") == 100000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 terabytes as tb",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100tb\") == 100000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 tebibytes as ti",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100ti\") == 109951162777600\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 tebibytes as tib",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100tib\") == 109951162777600\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 petabytes as p",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100p\") == 100000000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 petabytes as pb",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100pb\") == 100000000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 pebibytes as pi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100pi\") == 112589990684262400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/100 pebibytes as pib",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"100pib\") == 112589990684262400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/10 etabytes as e",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"10e\") == 10000000000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/10 etabytes as eb",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"10eb\") == 10000000000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/10 ebibytes as ei",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"10ei\") == 11529215046068469760\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/10 ebibytes as eib",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"10eib\") == 11529215046068469760\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/scientific notation with KB",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"1e3KB\") == 1000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/uppercase scientific notation with MiB",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"3.2E2MiB\") == 335544320\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/mixed case scientific notation with GiB",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"4.5e1GiB\") == 48318382080\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/scientific notation without unit",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse_bytes(\"5e6\") == 5000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/scientific notation with negative exponent and KB",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse_bytes(\"1e-2KB\") == 10\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/uppercase scientific notation with GB",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse_bytes(\"6.4E1GB\") == 64000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/mixed case scientific notation with TiB",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse_bytes(\"7.5e1TiB\") == 82463372083200\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/scientific notation with lowercase MiB",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse_bytes(\"5e2MiB\") == 524288000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/invalid format with only E or e",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  not units.parse_bytes(\"5E\") == 5\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse_bytes/scientific notation with lowercase scientific notation and GiB",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse_bytes(\"2e2GiB\") == 214748364800\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-parse-units-comparisons.yaml": {
+      "sha256": "sha256:b173f2434a81ac56abb2f137f406ab930531e287b8d69f6c3125653b382a2ede",
+      "cases": [
+        {
+          "note": "units_parse/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"8k\") > units.parse(\"7k\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"8g\") > units.parse(\"8m\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"1234k\") < units.parse(\"1g\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"1024\") == units.parse(\"1Ki\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"2Mi\") == units.parse(\"2097152\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"3Mi\") > units.parse(\"3M\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"2Mi\") == units.parse(\"2Mi\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"4Mi\") > units.parse(\"4M\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"4.1Mi\") > units.parse(\"4Mi\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/comparison",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"128Gi\") == units.parse(\"137438953472\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-parse-units-errors.yaml": {
+      "sha256": "sha256:b0217efd4478bcc36843e8f5b4b23044dd41a538e7de468375fa04bbe55957f1",
+      "cases": [
+        {
+          "note": "units_parse/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse: no amount provided",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"G\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse: no amount provided",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"foo\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse: no amount provided",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"0.0.0\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse: could not parse amount to a number",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\".5.2\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse: could not parse amount to a number",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100 k\")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse: spaces not allowed in resource strings",
+          "strict_error": true
+        },
+        {
+          "note": "units_parse/failure",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\" 327Mi \")\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "units.parse: spaces not allowed in resource strings",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-parse-units.yaml": {
+      "sha256": "sha256:09b95cdc96d512eb8abb13003debdaf3311e28dab5664f5be78d2918a752d40b",
+      "cases": [
+        {
+          "note": "units_parse/removes quotes and lowercases string",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"\\\"100TI\\\"\") == 109951162777600\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/zero",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"0\") == 0\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/zero float",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"0.0\") == 0\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/zero bare float",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\".0\") == 0\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/raw number",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"12345\") == 12345\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/10 kilo uppercase",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"10K\") == 10000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/10 Ki uppercase",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"10KI\") == 10240\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/10 K lowercase",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"10k\") == 10000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/10 Ki mixed case",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"10Ki\") == 10240\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/200 mega",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"200M\") == 200000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/300 Gi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"300Gi\") == 322122547200\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/1.1 K floating point",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"1.1K\") == 1100\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/1.1 Ki floating point, not rounded",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"1.1Ki\") == 1126.4\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/.5 K bare floating point",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\".5K\") == 500\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 kilo as k",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100k\") == 100000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 kilo as K",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100K\") == 100000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 kibi as ki",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100ki\") == 102400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 kibi as Ki",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100Ki\") == 102400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 milli as m",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tround(units.parse(\"100m\") * 1000) == 100\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 mega as M",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100M\") == 100000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 mebi as mi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100mi\") == 104857600\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 mebi as Mi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100Mi\") == 104857600\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 giga as g",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100g\") == 100000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 gibi as gi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100gi\") == 107374182400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 tera as t",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100t\") == 100000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 tera as T",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100T\") == 100000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 tebi as ti",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100ti\") == 109951162777600\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 tebi as Ti",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100Ti\") == 109951162777600\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 peta as p",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100p\") == 100000000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 peta as P",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100P\") == 100000000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 pebi as pi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100pi\") == 112589990684262400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/100 pebi as Pi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"100Pi\") == 112589990684262400\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/10 eta as e",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"10e\") == 10000000000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/10 eta as E",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"10E\") == 10000000000000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/10 ebi as ei",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"10ei\") == 11529215046068469760\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/10 ebi as Ei",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tunits.parse(\"10Ei\") == 11529215046068469760\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/1e10 lowercase scientific notation without unit",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"1e10\") == 10000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/3.2E4 uppercase scientific notation without unit",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"3.2E4\") == 32000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/2.5e3 mixed case scientific notation with K",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"2.5e3K\") == 2500000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/1e3M lowercase scientific notation with M",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"1e3M\") == 1000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/4E2G uppercase scientific notation with G",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"4E2G\") == 400000000000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/5e1Gi mixed case scientific notation with Gi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"5e1Gi\") == 53687091200\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/1e-2 lowercase scientific notation with negative exponent",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"1e-2\") == 0.01\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/7.8E-1 uppercase scientific notation with negative exponent",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"7.8E-1\") == 0.78\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/6e3Mi mixed case scientific notation with binary Mi",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"6e3Mi\") == 6291456000\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/invalid notation with single E",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  not units.parse(\"5E\") == 5\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/number without exponent or unit",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"42\") == 42\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "units_parse/negative number in scientific notation with unit",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n  units.parse(\"-3.5E2m\") == -0.35\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-units-precision.yaml": {
+      "sha256": "sha256:edd351d53c3c97b6b59ce76a6696e87bababe525d472e7262d26bb35b8972e88",
+      "cases": [
+        {
+          "note": "units_parse/no decimal places for integers",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tjson.marshal(units.parse(\"1G\")) == json.marshal(1000000000)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

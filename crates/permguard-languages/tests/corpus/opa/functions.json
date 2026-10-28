@@ -1,0 +1,837 @@
+{
+  "folder": "functions",
+  "files": {
+    "test-functions-0990.yaml": {
+      "sha256": "sha256:73f0d89c9f2e12a0e763320b1cc6e374b0b3e6134bb19ca336e0419df8f617af",
+      "cases": [
+        {
+          "note": "functions/basic call",
+          "query": "data.ex.bar.alice = x",
+          "modules": [
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local20__) := __local20__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local21__) := __local21__\n",
+            "package test.omit_result\n\nf(__local22__) := __local22__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package ex\n\nfoo(__local0__) := y if {\n\tsplit(__local0__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local1__) := y if {\n\tdata.ex.foo(__local1__, y)\n}\n\nchain1(__local2__) := b if {\n\tdata.ex.chain0(__local2__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local3__) := [a, b] if {\n\tsplit(__local3__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local4__) := false\n\nfalsy_func_else(__local5__) if {\n\t__local5__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local7__, __local8__]) := [a, b] if {\n\tdata.ex.foo(__local7__, a)\n\tdata.ex.foo(__local8__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local9__, \"bar\": __local10__}) := z if {\n\tdata.ex.foo(__local9__, a)\n\tdata.test.foo(__local10__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local11__) if {\n\t__local11__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local12__) := y if {\n\ty = __local12__\n}\n\nmulti(2, __local13__) := y if {\n\t__local24__ = 2 * __local13__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local14__) := y if {\n\t__local26__ = __local14__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local15__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local16__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local17__) := y if {\n\ttrim(__local17__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local18__) := y if {\n\ty = __local18__\n}\n\nmulti(\"bar\", __local19__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            },
+            "c": [
+              {
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "y": [
+                  null,
+                  "3.14159"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ],
+            "d": {
+              "e": [
+                "bar",
+                "baz"
+              ]
+            },
+            "f": [
+              {
+                "xs": [
+                  "1"
+                ],
+                "ys": [
+                  "2"
+                ]
+              },
+              {
+                "xs": [
+                  "2"
+                ],
+                "ys": [
+                  "3"
+                ]
+              }
+            ],
+            "g": {
+              "a": [
+                "1",
+                "0",
+                "0",
+                "0"
+              ],
+              "b": [
+                "0",
+                "2",
+                "0",
+                "0"
+              ],
+              "c": [
+                "0",
+                "0",
+                "0",
+                "4"
+              ]
+            },
+            "h": [
+              [
+                "1",
+                "2",
+                "3"
+              ],
+              [
+                "2",
+                "3",
+                "4"
+              ]
+            ],
+            "l": [
+              {
+                "a": "bob",
+                "b": "-1",
+                "c": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ]
+              },
+              {
+                "a": "alice",
+                "b": "1",
+                "c": [
+                  "2",
+                  "3",
+                  "4",
+                  "5"
+                ],
+                "d": null
+              }
+            ],
+            "m": [
+
+            ],
+            "numbers": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "strings": {
+              "bar": "2",
+              "baz": "3",
+              "foo": "1"
+            },
+            "three": "3"
+          },
+          "want_result": [
+            {
+              "x": [
+                "al",
+                "ce"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-0991.yaml": {
+      "sha256": "sha256:9f3b35bd5888bd583f4a5dbd4063e019d74c18d359eb74d7d96fc4ad1717a943",
+      "cases": [
+        {
+          "note": "functions/false result",
+          "query": "data.ex.falsy_undefined = x",
+          "modules": [
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local70__) := __local70__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local72__) := __local72__\n",
+            "package test.omit_result\n\nf(__local74__) := __local74__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = [\"al\", \"ce\"]\n}\n",
+            "package ex\n\nfoo(__local46__) := y if {\n\tsplit(__local46__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local47__) := y if {\n\tdata.ex.foo(__local47__, y)\n}\n\nchain1(__local48__) := b if {\n\tdata.ex.chain0(__local48__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local49__) := [a, b] if {\n\tsplit(__local49__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local50__) := false\n\nfalsy_func_else(__local51__) if {\n\t__local51__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local53__, __local54__]) := [a, b] if {\n\tdata.ex.foo(__local53__, a)\n\tdata.ex.foo(__local54__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local55__, \"bar\": __local56__}) := z if {\n\tdata.ex.foo(__local55__, a)\n\tdata.test.foo(__local56__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local57__) if {\n\t__local57__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local58__) := y if {\n\ty = __local58__\n}\n\nmulti(2, __local59__) := y if {\n\t__local24__ = 2 * __local59__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local60__) := y if {\n\t__local26__ = __local60__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local61__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local62__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local66__) := y if {\n\ttrim(__local66__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local67__) := y if {\n\ty = __local67__\n}\n\nmulti(\"bar\", __local68__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-functions-0992.yaml": {
+      "sha256": "sha256:ef140fd64adda4b4729174d6db5f1722cdf31d05a47790871c7f32550bf7ab01",
+      "cases": [
+        {
+          "note": "functions/false result negation",
+          "query": "data.ex.falsy_negation = x",
+          "modules": [
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = [\"al\", \"ce\"]\n}\n",
+            "package ex\n\nfoo(__local46__) := y if {\n\tsplit(__local46__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local47__) := y if {\n\tdata.ex.foo(__local47__, y)\n}\n\nchain1(__local48__) := b if {\n\tdata.ex.chain0(__local48__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local49__) := [a, b] if {\n\tsplit(__local49__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local50__) := false\n\nfalsy_func_else(__local51__) if {\n\t__local51__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local53__, __local54__]) := [a, b] if {\n\tdata.ex.foo(__local53__, a)\n\tdata.ex.foo(__local54__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local55__, \"bar\": __local56__}) := z if {\n\tdata.ex.foo(__local55__, a)\n\tdata.test.foo(__local56__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local57__) if {\n\t__local57__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local58__) := y if {\n\ty = __local58__\n}\n\nmulti(2, __local59__) := y if {\n\t__local24__ = 2 * __local59__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local60__) := y if {\n\t__local26__ = __local60__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local61__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local62__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local66__) := y if {\n\ttrim(__local66__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local67__) := y if {\n\ty = __local67__\n}\n\nmulti(\"bar\", __local68__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local70__) := __local70__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local72__) := __local72__\n",
+            "package test.omit_result\n\nf(__local74__) := __local74__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-0993.yaml": {
+      "sha256": "sha256:aceac1b06d634cbbf6e3fbb72a1a96ebc700102503e52914098def2581a67d5e",
+      "cases": [
+        {
+          "note": "functions/false else value",
+          "query": "data.ex.falsy_else_value = x",
+          "modules": [
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = true\n}\n",
+            "package ex\n\nfoo(__local40__) := y if {\n\tsplit(__local40__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local41__) := y if {\n\tdata.ex.foo(__local41__, y)\n}\n\nchain1(__local42__) := b if {\n\tdata.ex.chain0(__local42__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local43__) := [a, b] if {\n\tsplit(__local43__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local44__) := false\n\nfalsy_func_else(__local45__) if {\n\t__local45__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local64__, __local65__]) := [a, b] if {\n\tdata.ex.foo(__local64__, a)\n\tdata.ex.foo(__local65__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local69__, \"bar\": __local71__}) := z if {\n\tdata.ex.foo(__local69__, a)\n\tdata.test.foo(__local71__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local73__) if {\n\t__local73__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local75__) := y if {\n\ty = __local75__\n}\n\nmulti(2, __local76__) := y if {\n\t__local24__ = 2 * __local76__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local77__) := y if {\n\t__local26__ = __local77__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local78__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local79__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local86__) := y if {\n\ttrim(__local86__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local87__) := y if {\n\ty = __local87__\n}\n\nmulti(\"bar\", __local88__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local91__) := __local91__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local94__) := __local94__\n",
+            "package test.omit_result\n\nf(__local97__) := __local97__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-0994.yaml": {
+      "sha256": "sha256:7b64b7ab9465d26c636c908492f38a4cf751ad6de2a1047e929f2f3966ea7af3",
+      "cases": [
+        {
+          "note": "functions/false else undefined",
+          "query": "data.ex.falsy_else_undefined = x",
+          "modules": [
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = false\n}\n",
+            "package ex\n\nfoo(__local66__) := y if {\n\tsplit(__local66__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local67__) := y if {\n\tdata.ex.foo(__local67__, y)\n}\n\nchain1(__local68__) := b if {\n\tdata.ex.chain0(__local68__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local70__) := [a, b] if {\n\tsplit(__local70__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local72__) := false\n\nfalsy_func_else(__local74__) if {\n\t__local74__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local81__, __local82__]) := [a, b] if {\n\tdata.ex.foo(__local81__, a)\n\tdata.ex.foo(__local82__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local83__, \"bar\": __local84__}) := z if {\n\tdata.ex.foo(__local83__, a)\n\tdata.test.foo(__local84__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local85__) if {\n\t__local85__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local89__) := y if {\n\ty = __local89__\n}\n\nmulti(2, __local90__) := y if {\n\t__local24__ = 2 * __local90__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local92__) := y if {\n\t__local26__ = __local92__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local93__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local95__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local106__) := y if {\n\ttrim(__local106__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local107__) := y if {\n\ty = __local107__\n}\n\nmulti(\"bar\", __local108__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local112__) := __local112__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local116__) := __local116__\n",
+            "package test.omit_result\n\nf(__local120__) := __local120__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-functions-0995.yaml": {
+      "sha256": "sha256:5c621d5fb61b28739b312e0bb7500b5fa7edfb3e3f2b2cf48791e9d4457a001a",
+      "cases": [
+        {
+          "note": "functions/false else negation",
+          "query": "data.ex.falsy_else_negation = x",
+          "modules": [
+            "package test.l1.l2\n\np := true\n\nf(__local116__) := __local116__\n",
+            "package test.omit_result\n\nf(__local120__) := __local120__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = false\n}\n",
+            "package ex\n\nfoo(__local66__) := y if {\n\tsplit(__local66__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local67__) := y if {\n\tdata.ex.foo(__local67__, y)\n}\n\nchain1(__local68__) := b if {\n\tdata.ex.chain0(__local68__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local70__) := [a, b] if {\n\tsplit(__local70__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local72__) := false\n\nfalsy_func_else(__local74__) if {\n\t__local74__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local81__, __local82__]) := [a, b] if {\n\tdata.ex.foo(__local81__, a)\n\tdata.ex.foo(__local82__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local83__, \"bar\": __local84__}) := z if {\n\tdata.ex.foo(__local83__, a)\n\tdata.test.foo(__local84__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local85__) if {\n\t__local85__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local89__) := y if {\n\ty = __local89__\n}\n\nmulti(2, __local90__) := y if {\n\t__local24__ = 2 * __local90__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local92__) := y if {\n\t__local26__ = __local92__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local93__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local95__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local106__) := y if {\n\ttrim(__local106__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local107__) := y if {\n\ty = __local107__\n}\n\nmulti(\"bar\", __local108__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local112__) := __local112__\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-0996.yaml": {
+      "sha256": "sha256:e0e92ec39d56560ef3dce784acfb140cd9e8230970b2f1655a6a3acff27edfbe",
+      "cases": [
+        {
+          "note": "functions/chained",
+          "query": "data.ex.chain2 = x",
+          "modules": [
+            "package test\n\nfoo(__local126__) := y if {\n\ttrim(__local126__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local127__) := y if {\n\ty = __local127__\n}\n\nmulti(\"bar\", __local128__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local133__) := __local133__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local138__) := __local138__\n",
+            "package test.omit_result\n\nf(__local143__) := __local143__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = true\n}\n",
+            "package ex\n\nfoo(__local86__) := y if {\n\tsplit(__local86__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local87__) := y if {\n\tdata.ex.foo(__local87__, y)\n}\n\nchain1(__local88__) := b if {\n\tdata.ex.chain0(__local88__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local91__) := [a, b] if {\n\tsplit(__local91__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local94__) := false\n\nfalsy_func_else(__local96__) if {\n\t__local96__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local98__, __local99__]) := [a, b] if {\n\tdata.ex.foo(__local98__, a)\n\tdata.ex.foo(__local99__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local100__, \"bar\": __local101__}) := z if {\n\tdata.ex.foo(__local100__, a)\n\tdata.test.foo(__local101__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local102__) if {\n\t__local102__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local103__) := y if {\n\ty = __local103__\n}\n\nmulti(2, __local104__) := y if {\n\t__local24__ = 2 * __local104__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local105__) := y if {\n\t__local26__ = __local105__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local109__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local110__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "foo",
+                "bar"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-0997.yaml": {
+      "sha256": "sha256:0a16528ee6d505a6209a8696bc2fe57c0d8e4f9d247214fe816ce728fe1a0cf7",
+      "cases": [
+        {
+          "note": "functions/cross package",
+          "query": "data.test.cross = x",
+          "modules": [
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local154__) := __local154__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local160__) := __local160__\n",
+            "package test.omit_result\n\nf(__local166__) := __local166__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = [\"foo\", \"bar\"]\n}\n",
+            "package ex\n\nfoo(__local106__) := y if {\n\tsplit(__local106__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local107__) := y if {\n\tdata.ex.foo(__local107__, y)\n}\n\nchain1(__local108__) := b if {\n\tdata.ex.chain0(__local108__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local111__) := [a, b] if {\n\tsplit(__local111__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local112__) := false\n\nfalsy_func_else(__local113__) if {\n\t__local113__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local115__, __local116__]) := [a, b] if {\n\tdata.ex.foo(__local115__, a)\n\tdata.ex.foo(__local116__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local117__, \"bar\": __local118__}) := z if {\n\tdata.ex.foo(__local117__, a)\n\tdata.test.foo(__local118__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local119__) if {\n\t__local119__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local120__) := y if {\n\ty = __local120__\n}\n\nmulti(2, __local121__) := y if {\n\t__local24__ = 2 * __local121__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local122__) := y if {\n\t__local26__ = __local122__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local123__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local124__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local146__) := y if {\n\ttrim(__local146__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local147__) := y if {\n\ty = __local147__\n}\n\nmulti(\"bar\", __local148__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "s f",
+                [
+                  ", my name "
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-0998.yaml": {
+      "sha256": "sha256:4791505dee21d398176eee97281c688f87e254622e27f79bbddd0db3cd42dbaa",
+      "cases": [
+        {
+          "note": "functions/array params",
+          "query": "data.ex.arraysrule = x",
+          "modules": [
+            "package test.l1.l3\n\ng(__local175__) := __local175__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local182__) := __local182__\n",
+            "package test.omit_result\n\nf(__local189__) := __local189__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = [\"s f\", [\", my name \"]]\n}\n",
+            "package ex\n\nfoo(__local125__) := y if {\n\tsplit(__local125__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local126__) := y if {\n\tdata.ex.foo(__local126__, y)\n}\n\nchain1(__local127__) := b if {\n\tdata.ex.chain0(__local127__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local128__) := [a, b] if {\n\tsplit(__local128__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local129__) := false\n\nfalsy_func_else(__local130__) if {\n\t__local130__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local132__, __local133__]) := [a, b] if {\n\tdata.ex.foo(__local132__, a)\n\tdata.ex.foo(__local133__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local134__, \"bar\": __local135__}) := z if {\n\tdata.ex.foo(__local134__, a)\n\tdata.test.foo(__local135__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local136__) if {\n\t__local136__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local137__) := y if {\n\ty = __local137__\n}\n\nmulti(2, __local138__) := y if {\n\t__local24__ = 2 * __local138__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local139__) := y if {\n\t__local26__ = __local139__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local140__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local141__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local165__) := y if {\n\ttrim(__local165__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local167__) := y if {\n\ty = __local167__\n}\n\nmulti(\"bar\", __local168__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "h",
+                  "h"
+                ],
+                [
+                  "foo"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-0999.yaml": {
+      "sha256": "sha256:29158c45e1e00acd2b332aa5682f5df57c6caf5e96701427c9390bdc1ac30ec3",
+      "cases": [
+        {
+          "note": "functions/object params",
+          "query": "data.ex.objectsrule = x",
+          "modules": [
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local196__) := __local196__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local204__) := __local204__\n",
+            "package test.omit_result\n\nf(__local212__) := __local212__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = [[\"h\", \"h\"], [\"foo\"]]\n}\n",
+            "package ex\n\nfoo(__local142__) := y if {\n\tsplit(__local142__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local143__) := y if {\n\tdata.ex.foo(__local143__, y)\n}\n\nchain1(__local144__) := b if {\n\tdata.ex.chain0(__local144__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local145__) := [a, b] if {\n\tsplit(__local145__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local146__) := false\n\nfalsy_func_else(__local147__) if {\n\t__local147__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local149__, __local150__]) := [a, b] if {\n\tdata.ex.foo(__local149__, a)\n\tdata.ex.foo(__local150__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local151__, \"bar\": __local152__}) := z if {\n\tdata.ex.foo(__local151__, a)\n\tdata.test.foo(__local152__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local153__) if {\n\t__local153__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local154__) := y if {\n\ty = __local154__\n}\n\nmulti(2, __local155__) := y if {\n\t__local24__ = 2 * __local155__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local156__) := y if {\n\t__local26__ = __local156__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local157__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local158__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local185__) := y if {\n\ttrim(__local185__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local186__) := y if {\n\ty = __local186__\n}\n\nmulti(\"bar\", __local187__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "h",
+                  "h"
+                ],
+                "i"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1000.yaml": {
+      "sha256": "sha256:3fb400dd0462a96bdaa1f079cc43f67b11c5e211e43766ad04d8f1bbc1367730",
+      "cases": [
+        {
+          "note": "functions/ref func output",
+          "query": "data.ex.refoutput = x",
+          "modules": [
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = [[\"h\", \"h\"], \"i\"]\n}\n",
+            "package ex\n\nfoo(__local159__) := y if {\n\tsplit(__local159__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local160__) := y if {\n\tdata.ex.foo(__local160__, y)\n}\n\nchain1(__local161__) := b if {\n\tdata.ex.chain0(__local161__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local162__) := [a, b] if {\n\tsplit(__local162__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local163__) := false\n\nfalsy_func_else(__local164__) if {\n\t__local164__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local166__, __local167__]) := [a, b] if {\n\tdata.ex.foo(__local166__, a)\n\tdata.ex.foo(__local167__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local168__, \"bar\": __local169__}) := z if {\n\tdata.ex.foo(__local168__, a)\n\tdata.test.foo(__local169__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local170__) if {\n\t__local170__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local171__) := y if {\n\ty = __local171__\n}\n\nmulti(2, __local172__) := y if {\n\t__local24__ = 2 * __local172__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local173__) := y if {\n\t__local26__ = __local173__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local174__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local175__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local205__) := y if {\n\ttrim(__local205__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local206__) := y if {\n\ty = __local206__\n}\n\nmulti(\"bar\", __local207__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local217__) := __local217__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local226__) := __local226__\n",
+            "package test.omit_result\n\nf(__local235__) := __local235__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "h"
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1001.yaml": {
+      "sha256": "sha256:d40f97cf0af3df9328ca709ec50005b024896086b8d9e6a6441f9f855aa6c637",
+      "cases": [
+        {
+          "note": "functions/always_true",
+          "query": "data.ex.always_true = x",
+          "modules": [
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local238__) := __local238__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local248__) := __local248__\n",
+            "package test.omit_result\n\nf(__local258__) := __local258__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = \"h\"\n}\n",
+            "package ex\n\nfoo(__local176__) := y if {\n\tsplit(__local176__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local177__) := y if {\n\tdata.ex.foo(__local177__, y)\n}\n\nchain1(__local178__) := b if {\n\tdata.ex.chain0(__local178__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local179__) := [a, b] if {\n\tsplit(__local179__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local180__) := false\n\nfalsy_func_else(__local181__) if {\n\t__local181__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local183__, __local184__]) := [a, b] if {\n\tdata.ex.foo(__local183__, a)\n\tdata.ex.foo(__local184__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local185__, \"bar\": __local186__}) := z if {\n\tdata.ex.foo(__local185__, a)\n\tdata.test.foo(__local186__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local187__) if {\n\t__local187__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local188__) := y if {\n\ty = __local188__\n}\n\nmulti(2, __local189__) := y if {\n\t__local24__ = 2 * __local189__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local190__) := y if {\n\t__local26__ = __local190__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local191__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local192__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local224__) := y if {\n\ttrim(__local224__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local225__) := y if {\n\ty = __local225__\n}\n\nmulti(\"bar\", __local227__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1002.yaml": {
+      "sha256": "sha256:2f5f60c0e5e5709b15ea0e8f9ad2b1deae908d680dcd6f8dde631528f22972b5",
+      "cases": [
+        {
+          "note": "functions/same package call",
+          "query": "data.test.samepkg = x",
+          "modules": [
+            "package ex\n\nfoo(__local193__) := y if {\n\tsplit(__local193__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local194__) := y if {\n\tdata.ex.foo(__local194__, y)\n}\n\nchain1(__local195__) := b if {\n\tdata.ex.chain0(__local195__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local196__) := [a, b] if {\n\tsplit(__local196__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local197__) := false\n\nfalsy_func_else(__local198__) if {\n\t__local198__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local200__, __local201__]) := [a, b] if {\n\tdata.ex.foo(__local200__, a)\n\tdata.ex.foo(__local201__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local202__, \"bar\": __local203__}) := z if {\n\tdata.ex.foo(__local202__, a)\n\tdata.test.foo(__local203__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local204__) if {\n\t__local204__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local205__) := y if {\n\ty = __local205__\n}\n\nmulti(2, __local206__) := y if {\n\t__local24__ = 2 * __local206__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local207__) := y if {\n\t__local26__ = __local207__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local208__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local209__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local244__) := y if {\n\ttrim(__local244__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local245__) := y if {\n\ty = __local245__\n}\n\nmulti(\"bar\", __local246__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local259__) := __local259__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local270__) := __local270__\n",
+            "package test.omit_result\n\nf(__local281__) := __local281__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = true\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "w do you do?"
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1003.yaml": {
+      "sha256": "sha256:da45621f2fbd9b8a734c06ddc62b45292741600f1ee95535acf2a73ea4c09bb8",
+      "cases": [
+        {
+          "note": "functions/void good",
+          "query": "data.ex.voidGood = x",
+          "modules": [
+            "package test.l1.l2\n\np := true\n\nf(__local292__) := __local292__\n",
+            "package test.omit_result\n\nf(__local304__) := __local304__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = \"w do you do?\"\n}\n",
+            "package ex\n\nfoo(__local210__) := y if {\n\tsplit(__local210__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local211__) := y if {\n\tdata.ex.foo(__local211__, y)\n}\n\nchain1(__local212__) := b if {\n\tdata.ex.chain0(__local212__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local213__) := [a, b] if {\n\tsplit(__local213__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local214__) := false\n\nfalsy_func_else(__local215__) if {\n\t__local215__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local217__, __local218__]) := [a, b] if {\n\tdata.ex.foo(__local217__, a)\n\tdata.ex.foo(__local218__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local219__, \"bar\": __local220__}) := z if {\n\tdata.ex.foo(__local219__, a)\n\tdata.test.foo(__local220__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local221__) if {\n\t__local221__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local222__) := y if {\n\ty = __local222__\n}\n\nmulti(2, __local223__) := y if {\n\t__local24__ = 2 * __local223__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local224__) := y if {\n\t__local26__ = __local224__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local225__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local226__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local264__) := y if {\n\ttrim(__local264__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local265__) := y if {\n\ty = __local265__\n}\n\nmulti(\"bar\", __local266__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local279__) := __local279__\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1004.yaml": {
+      "sha256": "sha256:4192ee2eb0ad4482f6c5d2e233e11b8ca817a002b03a2f856a29f2da8c4e4485",
+      "cases": [
+        {
+          "note": "functions/void bad",
+          "query": "data.ex.voidBad = x",
+          "modules": [
+            "package test.omit_result\n\nf(__local327__) := __local327__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = true\n}\n",
+            "package ex\n\nfoo(__local227__) := y if {\n\tsplit(__local227__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local228__) := y if {\n\tdata.ex.foo(__local228__, y)\n}\n\nchain1(__local229__) := b if {\n\tdata.ex.chain0(__local229__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local230__) := [a, b] if {\n\tsplit(__local230__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local231__) := false\n\nfalsy_func_else(__local232__) if {\n\t__local232__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local234__, __local235__]) := [a, b] if {\n\tdata.ex.foo(__local234__, a)\n\tdata.ex.foo(__local235__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local236__, \"bar\": __local237__}) := z if {\n\tdata.ex.foo(__local236__, a)\n\tdata.test.foo(__local237__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local238__) if {\n\t__local238__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local239__) := y if {\n\ty = __local239__\n}\n\nmulti(2, __local240__) := y if {\n\t__local24__ = 2 * __local240__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local241__) := y if {\n\t__local26__ = __local241__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local242__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local243__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local284__) := y if {\n\ttrim(__local284__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local285__) := y if {\n\ty = __local285__\n}\n\nmulti(\"bar\", __local286__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local300__) := __local300__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local314__) := __local314__\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-functions-1005.yaml": {
+      "sha256": "sha256:26ae2ecd5a60adee8b5ae905d32441b18d24376b15b58dcdd370369d04501041",
+      "cases": [
+        {
+          "note": "functions/multi1",
+          "query": "data.ex.multi1 = x",
+          "modules": [
+            "package test.l1.l3\n\ng(__local300__) := __local300__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local314__) := __local314__\n",
+            "package test.omit_result\n\nf(__local327__) := __local327__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = true\n}\n",
+            "package ex\n\nfoo(__local227__) := y if {\n\tsplit(__local227__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local228__) := y if {\n\tdata.ex.foo(__local228__, y)\n}\n\nchain1(__local229__) := b if {\n\tdata.ex.chain0(__local229__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local230__) := [a, b] if {\n\tsplit(__local230__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local231__) := false\n\nfalsy_func_else(__local232__) if {\n\t__local232__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local234__, __local235__]) := [a, b] if {\n\tdata.ex.foo(__local234__, a)\n\tdata.ex.foo(__local235__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local236__, \"bar\": __local237__}) := z if {\n\tdata.ex.foo(__local236__, a)\n\tdata.test.foo(__local237__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local238__) if {\n\t__local238__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local239__) := y if {\n\ty = __local239__\n}\n\nmulti(2, __local240__) := y if {\n\t__local24__ = 2 * __local240__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local241__) := y if {\n\t__local26__ = __local241__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local242__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local243__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local284__) := y if {\n\ttrim(__local284__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local285__) := y if {\n\ty = __local285__\n}\n\nmulti(\"bar\", __local286__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1006.yaml": {
+      "sha256": "sha256:dc49839c9e1d6f0f57335c6628a8f2c188625fb3ad06b15bb50c7d90a4b8a6fa",
+      "cases": [
+        {
+          "note": "functions/multi2",
+          "query": "data.ex.multi2 = x",
+          "modules": [
+            "package test.omit_result\n\nf(__local350__) := __local350__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = 2\n}\n",
+            "package ex\n\nfoo(__local244__) := y if {\n\tsplit(__local244__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local245__) := y if {\n\tdata.ex.foo(__local245__, y)\n}\n\nchain1(__local246__) := b if {\n\tdata.ex.chain0(__local246__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local247__) := [a, b] if {\n\tsplit(__local247__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local248__) := false\n\nfalsy_func_else(__local249__) if {\n\t__local249__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local251__, __local252__]) := [a, b] if {\n\tdata.ex.foo(__local251__, a)\n\tdata.ex.foo(__local252__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local253__, \"bar\": __local254__}) := z if {\n\tdata.ex.foo(__local253__, a)\n\tdata.test.foo(__local254__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local255__) if {\n\t__local255__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local256__) := y if {\n\ty = __local256__\n}\n\nmulti(2, __local257__) := y if {\n\t__local24__ = 2 * __local257__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local258__) := y if {\n\t__local26__ = __local258__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local259__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local260__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local304__) := y if {\n\ttrim(__local304__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local305__) := y if {\n\ty = __local305__\n}\n\nmulti(\"bar\", __local306__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local321__) := __local321__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local336__) := __local336__\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 5
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1007.yaml": {
+      "sha256": "sha256:256dd76b1e18eef905d79bbcf8aa4761e443a6fb0b270d3baf41e40214ffea10",
+      "cases": [
+        {
+          "note": "functions/multi3",
+          "query": "data.ex.multi3 = x",
+          "modules": [
+            "package ex\n\nfoo(__local261__) := y if {\n\tsplit(__local261__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local262__) := y if {\n\tdata.ex.foo(__local262__, y)\n}\n\nchain1(__local263__) := b if {\n\tdata.ex.chain0(__local263__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local264__) := [a, b] if {\n\tsplit(__local264__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local265__) := false\n\nfalsy_func_else(__local266__) if {\n\t__local266__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local268__, __local269__]) := [a, b] if {\n\tdata.ex.foo(__local268__, a)\n\tdata.ex.foo(__local269__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local270__, \"bar\": __local271__}) := z if {\n\tdata.ex.foo(__local270__, a)\n\tdata.test.foo(__local271__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local272__) if {\n\t__local272__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local273__) := y if {\n\ty = __local273__\n}\n\nmulti(2, __local274__) := y if {\n\t__local24__ = 2 * __local274__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local275__) := y if {\n\t__local26__ = __local275__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local276__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local277__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local324__) := y if {\n\ttrim(__local324__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local325__) := y if {\n\ty = __local325__\n}\n\nmulti(\"bar\", __local326__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local342__) := __local342__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local358__) := __local358__\n",
+            "package test.omit_result\n\nf(__local373__) := __local373__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = 5\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 20
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1008.yaml": {
+      "sha256": "sha256:63b2fcf99dfadb0b3e88a751237d89df7dd90808fd14312bc8a41e5410938af5",
+      "cases": [
+        {
+          "note": "functions/multi4",
+          "query": "data.ex.multi4 = x",
+          "modules": [
+            "package test.omit_result\n\nf(__local396__) := __local396__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = 20\n}\n",
+            "package ex\n\nfoo(__local278__) := y if {\n\tsplit(__local278__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local279__) := y if {\n\tdata.ex.foo(__local279__, y)\n}\n\nchain1(__local280__) := b if {\n\tdata.ex.chain0(__local280__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local281__) := [a, b] if {\n\tsplit(__local281__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local282__) := false\n\nfalsy_func_else(__local283__) if {\n\t__local283__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local285__, __local286__]) := [a, b] if {\n\tdata.ex.foo(__local285__, a)\n\tdata.ex.foo(__local286__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local287__, \"bar\": __local288__}) := z if {\n\tdata.ex.foo(__local287__, a)\n\tdata.test.foo(__local288__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local289__) if {\n\t__local289__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local290__) := y if {\n\ty = __local290__\n}\n\nmulti(2, __local291__) := y if {\n\t__local24__ = 2 * __local291__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local292__) := y if {\n\t__local26__ = __local292__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local293__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local294__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local344__) := y if {\n\ttrim(__local344__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local345__) := y if {\n\ty = __local345__\n}\n\nmulti(\"bar\", __local346__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local363__) := __local363__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local380__) := __local380__\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "bar"
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1009.yaml": {
+      "sha256": "sha256:b248a16518e700a8869075e6ed01f69720d144875d1321cd50615d14d0be0a1a",
+      "cases": [
+        {
+          "note": "functions/multi cross package",
+          "query": "data.test.multi_cross_pkg = x",
+          "modules": [
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local384__) := __local384__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local402__) := __local402__\n",
+            "package test.omit_result\n\nf(__local419__) := __local419__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = \"bar\"\n}\n",
+            "package ex\n\nfoo(__local295__) := y if {\n\tsplit(__local295__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local296__) := y if {\n\tdata.ex.foo(__local296__, y)\n}\n\nchain1(__local297__) := b if {\n\tdata.ex.chain0(__local297__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local298__) := [a, b] if {\n\tsplit(__local298__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local299__) := false\n\nfalsy_func_else(__local300__) if {\n\t__local300__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local302__, __local303__]) := [a, b] if {\n\tdata.ex.foo(__local302__, a)\n\tdata.ex.foo(__local303__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local304__, \"bar\": __local305__}) := z if {\n\tdata.ex.foo(__local304__, a)\n\tdata.test.foo(__local305__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local306__) if {\n\t__local306__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local307__) := y if {\n\ty = __local307__\n}\n\nmulti(2, __local308__) := y if {\n\t__local24__ = 2 * __local308__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local309__) := y if {\n\t__local26__ = __local309__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local310__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local311__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n",
+            "package test\n\nfoo(__local364__) := y if {\n\ttrim(__local364__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local365__) := y if {\n\ty = __local365__\n}\n\nmulti(\"bar\", __local366__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "bar",
+                3
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1010.yaml": {
+      "sha256": "sha256:78a5451ce4a95c4de49b821888fc589989a3c7e31db4b06ca490685a89e8d6dd",
+      "cases": [
+        {
+          "note": "functions/skip-functions",
+          "query": "data.test.l1 = x",
+          "modules": [
+            "package test\n\nfoo(__local383__) := y if {\n\ttrim(__local383__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local385__) := y if {\n\ty = __local385__\n}\n\nmulti(\"bar\", __local386__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local405__) := __local405__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local424__) := __local424__\n",
+            "package test.omit_result\n\nf(__local442__) := __local442__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = [\"bar\", 3]\n}\n",
+            "package ex\n\nfoo(__local312__) := y if {\n\tsplit(__local312__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local313__) := y if {\n\tdata.ex.foo(__local313__, y)\n}\n\nchain1(__local314__) := b if {\n\tdata.ex.chain0(__local314__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local315__) := [a, b] if {\n\tsplit(__local315__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local316__) := false\n\nfalsy_func_else(__local317__) if {\n\t__local317__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local319__, __local320__]) := [a, b] if {\n\tdata.ex.foo(__local319__, a)\n\tdata.ex.foo(__local320__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local321__, \"bar\": __local322__}) := z if {\n\tdata.ex.foo(__local321__, a)\n\tdata.test.foo(__local322__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local323__) if {\n\t__local323__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local324__) := y if {\n\ty = __local324__\n}\n\nmulti(2, __local325__) := y if {\n\t__local24__ = 2 * __local325__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local326__) := y if {\n\t__local26__ = __local326__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local327__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local328__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "l2": {
+                  "p": true
+                },
+                "l3": {
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-1011.yaml": {
+      "sha256": "sha256:1516bcd2e64e40f989cc6d6c80dd3bf7f83bbbdb3a36b93fd5ced8d1794f1eff",
+      "cases": [
+        {
+          "note": "functions/omit result",
+          "query": "data.test.omit_result.p = x",
+          "modules": [
+            "package test\n\nfoo(__local403__) := y if {\n\ttrim(__local403__, \"h o\", y)\n}\n\ncross := y if {\n\tdata.ex.cross(\"hi, my name is foo\", y)\n}\n\nmulti(\"foo\", __local404__) := y if {\n\ty = __local404__\n}\n\nmulti(\"bar\", __local406__) := y if {\n\ty = \"baz\"\n}\n\nmulti_cross_pkg := [y, z] if {\n\tdata.test.multi(\"foo\", \"bar\", y)\n\tdata.ex.multi(2, 1, z)\n}\n",
+            "package test\n\nsamepkg := y if {\n\tdata.test.foo(\"how do you do?\", y)\n}\n",
+            "package test.l1.l3\n\ng(__local426__) := __local426__\n",
+            "package test.l1.l2\n\np := true\n\nf(__local446__) := __local446__\n",
+            "package test.omit_result\n\nf(__local465__) := __local465__\n\np if {\n\tdata.test.omit_result.f(1)\n}\n",
+            "package topdown_test_partial\n\n__result__ := _result if {\n\t_result = {\"l2\": {\"p\": true}, \"l3\": {}}\n}\n",
+            "package ex\n\nfoo(__local329__) := y if {\n\tsplit(__local329__, \"i\", y)\n}\n\nbar[x] := y if {\n\tdata.l[_].a = x\n\tdata.ex.foo(x, y)\n}\n\nchain0(__local330__) := y if {\n\tdata.ex.foo(__local330__, y)\n}\n\nchain1(__local331__) := b if {\n\tdata.ex.chain0(__local331__, b)\n}\n\nchain2 := d if {\n\tdata.ex.chain1(\"fooibar\", d)\n}\n\ncross(__local332__) := [a, b] if {\n\tsplit(__local332__, \"i\", y)\n\t__local27__ = y[1]\n\tdata.ex.foo(__local27__, b)\n\t__local28__ = y[2]\n\tdata.test.foo(__local28__, a)\n}\n\nfalsy_func(__local333__) := false\n\nfalsy_func_else(__local334__) if {\n\t__local334__ = 1\n}\n\nelse := false\n\nfalsy_undefined if {\n\tdata.ex.falsy_func(1)\n}\n\nfalsy_negation if {\n\tnot data.ex.falsy_func(1)\n}\n\nfalsy_else_value := __local23__ if {\n\ttrue\n\tdata.ex.falsy_func_else(2, __local23__)\n}\n\nfalsy_else_undefined if {\n\tdata.ex.falsy_func_else(2)\n}\n\nfalsy_else_negation if {\n\tnot data.ex.falsy_func_else(2)\n}\n\narrays([__local336__, __local337__]) := [a, b] if {\n\tdata.ex.foo(__local336__, a)\n\tdata.ex.foo(__local337__, b)\n}\n\narraysrule := y if {\n\tdata.ex.arrays([\"hih\", \"foo\"], y)\n}\n\nobjects({\"foo\": __local338__, \"bar\": __local339__}) := z if {\n\tdata.ex.foo(__local338__, a)\n\tdata.test.foo(__local339__, b)\n\tz = [a, b]\n}\n\nobjectsrule := y if {\n\tdata.ex.objects({\"bar\": \"hi ho\", \"foo\": \"hih\"}, y)\n}\n\nrefoutput := y if {\n\tdata.ex.foo(\"hih\", z)\n\ty = z[1]\n}\n\nvoid(__local340__) if {\n\t__local340__ = \"foo\"\n}\n\nvoidGood if {\n\tnot data.ex.void(\"bar\", true)\n}\n\nvoidBad if {\n\tdata.ex.void(\"bar\", true)\n}\n\nmulti(1, __local341__) := y if {\n\ty = __local341__\n}\n\nmulti(2, __local342__) := y if {\n\t__local24__ = 2 * __local342__\n\ta = __local24__\n\t__local25__ = a + 1\n\ty = __local25__\n}\n\nmulti(3, __local343__) := y if {\n\t__local26__ = __local343__ * 10\n\ty = __local26__\n}\n\nmulti(\"foo\", __local344__) := y if {\n\ty = \"bar\"\n}\n\nmulti1 := y if {\n\tdata.ex.multi(1, 2, y)\n}\n\nmulti2 := y if {\n\tdata.ex.multi(2, 2, y)\n}\n\nmulti3 := y if {\n\tdata.ex.multi(3, 2, y)\n}\n\nmulti4 := y if {\n\tdata.ex.multi(\"foo\", 2, y)\n}\n\nalways_true_fn(__local345__) := true\n\nalways_true if {\n\tdata.ex.always_true_fn(1)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-default.yaml": {
+      "sha256": "sha256:69469b48a2114c8d737eb4ee460d2bcbda3121afbb3bba3366a07be3ea2557d8",
+      "cases": [
+        {
+          "note": "functions/default",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault f(x) := 1\n\nf(x) := x if {\n\tx > 0\n}\n\np if {\n\tf(-1) == 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "functions/non default",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault f(x) := 1\n\nf(x) := x if {\n\tx > 0\n}\n\np if {\n\tf(2) == 2\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "functions/only default",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault f(x) := 1\n\np if {\n\tf(2) == 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "functions/wildcard args",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault f(_, _) := 1\n\nf(x, y) := x if {\n\tx == y\n}\n\np if {\n\tf(2, 2) == 2\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "functions/comprehensions",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndefault f(x) := 1000\n\nf(x) := x if {\n\tx > 0\n}\n\np := xs if {\n\txs := [y | x = [1, -2, 3][_]; y := f(x)]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                1,
+                1000,
+                3
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-functions-nested-with-early-exit.yaml": {
+      "sha256": "sha256:50991a08e2cf1f36e2ea9fa14ec50819a90e5c96af2578b73f7772453aacf506",
+      "cases": [
+        {
+          "note": "functions/nested complete doc with conflict",
+          "query": "data.generated.p(1) = x",
+          "modules": [
+            "package generated\n\np(_) if {\n\tdata.generated.q\n}\n\nq := true\n\nq := false\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "functions/nested complete doc with conflict, else",
+          "query": "data.generated.p(1) = x",
+          "modules": [
+            "package generated\n\np(_) if {\n\tdata.generated.q\n}\n\nq if {\n\tfalse\n}\n\nelse := true\n\nq if {\n\tfalse\n}\n\nelse := false\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "functions/nested function with conflict",
+          "query": "data.generated.p(1) = x",
+          "modules": [
+            "package generated\n\np(x) if {\n\ty := data.generated.q(x)\n}\n\nq(_) := true\n\nq(_) := false\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "functions must not produce multiple outputs for same inputs"
+        },
+        {
+          "note": "functions/nested function with conflict, else",
+          "query": "data.generated.p(1) = x",
+          "modules": [
+            "package generated\n\np(x) if {\n\ty := data.generated.q(x)\n}\n\nq(_) if {\n\tfalse\n}\n\nelse := true\n\nq(_) if {\n\tfalse\n}\n\nelse := false\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "functions must not produce multiple outputs for same inputs"
+        },
+        {
+          "note": "functions/nested function with conflict, else, no extra return",
+          "query": "data.test.p(1) = x",
+          "modules": [
+            "package test\n\np(x) if {\n\ty := data.test.q(x)\n}\n\nxs := {1, 2}\n\nq(_) := xs[_]\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "functions must not produce multiple outputs for same inputs"
+        }
+      ]
+    },
+    "test-functions-unused-arg.yaml": {
+      "sha256": "sha256:8de4c75e08210f59190ced282a6f210f172e0a30b7a9cb0de2335f1e59a10791",
+      "cases": [
+        {
+          "note": "unused arg",
+          "query": "data.p.f(1)",
+          "modules": [
+            "package p\n\nf(x) if {\n\tr = input.that_is_not_there\n}\n"
+          ],
+          "want_result": [
+
+          ]
+        }
+      ]
+    }
+  }
+}

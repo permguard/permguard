@@ -165,18 +165,24 @@ struct Host {
     time: Arc<TimeGuard>,
 }
 
+/// The Host of `root`: its identity provisioned on the first open, opened again on a restart.
 fn host(root: &Path) -> Host {
     let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
-    let identity = Identity::provision(
-        &volume,
-        Arc::new(FileKeyProvider::new(
-            directories(&volume).expect("the identity directory").1,
-        )),
-        Suite::Ed25519Sha256V1,
-        permguard_host::authz::store::now(),
-        permguard_host::authz::store::now() * 1000,
-    )
-    .expect("provisioned");
+    let provider: Arc<dyn permguard_host::keys::KeyProvider> = Arc::new(FileKeyProvider::new(
+        directories(&volume).expect("the identity directory").1,
+    ));
+    let identity = if permguard_host::identity::is_provisioned(&volume).expect("read") {
+        Identity::open(&volume, provider).expect("opened")
+    } else {
+        Identity::provision(
+            &volume,
+            provider,
+            Suite::Ed25519Sha256V1,
+            permguard_host::authz::store::now(),
+            permguard_host::authz::store::now() * 1000,
+        )
+        .expect("provisioned")
+    };
     // A reset provisions the next identity in the same `keys/`.
     let keys = directories(&volume)
         .expect("the identity directory")
@@ -555,6 +561,32 @@ struct Side {
     keys: Arc<permguard_host::keys::registry::Registry>,
     connector: Option<Arc<dyn permguard_host::membership::member::Connector>>,
     tasks: Arc<permguard_host::membership::task::Tasks>,
+    /// The decision log's producer on the Host's stream engine, when the side runs one (WP-5.8).
+    producer: Option<Arc<DecisionProducer>>,
+    /// The Host's audit engine, sealing under its operations ring (WP-5.9).
+    audit: Arc<permguard_host::audit::Engine>,
+}
+
+/// The decision log's producer, as the server registers it.
+type DecisionProducer = permguard_stream::engine::Producer<permguard_decisions::stream::Codec>;
+
+/// A coordinator's `audit.checkpoints` handler acknowledging a checkpoint it was not sent.
+struct Liar;
+
+impl permguard_host::membership::task::TaskHandler for Liar {
+    fn handle(
+        &self,
+        context: &permguard_host::membership::task::TaskContext,
+        _body: &[u8],
+    ) -> Result<Vec<u8>, permguard_host::session::Refusal> {
+        Ok(permguard_host::membership::egress::Ack {
+            trail: format!("security:{}", context.resource),
+            checkpoint: [0; 32],
+            received_at: 1,
+        }
+        .encode()
+        .expect("encodes"))
+    }
 }
 
 /// A task handler that answers each body with `echo:` before it.
@@ -587,7 +619,20 @@ async fn side(
     ring: &'static str,
     capabilities: permguard_host::membership::Capabilities,
 ) -> Side {
-    side_with(root, pki, stem, ring, capabilities, None).await
+    side_with(root, pki, stem, ring, capabilities, None, false).await
+}
+
+/// A side running the Host's stream engine as the server composes it: the decision log's
+/// producer, signed under `ring`, shipped by the member side, and its consumer behind the
+/// `decisions.ship` ingest (WP-5.8).
+async fn streaming_side(
+    root: &Path,
+    pki: &Pki,
+    stem: &str,
+    ring: &'static str,
+    capabilities: permguard_host::membership::Capabilities,
+) -> Side {
+    side_with(root, pki, stem, ring, capabilities, None, true).await
 }
 
 /// A side whose listener, and peer client, check `crl` (WP-2.11).
@@ -598,14 +643,34 @@ async fn side_with(
     ring: &'static str,
     capabilities: permguard_host::membership::Capabilities,
     crl: Option<PathBuf>,
+    streaming: bool,
 ) -> Side {
     use permguard_core::authz::{Principal, Resource, Selector, operations};
 
     let host = host(root);
     let (store, _) = GrantStore::open(&host.volume).expect("the grant store opens");
+    // One audit engine for the mutations and the checkpoints, as the server composes it.
+    let audit = Arc::new(
+        permguard_host::audit::Engine::open(
+            &host.volume,
+            permguard_host::audit::Stamp {
+                host_id: host.identity.host_id(),
+                boot_id: host.identity.boot_id(),
+                build: "test".to_owned(),
+                config_revision: permguard_host::audit::config_revision(std::iter::empty()),
+            },
+            Arc::clone(&host.time),
+            None,
+        )
+        .expect("the audit engine opens"),
+    );
     let mutations = Arc::new(
-        permguard_host::operations::mutation::Mutations::open_offline(&host.volume, "test")
-            .expect("the mutation journal opens"),
+        permguard_host::operations::mutation::Mutations::open(
+            &host.volume,
+            Arc::clone(&audit) as Arc<dyn permguard_host::operations::mutation::Projection>,
+            Arc::clone(&host.time),
+        )
+        .expect("the mutation journal opens"),
     );
     permguard_host::operations::grants::issue(
         &mutations,
@@ -647,27 +712,110 @@ async fn side_with(
         permguard_core::KeyManager::maintain(ring.as_ref()).expect("the ring is maintained");
         ring
     };
-    let mut rings = vec![open_ring(ring)];
-    // `host.operations` signs the plan receipts of either side (WP-3.9).
+    let signing = open_ring(ring);
+    let mut rings = vec![Arc::clone(&signing)];
+    // `host.operations` signs the plan receipts of either side (WP-3.9) and seals the trails.
     if ring != permguard_host::keys::ring::HOST_OPERATIONS {
         rings.push(open_ring(permguard_host::keys::ring::HOST_OPERATIONS));
+    }
+    let operations = rings
+        .iter()
+        .find(|held| held.id() == permguard_host::keys::ring::HOST_OPERATIONS)
+        .cloned()
+        .expect("the operations ring");
+    // The decision log on the Host's stream engine, as the server registers it (WP-5.8).
+    let engine = streaming.then(|| {
+        let engine = permguard_stream::engine::Streams::open(
+            &host.volume,
+            &host.identity,
+            Arc::clone(&operations),
+            Arc::clone(&host.time),
+        )
+        .expect("the stream engine opens");
+        let producer = engine
+            .register_producer(
+                permguard_decisions::stream::descriptor(),
+                permguard_decisions::stream::Codec,
+            )
+            .expect("the producer");
+        // The member seals under its `data.attest`; a coordinator produces nothing here.
+        let producer = if signing.id() == permguard_host::composition::DATA_ATTEST.as_str() {
+            producer
+                .with_signer(Arc::clone(&signing))
+                .expect("its signer")
+        } else {
+            producer
+        };
+        let consumer = engine
+            .register_consumer(
+                permguard_decisions::stream::descriptor(),
+                permguard_decisions::stream::Codec,
+            )
+            .expect("the consumer");
+        (Arc::new(producer), Arc::new(consumer))
+    });
+    if let Some(operations) = rings
+        .iter()
+        .find(|held| held.id() == permguard_host::keys::ring::HOST_OPERATIONS)
+    {
+        audit
+            .seal_with(Arc::clone(operations)
+                as Arc<dyn permguard_host::audit::checkpoint::CheckpointSigner>);
     }
     let keys = Arc::new(permguard_host::keys::registry::Registry::new(
         Some(Arc::clone(&host.identity)),
         rings,
     ));
     let members = permguard_host::membership::Store::open(&host.volume).expect("the memberships");
+    let ship: Arc<dyn permguard_host::membership::task::TaskHandler> = match &engine {
+        Some((_, consumer)) => Arc::new(permguard_stream::engine::ingest::Ingest {
+            consumer: Arc::clone(consumer),
+            pins: Arc::clone(&members) as Arc<dyn permguard_stream::engine::ingest::StreamPins>,
+        }),
+        None => Arc::new(Echo),
+    };
     let tasks = Arc::new(permguard_host::membership::task::Tasks {
         handlers: permguard_host::membership::task::TaskHandlers::default()
             .register(
                 permguard_host::membership::record::TaskType::DecisionsShip,
                 1,
-                Arc::new(Echo),
+                ship,
             )
-            .expect("one handler"),
+            .and_then(|handlers| {
+                // A `policy.mirror` provider that echoes what a member's session carries
+                // (WP-7.2a).
+                handlers.register(
+                    permguard_host::membership::record::TaskType::PolicyMirror,
+                    1,
+                    Arc::new(Echo),
+                )
+            })
+            .and_then(|handlers| {
+                // The checkpoints its members export (WP-5.9).
+                handlers.register(
+                    permguard_host::membership::record::TaskType::AuditCheckpoints,
+                    permguard_host::membership::egress::VERSION,
+                    // A coordinator named `liar` acknowledges what it was not sent.
+                    if stem == "liar" {
+                        Arc::new(Liar) as Arc<dyn permguard_host::membership::task::TaskHandler>
+                    } else {
+                        Arc::new(permguard_host::membership::egress::AuditCheckpoints {
+                            store: Arc::clone(&members),
+                            time: Arc::clone(&host.time),
+                        })
+                    },
+                )
+            })
+            .expect("the handlers"),
         // A quiet watch heartbeats soon, so a test sees one.
         watch_heartbeat: Duration::from_millis(300),
         ..permguard_host::membership::task::Tasks::default()
+    });
+    let served = engine.as_ref().map(|(producer, _)| {
+        Arc::new(
+            permguard_stream::engine::Served::default()
+                .with(permguard_decisions::stream::STREAM, Arc::clone(producer)),
+        )
     });
     let peers = Arc::new(Peers::open(&host.volume, &[]).expect("the peers"));
     peers.with_source(Arc::clone(&members) as Arc<dyn permguard_host::session::peers::PinSource>);
@@ -729,13 +877,20 @@ async fn side_with(
             context: Some(context),
         },
         listeners: Vec::new(),
-        audit: None,
+        audit: Some(Arc::clone(&audit)),
         memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
             store: Arc::clone(&members),
             capabilities,
             connector: connector.clone(),
             appraisal: permguard_host::membership::appraisal::Appraisal::default(),
             live: Arc::clone(&tasks.live),
+            streams: served
+                .clone()
+                .map(|served| served as Arc<dyn permguard_host::composition::StreamCutovers>),
+            shipping: served
+                .clone()
+                .map(|served| served as Arc<dyn permguard_host::composition::StreamShipping>),
+            importing: None,
         })),
     }));
     let listener = Surface::listener(
@@ -757,6 +912,8 @@ async fn side_with(
         keys,
         connector,
         tasks,
+        producer: engine.map(|(producer, _)| producer),
+        audit,
     }
 }
 
@@ -1068,6 +1225,28 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         .await
         .expect("approved");
 
+    member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            permguard_host::api::members::SyncMembership {
+                request_id: "sync".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+    // A session the member holds open across the reset (WP-4.9).
+    let membership_id = only_membership(&coordinator);
+    let mut live = acting(&member)
+        .open(&membership_id)
+        .await
+        .expect("a lease before the reset");
+    assert_eq!(
+        live.send("before", b"x".to_vec()).await.expect("answered"),
+        b"echo:x"
+    );
+
     let old = member.host.identity.host_id_text();
     let planned = member
         .api
@@ -1112,6 +1291,108 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         root.join(format!("member/host/keys/retired/{old}/data.attest/public"))
             .is_dir()
     );
+    // Recorded on both sides (WP-4.9): the coordinator's revocation, the member's reset.
+    assert!(security_actions(&coordinator).contains(&"host.membership.revoked".to_owned()));
+    assert!(security_actions(&member).contains(&"host.identity.reset".to_owned()));
+    // The session open across the reset ends at its next frame: the membership is revoked.
+    assert!(
+        live.send("after", b"x".to_vec()).await.is_err(),
+        "a live session outlived the revocation"
+    );
+    drop(live);
+    let mut waited = 0;
+    while !coordinator.tasks.live.of(&membership_id).is_empty() {
+        assert!(waited < 100, "the coordinator kept the old session");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        waited += 1;
+    }
+    // The old membership is usable nowhere: the coordinator holds its revocation and takes no
+    // task session for it (WP-4.9).
+    assert!(
+        acting(&member).open_task_now(&membership_id).await.is_err(),
+        "no task session on a revoked membership"
+    );
+    assert!(coordinator.tasks.live.of(&membership_id).is_empty());
+
+    // Restarted, the member serves its new identity and carries nothing of the old one over.
+    let Side {
+        host,
+        api,
+        listener,
+        members,
+        mutations,
+        keys,
+        connector,
+        tasks,
+        producer,
+        audit,
+    } = member;
+    listener.stop(Duration::from_secs(5)).await.expect("stops");
+    // Everything of the old process goes, the volume's lock with it.
+    drop((
+        host, api, members, mutations, keys, connector, tasks, producer, audit,
+    ));
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    assert_eq!(member.host.identity.host_id_text(), done.host_id);
+    assert_eq!(member.host.identity.first_fingerprint(), done.fingerprint);
+    let held = member.api.members(&admin(), None).expect("listed").members;
+    assert_eq!(held.len(), 1, "the old membership, kept as evidence");
+    assert_eq!(
+        (held[0].membership_id.as_str(), held[0].status.as_str()),
+        (id.as_str(), "revoked")
+    );
+    assert_eq!(held[0].member.host_id, old, "it names the old identity");
+    assert!(
+        member.tasks.live.of(&membership_id).is_empty() && held[0].last_session_at.is_none(),
+        "no session under it"
+    );
+    // The used invitation does not admit the new identity; a new one enrolls it from zero, pending.
+    let replayed = member
+        .api
+        .join_membership(&admin(), join_of(&coordinator, &invited, "join-again"))
+        .await
+        .expect_err("an invitation is used once");
+    assert_eq!(
+        code(&replayed),
+        codes::host::ENROLLMENT_REFUSED,
+        "{replayed:?}"
+    );
+    let again = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite-again".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    let rejoined = member
+        .api
+        .join_membership(&admin(), join_of(&coordinator, &again, "rejoin"))
+        .await
+        .expect("joined");
+    assert_ne!(rejoined.membership_id, id);
+    let enrolled = coordinator
+        .api
+        .member(&admin(), &rejoined.membership_id)
+        .expect("read");
+    assert_eq!(enrolled.status, "pending");
+    assert_eq!(enrolled.member.host_id, done.host_id);
+    assert!(enrolled.manifest.is_none(), "no authority before approval");
 
     for side in [coordinator, member] {
         side.listener
@@ -1119,6 +1400,330 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
             .await
             .expect("stops");
     }
+}
+
+/// The actions of `side`'s security trail on the Host, as its volume holds them.
+fn security_actions(side: &Side) -> Vec<String> {
+    use permguard_host::audit::{Class, Engine, HOST, Stamp, query::Query};
+    let engine = Engine::open(
+        &side.host.volume,
+        Stamp {
+            host_id: side.host.identity.host_id(),
+            boot_id: side.host.identity.boot_id(),
+            build: "test".to_owned(),
+            config_revision: permguard_host::audit::config_revision(std::iter::empty()),
+        },
+        Arc::clone(&side.host.time),
+        None,
+    )
+    .expect("the audit engine opens");
+    engine
+        .read(
+            Class::Security,
+            HOST,
+            &Query {
+                limit: Some(permguard_host::audit::query::MAX_LIMIT),
+                ..Query::default()
+            },
+        )
+        .expect("read")
+        .records
+        .into_iter()
+        .map(|record| record.action)
+        .collect()
+}
+
+/// The one membership `side` holds.
+fn only_membership(side: &Side) -> [u8; 16] {
+    let held = side.members.memberships();
+    assert_eq!(held.len(), 1, "one membership");
+    held[0].0
+}
+
+/// The member side of `side`, acting with its own store, identity, rings and peer client.
+struct Acting<'a> {
+    side: &'a Side,
+    capabilities: permguard_host::membership::Capabilities,
+}
+
+fn acting(side: &Side) -> Acting<'_> {
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+    Acting {
+        side,
+        capabilities: Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    }
+}
+
+impl Acting<'_> {
+    async fn open_task_now(
+        &self,
+        membership_id: &[u8; 16],
+    ) -> Result<(), permguard_host::membership::MembershipError> {
+        self.open(membership_id).await.map(drop)
+    }
+
+    async fn open(
+        &self,
+        membership_id: &[u8; 16],
+    ) -> Result<
+        permguard_host::membership::member::MemberTask,
+        permguard_host::membership::MembershipError,
+    > {
+        let member = permguard_host::membership::member::Member {
+            store: &self.side.members,
+            mutations: &self.side.mutations,
+            identity: &self.side.host.identity,
+            rings: self.side.keys.rings(),
+            capabilities: &self.capabilities,
+            connector: self.side.connector.as_deref().expect("a peer client"),
+            declared_assurance: AssuranceProfile::Production,
+            time: &self.side.host.time,
+            streams: None,
+            shipping: None,
+        };
+        member
+            .open_task(
+                permguard_host::operations::journal::Initiator::System("test".to_owned()),
+                membership_id,
+                "decisions",
+                "plane/data/zone/z1",
+                Vec::new(),
+            )
+            .await
+    }
+}
+
+/// A coordinator and a member joined, approved and synced over mutual TLS: the membership id.
+async fn approved_pair(coordinator: &Side, member: &Side) -> String {
+    use permguard_host::api::members::{ApproveMember, CreateInvite, SyncMembership};
+
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    let id = member
+        .api
+        .join_membership(&admin(), join_of(coordinator, &invited, "join"))
+        .await
+        .expect("joined")
+        .membership_id;
+    let pending = coordinator.api.member(&admin(), &id).expect("enrolled");
+    coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &id,
+            ApproveMember {
+                request_id: "approve".to_owned(),
+                expected_revision: pending.revision,
+                narrow: None,
+                lease_policy: None,
+                assurance: None,
+            },
+        )
+        .await
+        .expect("approved");
+    member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: "sync".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+    id
+}
+
+/// WP-4.9: while a reset is under way, the member opens no task session and the coordinator
+/// accepts none, each with its own refusal; lifted, both serve again.
+#[tokio::test]
+async fn a_reset_under_way_neither_opens_nor_accepts_a_task_session() {
+    use permguard_host::membership::record::{Role, TaskType};
+    use permguard_host::membership::{Capabilities, MembershipError};
+
+    let root = scratch("reset-fence");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    approved_pair(&coordinator, &member).await;
+    let membership_id = only_membership(&coordinator);
+    let acting = acting(&member);
+    acting
+        .open_task_now(&membership_id)
+        .await
+        .expect("a lease before any reset");
+
+    coordinator.members.fence();
+    match acting.open_task_now(&membership_id).await {
+        // The member is told the code; the coordinator's reason stays in its own log.
+        Err(MembershipError::Remote { code, reason }) => {
+            assert_eq!(code, codes::common::UNAVAILABLE, "{reason}");
+        }
+        other => panic!("the coordinator under a reset accepted a session: {other:?}"),
+    }
+    assert!(coordinator.tasks.live.of(&membership_id).is_empty());
+    coordinator.members.unfence();
+    acting
+        .open_task_now(&membership_id)
+        .await
+        .expect("a lease once the coordinator's fence is lifted");
+
+    member.members.fence();
+    match acting.open_task_now(&membership_id).await {
+        Err(MembershipError::Invalid(reason)) => {
+            assert!(reason.contains("identity reset"), "{reason}");
+        }
+        other => panic!("the member under a reset opened a session: {other:?}"),
+    }
+    member.members.unfence();
+    acting
+        .open_task_now(&membership_id)
+        .await
+        .expect("a lease once the member's fence is lifted");
+
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// WP-4.9: a coordinator nobody reaches refuses a normal reset, the fence lifted and the identity
+/// unchanged; an emergency reset orphans the membership and names that coordinator, which still
+/// holds it active until it is revoked out of band.
+#[tokio::test]
+async fn an_unreachable_coordinator_refuses_a_normal_reset_and_is_named_by_an_emergency_one() {
+    use permguard_host::api::reset::{PlanIdentityReset, RunIdentityReset};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("reset-orphan");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let id = approved_pair(&coordinator, &member).await;
+    let address = format!(
+        "https://127.0.0.1:{}",
+        coordinator.listener.address().port()
+    );
+    coordinator
+        .listener
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("stops");
+
+    let plan = |request_id: &str, mode: &str| PlanIdentityReset {
+        request_id: request_id.to_owned(),
+        mode: mode.to_owned(),
+        reason: "a drill".to_owned(),
+    };
+    let planned = member
+        .api
+        .plan_identity_reset(&admin(), plan("plan-1", "normal"))
+        .await
+        .expect("planned");
+    let refused = member
+        .api
+        .run_identity_reset(
+            &admin(),
+            RunIdentityReset {
+                request_id: "run-1".to_owned(),
+                receipt: planned.receipt,
+            },
+        )
+        .await
+        .expect_err("the coordinator is unreachable");
+    assert_eq!(
+        code(&refused),
+        codes::host::IDENTITY_RESET_INCOMPLETE,
+        "{refused:?}"
+    );
+    assert!(!member.host.identity.is_retired(), "the identity unchanged");
+    assert!(!member.members.is_fenced(), "the fence lifted");
+
+    let planned = member
+        .api
+        .plan_identity_reset(&admin(), plan("plan-2", "emergency"))
+        .await
+        .expect("planned");
+    let done = member
+        .api
+        .run_identity_reset(
+            &admin(),
+            RunIdentityReset {
+                request_id: "run-2".to_owned(),
+                receipt: planned.receipt,
+            },
+        )
+        .await
+        .expect("reset");
+    assert!(done.ended.is_empty(), "nothing acknowledged");
+    assert_eq!(done.orphaned.len(), 1);
+    assert_eq!(done.orphaned[0].membership_id, id);
+    assert_eq!(
+        done.orphaned[0].coordinator.host_id,
+        coordinator.host.identity.host_id_text()
+    );
+    assert_eq!(done.orphaned[0].address.as_deref(), Some(address.as_str()));
+    assert_eq!(
+        member.api.member(&admin(), &id).expect("read").status,
+        "orphaned"
+    );
+    // The coordinator never heard of it: revoked out of band, by the operator the report names.
+    assert_eq!(
+        coordinator.api.member(&admin(), &id).expect("read").status,
+        "active"
+    );
+    member
+        .listener
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("stops");
 }
 
 /// WP-4.3: over mutual TLS the member opens a task session to its coordinator, verifies the lease
@@ -1209,6 +1814,8 @@ async fn a_member_opens_a_task_session_over_mutual_tls_and_the_coordinator_lists
         connector: member.connector.as_deref().expect("a peer client"),
         declared_assurance: AssuranceProfile::Production,
         time: &member.host.time,
+        streams: None,
+        shipping: None,
     };
     let membership_id = coordinator
         .members
@@ -1397,6 +2004,7 @@ async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
         "host.operations",
         Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
         Some(crl),
+        false,
     )
     .await;
     let member = side(
@@ -1466,6 +2074,8 @@ async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
         connector: member.connector.as_deref().expect("a peer client"),
         declared_assurance: AssuranceProfile::Production,
         time: &member.host.time,
+        streams: None,
+        shipping: None,
     };
     let membership_id = coordinator
         .members
@@ -1525,4 +2135,986 @@ async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
     pki.issue_serial("member", "127.0.0.1", 9003, false);
     drop(open().await.expect("valid again, a lease"));
     let _ = (&coordinator.listener, &member.listener);
+}
+
+/// One decision record of the log, the marker of its stream: what the producer appends.
+fn decision_record(seq: u64) -> serde_json::Value {
+    serde_json::json!({
+        "v": 1,
+        "kind": "marker",
+        "stream": { "id": "plane", "instance": "drain-f28" },
+        "seq": seq,
+        "prev": format!("sha256:{}", "0".repeat(64)),
+        "at": "2026-10-15T10:00:00Z",
+        "pdp": { "version": "0.1.0", "engines": { "cedar": "4.4.0" } },
+        "commitments": { "alg": "HMAC-SHA256", "key_version": "v1" },
+        "sampling": { "permits": "1.0" }
+    })
+}
+
+/// Whether `side`'s Host is `degraded: evidence`.
+fn evidence_degraded(side: &Side) -> bool {
+    side.api
+        .status(&admin())
+        .expect("the status")
+        .degraded
+        .iter()
+        .any(|degraded| degraded.capability == "evidence")
+}
+
+/// WP-5.8, F-28: a drain with 1 000 records the coordinator has not acknowledged ships them all
+/// while it answers, and is complete; while it does not, the drain is incomplete, the stream is
+/// marked `unshipped`, nothing past the acknowledgement is truncated and the Host stays
+/// `degraded: evidence`; a restart on the same volume resumes in Load and, the coordinator back,
+/// ships every record, clears the mark and reports the stream `shipped` to the coordinator. The
+/// coordinator stops answering through the fence an identity reset takes (WP-4.9), which refuses
+/// every task session with `unavailable` as an unreachable Host would leave the drain.
+#[tokio::test]
+async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
+    use permguard_core::Drained;
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("drain-f28");
+    let pki = Pki::new(&root);
+    let coordinator = streaming_side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = streaming_side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let id = approved_pair(&coordinator, &member).await;
+    let membership_id = only_membership(&coordinator);
+    let epoch = member.api.member(&admin(), &id).expect("read").epoch;
+    let resource = permguard_core::authz::Resource::ledger("data", "zone-a", "ledger-1");
+    let producer = member.producer.clone().expect("a producer");
+    let run = producer
+        .open_run(
+            &resource,
+            Some(permguard_stream::engine::Fence {
+                membership_id,
+                task_id: "decisions".to_owned(),
+                epoch,
+            }),
+        )
+        .expect("the run opens")
+        .run_id;
+    let append = |producer: &DecisionProducer, from: u64| {
+        for seq in from..from + 1_000 {
+            producer
+                .append(&resource, &decision_record(seq))
+                .expect("appended");
+        }
+    };
+    let budget = || std::time::Instant::now() + Duration::from_secs(60);
+
+    // Before any pass the stream owes nobody it knows of; kept subscriptions make it owed.
+    append(&producer, 1);
+    assert!(!member.api.shipping_behind().expect("read"));
+    member
+        .api
+        .register_subscriptions()
+        .expect("the subscriptions are kept");
+    assert!(member.api.shipping_behind().expect("read"));
+
+    // A deadline already passed ships nothing and is never complete: no pass judged anything.
+    assert!(matches!(
+        permguard_server::shipping::drain(&member.api, std::time::Instant::now())
+            .await
+            .expect("drained"),
+        Drained::Incomplete(_)
+    ));
+
+    // The coordinator answers: every record is shipped, and the drain is complete.
+    assert_eq!(
+        permguard_server::shipping::drain(&member.api, budget())
+            .await
+            .expect("drained"),
+        Drained::Complete
+    );
+    assert_eq!(
+        producer.truncate_safe(&resource, &run).expect("safe"),
+        Some(1_000)
+    );
+    assert!(!evidence_degraded(&member));
+
+    // It does not: the drain is incomplete, the stream marked, nothing past 1 000 truncated.
+    append(&producer, 1_001);
+    coordinator.members.fence();
+    let drained = permguard_server::shipping::drain(
+        &member.api,
+        std::time::Instant::now() + Duration::from_secs(2),
+    )
+    .await
+    .expect("drained");
+    assert!(matches!(drained, Drained::Incomplete(_)), "{drained:?}");
+    let marked = permguard_host::composition::Unshipped {
+        stream: permguard_decisions::stream::STREAM.to_owned(),
+        resource: resource.to_string(),
+        tail: 2_000,
+        truncate_safe: 1_000,
+    };
+    assert_eq!(
+        member.api.settle_unshipped().expect("settled"),
+        vec![marked.clone()]
+    );
+    assert_eq!(
+        producer.truncate_safe(&resource, &run).expect("safe"),
+        Some(1_000)
+    );
+    assert!(evidence_degraded(&member));
+
+    // Restarted on the same volume: the mark is the volume's, and the Load pass, the coordinator
+    // still silent, leaves it and the degradation.
+    let Side {
+        host,
+        api,
+        listener,
+        members,
+        mutations,
+        keys,
+        connector,
+        tasks,
+        producer: _,
+        audit,
+    } = member;
+    drop(producer);
+    listener.stop(Duration::from_secs(5)).await.expect("stops");
+    drop((host, api, members, mutations, keys, connector, tasks, audit));
+    let member = streaming_side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    permguard_server::shipping::resume(&member.api, Duration::from_secs(2)).await;
+    assert_eq!(
+        member.api.settle_unshipped().expect("settled"),
+        vec![marked]
+    );
+    assert!(evidence_degraded(&member));
+
+    // The coordinator back: the next pass ships every record, the mark goes, the Host is no
+    // longer degraded, and the coordinator holds the member's report that the stream is shipped.
+    coordinator.members.unfence();
+    permguard_server::shipping::resume(&member.api, Duration::from_secs(30)).await;
+    assert!(member.api.settle_unshipped().expect("settled").is_empty());
+    assert!(!evidence_degraded(&member));
+    let producer = member.producer.clone().expect("a producer");
+    assert_eq!(
+        producer.truncate_safe(&resource, &run).expect("safe"),
+        Some(2_000)
+    );
+    let reported = coordinator
+        .api
+        .member(&admin(), &id)
+        .expect("read")
+        .task_progress
+        .into_iter()
+        .find(|task| task.task_id == "decisions")
+        .and_then(|task| task.member_reported)
+        .expect("a report");
+    assert_eq!(reported.resources.len(), 1);
+    assert_eq!(reported.resources[0].resource, resource.to_string());
+    assert_eq!(reported.resources[0].state, "shipped");
+    assert_eq!(reported.resources[0].frontier.as_deref(), Some("2000"));
+
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// WP-5.8: a Host that ships no stream drains complete at once, whatever its deadline.
+#[tokio::test]
+async fn a_host_shipping_no_stream_drains_complete() {
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("drain-no-stream");
+    let pki = Pki::new(&root);
+    let alone = side(
+        &root.join("alone"),
+        &pki,
+        "alone",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    assert_eq!(
+        permguard_server::shipping::drain(&alone.api, std::time::Instant::now())
+            .await
+            .expect("drained"),
+        permguard_core::Drained::Complete
+    );
+    alone
+        .listener
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("stops");
+}
+
+/// The `audit.checkpoints` task: every checkpoint of the Host's own trails, required.
+fn audit_task() -> permguard_host::api::members::TaskView {
+    permguard_host::api::members::TaskView {
+        task_id: "checkpoints".to_owned(),
+        task_type: "audit.checkpoints".to_owned(),
+        selector: "host/*".to_owned(),
+        resource_types: vec!["*".to_owned()],
+        ..decisions()
+    }
+}
+
+/// A member joined to `coordinator` for `audit_task`, approved and synced: the membership id.
+async fn exporting_pair(coordinator: &Side, member: &Side) -> String {
+    exporting_pair_as(coordinator, member, "audit").await
+}
+
+/// [`exporting_pair`], its request ids tagged `tag`: a member joining two coordinators.
+async fn exporting_pair_as(coordinator: &Side, member: &Side, tag: &str) -> String {
+    use permguard_host::api::members::{ApproveMember, CreateInvite, NarrowView, SyncMembership};
+
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: format!("invite-{tag}"),
+                selector: "host/*".to_owned(),
+                tasks: vec![audit_task()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    let join = permguard_host::api::members::JoinMembership {
+        requested: NarrowView {
+            selector: "host/*".to_owned(),
+            tasks: vec![audit_task()],
+        },
+        ..join_of(coordinator, &invited, &format!("join-{tag}"))
+    };
+    let id = member
+        .api
+        .join_membership(&admin(), join)
+        .await
+        .expect("joined")
+        .membership_id;
+    let pending = coordinator.api.member(&admin(), &id).expect("enrolled");
+    coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &id,
+            ApproveMember {
+                request_id: format!("approve-{tag}"),
+                expected_revision: pending.revision,
+                narrow: None,
+                lease_policy: None,
+                assurance: None,
+            },
+        )
+        .await
+        .expect("approved");
+    member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: format!("sync-{tag}"),
+            },
+        )
+        .await
+        .expect("synced");
+    id
+}
+
+/// The checkpoint envelopes `side` holds of `(class, resource)`, in the trail's order.
+fn sealed_checkpoints(
+    side: &Side,
+    class: permguard_host::audit::Class,
+    resource: &str,
+) -> Vec<Vec<u8>> {
+    side.audit
+        .checkpoints(class, resource, None)
+        .expect("listed")
+        .files
+        .into_iter()
+        .map(|file| file.envelope)
+        .collect()
+}
+
+/// Whether `side`'s Host is `degraded: audit_egress`.
+fn egress_degraded(side: &Side) -> bool {
+    side.api
+        .status(&admin())
+        .expect("the status")
+        .degraded
+        .iter()
+        .any(|degraded| degraded.capability == "audit_egress")
+}
+
+/// WP-5.9: a member's checkpoints leave its volume for its coordinator over `audit.checkpoints`,
+/// verified and kept there in the trail's order; while they wait past the lag, or the
+/// coordinator does not answer, the member is `degraded: audit_egress`, and once acknowledged it
+/// is not; below the profile that requires the egress nothing degrades.
+#[tokio::test]
+async fn a_members_checkpoints_leave_its_volume_for_its_coordinator() {
+    use permguard_host::audit::{Class, HOST};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("audit-egress");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Member),
+    )
+    .await;
+    exporting_pair(&coordinator, &member).await;
+    let membership_id = only_membership(&coordinator);
+
+    // The member's security trail holds its joining: checkpointed, not yet acknowledged.
+    member.audit.checkpoint_all().expect("checkpointed");
+    let sealed = sealed_checkpoints(&member, Class::Security, HOST);
+    assert!(!sealed.is_empty());
+    assert!(
+        member
+            .api
+            .check_audit_egress(true, Duration::from_secs(3600))
+            .expect("checked")
+            .is_empty(),
+        "within the lag nothing is late"
+    );
+    assert!(
+        !member
+            .api
+            .check_audit_egress(true, Duration::ZERO)
+            .expect("checked")
+            .is_empty()
+    );
+    assert!(egress_degraded(&member));
+    assert!(
+        member
+            .api
+            .check_audit_egress(false, Duration::ZERO)
+            .expect("checked")
+            .is_empty(),
+        "below the profile that requires it nothing degrades"
+    );
+    assert!(!egress_degraded(&member));
+
+    // Retention waits: a required task exports the trail and acknowledged nothing yet.
+    use permguard_host::audit::EgressFloor as _;
+    let floor = permguard_host::membership::egress::ExportFloor {
+        store: Arc::clone(&member.members),
+    };
+    assert_eq!(floor.acknowledged(Class::Security, HOST), Some(None));
+    let not_exported = permguard_host::membership::egress::ExportFloor {
+        store: Arc::clone(&coordinator.members),
+    };
+    assert_eq!(not_exported.acknowledged(Class::Security, HOST), None);
+
+    // Exported: kept by the coordinator in the trail's order, and acknowledged.
+    assert!(member.api.export_checkpoints_due().await >= sealed.len());
+    assert!(
+        floor
+            .acknowledged(Class::Security, HOST)
+            .is_some_and(|acked| acked.is_some()),
+        "retention may now go up to the acknowledged seal"
+    );
+    let trail = format!("security:{HOST}");
+    assert_eq!(
+        coordinator
+            .members
+            .kept_checkpoints(&membership_id, &trail)
+            .expect("kept"),
+        sealed
+    );
+    assert!(
+        member
+            .api
+            .check_audit_egress(true, Duration::ZERO)
+            .expect("checked")
+            .is_empty()
+    );
+    assert!(!egress_degraded(&member));
+    assert_eq!(
+        member.api.export_checkpoints_due().await,
+        0,
+        "nothing pending"
+    );
+    // The coordinator's own trails: no task exports them, which the profile does not allow.
+    coordinator.audit.checkpoint_all().expect("checkpointed");
+    assert!(
+        coordinator
+            .api
+            .check_audit_egress(true, Duration::from_secs(3600))
+            .expect("checked")
+            .iter()
+            .any(|late| late.contains("no required audit.checkpoints task exports it"))
+    );
+
+    // A checkpoint the coordinator cannot take now waits, and the member says so.
+    member
+        .api
+        .create_grant(
+            &admin(),
+            permguard_host::api::CreateGrant {
+                request_id: "grant-after".to_owned(),
+                expected_revision: None,
+                principal: "spiffe://acme/operators/reader".to_owned(),
+                operations: vec!["audit.read".to_owned()],
+                selector: "host/*".to_owned(),
+                resource_types: Vec::new(),
+                constraints: Default::default(),
+                expires_at: None,
+            },
+        )
+        .await
+        .expect("a grant, a security record more");
+    member.audit.checkpoint_all().expect("checkpointed");
+    coordinator.members.fence();
+    assert_eq!(member.api.export_checkpoints_due().await, 0);
+    assert!(
+        !member
+            .api
+            .check_audit_egress(true, Duration::ZERO)
+            .expect("checked")
+            .is_empty()
+    );
+    assert!(egress_degraded(&member));
+    coordinator.members.unfence();
+    assert!(member.api.export_checkpoints_due().await >= 1);
+    assert_eq!(
+        coordinator
+            .members
+            .kept_checkpoints(&membership_id, &trail)
+            .expect("kept"),
+        sealed_checkpoints(&member, Class::Security, HOST)
+    );
+    assert!(
+        member
+            .api
+            .check_audit_egress(true, Duration::ZERO)
+            .expect("checked")
+            .is_empty()
+    );
+
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// WP-5.9, after the review: the coordinator keeps only a checkpoint the member's pinned
+/// `host.operations` statement verifies, sealed by that member, of the trail the session and the
+/// class name, with an anchor of that trail: everything else is refused and nothing kept.
+#[tokio::test]
+async fn the_coordinator_refuses_a_checkpoint_it_cannot_verify() {
+    use permguard_host::audit::{Class, HOST};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::egress::{AuditCheckpoints, Ship};
+    use permguard_host::membership::record::{Limits, Role, TaskType};
+    use permguard_host::membership::task::{TaskContext, TaskHandler};
+
+    let root = scratch("audit-egress-refused");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Member),
+    )
+    .await;
+    let id = exporting_pair(&coordinator, &member).await;
+    let membership_id = only_membership(&coordinator);
+    member.audit.checkpoint_all().expect("checkpointed");
+    let envelope = sealed_checkpoints(&member, Class::Security, HOST)
+        .into_iter()
+        .next()
+        .expect("a checkpoint");
+    let statement_of = |ring: &str| {
+        let ring = member
+            .keys
+            .rings()
+            .iter()
+            .find(|held| held.id() == ring)
+            .cloned()
+            .expect("the ring");
+        permguard_host::membership::statement_of(&ring)
+            .expect("a statement")
+            .encode()
+            .expect("encodes")
+    };
+    let operations = statement_of(permguard_host::keys::ring::HOST_OPERATIONS);
+    // The very keys, under a statement of another epoch: not the set the membership pins.
+    let unpinned = {
+        let mut statement = permguard_host::membership::record::RingStatement::decode(&operations)
+            .expect("decodes");
+        statement.epoch += 1;
+        statement.encode().expect("encodes")
+    };
+    let handler = AuditCheckpoints {
+        store: Arc::clone(&coordinator.members),
+        time: Arc::clone(&coordinator.host.time),
+    };
+    let context = |member_host: [u8; 16]| TaskContext {
+        selector: permguard_core::authz::Selector::under(permguard_core::authz::Resource::host()),
+        membership_id,
+        task_id: "checkpoints".to_owned(),
+        task_type: TaskType::AuditCheckpoints,
+        version: 1,
+        epoch: coordinator.api.member(&admin(), &id).expect("read").epoch,
+        resource: HOST.to_owned(),
+        member: member_host,
+        request_id: "checkpoint".to_owned(),
+        limits: Limits {
+            max_body_bytes: 1 << 20,
+            max_concurrency: 4,
+            max_rate_per_minute: 600,
+            max_batch_records: 1000,
+            retention_seconds: 86_400,
+        },
+        channel_binding: [0; 32],
+    };
+    let ship = |class: &str, checkpoint: Vec<u8>, statement: Vec<u8>, anchor: Option<Vec<u8>>| {
+        Ship {
+            class: class.to_owned(),
+            checkpoint,
+            statement,
+            anchor,
+        }
+        .encode()
+        .expect("encodes")
+    };
+    let mine = member.host.identity.host_id();
+    let mut tampered = envelope.clone();
+    let last = tampered.len() - 1;
+    tampered[last] ^= 0x01;
+    let other_anchor = permguard_host::audit::checkpoint::Anchor {
+        trail: format!("operations:{HOST}"),
+        low_watermark: 1,
+        through: "2026-10-15".to_owned(),
+        checkpoint: permguard_host::audit::record::genesis(),
+    }
+    .encode()
+    .expect("encodes");
+    for (case, member_host, body) in [
+        (
+            "a signature that does not verify",
+            mine,
+            ship("security", tampered, operations.clone(), None),
+        ),
+        (
+            "a statement of another ring",
+            mine,
+            ship(
+                "security",
+                envelope.clone(),
+                statement_of(permguard_host::keys::ring::DATA_ATTEST),
+                None,
+            ),
+        ),
+        (
+            "the operations keys under a statement that is not the pinned one",
+            mine,
+            ship("security", envelope.clone(), unpinned.clone(), None),
+        ),
+        (
+            "a checkpoint another Host sealed",
+            [7; 16],
+            ship("security", envelope.clone(), operations.clone(), None),
+        ),
+        (
+            "a class the checkpoint is not of",
+            mine,
+            ship("operations", envelope.clone(), operations.clone(), None),
+        ),
+        (
+            "an anchor of another trail",
+            mine,
+            ship(
+                "security",
+                envelope.clone(),
+                operations.clone(),
+                Some(other_anchor.clone()),
+            ),
+        ),
+    ] {
+        let refused = handler
+            .handle(&context(member_host), &body)
+            .expect_err(case);
+        assert_eq!(refused.code, codes::common::INVALID_ARGUMENT, "{case}");
+    }
+    let trail = format!("security:{HOST}");
+    assert!(
+        coordinator
+            .members
+            .kept_checkpoints(&membership_id, &trail)
+            .expect("kept")
+            .is_empty(),
+        "nothing kept"
+    );
+    handler
+        .handle(
+            &context(mine),
+            &ship("security", envelope.clone(), operations, None),
+        )
+        .expect("the member's own checkpoint, under its pinned statement");
+    assert_eq!(
+        coordinator
+            .members
+            .kept_checkpoints(&membership_id, &trail)
+            .expect("kept"),
+        vec![envelope]
+    );
+
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// WP-5.9: an acknowledgement of a checkpoint the member did not send is no acknowledgement: the
+/// member keeps none, and the checkpoint stays late.
+#[tokio::test]
+async fn a_member_keeps_no_acknowledgement_of_another_checkpoint() {
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("audit-egress-liar");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("liar"),
+        &pki,
+        "liar",
+        "host.operations",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Member),
+    )
+    .await;
+    exporting_pair(&coordinator, &member).await;
+    member.audit.checkpoint_all().expect("checkpointed");
+    assert_eq!(member.api.export_checkpoints_due().await, 0);
+    assert!(
+        !member
+            .api
+            .check_audit_egress(true, Duration::ZERO)
+            .expect("checked")
+            .is_empty()
+    );
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// WP-5.9: with two required tasks exporting a trail, retention waits for the one that
+/// acknowledged nothing.
+#[tokio::test]
+async fn retention_waits_for_every_required_task_exporting_a_trail() {
+    use permguard_host::audit::{Class, EgressFloor as _, HOST};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("audit-egress-two");
+    let pki = Pki::new(&root);
+    let honest = side(
+        &root.join("honest"),
+        &pki,
+        "honest",
+        "host.operations",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Coordinator),
+    )
+    .await;
+    let liar = side(
+        &root.join("liar"),
+        &pki,
+        "liar",
+        "host.operations",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::AuditCheckpoints, Role::Member),
+    )
+    .await;
+    exporting_pair_as(&honest, &member, "honest").await;
+    exporting_pair_as(&liar, &member, "liar").await;
+    member.audit.checkpoint_all().expect("checkpointed");
+    member.api.export_checkpoints_due().await;
+    let trail = format!("security:{HOST}");
+    let membership = only_membership(&honest);
+    assert!(
+        !honest
+            .members
+            .kept_checkpoints(&membership, &trail)
+            .expect("kept")
+            .is_empty(),
+        "one coordinator acknowledged"
+    );
+    let floor = permguard_host::membership::egress::ExportFloor {
+        store: Arc::clone(&member.members),
+    };
+    assert_eq!(
+        floor.acknowledged(Class::Security, HOST),
+        Some(None),
+        "the other acknowledged nothing: nothing goes"
+    );
+    for side in [honest, liar, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// WP-7.2a: the member side of `policy.mirror`. A member lists the tasks of its active
+/// memberships, the coordinator as their authority, and opens a session on one whose messages the
+/// coordinator's handler answers in turn, each under its own request id; the coordinator, which
+/// never dials, lists none.
+#[tokio::test]
+async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
+    use permguard_host::api::members::{ApproveMember, CreateInvite, SyncMembership, TaskView};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("mirror-tasks");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        // The ring a `policy.mirror` manifest pins: what the member verifies head statements
+        // under.
+        "control.attest",
+        Capabilities::default()
+            .declare(TaskType::PolicyMirror, Role::Coordinator)
+            .declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default()
+            .declare(TaskType::PolicyMirror, Role::Member)
+            .declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let mirror_view = TaskView {
+        task_id: "mirror".to_owned(),
+        task_type: "policy.mirror".to_owned(),
+        selector: "plane/control/*".to_owned(),
+        resource_types: vec!["ledger".to_owned()],
+        ..decisions()
+    };
+    let shipping = TaskView {
+        selector: "plane/control/*".to_owned(),
+        ..decisions()
+    };
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/control/*".to_owned(),
+                // A task of another type beside it: the member side of `policy.mirror` lists
+                // only its own.
+                tasks: vec![mirror_view.clone(), shipping.clone()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    // The member asks for exactly what it was invited to: the mirror task over the control plane.
+    let mut joining = join_of(&coordinator, &invited, "join");
+    joining.requested = permguard_host::api::members::NarrowView {
+        selector: "plane/control/*".to_owned(),
+        tasks: vec![mirror_view.clone(), shipping.clone()],
+    };
+    let id = member
+        .api
+        .join_membership(&admin(), joining)
+        .await
+        .expect("joined")
+        .membership_id;
+    let pending = coordinator.api.member(&admin(), &id).expect("enrolled");
+    coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &id,
+            ApproveMember {
+                request_id: "approve".to_owned(),
+                expected_revision: pending.revision,
+                narrow: None,
+                lease_policy: None,
+                assurance: None,
+            },
+        )
+        .await
+        .expect("approved");
+    member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: "sync".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+
+    let tasks = member.api.mirror_tasks();
+    assert_eq!(tasks.len(), 1, "{tasks:?}");
+    let task = &tasks[0];
+    assert_eq!(task.membership_id, only_membership(&member));
+    assert_eq!(task.task_id, "mirror");
+    assert_eq!(task.coordinator, coordinator.host.identity.host_id());
+    assert_eq!(task.resource, "plane/control");
+    assert!(task.required);
+    assert!(task.revision >= 1);
+    assert_eq!(task.max_body_bytes, 1 << 20);
+    assert!(
+        coordinator.api.mirror_tasks().is_empty(),
+        "the coordinator never dials: it holds no member side of its own membership"
+    );
+
+    let mut session = member
+        .api
+        .open_mirror(task)
+        .await
+        .expect("the session opens");
+    // The coordinator's `control.attest` set the manifest pins, its binding verified under the
+    // coordinator's identity the session proved (WP-7.2b): every key one of that ring's.
+    let ring = session
+        .ring()
+        .expect("the membership pins the coordinator's ring");
+    assert!(ring.epoch >= 1);
+    assert!(!ring.binding.is_empty());
+    assert!(!ring.keys.is_empty());
+    for key in &ring.keys {
+        let jwk: serde_json::Value = serde_json::from_str(key).expect("a JWK");
+        assert!(
+            jwk["kid"]
+                .as_str()
+                .is_some_and(|kid| kid.starts_with("control.attest:")),
+            "{jwk}"
+        );
+    }
+    assert_eq!(
+        session.call(b"first".to_vec()).await.expect("answered"),
+        b"echo:first".to_vec()
+    );
+    assert_eq!(
+        session.call(b"second".to_vec()).await.expect("answered"),
+        b"echo:second".to_vec(),
+        "each message its own request id: never answered from the replay window as the first"
+    );
+    // The task's progress on the session (WP-7.2d): the coordinator keeps the member's report.
+    session
+        .report(vec![permguard_host::membership::record::ProgressResource {
+            resource: "plane/control/zone/zone/ledger/ledger".to_owned(),
+            state: "verified".to_owned(),
+            frontier: Some("3".to_owned()),
+            checkpoint_digest: None,
+            verified_at: Some(1_700_000_000),
+            reason: None,
+        }])
+        .await
+        .expect("the coordinator keeps the report");
+    let reported = coordinator
+        .api
+        .member(&admin(), &id)
+        .expect("read")
+        .task_progress
+        .into_iter()
+        .find(|task| task.task_id == "mirror")
+        .and_then(|task| task.member_reported)
+        .expect("a report");
+    assert_eq!(reported.resources.len(), 1);
+    assert_eq!(
+        reported.resources[0].resource,
+        "plane/control/zone/zone/ledger/ledger"
+    );
+    assert_eq!(reported.resources[0].state, "verified");
+    assert_eq!(reported.resources[0].frontier.as_deref(), Some("3"));
+    assert_eq!(
+        reported.manifest_epoch, task.revision,
+        "the session's epoch"
+    );
+    assert!(
+        !reported.reported_at.starts_with("1970"),
+        "dated by the member's clock: {}",
+        reported.reported_at
+    );
+    // And a watch over the task (WP-7.2c): the coordinator takes it on a session of its own.
+    member
+        .api
+        .watch_mirror(task, vec![("zone/ledger/main".to_owned(), 0)])
+        .await
+        .expect("the watch opens");
 }

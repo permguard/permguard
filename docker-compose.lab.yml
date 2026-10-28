@@ -1,76 +1,213 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
+#
+# The Compose lab (TD-3): five topologies, one per profile, each enrolled by the lab's own test
+# authority and each with the assertions it must pass (`scripts/compose-lab.sh`).
+#
+#   all-in-one         one Server with the Control and Data Planes
+#   split-plane        one Control Plane Host and one Data Plane Host
+#   multi-data-plane   one Control Plane Host and two Data Plane Hosts on one ledger
+#   multi-group        two Data Plane groups with disjoint selectors, each its own service
+#   temporal-replicas  two temporal Data Plane Hosts, the coordinator's event store and imports
+#
+# Start one with its name in COMPOSE_PROFILES — the lab's bootstrap reads it from there:
+#
+#   COMPOSE_PROFILES=split-plane docker compose -f docker-compose.lab.yml up -d --wait
+#   COMPOSE_PROFILES=split-plane,observability docker compose -f docker-compose.lab.yml up -d --wait
+#
+# Every Host is reached by its service name inside the lab's network; nothing depends on a loopback
+# alias, the host's network or a fixed host port. The ports published on the host's loopback are
+# ephemeral (`docker compose port control-plane 6443` names them), and the certificates name the
+# service, so a client on the host passes `--tls-server-name control-plane` with the lab's
+# authority, which `lab-pki` writes to the `lab` volume.
+#
+# One image runs everything: `permguard/lab:local`, built from this checkout by
+# `lab/compose/Dockerfile`. The script and the examples are mounted, never baked in.
 
 name: permguard-compose-lab
 
+x-lab: &lab
+  image: ${PERMGUARD_LAB_IMAGE:-permguard/lab:local}
+  build:
+    context: .
+    dockerfile: lab/compose/Dockerfile
+  entrypoint: ["bash", "/opt/permguard/lab/permguard-lab.sh"]
+  # The image's own non-root user, which owns each Host's volume, every capability dropped and no
+  # way to gain one (TS-5): what the chart's security contexts state, in Compose's terms.
+  user: "65532:65532"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+x-mounts:
+  # The lab's authority writes it; a Host only reads it. One volume holds every Host's listener key
+  # and the operator's: a lab's concession, which a deployment's secret per workload never makes.
+  - &lab-volume lab:/lab
+  - &lab-volume-ro lab:/lab:ro
+  - &lab-scripts ./lab/compose:/opt/permguard/lab:ro
+  - &lab-examples ./examples:/opt/permguard/examples:ro
+
+# A Host: healthy once it answers discovery on its Server Host listener.
+x-healthcheck: &healthcheck
+  test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:5443/.well-known/server-configuration"]
+  interval: 2s
+  timeout: 2s
+  retries: 90
+
+x-after-pki: &after-pki
+  lab-pki: { condition: service_completed_successfully }
+
+x-after-catalog: &after-catalog
+  lab-pki: { condition: service_completed_successfully }
+  lab-catalog: { condition: service_completed_successfully }
+
 services:
-  control-plane:
-    profiles: ["lab"]
-    build:
-      context: .
-      args:
-        PACKAGE: permguard-control-plane
-        BIN: permguard-control-plane
-    command:
-      - /etc/permguard/config.yml
-    ports:
-      - "${PERMGUARD_CONTROL_HOST_IP:-127.0.0.1}:5443:5443"
-      - "127.0.0.1:${PERMGUARD_CONTROL_HTTP_PORT:-6443}:6443"
-    volumes:
-      - ./crates/permguard-control-plane/config.docker.yml:/etc/permguard/config.yml:ro
-      - control-plane-state:/var/lib/permguard
+  # ---------------------------------------------------------------------------------------------
+  # The lab's authority: certificates once, then the catalog, then the enrollments.
+  # ---------------------------------------------------------------------------------------------
 
-  data-plane:
-    profiles: ["lab"]
-    build:
-      context: .
-      args:
-        PACKAGE: permguard-data-plane
-        BIN: permguard-data-plane
-    command:
-      - /etc/permguard/config.yml
-    ports:
-      - "${PERMGUARD_DATA_HOST_IP:-127.0.0.2}:5443:5443"
-      - "127.0.0.1:${PERMGUARD_DATA_HTTP_PORT:-7443}:7443"
-    volumes:
-      - ./crates/permguard-data-plane/config.docker.yml:/etc/permguard/config.yml:ro
-      - data-plane-state:/var/lib/permguard
+  lab-pki:
+    <<: *lab
+    profiles: [all-in-one, split-plane, multi-data-plane, multi-group, temporal-replicas]
+    command: ["pki"]
+    volumes: [*lab-volume, *lab-scripts]
 
-  # The all-in-one IS a control plane and a data plane in one process, so its profile and the two
-  # planes' profile are mutually exclusive by construction: `--profile lab` OR `--profile
-  # all-in-one`, never both. Compose cannot forbid combining profiles on the command line, so the
-  # exclusion is also enforced physically — this service publishes the same 5443, 6443 and 7443 the
-  # standalone planes publish, and starting both shapes together fails at the port bind, loudly,
-  # before anything serves. Use `task lab:up` / `task lab:all`, which each pick exactly one.
-  all-in-one:
-    profiles: ["all-in-one"]
-    build:
-      context: .
-      args:
-        PACKAGE: permguard-all-in-one
-        BIN: permguard-all-in-one
-    command:
-      - /etc/permguard/config.yml
-    environment:
-      PERMGUARD_RUNTIME_PLANES: ${PERMGUARD_RUNTIME_PLANES:-control,data}
-    ports:
-      - "${PERMGUARD_CONTROL_HOST_IP:-127.0.0.1}:5443:5443"
-      - "127.0.0.1:${PERMGUARD_CONTROL_HTTP_PORT:-6443}:6443"
-      - "127.0.0.1:${PERMGUARD_DATA_HTTP_PORT:-7443}:7443"
-    volumes:
-      - ./crates/permguard-all-in-one/config.docker.yml:/etc/permguard/config.yml:ro
-      - all-in-one-state:/var/lib/permguard
+  lab-catalog:
+    <<: *lab
+    profiles: [all-in-one, split-plane, multi-data-plane, multi-group, temporal-replicas]
+    command: ["catalog", "${COMPOSE_PROFILES:-}"]
+    volumes: [*lab-volume, *lab-scripts, *lab-examples]
+    depends_on:
+      control-plane: { condition: service_healthy, required: false }
+      all-in-one: { condition: service_healthy, required: false }
+
+  lab-enroll:
+    <<: *lab
+    profiles: [split-plane, multi-data-plane, multi-group, temporal-replicas]
+    command: ["enroll", "${COMPOSE_PROFILES:-}"]
+    volumes: [*lab-volume, *lab-scripts]
+    depends_on:
+      data-plane: { condition: service_healthy, required: false }
+      data-plane-a: { condition: service_healthy, required: false }
+      data-plane-b: { condition: service_healthy, required: false }
+      data-plane-acme: { condition: service_healthy, required: false }
+      data-plane-beta: { condition: service_healthy, required: false }
+      temporal-a: { condition: service_healthy, required: false }
+      temporal-b: { condition: service_healthy, required: false }
+
+  # What `scripts/compose-lab.sh` runs the assertions in: `docker compose run --rm lab assert …`.
+  # Never started by `up`.
+  lab:
+    <<: *lab
+    profiles: [tools]
+    volumes: [*lab-volume, *lab-scripts, *lab-examples]
 
   # ---------------------------------------------------------------------------------------------
-  # Observability. `--profile observability` starts these three and nothing else, which is the mode
-  # that watches planes running on the host: `task run:all`, then `docker compose --profile
-  # observability up`. Prometheus is configured for both sets of targets at once, so the same stack
-  # works whether the planes are in containers, on the host, or both — a target that is not there is
-  # simply down.
+  # The Hosts. Each runs `permguard-lab serve`: its claim moved forward, the lab's operator granted
+  # on its volume, its listeners under the certificate issued to its service name.
+  # ---------------------------------------------------------------------------------------------
+
+  all-in-one:
+    <<: *lab
+    profiles: [all-in-one]
+    command: ["serve", "permguard-all-in-one", "/opt/permguard/lab/all-in-one.yml"]
+    environment: { LAB_HOST: all-in-one }
+    volumes: [*lab-volume-ro, *lab-scripts, "all-in-one-state:/var/lib/permguard"]
+    ports: ["127.0.0.1::5443", "127.0.0.1::6443", "127.0.0.1::7443"]
+    healthcheck: *healthcheck
+    depends_on: *after-pki
+
+  control-plane:
+    <<: *lab
+    profiles: [split-plane, multi-data-plane, multi-group, temporal-replicas]
+    command: ["serve", "permguard-control-plane", "/opt/permguard/lab/control-plane.yml"]
+    environment: { LAB_HOST: control-plane }
+    volumes: [*lab-volume-ro, *lab-scripts, "control-plane-state:/var/lib/permguard"]
+    ports: ["127.0.0.1::5443", "127.0.0.1::6443"]
+    healthcheck: *healthcheck
+    depends_on: *after-pki
+
+  data-plane:
+    <<: *lab
+    profiles: [split-plane]
+    command: ["serve", "permguard-data-plane", "/opt/permguard/lab/data-plane.yml"]
+    environment: { LAB_HOST: data-plane }
+    volumes: [*lab-volume-ro, *lab-scripts, "data-plane-state:/var/lib/permguard"]
+    ports: ["127.0.0.1::5443", "127.0.0.1::7443"]
+    healthcheck: *healthcheck
+    depends_on: *after-catalog
+
+  # Two replicas of one static file: two Hosts, two identities, two producer streams.
+  data-plane-a:
+    <<: *lab
+    profiles: [multi-data-plane]
+    command: ["serve", "permguard-data-plane", "/opt/permguard/lab/data-plane.yml"]
+    environment: { LAB_HOST: data-plane-a }
+    volumes: [*lab-volume-ro, *lab-scripts, "data-plane-a-state:/var/lib/permguard"]
+    ports: ["127.0.0.1::5443", "127.0.0.1::7443"]
+    healthcheck: *healthcheck
+    depends_on: *after-catalog
+
+  data-plane-b:
+    <<: *lab
+    profiles: [multi-data-plane]
+    command: ["serve", "permguard-data-plane", "/opt/permguard/lab/data-plane.yml"]
+    environment: { LAB_HOST: data-plane-b }
+    volumes: [*lab-volume-ro, *lab-scripts, "data-plane-b-state:/var/lib/permguard"]
+    ports: ["127.0.0.1::5443", "127.0.0.1::7443"]
+    healthcheck: *healthcheck
+    depends_on: *after-catalog
+
+  # Two groups: the same file, disjoint memberships — `acme` and `beta` — each its own service.
+  data-plane-acme:
+    <<: *lab
+    profiles: [multi-group]
+    command: ["serve", "permguard-data-plane", "/opt/permguard/lab/data-plane.yml"]
+    environment: { LAB_HOST: data-plane-acme }
+    volumes: [*lab-volume-ro, *lab-scripts, "data-plane-acme-state:/var/lib/permguard"]
+    ports: ["127.0.0.1::5443", "127.0.0.1::7443"]
+    healthcheck: *healthcheck
+    depends_on: *after-catalog
+
+  data-plane-beta:
+    <<: *lab
+    profiles: [multi-group]
+    command: ["serve", "permguard-data-plane", "/opt/permguard/lab/data-plane.yml"]
+    environment: { LAB_HOST: data-plane-beta }
+    volumes: [*lab-volume-ro, *lab-scripts, "data-plane-beta-state:/var/lib/permguard"]
+    ports: ["127.0.0.1::5443", "127.0.0.1::7443"]
+    healthcheck: *healthcheck
+    depends_on: *after-catalog
+
+  # Two temporal replicas of the file `lab-catalog` rendered: each records, ships, and imports what
+  # the other recorded.
+  temporal-a:
+    <<: *lab
+    profiles: [temporal-replicas]
+    command: ["serve", "permguard-data-plane", "/lab/state/data-plane-temporal.yml"]
+    environment: { LAB_HOST: temporal-a }
+    volumes: [*lab-volume-ro, *lab-scripts, "temporal-a-state:/var/lib/permguard"]
+    ports: ["127.0.0.1::5443", "127.0.0.1::7443"]
+    healthcheck: *healthcheck
+    depends_on: *after-catalog
+
+  temporal-b:
+    <<: *lab
+    profiles: [temporal-replicas]
+    command: ["serve", "permguard-data-plane", "/lab/state/data-plane-temporal.yml"]
+    environment: { LAB_HOST: temporal-b }
+    volumes: [*lab-volume-ro, *lab-scripts, "temporal-b-state:/var/lib/permguard"]
+    ports: ["127.0.0.1::5443", "127.0.0.1::7443"]
+    healthcheck: *healthcheck
+    depends_on: *after-catalog
+
+  # ---------------------------------------------------------------------------------------------
+  # Observability. `observability` beside a lab profile watches its Hosts; alone, it watches planes
+  # a developer started on the host (`task run:all`). Prometheus finds the containers by their
+  # service names, so a profile that runs only some of them leaves the rest simply down.
   # ---------------------------------------------------------------------------------------------
 
   prometheus:
-    profiles: ["observability", "lab", "all-in-one", "tls"]
+    profiles: ["observability"]
     image: prom/prometheus:v3.1.0
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -99,7 +236,7 @@ services:
     restart: unless-stopped
 
   loki:
-    profiles: ["observability", "lab", "all-in-one", "tls"]
+    profiles: ["observability"]
     image: grafana/loki:3.3.2
     command: ["-config.file=/etc/loki/loki.yml"]
     ports:
@@ -115,7 +252,7 @@ services:
     restart: unless-stopped
 
   promtail:
-    profiles: ["observability", "lab", "all-in-one", "tls"]
+    profiles: ["observability"]
     image: grafana/promtail:3.3.2
     command: ["-config.file=/etc/promtail/promtail.yml"]
     volumes:
@@ -129,11 +266,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Traces. The planes export OTLP/gRPC spans here when `telemetry.otel.enabled` is on
-  # (the docker configs turn it on and point at this service). Tempo keeps them for the
-  # lab's horizon; Grafana queries it beside Prometheus and Loki.
+  # Traces, when a plane's `telemetry.otel` points here. Tempo keeps them for the lab's horizon;
+  # Grafana queries it beside Prometheus and Loki.
   tempo:
-    profiles: ["observability", "lab", "all-in-one", "tls"]
+    profiles: ["observability"]
     image: grafana/tempo:2.7.1
     command: ["-config.file=/etc/tempo/tempo.yml"]
     ports:
@@ -149,7 +285,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    profiles: ["observability", "lab", "all-in-one", "tls"]
+    profiles: ["observability"]
     image: grafana/grafana:11.5.1
     ports:
       - "127.0.0.1:${PERMGUARD_GRAFANA_PORT:-7590}:3000"
@@ -179,10 +315,17 @@ services:
     restart: unless-stopped
 
 volumes:
-  tempo-data:
+  lab:
+  all-in-one-state:
   control-plane-state:
   data-plane-state:
-  all-in-one-state:
+  data-plane-a-state:
+  data-plane-b-state:
+  data-plane-acme-state:
+  data-plane-beta-state:
+  temporal-a-state:
+  temporal-b-state:
   prometheus-data:
   loki-data:
+  tempo-data:
   grafana-data:

@@ -295,6 +295,33 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "404": {
             "description": "The ledger or scope is not held.",
             "content": {
@@ -326,7 +353,8 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.EventLog/ListRecords"
+        "x-grpc-rpc": "permguard.control.v1.EventLog/ListRecords",
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
       }
     },
     "/events/v1alpha1/records/{event_id}": {
@@ -386,6 +414,33 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No event in this ledger carries that identifier.",
             "content": {
@@ -407,7 +462,8 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.EventLog/GetRecord"
+        "x-grpc-rpc": "permguard.control.v1.EventLog/GetRecord",
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
       }
     },
     "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records": {
@@ -622,6 +678,33 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "404": {
             "description": "The ledger or scope is not held.",
             "content": {
@@ -657,7 +740,8 @@
         "x-grpc-only": [
           "producer_class"
         ],
-        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ListRecordsRequest`: `producer_class`."
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ListRecordsRequest`: `producer_class`.",
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
       }
     },
     "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/signers": {
@@ -1257,7 +1341,7 @@
           "proof": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Signed"
+              "$ref": "#/components/schemas/Proof"
             },
             "x-grpc-field": "proof"
           },
@@ -1404,7 +1488,7 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": null,
-        "x-grpc-note": "REST-only: the configuration document's `limits` member has no field in permguard.control.v1.GetEventConfigurationResponse."
+        "x-grpc-note": "gRPC carries the ceilings as the `limits` map of GetEventConfigurationResponse, by name (WP-7.4a)."
       },
       "Endpoints": {
         "type": "object",
@@ -1474,6 +1558,51 @@
             "type": "string",
             "x-grpc-field": "interface"
           },
+          "version": {
+            "type": "string",
+            "description": "The product version `/version` publishes; empty where the deployment does not disclose its build (WP-7.4a).",
+            "x-grpc-field": "version"
+          },
+          "component": {
+            "type": "string",
+            "enum": [
+              "control-plane",
+              "data-plane"
+            ],
+            "description": "The component serving the interface.",
+            "x-grpc-field": "component"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The serving component's lifecycle phase when the document was answered.",
+            "x-grpc-field": "state"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "v1alpha1",
+              "v1",
+              "deprecated"
+            ],
+            "description": "The interface's stage; a retired one has no document and is refused `interface_retired`.",
+            "x-grpc-field": "stage"
+          },
+          "sunset": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a deprecated interface stops being served; present only then.",
+            "x-grpc-field": "sunset"
+          },
           "store": {
             "type": "string",
             "description": "This store's identifier.",
@@ -1522,8 +1651,7 @@
           },
           "limits": {
             "$ref": "#/components/schemas/Limits",
-            "x-grpc-field": null,
-            "x-grpc-note": "REST-only: not a field of GetEventConfigurationResponse."
+            "x-grpc-field": "limits"
           }
         },
         "required": [
@@ -1535,11 +1663,83 @@
           "offsets",
           "producer_classes",
           "filters",
-          "limits"
+          "limits",
+          "version",
+          "component",
+          "state",
+          "stage"
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.control.v1.GetEventConfigurationResponse",
         "x-grpc-note": "gRPC GetEventConfigurationResponse omits `producer_classes`, `filters` and `limits`, although the proto comment calls it field for field the JSON document; the handler fills only the six mapped fields."
+      },
+      "Proof": {
+        "description": "One element of a read's `proof`, switched on `format` (WP-6.2b, as WP-6.1b): the legacy store's batch JWS, or the batch the Host's engine sealed.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/LegacyProof"
+          },
+          {
+            "$ref": "#/components/schemas/HostProof"
+          }
+        ],
+        "x-grpc-message": null,
+        "x-grpc-note": "An element of `proof` of permguard.control.v1.ListRecordsResponse, carried as JSON bytes."
+      },
+      "LegacyProof": {
+        "type": "object",
+        "description": "The legacy store's batch JWS, its members unchanged, naming its format.",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "legacy-jws-v1"
+            ]
+          },
+          "protected": {
+            "type": "string",
+            "description": "The protected header, base64url."
+          },
+          "payload": {
+            "type": "string",
+            "description": "The payload, base64url: the canonical envelope bytes."
+          },
+          "signature": {
+            "type": "string",
+            "description": "The signature over `protected || \".\" || payload`, base64url."
+          }
+        },
+        "required": [
+          "format",
+          "protected",
+          "payload",
+          "signature"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "An element of `proof` of permguard.control.v1.ListRecordsResponse, carried as JSON bytes."
+      },
+      "HostProof": {
+        "type": "object",
+        "description": "The batch the producing Host's stream engine sealed: its flattened JWS over the batch envelope, whose Merkle root the inclusion paths reach.",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "host-batch-v1"
+            ]
+          },
+          "signature": {
+            "$ref": "#/components/schemas/Signed"
+          }
+        },
+        "required": [
+          "format",
+          "signature"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "An element of `proof` of permguard.control.v1.ListRecordsResponse, carried as JSON bytes."
       }
     }
   },

@@ -48,7 +48,8 @@ impl Endpoint {
             if written.contains(':') && !written.contains("://") {
                 return Invalid::new(
                     written,
-                    "an endpoint is a URL: write http://host:port, or https://host:port for TLS",
+                    "an endpoint is a URL: write http://host:port or https://host:port for REST, \
+                     grpc://host:port or grpcs://host:port for gRPC",
                 );
             }
 
@@ -69,7 +70,8 @@ impl Endpoint {
             "" => {
                 return Err(Invalid::new(
                     written,
-                    "an endpoint is a URL: write http://host:port, or https://host:port for TLS",
+                    "an endpoint is a URL: write http://host:port or https://host:port for REST, \
+                     grpc://host:port or grpcs://host:port for gRPC",
                 ));
             }
             other => {
@@ -236,6 +238,16 @@ mod tests {
             let error = Endpoint::parse(written).expect_err(written).to_string();
 
             assert!(error.contains(expected), "for {written}: {error}");
+        }
+
+        let missing_scheme = Endpoint::parse("127.0.0.1:6443")
+            .expect_err("an endpoint without a scheme")
+            .to_string();
+        for scheme in ["http://", "https://", "grpc://", "grpcs://"] {
+            assert!(
+                missing_scheme.contains(scheme),
+                "the guidance omits {scheme}: {missing_scheme}"
+            );
         }
     }
 }

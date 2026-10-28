@@ -1,0 +1,48 @@
+{
+  "folder": "type",
+  "files": {
+    "test-regressions.yaml": {
+      "sha256": "sha256:dad13e8698f282c6aa5c67ed1537cfced0751491ff09bcd0d45490a4ff26f1dc",
+      "cases": [
+        {
+          "note": "regression/partial-object override, different key type, query",
+          "query": "data.test.p.foo = x",
+          "modules": [
+            "package test\n\np[k] := v if {\n\tv := [\"a\", \"b\", \"c\"][k]\n}\n\np[\"foo\"] := \"bar\"\n"
+          ],
+          "want_result": [
+            {
+              "x": "bar"
+            }
+          ]
+        },
+        {
+          "note": "regression/partial-object override, different key type, referenced in other rule",
+          "query": "data.test.q = x",
+          "modules": [
+            "package test\n\np[k] := v if {\n\tv := [\"a\", \"b\", \"c\"][k]\n}\n\np[\"foo\"] := \"bar\"\n\nq contains x if {\n\tx := p[_]\n\tx == \"bar\"\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                "bar"
+              ]
+            }
+          ]
+        },
+        {
+          "note": "regression/dynamic object to static object comparison (https://github.com/open-policy-agent/opa/issues/6138)",
+          "query": "data.test.compare = x",
+          "modules": [
+            "package test\n\nl := [\"a\", \"b\", \"c\"]\n\nobj[k] := v if {\n\tv := [\"a\", \"b\", \"c\"][k]\n\tk < 3\n}\n\nobj[k] := v if {\n\tv := input.m[k]\n}\n\nobj[\"foo\"] := \"bar\" if input.foo\n\nobj[\"baz\"] := true if input.baz\n\ncompare if {\n\t# Comparison with static object that doesn't contain \"optional\" key.\n\tobj == {\n\t\t0: \"a\",\n\t\t1: \"b\",\n\t\t2: \"c\",\n\t}\n\n\tobj == {\n\t\t0: \"a\",\n\t\t1: \"b\",\n\t\t2: \"c\",\n\t\t\"foo\": \"bar\",\n\t} with input.foo as true\n\n\tobj == {\n\t\t0: \"a\",\n\t\t1: \"b\",\n\t\t2: \"c\",\n\t\t\"baz\": true,\n\t} with input.baz as true\n\n\tobj == {\n\t\t0: \"a\",\n\t\t1: \"b\",\n\t\t2: \"c\",\n\t\t3: \"d\",\n\t\t4: \"e\",\n\t\t100: \"f\",\n\t} with input.m as {3: \"d\", 4: \"e\", 100: \"f\"}\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

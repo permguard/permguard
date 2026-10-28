@@ -42,6 +42,7 @@ mod commands;
 mod config;
 mod confirm;
 mod decision_out;
+mod discover;
 mod event_out;
 mod failure;
 mod inspect;
@@ -58,7 +59,7 @@ mod workspace_out;
 
 use std::process::ExitCode;
 
-use crate::args::{Cli, Command};
+use crate::args::{Cli, Command, GrantsAction, HostAction, IdentityAction};
 use crate::commands::catalog::{CatalogAction, catalog_command};
 use crate::commands::config::config_command;
 use crate::commands::inspect::inspect_command;
@@ -222,7 +223,33 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
             server_config,
             action,
         } => commands::host::host_command(&globals, server_config.as_deref(), action, &trace),
+        Command::Restore {
+            server_config,
+            action,
+        } => commands::restore::restore_command(&globals, server_config.as_deref(), action, &trace),
+        Command::Gc { action } => commands::host_ops::gc_command(&globals, action, &trace),
+        Command::Reclaim {
+            action: crate::args::ReclaimAction::Run(args),
+        } => commands::reclaim::run(&globals, &trace, args),
+        Command::Evidence { action } => {
+            commands::host_ops::evidence_command(&globals, action, &trace)
+        }
+        Command::Backup { action } => {
+            commands::offline_ops::backup_command(&globals, action, &trace)
+        }
+        Command::Migrate {
+            server_config,
+            action,
+        } => commands::offline_ops::migrate_command(
+            &globals,
+            server_config.as_deref(),
+            action,
+            &trace,
+        ),
         Command::Inspect { timeout } => inspect_command(&globals, timeout, &trace),
+        Command::Discover { url, timeout } => {
+            commands::discover::discover_command(&globals, &url, timeout, &trace)
+        }
         Command::Init { name, language } => {
             let languages: Vec<&str> = language.iter().map(String::as_str).collect();
             workspace_command(
@@ -321,6 +348,37 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Apply { .. } => ("apply", Class::Control),
         Command::Verify => ("verify", Class::Control),
         Command::Inspect { .. } => ("inspect", Class::Planes),
-        Command::Host { .. } => ("host", Class::Volume),
+        Command::Restore { .. } => ("restore", Class::Volume),
+        Command::Backup { .. } => ("backup", Class::Volume),
+        Command::Gc { .. } => ("gc", Class::Host),
+        Command::Reclaim { .. } => ("reclaim", Class::Host),
+        Command::Evidence { .. } => ("evidence", Class::Host),
+        Command::Migrate { .. } => ("migrate", Class::Volume),
+        Command::Discover { .. } => ("discover", Class::Local),
+        Command::Host { action, .. } => {
+            let class = match action {
+                HostAction::Identity {
+                    action: IdentityAction::Provision { .. } | IdentityAction::Reset { .. },
+                }
+                | HostAction::Grants {
+                    action: GrantsAction::Bootstrap { .. },
+                }
+                | HostAction::Holds { .. } => Class::Volume,
+                HostAction::Identity {
+                    action: IdentityAction::Pin { .. },
+                } => Class::Local,
+                HostAction::Identity { .. }
+                | HostAction::Members { .. }
+                | HostAction::Streams { .. }
+                | HostAction::Grants { .. }
+                | HostAction::Keys { .. }
+                | HostAction::Audit { .. }
+                | HostAction::Config { .. }
+                | HostAction::Status
+                | HostAction::Plans { .. }
+                | HostAction::Backup { .. } => Class::Host,
+            };
+            ("host", class)
+        }
     }
 }

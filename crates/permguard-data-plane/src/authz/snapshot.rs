@@ -69,6 +69,8 @@ pub enum Refusal {
     /// The request named a profile or a partition the manifest does not
     /// declare.
     Unknown(String),
+    /// The manifest binds a retired interface (WP-7.4a): refused `interface_retired`.
+    Retired(String),
     /// The partition does not meet the operator's assurance floor — a Cedar partition without a
     /// schema under `production`, say. Answered like an incompatible ledger, and never written down
     /// as a block: the block is keyed on the commit alone, and lowering the floor must take effect
@@ -83,6 +85,7 @@ impl std::fmt::Display for Refusal {
             Self::Incompatible(detail)
             | Self::Damaged(detail)
             | Self::Unknown(detail)
+            | Self::Retired(detail)
             | Self::BelowFloor(detail) => {
                 write!(f, "{detail}")
             }
@@ -97,6 +100,11 @@ pub struct Head {
     pub commit: String,
     /// The counter of the verified head statement.
     pub counter: u64,
+    /// The Host the verified head statement names as its authority, a canonical UUID; absent for
+    /// a mirror pulled before it was kept (WP-6.6b).
+    pub authority_host_id: Option<String>,
+    /// The ref the verified head statement signed (WP-6.6b).
+    pub reference: Option<String>,
     pub manifest: Manifest,
 }
 
@@ -107,6 +115,8 @@ impl Head {
         Self {
             commit: "sha256:test".to_owned(),
             counter: 0,
+            authority_host_id: None,
+            reference: None,
             manifest: Manifest::default(),
         }
     }
@@ -135,6 +145,9 @@ pub struct Partition {
     pub policies: usize,
     /// Roughly how much memory it holds, for the cache's bounds.
     pub footprint: usize,
+    /// The input type its manifest declares, when it declares one: which event version a temporal
+    /// partition accepts (TL-5c).
+    pub input: Option<String>,
     evaluator: Arc<dyn Evaluator>,
 }
 
@@ -173,6 +186,7 @@ impl Partition {
             language: "test".to_owned(),
             policies: 0,
             footprint,
+            input: None,
             evaluator,
         }
     }
@@ -241,6 +255,12 @@ pub fn head_at(
     let manifest = Manifest::decode(&blob.data)
         .map_err(|error| Refusal::Damaged(format!("the manifest does not decode: {error}")))?;
 
+    // A retired interface first, refused under its own code (WP-7.4a): never served, never
+    // read as another id. `check_manifest_with` asks again for the paths that call it alone;
+    // here it is asked first so the refusal keeps `interface_retired` rather than the gate's.
+    if let Err(error) = registry::check_stages(&manifest, permguard_core::stages::REGISTRY) {
+        return Err(Refusal::Retired(error.detail));
+    }
     // The gate, before anything is compiled or answered: the engine this build carries, and the
     // input contracts it implements. Both, from one call, so neither can be forgotten here.
     registry::check_manifest_with(&manifest, enabled).map_err(|error| {
@@ -253,6 +273,8 @@ pub fn head_at(
     Ok(Head {
         commit: checkpoint.head,
         counter: checkpoint.counter,
+        authority_host_id: checkpoint.authority_host_id,
+        reference: checkpoint.reference,
         manifest,
     })
 }
@@ -271,6 +293,16 @@ pub fn compile(
     let declared = head.manifest.partitions.get(partition).ok_or_else(|| {
         Refusal::Unknown(format!("this ledger declares no partition `{partition}`"))
     })?;
+    // `interfaces.explicit` (WP-7.1): from its floor up, a partition names the interfaces it
+    // promises; the inference a legacy manifest relies on is refused, never applied.
+    let explicit = permguard_core::assurance::Control::InterfacesExplicit;
+    if profile.at_least(explicit.floor()) && declared.interfaces.is_empty() {
+        return Err(Refusal::BelowFloor(format!(
+            "the partition `{partition}` lists no `interfaces`, which the `{}` assurance profile \
+             requires ({explicit})",
+            profile.as_str()
+        )));
+    }
     let runtime = head.manifest.runtimes.get(&declared.runtime).ok_or_else(|| {
         Refusal::Damaged(format!(
             "the partition `{partition}` names the runtime `{}`, which the manifest does not declare",
@@ -323,6 +355,9 @@ pub fn compile(
     // refused before anything is compiled (CEDAR-05).
     registry::check_schema_floor(&language_name, profile, &collected.artifacts)
         .map_err(Refusal::BelowFloor)?;
+    // And what it may not carry there: Dogwood's providers from `production` upward (DOGWOOD-01).
+    registry::check_artifact_floor(&language_name, profile, &collected.artifacts)
+        .map_err(Refusal::BelowFloor)?;
 
     let policies = collected.policies.len();
     // A runtime with no hard bound in-process runs in its supervised worker where the profile
@@ -354,6 +389,11 @@ pub fn compile(
             temporal.contract(),
         )
         .map_err(Refusal::Incompatible)?;
+        // And what it declared about its input: a version 2 partition's one-sided fields are
+        // declared, and only a version 2 partition carries the declarations (TL-5c).
+        temporal
+            .check_input(declared.input.as_ref().map(|input| input.r#type.as_str()))
+            .map_err(Refusal::Incompatible)?;
     }
 
     // What the cache charges: the runtime's own conservative estimate of what its engine keeps, not
@@ -365,6 +405,7 @@ pub fn compile(
         language: language_name,
         policies,
         footprint,
+        input: declared.input.as_ref().map(|input| input.r#type.clone()),
         evaluator,
     }))
 }

@@ -22,6 +22,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+base64.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 permguard-core.workspace = true
@@ -29,6 +30,8 @@ permguard-core.workspace = true
 permguard-host.workspace = true
 # The configuration and the key custody of the server, for the offline `host` commands (WP-3.2).
 permguard-server.workspace = true
+# The object trees the Control Plane declares, which `restore` scans as `volume verify` does (WP-7.9).
+permguard-control-plane.workspace = true
 # The record, the chain and the signature — so `--verify` checks what the
 # planes compute, with the same code rather than a second implementation.
 permguard-decisions.workspace = true
@@ -55,6 +58,5 @@ permguard-transport.workspace = true
 tokio.workspace = true
 tonic.workspace = true
 base64.workspace = true
-permguard-control-plane.workspace = true
 rcgen.workspace = true
 ring.workspace = true

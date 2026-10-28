@@ -1,0 +1,99 @@
+{
+  "folder": "bitsshiftleft",
+  "files": {
+    "test-bitsshiftleft-0063.yaml": {
+      "sha256": "sha256:bb7df01655b3e52c5adcbdd1a497f2e809f135a2219668bcaeb28c9cf24fd2f0",
+      "cases": [
+        {
+          "note": "bitsshiftleft/basic shift-left",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\tbits.lsh(1, 3, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                8
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-bitsshiftleft-0064.yaml": {
+      "sha256": "sha256:860ea1b36b9862578c48b76462158d0bcc9ff0d2b5105482364e3aab0ec59bab",
+      "cases": [
+        {
+          "note": "bitsshiftleft/lhs (float) error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tbits.lsh(7.2, 42, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "bits.lsh: operand 1 must be integer number but got floating-point number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-bitsshiftleft-0065.yaml": {
+      "sha256": "sha256:e264f6e1aad8fdb17fb699d8e5f370055bfe31dc66ffb251b2e10a2459f8df42",
+      "cases": [
+        {
+          "note": "bitsshiftleft/rhs must be unsigned",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tbits.lsh(7, -1, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_type_error",
+          "want_error": "bits.lsh: operand 2 must be an unsigned integer number but got a negative integer",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-bitsshiftleft-0066.yaml": {
+      "sha256": "sha256:bbc3e1d3dd8cd0b476df687f7e2f7e8fccbe3c5f6f7823f262560e814ba9d186",
+      "cases": [
+        {
+          "note": "bitsshiftleft/shift of max int32 doesn't overflow",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tbits.lsh(2147483647, 1, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 4294967294
+            }
+          ]
+        }
+      ]
+    },
+    "test-bitsshiftleft-0067.yaml": {
+      "sha256": "sha256:4ad3624a294b011baf4479324fe957bf901638020b81e5875ade5266336c0ed3",
+      "cases": [
+        {
+          "note": "bitsshiftleft/shift of max int64 doesn't overflow and is not lossy",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tbits.lsh(9223372036854775807, 1, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 18446744073709551614
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

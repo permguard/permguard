@@ -1,0 +1,469 @@
+{
+  "folder": "varreferences",
+  "files": {
+    "test-varreferences-0726.yaml": {
+      "sha256": "sha256:646aff5ba64ff4b532638ab5e533aec0123c620568ac69944b014f9af0a9c4a1",
+      "cases": [
+        {
+          "note": "varreferences/ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tv = [[1, 2], [2, 3], [3, 4]]\n\tx = v[2][1]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0727.yaml": {
+      "sha256": "sha256:7ccdb247cc5282483add61907312396e55f79c5d299e67112aa8caca02ccd282",
+      "cases": [
+        {
+          "note": "varreferences/non-ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tv = [[1, 2], [2, 3], [3, 4]]\n\tx = v[i][j]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0728.yaml": {
+      "sha256": "sha256:5245d2f8839835ce6d8a0e7dd259c03c5c611ad7ec0207f6a38cbb9daf6ad6bb",
+      "cases": [
+        {
+          "note": "varreferences/mixed",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[x] := y if {\n\tv = [{\"a\": 1, \"b\": 2}, {\"c\": 3, \"z\": [4]}]\n\ty = v[i][x][j]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "z": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-varreferences-0729.yaml": {
+      "sha256": "sha256:1a6f41b8d69b654564e334272bda57b3da9241504a811c5de871be2d3e80c257",
+      "cases": [
+        {
+          "note": "varreferences/ref binding",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tv = data.c[i][j]\n\tx = v[k]\n\tx = true\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0730.yaml": {
+      "sha256": "sha256:96077cfa73717011e8c602a9116ac2355d05853c3c90aaa1c494e2a3eb91f638",
+      "cases": [
+        {
+          "note": "varreferences/existing ref binding",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tq = data.a\n\tq[0] = x\n\tq[0]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "test-varreferences-0731.yaml": {
+      "sha256": "sha256:5855d052ab0d278f550d7c12744c130d97f3148bda88ff60ff12f12105068b1c",
+      "cases": [
+        {
+          "note": "varreferences/embedded",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tv = [1, 2, 3]\n\t__local0__ = v[i]\n\tx = [{\"a\": __local0__}]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  {
+                    "a": 1
+                  }
+                ],
+                [
+                  {
+                    "a": 2
+                  }
+                ],
+                [
+                  {
+                    "a": 3
+                  }
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0732.yaml": {
+      "sha256": "sha256:afa56816d9bd4e0d28f01b99fe8ea2289c5172f2be9e6a5087eed222469380cb",
+      "cases": [
+        {
+          "note": "varreferences/embedded ref binding",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tv = data.c[i][j]\n\t__local0__ = v[0]\n\t__local1__ = v[1]\n\tw = [__local0__, __local1__]\n\tx = w[y]\n}\n"
+          ],
+          "data": {
+            "c": [
+              {
+                "true": [
+                  null,
+                  3.14159
+                ],
+                "x": [
+                  true,
+                  false,
+                  "foo"
+                ],
+                "z": {
+                  "p": true,
+                  "q": false
+                }
+              }
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                null,
+                false,
+                true,
+                3.14159
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0733.yaml": {
+      "sha256": "sha256:efad3e3b50174fc17f5935dbb6189af0e2315c6af3e0345d8acf3f4da189e68b",
+      "cases": [
+        {
+          "note": "varreferences/array: ground var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\ti = [1, 2, 3, 4]\n\tj = [1, 2, 999]\n\tj[k] = y\n\ti[y] = x\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0734.yaml": {
+      "sha256": "sha256:c628f2a880dc930fc867ed025314b13f3663a45dd2d7ef991b492639fec22fa5",
+      "cases": [
+        {
+          "note": "varreferences/array: ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\ti = [1, 2, 3, 4]\n\tx = data.a[_]\n\ti[x] = y\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0735.yaml": {
+      "sha256": "sha256:8828b5106562dd93909437c526b4b313d9c826868a0be73e306a62f9c41ddec8",
+      "cases": [
+        {
+          "note": "varreferences/object: ground var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\ti = {\"a\": 1, \"b\": 2, \"c\": 3}\n\tj = [\"a\", \"c\", \"deadbeef\"]\n\tj[k] = y\n\ti[y] = x\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0736.yaml": {
+      "sha256": "sha256:b86da8ba38bd3b883e6a73a9f532d3d56c49aef5d0c7edec183fa0dc0c348c5d",
+      "cases": [
+        {
+          "note": "varreferences/object: ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\ti = {\"1\": 1, \"2\": 2, \"4\": 4}\n\tx = data.numbers[_]\n\ti[x] = y\n}\n"
+          ],
+          "data": {
+            "numbers": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0737.yaml": {
+      "sha256": "sha256:4a7dbd3625bf5a5fdf2d413dda7f278edff3d8abe821d2339b14d25ace9f2614",
+      "cases": [
+        {
+          "note": "varreferences/set: ground var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\ti = {1, 2, 3, 4}\n\tj = {1, 2, 99}\n\tj[x]\n\ti[x]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0738.yaml": {
+      "sha256": "sha256:9b49e2f72dba946150593595164f8a7541af15fc4d5390739a438976624f9988",
+      "cases": [
+        {
+          "note": "varreferences/set: ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\ti = {1, 2, 3, 4}\n\tx = data.a[_]\n\ti[x]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0739.yaml": {
+      "sha256": "sha256:67d916031f1f2816d847ccfdf3c5a18dd5bd82057f5352acab129c55ad53e1c4",
+      "cases": [
+        {
+          "note": "varreferences/set: lookup: base docs",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tv = {[1, 999], [3, 4]}\n\t__local0__ = data.a[2]\n\tpair = [__local0__, 4]\n\tv[pair]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-varreferences-0740.yaml": {
+      "sha256": "sha256:e902a6df55b39b966440a6f6fe8e003a1798ce7ae26d0b5294abee2db7f1966e",
+      "cases": [
+        {
+          "note": "varreferences/set: lookup: embedded",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tx = [{}, {[1, 2], [3, 4]}]\n\ty = [3, 4]\n\tx[i][y]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-varreferences-0741.yaml": {
+      "sha256": "sha256:724e6b231217d860ce8d921e48a9ca419f7106487dc5f735f160aac27d2a475e",
+      "cases": [
+        {
+          "note": "varreferences/set: lookup: dereference",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains [i, z, r] if {\n\tx = [{}, {[1, 2], [3, 4]}]\n\ty = [3, 4]\n\tx[i][y][z] = r\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  0,
+                  3
+                ],
+                [
+                  1,
+                  1,
+                  4
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-varreferences-0742.yaml": {
+      "sha256": "sha256:f68272e1d1ea42363644b07a9c85d3fea796c6bc6683d694a94b1a05d49222fb",
+      "cases": [
+        {
+          "note": "varreferences/avoids indexer",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tsomevar = [1, 2, 3]\n\tsomevar[i] = 2\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

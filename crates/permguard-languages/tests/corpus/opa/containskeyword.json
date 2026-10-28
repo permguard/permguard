@@ -1,0 +1,77 @@
+{
+  "folder": "containskeyword",
+  "files": {
+    "test-contains-future-keyword.yaml": {
+      "sha256": "sha256:62de21030f9ac1241160a8a1eb31247c752a14c51594d11a7f38519a58704862",
+      "cases": [
+        {
+          "note": "containskeyword/base case",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tcontains(\"fireplace\", \"repl\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "containskeyword/with unused kw import",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tcontains(\"fireplace\", \"repl\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "containskeyword/with kw and builtin used",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains \"x\" if {\n\tcontains(\"fireplace\", \"repl\")\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                "x"
+              ]
+            }
+          ]
+        },
+        {
+          "note": "containskeyword/empty body",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains \"x\"\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                "x"
+              ]
+            }
+          ]
+        },
+        {
+          "note": "containskeyword/ordinary deny rule",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains msg if {\n\tmsg := \"nono\"\n}\n\np contains msg if {\n\tmsg := \"nonono\"\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                "nono",
+                "nonono"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -61,6 +61,14 @@ tracing.workspace = true
 tonic-prost.workspace = true
 
 
+[features]
+# The storage library's named crash points, for the crash test of a push (WP-7.12).
+crash-points = ["permguard-host/crash-points"]
+
+[[test]]
+name = "push_crash"
+required-features = ["crash-points"]
+
 [dev-dependencies]
 # Decoding an offset token, to prove that editing one is refused.
 base64.workspace = true

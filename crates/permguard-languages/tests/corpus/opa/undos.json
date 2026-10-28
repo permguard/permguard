@@ -1,0 +1,224 @@
+{
+  "folder": "undos",
+  "files": {
+    "test-undos-0599.yaml": {
+      "sha256": "sha256:1a3fb5392cbdd46d1d7942aeb41293d008630a009962ed7fae184a8c78321843",
+      "cases": [
+        {
+          "note": "undos/array-type",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tarr = [[1, [2]], [1, null], [2, [2]]]\n\t[x, [2]] = arr[_]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-undos-0600.yaml": {
+      "sha256": "sha256:adc6b03329feaa5fee80db482a83fa571700942f6defb182c9e1d0d0d272a953",
+      "cases": [
+        {
+          "note": "undos/arrays-element",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tarr = [[1, 2], [1, null], [2, 2]]\n\tarr[_] = [x, 2]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-undos-0601.yaml": {
+      "sha256": "sha256:9b8f41af2c115f15abca90e84dd056d92751b7e07bd9d5895c5f2fc0e51b7bf6",
+      "cases": [
+        {
+          "note": "undos/arrays-length",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tarr = [[1, [2]], [1, []], [2, [2]]]\n\tarr[_] = [x, [2]]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-undos-0602.yaml": {
+      "sha256": "sha256:9fe9599e8e212fc1418d58106670f4209c3416715bb60621b9e8ffab5c44eaca",
+      "cases": [
+        {
+          "note": "undos/array-ref-element",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.arr_ref\n\tarr = [[1, 2], __local0__, [2, 2]]\n\tarr[_] = [x, 2]\n}\n"
+          ],
+          "data": {
+            "arr_ref": [
+              1,
+              null
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-undos-0603.yaml": {
+      "sha256": "sha256:f0e2e5ba8f372be86e2abb92b01477db389e38b620b90289da5fe41dfda30247",
+      "cases": [
+        {
+          "note": "undos/object-type",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tobj = {\"a\": {\"x\": 1, \"y\": {\"v\": 2}}, \"b\": {\"x\": 1, \"y\": null}, \"c\": {\"x\": 2, \"y\": {\"v\": 2}}}\n\t{\"x\": x, \"y\": {\"v\": 2}} = obj[_]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-undos-0604.yaml": {
+      "sha256": "sha256:b1eb17e6f639a3a58f26cb5fcd1460f5cfdc85263f1facb8aecc6a261682da01",
+      "cases": [
+        {
+          "note": "undos/objects-element",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tobj = {\"a\": {\"x\": 1, \"y\": 2}, \"b\": {\"x\": 1, \"y\": null}, \"c\": {\"x\": 2, \"y\": 2}}\n\tobj[_] = {\"x\": x, \"y\": 2}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-undos-0605.yaml": {
+      "sha256": "sha256:298e175b68a20674e2b333162b06fc13a70c60ac269bf42ed7d2e4b67609c220",
+      "cases": [
+        {
+          "note": "undos/objects-length",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tobj = {\"a\": {\"x\": 1, \"y\": {\"v\": 2}}, \"b\": {\"x\": 1, \"y\": {}}, \"c\": {\"x\": 2, \"y\": {\"v\": 2}}}\n\tobj[_] = {\"x\": x, \"y\": {\"v\": 2}}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-undos-0606.yaml": {
+      "sha256": "sha256:1cc6c6cab76d1408046e1d32f38a616fc5bf9138b2ab63d896dbf25515b4fd2c",
+      "cases": [
+        {
+          "note": "undos/object-ref-element",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.obj_ref\n\tobj = {\"a\": {\"x\": 1, \"y\": 2}, \"b\": __local0__, \"c\": {\"x\": 2, \"y\": 2}}\n\tobj[_] = {\"x\": x, \"y\": 2}\n}\n"
+          ],
+          "data": {
+            "obj_ref": {
+              "true": null,
+              "x": 1
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-undos-0607.yaml": {
+      "sha256": "sha256:28ea9bef35577894c06005138b0e7e4467da2a25ef27d50b4705ea65b5a14713",
+      "cases": [
+        {
+          "note": "undos/object-ref-missing-key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.obj_ref_missing_key\n\tobj = {\"a\": {\"x\": 1, \"y\": 2}, \"b\": __local0__, \"c\": {\"x\": 2, \"y\": 2}}\n\tobj[_] = {\"x\": x, \"y\": 2}\n}\n"
+          ],
+          "data": {
+            "obj_ref_missing_key": {
+              "x": 3,
+              "z": 2
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

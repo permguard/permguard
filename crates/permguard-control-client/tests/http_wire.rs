@@ -160,6 +160,10 @@ fn ref_answer(head: &Digest, counter: u64, statement: &[u8]) -> Vec<u8> {
         (cbor::Value::Int(1), cbor::Value::Text(head.to_string())),
         (cbor::Value::Int(2), cbor::Value::Int(counter as i64)),
         (cbor::Value::Int(3), cbor::Value::Bytes(statement.to_vec())),
+        (
+            cbor::Value::Int(4),
+            cbor::Value::Text(Digest::compute(b"ref state").to_string()),
+        ),
     ]))
     .expect("it encodes")
 }
@@ -214,6 +218,10 @@ fn an_advertised_ref_is_read_and_an_absent_one_is_not_an_error() {
     assert_eq!(answered.head, head.to_string());
     assert_eq!(answered.counter, 4);
     assert_eq!(answered.statement, b"envelope");
+    assert_eq!(
+        answered.ref_digest,
+        Digest::compute(b"ref state").to_string()
+    );
 
     // A ref the server does not have: `None`, not a failure — an empty
     // ledger is a legal state, and the first apply creates its history.
@@ -231,6 +239,10 @@ fn a_ref_answer_with_an_unknown_label_is_refused() {
         (
             cbor::Value::Int(3),
             cbor::Value::Bytes(b"envelope".to_vec()),
+        ),
+        (
+            cbor::Value::Int(4),
+            cbor::Value::Text(Digest::compute(b"ref state").to_string()),
         ),
     ];
     answer.push((cbor::Value::Int(99), cbor::Value::Int(1)));
@@ -264,6 +276,9 @@ fn a_push_rides_cbor_and_honours_the_advertised_compression() {
             max_batch_bytes: 8 * 1024 * 1024,
             max_batch_objects: 1000,
             compression: Some("deflate".into()),
+            transfer_id: [9; 16],
+            reservation: 3,
+            expiry: 1_800_000_000,
         }
         .encode()
         .expect("it encodes"),
@@ -275,6 +290,7 @@ fn a_push_rides_cbor_and_honours_the_advertised_compression() {
         200,
         UploadObjectsResponse {
             received: vec![d1.clone()],
+            remaining: 0,
         }
         .encode()
         .expect("it encodes"),
@@ -286,11 +302,12 @@ fn a_push_rides_cbor_and_honours_the_advertised_compression() {
         .negotiate_push(&NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: d1.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: vec![ObjectClaim {
                 digest: d1.clone(),
                 size: 3,
             }],
+            request_id: "push-1".into(),
         })
         .expect("the negotiation answers");
     assert_eq!(negotiated.missing, vec![d1]);
@@ -303,6 +320,7 @@ fn a_push_rides_cbor_and_honours_the_advertised_compression() {
         .upload(&UploadObjectsRequest {
             objects: vec![payload.clone()],
             compression: None,
+            transfer_id: negotiated.transfer_id,
         })
         .expect("the upload lands");
 
@@ -313,6 +331,10 @@ fn a_push_rides_cbor_and_honours_the_advertised_compression() {
         .expect("the upload was seen");
     let decoded = UploadObjectsRequest::decode(body).expect("the body is a NOTP message");
     assert_eq!(decoded.compression.as_deref(), Some("deflate"));
+    assert_eq!(
+        decoded.transfer_id, [9; 16],
+        "the session rides every batch"
+    );
     let inflated = compress::inflate(&decoded.objects[0], 1 << 20).expect("it inflates");
     assert_eq!(inflated, payload, "the bytes survive the pipe");
     assert!(
@@ -339,6 +361,9 @@ fn a_pull_undoes_the_compression_the_server_applied() {
             max_batch_bytes: 8 * 1024 * 1024,
             max_batch_objects: 1000,
             compression: Some("deflate".into()),
+            transfer_id: [9; 16],
+            ref_digest: Digest::compute(b"ref state"),
+            expiry: 1_800_000_000,
         }
         .encode()
         .expect("it encodes"),
@@ -351,6 +376,7 @@ fn a_pull_undoes_the_compression_the_server_applied() {
         permguard_notp::FetchObjectsResponse {
             objects: vec![compress::deflate(&object)],
             compression: Some("deflate".into()),
+            expiry: 1_800_000_000,
         }
         .encode()
         .expect("it encodes"),
@@ -363,6 +389,7 @@ fn a_pull_undoes_the_compression_the_server_applied() {
             r#ref: "main".into(),
             at: None,
             have: Vec::new(),
+            checkpoint: None,
         })
         .expect("the negotiation answers");
     assert_eq!(negotiated.missing, vec![digest.clone()]);
@@ -371,6 +398,7 @@ fn a_pull_undoes_the_compression_the_server_applied() {
         .fetch(&FetchObjectsRequest {
             digests: vec![digest],
             accept_compression: None,
+            transfer_id: negotiated.transfer_id,
         })
         .expect("the fetch answers");
     assert_eq!(
@@ -397,7 +425,12 @@ fn a_refusal_carries_the_servers_own_words() {
         .commit_push(&CommitPushRequest {
             r#ref: "main".into(),
             new_head: Digest::compute(b"new"),
-            expected_old: Some(Digest::compute(b"old")),
+            expected_ref: Some(permguard_notp::ExpectedRef {
+                counter: 1,
+                digest: Digest::compute(b"old"),
+            }),
+            transfer_id: [9; 16],
+            request_id: "commit-1".into(),
         })
         .expect_err("a conflict is a refusal");
     assert!(error.contains("the ref moved"), "{error}");
@@ -448,6 +481,9 @@ fn a_token_never_travels_over_rest_in_the_clear() {
             max_batch_bytes: 8 * 1024 * 1024,
             max_batch_objects: 1000,
             compression: None,
+            transfer_id: [9; 16],
+            reservation: 3,
+            expiry: 1_800_000_000,
         }
         .encode()
         .expect("it encodes"),
@@ -470,11 +506,12 @@ fn a_token_never_travels_over_rest_in_the_clear() {
     let request = NegotiatePushRequest {
         r#ref: "main".into(),
         new_head: d1.clone(),
-        expected_old: None,
+        expected_ref: None,
         closure: vec![ObjectClaim {
             digest: d1,
             size: 3,
         }],
+        request_id: "push-1".into(),
     };
     connected(&stub)
         .negotiate_push(&request)
@@ -485,4 +522,85 @@ fn a_token_never_travels_over_rest_in_the_clear() {
         vec![None],
         "nothing was sent with the token, nothing without it"
     );
+}
+
+/// A JSON answer sent in chunks, as the Kubernetes API sends it (TD-2), reads as its whole body.
+#[test]
+fn a_chunked_json_answer_reads_as_its_body() {
+    use permguard_control_client::Endpoint;
+    use permguard_control_client::http::Client;
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port is free");
+    let address = listener.local_addr().expect("bound");
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("a connection");
+        let mut reader = BufReader::new(stream.try_clone().expect("cloned"));
+        let mut line = String::new();
+        while reader.read_line(&mut line).expect("reads") > 2 {
+            line.clear();
+        }
+        stream
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n\
+                  9\r\n{\"items\":\r\nb\r\n[1,2,3]}\n  \r\n0\r\n\r\n",
+            )
+            .expect("written");
+    });
+    let client = Client::new(
+        std::time::Duration::from_secs(5),
+        TlsOptions::default(),
+        false,
+    )
+    .expect("a client");
+    let endpoint = Endpoint::parse(&format!("http://{address}")).expect("an endpoint");
+    let answer = client.get(&endpoint, "/list").expect("answered");
+    server.join().expect("served");
+    assert_eq!(answer.status, 200);
+    let value: serde_json::Value = serde_json::from_str(&answer.body).expect("one JSON value");
+    assert_eq!(value["items"], serde_json::json!([1, 2, 3]));
+}
+
+/// A chunked answer the server cut short, or whose chunk size is absurd, is a malformed answer,
+/// never a panic: the body is whatever the remote end sent (after the review).
+#[test]
+fn a_truncated_or_absurd_chunked_answer_is_malformed() {
+    use permguard_control_client::Endpoint;
+    use permguard_control_client::http::Client;
+
+    for body in [
+        &b"5\r\nabc"[..],
+        &b"5\r\nabcde"[..],
+        &b"5\r\nabcdeXY0\r\n\r\n"[..],
+        &b"ffffffffffffffff\r\nabc"[..],
+        &b"zz\r\nabc"[..],
+    ] {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a port is free");
+        let address = listener.local_addr().expect("bound");
+        let body = body.to_vec();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("a connection");
+            let mut reader = BufReader::new(stream.try_clone().expect("cloned"));
+            let mut line = String::new();
+            while reader.read_line(&mut line).expect("reads") > 2 {
+                line.clear();
+            }
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
+                .expect("written");
+            stream.write_all(&body).expect("written");
+        });
+        let client = Client::new(
+            std::time::Duration::from_secs(5),
+            TlsOptions::default(),
+            false,
+        )
+        .expect("a client");
+        let endpoint = Endpoint::parse(&format!("http://{address}")).expect("an endpoint");
+        let refused = client
+            .get(&endpoint, "/list")
+            .err()
+            .expect("malformed, not a body");
+        assert_eq!(refused.reason(), "malformed_response", "{refused}");
+        server.join().expect("served");
+    }
 }

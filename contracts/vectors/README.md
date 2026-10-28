@@ -14,8 +14,8 @@
 | `event_batch`     | today's event batch: compact JWS, protected `{alg, typ, kid}`       | `permguard-events`                 |
 | `merkle`          | RFC 6962 batch roots                                                | `permguard-decisions`, `-stream`   |
 | `cursor_v1`       | today's cursor and its filter digest                                | `permguard-stream`                 |
+| `cursor_v2`       | the version 2 cursor: prefix, payload, MAC, key id and expiry       | `permguard-stream`                 |
 | `pseudonym`       | today's audit pseudonym                                             | `permguard-std`                    |
-| `head_statement`  | today's signed NOTP head statement, COSE_Sign1                      | `permguard-objects`                |
 | `key_set_digest`  | a pointer to the WP-0.4 vectors in `permguard-objects`              | `permguard-objects`                |
 
 `identity.json` freezes the Host identity's records (WP-2.2): the identity document at epochs 1 and 2, the succession between them, `INIT`, its external witness and `BOOT`.
@@ -41,8 +41,17 @@ Since WP-4.7 it also freezes the `zone.secrets` records, a request and its task 
 `audit.json` freezes the audit's checkpoint records (WP-3.7): an audit record and its digest, the checkpoint sealing its day and an on-demand checkpoint of the next day chained to it, both COSE_Sign1 `permguard.audit.checkpoint.v1` under a `host.operations` key with their envelope digests, and the anchor naming the first.
 `audit.py` computes them under the owner decisions of 2026-10-07 and 2026-10-11, the `host.operations` key the RFC 8032 section 7.1 test 2 key; `crates/permguard-host/tests/audit_vectors.rs` reproduces them and verifies both envelopes with the published key.
 
+`notp.json` freezes the NOTP target records (WP-7.1): two ref states and their `ref_digest`, the head statement binding the authority, the ref digest and the ring's epoch and key set, its COSE_Sign1, the messages carrying them, and a manifest whose partition promises its interfaces.
+Beside them: the manifests a reader refuses, unsorted, duplicated, empty, not promising a profile's interface or carrying an unknown key, and today's `expected_old`, which the target reader refuses.
+`notp.py` computes them under the owner decisions of 2026-10-14, the signing key the RFC 8032 section 7.1 test 1 key; `crates/permguard-notp/tests/notp_vectors.rs` reproduces them, verifies the statement and checks the freshness verdicts over the ref digest.
+The head statement moved here from `evidence.json`: its target form replaces today's.
+
 `plan.json` freezes a destructive operation's plan records (WP-3.9): a key revocation's plan body and digest, the plan receipt naming it, COSE_Sign1 `permguard.operation.plan.v1`, and a second operator's approval, COSE_Sign1 `permguard.operation.approval.v1`, both under a `host.operations` key.
 `plan.py` computes them under the owner decisions of 2026-10-11, the `host.operations` key the RFC 8032 section 7.1 test 2 key; `crates/permguard-host/tests/plan_vectors.rs` reproduces them, verifies both envelopes with the published key and refuses each in the other's place.
+
+`signed-response.json` freezes signed native decision responses (WP-6.6): a single answer and a batch, each with the request sent, the response received with its `attestation`, and the payload the attestation decodes to, under a `data.attest` key, the RFC 8032 section 7.1 test 1 key.
+Beside them: the audience, the clock, the advertised validity and skew, and the exact policy state a PEP expects.
+`signed_response.py` computes them under the decisions of 2026-10-22 recorded in `status.md`; `crates/permguard-control-client/src/attestation/tests.rs` reproduces each payload and signature and verifies both responses with the verifier a PEP uses.
 
 ## How the values were computed
 
@@ -61,3 +70,7 @@ Target formats are not here: each is frozen by the package that designs it, as `
 They are a genesis run statement carrying a fence and a successor after a fork naming its predecessor and the approved plan, both COSE_Sign1 `permguard.stream.run.v1` under a `host.operations` key.
 Beside them: the genesis statement's digest, a run end, a group of records with the last record's digest, and two STATEs.
 `stream.py` computes them under the owner decisions of 2026-10-13, the operations key the RFC 8032 section 7.1 test 2 key; `crates/permguard-stream/tests/stream_vectors.rs` reproduces them and verifies both envelopes.
+Under `batches` it also freezes two chained sealed batches of the genesis run (WP-5.2), signed under a `data.attest` key, the RFC 8032 section 7.1 test 1 key.
+Beside them: their envelopes, the signer spans naming that key, and a pending cutover; the Rust test builds both batches from the stream key, the fence and the records and requires the generator's bytes.
+Under `ingest` it freezes the ingest's records (WP-5.3): the ship message carrying the first batch, the answers `ok` and `out_of_order`, a consumer's STATE and a fork mark.
+Under `fanout` it freezes a producer's subscriptions, active, paused and stopped, and a pruned mark (WP-5.4).

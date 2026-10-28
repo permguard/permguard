@@ -1,0 +1,42 @@
+{
+  "folder": "partialiter",
+  "files": {
+    "test-partialiter-001.yaml": {
+      "sha256": "sha256:fbc98d8864fd504afdd61a332175239a293513192d659bdd7ca1299a838fe98f",
+      "cases": [
+        {
+          "note": "partialiter/sets unique",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := count([x | q[x]])\n\nq contains 1\n\nq contains 1\n\nq contains 2\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "partialiter/objects unique",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := count([x | q[x]])\n\nq[1] := 1\n\nq[1] := 1\n\nq[2] := 1\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "partialiter/objects conflict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := count([x | q[x]])\n\nq[1] := 1\n\nq[1] := 2\n\nq[2] := 1\n"
+          ],
+          "want_error_code": "eval_conflict_error"
+        }
+      ]
+    }
+  }
+}

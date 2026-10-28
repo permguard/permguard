@@ -14,11 +14,58 @@
 
 use std::io::{self, Write};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::output::Report;
 use crate::style;
+
+/// What `decisions export` writes (WP-6.3b, owner decision of 2026-10-20): a self-contained
+/// archive `decisions verify --file` checks offline, records, envelopes and inclusion paths with
+/// the scope they were read under, in the format `permguard.decisions.export.v1`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionArchive {
+    pub format: String,
+    pub scope_binding: DecisionArchiveScope,
+    pub summary: DecisionArchiveSummary,
+    pub records: Vec<Value>,
+    pub envelopes: Vec<Value>,
+    pub inclusion: Vec<Value>,
+    /// The page as the terminal shows it; never written to the archive.
+    #[serde(skip)]
+    pub report: Option<DecisionsReport>,
+}
+
+/// The scope an archive's records were read under, which decides how they are proved: a producer
+/// stream by its chain, a tenant view by its inclusion paths.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DecisionArchiveScope {
+    Tenant { zone: String, ledger: String },
+    Stream { pdp: String, instance: String },
+}
+
+/// Where an export stopped, and whether it reached the end of its snapshot.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionArchiveSummary {
+    pub next: String,
+    pub more: bool,
+    pub truncated: bool,
+}
+
+impl Report for DecisionArchive {
+    fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
+        match &self.report {
+            Some(report) => report.render_terminal(out),
+            None => writeln!(
+                out,
+                "  {} records archived as {}",
+                self.records.len(),
+                self.format
+            ),
+        }
+    }
+}
 
 /// A page of decisions, and what checking them concluded.
 #[derive(Debug, Clone, Serialize)]

@@ -21,11 +21,16 @@ autogenerate: false
 working_dir: /var/lib/permguard/data-plane
 
 # The volume under working_dir, as the startup probe and the qualification registry read it.
-# Its keys are checked when the file is read (a misspelled one is refused); its values are
-# validated and enforced once the Host composition lands (WP-2.1).
-# The filesystem and its version are detected, never configured. A tuple not listed under
-# `qualified` is refused under `production` unless `compatibility_mode` is on, which is then
-# published, and is always refused under `regulated`.
+# Bootstrap probes the filesystem under host/state/fs-probe and qualifies the volume's tuple before
+# anything is read from it (TS-5); discovery publishes the qualification and its evidence id only.
+# The filesystem and its version are detected, never configured. From `production` a tuple not
+# listed under `qualified` is refused; `compatibility_mode` relaxes nothing there, and below it is
+# the published name of running on an unqualified platform. A qualified entry also proves
+# encryption at rest: it names its `encryption` mechanism, the evidence `revision` and when it
+# `expires_at`; an incomplete entry is refused, and one that expires while serving takes the Host
+# out of Ready. Bootstrap also verifies the volume is
+# private: owned by the process's non-root user, directories 0700, files 0600, no symbolic link,
+# nothing mounted inside; from `production` a breach stops the start, below it is logged.
 # storage:
 #   volume:
 #     storage_class: fast-ssd          # the storage class the volume comes from
@@ -36,10 +41,36 @@ working_dir: /var/lib/permguard/data-plane
 #       filesystem: ext4
 #       version: "6.8"                # a release, or a prefix of releases ending at . or -
 #       evidence: QUAL-2026-01         # where the crash and takeover tests are recorded
+#       encryption: aws-kms-ebs        # the encryption-at-rest mechanism the evidence proves
+#       revision: "3"                  # the evidence's revision
+#       expires_at: "2027-06-30T00:00:00Z"  # past it the entry is stale
 #   compatibility_mode: false
 #   floors:
 #     free_bytes: 64M                  # the default
 #     free_inodes: "1000"              # the default
+#   quotas:
+#     host:
+#       bytes: 80G                     # at most objectives.max_volume_size, from `production`
+
+# The service objectives this deployment declares (TS-5). Every value is bounded; from
+# `production` every one is required and cross-validated: a subsystem bound that alarms on it does
+# so by four fifths of it (mirrors.stale_after, the decision spool's age, the checkpoints' max_lag),
+# backup_interval is shorter than operations.backup.retention, restore_test_interval at most it,
+# and storage.quotas.host.bytes at most max_volume_size. Discovery publishes the values; readiness
+# is held while the stalest mirror, the spool's headroom, the checkpoints or the newest backup is
+# past its margin.
+# objectives:
+#   data_loss: 0s                      # acknowledged writes are flushed first
+#   recovery_time: 1h
+#   max_volume_size: 100G
+#   membership_offline_grace: 24h
+#   mirror_staleness: 1h
+#   evidence_shipping_lag: 1d
+#   spool_headroom: 20%
+#   checkpoint_export_lag: 1d
+#   backup_interval: 1d
+#   restore_test_interval: 30d
+#   key_recovery_owner: security-team  # who recovers the keys: a label, never a secret
 
 log:
   level: info
@@ -83,47 +114,49 @@ dataPlane:
   # ── What this plane mirrors ──────────────────────────────────────────────────────────────────
   # Sync belongs to the data plane: it is the plane that answers decisions that needs the policies,
   # and a control plane has nothing to mirror. Each followed ledger becomes its own directory under
-  # <working_dir>/mirrors/<zone-id>/<ledger-id>, and they are all kept current at once.
+  # <working_dir>/mirrors/<authority>/<zone-id>/<ledger-id>, and they are all kept current at once.
   #
   # A plane fed by other means — a sidecar running `permguard pull`, a baked image, a mounted
   # volume — leaves this out entirely and serves whatever its volume holds.
   #
-  # The server URL is exact: it is who you trust, whose certificate you check, whose ring signs what
-  # you accept. Zones and ledgers are patterns, matched against what the server actually lists, so a
-  # ledger created tomorrow is followed without touching this file. A pattern describes a whole name:
-  # `main` follows the ledger `main`, never `main-staging`. Naming NEITHER zones NOR ledgers means
-  # everything that server lists — the URL alone is "mirror it all".
+  # What it mirrors is never a URL (WP-7.7: v0.1.6 was the last release that followed one, and a
+  # `servers` list stops the start). It follows the `policy.mirror` tasks of this Host's
+  # memberships, whose signed manifest binds the coordinator, the scope and the ring the heads
+  # verify under, so this file names no server, no TLS root and no key.
+  # Zones and ledgers are patterns, matched against what a task lists, so a ledger created tomorrow
+  # is followed without touching this file. A pattern describes a whole name: `main` follows the
+  # ledger `main`, never `main-staging`.
   # mirrors:
   #   enabled: "true"
   #   interval: "30s"        # how often a round STARTS; a tick that finds the previous one working is skipped
   #   timeout: "2m"          # per ledger: one that exceeds it is abandoned for this round, not forever
   #   parallelism: "4"       # how many ledgers are mirrored at once
-  #   jitter: "0.1"          # each round waits interval ± (interval × jitter)/2, drawn again
+  #   jitter: "0.1"          # each round waits interval × (1 + jitter × u), u drawn in [-1, 1]
   #                          # every round — so replicas do not wake together, and do not re-align
   #   stale_after: "0s"      # how old the last verified sync may grow before this plane alarms;
   #                          # "0s" or absent: no bound. Still served — the alarm is the point.
   #   expire_after: "0s"     # how old it may grow before this plane refuses to answer from the
   #                          # mirror (503). A revocation that matters makes "indefinitely" wrong;
   #                          # a flaky link makes "minutes" wrong — this is the deployment's number.
-  #   servers:
-  #     - url: "http://control-plane:6443"    # everything this server lists: no zones, no ledgers
-  #     - url: "https://control.acme.com"     # narrowed, and reached over TLS
-  #       zones: ["acme-.*"]                  # absent means every zone the server lists
-  #       ledgers: ["main-ledger", "prod"]    # absent means every ledger of a matching zone
-  #       tls:
-  #         ca_file: tls/control-plane-ca.pem   # the authority its certificate is checked against;
-  #                                             # absent means the platform trust store
-  #     - url: "grpcs://control.internal:6443"  # the same NOTP transfer, over gRPC
-  #       zones: ["eu", "us"]                   # several patterns are alternatives
-  #       tls:
-  #         ca_file: tls/control-plane-ca.pem
-  #         cert: tls/control-plane-client.pem  # our own certificate, where the server asks for one
-  #         key: tls/control-plane-client.key   # mutual TLS: material or not, there is no `mtls` flag
-  #         server_name: control-plane          # check the certificate against the name it carries,
-  #                                             # when this plane dials it by another address
-  #
-  # There is deliberately no "skip verification" here: a plane that accepts any certificate is a
-  # plane whose policies come from whoever answers the port, and nobody is watching this one.
+  #   reap_grace: "1h"       # a membership mirror its task no longer lists is a reap candidate,
+  #                          # still served; it goes only when a later complete listing, at least
+  #                          # this long after the first, still leaves it out ("0s": the next one)
+  #   revocation_objective: "0s"
+  #                          # how soon a revocation must reach this plane; polling, what a
+  #                          # lost watch falls back to, must meet it: interval × (1 + jitter)
+  #                          # above it refuses the configuration. "0s" or absent: none declared
+  #   aliases:               # two coordinators serving a ledger under one name are refused until
+  #                          # an alias says which authority the names mean — never list order
+  #                          # (by name or by id, as requests name the ledger: one entry each)
+  #     - zone: "acme"
+  #       ledger: "main-ledger"
+  #       authority: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"  # the coordinator Host's id
+  #   tasks:                 # the membership tasks, each followed whole unless named here;
+  #                          # naming any follows only those named
+  #     - membership: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"  # as `host members list` shows it
+  #       task: "policy-mirror"
+  #       zones: ["acme"]
+  #       ledgers: ["main-ledger"]
 
   # ── What the decision path may spend ─────────────────────────────────────────────────────────
   # A check is answered out of memory: the ledger's policies are read from the volume once,
@@ -142,19 +175,24 @@ dataPlane:
   #     bytes: "256M"          # what they may weigh; accepts k/M/G
   #   max_evaluations: "256"   # the most evaluations one boxcarred request may carry
 
+  #   # A signed response, when a request sends `request_nonce`: a JWS under the plane's
+  #   # `data.attest` ring, addressed to the authenticated caller. On by default where that ring is
+  #   # composed; a request for a signature this plane cannot make is refused, never answered
+  #   # unsigned.
+  #   response_signing:
+  #     enabled: "true"
+  #     validity: "5m"         # the lifetime every signed response carries; 1s to 1h, whole seconds
+  #     clock_skew: "30s"      # the skew discovery tells a verifier to allow; 1s to 5m
+
   #   # Every decision, recorded where it can be kept, proven and consumed. Off by default: a
   #   # decision log is a security control and a data-protection surface at once, and neither is
   #   # switched on for a deployment that did not ask for it.
   #   log:
   #     enabled: "true"
-  #     pdp_id: data-plane-eu-1        # required when the log is on. Half of every stream identity:
-  #                                    # two replicas sharing one write two records at one (stream,
-  #                                    # seq), and that closes a stream permanently at the far end.
-  #                                    # A hostname fallback is convenient and wrong the first time
-  #                                    # two replicas run on one host, so there is not one.
   #
-  #     # Where the record goes. Described exactly like a mirror source, because it is the same kind
-  #     # of relationship: a server this plane authenticates before it speaks to it.
+  #     # Where a version 1 spool left by an earlier release is shipped until it is empty: since
+  #     # WP-6.1 new records go over the membership's `decisions.ship` task, never here. Described
+  #     # exactly like a mirror source: a server this plane authenticates before it speaks to it.
   #     server:
   #       url: "grpcs://control.acme.com:6443"     # exact: this is who you trust
   #       tls:
@@ -165,40 +203,34 @@ dataPlane:
   #                                                # be able to grant one without the other
   #         server_name: control-plane             # when the address is not the name
   #
-  #     # Durability before the network. Bounded both ways: a spool that grows without limit turns a
-  #     # control-plane outage into a full disk.
+  #     # The bounds of what the Host's stream holds unacknowledged by the required subscriptions:
+  #     # past either, decisions are refused `unavailable`, so a coordinator outage costs disk up
+  #     # to a bound, never an unrecorded answer.
   #     spool:
-  #       directory: "data/decisions/spool"       # under the working directory; holds the instance id too
-  #       bytes: "512M"                # DECISION RECORDS ONLY. The record that ends a stream is
-  #                                    # reserved outside this bound, because a producer that cannot
-  #                                    # write its last record cannot legally discard anything and
-  #                                    # cannot continue at all.
-  #       age: "24h"                   # how old the oldest unshipped record may be
+  #       directory: "data/decisions/spool"       # a legacy version 1 spool, and the zone key witness
+  #       bytes: "512M"                # unacknowledged record bytes
+  #       age: "24h"                   # how old the oldest unacknowledged batch may be
   #
   #     # Latency against efficiency: whichever comes first.
   #     batch: { bytes: "256k", interval: "1s" }
   #
-  #     # What a full spool means — the one decision only a deployment can make.
-  #     #   open   keep answering; the stream ends with a signed discontinuity and a new one begins
-  #     #   closed refuse to decide rather than decide unrecorded
-  #     on_full: "open"
+  #     # What the log promises before an answer (WP-6.1):
+  #     #   required  every answered decision has a durable record; one that cannot be recorded is
+  #     #             refused `unavailable` (the default when the log is on)
+  #     #   disabled  no record is promised
+  #     mode: "required"
   #
   #     # What is written. Denies and errors are never sampled, whatever this says: a log that drops
-  #     # refusals is not an audit trail.
+  #     # refusals is not an audit trail. `required` records every answer, so below "1.0" is refused.
   #     sample: { permits: "1.0" }
   #
   #     # Caller-supplied attributes may carry personal data, so they are off by default and named
   #     # one at a time. An allow-list, never a deny-list: a field added to a request tomorrow must
   #     # not start being recorded by itself. Their keyed commitments are always recorded, which
   #     # proves what the decision saw without keeping it.
-  #     # The secret input commitments are taken under. Required when the log is on, and a
-  #     # *different* key from the pseudonymisation one: they protect different things, and
-  #     # rotating one to crypto-shred pseudonyms must not invalidate every commitment with it.
-  #     # A commitment keyed by anything public — a hostname, this plane's own name — is a bare
-  #     # digest, and a bare digest of `department=HR` is a dictionary away from `HR`.
-  #     commitment:
-  #       key_ref: decision-commitment      # in the secret store this deployment composes
-  #       key_version: "v1"                 # recorded in every marker, so rotation is legible
+  #     # The input commitments are keyed per ledger by the zone keys derived from
+  #     # `operations.secrets.coordinator_root_ref` (WP-3.3), required when the log is on: a
+  #     # commitment keyed by anything public is a dictionary away from the attribute it hides.
   #     include:
   #       subject_properties: ["department"]
   #       resource_properties: []
@@ -216,9 +248,7 @@ dataPlane:
   # submission closed, and there is nothing for a deployment to choose.
   # events:
   #   enabled: "true"
-  #   producer_id: data-plane-eu-1   # required when the interface is on. A producer id owns a hash
-  #                                  # chain: two planes sharing one would each append to a stream
-  #                                  # the other also claims, and neither history could be verified.
+  #   # the stream is named by the Host's `host_id` and run: no producer id is configured
   #   directory: data/events         # under the working directory
   #
   #   stream:
@@ -228,6 +258,21 @@ dataPlane:
   #     group_commit_max_delay: "5ms"  # a latency budget, never a durability one: a receipt is
   #                                    # still withheld until the record is on disk. What this buys
   #                                    # is that ten submissions arriving together cost one flush.
+  #
+  #   warm:                          # what warm temporal histories may hold, in bytes (TL-5):
+  #     bytes: "256M"                # the Host's, across every zone
+  #     zone_bytes: "64M"            # one zone's; defaults to a quarter of the Host's
+  #     partition_bytes: "64M"       # one compiled partition's; the coldest history goes first,
+  #                                  # and an evicted one is replayed from the journal
+  #
+  #   replay:                        # the plan of one cold history's replay; past any limit the
+  #                                  # partition answers E `evaluation_deadline_exceeded`
+  #     max_records: "100000"        # the most records one replay reads
+  #     max_bytes: "64M"             # the most bytes one replay feeds an engine
+  #     timeout: "2s"                # how long one submission's replay may run
+  #     concurrency: "4"             # cold replays at once; another is turned away at once
+  #     prewarm: "0"                 # recently used histories of each ledger replayed after
+  #                                  # load, in the background; 0 is off
   #
   #   retention:
   #     minimum: "48h"               # a FLOOR, not the answer: the requirement is this plus what
@@ -258,17 +303,12 @@ dataPlane:
   #   #                    `max_staleness` — the mode for "decide only on history I can vouch for"
   #   pull:
   #     mode: local
-  #     interval: "2s"
+  #     interval: "2s"               # accepted and inert since the Host imports (WP-6.2c2b2)
   #     max_staleness: "10s"         # required in practice by shared-bounded
   #     ledgers:
   #       - zone: acme
   #         ledger: agent-governance
-  #         event_types: [permguard.dogwood.event.v1]
-  #     producer_keys:               # required by either shared mode; bound to origin and tenant
-  #       - path: trust/data-plane-b-events.jwks
-  #         producer: data-plane-b
-  #         zone: acme
-  #         ledger: agent-governance
+  #         event_types: [permguard.dogwood.event.v1]   # accepted and inert: the whole ledger is imported
 
 # Contracts this build carries whose wire and replication shapes have not yet proven stable.
 # A block rather than scattered flags, so what is provisional is visible in one place.
@@ -317,6 +357,19 @@ host:
 #   write_stall_timeout: "30s"      # a response making no progress: the client stopped reading
 
 operations:
+  # The backups (TS-5): encrypted under a recovery key separate from every other, kept for a
+  # declared retention and destroyed by a tested procedure; from `production` all four are
+  # required. The key is named by secret reference — at least 128 bits, no other key's — and its
+  # id, what every snapshot manifest binds and `restore` checks before it writes, is its
+  # fingerprint. Below `production` a provider's `recovery_key_id` may stand alone; from it the
+  # Host and every restore resolve the key itself, and a backup must be finalized within
+  # objectives.backup_interval of the last, or of the volume's creation.
+  # backup:
+  #   recovery_key: backup-recovery    # a secret reference, resolved by operations.secrets
+  #   # recovery_key_id: "kms:..."     # a provider's key id: below `production` only
+  #   encryption_profile: aes-256-gcm
+  #   retention: 90d
+  #   destruction: DESTROY-2026-01     # the tested destruction procedure's evidence id
   keys:
     enabled: true
     publish_ahead: 1h

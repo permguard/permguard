@@ -58,6 +58,189 @@ pub(crate) async fn enrolled(api: &HostApi, member: &Host, request_id: &str) -> 
     enrolled_requiring(api, member, request_id, &[]).await
 }
 
+#[derive(Default)]
+struct DownConnector {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl Connector for DownConnector {
+    fn exchange(
+        &self,
+        _target: crate::membership::member::Target,
+        _exchange: crate::membership::member::Exchange,
+    ) -> permguard_core::BoxFuture<
+        '_,
+        Result<crate::membership::member::Exchanged, crate::session::Refusal>,
+    > {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(std::future::ready(Err(crate::session::Refusal {
+            code: codes::common::UNAVAILABLE,
+            reason: "the coordinator is down".to_owned(),
+        })))
+    }
+}
+
+#[tokio::test]
+async fn member_verification_replays_and_validates_the_request_before_contacting_the_coordinator() {
+    let root = scratch("member-verify-preflight");
+    let (mut api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let member = Host::new("member-verify-preflight-member");
+    let (id, pending) = enrolled(&api, &member, "member-verify-enroll").await;
+    let (other_id, other_pending) = enrolled(&api, &member, "member-verify-enroll-other").await;
+    member
+        .store
+        .join(
+            &Applying::for_tests(80),
+            &Pending {
+                coordinator_address: Some("https://coordinator:7443".to_owned()),
+                ..pending
+            },
+            now(),
+        )
+        .expect("joined");
+    member
+        .store
+        .join(
+            &Applying::for_tests(81),
+            &Pending {
+                coordinator_address: Some("https://coordinator:7443".to_owned()),
+                ..other_pending
+            },
+            now(),
+        )
+        .expect("joined twice");
+    let down = Arc::new(DownConnector::default());
+    {
+        let service = Arc::get_mut(api.memberships.as_mut().expect("memberships"))
+            .expect("the test owns the membership service");
+        service.store = Arc::clone(&member.store);
+        service.connector = Some(down.clone());
+    }
+    let memberships = Arc::clone(api.memberships.as_ref().expect("memberships"));
+
+    let verify = VerifyMember {
+        request_id: "member-verify-1".to_owned(),
+    };
+    let membership_id = id_of(&id).expect("an id");
+    let held = member.store.membership(&membership_id).expect("held");
+    let principal = permguard_core::authz::Principal::new("spiffe://acme/operators/root")
+        .expect("an administrator principal");
+    let first = api
+        .transact(
+            DOMAIN,
+            &principal,
+            VERIFY,
+            AUDIT_VERIFIED,
+            &Mutation {
+                request_id: verify.request_id.clone(),
+                expected_revision: None,
+            },
+            &(&id, &verify),
+            Some(id.clone()),
+            || Ok(()),
+            |applying| {
+                let value = MemberVerification {
+                    receipt: api.receipt(applying.operation_id(), held.revision),
+                    membership_id: id.clone(),
+                    status: "proved".to_owned(),
+                    scheduled_at: None,
+                    member: MemberView::of(&held, &api.viewing(&memberships)),
+                };
+                member
+                    .store
+                    .record_verification_result(applying, &membership_id, held.revision, &value)
+                    .map_err(failure)?;
+                Ok(Applied {
+                    revision: held.revision,
+                    target: Some(id.clone()),
+                    value,
+                })
+            },
+            |_, _, _| unreachable!("the seeded operation is new"),
+        )
+        .expect("the first proof is recorded");
+
+    let replayed = api
+        .verify_member(&admin(), &id, verify.clone())
+        .await
+        .expect("a retry answers while its coordinator is down");
+    assert_eq!(replayed, first);
+    let reused = api
+        .verify_member(&admin(), &other_id, verify)
+        .await
+        .expect_err("the same request id cannot name another member");
+    assert_eq!(code(&reused), codes::host::REQUEST_ID_REUSED);
+    assert_eq!(down.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn coordinator_verification_is_durable_across_restart_and_replay() {
+    let root = scratch("members-verify");
+    let member = Host::new("members-verify-member");
+    let (api, _, volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let (id, _) = enrolled(&api, &member, "verify-enroll").await;
+    let other = Host::new("members-verify-other");
+    let (other_id, _) = enrolled(&api, &other, "verify-enroll-other").await;
+    let first = api
+        .verify_member(
+            &admin(),
+            &id,
+            VerifyMember {
+                request_id: "verify-1".to_owned(),
+            },
+        )
+        .await
+        .expect("scheduled");
+    assert_eq!(first.status, "scheduled");
+    assert!(first.scheduled_at.is_some());
+    assert_eq!(first.receipt.revision, first.member.revision);
+    assert!(
+        api.memberships
+            .as_ref()
+            .expect("memberships")
+            .store
+            .satisfy_verification(&id_of(&id).expect("an id"), &member.identity.host_id(),)
+            .expect("consumed")
+    );
+    let consumed_replay = api
+        .verify_member(
+            &admin(),
+            &id,
+            VerifyMember {
+                request_id: "verify-1".to_owned(),
+            },
+        )
+        .await
+        .expect("the consumed schedule still replays its receipt");
+    assert_eq!(consumed_replay, first);
+    drop(api);
+    drop(volume);
+
+    let (reopened, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let replayed = reopened
+        .verify_member(
+            &admin(),
+            &id,
+            VerifyMember {
+                request_id: "verify-1".to_owned(),
+            },
+        )
+        .await
+        .expect("the consumed schedule and receipt replay after restart");
+    assert_eq!(replayed, first);
+    let reused = reopened
+        .verify_member(
+            &admin(),
+            &other_id,
+            VerifyMember {
+                request_id: "verify-1".to_owned(),
+            },
+        )
+        .await
+        .expect_err("one request id cannot verify another target");
+    assert_eq!(code(&reused), codes::host::REQUEST_ID_REUSED);
+}
+
 /// [`enrolled`], the task requiring `controls` (WP-4.2).
 pub(crate) async fn enrolled_requiring(
     api: &HostApi,
@@ -990,6 +1173,17 @@ async fn every_admin_route_is_denied_without_membership_admin() {
             .await
             .map(|_| ()),
         );
+        denied(
+            api.verify_member(
+                &who,
+                &id,
+                VerifyMember {
+                    request_id: "x".to_owned(),
+                },
+            )
+            .await
+            .map(|_| ()),
+        );
     }
     // Nothing moved.
     assert_eq!(api.member(&admin(), &id).expect("read").status, "pending");
@@ -1766,4 +1960,258 @@ async fn the_member_view_shows_member_reported_progress_apart_from_receipt() {
             .get("key")
             .is_none()
     );
+}
+
+/// `member` enrolled with an `events.ship` task over `plane/data/*`, pending approval.
+async fn shipping_events(api: &HostApi, member: &Host, request_id: &str) -> Pending {
+    use crate::membership::record::TaskType;
+
+    let mut events = decisions("plane/data/*");
+    events.task_id = "events".to_owned();
+    events.task_type = TaskType::EventsShip;
+    events.resource_types = vec!["ledger".to_owned()];
+    let created = api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                tasks: vec![TaskView::from(&events)],
+                ..create(request_id, Some(member))
+            },
+        )
+        .await
+        .expect("invited");
+    let token = URL_SAFE_NO_PAD.decode(&created.token).expect("base64url");
+    let identity = api.identity.as_deref().expect("an identity");
+    let store = &api.memberships.as_deref().expect("memberships").store;
+    let pending = store
+        .check_enroll(
+            &Coordinator {
+                identity,
+                rings: api.keys.rings(),
+            },
+            &Enrolling {
+                peer: &member.verified(),
+                presentation: &member.presentation(),
+                declared_assurance: AssuranceProfile::Production,
+                exporter: &EXPORTER,
+            },
+            &EnrollRequest {
+                capabilities: crate::membership::tests::member_capabilities(),
+                invite_id: id_of(&created.invite_id).expect("an id"),
+                token_proof: token_proof(
+                    &token,
+                    &identity.host_id(),
+                    &member.identity.host_id(),
+                    &EXPORTER,
+                ),
+                selector: selector("plane/data/*").expect("a selector"),
+                tasks: vec![events],
+                member: member.host_ref(),
+                ring_statements: vec![member.statement(DATA_ATTEST)],
+            },
+            now(),
+        )
+        .expect("the enrollment checks");
+    store
+        .enroll(&Applying::for_tests(72), &pending, now())
+        .expect("enrolled");
+    pending
+}
+
+/// Approves the pending membership `id`.
+async fn approved(api: &HostApi, id: &str, request_id: &str) {
+    let revision = api.member(&admin(), id).expect("read").revision;
+    api.approve_member(
+        &admin(),
+        id,
+        ApproveMember {
+            request_id: request_id.to_owned(),
+            expected_revision: revision,
+            narrow: None,
+            lease_policy: None,
+            assurance: None,
+        },
+    )
+    .await
+    .expect("approved");
+}
+
+/// WP-6.2c1 (owner decision of 2026-10-19): the required origins of a resource are the active
+/// members whose `events.ship` covers it, each with its manifest in force; the revision moves when
+/// one leaves the set.
+#[tokio::test]
+async fn the_import_origins_are_the_active_members_shipping_events_over_the_resource() {
+    let root = scratch("members-import-origins");
+    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let member = Host::new("import-origins-m");
+    let pending = shipping_events(&api, &member, "origins-1").await;
+    let id = uuid_text(&pending.membership_id);
+    let ledger =
+        permguard_core::authz::Resource::parse("plane/data/zone/z1/ledger/l1").expect("a resource");
+
+    // Pending: not an origin yet.
+    let none = api.import_origins(&ledger).expect("read");
+    assert!(none.origins.is_empty());
+
+    approved(&api, &id, "origins-2").await;
+    let active = api.import_origins(&ledger).expect("read");
+    assert_eq!(active.origins.len(), 1);
+    let origin = &active.origins[0];
+    assert_eq!(origin.host_id, member.identity.host_id());
+    assert_eq!(origin.membership_id, pending.membership_id);
+    let view = api.member(&admin(), &id).expect("read");
+    assert_eq!(
+        URL_SAFE_NO_PAD.encode(&origin.manifest),
+        view.manifest.expect("signed"),
+        "the manifest in force, as signed"
+    );
+    assert_ne!(active.revision, none.revision);
+    // Its `data.attest` pins over its manifests, what the checkpoint signs for it.
+    assert_eq!(active.pins.len(), 1);
+    assert_eq!(active.pins[0].0, member.identity.host_id());
+    assert_eq!(active.pins[0].1.len(), 1);
+    assert_eq!(active.pins[0].1[0].ring, DATA_ATTEST);
+    // Outside the task's selector, no origin is required.
+    let elsewhere =
+        permguard_core::authz::Resource::parse("plane/control/zone/z1").expect("a resource");
+    assert!(
+        api.import_origins(&elsewhere)
+            .expect("read")
+            .origins
+            .is_empty()
+    );
+
+    // Suspended, it leaves the set, and the revision moves again.
+    api.suspend_member(&admin(), &id, change("origins-3", view.revision))
+        .await
+        .expect("suspended");
+    let suspended = api.import_origins(&ledger).expect("read");
+    assert!(suspended.origins.is_empty());
+    assert_eq!(
+        suspended.revision, none.revision,
+        "the empty set's revision"
+    );
+}
+
+/// After the review: a membership held for review is no origin, and a Host holding two active
+/// memberships over the resource is refused rather than named twice.
+#[tokio::test]
+async fn a_held_member_is_no_origin_and_one_host_is_never_two() {
+    let root = scratch("members-import-held");
+    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let member = Host::new("import-held-m");
+    let ledger =
+        permguard_core::authz::Resource::parse("plane/data/zone/z1/ledger/l1").expect("a resource");
+    let first = shipping_events(&api, &member, "held-1").await;
+    approved(&api, &uuid_text(&first.membership_id), "held-2").await;
+    assert_eq!(api.import_origins(&ledger).expect("read").origins.len(), 1);
+    api.memberships
+        .as_deref()
+        .expect("memberships")
+        .store
+        .hold(&Applying::for_tests(74), &first.membership_id, 4, now())
+        .expect("held");
+    assert!(
+        api.import_origins(&ledger)
+            .expect("read")
+            .origins
+            .is_empty()
+    );
+
+    let other = Host::new("import-held-twice");
+    let one = shipping_events(&api, &other, "twice-1").await;
+    approved(&api, &uuid_text(&one.membership_id), "twice-2").await;
+    let two = shipping_events(&api, &other, "twice-3").await;
+    approved(&api, &uuid_text(&two.membership_id), "twice-4").await;
+    assert!(api.import_origins(&ledger).is_err());
+}
+
+/// A stream engine whose subscriptions the coordinator refused, as a test sets them.
+#[derive(Default)]
+struct Refusing(std::sync::Mutex<Vec<crate::composition::RefusedShipping>>);
+
+impl crate::composition::StreamShipping for Refusing {
+    fn due(&self, _: &crate::composition::Subscribed<'_>) -> Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
+
+    fn next(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        _: &str,
+        _: u64,
+    ) -> Result<Option<crate::composition::Shipment>, String> {
+        Ok(None)
+    }
+
+    fn answered(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        _: &str,
+        _: &crate::composition::Shipment,
+        _: &[u8],
+    ) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    fn deferred(&self, _: &crate::composition::Subscribed<'_>, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn retain(&self, _: &[u8; 16], _: &[String]) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn refused(&self) -> Result<Vec<crate::composition::RefusedShipping>, String> {
+        Ok(self.0.lock().expect("lock").clone())
+    }
+}
+
+/// F-08: a subscription the coordinator refused keeps the Host `degraded: evidence_shipping`,
+/// naming the stream, its resource, its task and why, for as long as it does not ship; once it
+/// ships again the next pass restores the capability. Shipping never stops silently.
+#[tokio::test]
+async fn a_refused_subscription_is_named_on_health_until_it_ships_again() {
+    let root = scratch("members-refused-shipping");
+    let (mut api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let engine = Arc::new(Refusing::default());
+    {
+        let service = Arc::get_mut(api.memberships.as_mut().expect("memberships"))
+            .expect("the test owns the membership service");
+        service.shipping = Some(Arc::clone(&engine) as Arc<dyn crate::composition::StreamShipping>);
+    }
+    let degraded = |api: &HostApi| {
+        api.status(&admin())
+            .expect("the status")
+            .degraded
+            .into_iter()
+            .find(|held| held.capability == EVIDENCE_SHIPPING)
+    };
+
+    api.ship_due().await;
+    assert!(degraded(&api).is_none(), "nothing refused, nothing named");
+
+    *engine.0.lock().expect("lock") = vec![crate::composition::RefusedShipping {
+        membership_id: [0x5a; 16],
+        stream: "data/decisions".to_owned(),
+        resource: "plane/data/zone/acme/ledger/main".to_owned(),
+        task_id: "decisions".to_owned(),
+        state: "paused at epoch 1".to_owned(),
+    }];
+    api.ship_due().await;
+    let named = degraded(&api).expect("the refusal is named");
+    for part in [
+        "5a5a5a5a-5a5a-5a5a-5a5a-5a5a5a5a5a5a",
+        "data/decisions",
+        "plane/data/zone/acme/ledger/main",
+        "decisions",
+        "paused at epoch 1",
+    ] {
+        assert!(named.reason.contains(part), "{part} in {}", named.reason);
+    }
+
+    // Approved: the subscription ships again, and the next pass restores the capability.
+    engine.0.lock().expect("lock").clear();
+    api.ship_due().await;
+    assert!(degraded(&api).is_none(), "restored once it ships");
 }

@@ -49,6 +49,10 @@ pub mod catalog {
     pub const ZONE_NOT_EMPTY: &str = "zone_not_empty";
     pub const INVALID_NAME: &str = "invalid_name";
     pub const CATALOG_FAILED: &str = "catalog_failed";
+    /// A mutation expected another revision than the record's (WP-7.3a, owner decision).
+    pub const REVISION_CONFLICT: &str = "revision_conflict";
+    /// A push to an archived ledger (WP-7.3b, owner decision of 2026-10-21).
+    pub const LEDGER_ARCHIVED: &str = "ledger_archived";
 }
 
 /// `permguard.api.pdp.native.v1`.
@@ -90,7 +94,10 @@ pub mod pdp_native {
     pub const LEDGER_EMPTY: &str = "ledger_empty";
     pub const LEDGER_DAMAGED: &str = "ledger_damaged";
     pub const PROFILE_UNKNOWN: &str = "profile_unknown";
-    /// A cold load found the loading pool full.
+    /// A load found the storage pool full. The load runs on every request — it reads the ledger's
+    /// ref, so a synchronization is visible at once — and under `required` evidence the decision
+    /// records waiting for their flush hold the same pool, so this is the code a plane past its
+    /// storage capacity answers most (TS-3).
     pub const LOAD_AT_CAPACITY: &str = "load_at_capacity";
     /// A cold load of the ledger failed.
     pub const LOAD_FAILED: &str = "load_failed";
@@ -158,6 +165,7 @@ pub mod pdp_temporal {
     pub const EVENT_RECORD_INVALID: &str = "event_record_invalid";
     pub const EVENT_RECORD_UNREADABLE: &str = "event_record_unreadable";
     pub const EVENT_RECOVERY_COMMIT_UNAVAILABLE: &str = "event_recovery_commit_unavailable";
+    pub const HISTORY_CONFLICTED: &str = "history_conflicted";
     pub const HISTORY_CONTRACT_INCOMPATIBLE: &str = "history_contract_incompatible";
     pub const HISTORY_INCOMPLETE: &str = "history_incomplete";
     pub const HISTORY_KEY_NOT_CANONICAL: &str = "history_key_not_canonical";
@@ -206,7 +214,13 @@ pub mod stream {
     pub const UNSUPPORTED: &str = "unsupported";
     pub const CLOSED: &str = "closed";
     pub const ACK_AHEAD: &str = "ack_ahead";
+    /// A consumer acknowledged less than it had: its durable store lost acknowledged records, an
+    /// incident; the subscription stops (WP-5.4).
+    pub const ACK_BEHIND: &str = "ack_behind";
     pub const UNSHIPPABLE: &str = "unshippable";
+    /// A coordinator restored from a snapshot needs records the producer already deleted: a
+    /// durable producer gap, nothing reconstructed; the subscription stops (WP-7.9b).
+    pub const PRODUCER_GAP: &str = "producer_gap";
     pub const DECISION_NOT_FOUND: &str = "decision_not_found";
     pub const EVENT_NOT_FOUND: &str = "event_not_found";
     pub const QUOTA_EXHAUSTED: &str = "quota_exhausted";
@@ -268,6 +282,13 @@ pub mod notp {
     pub const POLICY_ID_MISSING: &str = "policy_id_missing";
     pub const POLICY_KIND_MISSING: &str = "policy_kind_missing";
     pub const SCHEMA_AMBIGUOUS: &str = "schema_ambiguous";
+    /// No transfer session of this ledger has the id a message names (WP-7.12).
+    pub const TRANSFER_UNKNOWN: &str = "transfer_unknown";
+    /// The transfer session expired, or ended: negotiate again.
+    pub const TRANSFER_EXPIRED: &str = "transfer_expired";
+    /// The message does not match the session's binding: another caller, direction, ref,
+    /// request or parameters.
+    pub const TRANSFER_MISMATCH: &str = "transfer_mismatch";
 }
 
 /// Codes the command line and the client answer for their own failures.
@@ -289,6 +310,12 @@ pub mod client {
     pub const TLS_CLIENT_IDENTITY_REJECTED: &str = "tls_client_identity_rejected";
     pub const TLS_CLIENT_IDENTITY_INCOMPLETE: &str = "tls_client_identity_incomplete";
     pub const TLS_CLIENT_CERTIFICATE_REQUIRED: &str = "tls_client_certificate_required";
+    /// A decision export file that cannot be read, does not parse, declares another format, or
+    /// ends before its last page (WP-6.3b, owner decision of 2026-10-20).
+    pub const DECISION_EXPORT_MALFORMED: &str = "decision_export_malformed";
+    pub const DECISION_EXPORT_TRUNCATED: &str = "decision_export_truncated";
+    pub const DECISION_EXPORT_TYPE_UNSUPPORTED: &str = "decision_export_type_unsupported";
+    pub const DECISION_EXPORT_UNREADABLE: &str = "decision_export_unreadable";
     pub const EVENT_EXPORT_MALFORMED: &str = "event_export_malformed";
     pub const EVENT_EXPORT_TRUNCATED: &str = "event_export_truncated";
     pub const EVENT_EXPORT_TYPE_UNSUPPORTED: &str = "event_export_type_unsupported";
@@ -300,6 +327,8 @@ pub mod client {
     pub const DECISIONS_UNVERIFIED: &str = "decisions_unverified";
     /// A workspace head statement or local closure that did not verify (TC-1): exit 2.
     pub const HEAD_UNVERIFIED: &str = "head_unverified";
+    /// A snapshot that differs from its signed manifest, only crash-consistent (TC-3): exit 2.
+    pub const BACKUP_UNVERIFIED: &str = "backup_unverified";
     pub const EXPORT_TRUNCATED: &str = "export_truncated";
     pub const KEYS_EMPTY: &str = "keys_empty";
     pub const KEYS_MALFORMED: &str = "keys_malformed";
@@ -322,6 +351,64 @@ pub mod storage {
     pub const STALE_WRITER: &str = "storage_stale_writer";
     /// A frame carries a claim generation above the volume's claim.
     pub const CLAIM_BEHIND_DATA: &str = "storage_claim_behind_data";
+    /// A volume entry owned by another user than the process's (TS-5).
+    pub const OWNER: &str = "storage_owner";
+    /// A volume entry the group or others may reach: not `0700` or `0600` (TS-5).
+    pub const MODE: &str = "storage_mode";
+    /// A symbolic link on the volume, or a volume root reached through one (TS-5).
+    pub const LINK: &str = "storage_link";
+    /// A volume entry that is neither a directory nor a regular file (TS-5).
+    pub const FILE_KIND: &str = "storage_file_kind";
+    /// A directory of the volume on another filesystem: a mount inside it (TS-5).
+    pub const PATH_ESCAPE: &str = "storage_path_escape";
+    /// The process runs as root, not as a dedicated user (TS-5).
+    pub const RUN_AS_ROOT: &str = "storage_run_as_root";
+    /// Core dumps could not be disabled, or were found enabled (TS-5).
+    pub const CORE_DUMPS: &str = "storage_core_dumps";
+    /// The startup probe could not create, rename, remove or flush a file or directory.
+    pub const PROBE_FLUSH: &str = "storage_probe_flush";
+    /// A file the probe created owner-only did not read back owner-only.
+    pub const PROBE_PERMISSIONS: &str = "storage_probe_permissions";
+    /// The probe's exclusive advisory lock was refused, or granted twice.
+    pub const PROBE_LOCK: &str = "storage_probe_lock";
+    /// The probe's rename did not replace its target and remove its source.
+    pub const PROBE_RENAME: &str = "storage_probe_rename";
+    /// A file did not keep its identity across the probe's rename or link.
+    pub const PROBE_IDENTITY: &str = "storage_probe_identity";
+    /// The probe's hard link was refused, or replaced an existing name.
+    pub const PROBE_HARD_LINK: &str = "storage_probe_hard_link";
+    /// Truncating a flushed file changed the bytes before the cut.
+    pub const PROBE_TORN_APPEND: &str = "storage_probe_torn_append";
+    /// The probe could not reserve blocks a stream declared.
+    pub const PROBE_RESERVATION: &str = "storage_probe_reservation";
+    /// Fewer free bytes than the configured floor.
+    pub const FREE_BYTES: &str = "storage_free_bytes";
+    /// Fewer free inodes than the configured floor.
+    pub const FREE_INODES: &str = "storage_free_inodes";
+    /// The volume's tuple is not qualified for the profile in force.
+    pub const UNQUALIFIED: &str = "storage_unqualified";
+    /// The qualified entry names no encryption mechanism, revision or expiry (TS-5).
+    pub const QUALIFICATION_INCOMPLETE: &str = "storage_qualification_incomplete";
+    /// The qualified entry is past its expiry (TS-5).
+    pub const QUALIFICATION_STALE: &str = "storage_qualification_stale";
+    /// From `production`, the recovery key, encryption profile, retention or destruction procedure of the backups is not declared (TS-5).
+    pub const BACKUP_POLICY_INCOMPLETE: &str = "backup_policy_incomplete";
+    /// The recovery key the configuration resolves is not the one the snapshot or the configuration binds (TS-5).
+    pub const RECOVERY_KEY_MISMATCH: &str = "recovery_key_mismatch";
+    /// The snapshot binds a recovery key and the configuration names none (TS-5).
+    pub const RECOVERY_KEY_MISSING: &str = "recovery_key_missing";
+    /// From `production`, the restored snapshot has no manifest binding its recovery key (TS-5).
+    pub const SNAPSHOT_UNBOUND: &str = "snapshot_unbound";
+    /// The recovery key holds fewer than 16 bytes (TS-5).
+    pub const RECOVERY_KEY_WEAK: &str = "recovery_key_weak";
+    /// The recovery key is a secret another key of the deployment also names (TS-5).
+    pub const RECOVERY_KEY_SHARED: &str = "recovery_key_shared";
+    /// From `production`, a service objective is not declared (TS-5).
+    pub const OBJECTIVES_INCOMPLETE: &str = "objectives_incomplete";
+    /// A service objective contradicts a subsystem bound or the volume's quota (TS-5).
+    pub const OBJECTIVES_INCONSISTENT: &str = "objectives_inconsistent";
+    /// A measured lag or headroom crossed its objective's margin: readiness is held (TS-5).
+    pub const OBJECTIVE_MARGIN: &str = "objective_margin";
 }
 
 /// The Host API, `/host/v1` and `permguard.host.v1` (WP-2.5): what the common envelope refuses
@@ -470,6 +557,8 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         catalog::ZONE_NOT_EMPTY,
         catalog::INVALID_NAME,
         catalog::CATALOG_FAILED,
+        catalog::REVISION_CONFLICT,
+        catalog::LEDGER_ARCHIVED,
         pdp_native::ZONE_REQUIRED,
         pdp_native::LEDGER_REQUIRED,
         pdp_native::PARTITION_UNKNOWN,
@@ -554,6 +643,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         pdp_temporal::EVENT_RECORD_INVALID,
         pdp_temporal::EVENT_RECORD_UNREADABLE,
         pdp_temporal::EVENT_RECOVERY_COMMIT_UNAVAILABLE,
+        pdp_temporal::HISTORY_CONFLICTED,
         pdp_temporal::HISTORY_CONTRACT_INCOMPATIBLE,
         pdp_temporal::HISTORY_INCOMPLETE,
         pdp_temporal::HISTORY_KEY_NOT_CANONICAL,
@@ -598,7 +688,9 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         stream::UNSUPPORTED,
         stream::CLOSED,
         stream::ACK_AHEAD,
+        stream::ACK_BEHIND,
         stream::UNSHIPPABLE,
+        stream::PRODUCER_GAP,
         stream::DECISION_NOT_FOUND,
         stream::EVENT_NOT_FOUND,
         stream::QUOTA_EXHAUSTED,
@@ -648,6 +740,9 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         notp::POLICY_ID_MISSING,
         notp::POLICY_KIND_MISSING,
         notp::SCHEMA_AMBIGUOUS,
+        notp::TRANSFER_UNKNOWN,
+        notp::TRANSFER_EXPIRED,
+        notp::TRANSFER_MISMATCH,
         client::USAGE,
         client::TRANSPORT_FAILED,
         client::CONNECT_FAILED,
@@ -665,12 +760,17 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::TLS_CLIENT_IDENTITY_REJECTED,
         client::TLS_CLIENT_IDENTITY_INCOMPLETE,
         client::TLS_CLIENT_CERTIFICATE_REQUIRED,
+        client::DECISION_EXPORT_MALFORMED,
+        client::DECISION_EXPORT_TRUNCATED,
+        client::DECISION_EXPORT_TYPE_UNSUPPORTED,
+        client::DECISION_EXPORT_UNREADABLE,
         client::EVENT_EXPORT_MALFORMED,
         client::EVENT_EXPORT_TRUNCATED,
         client::EVENT_EXPORT_TYPE_UNSUPPORTED,
         client::EVENT_EXPORT_UNREADABLE,
         client::EVENT_KEYS_REQUIRED,
         client::EVENTS_UNVERIFIED,
+        client::BACKUP_UNVERIFIED,
         client::DECISIONS_UNVERIFIED,
         client::HEAD_UNVERIFIED,
         client::EXPORT_TRUNCATED,
@@ -687,6 +787,35 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::TIMEOUT,
         storage::STALE_WRITER,
         storage::CLAIM_BEHIND_DATA,
+        storage::OWNER,
+        storage::MODE,
+        storage::LINK,
+        storage::FILE_KIND,
+        storage::PATH_ESCAPE,
+        storage::RUN_AS_ROOT,
+        storage::CORE_DUMPS,
+        storage::PROBE_FLUSH,
+        storage::PROBE_PERMISSIONS,
+        storage::PROBE_LOCK,
+        storage::PROBE_RENAME,
+        storage::PROBE_IDENTITY,
+        storage::PROBE_HARD_LINK,
+        storage::PROBE_TORN_APPEND,
+        storage::PROBE_RESERVATION,
+        storage::FREE_BYTES,
+        storage::FREE_INODES,
+        storage::UNQUALIFIED,
+        storage::QUALIFICATION_INCOMPLETE,
+        storage::QUALIFICATION_STALE,
+        storage::BACKUP_POLICY_INCOMPLETE,
+        storage::RECOVERY_KEY_MISMATCH,
+        storage::RECOVERY_KEY_MISSING,
+        storage::SNAPSHOT_UNBOUND,
+        storage::RECOVERY_KEY_WEAK,
+        storage::RECOVERY_KEY_SHARED,
+        storage::OBJECTIVES_INCOMPLETE,
+        storage::OBJECTIVES_INCONSISTENT,
+        storage::OBJECTIVE_MARGIN,
         host::REQUEST_ID_REQUIRED,
         host::REQUEST_ID_REUSED,
         host::REVISION_MISMATCH,

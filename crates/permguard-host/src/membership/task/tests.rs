@@ -407,6 +407,67 @@ async fn a_copied_volume_beside_the_original_suspends_the_membership_with_a_clon
     assert_eq!(code_of(&refused), codes::host::EPOCH_STALE);
 }
 
+/// WP-5.3: a handler reporting a stream's fork through the session's incidents records the
+/// incident in the `security` trail and suspends the membership: a new epoch, and the session's
+/// next message is stale.
+#[tokio::test]
+async fn a_handler_incident_suspends_the_membership() {
+    let (c, m) = (
+        Side::new("incident-c", true),
+        Side::new("incident-m", false),
+    );
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    assert_eq!(
+        task.send("r-1", b"fork?".to_vec()).await.expect("answered"),
+        b"forked"
+    );
+    let held = c.host.store.membership(&id).expect("held");
+    assert_eq!(held.status, Status::Suspended);
+    assert_eq!(held.epoch(), 2);
+    let incident = facts(&c, AUDIT_STREAM_FORKED);
+    assert!(incident.contains(&("stream".to_owned(), "data/decisions/forked/run".to_owned())));
+    assert!(incident.contains(&("at_seq".to_owned(), "3".to_owned())));
+    let refused = task.send("r-2", Vec::new()).await.expect_err("fenced");
+    assert_eq!(code_of(&refused), codes::host::EPOCH_STALE);
+}
+
+/// WP-5.3, after the mutants: a fork reported again once the membership is suspended is neither
+/// recorded nor suspended twice.
+#[tokio::test]
+async fn a_second_report_of_a_suspended_membership_does_nothing() {
+    let (c, m) = (
+        Side::new("incident2-c", true),
+        Side::new("incident2-m", false),
+    );
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    assert_eq!(
+        task.send("r-1", b"fork twice?".to_vec())
+            .await
+            .expect("answered"),
+        b"forked"
+    );
+    assert_eq!(c.host.store.membership(&id).expect("held").epoch(), 2);
+    let recorded = c
+        .trail
+        .facts
+        .lock()
+        .expect("lock")
+        .iter()
+        .filter(|(action, _)| action == AUDIT_STREAM_FORKED)
+        .count();
+    assert_eq!(recorded, 1);
+}
+
 #[tokio::test]
 async fn a_restored_member_is_stale_until_it_syncs_and_then_leases_under_its_new_boot_id() {
     let (c, m) = (Side::new("restore-c", true), Side::new("restore-m", false));
@@ -1762,4 +1823,186 @@ async fn a_watch_ends_with_its_lease() {
     mono.advance(Duration::from_secs(step));
     let ended = task.next_event().await.expect_err("expired");
     assert_eq!(code_of(&ended), codes::host::LEASE_EXPIRED);
+}
+
+/// The stream engine a member's ship pass drives: one batch due, the answers it was given.
+#[derive(Default)]
+struct Shipping {
+    /// The body shipped; `batch` when empty.
+    body: Vec<u8>,
+    deferred: std::sync::Mutex<usize>,
+    shipped: std::sync::Mutex<bool>,
+    answers: std::sync::Mutex<Vec<(String, Vec<u8>)>>,
+    retained: std::sync::Mutex<Vec<Vec<String>>>,
+    /// The coordinator boot id each answer was handed back under.
+    boots: std::sync::Mutex<Vec<Option<[u8; 16]>>>,
+    /// Every subscription kept, as its task id and epoch.
+    subscribed: std::sync::Mutex<Vec<(String, u64)>>,
+}
+
+impl crate::composition::StreamShipping for Shipping {
+    fn due(
+        &self,
+        subscription: &crate::composition::Subscribed<'_>,
+    ) -> Result<Vec<String>, String> {
+        assert_eq!(subscription.task_id, "decisions");
+        self.subscribed
+            .lock()
+            .expect("lock")
+            .push((subscription.task_id.to_owned(), subscription.epoch));
+        Ok(if *self.shipped.lock().expect("lock") {
+            Vec::new()
+        } else {
+            vec![RESOURCE.to_owned()]
+        })
+    }
+
+    fn next(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        resource: &str,
+        max_bytes: u64,
+    ) -> Result<Option<crate::composition::Shipment>, String> {
+        assert_eq!(resource, RESOURCE);
+        assert!(max_bytes > 0, "the lease's bound");
+        let mut shipped = self.shipped.lock().expect("lock");
+        if *shipped {
+            return Ok(None);
+        }
+        *shipped = true;
+        Ok(Some(crate::composition::Shipment {
+            request_id: "ship-1".to_owned(),
+            body: if self.body.is_empty() {
+                b"batch".to_vec()
+            } else {
+                self.body.clone()
+            },
+            run: [1; 16],
+            first_seq: 1,
+            last_seq: 1,
+        }))
+    }
+
+    fn answered(
+        &self,
+        subscription: &crate::composition::Subscribed<'_>,
+        _: &str,
+        shipment: &crate::composition::Shipment,
+        answer: &[u8],
+    ) -> Result<bool, String> {
+        self.boots
+            .lock()
+            .expect("lock")
+            .push(subscription.coordinator_boot_id);
+        self.answers
+            .lock()
+            .expect("lock")
+            .push((shipment.request_id.clone(), answer.to_vec()));
+        Ok(true)
+    }
+
+    fn deferred(&self, _: &crate::composition::Subscribed<'_>, _: &str) -> Result<(), String> {
+        *self.deferred.lock().expect("lock") += 1;
+        Ok(())
+    }
+
+    fn retain(&self, _: &[u8; 16], task_ids: &[String]) -> Result<(), String> {
+        self.retained.lock().expect("lock").push(task_ids.to_vec());
+        Ok(())
+    }
+
+    fn refused(&self) -> Result<Vec<crate::composition::RefusedShipping>, String> {
+        Ok(Vec::new())
+    }
+}
+
+/// WP-5.4: the member's ship pass keeps the subscriptions to the manifest's ship tasks, opens a
+/// session on each due stream's resource, sends what the engine has ready and hands the engine
+/// each answer; nothing due, nothing opened.
+#[tokio::test]
+async fn the_ship_pass_sends_what_the_engine_has_due_and_hands_back_the_answers() {
+    let (c, m) = (Side::new("ship-c", true), Side::new("ship-m", false));
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Shipping::default();
+    let acting = Member {
+        shipping: Some(&engine),
+        ..member(&m, &connector)
+    };
+    assert_eq!(acting.ship_due(who()).await, 1);
+    assert_eq!(
+        engine.answers.lock().expect("lock").clone(),
+        vec![("ship-1".to_owned(), b"echo:batch".to_vec())]
+    );
+    // Each answer names the coordinator incarnation the session's lease named (WP-7.9b).
+    assert_eq!(
+        engine.boots.lock().expect("lock").clone(),
+        vec![Some(c.host.identity.boot_id())]
+    );
+    assert!(
+        engine
+            .retained
+            .lock()
+            .expect("lock")
+            .iter()
+            .all(|tasks| tasks.contains(&"decisions".to_owned()))
+    );
+    assert_eq!(acting.ship_due(who()).await, 0, "nothing due");
+    let _ = id;
+}
+
+/// TD-3: a manifest the member syncs registers its ship tasks at once, without waiting for the
+/// next pass: a record the plane writes between the sync and that pass opens its run under the
+/// task's fence, and is shipped, instead of landing in an unfenced run nothing ships.
+#[tokio::test]
+async fn a_synced_manifest_registers_its_ship_tasks_before_the_next_pass() {
+    let (c, m) = (
+        Side::new("subscribe-c", true),
+        Side::new("subscribe-m", false),
+    );
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Shipping::default();
+    let acting = Member {
+        shipping: Some(&engine),
+        ..member(&m, &connector)
+    };
+    assert!(engine.subscribed.lock().expect("lock").is_empty());
+    let held = acting.sync(who(), &id).await.expect("synced");
+    assert_eq!(
+        engine.subscribed.lock().expect("lock").clone(),
+        vec![("decisions".to_owned(), held.epoch())],
+        "kept by the sync itself"
+    );
+    assert!(
+        engine.answers.lock().expect("lock").is_empty(),
+        "registered, nothing shipped"
+    );
+}
+
+/// WP-5.4, after the mutants: a store the coordinator cannot reach now backs the subscription off;
+/// a membership the member revoked drops its subscriptions.
+#[tokio::test]
+async fn a_deferral_backs_off_and_an_ended_membership_drops_its_subscriptions() {
+    let (c, m) = (Side::new("ship2-c", true), Side::new("ship2-m", false));
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Shipping {
+        body: b"unavailable?".to_vec(),
+        ..Shipping::default()
+    };
+    let acting = Member {
+        shipping: Some(&engine),
+        ..member(&m, &connector)
+    };
+    assert_eq!(acting.ship_due(who()).await, 0);
+    assert_eq!(*engine.deferred.lock().expect("lock"), 1);
+    assert!(engine.answers.lock().expect("lock").is_empty());
+    acting.revoke(who(), &id).await.expect("revoked");
+    engine.retained.lock().expect("lock").clear();
+    acting.ship_due(who()).await;
+    assert_eq!(
+        engine.retained.lock().expect("lock").clone(),
+        vec![Vec::<String>::new()]
+    );
 }

@@ -1,17 +1,16 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! A policy mirror as this release writes it, kept so that every later layout can prove it still
-//! reads one.
+//! A policy mirror of a configured URL, as releases up to v0.1.6 wrote it: the fixture of the
+//! retired path (WP-7.7).
 //!
-//! `tests/fixtures/legacy/v1/mirrors` is a mirrors root written by the current code: one
-//! `<zone>/<ledger>` directory with its `FORMAT` pin, one content-addressed object and the
-//! `refs/main` checkpoint. In CI the fixture is copied aside and read by the current layout and
-//! client code, which must list the mirror and read its checkpoint. Setting
-//! `PERMGUARD_CAPTURE_LEGACY_FIXTURES=1` rewrites the fixture from the current code instead; that
-//! is done once per layout version and reviewed, never to make a failing test pass.
-//!
-//! The fixture is the v1 compatibility baseline: every later migration of this store must read it.
+//! `tests/fixtures/legacy/v1/mirrors` is a mirrors root in the first shape: one `<zone>/<ledger>`
+//! directory with its `FORMAT` pin, one content-addressed object and the `refs/main` checkpoint,
+//! no authority above it. The current code still recognizes it — the layout lists it, the client
+//! reads its checkpoint — and that is the whole of the dual reader left: the decision path never
+//! serves it, and the first round removes it, a re-pullable cache whose authority a URL never
+//! proved. Setting `PERMGUARD_CAPTURE_LEGACY_FIXTURES=1` rewrites the fixture instead; that is
+//! done once per layout version and reviewed, never to make a failing test pass.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -53,6 +52,7 @@ fn copy_dir(from: &Path, to: &Path) {
 
 fn mirror() -> Mirror {
     Mirror {
+        authority: None,
         zone_id: "zone-a".to_owned(),
         ledger_id: "ledger-a".to_owned(),
     }
@@ -79,6 +79,8 @@ fn build(root: &Path) {
         &Checkpoint {
             head: digest.to_string(),
             counter: 1,
+            ref_digest: None,
+            ..Checkpoint::default()
         },
     )
     .expect("the checkpoint is written");
@@ -115,4 +117,42 @@ fn test_the_v1_mirror_fixture_is_read_by_the_current_code() {
         copy_dir(Path::new(FIXTURE), &work);
     }
     verify(&work);
+}
+
+/// WP-7.7: the retired path's fixture is never served, and the first round removes it, whatever
+/// task this Host follows, recorded.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_the_v1_mirror_fixture_is_never_served_and_the_first_round_removes_it() {
+    let work = std::env::temp_dir().join(format!(
+        "permguard-legacy-mirrors-retired-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&work);
+    copy_dir(Path::new(FIXTURE), &work);
+    assert!(
+        permguard_data_plane::authz::store::mirrors(&work).is_empty(),
+        "never served"
+    );
+    let outcome = permguard_data_plane::mirrors::round::run(std::sync::Arc::new(
+        permguard_data_plane::mirrors::round::Context {
+            tasks: None,
+            selections: Default::default(),
+            decider: None,
+            root: work.clone(),
+            deadline: std::time::Duration::from_secs(30),
+            stale_after: None,
+            reap_grace: std::time::Duration::ZERO,
+            holds: Default::default(),
+            parallelism: 1,
+            permits: std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
+            metrics: permguard_core::Metrics::none(),
+        },
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 1);
+    assert_eq!(
+        outcome.candidacy,
+        vec![("mirror.reaped", "zone-a/ledger-a".to_owned())]
+    );
+    assert!(on_disk(&work).expect("listed").is_empty());
 }

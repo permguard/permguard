@@ -1,0 +1,70 @@
+{
+  "_comment": "TL-5b, DOGWOOD-06: the max_window directive as upstream reads it at the pinned revision. Each schema is the prefix below followed by the fixture's event declarations; `seconds` is the window upstream enforces, null where upstream refuses the schema. Rerun against upstream before changing the revision.",
+  "revision": "c6237c88099b3f492ecc5fcee42df06a19224b97",
+  "cases": [
+    {
+      "prefix": "",
+      "seconds": 86400
+    },
+    {
+      "prefix": "// only a comment",
+      "seconds": 86400
+    },
+    {
+      "prefix": "max_window = 24h",
+      "seconds": 86400
+    },
+    {
+      "prefix": "max_window=1h",
+      "seconds": 3600
+    },
+    {
+      "prefix": "max_window\n=\n2h",
+      "seconds": 7200
+    },
+    {
+      "prefix": "max_window = 30 m",
+      "seconds": 1800
+    },
+    {
+      "prefix": "max_window\t=\t90s",
+      "seconds": 90
+    },
+    {
+      "prefix": "// leading\nmax_window = 2d // trailing",
+      "seconds": 172800
+    },
+    {
+      "prefix": "max_window = 0h",
+      "seconds": null
+    },
+    {
+      "prefix": "max_window = 5w",
+      "seconds": null
+    },
+    {
+      "prefix": "max_window = 5",
+      "seconds": null
+    },
+    {
+      "prefix": "max_window = -5m",
+      "seconds": null
+    },
+    {
+      "prefix": "max_window = 5.5h",
+      "seconds": null
+    },
+    {
+      "prefix": "max_window 24h",
+      "seconds": null
+    },
+    {
+      "prefix": "max_windows = 24h",
+      "seconds": null
+    },
+    {
+      "prefix": "max_window = 1h\nmax_window = 2h",
+      "seconds": null
+    }
+  ]
+}

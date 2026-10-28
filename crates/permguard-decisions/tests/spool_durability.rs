@@ -362,3 +362,41 @@ fn a_full_spool_is_noticed_before_it_is_a_problem() {
         "and the successor starts with room to work"
     );
 }
+
+/// WP-5.4, F-11: pressure counts only what the receiver has not acknowledged: a spool that shipped
+/// everything is neither full nor expired however long it idles, while one owing records is.
+#[test]
+fn an_idle_spool_that_shipped_everything_is_neither_full_nor_expired() {
+    let root = scratch("idle");
+    // An age bound already passed and a byte bound a few records reach.
+    let strict = Bounds {
+        bytes: 1024,
+        age: Duration::ZERO,
+        segment_bytes: 512,
+    };
+    let mut spool = Spool::open(&root, strict).expect("it opens");
+    assert_eq!(
+        spool.pressure().expect("it measures"),
+        None,
+        "nothing written"
+    );
+    let mut last = String::new();
+    for _ in 0..20 {
+        let record = marker_at(&spool);
+        last = spool.append(&record).expect("it appends").digest;
+    }
+    assert!(
+        spool.pressure().expect("it measures").is_some(),
+        "records owed are pressure"
+    );
+    spool.acknowledge(20, last).expect("it acknowledges");
+    assert!(
+        spool.bytes().expect("it measures") > 0,
+        "the open segment is still held"
+    );
+    assert_eq!(
+        spool.pressure().expect("it measures"),
+        None,
+        "everything acknowledged: neither full nor expired"
+    );
+}

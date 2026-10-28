@@ -1,14 +1,15 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! One round of synchronization: ask each server what it has, keep what is
-//! followed, mirror it, and remove what is no longer wanted.
+//! One round of synchronization: ask each coordinator what its `policy.mirror` tasks cover, keep
+//! what is followed, mirror it, and remove what is no longer wanted. The local task of a process
+//! hosting both Planes is one more coordinator: this Host (WP-7.7).
 //!
 //! # The order matters
 //!
 //! Discovery first, then mirroring, then reaping — and reaping only for
-//! servers that **answered**. A control plane that is unreachable must not
-//! look like a control plane that deleted everything: an unanswered server
+//! coordinators that **answered**. A coordinator that is unreachable must not
+//! look like one that deleted everything: an unanswered coordinator
 //! contributes nothing to the desired set, and nothing on disk is removed
 //! because of it. Losing a connection is not a reason to lose a policy.
 //!
@@ -25,8 +26,8 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use permguard_control_client::pull::{self, TrackedRef};
-use permguard_control_client::{AnyRemote, FsStore, TlsOptions};
+use permguard_control_client::FsStore;
+use permguard_control_client::pull::TrackedRef;
 use permguard_core::Metrics;
 
 use crate::authz::store::Identity;
@@ -34,7 +35,6 @@ use tracing::{debug, info, warn};
 
 use crate::mirrors::layout::{self, Mirror};
 use crate::mirrors::measure;
-use crate::mirrors::source::Source;
 
 const COMPONENT: &str = "data-plane";
 
@@ -51,19 +51,27 @@ pub struct Outcome {
     pub failed: usize,
     /// Mirrors removed: no longer followed, or gone from the server.
     pub reaped: usize,
-    /// Servers that did not answer at all — the reason nothing was reaped
+    /// Coordinators that did not answer at all — the reason nothing was reaped
     /// for them.
     pub unreachable: usize,
-    /// Ledgers more than one answering server claimed, and which were
-    /// therefore left untouched rather than taken from whichever was
-    /// configured first.
+    /// Pairs of names more than one mirror answers to, which the decision path refuses until an
+    /// alias names the authority they mean.
     pub contested: usize,
-    /// How each configured server fared, in configuration order: what the
-    /// plane's readiness is decided from (P2, F-13).
+    /// How each coordinator fared, by its source key: what the plane's
+    /// readiness is decided from (P2, F-13).
     pub sources: Vec<SourceOutcome>,
-    /// Failures by the server that offered the mirror, folded into `sources`
+    /// Failures by the coordinator that listed the mirror, folded into `sources`
     /// once the round is over; of no interest after that.
     pub(super) failed_by_server: std::collections::BTreeMap<String, usize>,
+    /// The coordinators this round's `policy.mirror` tasks named, by source key, and whether any
+    /// of their tasks is required (WP-7.2a): what readiness waits for.
+    pub coordinators: Vec<(String, bool)>,
+    /// What became of reap candidates this round, each `(action, mirror)`, the mirror by its label
+    /// (WP-7.2d): `mirror.tombstoned`, `mirror.restored` or `mirror.reaped`, for the audit trail.
+    pub candidacy: Vec<(&'static str, String)>,
+    /// The mirrors past the staleness bound at the end of the round, by label, and whether the
+    /// task or server they come from is required (WP-7.2d, F-14).
+    pub stale: Vec<(String, bool)>,
 }
 
 /// One server's part in a round.
@@ -102,9 +110,36 @@ impl Outcome {
     }
 }
 
+/// The Host's legal and incident holds as the reap reads them (WP-7.3c).
+#[derive(Clone, Default)]
+pub enum Holds {
+    /// No Host registered this plane: nothing is held.
+    #[default]
+    None,
+    /// The Host's hold store.
+    Store(Arc<permguard_host::holds::HoldStore>),
+    /// The plane reads holds and was handed none: nothing is reaped, since what a hold keeps is
+    /// never guessed.
+    Unavailable,
+}
+
+impl std::fmt::Debug for Holds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::None => "None",
+            Self::Store(_) => "Store",
+            Self::Unavailable => "Unavailable",
+        })
+    }
+}
+
 /// Everything a round needs, resolved once at start.
 pub struct Context {
-    pub sources: Vec<Source>,
+    /// The member side of `policy.mirror` (WP-7.2a): the tasks this Host holds, snapshot every
+    /// round, and a session on each. `None` where the Host holds no memberships.
+    pub tasks: Option<Arc<dyn permguard_host::composition::MirrorTasks>>,
+    /// How the file narrows those tasks: none, every task followed whole.
+    pub selections: super::source::TaskSelections,
     pub root: std::path::PathBuf,
     /// The decision path, so a ledger that just arrived is checked and
     /// compiled here — off the request path, where it belongs. `None` in a
@@ -115,6 +150,10 @@ pub struct Context {
     /// The deployment's staleness bound, when it set one: a mirror whose last
     /// verified synchronization is older than this is alarmed on, per round.
     pub stale_after: Option<Duration>,
+    /// How long a task mirror its task no longer lists is kept before it is reaped (WP-7.2d).
+    pub reap_grace: Duration,
+    /// The Host's holds: a mirror whose ledger or zone a hold in force names is never reaped.
+    pub holds: Holds,
     /// The bound on work that is **physically** outstanding.
     ///
     /// A deadline abandons a mirror logically; the blocking task it started
@@ -129,49 +168,113 @@ pub struct Context {
 
 /// Runs one round to completion.
 ///
-/// Sequential across servers (there are a handful, and one slow server must
-/// not hide another's failure in a race), concurrent across ledgers up to the
-/// configured parallelism — because that is where the work is.
+/// Sequential across coordinators (there are a handful, and one slow coordinator must not hide
+/// another's failure in a race), concurrent across ledgers up to the configured parallelism —
+/// because that is where the work is.
 pub async fn run(context: Arc<Context>) -> Outcome {
     let started = Instant::now();
     let mut outcome = Outcome::default();
     let mut served: Vec<Served> = Vec::new();
     let mut answered = Vec::new();
+    // The tasks whose listing was complete this round, as `<membership-id>/<task-id>` with their
+    // revision: the only evidence a task mirror is no longer served (WP-7.2a).
+    let mut listed_whole: Vec<(String, u64)> = Vec::new();
+    // The session of every task listed this round: what its progress is reported on (WP-7.2d).
+    let mut sessions = Vec::new();
+    // What the staleness alarm names as required: the required tasks this Host holds, whether
+    // their coordinator answered or not (WP-7.2d).
+    let mut required: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
 
-    for source in &context.sources {
-        match discover(source).await {
-            Ok(found) => {
-                let (zones, ledgers) = source.patterns();
-                debug!(
-                    event.name = "sync.discovered",
-                    component = COMPONENT,
-                    server = source.url(),
-                    zone.patterns = zones.as_str(),
-                    ledger.patterns = ledgers.as_str(),
-                    mirrors = found.len(),
-                    "the server listed what it has"
-                );
-                answered.push(source.url().to_owned());
-                served.extend(found);
+    // The coordinators of this Host's `policy.mirror` tasks (WP-7.2a): each its own source, its
+    // ledgers under its authority.
+    if let Some(tasks) = &context.tasks {
+        let held = tasks.mirror_tasks();
+        if held.is_empty() {
+            // Not a failure: a plane not yet enrolled holds no task, and refuses every ledger as
+            // one it does not serve. Said every round, so it is never mistaken for a quiet plane.
+            warn!(
+                event.name = "sync.no_task",
+                component = COMPONENT,
+                "this Host holds no `policy.mirror` task: it mirrors and serves nothing until it is \
+                 enrolled with a Control Plane's Host (`permguard host members join`)"
+            );
+        }
+        context.selections.report_unmatched(&held);
+        required.extend(held.iter().filter(|task| task.required).map(task_label));
+        // A required task the file leaves out still counts for readiness: the signed manifest
+        // says what the plane waits for, not a local file (WP-7.2a).
+        let left_out: Vec<(String, bool)> = held
+            .iter()
+            .filter(|task| {
+                task.required
+                    && !context
+                        .selections
+                        .follows_task(&task.membership_id, &task.task_id)
+            })
+            .map(|task| (source_key(&layout::authority_name(&task.coordinator)), true))
+            .collect();
+        let followed = held
+            .into_iter()
+            .filter(|task| {
+                context
+                    .selections
+                    .follows_task(&task.membership_id, &task.task_id)
+            })
+            .collect();
+        for coordinator in by_coordinator(followed) {
+            let key = coordinator.key();
+            match listed(tasks.as_ref(), &coordinator, &context.selections).await {
+                Ok(Listed {
+                    found,
+                    complete,
+                    whole,
+                    sessions: opened,
+                }) => {
+                    listed_whole.extend(whole);
+                    sessions.extend(opened);
+                    debug!(
+                        event.name = "sync.discovered",
+                        component = COMPONENT,
+                        server = key.as_str(),
+                        mirrors = found.len(),
+                        complete,
+                        "the coordinator listed what its tasks cover"
+                    );
+                    // Only a complete listing of every task of the coordinator is evidence of
+                    // what it no longer serves.
+                    if complete {
+                        answered.push(key.clone());
+                    }
+                    served.extend(found);
+                }
+                Err(error) => {
+                    outcome.unreachable += 1;
+                    warn!(
+                        event.name = "sync.server_unreachable",
+                        component = COMPONENT,
+                        server = key.as_str(),
+                        error = %error,
+                        "the coordinator did not answer: nothing it serves is removed on its account"
+                    );
+                }
             }
-            Err(error) => {
-                outcome.unreachable += 1;
-                warn!(
-                    event.name = "sync.server_unreachable",
-                    component = COMPONENT,
-                    server = source.url(),
-                    error = %error,
-                    "the server did not answer: nothing it holds is removed on its account"
-                );
+            outcome.coordinators.push((key, coordinator.required));
+        }
+        for (key, required) in left_out {
+            match outcome
+                .coordinators
+                .iter_mut()
+                .find(|(known, _)| *known == key)
+            {
+                Some((_, known)) => *known |= required,
+                None => outcome.coordinators.push((key, required)),
             }
         }
     }
 
+    // A mirror is named by its authority (WP-7.2a): two coordinators listing one pair of ids land
+    // in two mirrors, and a pair listed twice by one coordinator is one mirror.
     served.sort_by(|left, right| left.mirror.cmp(&right.mirror));
-    // Two servers offering one ledger is not a duplicate to fold away: it is
-    // two authorities claiming the same policies, and taking the first is
-    // deciding whose policies this plane serves by configuration order.
-    outcome.contested = contested(&mut served);
     served.dedup_by(|left, right| left.mirror == right.mirror);
     let mut wanted: Vec<Mirror> = served.iter().map(|held| held.mirror.clone()).collect();
     wanted.sort();
@@ -199,21 +302,45 @@ pub async fn run(context: Arc<Context>) -> Outcome {
     }
     outcome.absorb(join(&mut running).await);
 
-    // Reap, but only what a server that *answered this round* no longer wants.
-    if !answered.is_empty() {
-        outcome.reaped = reap(&context, &wanted, &answered);
+    // Reap, but only what a coordinator that *answered this round* no longer wants, and the
+    // mirrors of a configured URL whatever answered (WP-7.7).
+    let (reaped, candidacy) = reap(&context, &wanted, &answered, &listed_whole);
+    outcome.reaped = reaped;
+    outcome.candidacy = candidacy;
+    // Two mirrors answering to one name are refused at the decision path: said here too, every
+    // round, so the contest is seen before a request is refused over it (WP-7.2a).
+    for ((zone, ledger), claimants) in crate::authz::store::contests(&context.root) {
+        outcome.contested += 1;
+        warn!(
+            event.name = "sync.ledger_contested",
+            component = COMPONENT,
+            zone = zone.as_str(),
+            ledger = ledger.as_str(),
+            mirrors = claimants.join(", ").as_str(),
+            "more than one mirror answers to this ledger's names: neither is served until one of \
+             them is no longer followed, or an alias names the authority it means"
+        );
     }
-    outcome.sources = context
-        .sources
+    outcome.stale = staleness(&context, &required);
+    // What each task's mirrors came to, on its own session (WP-7.2d).
+    super::progress::report(
+        &context.root,
+        &sessions,
+        context.stale_after,
+        context.deadline,
+    )
+    .await;
+    let coordinators = outcome
+        .coordinators
         .iter()
-        .map(|source| SourceOutcome {
-            url: source.url().to_owned(),
-            answered: answered.iter().any(|url| url == source.url()),
-            failed: outcome
-                .failed_by_server
-                .get(source.url())
-                .copied()
-                .unwrap_or(0),
+        .map(|(key, _)| key.clone())
+        .collect::<Vec<_>>();
+    outcome.sources = coordinators
+        .into_iter()
+        .map(|url| SourceOutcome {
+            answered: answered.iter().any(|answered| answered == &url),
+            failed: outcome.failed_by_server.get(&url).copied().unwrap_or(0),
+            url,
         })
         .collect();
 
@@ -229,21 +356,6 @@ pub async fn run(context: Arc<Context>) -> Outcome {
     holdings(&context);
 
     outcome
-}
-
-impl Context {
-    /// The trust material configured for the server that offered a mirror.
-    ///
-    /// Each server carries its own: two control planes in one file may sit
-    /// behind two different authorities, and trusting one because the other
-    /// was named would be exactly the confusion an exact URL exists to avoid.
-    fn tls_for(&self, url: &str) -> TlsOptions {
-        self.sources
-            .iter()
-            .find(|source| source.url() == url)
-            .map(|source| source.tls().clone())
-            .unwrap_or_default()
-    }
 }
 
 impl Outcome {
@@ -309,112 +421,185 @@ enum Attempt {
     Failed,
 }
 
-/// Asks one server what it has, and keeps what this source follows.
-async fn discover(source: &Source) -> Result<Vec<Served>, String> {
-    let url = source.url().to_owned();
-    let tls = source.tls().clone();
-    let source = source.clone();
-
-    // The client is synchronous by design: this is a background job, and a
-    // dedicated thread for a few seconds costs nothing a decision path feels.
-    blocking(move || {
-        let admin = permguard_control_client::catalog::client(
-            &url,
-            &tls,
-            Box::new(permguard_control_client::narrate::Silent),
-        )?;
-        let mut found = Vec::new();
-        for zone in admin
-            .list_zones(None, None)
-            .map_err(|failure| failure.detail)?
-        {
-            if !source.follows_zone(&zone.name) {
-                continue;
-            }
-            for ledger in admin
-                .list_ledgers(&zone.id, None, None)
-                .map_err(|failure| failure.detail)?
-            {
-                if !source.follows_ledger(&ledger.name) {
-                    continue;
-                }
-                found.push(Served {
-                    mirror: Mirror {
-                        zone_id: zone.id.clone(),
-                        ledger_id: ledger.id.clone(),
-                    },
-                    server: url.clone(),
-                    identity: Identity {
-                        zone_id: zone.id.clone(),
-                        zone_name: zone.name.clone(),
-                        ledger_id: ledger.id.clone(),
-                        ledger_name: ledger.name.clone(),
-                        server: url.clone(),
-                    },
-                });
-            }
-        }
-        Ok(found)
-    })
-    .await
-}
-
-/// One ledger a server offered: where it goes, who told us, and what it is
-/// called — the names are what a decision request will ask for.
+/// One ledger a coordinator's task listed: where it goes, who told us, and what it is called —
+/// the names are what a decision request will ask for.
 #[derive(Debug, Clone)]
 pub struct Served {
     pub mirror: Mirror,
     pub server: String,
     pub identity: Identity,
+    /// How its reads travel: the session of the task that listed it.
+    pub via: Via,
 }
 
-/// Drops every mirror that more than one answering server claims.
-///
-/// A mirror is addressed by `(zone-id, ledger-id)` with no trust domain in the
-/// path, so two servers offering those identities are indistinguishable once
-/// the bytes are on disk. Serving either would mean this plane decided whose
-/// policies it answers from by list order — which is not a decision, it is an
-/// accident. So the ledger is left exactly as it is, and the conflict is
-/// reported: an operator can narrow the patterns, and until then nothing
-/// silently changes hands.
-///
-/// Note this is checked among servers that **answered this round**. A server
-/// that is silent claims nothing, so an outage cannot make a ledger look
-/// contested and stop it being followed.
-fn contested(served: &mut Vec<Served>) -> usize {
-    let mut refused = 0;
-    let mut keep = Vec::with_capacity(served.len());
-    let mut index = 0;
-    while index < served.len() {
-        let mut end = index + 1;
-        while end < served.len() && served[end].mirror == served[index].mirror {
-            end += 1;
-        }
-        let claimants: Vec<&str> = served[index..end]
-            .iter()
-            .map(|held| held.server.as_str())
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        if claimants.len() > 1 {
-            refused += 1;
-            warn!(
-                event.name = "sync.ledger_contested",
-                component = COMPONENT,
-                zone = served[index].mirror.zone_id.as_str(),
-                ledger = served[index].mirror.ledger_id.as_str(),
-                servers = claimants.join(", ").as_str(),
-                "two control planes offer the same ledger: it is left untouched rather than \
-                 taken from whichever was configured first"
-            );
-        } else {
-            keep.extend(served[index..end].iter().cloned());
-        }
-        index = end;
-    }
-    *served = keep;
+/// How a mirror's reads travel: a `policy.mirror` task session (WP-7.2a), the task's bound on a
+/// message, the `control.attest` set its membership pins (or, for the local task, this Host's
+/// own) and the coordinator the statements must name (WP-7.2b).
+#[derive(Clone)]
+pub struct Via {
+    pub session: super::task::Shared,
+    pub max_body_bytes: u64,
+    pub ring: permguard_host::composition::PinnedRing,
+    pub coordinator: [u8; 16],
+    /// The task's revision: the epoch of the manifest it was read from (WP-7.2c).
+    pub revision: u64,
+}
 
-    refused
+impl std::fmt::Debug for Via {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Via")
+            .field("max_body_bytes", &self.max_body_bytes)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The `policy.mirror` tasks of one coordinator: one source, however many tasks and sessions
+/// reach it (F-16).
+pub(super) struct Coordinator {
+    pub(super) authority: String,
+    pub(super) tasks: Vec<permguard_host::composition::MirrorTask>,
+    pub(super) required: bool,
+}
+
+impl Coordinator {
+    /// The source key its mirrors are attributed to, in their identity and in the outcome.
+    pub(super) fn key(&self) -> String {
+        source_key(&self.authority)
+    }
+}
+
+/// The source key of the mirrors an authority serves.
+pub fn source_key(authority: &str) -> String {
+    format!("host:{authority}")
+}
+
+/// `tasks`, grouped by coordinator, in a stable order.
+pub(super) fn by_coordinator(
+    tasks: Vec<permguard_host::composition::MirrorTask>,
+) -> Vec<Coordinator> {
+    let mut grouped: std::collections::BTreeMap<String, Coordinator> =
+        std::collections::BTreeMap::new();
+    for task in tasks {
+        let authority = layout::authority_name(&task.coordinator);
+        let held = grouped
+            .entry(authority.clone())
+            .or_insert_with(|| Coordinator {
+                authority,
+                tasks: Vec::new(),
+                required: false,
+            });
+        held.required |= task.required;
+        held.tasks.push(task);
+    }
+    let mut coordinators: Vec<Coordinator> = grouped.into_values().collect();
+    for coordinator in &mut coordinators {
+        coordinator.tasks.sort_by(|left, right| {
+            (left.membership_id, &left.task_id).cmp(&(right.membership_id, &right.task_id))
+        });
+    }
+    coordinators
+}
+
+/// What `coordinator`'s tasks list, and whether every listing was complete: a session per task,
+/// its ledgers under the coordinator's authority. A task that cannot be opened or listed fails
+/// the coordinator for this round.
+async fn listed(
+    tasks: &dyn permguard_host::composition::MirrorTasks,
+    coordinator: &Coordinator,
+    selections: &super::source::TaskSelections,
+) -> Result<Listed, String> {
+    let mut found = Vec::new();
+    let mut complete = true;
+    let mut whole = Vec::new();
+    let mut sessions = Vec::new();
+    for task in &coordinator.tasks {
+        let session = tasks
+            .open_mirror(task)
+            .await
+            .map_err(|refusal| format!("opening task `{}`: {refusal}", task.task_id))?;
+        // The set the membership pins as the session opened, its binding verified under the
+        // coordinator's identity: a task without one has nothing its statements could verify
+        // under, and none of its ledgers is mirrored (WP-7.2b).
+        let Some(ring) = session.ring() else {
+            warn!(
+                event.name = "sync.task_unpinned",
+                component = COMPONENT,
+                task = task.task_id.as_str(),
+                "the membership pins no coordinator `control.attest` set this Host can verify: \
+                 none of the task's ledgers is mirrored"
+            );
+            return Err(format!(
+                "task `{}`: its membership pins no verifiable coordinator `control.attest` set",
+                task.task_id
+            ));
+        };
+        let session: super::task::Shared = Arc::new(tokio::sync::Mutex::new(session));
+        sessions.push((task.clone(), Arc::clone(&session)));
+        let listing = super::task::list(&session, task).await?;
+        complete &= listing.complete;
+        let label = task_label(task);
+        if listing.complete {
+            whole.push((label.clone(), task.revision));
+        }
+        for ledger in listing.ledgers {
+            if !selections.follows(
+                &task.membership_id,
+                &task.task_id,
+                &ledger.zone_name,
+                &ledger.ledger_name,
+            ) {
+                continue;
+            }
+            found.push(Served {
+                mirror: Mirror {
+                    authority: Some(coordinator.authority.clone()),
+                    zone_id: ledger.zone_id.clone(),
+                    ledger_id: ledger.ledger_id.clone(),
+                },
+                server: coordinator.key(),
+                identity: Identity {
+                    zone_id: ledger.zone_id,
+                    zone_name: ledger.zone_name,
+                    ledger_id: ledger.ledger_id,
+                    ledger_name: ledger.ledger_name,
+                    server: coordinator.key(),
+                    authority: Some(coordinator.authority.clone()),
+                    task: Some(label.clone()),
+                },
+                via: Via {
+                    session: Arc::clone(&session),
+                    max_body_bytes: task.max_body_bytes,
+                    ring: ring.clone(),
+                    coordinator: task.coordinator,
+                    revision: task.revision,
+                },
+            });
+        }
+    }
+    Ok(Listed {
+        found,
+        complete,
+        whole,
+        sessions,
+    })
+}
+
+/// What a coordinator's tasks listed: the ledgers, whether every listing was complete, the tasks
+/// that listed whole with their revisions, and the session of each task, for its progress.
+struct Listed {
+    found: Vec<Served>,
+    complete: bool,
+    whole: Vec<(String, u64)>,
+    sessions: Vec<(permguard_host::composition::MirrorTask, super::task::Shared)>,
+}
+
+/// How a task names the mirrors it listed: `<membership-id>/<task-id>`.
+pub fn task_label(task: &permguard_host::composition::MirrorTask) -> String {
+    format!(
+        "{}/{}",
+        permguard_host::identity::record::uuid_text(&task.membership_id),
+        task.task_id
+    )
 }
 
 /// Mirrors one ledger, within its deadline, and prepares it for serving.
@@ -424,8 +609,6 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
     let started = Instant::now();
     let path = mirror.path(&context.root);
     let mirror_path = path.clone();
-    let url = server.to_owned();
-    let tls = context.tls_for(server);
     let tracked = TrackedRef {
         zone_id: mirror.zone_id.clone(),
         ledger_id: mirror.ledger_id.clone(),
@@ -433,6 +616,8 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
     };
 
     let identity = served.identity.clone();
+    let via = served.via.clone();
+    let runtime = tokio::runtime::Handle::current();
     // Held by the work, not by the wait: see `Context::permits`.
     let permit = match Arc::clone(&context.permits).acquire_owned().await {
         Ok(permit) => permit,
@@ -445,14 +630,49 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
         // so a rename upstream reaches this plane with the next sync.
         crate::authz::store::record(&path, &identity)?;
         let store = FsStore::new(&path);
-        let remote = AnyRemote::connect(
-            &url,
-            &tls,
-            Box::new(permguard_control_client::narrate::Silent),
+        // The pull and its verification on the task's session (WP-7.2a), its statements verified
+        // under the pinned `control.attest` set (WP-7.2b), switched through the mirror's journal
+        // (WP-7.2c).
+        let Via {
+            session,
+            max_body_bytes,
+            ring,
+            coordinator,
+            revision,
+        } = via;
+        // The state in force first: views a crash left behind the journal are rewritten.
+        super::state::recover(&path)?;
+        let remote = super::task::TaskRemote::new(
+            session,
+            runtime,
+            &tracked.zone_id,
+            &tracked.ledger_id,
+            max_body_bytes,
+            &ring,
+        );
+        let verified = super::task::verified_pull(&store, &tracked, &remote, &ring, coordinator)?;
+        super::state::commit(
+            &path,
+            &super::state::MirrorState {
+                revision,
+                authority: verified.authority_host_id,
+                zone: tracked.zone_id.clone(),
+                ledger: tracked.ledger_id.clone(),
+                reference: verified.reference.clone(),
+                head: verified.head.clone(),
+                counter: verified.counter,
+                ref_digest: verified.ref_digest.clone(),
+                ring_epoch: verified.ring_epoch,
+                key_set_digest: ring.key_set_digest,
+                verified_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|since| since.as_secs())
+                    .unwrap_or_default(),
+                closure_digest: super::state::closure_digest(&verified.closure),
+                verified: verified.statement.clone(),
+                ring_binding: ring.binding.clone(),
+            },
         )?;
-        remote.bind(&tracked.zone_id, &tracked.ledger_id);
-        let verified = pull::fetch_closure(&store, "objects", "refs/main", &remote, &tracked)?;
-        pull::commit_checkpoint(&store, "refs/main", &verified)?;
         Ok((verified.counter, verified.fetched))
     });
 
@@ -537,7 +757,6 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
                 error = %error,
                 "the mirror did not advance; what it already holds is still served"
             );
-            report_age(context, &mirror_path, mirror, server);
 
             Attempt::Failed
         }
@@ -554,44 +773,65 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
                 deadline.seconds = context.deadline.as_secs(),
                 "the mirror ran out of its deadline and is abandoned for this round"
             );
-            report_age(context, &mirror_path, mirror, server);
 
             Attempt::Failed
         }
     }
 }
 
-/// Publishes how stale a mirror actually is, and alarms when it crossed the
-/// deployment's bound.
-///
-/// Only a failed round grows the age — a successful one just reset it — so
-/// this is where the gauge earns its name: without it, a plane cut off from
-/// its control plane would report an age of zero forever, which is the exact
-/// number a page must never be written against.
-fn report_age(context: &Context, mirror_path: &std::path::Path, mirror: &Mirror, server: &str) {
-    let Some(age) = crate::authz::store::synced_age(mirror_path) else {
-        return;
+/// Publishes how stale every held mirror is, and alarms on each past the deployment's bound
+/// (WP-7.2d, F-14): the mirrors this round could not reach included, which is the point — a plane
+/// cut off from its coordinator still measures what it holds, from its last verified
+/// synchronization, and the alarm names each ledger, its task or server, and whether that is
+/// required. Answers the stale mirrors by label.
+fn staleness(
+    context: &Context,
+    required: &std::collections::BTreeSet<String>,
+) -> Vec<(String, bool)> {
+    let mut stale = Vec::new();
+    let Ok(present) = layout::on_disk(&context.root) else {
+        return stale;
     };
-    context.metrics.set_aggregated(
-        &measure::MIRROR_AGE,
-        permguard_core::Aggregate::Max,
-        &mirror_key(mirror),
-        age.as_secs_f64(),
-    );
-    if let Some(bound) = context.stale_after
-        && age >= bound
-    {
+    for mirror in present {
+        let path = mirror.path(&context.root);
+        let Some(age) = crate::authz::store::synced_age(&path) else {
+            continue;
+        };
+        context.metrics.set_aggregated(
+            &measure::MIRROR_AGE,
+            permguard_core::Aggregate::Max,
+            &mirror_key(&mirror),
+            age.as_secs_f64(),
+        );
+        let Some(bound) = context.stale_after else {
+            continue;
+        };
+        if age < bound {
+            continue;
+        }
+        let identity = crate::authz::store::identity_of(&path);
+        let source = identity
+            .as_ref()
+            .map(|held| held.task.clone().unwrap_or_else(|| held.server.clone()))
+            .unwrap_or_default();
+        let is_required = required.contains(&source);
         warn!(
             event.name = "sync.mirror_stale",
             component = COMPONENT,
-            server = server,
             ledger = mirror.label().as_str(),
+            source = source.as_str(),
+            required = is_required,
             age.seconds = age.as_secs(),
             bound.seconds = bound.as_secs(),
             "this mirror is older than the deployment's staleness bound: it is still served, and \
              this line is the alarm"
         );
+        stale.push((mirror.label(), is_required));
     }
+    context
+        .metrics
+        .set(&measure::MIRRORS_STALE, &[], stale.len() as f64);
+    stale
 }
 
 /// Reads a mirrored ledger for serving: the load gate, then the compile, into
@@ -655,14 +895,55 @@ fn is_empty_ledger(error: &str) -> bool {
     error.contains("not_found") || error.contains("NotFound") || error.contains("no ref")
 }
 
-/// Removes mirrors on disk that no answering server wants any more.
-fn reap(context: &Context, wanted: &[Mirror], answered: &[String]) -> usize {
+/// Removes mirrors on disk that no answering server wants any more, and what became of each
+/// task mirror's candidacy (WP-7.2d).
+fn reap(
+    context: &Context,
+    wanted: &[Mirror],
+    answered: &[String],
+    listed_whole: &[(String, u64)],
+) -> (usize, Vec<(&'static str, String)>) {
+    let mut candidacy = Vec::new();
     let Ok(present) = layout::on_disk(&context.root) else {
-        return 0;
+        return (0, candidacy);
     };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or_default();
     let mut removed = 0;
     for mirror in present {
+        let path = mirror.path(&context.root);
+        // A mirror of a configured URL, in the first shape (WP-7.7): a re-pullable cache whose
+        // authority a URL never proved, never served since, removed whatever answered — unless a
+        // hold names its ledger.
+        if mirror.authority.is_none() {
+            if !held_by_a_hold(context, &mirror, now) {
+                removed += remove_reaped(context, &mirror, "retired", &mut candidacy);
+            }
+            continue;
+        }
         if wanted.contains(&mirror) {
+            // Listed again: a candidacy ends, and the mirror was never touched (WP-7.2d).
+            match super::tombstone::clear(&path) {
+                Ok(true) => {
+                    info!(
+                        event.name = "sync.mirror_restored",
+                        component = COMPONENT,
+                        ledger = mirror.label().as_str(),
+                        "its task lists the mirror again: it is no longer a reap candidate"
+                    );
+                    candidacy.push(("mirror.restored", mirror.label()));
+                }
+                Ok(false) => {}
+                Err(error) => warn!(
+                    event.name = "sync.tombstone_unremovable",
+                    component = COMPONENT,
+                    ledger = mirror.label().as_str(),
+                    error = error.as_str(),
+                    "the tombstone of a listed mirror could not be removed"
+                ),
+            }
             continue;
         }
         // Absence is only evidence of deletion when the observation was
@@ -673,9 +954,31 @@ fn reap(context: &Context, wanted: &[Mirror], answered: &[String]) -> usize {
         // Without this, a partition towards one of several control planes
         // would delete that control plane's policies from this plane, which is
         // exactly the failure the unreachable-server rule exists to prevent.
-        let source = crate::authz::store::identity_of(&mirror.path(&context.root))
-            .map(|identity| identity.server);
+        let identity = crate::authz::store::identity_of(&path);
+        // A task's mirror is attributed to that task, not to its coordinator: another task of
+        // the same coordinator listing whole says nothing of it, and a task this round did not
+        // list — its membership suspended, its listing cut short — removes nothing (WP-7.2a).
+        // Its own task's whole listing is the evidence, and the only one: what another task of
+        // the coordinator listed, whole or not, decides nothing about it.
+        let task_whole = match identity.as_ref().and_then(|held| held.task.as_ref()) {
+            Some(task) => match listed_whole.iter().find(|(whole, _)| whole == task) {
+                Some((_, revision)) => Some((task.clone(), *revision)),
+                None => {
+                    debug!(
+                        event.name = "sync.reap_skipped",
+                        component = COMPONENT,
+                        ledger = mirror.label().as_str(),
+                        task = task.as_str(),
+                        "the task that listed it did not list whole this round: nothing is removed"
+                    );
+                    continue;
+                }
+            },
+            None => None,
+        };
+        let source = identity.map(|identity| identity.server);
         match &source {
+            _ if task_whole.is_some() => {}
             Some(server) if answered.iter().any(|answered| answered == server) => {}
             Some(server) => {
                 debug!(
@@ -704,30 +1007,139 @@ fn reap(context: &Context, wanted: &[Mirror], answered: &[String]) -> usize {
                 continue;
             }
         }
-        match layout::remove(&context.root, &mirror) {
-            Ok(()) => {
-                removed += 1;
-                context.metrics.count(
-                    &measure::REAPED,
-                    &[(permguard_core::metrics::labels::REASON, "not_followed")],
-                );
-                info!(
-                    event.name = "sync.reaped",
+        // A task mirror goes only on a second complete listing without it, the grace after the
+        // first: the first writes its tombstone and the mirror keeps serving (WP-7.2d).
+        if let Some((task, revision)) = task_whole {
+            let first = match super::tombstone::read(&path) {
+                Ok(Some(tombstone)) => Some(tombstone.first_absent_at),
+                Ok(None) => None,
+                Err(error) => {
+                    // Unreadable: the candidacy starts again, never shortened.
+                    warn!(
+                        event.name = "sync.tombstone_unreadable",
+                        component = COMPONENT,
+                        ledger = mirror.label().as_str(),
+                        error = error.as_str(),
+                        "the mirror's tombstone could not be read: its grace starts again"
+                    );
+                    None
+                }
+            };
+            let Some(first) = first else {
+                let tombstone = super::tombstone::Tombstone {
+                    first_absent_at: now,
+                    task,
+                    revision,
+                };
+                match super::tombstone::write(&path, &tombstone) {
+                    Ok(()) => {
+                        info!(
+                            event.name = "sync.mirror_tombstoned",
+                            component = COMPONENT,
+                            ledger = mirror.label().as_str(),
+                            grace.seconds = context.reap_grace.as_secs(),
+                            "its task no longer lists the mirror: it is a reap candidate, and \
+                             still served"
+                        );
+                        candidacy.push(("mirror.tombstoned", mirror.label()));
+                    }
+                    Err(error) => warn!(
+                        event.name = "sync.reap_refused",
+                        component = COMPONENT,
+                        ledger = mirror.label().as_str(),
+                        error = error.as_str(),
+                        "the mirror's tombstone could not be written: it was left in place"
+                    ),
+                }
+                continue;
+            };
+            if now.saturating_sub(first) < context.reap_grace.as_secs() {
+                debug!(
+                    event.name = "sync.reap_deferred",
                     component = COMPONENT,
                     ledger = mirror.label().as_str(),
-                    "the mirror is no longer followed and was removed"
+                    "the mirror is a reap candidate within its grace"
                 );
+                continue;
             }
-            Err(error) => warn!(
+        }
+        // A hold keeps the ledger: the mirror stays, a candidate, until the hold goes (WP-7.3c).
+        if held_by_a_hold(context, &mirror, now) {
+            continue;
+        }
+        removed += remove_reaped(context, &mirror, "not_followed", &mut candidacy);
+    }
+    (removed, candidacy)
+}
+
+/// Whether a hold keeps `mirror`'s ledger (WP-7.3c), or the holds cannot be read: either way the
+/// mirror stays.
+fn held_by_a_hold(context: &Context, mirror: &Mirror, now: u64) -> bool {
+    let held = match &context.holds {
+        Holds::None => Ok(false),
+        Holds::Store(store) => store
+            .keeps(&mirror.zone_id, &mirror.ledger_id, now)
+            .map_err(|error| error.to_string()),
+        Holds::Unavailable => Err("this plane was handed no hold store".to_owned()),
+    };
+    match held {
+        Ok(false) => false,
+        Ok(true) => {
+            info!(
+                event.name = "sync.reap_held",
+                component = COMPONENT,
+                ledger = mirror.label().as_str(),
+                "a hold keeps this ledger: the mirror stays"
+            );
+            true
+        }
+        Err(error) => {
+            warn!(
+                event.name = "sync.reap_refused",
+                component = COMPONENT,
+                ledger = mirror.label().as_str(),
+                error = error.as_str(),
+                "the holds could not be read: nothing is removed"
+            );
+            true
+        }
+    }
+}
+
+/// Removes `mirror`, counted under `reason` and recorded as `mirror.reaped`: one when it went.
+fn remove_reaped(
+    context: &Context,
+    mirror: &Mirror,
+    reason: &'static str,
+    candidacy: &mut Vec<(&'static str, String)>,
+) -> usize {
+    match layout::remove(&context.root, mirror) {
+        Ok(()) => {
+            context.metrics.count(
+                &measure::REAPED,
+                &[(permguard_core::metrics::labels::REASON, reason)],
+            );
+            info!(
+                event.name = "sync.reaped",
+                component = COMPONENT,
+                ledger = mirror.label().as_str(),
+                reason,
+                "the mirror is no longer followed and was removed"
+            );
+            candidacy.push(("mirror.reaped", mirror.label()));
+            1
+        }
+        Err(error) => {
+            warn!(
                 event.name = "sync.reap_refused",
                 component = COMPONENT,
                 ledger = mirror.label().as_str(),
                 error = %format!("{error:#}"),
                 "the mirror was left in place"
-            ),
+            );
+            0
         }
     }
-    removed
 }
 
 /// Refreshes the holdings gauges: how many mirrors, in how many zones, and
@@ -789,56 +1201,4 @@ where
 /// The resource a mirror's age is kept under: the oldest mirror is the series, never the mirror.
 fn mirror_key(mirror: &Mirror) -> String {
     format!("{}/{}", mirror.zone_id, mirror.ledger_id)
-}
-
-#[cfg(test)]
-mod contested_tests {
-    use super::*;
-    use crate::authz::store::Identity;
-
-    fn served(server: &str, zone_id: &str, ledger_id: &str) -> Served {
-        Served {
-            mirror: Mirror {
-                zone_id: zone_id.to_owned(),
-                ledger_id: ledger_id.to_owned(),
-            },
-            server: server.to_owned(),
-            identity: Identity {
-                zone_id: zone_id.to_owned(),
-                zone_name: "acme".to_owned(),
-                ledger_id: ledger_id.to_owned(),
-                ledger_name: "main-ledger".to_owned(),
-                server: server.to_owned(),
-            },
-        }
-    }
-
-    #[test]
-    fn a_ledger_two_servers_claim_is_dropped_rather_than_taken_from_the_first() {
-        let mut held = vec![
-            served("https://one.acme.com", "zone-1", "ledger-1"),
-            served("https://two.acme.com", "zone-1", "ledger-1"),
-            served("https://one.acme.com", "zone-2", "ledger-2"),
-        ];
-        held.sort_by(|left, right| left.mirror.cmp(&right.mirror));
-
-        assert_eq!(contested(&mut held), 1);
-        assert_eq!(
-            held.len(),
-            1,
-            "the contested ledger is gone from what this round will mirror"
-        );
-        assert_eq!(held[0].mirror.zone_id, "zone-2");
-    }
-
-    #[test]
-    fn one_server_listing_a_ledger_twice_is_not_a_conflict_with_itself() {
-        let mut held = vec![
-            served("https://one.acme.com", "zone-1", "ledger-1"),
-            served("https://one.acme.com", "zone-1", "ledger-1"),
-        ];
-
-        assert_eq!(contested(&mut held), 0);
-        assert_eq!(held.len(), 2, "the ordinary dedup still folds these");
-    }
 }

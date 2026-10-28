@@ -80,6 +80,19 @@ struct Entry {
     zone: Option<String>,
 }
 
+/// What a partition is compiled for, beyond its ledger, commit and name (IFACE-03).
+#[derive(Debug, Clone, Copy)]
+pub struct Compiled<'a> {
+    /// The evaluation interface the compile serves, its exact id.
+    pub interface: &'a str,
+    /// The descriptor digest of the runtime that compiles it.
+    pub descriptor: &'a str,
+    /// The assurance profile it is loaded under.
+    pub profile: &'a str,
+    /// The experimental contracts enabled, in name order, comma-separated.
+    pub options: &'a str,
+}
+
 /// The bounded, shared store of compiled programs.
 pub struct Cache {
     max_entries: usize,
@@ -161,16 +174,21 @@ impl Cache {
         format!("{zone_id}/{ledger_id}@{commit}")
     }
 
-    /// The key of one compiled partition of that commit, compiled by the runtime whose descriptor
-    /// digest is `descriptor`.
+    /// The key of one compiled partition of that commit (IFACE-03): compiled for the evaluation
+    /// interface `interface`, by the runtime whose descriptor digest is `descriptor`, under the
+    /// assurance profile `profile` with the experimental contracts `options` enabled — every input
+    /// that changes what a compile accepts or yields.
     pub fn partition_key(
         zone_id: &str,
         ledger_id: &str,
         commit: &str,
         partition: &str,
-        descriptor: &str,
+        compiled: &Compiled<'_>,
     ) -> String {
-        format!("{zone_id}/{ledger_id}@{commit}#{partition}~{descriptor}")
+        format!(
+            "{zone_id}/{ledger_id}@{commit}#{partition}!{}~{}^{}+{}",
+            compiled.interface, compiled.descriptor, compiled.profile, compiled.options
+        )
     }
 
     /// The head under this key, if it is held.
@@ -299,6 +317,74 @@ mod tests {
     use super::*;
     use permguard_languages::{Evaluator, Query, Verdict};
 
+    fn compiled() -> Compiled<'static> {
+        Compiled {
+            interface: "permguard.api.pdp.native.v1",
+            descriptor: "sha256:d",
+            profile: "production",
+            options: "",
+        }
+    }
+
+    /// IFACE-03: every member of what a partition is compiled for is in its key, so a compile for
+    /// another interface, runtime build, assurance profile or enabled contract is another entry.
+    #[test]
+    fn every_input_of_a_compile_is_in_its_key() {
+        let base = Cache::partition_key("z", "l", "sha256:c", "app", &compiled());
+        for (altered, why) in [
+            (
+                Compiled {
+                    interface: "permguard.api.pdp.temporal.v1alpha1",
+                    ..compiled()
+                },
+                "interface",
+            ),
+            (
+                Compiled {
+                    descriptor: "sha256:e",
+                    ..compiled()
+                },
+                "descriptor",
+            ),
+            (
+                Compiled {
+                    profile: "regulated",
+                    ..compiled()
+                },
+                "assurance profile",
+            ),
+            (
+                Compiled {
+                    options: "dogwood",
+                    ..compiled()
+                },
+                "enabled contracts",
+            ),
+        ] {
+            assert_ne!(
+                Cache::partition_key("z", "l", "sha256:c", "app", &altered),
+                base,
+                "{why}"
+            );
+        }
+        for (key, why) in [
+            (
+                Cache::partition_key("z", "l", "sha256:d", "app", &compiled()),
+                "commit",
+            ),
+            (
+                Cache::partition_key("z", "l", "sha256:c", "other", &compiled()),
+                "partition",
+            ),
+            (
+                Cache::partition_key("y", "l", "sha256:c", "app", &compiled()),
+                "zone",
+            ),
+        ] {
+            assert_ne!(key, base, "{why}");
+        }
+    }
+
     struct Nothing(usize);
 
     impl Evaluator for Nothing {
@@ -324,7 +410,7 @@ mod tests {
     #[test]
     fn what_was_kept_comes_back() {
         let cache = Cache::new(8, 1024 * 1024);
-        let key = Cache::partition_key("z", "l", "sha256:abc", "app", "sha256:d");
+        let key = Cache::partition_key("z", "l", "sha256:abc", "app", &compiled());
         assert!(
             cache.partition(&key).is_none(),
             "a cold cache holds nothing"
@@ -342,8 +428,8 @@ mod tests {
     #[test]
     fn the_commit_is_part_of_the_key_so_a_sync_replaces_nothing() {
         let cache = Cache::new(8, 1024 * 1024);
-        let old = Cache::partition_key("z", "l", "sha256:old", "app", "sha256:d");
-        let new = Cache::partition_key("z", "l", "sha256:new", "app", "sha256:d");
+        let old = Cache::partition_key("z", "l", "sha256:old", "app", &compiled());
+        let new = Cache::partition_key("z", "l", "sha256:new", "app", &compiled());
 
         cache.keep_partition(old.clone(), "z", partition("app", 64));
         assert!(
@@ -359,7 +445,7 @@ mod tests {
         let cache = Cache::new(2, 1024 * 1024);
         for name in ["a", "b"] {
             cache.keep_partition(
-                Cache::partition_key("z", "l", "sha256:c", name, "sha256:d"),
+                Cache::partition_key("z", "l", "sha256:c", name, &compiled()),
                 "z",
                 partition(name, 16),
             );
@@ -367,24 +453,42 @@ mod tests {
         // Touch `a`, so `b` becomes the oldest.
         assert!(
             cache
-                .partition(&Cache::partition_key("z", "l", "sha256:c", "a", "sha256:d"))
+                .partition(&Cache::partition_key(
+                    "z",
+                    "l",
+                    "sha256:c",
+                    "a",
+                    &compiled()
+                ))
                 .is_some()
         );
         cache.keep_partition(
-            Cache::partition_key("z", "l", "sha256:c", "c", "sha256:d"),
+            Cache::partition_key("z", "l", "sha256:c", "c", &compiled()),
             "z",
             partition("c", 16),
         );
 
         assert!(
             cache
-                .partition(&Cache::partition_key("z", "l", "sha256:c", "a", "sha256:d"))
+                .partition(&Cache::partition_key(
+                    "z",
+                    "l",
+                    "sha256:c",
+                    "a",
+                    &compiled()
+                ))
                 .is_some(),
             "the one that was wanted stays"
         );
         assert!(
             cache
-                .partition(&Cache::partition_key("z", "l", "sha256:c", "b", "sha256:d"))
+                .partition(&Cache::partition_key(
+                    "z",
+                    "l",
+                    "sha256:c",
+                    "b",
+                    &compiled()
+                ))
                 .is_none(),
             "the one that was not, goes"
         );
@@ -395,12 +499,12 @@ mod tests {
     fn the_byte_bound_evicts_too() {
         let cache = Cache::new(100, 1_000);
         cache.keep_partition(
-            Cache::partition_key("z", "l", "sha256:c", "big", "sha256:d"),
+            Cache::partition_key("z", "l", "sha256:c", "big", &compiled()),
             "z",
             partition("big", 900),
         );
         cache.keep_partition(
-            Cache::partition_key("z", "l", "sha256:c", "other", "sha256:d"),
+            Cache::partition_key("z", "l", "sha256:c", "other", &compiled()),
             "z",
             partition("other", 900),
         );
@@ -415,7 +519,7 @@ mod tests {
     fn a_zone_over_its_bound_evicts_only_its_own() {
         let cache = Cache::new(8, 1024 * 1024).with_zone_bounds(2, 1024 * 1024);
         let key =
-            |zone: &str, name: &str| Cache::partition_key(zone, "l", "sha256:c", name, "sha256:d");
+            |zone: &str, name: &str| Cache::partition_key(zone, "l", "sha256:c", name, &compiled());
         cache.keep_partition(key("quiet", "q"), "quiet", partition("q", 16));
         for name in ["a", "b", "c"] {
             cache.keep_partition(key("busy", name), "busy", partition(name, 16));
@@ -440,7 +544,7 @@ mod tests {
     fn a_zone_byte_bound_evicts_its_own_and_keeps_one_oversized_entry() {
         let cache = Cache::new(8, 10_000).with_zone_bounds(8, 1_000);
         let key =
-            |zone: &str, name: &str| Cache::partition_key(zone, "l", "sha256:c", name, "sha256:d");
+            |zone: &str, name: &str| Cache::partition_key(zone, "l", "sha256:c", name, &compiled());
         cache.keep_partition(key("other", "o"), "other", partition("o", 500));
         cache.keep_partition(key("heavy", "a"), "heavy", partition("a", 600));
         cache.keep_partition(key("heavy", "b"), "heavy", partition("b", 600));
@@ -466,7 +570,7 @@ mod tests {
     #[test]
     fn a_ledger_head_is_not_counted_against_its_zone() {
         let cache = Cache::new(8, 1024 * 1024).with_zone_bounds(1, 1024 * 1024);
-        let partition_key = Cache::partition_key("z", "l", "sha256:c", "app", "sha256:d");
+        let partition_key = Cache::partition_key("z", "l", "sha256:c", "app", &compiled());
         cache.keep_partition(partition_key.clone(), "z", partition("app", 16));
         cache.keep_head(
             Cache::head_key("z", "l", "sha256:c"),
@@ -489,8 +593,26 @@ mod tests {
     #[test]
     fn another_runtime_descriptor_is_another_key() {
         let cache = Cache::new(8, 1024 * 1024);
-        let ours = Cache::partition_key("z", "l", "sha256:c", "app", "sha256:engine-a");
-        let theirs = Cache::partition_key("z", "l", "sha256:c", "app", "sha256:engine-b");
+        let ours = Cache::partition_key(
+            "z",
+            "l",
+            "sha256:c",
+            "app",
+            &Compiled {
+                descriptor: "sha256:engine-a",
+                ..compiled()
+            },
+        );
+        let theirs = Cache::partition_key(
+            "z",
+            "l",
+            "sha256:c",
+            "app",
+            &Compiled {
+                descriptor: "sha256:engine-b",
+                ..compiled()
+            },
+        );
         cache.keep_partition(ours.clone(), "z", partition("app", 16));
 
         assert_ne!(ours, theirs);
@@ -504,7 +626,7 @@ mod tests {
     fn one_entry_larger_than_the_whole_bound_is_still_served() {
         // Better one thing held than a cache that thrashes on every request.
         let cache = Cache::new(4, 100);
-        let key = Cache::partition_key("z", "l", "sha256:c", "huge", "sha256:d");
+        let key = Cache::partition_key("z", "l", "sha256:c", "huge", &compiled());
         cache.keep_partition(key.clone(), "z", partition("huge", 10_000));
 
         assert!(cache.partition(&key).is_some());

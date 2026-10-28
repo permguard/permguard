@@ -1,0 +1,121 @@
+{
+  "folder": "numbersrangestep",
+  "files": {
+    "test-numbersrangestep.yaml": {
+      "sha256": "sha256:4b59d87bda0cc1d2f59f518482a4ea9979a1a5fbc39bd91f26b3a8d4146d81dc",
+      "cases": [
+        {
+          "note": "numbersrangestep/ascending",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := num if {\n\tnum := numbers.range_step(0, 10, 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                0,
+                2,
+                4,
+                6,
+                8,
+                10
+              ]
+            }
+          ]
+        },
+        {
+          "note": "numbersrangestep/descending",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := num if {\n\tnum := numbers.range_step(0, -10, 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                0,
+                -2,
+                -4,
+                -6,
+                -8,
+                -10
+              ]
+            }
+          ]
+        },
+        {
+          "note": "numbersrangestep/descending (cheap optimization)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np = num if {\n  num := numbers.range_step(10, 3, 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                10,
+                8,
+                6,
+                4
+              ]
+            }
+          ]
+        },
+        {
+          "note": "numbersrangestep/negative",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := num if {\n\tnum := numbers.range_step(0, 10, -2)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "numbers.range_step: step must be a positive number above zero",
+          "strict_error": true
+        },
+        {
+          "note": "numbersrangestep/memoryexample",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := num if {\n\tnum := numbers.range_step(1024, 4096, 1024)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                1024,
+                2048,
+                3072,
+                4096
+              ]
+            }
+          ]
+        },
+        {
+          "note": "numbersrangestep/equal",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := num if {\n\tnum := numbers.range_step(2, 2, 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "note": "numbersrangestep/notinrange",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := num if {\n\tnum := numbers.range_step(2, 5, 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                2,
+                4
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -38,9 +38,9 @@ use permguard_data_plane::authz::cache::Cache;
 use permguard_data_plane::authz::decide::Decider;
 use permguard_data_plane::authz::store::{Identity, Mirror};
 use permguard_data_plane::blocking::Blocking;
+use permguard_data_plane::temporal::configuration;
 use permguard_data_plane::temporal::streams::Streams;
 use permguard_data_plane::temporal::submit::Submitter;
-use permguard_data_plane::temporal::{configuration, http};
 use permguard_events::journal::Bounds;
 use permguard_languages::dogwood_artifacts;
 use permguard_languages::registry;
@@ -57,6 +57,12 @@ use permguard_objects::manifest::{
 use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND};
 use permguard_objects::semver::Constraint;
+
+/// The authority every mirror of these tests lives under (WP-7.2a): a mirror in a configured URL's
+/// shape is never served since WP-7.7.
+const MIRROR_AUTHORITY: &str = "11111111111111111111111111111111";
+/// The task the mirrors of these tests were listed by: the local task.
+const MIRROR_TASK: &str = "00000000-0000-0000-0000-000000000000/local";
 
 const POLICY: &str = include_str!("fixtures/read-login-not-logout.dw");
 const ACTION_SCHEMA: &str = include_str!("fixtures/read-login-not-logout.cedarschema");
@@ -128,6 +134,7 @@ fn manifest() -> Manifest {
     partitions.insert(
         "governance".to_owned(),
         Partition {
+            interfaces: Vec::new(),
             runtime: permguard_languages::DOGWOOD.to_owned(),
             media_types,
             // A Dogwood partition states its contents by name: `schema: bool` cannot say which of
@@ -216,7 +223,7 @@ fn provision_with(
     (policy_id, policy): (&str, &str),
     artifacts: &[(&str, &str)],
 ) -> Mirror {
-    let path = root.join(ZONE_ID).join(LEDGER_ID);
+    let path = root.join(MIRROR_AUTHORITY).join(ZONE_ID).join(LEDGER_ID);
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);
 
@@ -301,11 +308,15 @@ fn provision_with(
         &permguard_control_client::checkpoint::Checkpoint {
             head: commit_digest.to_string(),
             counter: 1,
+            ref_digest: None,
+            ..Default::default()
         },
     )
     .expect("the checkpoint is written");
 
     let identity = Identity {
+        task: Some(MIRROR_TASK.to_owned()),
+        authority: Some(MIRROR_AUTHORITY.to_owned()),
         zone_id: ZONE_ID.to_owned(),
         zone_name: ZONE.to_owned(),
         ledger_id: LEDGER_ID.to_owned(),
@@ -359,6 +370,47 @@ fn plane_built(
     journalled: bool,
     build: impl FnOnce(&Path),
 ) -> Plane {
+    plane_built_under(
+        tag,
+        permguard_core::assurance::AssuranceProfile::Development,
+        blocking,
+        metrics,
+        journalled,
+        build,
+    )
+}
+
+/// The same plane, loading its partitions under the assurance `profile`.
+fn plane_built_under(
+    tag: &str,
+    profile: permguard_core::assurance::AssuranceProfile,
+    blocking: Blocking,
+    metrics: Metrics,
+    journalled: bool,
+    build: impl FnOnce(&Path),
+) -> Plane {
+    // The clock bounds are widened for the tests only, and deliberately: upstream's trace is dated
+    // at the epoch, and what these tests are about is the temporal semantics rather than the skew
+    // rule — which has tests of its own, with the bounds the shipped configuration uses.
+    let bounds = Bounds {
+        retention_minimum: std::time::Duration::MAX,
+        allowed_lateness: std::time::Duration::from_secs(u32::MAX.into()),
+        clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
+        ..Bounds::default()
+    };
+    plane_built_bounded(tag, profile, blocking, metrics, journalled, build, bounds)
+}
+
+/// The same plane, its event journal under `bounds`.
+fn plane_built_bounded(
+    tag: &str,
+    profile: permguard_core::assurance::AssuranceProfile,
+    blocking: Blocking,
+    metrics: Metrics,
+    journalled: bool,
+    build: impl FnOnce(&Path),
+    bounds: Bounds,
+) -> Plane {
     let root = scratch(tag);
     let mirrors = root.join("mirrors");
     std::fs::create_dir_all(&mirrors).expect("the mirrors root is created");
@@ -371,7 +423,8 @@ fn plane_built(
         metrics.clone(),
         None,
         256,
-    );
+    )
+    .with_profile(profile);
     let decider = Arc::new(if journalled {
         let journal = permguard_data_plane::decisions::journal::Journal::open(
             &decisions,
@@ -401,17 +454,15 @@ fn plane_built(
         decider
     });
     let events = root.join("events");
-    // The clock bounds are widened for the tests only, and deliberately: upstream's trace is dated
-    // at the epoch, and what these tests are about is the temporal semantics rather than the skew
-    // rule — which has tests of its own below, with the bounds the shipped configuration uses.
-    let bounds = Bounds {
-        retention_minimum: std::time::Duration::MAX,
-        allowed_lateness: std::time::Duration::from_secs(u32::MAX.into()),
-        clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
-        ..Bounds::default()
-    };
     let streams = Arc::new(
-        Streams::new(events.clone(), "test-plane".to_owned(), bounds).with_metrics(metrics.clone()),
+        Streams::new(
+            events.clone(),
+            root.join("planes"),
+            permguard_data_plane::temporal::testing::host_side(&events),
+            bounds,
+        )
+        .expect("the floor is registered")
+        .with_metrics(metrics.clone()),
     );
 
     Plane {
@@ -468,7 +519,9 @@ fn surface(plane: &Plane) -> axum::Router {
         submitter: Arc::clone(&plane.submitter),
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
         pdp: "test-plane".to_owned(),
+        authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
     })
 }
 
@@ -583,14 +636,26 @@ async fn the_event_is_durable_before_the_answer_leaves_and_the_watermark_says_wh
         "{body}"
     );
 
-    // And it is on disk, in the ledger's own directory, before any of that was said.
-    let segment = plane
-        .events
-        .join(ZONE_ID)
-        .join(LEDGER_ID)
-        .join("seg-00000000000000000001.events");
-    let held = std::fs::read_to_string(&segment).expect("the segment exists");
-    assert!(held.contains("Drupe::Action::Login"), "{held}");
+    // And it is on the Host's stream before any of that was said, naming the Host and the run
+    // the receipt names (WP-6.2a).
+    let held = plane
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+        .expect("the stream reads back");
+    assert_eq!(held.len(), 1);
+    assert_eq!(
+        held[0]["event"]["action"], "Drupe::Action::Login",
+        "{}",
+        held[0]
+    );
+    assert_eq!(
+        held[0]["stream"]["producer"]["instance"], body["watermark"]["instance"],
+        "{body}"
+    );
+    assert!(
+        !plane.events.join(ZONE_ID).join(LEDGER_ID).exists(),
+        "and no legacy journal was created"
+    );
 }
 
 /// Concurrent submissions reach the histories in the order the journal made them durable.
@@ -698,11 +763,15 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
         clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
         ..Bounds::default()
     };
-    let streams = Arc::new(Streams::new(
-        root.join("events"),
-        "test-plane".to_owned(),
-        bounds,
-    ));
+    let streams = Arc::new(
+        Streams::new(
+            root.join("events"),
+            root.join("events").join("planes"),
+            permguard_data_plane::temporal::testing::host_side(&root.join("events")),
+            bounds,
+        )
+        .expect("the floor is registered"),
+    );
     let imports = Arc::new(permguard_data_plane::temporal::imports::Imports::new(
         root.join("pull"),
     ));
@@ -906,7 +975,9 @@ async fn an_event_id_conflict_is_409_over_http_and_aborted_over_grpc() {
         submitter: Arc::clone(&plane.submitter),
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
         pdp: "test-plane".to_owned(),
+        authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
     };
     let occurrence = |server: &str| {
         submission(
@@ -940,7 +1011,7 @@ async fn an_event_id_conflict_is_409_over_http_and_aborted_over_grpc() {
         }),
     };
     let over_grpc = api
-        .submit_event(tonic::Request::new(proto))
+        .submit_event(anonymous(proto))
         .await
         .expect_err("a conflicting occurrence is refused");
     assert_eq!(over_grpc.code(), tonic::Code::Aborted, "{over_grpc:?}");
@@ -1036,6 +1107,123 @@ async fn an_event_type_this_plane_does_not_accept_is_refused_by_name() {
     );
 }
 
+/// The clock bounds the shipped configuration publishes (`clock_skew`, `allowed_lateness`): an
+/// occurrence further ahead of this plane's clock than the skew, or further behind it than the
+/// lateness, is refused with its own code and records nothing; one inside both is accepted.
+#[tokio::test]
+async fn an_occurrence_outside_the_clock_bounds_is_refused_by_its_own_code() {
+    let shipped = Bounds {
+        retention_minimum: std::time::Duration::MAX,
+        ..Bounds::default()
+    };
+    let plane = plane_built_bounded(
+        "clock-bounds",
+        permguard_core::assurance::AssuranceProfile::Development,
+        blocking(),
+        Metrics::none(),
+        false,
+        |mirrors| {
+            provision(mirrors, &manifest());
+        },
+        shipped,
+    );
+    let router = surface(&plane);
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_secs(),
+    )
+    .expect("an instant");
+    let skew = i64::try_from(shipped.clock_skew.as_secs()).expect("seconds");
+    let lateness = i64::try_from(shipped.allowed_lateness.as_secs()).expect("seconds");
+    let login = |at: i64, user: &str| {
+        submission(
+            at,
+            "Drupe::Action::Login",
+            "response",
+            user,
+            json!({"user": user, "server": "s1"}),
+        )
+    };
+
+    let (status, answered) = post(&router, login(now + skew + 600, "ahead")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{answered}");
+    assert_eq!(answered["code"], "event_ahead_of_clock", "{answered}");
+
+    let (status, answered) = post(&router, login(now - lateness - 600, "late")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{answered}");
+    assert_eq!(answered["code"], "event_too_late", "{answered}");
+    let held = |plane: &Plane| {
+        plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+            .expect("the stream reads back")
+            .len()
+    };
+    assert_eq!(held(&plane), 0, "a refused occurrence records nothing");
+
+    let (status, answered) = post(&router, login(now, "in-time")).await;
+    assert_eq!(status, StatusCode::OK, "inside both bounds: {answered}");
+    assert_eq!(
+        held(&plane),
+        1,
+        "only the occurrence inside both bounds is recorded"
+    );
+}
+
+/// A temporal contract whose window can outlive the history this plane keeps is refused before it
+/// decides anything (`history_retention_insufficient`): a retention shorter than the policies'
+/// window, plus the lateness and the skew, would let eviction change what they answer.
+#[tokio::test]
+async fn a_contract_whose_window_outlives_the_retention_is_refused() {
+    let short = Bounds {
+        retention_minimum: std::time::Duration::from_secs(1),
+        ..Bounds::default()
+    };
+    let plane = plane_built_bounded(
+        "retention-short",
+        permguard_core::assurance::AssuranceProfile::Development,
+        blocking(),
+        Metrics::none(),
+        false,
+        |mirrors| {
+            provision(mirrors, &manifest());
+        },
+        short,
+    );
+    let router = surface(&plane);
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_secs(),
+    )
+    .expect("an instant");
+    let (status, answered) = post(
+        &router,
+        submission(
+            now,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
+    assert_eq!(
+        answered["code"], "history_retention_insufficient",
+        "{answered}"
+    );
+    assert!(
+        answered["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("cannot activate its temporal contract")),
+        "{answered}"
+    );
+}
+
 /// The document advertises the route the router actually mounts.
 #[tokio::test]
 async fn the_discovery_document_names_the_route_this_plane_answers() {
@@ -1087,6 +1275,76 @@ async fn the_discovery_document_names_the_route_this_plane_answers() {
     assert_eq!(status, StatusCode::OK);
 }
 
+/// WP-7.4a, owner decisions of 2026-10-21: the temporal document's common header is the same over
+/// HTTP and over gRPC, and a retired interface's document is refused `interface_retired`.
+#[tokio::test]
+async fn the_temporal_document_carries_the_header_on_both_transports() {
+    use permguard_core::stages::{Describer, Registered, Stage};
+    use permguard_data_plane::temporal::grpc;
+    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+
+    static RETIRED: &[Registered] = &[Registered {
+        id: permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1,
+        stage: Stage::Retired,
+    }];
+    let plane = plane("header-parity");
+    let response = surface(&plane)
+        .oneshot(
+            Request::builder()
+                .uri(configuration::CONFIGURATION_PATH)
+                .body(Body::empty())
+                .expect("the request builds"),
+        )
+        .await
+        .expect("the surface answers");
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("the body is read")
+        .to_bytes();
+    let over_http: Value = serde_json::from_slice(&bytes).expect("the document parses");
+
+    let api = |describer: Describer| grpc::TemporalPdpApi {
+        submitter: Arc::clone(&plane.submitter),
+        disclosure: Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        describer,
+        pdp: "test-plane".to_owned(),
+        authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+    };
+    let over_grpc = api(Describer::detached("data-plane"))
+        .get_temporal_configuration(tonic::Request::new(
+            permguard_data_plane::v1::GetTemporalConfigurationRequest {},
+        ))
+        .await
+        .expect("answered")
+        .into_inner();
+    assert_eq!(over_http["component"], over_grpc.component.as_str());
+    assert_eq!(over_http["state"], over_grpc.state.as_str());
+    assert_eq!(over_http["stage"], over_grpc.stage.as_str());
+    assert_eq!(over_http["version"], over_grpc.version.as_str());
+    assert_eq!(over_grpc.stage, "v1alpha1");
+    assert!(over_grpc.sunset.is_none() && over_http.get("sunset").is_none());
+    assert_eq!(over_http["limits"], json!({}));
+    assert!(over_grpc.limits.is_empty());
+
+    let refused = api(Describer::detached("data-plane").with_registry(RETIRED))
+        .get_temporal_configuration(tonic::Request::new(
+            permguard_data_plane::v1::GetTemporalConfigurationRequest {},
+        ))
+        .await
+        .expect_err("retired");
+    assert_eq!(refused.code(), tonic::Code::InvalidArgument);
+    assert_eq!(
+        refused
+            .metadata()
+            .get(permguard_core::GRPC_ERROR_CODE)
+            .and_then(|value| value.to_str().ok()),
+        Some("interface_retired")
+    );
+}
+
 /// The two transports are one interface: same request, same answer, same path underneath.
 #[tokio::test]
 async fn grpc_and_http_answer_the_same_submission_identically() {
@@ -1102,7 +1360,9 @@ async fn grpc_and_http_answer_the_same_submission_identically() {
         submitter: Arc::clone(&over_grpc.submitter),
         disclosure: Disclosure::Full,
         base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
         pdp: "test-plane".to_owned(),
+        authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
     };
 
     for (at, action, kind, user) in TRACE {
@@ -1124,7 +1384,7 @@ async fn grpc_and_http_answer_the_same_submission_identically() {
             }),
         };
         let over_the_wire = api
-            .submit_event(tonic::Request::new(proto))
+            .submit_event(anonymous(proto))
             .await
             .expect("the gRPC surface answers")
             .into_inner();
@@ -1158,6 +1418,85 @@ async fn grpc_and_http_answer_the_same_submission_identically() {
     }
 }
 
+/// WP-7.5b, IFACE-06: a number at the edges of the domain both transports carry exactly meets the
+/// same outcome in an occurrence submitted over REST and over gRPC: past ±2^53 — an even integer
+/// a JSON reader keeps exactly — refused `value_unrepresentable` on both, a whole number written
+/// as a decimal read as the integer it is on both, 2^53 itself carried by both.
+#[tokio::test]
+async fn a_number_at_the_edge_of_the_domain_meets_the_same_outcome_over_both_transports() {
+    use permguard_data_plane::temporal::grpc;
+    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+
+    let over_http = plane("http-numbers");
+    let over_grpc = plane("grpc-numbers");
+    let http_router = surface(&over_http);
+    let api = grpc::TemporalPdpApi {
+        submitter: Arc::clone(&over_grpc.submitter),
+        disclosure: Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
+        pdp: "test-plane".to_owned(),
+        authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+    };
+    let (first, action, kind, user) = TRACE[0];
+    let cases = [
+        ("2^54", json!(18_014_398_509_481_984_u64), true),
+        ("-(2^53 + 2)", json!(-9_007_199_254_740_994_i64), true),
+        ("2^53", json!(9_007_199_254_740_992_u64), false),
+        ("42.0", json!(42.0), false),
+    ];
+    for (index, (case, number, refused)) in cases.into_iter().enumerate() {
+        let at = first + i64::try_from(index).expect("small");
+        let mut input = input_of(at, action, kind, user);
+        input["n"] = number;
+        let body = submission(at, action, kind, user, input);
+
+        let (status, answered) = post(&http_router, body.clone()).await;
+        let over_rest = if status == StatusCode::OK {
+            "answered".to_owned()
+        } else {
+            answered["code"].as_str().unwrap_or_default().to_owned()
+        };
+        let proto = permguard_data_plane::v1::SubmitEventRequest {
+            store: Some(permguard_data_plane::v1::EventStore {
+                zone: ZONE.to_owned(),
+                ledger: LEDGER.to_owned(),
+                profile: PROFILE.to_owned(),
+            }),
+            event: Some(permguard_data_plane::v1::TypedEvent {
+                r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
+                data: Some(permguard_data_plane::authz::translate::struct_from_map(
+                    body["event"]["data"].as_object().expect("an object"),
+                )),
+            }),
+        };
+        let over_rpc = match api.submit_event(anonymous(proto)).await {
+            Ok(_) => "answered".to_owned(),
+            Err(status) => status
+                .metadata()
+                .get(permguard_core::GRPC_ERROR_CODE)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default()
+                .to_owned(),
+        };
+
+        assert_eq!(over_rest, over_rpc, "`{case}`: {answered}");
+        if refused {
+            assert_eq!(
+                over_rest,
+                permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
+                "`{case}`"
+            );
+        } else {
+            assert_ne!(
+                over_rest,
+                permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
+                "`{case}` is carried"
+            );
+        }
+    }
+}
+
 /// The shipped example, run the way its README tells a reader to run it.
 ///
 /// The files are read from `examples/dogwood-session-access` — the manifest, the policy, both
@@ -1185,7 +1524,7 @@ mod shipped_example {
             permguard_languages::manifest_file::from_yaml(example("manifest.yml").as_bytes())
                 .expect("the example's manifest parses");
 
-        let path = root.join(ZONE_ID).join(LEDGER_ID);
+        let path = root.join(MIRROR_AUTHORITY).join(ZONE_ID).join(LEDGER_ID);
         std::fs::create_dir_all(&path).expect("the mirror directory is created");
         let store = FsStore::new(&path);
         let put_blob = |media_type: &str, data: &[u8]| {
@@ -1280,11 +1619,15 @@ mod shipped_example {
             &permguard_control_client::checkpoint::Checkpoint {
                 head: commit_digest.to_string(),
                 counter: 1,
+                ref_digest: None,
+                ..Default::default()
             },
         )
         .expect("the checkpoint is written");
 
         let identity = Identity {
+            task: Some(MIRROR_TASK.to_owned()),
+            authority: Some(MIRROR_AUTHORITY.to_owned()),
             zone_id: ZONE_ID.to_owned(),
             zone_name: ZONE.to_owned(),
             ledger_id: LEDGER_ID.to_owned(),
@@ -1319,11 +1662,15 @@ mod shipped_example {
             ..Bounds::default()
         };
 
-        let streams = Arc::new(Streams::new(
-            events.to_path_buf(),
-            "example-plane".to_owned(),
-            bounds,
-        ));
+        let streams = Arc::new(
+            Streams::new(
+                events.to_path_buf(),
+                events.join("planes"),
+                permguard_data_plane::temporal::testing::host_side(events),
+                bounds,
+            )
+            .expect("the floor is registered"),
+        );
 
         Plane {
             submitter: Arc::new(Submitter::new(
@@ -1363,11 +1710,15 @@ mod shipped_example {
             ..Bounds::default()
         };
 
-        let streams = Arc::new(Streams::new(
-            events.clone(),
-            "example-plane".to_owned(),
-            bounds,
-        ));
+        let streams = Arc::new(
+            Streams::new(
+                events.clone(),
+                events.join("planes"),
+                permguard_data_plane::temporal::testing::host_side(&events.clone()),
+                bounds,
+            )
+            .expect("the floor is registered"),
+        );
 
         Plane {
             submitter: Arc::new(Submitter::new(
@@ -1439,6 +1790,9 @@ mod shipped_example {
                 answered["history"]["mode"], "local",
                 "{fixture}: {answered}"
             );
+            // WP-6.4a: a local history cites its time interpretation and no frontier.
+            assert_eq!(answered["history"]["time"], "occurred_at", "{answered}");
+            assert!(answered["history"].get("frontier").is_none(), "{answered}");
         }
     }
     /// The example's refusals, which are as much of the contract as its permits.
@@ -1557,6 +1911,7 @@ mod shipped_example {
             .record_outcome(
                 ZONE_ID,
                 LEDGER_ID,
+                "anonymous",
                 event_id,
                 permguard_data_plane::temporal::streams::Routed {
                     profile: "default",
@@ -1618,6 +1973,7 @@ mod shipped_example {
             .record_outcome(
                 ZONE_ID,
                 LEDGER_ID,
+                "anonymous",
                 event_id,
                 permguard_data_plane::temporal::streams::Routed {
                     profile: "default",
@@ -1742,9 +2098,9 @@ async fn a_settled_answer_is_returned_after_its_profile_is_gone() {
     // The profile is taken away, not the mirror: the plane still serves this ledger — its
     // identity file is what resolves the canonical key — but nothing here can compile a profile
     // any more, so an answer that needed one could not be produced a second time.
-    // A mirror lives at `<mirrors>/<zone>/<ledger>`, and its identity file beside its policy
-    // state. Everything but that file goes.
-    for zone in std::fs::read_dir(&plane.mirrors).expect("the mirrors root reads") {
+    // A mirror lives at `<mirrors>/<authority>/<zone>/<ledger>`, and its identity file beside its
+    // policy state. Everything but that file goes.
+    for zone in std::fs::read_dir(plane.mirrors.join(MIRROR_AUTHORITY)).expect("the root reads") {
         for ledger in std::fs::read_dir(zone.expect("a zone").path()).expect("the zone reads") {
             for held in std::fs::read_dir(ledger.expect("a ledger").path()).expect("it reads") {
                 let held = held.expect("an entry").path();
@@ -2383,8 +2739,14 @@ mod adversarial_ids {
         // The names a caller addresses the ledger by are the spies; the ids storage is keyed by
         // stay the plane's own.
         permguard_data_plane::authz::store::record(
-            &plane.mirrors.join(ZONE_ID).join(LEDGER_ID),
+            &plane
+                .mirrors
+                .join(MIRROR_AUTHORITY)
+                .join(ZONE_ID)
+                .join(LEDGER_ID),
             &Identity {
+                task: Some(MIRROR_TASK.to_owned()),
+                authority: Some(MIRROR_AUTHORITY.to_owned()),
                 zone_id: ZONE_ID.to_owned(),
                 zone_name: ZONE_SPY.to_owned(),
                 ledger_id: LEDGER_ID.to_owned(),
@@ -2542,6 +2904,67 @@ when { Boom::Fail(context.input.document).ok == true };
         )
     }
 
+    /// DOGWOOD-01, owner decision of 2026-10-21: upstream gives a provider no wall-clock
+    /// cancellation, so from `production` upward a partition carrying providers is refused at
+    /// load; the same partition without them serves there, and with them below it.
+    #[tokio::test]
+    async fn a_partition_carrying_providers_is_refused_from_production() {
+        use permguard_core::assurance::AssuranceProfile;
+
+        let explicit = |mut manifest: Manifest| {
+            for partition in manifest.partitions.values_mut() {
+                partition.interfaces =
+                    vec![permguard_objects::manifest::PROFILE_PDP_TEMPORAL_V1ALPHA1.to_owned()];
+            }
+            manifest
+        };
+        for profile in [AssuranceProfile::Production, AssuranceProfile::Regulated] {
+            let plane = plane_built_under(
+                &format!("temporal-providers-{profile}"),
+                profile,
+                blocking(),
+                Metrics::none(),
+                false,
+                |mirrors| {
+                    provision_with(
+                        mirrors,
+                        &explicit(manifest_with_providers()),
+                        ("01a0-boom", BOOM_POLICY),
+                        &[
+                            (dogwood_artifacts::ACTION_SCHEMA, ACTION_SCHEMA),
+                            (dogwood_artifacts::EVENT_SCHEMA, EVENT_SCHEMA),
+                            (dogwood_artifacts::PROVIDERS, BOOM_PROVIDERS),
+                        ],
+                    );
+                },
+            );
+            let (status, answered) = post(&surface(&plane), read(100)).await;
+            assert_ne!(status, StatusCode::OK, "{profile}: {answered}");
+            assert_eq!(
+                answered["code"],
+                json!("ledger_incompatible"),
+                "{profile}: {answered}"
+            );
+        }
+
+        let plain = plane_built_under(
+            "temporal-providers-none",
+            AssuranceProfile::Production,
+            blocking(),
+            Metrics::none(),
+            false,
+            |mirrors| {
+                provision(mirrors, &explicit(manifest()));
+            },
+        );
+        let (status, answered) = post(&surface(&plain), read(100)).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+
+        let below = plane_failing("temporal-providers-development");
+        let (status, answered) = post(&surface(&below), read(100)).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+    }
+
     #[tokio::test]
     async fn an_evaluation_failure_is_answered_indeterminate_not_denied() {
         let plane = plane_failing("temporal-indeterminate");
@@ -2635,6 +3058,55 @@ when { Boom::Fail(context.input.document).ok == true };
             record["event"]["event_id"].is_string(),
             "linked to the occurrence it was made about: {record}"
         );
+        // The evidence binding (WP-7.5c, IFACE-04, IFACE-05): the temporal interface, the source
+        // the submission authenticated as, pseudonymised, a keyed commitment to the question, and
+        // the runtime each partition of the profile was evaluated by.
+        assert_eq!(
+            record["interface"],
+            json!(permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1),
+            "{record}"
+        );
+        assert_eq!(record["actor"]["type"], json!("Actor"), "{record}");
+        assert!(
+            record["actor"]["id"]
+                .as_str()
+                .is_some_and(|id| id.len() > 32
+                    && id.split_once(':').is_some_and(|(_, tag)| tag.len() == 32
+                        && tag.bytes().all(|byte| byte.is_ascii_hexdigit()))),
+            "the actor is pseudonymised: {record}"
+        );
+        assert_ne!(
+            record["actor"]["id"], record["subject"]["id"],
+            "the source that submitted, not the occurrence's principal: {record}"
+        );
+        // Submitted with no credential: the source is the reserved anonymous principal, and the
+        // actor is exactly its pseudonym under the zone's key.
+        let zone = permguard_host::secrets::parse_uuid(ZONE_ID).expect("a UUID");
+        let anonymous = subjects()
+            .expect("the zone's pseudonyms")
+            .pseudonym(
+                &zone,
+                "actor",
+                permguard_core::authz::Principal::anonymous().as_str(),
+            )
+            .expect("a pseudonym");
+        assert_eq!(record["actor"]["id"], json!(anonymous), "{record}");
+        assert!(
+            record["question"]
+                .as_str()
+                .is_some_and(|question| question.starts_with("hmac-sha256:")
+                    && !question.ends_with(":unavailable")),
+            "{record}"
+        );
+        assert!(
+            record["descriptors"]
+                .as_object()
+                .is_some_and(|descriptors| !descriptors.is_empty()
+                    && descriptors.values().all(|digest| digest
+                        .as_str()
+                        .is_some_and(|digest| digest.starts_with("sha256:")))),
+            "{record}"
+        );
     }
 
     /// Under minimal disclosure the engines' own words stay inside: every reason keeps its code
@@ -2646,7 +3118,9 @@ when { Boom::Fail(context.input.document).ok == true };
             submitter: Arc::clone(&plane.submitter),
             disclosure: Disclosure::Minimal,
             base_url: "http://plane.test".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
             pdp: "test-plane".to_owned(),
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         });
 
         let (status, answered) = post(&router, read(100)).await;
@@ -2670,7 +3144,9 @@ when { Boom::Fail(context.input.document).ok == true };
             submitter: Arc::clone(&plane.submitter),
             disclosure: Disclosure::Minimal,
             base_url: "http://plane.test".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
             pdp: "test-plane".to_owned(),
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         };
         let body = read(200);
         let proto = permguard_data_plane::v1::SubmitEventRequest {
@@ -2687,7 +3163,7 @@ when { Boom::Fail(context.input.document).ok == true };
             }),
         };
         let answered = api
-            .submit_event(tonic::Request::new(proto))
+            .submit_event(anonymous(proto))
             .await
             .expect("the gRPC surface answers")
             .into_inner();
@@ -2771,7 +3247,9 @@ when { Boom::Fail(context.input.document).ok == true };
             submitter: Arc::clone(&plane.submitter),
             disclosure: Disclosure::Full,
             base_url: "http://plane.test".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
             pdp: "test-plane".to_owned(),
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         };
         let body = read(200);
         let proto = permguard_data_plane::v1::SubmitEventRequest {
@@ -2789,7 +3267,7 @@ when { Boom::Fail(context.input.document).ok == true };
         };
 
         let answered = api
-            .submit_event(tonic::Request::new(proto))
+            .submit_event(anonymous(proto))
             .await
             .expect("the gRPC surface answers: the occurrence is durable")
             .into_inner();
@@ -2810,5 +3288,1728 @@ when { Boom::Fail(context.input.document).ok == true };
                 .map(|reason| reason.code.as_str()),
             Some(permguard_core::codes::pdp_native::EVALUATION_FAILED)
         );
+    }
+}
+
+/// The temporal routes behind the authentication boundary every served surface has (WP-6.2a):
+/// nobody presents a credential here, so every request is anonymous and the permissive
+/// authorization admits it.
+mod http {
+    pub use permguard_data_plane::temporal::http::Surface;
+
+    pub fn routes(surface: Surface) -> axum::Router {
+        permguard_data_plane::temporal::http::routes(surface).layer(
+            permguard_transport::ActorLayer::new(std::sync::Arc::new(permguard_core::NoRules)),
+        )
+    }
+}
+
+/// A gRPC request as the boundary would hand it on: anonymous.
+fn anonymous<T>(inner: T) -> tonic::Request<T> {
+    let mut request = tonic::Request::new(inner);
+    request
+        .extensions_mut()
+        .insert(Arc::new(permguard_core::authz::Actor::Anonymous));
+    request
+}
+
+/// WP-6.2a (owner decision of 2026-10-18): a submission takes `event.submit` on the exact ledger,
+/// over both transports, before anything is recorded; one admitted is recorded under the
+/// principal the gate authorized.
+#[tokio::test]
+async fn a_submission_without_event_submit_is_refused_before_anything_is_recorded() {
+    use permguard_data_plane::temporal::grpc;
+    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+
+    let plane = plane("ungranted");
+    let closed = Arc::new(permguard_host::composition::Authorization::closed());
+    let router = http::routes(http::Surface {
+        submitter: Arc::clone(&plane.submitter),
+        disclosure: Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
+        pdp: "test-plane".to_owned(),
+        authorization: Arc::clone(&closed),
+    });
+    let body = submission(
+        0,
+        "Drupe::Action::Login",
+        "response",
+        "alice",
+        json!({"user": "alice", "server": "s1"}),
+    );
+    let (status, answered) = post(&router, body.clone()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{answered}");
+
+    let api = grpc::TemporalPdpApi {
+        submitter: Arc::clone(&plane.submitter),
+        disclosure: Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
+        pdp: "test-plane".to_owned(),
+        authorization: closed,
+    };
+    let proto = permguard_data_plane::v1::SubmitEventRequest {
+        store: Some(permguard_data_plane::v1::EventStore {
+            zone: ZONE.to_owned(),
+            ledger: LEDGER.to_owned(),
+            profile: PROFILE.to_owned(),
+        }),
+        event: Some(permguard_data_plane::v1::TypedEvent {
+            r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
+            data: Some(permguard_data_plane::authz::translate::struct_from_map(
+                body["event"]["data"].as_object().expect("an object"),
+            )),
+        }),
+    };
+    let refused = api
+        .submit_event(anonymous(proto))
+        .await
+        .expect_err("no grant");
+    assert_eq!(refused.code(), tonic::Code::Unauthenticated, "{refused:?}");
+    assert!(
+        plane
+            .submitter
+            .streams()
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+            .map(|records| records.is_empty())
+            .unwrap_or(true),
+        "nothing recorded"
+    );
+
+    // Admitted, the record names its source: the anonymous principal here.
+    let (status, answered) = post(&surface(&plane), body).await;
+    assert_eq!(status, StatusCode::OK, "{answered}");
+    let records = plane
+        .submitter
+        .streams()
+        .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+        .expect("the journal reads");
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["source"], "anonymous");
+}
+
+/// WP-6.2a, after the review: the receipt names the record's own place on the stream it names,
+/// its run and its sequence there, past the first run too.
+#[tokio::test]
+async fn the_receipt_names_the_records_place_on_its_run_after_a_rollover() {
+    let plane = plane("receipt-run");
+    let router = surface(&plane);
+    let (status, first) = post(
+        &router,
+        submission(
+            0,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    permguard_data_plane::temporal::testing::producer_at(&plane.events).rollover(
+        &permguard_core::authz::Resource::ledger("data", ZONE_ID, LEDGER_ID),
+    );
+    let (status, second) = post(
+        &router,
+        submission(
+            1,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s2"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    let held = plane
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+        .expect("the stream reads back");
+    assert_eq!(held.len(), 2);
+    assert_eq!(second["watermark"]["sequence"], held[1]["seq"], "{second}");
+    assert_eq!(
+        second["watermark"]["sequence"], 1,
+        "the new run starts at one: {second}"
+    );
+    assert_eq!(
+        second["watermark"]["instance"], held[1]["stream"]["producer"]["instance"],
+        "{second}"
+    );
+    assert_ne!(
+        second["watermark"]["instance"], first["watermark"]["instance"],
+        "another run"
+    );
+}
+
+/// WP-6.2a: a store the names resolve to that is not the one the gate authorized is refused,
+/// and nothing is recorded.
+#[tokio::test]
+async fn a_store_changed_since_it_was_authorized_is_refused() {
+    let plane = plane("store-changed");
+    let request: permguard_languages::temporal::SubmitRequest = serde_json::from_value(submission(
+        0,
+        "Drupe::Action::Login",
+        "response",
+        "alice",
+        json!({"user": "alice", "server": "s1"}),
+    ))
+    .expect("a submission");
+    let refused = plane
+        .submitter
+        .submit(
+            &request,
+            "anonymous",
+            Some(&("another-zone".to_owned(), "another-ledger".to_owned())),
+        )
+        .await
+        .expect_err("not the store authorized");
+    assert_eq!(
+        refused.class(),
+        permguard_core::ErrorClass::Unavailable,
+        "{refused:?}"
+    );
+    assert!(
+        plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+            .map(|records| records.is_empty())
+            .unwrap_or(true),
+        "nothing recorded"
+    );
+    // The ids authorized, it is recorded.
+    plane
+        .submitter
+        .submit(
+            &request,
+            "anonymous",
+            Some(&(ZONE_ID.to_owned(), LEDGER_ID.to_owned())),
+        )
+        .await
+        .expect("the store authorized");
+}
+
+/// The Host's consumer of `data/events` as the plane reads the imported origins: one origin's run
+/// holding `held` records, and the import state the Host keeps.
+#[derive(Default)]
+struct Imported {
+    held: std::sync::Mutex<u64>,
+    state: std::sync::Mutex<Option<permguard_host::membership::import::State>>,
+    /// Whether the consumer also lists a run of the importing Host's own, `[9; 16]`.
+    own: std::sync::Mutex<bool>,
+    /// Runs holding real records, by origin and run: what a conflict or a duplicate needs.
+    #[allow(clippy::type_complexity)]
+    extra: std::sync::Mutex<Vec<([u8; 16], [u8; 16], Vec<Value>)>>,
+}
+
+const ORIGIN: [u8; 16] = [1; 16];
+const ORIGIN_RUN: [u8; 16] = [7; 16];
+
+impl permguard_host::composition::StreamConsumerReads for Imported {
+    fn runs(
+        &self,
+        _: &permguard_core::authz::Resource,
+    ) -> Result<Vec<permguard_host::composition::ConsumedRun>, String> {
+        let held = *self.held.lock().expect("lock");
+        let mut runs: Vec<permguard_host::composition::ConsumedRun> = (held > 0)
+            .then_some(permguard_host::composition::ConsumedRun {
+                producer: ORIGIN,
+                run: ORIGIN_RUN,
+                acked: held,
+                oldest_retained: held + 1,
+            })
+            .into_iter()
+            .collect();
+        for (producer, run, records) in self.extra.lock().expect("lock").iter() {
+            runs.push(permguard_host::composition::ConsumedRun {
+                producer: *producer,
+                run: *run,
+                acked: records.len() as u64,
+                oldest_retained: 1,
+            });
+        }
+        if *self.own.lock().expect("lock") {
+            runs.push(permguard_host::composition::ConsumedRun {
+                producer: [9; 16],
+                run: [8; 16],
+                acked: 5,
+                oldest_retained: 6,
+            });
+        }
+        Ok(runs)
+    }
+
+    fn locate(
+        &self,
+        _: &[u8; 16],
+        _: &[u8; 16],
+    ) -> Result<Option<permguard_core::authz::Resource>, String> {
+        Ok(None)
+    }
+
+    // The origin's own run holds no records any more: what is read is its frontier alone. An
+    // extra run serves its records.
+    fn records(
+        &self,
+        _: &permguard_core::authz::Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        from: u64,
+        limit: usize,
+    ) -> Result<permguard_host::composition::ConsumedPage, String> {
+        let extra = self.extra.lock().expect("lock");
+        let records = extra
+            .iter()
+            .find(|(held, named, _)| held == producer && named == run)
+            .map(|(_, _, records)| {
+                records
+                    .iter()
+                    .enumerate()
+                    .map(|(at, record)| (at as u64 + 1, record))
+                    .filter(|(seq, _)| *seq >= from)
+                    .take(limit)
+                    .map(|(seq, record)| (seq, serde_json::to_vec(record).expect("renders")))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(permguard_host::composition::ConsumedPage {
+            records,
+            low_watermark: None,
+        })
+    }
+
+    fn batch(
+        &self,
+        _: &permguard_core::authz::Resource,
+        _: &[u8; 16],
+        _: &[u8; 16],
+        _: u64,
+    ) -> Result<Option<Vec<u8>>, String> {
+        Ok(None)
+    }
+
+    fn import_state(
+        &self,
+        _: &permguard_core::authz::Resource,
+    ) -> Result<Option<permguard_host::membership::import::State>, String> {
+        Ok(self.state.lock().expect("lock").clone())
+    }
+
+    fn retain_above(
+        &self,
+        _: Arc<dyn permguard_host::composition::StreamFloor>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// The Host's state after verifying a checkpoint `age` seconds ago that names the origin's run
+/// through `through`, with `gaps` gaps.
+fn verified_import(
+    age: u64,
+    through: u64,
+    gaps: usize,
+) -> permguard_host::membership::import::State {
+    use permguard_host::membership::import::{Checkpoint, CheckpointOrigin, CheckpointRun, Gap};
+
+    let checkpoint = Checkpoint {
+        coordinator: [2; 16],
+        resource: permguard_core::authz::Resource::ledger("data", ZONE_ID, LEDGER_ID).to_string(),
+        revision: [3; 32],
+        origins: vec![CheckpointOrigin {
+            host_id: ORIGIN,
+            runs: vec![CheckpointRun {
+                run: ORIGIN_RUN,
+                acked: through,
+                oldest_retained: through + 1,
+                admitted_at: None,
+            }],
+            pins: Vec::new(),
+        }],
+        issued_at: 1,
+        channel_binding: [4; 32],
+        ring_epoch: 1,
+        key_set_digest: [5; 32],
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after the epoch")
+        .as_secs();
+    permguard_host::membership::import::State {
+        membership_id: [6; 16],
+        revision: [3; 32],
+        checkpoint: permguard_objects::cose::Sign1::sign_with(
+            permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+            permguard_core::domains::protected::EVENT_IMPORT_CHECKPOINT,
+            b"k",
+            checkpoint.encode().expect("encodes"),
+            |_| Ok(vec![0; 64]),
+        )
+        .expect("an envelope")
+        .encode()
+        .expect("encodes"),
+        verified_at: now - age,
+        gaps: (0..gaps as u64)
+            .map(|at| Gap {
+                origin: ORIGIN,
+                run: ORIGIN_RUN,
+                from: at + 1,
+                through: Some(at + 1),
+                reason: permguard_host::membership::import::RETENTION.to_owned(),
+                detected_at: 1,
+                revision: [3; 32],
+            })
+            .collect(),
+    }
+}
+
+/// WP-6.4a, after the review: under `shared-eventual` a required origin is degraded when its run is
+/// behind the checkpoint, when the checkpoint is older than the bound, or when it has a gap — each
+/// alone — and never otherwise; this Host's own run is never in the frontier.
+#[tokio::test]
+async fn an_eventual_decision_names_each_degraded_origin_for_its_own_cause() {
+    for (case, age, held, gaps, degraded) in [
+        ("behind", 1, 2, 0, true),
+        ("stale", 600, 3, 0, true),
+        ("gapped", 1, 3, 1, true),
+        ("whole", 1, 3, 0, false),
+        ("absent", 1, 0, 0, true),
+    ] {
+        let plane = plane(&format!("eventual-degraded-{case}"));
+        let root = plane
+            .events
+            .parent()
+            .expect("the scratch root")
+            .to_path_buf();
+        let consumer = Arc::new(Imported::default());
+        *consumer.state.lock().expect("lock") = Some(verified_import(age, 3, gaps));
+        *consumer.held.lock().expect("lock") = held;
+        *consumer.own.lock().expect("lock") = true;
+        let imported = Arc::new(
+            permguard_data_plane::temporal::imported::Imported::new(
+                permguard_host::composition::StreamConsumer::over(Arc::clone(&consumer)
+                    as Arc<dyn permguard_host::composition::StreamConsumerReads>),
+                [9; 16],
+                root.join("planes"),
+            )
+            .expect("the floor is registered"),
+        );
+        let submitter = Arc::try_unwrap(plane.submitter)
+            .unwrap_or_else(|_| panic!("the only holder"))
+            .with_shared_mode(
+                permguard_core::config::Consistency::SharedEventual,
+                std::time::Duration::from_secs(60),
+            )
+            .with_imported(imported);
+        let plane = Plane {
+            submitter: Arc::new(submitter),
+            ..plane
+        };
+        let (status, answered) = post(
+            &surface(&plane),
+            submission(
+                1,
+                "Drupe::Action::Login",
+                "request",
+                "alice",
+                json!({"user": "alice", "server": "s1"}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{case}: {answered}");
+        let history = &answered["history"];
+        if degraded {
+            assert_eq!(
+                history["degraded"],
+                json!(["01".repeat(16)]),
+                "{case}: {answered}"
+            );
+        } else {
+            assert!(history.get("degraded").is_none(), "{case}: {answered}");
+        }
+        let runs = history["frontier"].as_array().expect("a frontier");
+        assert!(
+            runs.iter().all(|run| run["origin"] != "09".repeat(16)),
+            "{case}: this Host's own run is not imported history: {answered}"
+        );
+        assert_eq!(runs.len(), 1, "{case}: {answered}");
+        assert_eq!(
+            runs[0]["covered_through"], held,
+            "{case}: what is held, and a required run held of nothing at zero: {answered}"
+        );
+        // The same answer over gRPC carries the same frontier and degraded origins.
+        let proto = permguard_data_plane::temporal::grpc::to_proto(
+            serde_json::from_value(answered.clone()).expect("an answer"),
+        );
+        let carried = proto.history.expect("a history");
+        assert_eq!(carried.frontier.len(), 1, "{case}");
+        assert_eq!(carried.degraded.len(), usize::from(degraded), "{case}");
+        assert_eq!(carried.time, "occurred_at");
+        assert_eq!(carried.max_staleness_seconds, Some(60));
+    }
+}
+
+/// One record another origin's stream holds, made from one this plane stored: the same
+/// occurrence `event_id` from one authenticated source, at its own position, its payload changed by
+/// `variant` (WP-6.4b).
+fn imported_record(
+    template: &Value,
+    origin: [u8; 16],
+    run: [u8; 16],
+    event_id: &str,
+    variant: Option<&str>,
+) -> Value {
+    let hex = |bytes: &[u8; 16]| {
+        bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    };
+    let mut record: permguard_events::record::Record =
+        serde_json::from_value(template.clone()).expect("a durable record deserializes");
+    record.stream.producer.id = hex(&origin);
+    record.stream.producer.instance = hex(&run);
+    record.seq = 1;
+    record.prev = permguard_events::record::GENESIS.to_owned();
+    record.event_id = event_id.to_owned();
+    record.source = Some("spiffe://acme/gateway".to_owned());
+    record.event["event_id"] = json!(event_id);
+    if let Some(variant) = variant {
+        record.event["context"]["variant"] = json!(variant);
+    }
+    record.occurrence_digest = permguard_events::record::occurrence_digest_of(&record.event)
+        .expect("the patched occurrence canonicalizes");
+    record.to_value().expect("a record value")
+}
+
+/// Every decision record the plane's journal holds.
+fn decision_records(spool: &Path) -> Vec<Value> {
+    let mut segments: Vec<PathBuf> = std::fs::read_dir(spool)
+        .expect("the decision spool can be listed")
+        .map(|entry| entry.expect("a spool entry").path())
+        .filter(|path| path.extension().and_then(std::ffi::OsStr::to_str) == Some("jsonl"))
+        .collect();
+    segments.sort();
+    segments
+        .into_iter()
+        .flat_map(|path| {
+            std::fs::read_to_string(path)
+                .expect("the segment can be read")
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).expect("the record is JSON"))
+                .collect::<Vec<_>>()
+        })
+        .filter(|record| record["kind"] == json!("decision"))
+        .collect()
+}
+
+/// This plane's Host id, as its own records carry it.
+fn own_id(plane: &Plane) -> [u8; 16] {
+    let hex = plane.streams.producer().id;
+    let mut id = [0; 16];
+    for (at, byte) in id.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&hex[at * 2..at * 2 + 2], 16).expect("a hex id");
+    }
+    id
+}
+
+/// The plane's import of `consumer`, its logical index reading the plane's own journal too.
+fn imported_over(
+    plane: &Plane,
+    consumer: &Arc<Imported>,
+) -> Arc<permguard_data_plane::temporal::imported::Imported> {
+    Arc::new(
+        permguard_data_plane::temporal::imported::Imported::new(
+            permguard_host::composition::StreamConsumer::over(
+                Arc::clone(consumer) as Arc<dyn permguard_host::composition::StreamConsumerReads>
+            ),
+            own_id(plane),
+            plane
+                .events
+                .parent()
+                .expect("the scratch root")
+                .join("planes"),
+        )
+        .expect("the floor is registered")
+        .with_local(
+            Arc::clone(&plane.streams) as Arc<dyn permguard_data_plane::temporal::imported::Local>
+        ),
+    )
+}
+
+/// The ledger's logical index, as written.
+fn logical_index(plane: &Plane) -> Value {
+    serde_json::from_slice(
+        &std::fs::read(
+            plane
+                .events
+                .parent()
+                .expect("the scratch root")
+                .join("planes")
+                .join(ZONE_ID)
+                .join(LEDGER_ID)
+                .join("indexes")
+                .join("logical.json"),
+        )
+        .expect("the logical index is written"),
+    )
+    .expect("JSON")
+}
+
+/// The origins the logical index holds a position of `event_id` for.
+fn indexed_origins(index: &Value, event_id: &str) -> Vec<String> {
+    index["entries"]
+        .as_array()
+        .expect("entries")
+        .iter()
+        .find(|entry| entry[0][1] == event_id)
+        .map(|entry| {
+            entry[1]["positions"]
+                .as_array()
+                .expect("positions")
+                .iter()
+                .map(|at| at[0].as_str().expect("an origin").to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// WP-6.4b, H-07 and F-30 (owner decision of 2026-10-21): the logical index records every
+/// position of one occurrence across origins. Equal bytes from two origins are one occurrence,
+/// both positions kept and nothing quarantined, in either mode; different bytes quarantine it — a
+/// `shared-bounded` decision whose window holds it refuses `history_conflicted`, a
+/// `shared-eventual` one decides without it, reports it and names both origins degraded.
+#[tokio::test]
+async fn a_conflicting_occurrence_refuses_a_bounded_decision_and_degrades_an_eventual_one() {
+    for (mode, conflict) in [
+        (permguard_core::config::Consistency::SharedEventual, false),
+        (permguard_core::config::Consistency::SharedEventual, true),
+        (permguard_core::config::Consistency::SharedBounded, false),
+        (permguard_core::config::Consistency::SharedBounded, true),
+    ] {
+        let tag = format!("logical-{}-{conflict}", mode.as_str());
+        let plane = plane_built(&tag, blocking(), Metrics::none(), true, |mirrors| {
+            provision(mirrors, &manifest());
+        });
+        let consumer = Arc::new(Imported::default());
+        *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+        *consumer.held.lock().expect("lock") = 3;
+        let imported = imported_over(&plane, &consumer);
+        let submitter = Arc::try_unwrap(plane.submitter)
+            .unwrap_or_else(|_| panic!("the only holder"))
+            .with_shared_mode(mode, std::time::Duration::from_secs(60))
+            .with_imported(imported);
+        let plane = Plane {
+            submitter: Arc::new(submitter),
+            ..plane
+        };
+        let router = surface(&plane);
+        let login = |at: i64| {
+            submission(
+                at,
+                "Drupe::Action::Login",
+                "request",
+                "alice",
+                json!({"user": "alice", "server": "s1"}),
+            )
+        };
+        let (status, first) = post(&router, login(1)).await;
+        assert_eq!(status, StatusCode::OK, "{tag}: {first}");
+
+        // The same occurrence, recorded by the origin and by another plane.
+        let template = plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+            .expect("the stream reads back")
+            .remove(0);
+        *consumer.extra.lock().expect("lock") = vec![
+            (
+                ORIGIN,
+                [8; 16],
+                vec![imported_record(&template, ORIGIN, [8; 16], "dup", None)],
+            ),
+            (
+                [2; 16],
+                [5; 16],
+                vec![imported_record(
+                    &template,
+                    [2; 16],
+                    [5; 16],
+                    "dup",
+                    conflict.then_some("other"),
+                )],
+            ),
+        ];
+        let (status, answered) = post(&router, login(2)).await;
+        let index = logical_index(&plane);
+        let dup = index["entries"]
+            .as_array()
+            .expect("entries")
+            .iter()
+            .find(|entry| entry[0][1] == "dup")
+            .expect("the occurrence is indexed")
+            .clone();
+        assert_eq!(
+            dup[1]["positions"].as_array().map(Vec::len),
+            Some(2),
+            "{tag}: every position kept: {dup}"
+        );
+        match (mode, conflict) {
+            (permguard_core::config::Consistency::SharedBounded, true) => {
+                assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{tag}: {answered}");
+                assert_eq!(answered["code"], "history_conflicted", "{tag}: {answered}");
+            }
+            (_, true) => {
+                assert_eq!(status, StatusCode::OK, "{tag}: {answered}");
+                assert_eq!(answered["history"]["quarantined"], 1, "{tag}: {answered}");
+                // The decision record says so as well.
+                let recorded = decision_records(&plane.decisions)
+                    .into_iter()
+                    .find(|record| record["id"] == answered["decision_id"])
+                    .expect("the decision is recorded");
+                assert_eq!(recorded["event"]["quarantined"], 1, "{tag}: {recorded}");
+                let proto = permguard_data_plane::temporal::grpc::to_proto(
+                    serde_json::from_value(answered.clone()).expect("an answer"),
+                );
+                assert_eq!(
+                    proto.history.expect("a history").quarantined,
+                    1,
+                    "{tag}: gRPC carries the count"
+                );
+                // Both origins that recorded it, the required one and the other.
+                assert_eq!(
+                    answered["history"]["degraded"],
+                    json!(["01".repeat(16), "02".repeat(16)]),
+                    "{tag}: {answered}"
+                );
+            }
+            (_, false) => {
+                assert_eq!(status, StatusCode::OK, "{tag}: {answered}");
+                assert!(
+                    answered["history"].get("quarantined").is_none(),
+                    "{tag}: equal bytes are one occurrence: {answered}"
+                );
+                assert!(dup[1].get("conflicts").is_none(), "{tag}: {dup}");
+                assert!(
+                    decision_records(&plane.decisions)
+                        .iter()
+                        .all(|record| record["event"].get("quarantined").is_none()),
+                    "{tag}: nothing quarantined is recorded as nothing"
+                );
+            }
+        }
+    }
+}
+
+/// The temporal submission of a login by `alice` at `at`, as the submitter reads it.
+fn login_request(at: i64) -> permguard_languages::temporal::SubmitRequest {
+    serde_json::from_value(submission(
+        at,
+        "Drupe::Action::Login",
+        "request",
+        "alice",
+        json!({"user": "alice", "server": "s1"}),
+    ))
+    .expect("a submission")
+}
+
+/// WP-6.4b: an occurrence another origin already recorded with other bytes is quarantined the
+/// moment this plane records it, so no decision is made about it in either mode. Its position here
+/// joins the logical index, and an index lost with the process is rebuilt from the consumer and
+/// this plane's own journal both: the conflict outlives the restart.
+#[tokio::test]
+async fn an_occurrence_another_origin_recorded_otherwise_is_not_decided_and_survives_a_rebuild() {
+    const SOURCE: &str = "spiffe://acme/gateway";
+    for mode in [
+        permguard_core::config::Consistency::SharedEventual,
+        permguard_core::config::Consistency::SharedBounded,
+    ] {
+        let tag = format!("logical-current-{}", mode.as_str());
+        let plane = plane(&tag);
+        let consumer = Arc::new(Imported::default());
+        *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+        *consumer.held.lock().expect("lock") = 3;
+        let imported = imported_over(&plane, &consumer);
+        let submitter = Arc::new(
+            Arc::try_unwrap(plane.submitter)
+                .unwrap_or_else(|_| panic!("the only holder"))
+                .with_shared_mode(mode, std::time::Duration::from_secs(60))
+                .with_imported(imported),
+        );
+        let plane = Plane { submitter, ..plane };
+        plane
+            .submitter
+            .submit(&login_request(1), SOURCE, None)
+            .await
+            .expect("decided");
+
+        // Another origin holds the next login, with other bytes, before this plane records it.
+        let template = plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+            .expect("the stream reads back")
+            .remove(0);
+        assert_eq!(template["source"], SOURCE, "{template}");
+        let next = "Drupe::Action::Login-request-2";
+        *consumer.extra.lock().expect("lock") = vec![(
+            [2; 16],
+            [5; 16],
+            vec![imported_record(
+                &template,
+                [2; 16],
+                [5; 16],
+                next,
+                Some("other"),
+            )],
+        )];
+        let refused = plane
+            .submitter
+            .submit(&login_request(2), SOURCE, None)
+            .await
+            .expect_err("a quarantined occurrence is not decided");
+        assert_eq!(refused.code(), "history_conflicted", "{tag}: {refused:?}");
+        let own = plane.streams.producer().id;
+        assert_eq!(
+            indexed_origins(&logical_index(&plane), next),
+            ["02".repeat(16), own.clone()],
+            "{tag}: this plane's position joins the index"
+        );
+
+        // The process restarts with its logical index lost.
+        std::fs::remove_file(
+            plane
+                .events
+                .parent()
+                .expect("the scratch root")
+                .join("planes")
+                .join(ZONE_ID)
+                .join(LEDGER_ID)
+                .join("indexes")
+                .join("logical.json"),
+        )
+        .expect("the index is lost");
+        let imported = imported_over(&plane, &consumer);
+        let submitter = Arc::new(
+            Arc::try_unwrap(plane.submitter)
+                .unwrap_or_else(|_| panic!("the only holder"))
+                .with_imported(imported),
+        );
+        let plane = Plane { submitter, ..plane };
+        let answered = plane
+            .submitter
+            .submit(&login_request(3), SOURCE, None)
+            .await;
+        match mode {
+            permguard_core::config::Consistency::SharedBounded => {
+                let refused = answered.expect_err("the window holds the conflict");
+                assert_eq!(refused.code(), "history_conflicted", "{tag}: {refused:?}");
+            }
+            _ => {
+                let answered =
+                    serde_json::to_value(answered.expect("decided without it")).expect("JSON");
+                assert_eq!(answered["history"]["quarantined"], 1, "{tag}: {answered}");
+                let degraded = answered["history"]["degraded"].clone();
+                assert!(
+                    degraded
+                        .as_array()
+                        .expect("degraded")
+                        .contains(&json!("02".repeat(16)))
+                        && !degraded.as_array().expect("degraded").contains(&json!(own)),
+                    "{tag}: the other origin, never this one: {answered}"
+                );
+            }
+        }
+        assert_eq!(
+            indexed_origins(&logical_index(&plane), next),
+            ["02".repeat(16), own],
+            "{tag}: rebuilt from the consumer and the journal"
+        );
+    }
+}
+
+/// WP-6.4b: a conflict with the retired pull's store is one the logical index never holds, so only
+/// the replayed window shows it. `shared-bounded` refuses on that too.
+#[tokio::test]
+async fn a_conflict_only_the_window_shows_still_refuses_a_bounded_decision() {
+    const SOURCE: &str = "spiffe://acme/gateway";
+    let plane = plane("logical-window");
+    let root = plane
+        .events
+        .parent()
+        .expect("the scratch root")
+        .to_path_buf();
+    let consumer = Arc::new(Imported::default());
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+    *consumer.held.lock().expect("lock") = 3;
+    let imports = Arc::new(permguard_data_plane::temporal::imports::Imports::new(
+        root.join("pull"),
+    ));
+    let imported = imported_over(&plane, &consumer);
+    let submitter = Arc::new(
+        Arc::try_unwrap(plane.submitter)
+            .unwrap_or_else(|_| panic!("the only holder"))
+            .with_shared_history(
+                permguard_core::config::Consistency::SharedBounded,
+                Arc::clone(&imports),
+                std::time::Duration::from_secs(60),
+            )
+            .with_imported(imported),
+    );
+    let plane = Plane { submitter, ..plane };
+    plane
+        .submitter
+        .submit(&login_request(1), SOURCE, None)
+        .await
+        .expect("decided");
+
+    // The retired pull brings another origin's copy of that login, with other bytes.
+    let template = plane
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+        .expect("the stream reads back")
+        .remove(0);
+    let event_id = template["event_id"].as_str().expect("an id").to_owned();
+    assert!(
+        imports
+            .absorb(
+                ZONE_ID,
+                LEDGER_ID,
+                &imported_record(&template, [2; 16], [5; 16], &event_id, Some("other")),
+            )
+            .expect("absorbed")
+    );
+    imports
+        .advance(ZONE_ID, LEDGER_ID, "1")
+        .expect("the pull advanced");
+
+    let refused = plane
+        .submitter
+        .submit(&login_request(2), SOURCE, None)
+        .await
+        .expect_err("a conflicted window is not decided");
+    assert_eq!(refused.code(), "history_conflicted", "{refused:?}");
+}
+
+/// WP-6.2c2b1 (owner decision of 2026-10-18): a bounded plane over the origins the member Host
+/// imports measures its freshness from the coordinator's checkpoint the Host verified, never from
+/// an event's time; it decides only when that verification is recent, the origins' runs are held
+/// through what the checkpoint names, and no gap is open.
+#[tokio::test]
+async fn a_bounded_plane_decides_on_imports_only_when_the_verified_checkpoint_vouches_for_them() {
+    let plane = plane("bounded-imports");
+    let root = plane
+        .events
+        .parent()
+        .expect("the scratch root")
+        .to_path_buf();
+    let consumer = Arc::new(Imported::default());
+    let imported = Arc::new(
+        permguard_data_plane::temporal::imported::Imported::new(
+            permguard_host::composition::StreamConsumer::over(
+                Arc::clone(&consumer) as Arc<dyn permguard_host::composition::StreamConsumerReads>
+            ),
+            [9; 16],
+            root.join("planes"),
+        )
+        .expect("the floor is registered"),
+    );
+    let submitter = Arc::try_unwrap(plane.submitter)
+        .unwrap_or_else(|_| panic!("the only holder"))
+        .with_shared_history(
+            permguard_core::config::Consistency::SharedBounded,
+            Arc::new(permguard_data_plane::temporal::imports::Imports::new(
+                root.join("pull"),
+            )),
+            std::time::Duration::from_secs(60),
+        )
+        .with_imported(imported);
+    let plane = Plane {
+        submitter: Arc::new(submitter),
+        ..plane
+    };
+    let router = surface(&plane);
+    let mut at = 0;
+    let mut submit = || {
+        at += 1;
+        submission(
+            at,
+            "Drupe::Action::Login",
+            "request",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        )
+    };
+
+    // Never verified: withheld, recorded.
+    let (status, refused) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+    assert_eq!(refused["code"], "history_stale", "{refused}");
+
+    // Verified long ago: withheld.
+    *consumer.state.lock().expect("lock") = Some(verified_import(600, 3, 0));
+    *consumer.held.lock().expect("lock") = 3;
+    let (status, refused) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+    assert_eq!(refused["code"], "history_stale", "{refused}");
+
+    // Verified now, but the origin's run is held through less than the checkpoint names.
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+    *consumer.held.lock().expect("lock") = 2;
+    let (status, refused) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+    assert_eq!(refused["code"], "history_stale", "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .is_some_and(|held| held.contains("through 3") && held.contains("through 2")),
+        "{refused}"
+    );
+
+    // A gap the Host keeps: incomplete.
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 1));
+    *consumer.held.lock().expect("lock") = 3;
+    let (status, refused) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+    assert_eq!(refused["code"], "history_incomplete", "{refused}");
+
+    // Fresh, whole and caught up: it decides, and says how fresh.
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+    let (status, answered) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::OK, "{answered}");
+    assert_eq!(answered["history"]["mode"], "shared-bounded", "{answered}");
+    assert!(
+        answered["history"]["staleness_seconds"]
+            .as_u64()
+            .is_some_and(|held| held <= 60),
+        "{answered}"
+    );
+    assert!(
+        answered["history"].get("gaps").is_none(),
+        "none open: {answered}"
+    );
+    // WP-6.4a: the exact vector frontier, the origin set and the bound it decided under.
+    assert_eq!(
+        answered["history"]["frontier"],
+        json!([{
+            "origin": "01".repeat(16),
+            "run": "07".repeat(16),
+            "covered_through": 3,
+            "low_watermark": 4,
+        }]),
+        "{answered}"
+    );
+    assert_eq!(answered["history"]["origin_set_revision"], "03".repeat(32));
+    assert_eq!(answered["history"]["max_staleness_seconds"], 60);
+    assert_eq!(answered["history"]["time"], "occurred_at");
+    assert!(
+        answered["history"].get("degraded").is_none(),
+        "a bounded decision is never degraded: {answered}"
+    );
+}
+
+/// WP-6.2c2b1, after the review: `shared-eventual` decides through staleness and gaps and reports
+/// them; under `shared-bounded` an unresolved gap the HTTP pull recorded refuses as well.
+#[tokio::test]
+async fn an_eventual_plane_decides_and_reports_and_a_legacy_gap_still_bounds() {
+    for (mode, legacy_gap) in [
+        (permguard_core::config::Consistency::SharedEventual, false),
+        (permguard_core::config::Consistency::SharedBounded, true),
+    ] {
+        let plane = plane(&format!("imports-{}", mode.as_str()));
+        let root = plane
+            .events
+            .parent()
+            .expect("the scratch root")
+            .to_path_buf();
+        let consumer = Arc::new(Imported::default());
+        *consumer.held.lock().expect("lock") = 3;
+        // Stale and gapped for the eventual plane; fresh and whole on the Host's side for the
+        // bounded one, whose hole is the pull's.
+        *consumer.state.lock().expect("lock") = Some(if legacy_gap {
+            verified_import(1, 3, 0)
+        } else {
+            verified_import(600, 3, 2)
+        });
+        let imports = Arc::new(permguard_data_plane::temporal::imports::Imports::new(
+            root.join("pull"),
+        ));
+        if legacy_gap {
+            imports
+                .record_gap(
+                    ZONE_ID,
+                    LEDGER_ID,
+                    "offset-oldest",
+                    permguard_data_plane::temporal::imports::Gap {
+                        zone: ZONE_ID.to_owned(),
+                        ledger: LEDGER_ID.to_owned(),
+                        from_sequence: 4,
+                        to_sequence: 9,
+                        at: "2026-08-29T00:00:00Z".to_owned(),
+                        consistency: "shared-bounded".to_owned(),
+                        resolved: false,
+                    },
+                )
+                .expect("the hole is recorded");
+        }
+        let imported = Arc::new(
+            permguard_data_plane::temporal::imported::Imported::new(
+                permguard_host::composition::StreamConsumer::over(Arc::clone(&consumer)
+                    as Arc<dyn permguard_host::composition::StreamConsumerReads>),
+                [9; 16],
+                root.join("planes"),
+            )
+            .expect("the floor is registered"),
+        );
+        let submitter = Arc::try_unwrap(plane.submitter)
+            .unwrap_or_else(|_| panic!("the only holder"))
+            .with_shared_history(mode, imports, std::time::Duration::from_secs(60))
+            .with_imported(imported);
+        let plane = Plane {
+            submitter: Arc::new(submitter),
+            ..plane
+        };
+        let (status, answered) = post(
+            &surface(&plane),
+            submission(
+                1,
+                "Drupe::Action::Login",
+                "request",
+                "alice",
+                json!({"user": "alice", "server": "s1"}),
+            ),
+        )
+        .await;
+        if legacy_gap {
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
+            assert_eq!(answered["code"], "history_incomplete", "{answered}");
+        } else {
+            assert_eq!(status, StatusCode::OK, "{answered}");
+            assert_eq!(answered["history"]["mode"], "shared-eventual", "{answered}");
+            assert_eq!(answered["history"]["gaps"], 2, "{answered}");
+            // WP-6.4a: stale and gapped, the required origin is named degraded, and its run's
+            // hole is in the frontier.
+            assert_eq!(
+                answered["history"]["degraded"],
+                json!(["01".repeat(16)]),
+                "{answered}"
+            );
+            assert!(
+                answered["history"]["frontier"][0]["gaps"]
+                    .as_array()
+                    .is_some_and(|gaps| !gaps.is_empty()),
+                "{answered}"
+            );
+            assert!(
+                answered["history"]["staleness_seconds"]
+                    .as_u64()
+                    .is_some_and(|held| held >= 600),
+                "{answered}"
+            );
+        }
+    }
+}
+
+/// WP-6.2d: once the volume archived the retired pull's store the plane reads none. Without the
+/// Host's import `shared-bounded` still refuses, as over a store that never read anything, and
+/// `shared-eventual` decides on the plane's own history; with a fresh import from the Host a legacy
+/// gap no longer bounds; and nothing recreates the store's directory.
+#[tokio::test]
+async fn an_archived_pull_store_is_not_read_and_bounded_still_refuses_without_an_import() {
+    let login = || {
+        submission(
+            1,
+            "Drupe::Action::Login",
+            "request",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        )
+    };
+    for mode in [
+        permguard_core::config::Consistency::SharedBounded,
+        permguard_core::config::Consistency::SharedEventual,
+    ] {
+        let plane = plane(&format!("archived-{}", mode.as_str()));
+        let root = plane
+            .events
+            .parent()
+            .expect("the scratch root")
+            .to_path_buf();
+        let submitter = Arc::try_unwrap(plane.submitter)
+            .unwrap_or_else(|_| panic!("the only holder"))
+            .with_shared_mode(mode, std::time::Duration::from_secs(60));
+        let plane = Plane {
+            submitter: Arc::new(submitter),
+            ..plane
+        };
+        let (status, answered) = post(&surface(&plane), login()).await;
+        match mode {
+            permguard_core::config::Consistency::SharedBounded => {
+                assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
+                assert_eq!(answered["code"], "history_stale", "{answered}");
+            }
+            _ => {
+                assert_eq!(status, StatusCode::OK, "{answered}");
+                assert_eq!(answered["history"]["mode"], "shared-eventual", "{answered}");
+            }
+        }
+        assert!(!root.join("pull").exists(), "no store was created");
+    }
+
+    // With the Host's import fresh and whole, the legacy gap the archived store kept bounds no more.
+    let plane = plane("archived-imported");
+    let root = plane
+        .events
+        .parent()
+        .expect("the scratch root")
+        .to_path_buf();
+    let consumer = Arc::new(Imported::default());
+    *consumer.held.lock().expect("lock") = 3;
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));
+    let imported = Arc::new(
+        permguard_data_plane::temporal::imported::Imported::new(
+            permguard_host::composition::StreamConsumer::over(
+                Arc::clone(&consumer) as Arc<dyn permguard_host::composition::StreamConsumerReads>
+            ),
+            [9; 16],
+            root.join("planes"),
+        )
+        .expect("the floor is registered"),
+    );
+    let submitter = Arc::try_unwrap(plane.submitter)
+        .unwrap_or_else(|_| panic!("the only holder"))
+        .with_shared_mode(
+            permguard_core::config::Consistency::SharedBounded,
+            std::time::Duration::from_secs(60),
+        )
+        .with_imported(imported);
+    let plane = Plane {
+        submitter: Arc::new(submitter),
+        ..plane
+    };
+    let (status, answered) = post(&surface(&plane), login()).await;
+    assert_eq!(status, StatusCode::OK, "{answered}");
+    assert_eq!(answered["history"]["mode"], "shared-bounded", "{answered}");
+    assert!(!root.join("pull").exists(), "no store was created");
+}
+
+/// TL-5a: the replay plan of a cold history, and prewarm (DOGWOOD-03, owner decisions of
+/// 2026-10-21).
+mod replay_plan {
+    use super::*;
+
+    use permguard_data_plane::temporal::submit::ReplayPlan;
+
+    /// Alice logs in on a plane that is then dropped: on the next process her history is cold,
+    /// and her read at 100 needs a replay of two records to be permitted.
+    async fn cold(tag: &str, plan: ReplayPlan) -> Plane {
+        let plane = plane(tag);
+        let events = plane.events.clone();
+        let router = surface(&plane);
+        for (at, action, kind, user) in &TRACE[..2] {
+            let (status, body) = post(
+                &router,
+                submission(*at, action, kind, user, input_of(*at, action, kind, user)),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+        }
+        drop(router);
+        drop(plane);
+
+        restarted(&events, plan)
+    }
+
+    /// The same volume in a process that remembers nothing, under `plan`.
+    pub(super) fn restarted(events: &Path, plan: ReplayPlan) -> Plane {
+        let root = events.parent().expect("the volume is above the journals");
+        let mirrors = root.join("mirrors");
+        let decider = Arc::new(Decider::new(
+            mirrors.clone(),
+            Arc::new(Cache::new(64, 32 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        ));
+        let bounds = Bounds {
+            retention_minimum: std::time::Duration::MAX,
+            allowed_lateness: std::time::Duration::from_secs(u32::MAX.into()),
+            clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
+            ..Bounds::default()
+        };
+        let streams = Arc::new(
+            Streams::new(
+                events.to_path_buf(),
+                root.join("planes"),
+                permguard_data_plane::temporal::testing::host_side(events),
+                bounds,
+            )
+            .expect("the floor is registered"),
+        );
+
+        Plane {
+            submitter: Arc::new(
+                Submitter::new(decider, Arc::clone(&streams), blocking(), Metrics::none())
+                    .with_replay(plan),
+            ),
+            events: events.to_path_buf(),
+            streams,
+            mirrors,
+            decisions: root.join("decisions"),
+        }
+    }
+
+    fn read() -> Value {
+        let (at, action, kind, user) = TRACE[2];
+        submission(at, action, kind, user, input_of(at, action, kind, user))
+    }
+
+    /// Every limit of the plan answers `E` `evaluation_deadline_exceeded`: the occurrence is
+    /// durable and receipted, no verdict is fabricated, and the operator's message names the
+    /// limit. Under the default plan the same cold history replays and the read is permitted.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_replay_past_its_plan_answers_e_and_within_it_decides() {
+        let tight = [
+            (
+                "records",
+                ReplayPlan {
+                    max_records: 1,
+                    ..ReplayPlan::default()
+                },
+                "events.replay.max_records",
+            ),
+            (
+                "bytes",
+                ReplayPlan {
+                    max_bytes: 1,
+                    ..ReplayPlan::default()
+                },
+                "events.replay.max_bytes",
+            ),
+            (
+                "timeout",
+                ReplayPlan {
+                    timeout: std::time::Duration::ZERO,
+                    ..ReplayPlan::default()
+                },
+                "events.replay.timeout",
+            ),
+            (
+                "concurrency",
+                ReplayPlan {
+                    concurrency: 0,
+                    ..ReplayPlan::default()
+                },
+                "events.replay.concurrency",
+            ),
+        ];
+        for (limit, plan, setting) in tight {
+            let plane = cold(&format!("replay-{limit}"), plan).await;
+            let (status, answered) = post(&surface(&plane), read()).await;
+            assert_eq!(status, StatusCode::OK, "{limit}: {answered}");
+            assert_eq!(answered["outcome"], "indeterminate", "{limit}: {answered}");
+            assert!(answered.get("decision").is_none(), "{limit}: {answered}");
+            assert!(
+                answered["watermark"]["sequence"].as_u64().is_some(),
+                "{limit}: durable and receipted: {answered}"
+            );
+            let partition = &answered["evaluations"][0];
+            assert_eq!(
+                partition["reason"]["code"],
+                json!(permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED),
+                "{limit}: {answered}"
+            );
+            assert!(
+                partition["reason"]["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains(setting)),
+                "{limit}: the message names the limit: {answered}"
+            );
+        }
+
+        // At the boundary: two records under a bound of two replay and decide.
+        let plane = cold(
+            "replay-boundary",
+            ReplayPlan {
+                max_records: 2,
+                ..ReplayPlan::default()
+            },
+        )
+        .await;
+        let (status, answered) = post(&surface(&plane), read()).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+        assert_eq!(answered["decision"], true, "{answered}");
+    }
+
+    /// After the review: a history-only kind whose replay is abandoned is accepted, its record
+    /// durable, rather than answered `event_application_incomplete`; nothing is decided for it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_history_only_occurrence_is_accepted_when_its_replay_is_abandoned() {
+        let plane = cold(
+            "replay-history-only",
+            ReplayPlan {
+                concurrency: 0,
+                ..ReplayPlan::default()
+            },
+        )
+        .await;
+        let (status, answered) = post(
+            &surface(&plane),
+            submission(
+                50,
+                "Drupe::Action::Login",
+                "response",
+                "alice",
+                input_of(50, "Drupe::Action::Login", "response", "alice"),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+        assert_eq!(answered["outcome"], "accepted", "{answered}");
+        assert!(answered.get("decision").is_none(), "{answered}");
+        assert!(
+            answered["watermark"]["sequence"].as_u64().is_some(),
+            "durable and receipted: {answered}"
+        );
+    }
+
+    /// Prewarm replays the recently used history in the background before any submission, into
+    /// the warm budget; a history already warm is not replayed again; the read that follows is
+    /// decided against the whole history.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn prewarm_replays_recent_histories_before_a_submission_needs_them() {
+        let plane = cold("replay-prewarm", ReplayPlan::default()).await;
+        assert_eq!(plane.submitter.prewarm(0).await, 0, "off");
+        assert_eq!(plane.submitter.warm().held("", 0).0, 0, "nothing warm yet");
+
+        assert_eq!(plane.submitter.prewarm(8).await, 1, "alice's history");
+        assert!(
+            plane.submitter.warm().held("", 0).0 > 0,
+            "the replayed engine is charged to the budget"
+        );
+        assert_eq!(
+            plane.submitter.prewarm(8).await,
+            0,
+            "a warm history is not replayed again"
+        );
+
+        let (status, answered) = post(&surface(&plane), read()).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+        assert_eq!(answered["decision"], true, "{answered}");
+    }
+}
+
+/// TL-5c: the event's version 2, one canonical field map the partition projects (DOGWOOD-05,
+/// owner decisions of 2026-10-21).
+mod event_v2 {
+    use super::*;
+
+    use permguard_data_plane::temporal::submit::ReplayPlan;
+
+    /// The one-sided fields of the pinned schema against the action schema.
+    const PROJECTIONS: &str =
+        r#"{"history_only": ["requestId", "sessionId"], "request_only": ["system"]}"#;
+
+    fn manifest_v2(projections: bool) -> Manifest {
+        let mut manifest = manifest();
+        let partition = manifest
+            .partitions
+            .get_mut("governance")
+            .expect("the base manifest declares governance");
+        if projections {
+            partition.artifacts.push(ArtifactContract {
+                r#type: dogwood_artifacts::PROJECTIONS.to_owned(),
+                required: false,
+            });
+        }
+        partition.input = Some(permguard_objects::manifest::InputContract {
+            r#type: permguard_languages::event::EVENT_TYPE_V2.to_owned(),
+            required: true,
+        });
+        manifest
+    }
+
+    fn provision_v2(mirrors: &Path, projections: bool) {
+        let mut artifacts = vec![
+            (dogwood_artifacts::ACTION_SCHEMA, ACTION_SCHEMA),
+            (dogwood_artifacts::EVENT_SCHEMA, EVENT_SCHEMA),
+        ];
+        if projections {
+            artifacts.push((dogwood_artifacts::PROJECTIONS, PROJECTIONS));
+        }
+        provision_with(
+            mirrors,
+            &manifest_v2(projections),
+            ("01a0-read", POLICY),
+            &artifacts,
+        );
+    }
+
+    fn plane_v2(tag: &str, projections: bool) -> Plane {
+        plane_built(tag, blocking(), Metrics::none(), false, |mirrors| {
+            provision_v2(mirrors, projections);
+        })
+    }
+
+    /// One occurrence of the trace as version 2.
+    fn v2(at: i64, action: &str, kind: &str, user: &str, fields: Value) -> Value {
+        let occurred_at =
+            permguard_events::index::render_epoch_seconds(at).expect("the timepoint is an instant");
+        json!({
+            "store": {"zone": ZONE, "ledger": LEDGER, "profile": PROFILE},
+            "event": {
+                "type": permguard_languages::event::EVENT_TYPE_V2,
+                "data": {
+                    "event_id": format!("{action}-{kind}-{at}"),
+                    "kind": kind,
+                    "action": action,
+                    "principal": format!("Drupe::OAuthUser::\"{user}\""),
+                    "resource": "Drupe::Gateway::\"gw1\"",
+                    "fields": fields,
+                    "occurred_at": occurred_at,
+                }
+            }
+        })
+    }
+
+    fn trace_v2(at: i64, action: &str, kind: &str, user: &str) -> Value {
+        v2(
+            at,
+            action,
+            kind,
+            user,
+            json!({"input": input_of(at, action, kind, user)}),
+        )
+    }
+
+    /// Upstream's trace sent as version 2 decides as it does as version 1.
+    #[tokio::test]
+    async fn the_trace_sent_as_version_2_decides_as_version_1_does() {
+        let plane = plane_v2("v2-trace", true);
+        let router = surface(&plane);
+        let mut verdicts = Vec::new();
+        for (at, action, kind, user) in TRACE {
+            let (status, body) = post(&router, trace_v2(at, action, kind, user)).await;
+            assert_eq!(status, StatusCode::OK, "@{at}: {body}");
+            if body["outcome"] == "decided" {
+                verdicts.push((at, body["decision"].as_bool().expect("a decision")));
+            }
+        }
+        assert_eq!(
+            verdicts,
+            vec![(0, false), (100, true), (4000, false), (4100, false)]
+        );
+    }
+
+    /// A partition accepts the version its manifest declares, and a field neither side declares is
+    /// refused before anything is recorded.
+    #[tokio::test]
+    async fn each_partition_accepts_its_version_and_only_declared_fields() {
+        let v2_plane = plane_v2("v2-versions", true);
+        let (at, action, kind, user) = TRACE[0];
+        let (status, body) = post(
+            &surface(&v2_plane),
+            submission(at, action, kind, user, input_of(at, action, kind, user)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            body["code"],
+            permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED
+        );
+
+        let v1_plane = plane("v2-versions-v1");
+        let (status, body) = post(&surface(&v1_plane), trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            body["code"],
+            permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED
+        );
+
+        let (status, body) = post(
+            &surface(&v2_plane),
+            v2(
+                at,
+                action,
+                kind,
+                user,
+                json!({"input": input_of(at, action, kind, user), "bogus": 1}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            body["code"],
+            permguard_core::codes::pdp_temporal::EVENT_FIELD_UNDECLARED
+        );
+    }
+
+    /// After the review: a partition declaring no input accepts version 1 only; a refused version
+    /// is recorded nowhere, so the same id sent in the right version is a first submission.
+    #[tokio::test]
+    async fn an_undeclared_input_is_version_1_and_a_refusal_records_nothing() {
+        let mut undeclared = manifest();
+        undeclared
+            .partitions
+            .get_mut("governance")
+            .expect("governance")
+            .input = None;
+        let plane = plane_of("v2-undeclared-input", &undeclared, blocking());
+        let router = surface(&plane);
+        let (at, action, kind, user) = TRACE[0];
+        let (status, body) = post(&router, trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            body["code"],
+            permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED
+        );
+        let (status, body) = post(
+            &router,
+            submission(at, action, kind, user, input_of(at, action, kind, user)),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "nothing was recorded under that id: {body}"
+        );
+        assert_eq!(body["watermark"]["sequence"], 1, "{body}");
+    }
+
+    /// After the review: a version 2 retry is answered as one, and an occurrence behind its
+    /// history is refused across a history the version 2 scan reads.
+    #[tokio::test]
+    async fn a_version_2_retry_is_one_and_one_behind_its_history_is_refused() {
+        let plane = plane_v2("v2-retry", true);
+        let router = surface(&plane);
+        let (at, action, kind, user) = TRACE[2];
+        let (status, first) = post(&router, trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        let (status, again) = post(&router, trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::OK, "{again}");
+        assert_eq!(first, again, "one occurrence, one answer");
+
+        let (at, action, kind, user) = TRACE[0];
+        let (status, refused) = post(&router, trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+        assert_eq!(refused["code"], "event_out_of_order", "{refused}");
+    }
+
+    /// A version 2 partition that does not declare its one-sided fields is refused at load.
+    #[tokio::test]
+    async fn a_version_2_partition_without_its_declarations_does_not_load() {
+        let plane = plane_v2("v2-undeclared", false);
+        let (at, action, kind, user) = TRACE[0];
+        let (status, body) = post(&surface(&plane), trace_v2(at, action, kind, user)).await;
+        assert_ne!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["code"], "ledger_incompatible", "{body}");
+    }
+
+    /// The migration fixture: a ledger written in version 1 and moved to a version 2 partition
+    /// replays its version 1 records as written, and decides the next version 2 occurrence as the
+    /// same history sent in version 2 would.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_version_1_history_is_replayed_by_the_version_2_partition_that_follows_it() {
+        let plane = plane("v2-migration");
+        let events = plane.events.clone();
+        let mirrors = plane.mirrors.clone();
+        let router = surface(&plane);
+        for (at, action, kind, user) in &TRACE[..2] {
+            let (status, body) = post(
+                &router,
+                submission(*at, action, kind, user, input_of(*at, action, kind, user)),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+        }
+        drop(router);
+        drop(plane);
+
+        // The ledger moves to version 2, and the plane restarts.
+        provision_v2(&mirrors, true);
+        let restarted = super::replay_plan::restarted(&events, ReplayPlan::default());
+        let (at, action, kind, user) = TRACE[2];
+        let (status, body) = post(&surface(&restarted), trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            body["decision"], true,
+            "the version 1 login is in the history: {body}"
+        );
+    }
+}
+
+/// The required conformance case "one Host's history cannot authorise another tenant": a login
+/// recorded in one ledger is not history another ledger's policies range over (TL-5c).
+mod tenant_isolation {
+    use super::*;
+
+    const OTHER_LEDGER_ID: &str = "01a3185c-5000-7000-8000-000000000b02";
+    const OTHER_LEDGER: &str = "other-governance";
+
+    fn copy(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).expect("the copy's directory");
+        for entry in std::fs::read_dir(from).expect("readable") {
+            let entry = entry.expect("an entry");
+            let target = to.join(entry.file_name());
+            if entry.file_type().expect("a type").is_dir() {
+                copy(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), &target).expect("copied");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_login_in_one_ledger_permits_nothing_in_another() {
+        let plane = plane("tenant-isolation");
+        let other = plane
+            .mirrors
+            .join(MIRROR_AUTHORITY)
+            .join(ZONE_ID)
+            .join(OTHER_LEDGER_ID);
+        copy(
+            &plane
+                .mirrors
+                .join(MIRROR_AUTHORITY)
+                .join(ZONE_ID)
+                .join(LEDGER_ID),
+            &other,
+        );
+        permguard_data_plane::authz::store::record(
+            &other,
+            &Identity {
+                task: Some(MIRROR_TASK.to_owned()),
+                authority: Some(MIRROR_AUTHORITY.to_owned()),
+                zone_id: ZONE_ID.to_owned(),
+                zone_name: ZONE.to_owned(),
+                ledger_id: OTHER_LEDGER_ID.to_owned(),
+                ledger_name: OTHER_LEDGER.to_owned(),
+                server: "http://127.0.0.1:6443".to_owned(),
+            },
+        )
+        .expect("recorded");
+        let router = surface(&plane);
+        for (at, action, kind, user) in &TRACE[..2] {
+            let (status, body) = post(
+                &router,
+                submission(*at, action, kind, user, input_of(*at, action, kind, user)),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+        }
+
+        let (at, action, kind, user) = TRACE[2];
+        let mut elsewhere = submission(at, action, kind, user, input_of(at, action, kind, user));
+        elsewhere["store"]["ledger"] = json!(OTHER_LEDGER);
+        let (status, body) = post(&router, elsewhere).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["decision"], false, "another ledger's login: {body}");
+
+        let (status, body) = post(
+            &router,
+            submission(at, action, kind, user, input_of(at, action, kind, user)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["decision"], true, "its own ledger's login: {body}");
     }
 }

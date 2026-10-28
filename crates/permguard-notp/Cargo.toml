@@ -21,3 +21,7 @@ permguard-objects.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+# The golden vectors (WP-7.1) are JSON.
+serde_json.workspace = true
+# The vectors' Ed25519 key signs the head statement they freeze.
+ring.workspace = true

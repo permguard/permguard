@@ -1,0 +1,339 @@
+{
+  "folder": "completedoc",
+  "files": {
+    "test-completedoc-0495.yaml": {
+      "sha256": "sha256:62090c9ca2fe55eb3707783e69ba5ecefe9d13f02ff2ba623e64c90d5c8dcdf3",
+      "cases": [
+        {
+          "note": "completedoc/undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := null if {\n\tfalse\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0496.yaml": {
+      "sha256": "sha256:c2d4f94f4b72d64bb8feec7458e98e3a207a2dc635dbf78ab9006cb48d0eca00",
+      "cases": [
+        {
+          "note": "completedoc/null",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := null\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": null
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0497.yaml": {
+      "sha256": "sha256:e12a6db9549066d4a7663681890dd2ea901a0f67c1631362ac2f9fbf8d0f4ab8",
+      "cases": [
+        {
+          "note": "completedoc/bool: true",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := true\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0498.yaml": {
+      "sha256": "sha256:eae1fb8695edb8131f2bdfe99cea75e57bee6d41db15b6d7e10846ab542b03d6",
+      "cases": [
+        {
+          "note": "completedoc/bool: false",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := false\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0499.yaml": {
+      "sha256": "sha256:c817c7fc82ab70a74ff080dc9b2a5d4d5701b3007bc6824a4302cb9f0b39b922",
+      "cases": [
+        {
+          "note": "completedoc/number: 3",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := 3\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 3
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0500.yaml": {
+      "sha256": "sha256:d4aa4560caca54b372ff91d895a5f58b713e19ffa00354bc8844c190b76d8f68",
+      "cases": [
+        {
+          "note": "completedoc/number: 3.0",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := 3.0\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 3.0
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0501.yaml": {
+      "sha256": "sha256:7e15028e22d2a5a616aad658b86625b6b14e19254ab6f50302814b51e27afbc4",
+      "cases": [
+        {
+          "note": "completedoc/number: 66.66667",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := 66.66667\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 66.66667
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0502.yaml": {
+      "sha256": "sha256:9c1a9856134871e705bbbfca27cdca2aec63da93373a737d0a0a61484e85d7b1",
+      "cases": [
+        {
+          "note": "completedoc/string: \"hello\"",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := \"hello\"\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hello"
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0503.yaml": {
+      "sha256": "sha256:5400966879069194f4cec4a59a7c9d1002201ba11c823c51cf3cbcf2078f9056",
+      "cases": [
+        {
+          "note": "completedoc/string: \"\"",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := \"\"\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": ""
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0504.yaml": {
+      "sha256": "sha256:2217b6be46bddbb31215ca426567e30690a909ad779d10105a119a6c39cf61c7",
+      "cases": [
+        {
+          "note": "completedoc/array: [1,2,3,4]",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [1, 2, 3, 4]\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0505.yaml": {
+      "sha256": "sha256:133b0f0272aca6dc4338967369829ce732e06827dc2b8b141b7c9c9cc695736c",
+      "cases": [
+        {
+          "note": "completedoc/array: []",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := []\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0506.yaml": {
+      "sha256": "sha256:0709b29200837c2caac90d5eb2fe635daf6a5c989f79ca479c3cf647f4184b5a",
+      "cases": [
+        {
+          "note": "completedoc/object/nested composites: {\"a\": [1], \"b\": [2], \"c\": [3]}",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := {\"a\": [1], \"b\": [2], \"c\": [3]}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": [
+                  1
+                ],
+                "b": [
+                  2
+                ],
+                "c": [
+                  3
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0507.yaml": {
+      "sha256": "sha256:9fe91a6d2caba42c4da248d26a15804f101586d6ba4af8cd8e7c39776967bd61",
+      "cases": [
+        {
+          "note": "completedoc/object/non-string key:",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := {1: 2, {3: 4}: 5}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "{\"3\":4}": 5,
+                "1": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0508.yaml": {
+      "sha256": "sha256:12db559ac7e250f92d513a01dfb6647acc90f9675d63c05c28ce4f018368a360",
+      "cases": [
+        {
+          "note": "completedoc/set/nested: {{1,2},{2,3}}",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := {{1, 2}, {2, 3}}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  3
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-completedoc-0509.yaml": {
+      "sha256": "sha256:f3e34064562fd4740434f8028e27e8239d03bf540676a2c50b49aea7aacecc85",
+      "cases": [
+        {
+          "note": "completedoc/vars",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := {\"a\": [x, y]} if {\n\tx = 1\n\ty = 2\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": [
+                  1,
+                  2
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-completedoc-0510.yaml": {
+      "sha256": "sha256:a948756c840dd96c3e7f3f26d73d731cea786eba43394bcebed76d2ac50e7583",
+      "cases": [
+        {
+          "note": "completedoc/vars conflict",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := {\"a\": [x, y]} if {\n\txs = [1, 2]\n\tys = [1, 2]\n\tx = xs[_]\n\ty = ys[_]\n}\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        }
+      ]
+    }
+  }
+}

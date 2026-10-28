@@ -75,6 +75,20 @@ pub mod operations {
     /// Read the audit trails of a resource: their records, checkpoints and exports (WP-3.7,
     /// owner decision of 2026-10-11).
     pub const AUDIT_READ: &str = "audit.read";
+    /// Read the Host's streams: their descriptors, frontiers, records, signers, subscriptions,
+    /// gaps and anchors (WP-5.7).
+    pub const STREAMS_READ: &str = "streams.read";
+    /// Read the decision and event evidence the Control Plane serves, on the exact ledger
+    /// (WP-6.3c, `1-control-plane.md` plane public API).
+    pub const EVIDENCE_READ: &str = "evidence.read";
+    /// Prepare, finalize and abort an application-consistent backup of the Host's volume
+    /// (WP-7.8, `5-command-line/2-command-line-commands.md` backup).
+    pub const BACKUP_MANAGE: &str = "backup.manage";
+    /// List the snapshot manifests the Host knows (WP-7.8).
+    pub const BACKUP_READ: &str = "backup.read";
+    /// Plan and run a garbage-collection job on the Host API, on the scope it sweeps (WP-7.11b,
+    /// `5-command-line/2-command-line-commands.md` garbage collection).
+    pub const GC_MANAGE: &str = "gc.manage";
 
     /// Every registered operation.
     pub const ALL: &[&str] = &[
@@ -93,6 +107,11 @@ pub mod operations {
         MEMBERSHIP_READ,
         MEMBERSHIP_ADMIN,
         AUDIT_READ,
+        STREAMS_READ,
+        EVIDENCE_READ,
+        BACKUP_MANAGE,
+        BACKUP_READ,
+        GC_MANAGE,
     ];
 
     /// Whether `operation` is registered.
@@ -697,6 +716,39 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// WP-6.3c: the evidence reads' operation is registered, so a grant naming it is accepted at
+    /// issue and loaded.
+    #[test]
+    fn evidence_read_is_a_registered_operation() {
+        assert_eq!(operations::EVIDENCE_READ, "evidence.read");
+        assert!(operations::is_registered(operations::EVIDENCE_READ));
+        assert_eq!(
+            operations::ALL
+                .iter()
+                .filter(|held| **held == operations::EVIDENCE_READ)
+                .count(),
+            1
+        );
+    }
+
+    /// WP-7.8: the backup operations are registered, once each, as the command table names them.
+    #[test]
+    fn the_backup_operations_are_registered() {
+        for (operation, name) in [
+            (operations::BACKUP_MANAGE, "backup.manage"),
+            (operations::BACKUP_READ, "backup.read"),
+        ] {
+            assert_eq!(operation, name);
+            assert_eq!(
+                operations::ALL
+                    .iter()
+                    .filter(|held| **held == operation)
+                    .count(),
+                1
+            );
+        }
+    }
 
     fn principal(name: &str) -> Principal {
         Principal::new(name).expect("a principal")

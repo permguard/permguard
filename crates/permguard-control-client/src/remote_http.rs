@@ -12,10 +12,9 @@ use std::cell::RefCell;
 
 use permguard_notp::{
     CommitPushRequest, CommitPushResponse, FetchObjectsRequest, FetchObjectsResponse,
-    NegotiatePullRequest, NegotiatePullResponse, NegotiatePushRequest, NegotiatePushResponse,
-    UploadObjectsRequest, UploadObjectsResponse,
+    GetRefResponse, NegotiatePullRequest, NegotiatePullResponse, NegotiatePushRequest,
+    NegotiatePushResponse, UploadObjectsRequest, UploadObjectsResponse,
 };
-use permguard_objects::cbor::{self, Value};
 use permguard_objects::{compress, limits};
 use serde::Deserialize;
 
@@ -214,40 +213,14 @@ impl Remote for HttpRemote {
         if answer.status != 200 {
             return Err(refusal(&answer.body, answer.status));
         }
-        let value = cbor::decode_canonical(&answer.body)
-            .map_err(|error| format!("the ref answer does not parse: {error}"))?;
-        let Value::Map(pairs) = value else {
-            return Err("the ref answer is not a map".to_owned());
-        };
         // A closed message: a label this client does not know is refused, never skipped.
-        if pairs
-            .iter()
-            .any(|(key, _)| !matches!(key, Value::Int(1..=3)))
-        {
-            return Err("the ref answer carries an unknown field".to_owned());
-        }
-        let field = |key: i64| {
-            pairs
-                .iter()
-                .find(|(k, _)| *k == Value::Int(key))
-                .map(|(_, v)| v)
-        };
-        let head = match field(1) {
-            Some(Value::Text(head)) => head.clone(),
-            _ => return Err("the ref answer has no head".to_owned()),
-        };
-        let counter = match field(2) {
-            Some(Value::Int(counter)) => *counter as u64,
-            _ => return Err("the ref answer has no counter".to_owned()),
-        };
-        let statement = match field(3) {
-            Some(Value::Bytes(statement)) => statement.clone(),
-            _ => return Err("the ref answer has no statement".to_owned()),
-        };
+        let answered = GetRefResponse::decode(&answer.body)
+            .map_err(|error| format!("the ref answer does not parse: {error}"))?;
         Ok(Some(RefAnswer {
-            head,
-            counter,
-            statement,
+            head: answered.head.to_string(),
+            counter: answered.counter,
+            statement: answered.statement,
+            ref_digest: answered.ref_digest.to_string(),
         }))
     }
 
@@ -273,6 +246,7 @@ impl Remote for HttpRemote {
                     .map(|o| compress::deflate(o))
                     .collect(),
                 compression: Some(algorithm.clone()),
+                transfer_id: request.transfer_id,
             },
             None => request.clone(),
         };
@@ -308,6 +282,7 @@ impl Remote for HttpRemote {
         let request = FetchObjectsRequest {
             digests: request.digests.clone(),
             accept_compression: self.compression.borrow().clone(),
+            transfer_id: request.transfer_id,
         };
         let body = self.post_cbor(
             &format!("{}/notp/objects/fetch", self.ledger_base()?),

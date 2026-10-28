@@ -10,6 +10,8 @@
 //! | audit schema [`DataPlaneAudit`]       | `AuditHandle<DataPlaneAudit>`    | decisions, mirrors             |
 //! | zone keys `decision.commitment`       | `ZoneHandle`                     | input tags, per ledger         |
 //! | zone keys `audit.pseudonym`           | `ZoneHandle`                     | decision subjects, per zone    |
+//! | produces `data/decisions` (WP-6.1)    | `StreamProducer`                 | the decision log               |
+//! | layout `events-legacy` (WP-6.2d)      | its version in force             | the legacy event history       |
 //! | task contracts (WP-4.4)               | none                             | approval's task capability     |
 //!
 //! The plane never sees a key manager, the audit recorder, the secret store, a root or a key's
@@ -31,31 +33,56 @@ pub struct DataPlaneAudit;
 
 impl AuditSchema for DataPlaneAudit {
     const NAME: &'static str = "data-plane.v1";
-    const ACTIONS: &'static [&'static str] = &["authz.decision", "ledger.synchronized"];
+    const ACTIONS: &'static [&'static str] = &[
+        "authz.decision",
+        "ledger.synchronized",
+        "mirror.tombstoned",
+        "mirror.restored",
+        "mirror.reaped",
+    ];
 }
 
 /// This plane's audit handle.
 pub type Audit = AuditHandle<DataPlaneAudit>;
 
 /// What this plane declares to the Host under `config`: the zone keys of input tags and of the
-/// subjects' pseudonyms only when the decision log is on, so a plane that keeps no log MACs under
-/// nothing (WP-3.3).
+/// subjects' pseudonyms, and the decision stream it produces, only when the decision log is on, so
+/// a plane that keeps no log MACs under nothing (WP-3.3) and appends to no stream (WP-6.1); the
+/// event stream only when it serves the temporal interface (WP-6.2a).
 pub(crate) fn declaration(config: &Config) -> Declaration {
     use permguard_host::membership::record::TaskType;
 
-    // The task contracts this plane takes part in as a member (WP-4.4, owner decision).
+    // The task contracts this plane takes part in as a member (WP-4.4, owner decision); the
+    // member's Host consumes `events.import` itself (WP-6.2c1).
     let declaration = Declaration::new(PLANE)
         .signs::<DecisionBatchV1>()
         .signs::<EventBatchV1>()
+        .signs::<permguard_host::composition::DecisionResponseV1>()
         .audits::<DataPlaneAudit>()
+        // A mirror a hold names is never reaped (WP-7.2 follow-up, WP-7.3c).
+        .reads_holds()
         .uses_task(TaskType::PolicyMirror, 1)
-        .uses_task(TaskType::EventsImport, 1)
         .handles_task(TaskType::DecisionsShip, 1)
         .handles_task(TaskType::EventsShip, 1);
+    // The legacy event history it stops reading once the volume archived it (WP-6.2d).
+    let declaration = if crate::temporal::served(config) {
+        declaration
+            .produces_stream(permguard_events::stream::STREAM)
+            .reads_layout(permguard_events::archive::SUBSYSTEM)
+    } else {
+        declaration
+    };
+    // A shared mode decides on the origins the Host imports, read from its consumer (WP-6.2c2b1).
+    let declaration = if crate::temporal::served(config) && config.events_pull_mode().is_shared() {
+        declaration.reads_stream(permguard_events::stream::STREAM)
+    } else {
+        declaration
+    };
     if config.log_enabled() {
         declaration
             .uses_zone_key(ZonePurpose::DecisionCommitment)
             .uses_zone_key(ZonePurpose::AuditPseudonym)
+            .produces_stream(permguard_decisions::stream::STREAM)
     } else {
         declaration
     }
@@ -63,6 +90,18 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
 
 fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
     context.handles::<Registration>()
+}
+
+/// The Host's holds (WP-7.3c), for the mirrors' reap: none for a plane no Host registered, which
+/// has no holds to keep; unavailable for a registered plane handed none, which then reaps nothing.
+pub(crate) fn holds(context: &PlaneContext<'_>) -> crate::mirrors::round::Holds {
+    match registration(context) {
+        None => crate::mirrors::round::Holds::None,
+        Some(registration) => registration.holds().map_or(
+            crate::mirrors::round::Holds::Unavailable,
+            crate::mirrors::round::Holds::Store,
+        ),
+    }
 }
 
 /// The Host's authorization, which every route of this plane decides with (WP-2.4). A plane the
@@ -74,6 +113,14 @@ pub(crate) fn authorization(
         || Arc::new(permguard_host::composition::Authorization::closed()),
         |registration| registration.authorization(),
     )
+}
+
+/// The member side of `policy.mirror` (WP-7.2a): the tasks this Host holds and a session on
+/// each, when the Host holds memberships.
+pub(crate) fn mirror_tasks(
+    context: &PlaneContext<'_>,
+) -> Option<Arc<dyn permguard_host::composition::MirrorTasks>> {
+    registration(context)?.mirror_tasks()
 }
 
 /// The audit handle, when an audit recorder is composed.
@@ -93,6 +140,16 @@ pub(crate) fn decision_signer(
         .ok()
         .flatten()?;
     Some(Arc::new(signer))
+}
+
+/// The decision response signer, when the plane's signing ring is composed (WP-6.6b).
+pub(crate) fn response_signer(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::Signer<permguard_host::composition::DecisionResponseV1>> {
+    registration(context)?
+        .signer::<permguard_host::composition::DecisionResponseV1>()
+        .ok()
+        .flatten()
 }
 
 /// The event batch signer, when the plane's signing ring is composed.
@@ -127,6 +184,53 @@ pub(crate) fn audit_for_tests(recorder: permguard_core::AuditRecorder) -> Audit 
         .unwrap_or_else(|| unreachable!("a declared schema with a composed recorder"))
 }
 
+/// The producer of the decision stream, when the Host composes a stream engine and the log is on
+/// (WP-6.1).
+pub(crate) fn decision_producer(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::StreamProducer> {
+    registration(context)?
+        .stream_producer(permguard_decisions::stream::STREAM)
+        .ok()
+        .flatten()
+}
+
+/// The Host's producer of the event stream, when this plane serves the temporal interface and an
+/// engine is composed (WP-6.2a).
+pub(crate) fn event_producer(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::StreamProducer> {
+    registration(context)?
+        .stream_producer(permguard_events::stream::STREAM)
+        .ok()
+        .flatten()
+}
+
+/// The version in force of the legacy event history's layout on the volume (WP-6.2d): `None` when
+/// it is not laid out, or when this plane serves no temporal interface and so did not declare it.
+pub(crate) fn events_legacy_layout(context: &PlaneContext<'_>) -> Option<u16> {
+    registration(context)?
+        .layout(permguard_events::archive::SUBSYSTEM)
+        .ok()
+        .flatten()
+}
+
+/// The Host's consumer of the event stream, when this plane decides on imported history and an
+/// engine is composed (WP-6.2c2b1).
+pub(crate) fn event_consumer(
+    context: &PlaneContext<'_>,
+) -> Option<permguard_host::composition::StreamConsumer> {
+    registration(context)?
+        .stream_consumer(permguard_events::stream::STREAM)
+        .ok()
+        .flatten()
+}
+
+/// This Host's `host_id`, when the composition knows it: what the decision stream is named by.
+pub(crate) fn host_id(context: &PlaneContext<'_>) -> Option<[u8; 16]> {
+    registration(context)?.host_id()
+}
+
 /// The zone keys of `purpose` the Host holds for this plane: `None` without them, never another
 /// purpose's.
 pub(crate) fn zone_key(
@@ -153,6 +257,10 @@ mod tests {
                 .unwrap_or_else(|| panic!("`{action}` is not registered with the Host"));
             assert_eq!(schema.root, DATA, "{action}");
         }
+        // What a round records of a reap candidacy (WP-7.2d) is the schema's.
+        for action in ["mirror.tombstoned", "mirror.restored", "mirror.reaped"] {
+            assert!(DataPlaneAudit::ACTIONS.contains(&action), "{action}");
+        }
     }
 }
 
@@ -178,7 +286,6 @@ mod task_contract_tests {
             contracts,
             vec![
                 (TaskType::PolicyMirror, ContractRole::Consumer),
-                (TaskType::EventsImport, ContractRole::Consumer),
                 (TaskType::DecisionsShip, ContractRole::Provider),
                 (TaskType::EventsShip, ContractRole::Provider),
             ]

@@ -1,0 +1,138 @@
+{
+  "folder": "typenamebuiltin",
+  "files": {
+    "test-typenamebuiltin-0848.yaml": {
+      "sha256": "sha256:dbcc3153a7de061317e2e2e287bb54315ed46f6ef790e0d805f6d602c38fd715",
+      "cases": [
+        {
+          "note": "typenamebuiltin/type_name",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttype_name(null, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "null"
+            }
+          ]
+        }
+      ]
+    },
+    "test-typenamebuiltin-0849.yaml": {
+      "sha256": "sha256:e7a7aef6978686007828584ebd029f8a37e8f8888db786eda387aafe1d80fa73",
+      "cases": [
+        {
+          "note": "typenamebuiltin/type_name",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttype_name(true, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "boolean"
+            }
+          ]
+        }
+      ]
+    },
+    "test-typenamebuiltin-0850.yaml": {
+      "sha256": "sha256:704c0a522cd915b56e9a8665c788848dc52ccab0ecbf2be674b24d0fa0580989",
+      "cases": [
+        {
+          "note": "typenamebuiltin/type_name",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttype_name(100, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "number"
+            }
+          ]
+        }
+      ]
+    },
+    "test-typenamebuiltin-0851.yaml": {
+      "sha256": "sha256:79e8c22dbe874c83c4478a98915a277b4a6cb8285af88c8ad3409c0ab4272ffc",
+      "cases": [
+        {
+          "note": "typenamebuiltin/type_name",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttype_name(\"Hello\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "string"
+            }
+          ]
+        }
+      ]
+    },
+    "test-typenamebuiltin-0852.yaml": {
+      "sha256": "sha256:bd4b9e6a3a10d73022504ddcc66765a8e54c3399561ca53d93caeece38b035c0",
+      "cases": [
+        {
+          "note": "typenamebuiltin/type_name",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttype_name([1, 2, 3], x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "array"
+            }
+          ]
+        }
+      ]
+    },
+    "test-typenamebuiltin-0853.yaml": {
+      "sha256": "sha256:4269a2f27af26edb2567bc73f0ae102c71017c1b3ded268e6f269bcc31086ea6",
+      "cases": [
+        {
+          "note": "typenamebuiltin/type_name",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ttype_name({1, 2, 3}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "set"
+            }
+          ]
+        }
+      ]
+    },
+    "test-typenamebuiltin-0854.yaml": {
+      "sha256": "sha256:7fb3a76aef6d9e5c47ec72b61ebd5362b6e556efe0c582c147886d78b5d3ad3e",
+      "cases": [
+        {
+          "note": "typenamebuiltin/type_name",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local0__ = {\"foo\": yy | yy = 1}\n\ttype_name(__local0__, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "object"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

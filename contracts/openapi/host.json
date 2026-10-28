@@ -7,6 +7,337 @@
     "description": "The Host listener (WP-2.5): `/host/v1` over TLS on `admin.addr`, and `permguard.host.v1` on the same port, one facade behind both. Every route authorizes with the Host's grants; every mutation carries a request id, may state the revision it expects, and answers a receipt. Identity, membership, evidence and the key and configuration mutations arrive with their packages; this document describes what this build serves."
   },
   "paths": {
+    "/host/v1/backup/prepare": {
+      "post": {
+        "operationId": "prepareBackup",
+        "summary": "Prepare an application-consistent backup",
+        "description": "Under `backup.manage` on the Host (WP-7.8). Raises the barrier: every new operation of the mutation transaction — grants, keys, memberships, the catalog, the refs, the collections — is refused `unavailable` until the backup is finalized, aborted, or its barrier expires after ten minutes; reads and decisions go on. Records `host.backup.prepared`, writes the inventory of every file below `host/`, `data/` and `operations/` and the COSE_Sign1 `permguard.snapshot.manifest.v1` under `host.operations`, flushes the roots and answers the token once. A client that disconnects before the answer leaves the backup prepared and its token unread: the barrier then holds until it expires.",
+        "requestBody": {
+          "required": true,
+          "description": "Nothing but the call.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareBackupBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The signed manifest, the token and the receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupPrepared"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A backup is already prepared (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The prepare could not finish (`internal`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host keeps no backups, no `host.operations` ring or no open identity, operations still running did not end in time, the inventory outlasted the barrier, or the record could not be written (`unavailable`); the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/PrepareBackup"
+      }
+    },
+    "/host/v1/backup/finalize": {
+      "post": {
+        "operationId": "finalizeBackup",
+        "summary": "Finalize a backup",
+        "description": "Under `backup.manage` on the Host (WP-7.8). Binds the storage driver's snapshot id to the backup the token names, records `host.backup.finalized` and lowers the barrier; the token is spent.",
+        "requestBody": {
+          "required": true,
+          "description": "The token and the snapshot id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeBackupBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The backup, its state and the receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupEnded"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, or the snapshot id is not 1 to 512 printable characters (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No prepared backup answers to the token: another, spent or expired (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host keeps no backups, or the record could not be written (`unavailable`); the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/FinalizeBackup"
+      }
+    },
+    "/host/v1/backup/abort": {
+      "post": {
+        "operationId": "abortBackup",
+        "summary": "Abort a backup",
+        "description": "Under `backup.manage` on the Host (WP-7.8). Ends the backup the token names, records `host.backup.aborted` and lowers the barrier; a barrier that expires is aborted by the Host itself.",
+        "requestBody": {
+          "required": true,
+          "description": "The token.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AbortBackupBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The backup, its state and the receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupAborted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No prepared backup answers to the token: another, spent or expired (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host keeps no backups, or the record could not be written (`unavailable`); the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/AbortBackup"
+      }
+    },
+    "/host/v1/backups": {
+      "get": {
+        "operationId": "listBackups",
+        "summary": "The backups this Host knows",
+        "description": "Under `backup.read` on the Host (WP-7.8): every backup, newest first, with its state, snapshot id and signed manifest.",
+        "responses": {
+          "200": {
+            "description": "The backups, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host keeps no backups, or they cannot be read (`unavailable`); the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/ListBackups"
+      }
+    },
     "/host/v1/identity": {
       "get": {
         "operationId": "getHostIdentity",
@@ -62,6 +393,76 @@
           }
         },
         "x-grpc-rpc": "permguard.host.v1.IdentityService/GetIdentity"
+      }
+    },
+    "/host/v1/identity/verify": {
+      "post": {
+        "operationId": "verifyHostIdentity",
+        "summary": "Prove a peer Host identity on a live channel",
+        "description": "Under `identity.read` on the local Host. The local Host opens the peer's `PeerChannel`, verifies the pinned identity chain and both fresh proofs bound to that TLS 1.3 connection, and sends no membership or task request.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyIdentityBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The peer completed the connection-bound proof.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityVerified"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body, endpoint, Host id or fingerprint is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable operator credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The principal lacks `identity.read`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The local peer client is unconfigured, the peer cannot be reached, or its live proof is refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/VerifyIdentity"
       }
     },
     "/host/v1/identity/rotate": {
@@ -1973,6 +2374,66 @@
         "x-grpc-rpc": "permguard.host.v1.MembershipService/GetMember"
       }
     },
+    "/host/v1/members/{id}/verify": {
+      "post": {
+        "operationId": "verifyMember",
+        "summary": "Prove or schedule proof of a membership",
+        "description": "Under `membership.admin`. A member opens a live proven session immediately; a coordinator durably schedules the exact member's next inbound proof. The mutation receipt and exact answer replay by request id.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/VerifyMemberBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Proved immediately or scheduled durably, with its receipt.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemberVerification" }
+              }
+            }
+          },
+          "400": {
+            "description": "The body or membership id is invalid.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+          },
+          "401": {
+            "description": "No usable operator credential.",
+            "content": { "application/json": { "schema": { "$ref": "common.json#/components/schemas/WireDenial" } } }
+          },
+          "403": {
+            "description": "The principal lacks `membership.admin`.",
+            "content": { "application/json": { "schema": { "$ref": "common.json#/components/schemas/WireDenial" } } }
+          },
+          "404": {
+            "description": "No membership of that id.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+          },
+          "409": {
+            "description": "The request id was reused for another request.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+          },
+          "503": {
+            "description": "The peer client, mutation journal, audit trail, or membership store is unavailable.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/VerifyMember"
+      }
+    },
     "/host/v1/members/{id}/approve": {
       "post": {
         "operationId": "approveMember",
@@ -3765,6 +4226,760 @@
         "x-grpc-rpc": "permguard.host.v1.EvidenceService/ExportAudit"
       }
     },
+    "/host/v1/streams": {
+      "get": {
+        "operationId": "listHostStreams",
+        "summary": "The streams the Host serves",
+        "description": "Under `streams.read` on `host` (WP-5.7a). Each descriptor and role the Host's stream engine serves, its retention class, ring and task, and each resource it holds with its state.",
+        "responses": {
+          "200": {
+            "description": "The streams.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No stream engine is open on this process, or it could not be read (`store_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreams"
+      }
+    },
+    "/host/v1/streams/{plane}/{stream_type}/frontier": {
+      "get": {
+        "operationId": "getStreamFrontier",
+        "summary": "Where each run of a stream stands",
+        "description": "Under `streams.read` on `resource` (WP-5.7a). The producer's runs: open or ended, last sequence, sealed, the least required acknowledgement and the low watermark; and each run a consumer holds: its producer, `acked` and oldest retained.",
+        "parameters": [
+          {
+            "name": "plane",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plane that declares the stream.",
+            "x-grpc-field": "plane"
+          },
+          {
+            "name": "stream_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's type.",
+            "x-grpc-field": "stream_type"
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's resource, in the Host API's grammar. Authorized under `streams.read` before anything else the query names is read.",
+            "x-grpc-field": "resource"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamFrontier"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A resource that is not one of the grammar's, or a parameter that does not parse (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This Host serves no such stream (`stream_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No stream engine is open on this process, or it could not be read (`store_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/GetStreamFrontier"
+      }
+    },
+    "/host/v1/streams/{plane}/{stream_type}/records": {
+      "get": {
+        "operationId": "listStreamRecords",
+        "summary": "One page of a run",
+        "description": "Under `streams.read` on `resource` (WP-5.7a). The records of the producer's current run, or of the consumer run `producer` and `run` name, from `from` on, each as its bytes beside its digest. A read starting below the first sequence still held answers from there with the gap and the run's anchor (WP-5.6c): a deleted prefix is never answered as complete.",
+        "parameters": [
+          {
+            "name": "plane",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plane that declares the stream.",
+            "x-grpc-field": "plane"
+          },
+          {
+            "name": "stream_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's type.",
+            "x-grpc-field": "stream_type"
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's resource, in the Host API's grammar. Authorized under `streams.read` before anything else the query names is read.",
+            "x-grpc-field": "resource"
+          },
+          {
+            "name": "producer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A consumer run's producer Host, hex; with `run`, or neither.",
+            "x-grpc-field": "producer"
+          },
+          {
+            "name": "run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A consumer run, hex; with `producer`, or neither.",
+            "x-grpc-field": "run"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "The first sequence, 1 or later; 1 when absent.",
+            "x-grpc-field": "from"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "description": "How many records: 1 to 1000, 100 when absent.",
+            "x-grpc-field": "limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamRecordPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A resource that is not one of the grammar's, or a parameter that does not parse (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This Host serves no such stream (`stream_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No stream engine is open on this process, or it could not be read (`store_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamRecords"
+      }
+    },
+    "/host/v1/streams/{plane}/{stream_type}/signers": {
+      "get": {
+        "operationId": "listStreamSigners",
+        "summary": "The keys a stream's runs are signed under",
+        "description": "Under `streams.read` on `resource` (WP-5.7a). Each run's signer spans, of the producer and of every consumer run, each key's public JWK kept beside it.",
+        "parameters": [
+          {
+            "name": "plane",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plane that declares the stream.",
+            "x-grpc-field": "plane"
+          },
+          {
+            "name": "stream_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's type.",
+            "x-grpc-field": "stream_type"
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's resource, in the Host API's grammar. Authorized under `streams.read` before anything else the query names is read.",
+            "x-grpc-field": "resource"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamSignerList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A resource that is not one of the grammar's, or a parameter that does not parse (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This Host serves no such stream (`stream_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No stream engine is open on this process, or it could not be read (`store_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamSigners"
+      }
+    },
+    "/host/v1/streams/{plane}/{stream_type}/subscriptions": {
+      "get": {
+        "operationId": "listStreamSubscriptions",
+        "summary": "Who a stream is shipped to",
+        "description": "Under `streams.read` on `resource` (WP-5.7a). The producer's subscriptions: membership, task, whether it is required, its state and its acknowledgement of each run.",
+        "parameters": [
+          {
+            "name": "plane",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plane that declares the stream.",
+            "x-grpc-field": "plane"
+          },
+          {
+            "name": "stream_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's type.",
+            "x-grpc-field": "stream_type"
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's resource, in the Host API's grammar. Authorized under `streams.read` before anything else the query names is read.",
+            "x-grpc-field": "resource"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamSubscriptionList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A resource that is not one of the grammar's, or a parameter that does not parse (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This Host serves no such stream (`stream_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No stream engine is open on this process, or it could not be read (`store_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamSubscriptions"
+      }
+    },
+    "/host/v1/streams/{plane}/{stream_type}/gaps": {
+      "get": {
+        "operationId": "listStreamGaps",
+        "summary": "A stream's durable gaps",
+        "description": "Under `streams.read` on `resource` (WP-5.7a). Each run, of the producer or a consumer, whose prefix retention deleted, with the first sequence it still holds.",
+        "parameters": [
+          {
+            "name": "plane",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plane that declares the stream.",
+            "x-grpc-field": "plane"
+          },
+          {
+            "name": "stream_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's type.",
+            "x-grpc-field": "stream_type"
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's resource, in the Host API's grammar. Authorized under `streams.read` before anything else the query names is read.",
+            "x-grpc-field": "resource"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamGapList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A resource that is not one of the grammar's, or a parameter that does not parse (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This Host serves no such stream (`stream_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No stream engine is open on this process, or it could not be read (`store_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamGaps"
+      }
+    },
+    "/host/v1/streams/{plane}/{stream_type}/anchors": {
+      "get": {
+        "operationId": "listStreamAnchors",
+        "summary": "A stream's retained prefix anchors",
+        "description": "Under `streams.read` on `resource` (WP-5.7a). Each run's anchor (WP-5.6b): what it deleted, its last record digest, how many batches it covers, and its CBOR, which carries every deleted batch's digest and the last one whole.",
+        "parameters": [
+          {
+            "name": "plane",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plane that declares the stream.",
+            "x-grpc-field": "plane"
+          },
+          {
+            "name": "stream_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's type.",
+            "x-grpc-field": "stream_type"
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The stream's resource, in the Host API's grammar. Authorized under `streams.read` before anything else the query names is read.",
+            "x-grpc-field": "resource"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamAnchorList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A resource that is not one of the grammar's, or a parameter that does not parse (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This Host serves no such stream (`stream_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No stream engine is open on this process, or it could not be read (`store_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamAnchors"
+      }
+    },
     "/host/v1/plans": {
       "get": {
         "operationId": "listPlans",
@@ -3969,10 +5184,491 @@
         },
         "x-grpc-rpc": "permguard.host.v1.OperationsService/ApprovePlan"
       }
+    },
+    "/host/v1/gc/{job}/plan": {
+      "post": {
+        "operationId": "planGc",
+        "summary": "Plan a garbage-collection job",
+        "description": "Under `gc.manage` on the scope: the job's Plane when `resource` is absent, or a zone or ledger of it (WP-7.11b). Changes nothing: answers the plan receipt, COSE_Sign1 `permguard.operation.plan.v1` under `host.operations` naming `gc.objects` and the scope, and what a run would remove now and keep and why. Requires no approval. Records `host.gc.planned`.",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "objects"
+              ]
+            },
+            "description": "The job: `objects`, the Control Plane's object sweep.",
+            "x-grpc-field": "job"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id and, optionally, the scope.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanGcBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and what a run would remove and keep.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GcPlanned"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, or the scope is not the job's Plane, a zone or a ledger of it (`invalid_argument`); the request id is empty (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No gc job has that name, or the zone or ledger the scope names holds nothing of the catalog (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The transaction could not finish (`internal`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Plane that provides the job is not composed or its sweep could not run, the Host has no `operations.keys`, or the mutation journal or the audit trail cannot record (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/PlanGc"
+      }
+    },
+    "/host/v1/gc/{job}/run": {
+      "post": {
+        "operationId": "runGc",
+        "summary": "Run a planned garbage-collection job",
+        "description": "Under `gc.manage` on the scope the receipt names, by the planner alone (WP-7.11b). Spends the plan in the run's own transaction, then sweeps the scope again under every recheck of the background pass, within its bound and serialized with it: what the plan listed was removable then, not an order. Answers what was removed, what was kept and why, where the run stopped at its bound, and the receipt; a retry with the same request id answers the first run. Records `host.gc.ran`, even when nothing is removed, and the Plane's `store.swept` names the plan.",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "objects"
+              ]
+            },
+            "description": "The job: `objects`, the Control Plane's object sweep.",
+            "x-grpc-field": "job"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id and the plan's receipt.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunGcBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What was removed and kept, and the receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GcRan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape or the receipt is not a plan receipt (`invalid_argument`), the receipt is not the one the plan step answered (`plan_digest_mismatch`), or the request id is empty (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No gc job has that name, the scope's zone or ledger is gone (`not_found`), or no plan of the receipt is held for the caller and this job (`plan_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan was spent or expired (`plan_expired`), or the request id was reused for another run (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The transaction could not finish (`internal`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Plane that provides the job is not composed or its sweep could not run, the Host has no `operations.keys`, or the mutation journal or the audit trail cannot record (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/RunGc"
+      }
     }
   },
   "components": {
     "schemas": {
+      "PrepareBackupBody": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "`POST /host/v1/backup/prepare`: nothing but the call.",
+        "x-grpc-message": "permguard.host.v1.PrepareBackupRequest"
+      },
+      "BackupPrepared": {
+        "type": "object",
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "description": "The backup: the prepare's operation, 32 hex characters.",
+            "x-grpc-field": "operation_id"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The COSE_Sign1 `permguard.snapshot.manifest.v1` under `host.operations`, base64url.",
+            "x-grpc-field": "manifest"
+          },
+          "token": {
+            "type": "string",
+            "description": "The snapshot token, base64url: answered here once, presented to finalize or abort; the Host keeps its digest only.",
+            "x-grpc-field": "token"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "When the barrier aborts by itself, RFC 3339.",
+            "x-grpc-field": "expires_at"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The prepare's receipt.",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": [
+          "operation_id",
+          "manifest",
+          "token",
+          "expires_at",
+          "receipt"
+        ],
+        "additionalProperties": false,
+        "description": "What a prepare answers.",
+        "x-grpc-message": "permguard.host.v1.PrepareBackupResponse"
+      },
+      "FinalizeBackupBody": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The token the prepare answered.",
+            "x-grpc-field": "token"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "description": "The storage driver's id of the snapshot it took: 1 to 512 printable characters.",
+            "x-grpc-field": "snapshot_id"
+          }
+        },
+        "required": [
+          "token",
+          "snapshot_id"
+        ],
+        "additionalProperties": false,
+        "description": "`POST /host/v1/backup/finalize`.",
+        "x-grpc-message": "permguard.host.v1.FinalizeBackupRequest"
+      },
+      "AbortBackupBody": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The token the prepare answered.",
+            "x-grpc-field": "token"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false,
+        "description": "`POST /host/v1/backup/abort`.",
+        "x-grpc-message": "permguard.host.v1.AbortBackupRequest"
+      },
+      "BackupEnded": {
+        "type": "object",
+        "properties": {
+          "backup": {
+            "type": "string",
+            "description": "The backup it ended, the prepare's operation.",
+            "x-grpc-field": "backup"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "finalized",
+              "aborted"
+            ],
+            "description": "How it ended.",
+            "x-grpc-field": "state"
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The snapshot it bound; `null` for an abort.",
+            "x-grpc-field": "snapshot_id"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The ending's own receipt.",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": [
+          "backup",
+          "state",
+          "snapshot_id",
+          "receipt"
+        ],
+        "additionalProperties": false,
+        "description": "What a finalize answers.",
+        "x-grpc-message": "permguard.host.v1.FinalizeBackupResponse"
+      },
+      "BackupAborted": {
+        "type": "object",
+        "properties": {
+          "backup": {
+            "type": "string",
+            "description": "The backup it ended, the prepare's operation.",
+            "x-grpc-field": "backup"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "aborted"
+            ],
+            "description": "How it ended.",
+            "x-grpc-field": "state"
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Always `null`: an abort binds no snapshot.",
+            "x-grpc-field": "snapshot_id"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The ending's own receipt.",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": [
+          "backup",
+          "state",
+          "snapshot_id",
+          "receipt"
+        ],
+        "additionalProperties": false,
+        "description": "What an abort answers.",
+        "x-grpc-message": "permguard.host.v1.AbortBackupResponse"
+      },
+      "Backup": {
+        "type": "object",
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "description": "The backup, 32 hex characters.",
+            "x-grpc-field": "operation_id"
+          },
+          "at": {
+            "type": "string",
+            "description": "When it was prepared, RFC 3339.",
+            "x-grpc-field": "at"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "prepared",
+              "finalized",
+              "aborted"
+            ],
+            "description": "Where it stands.",
+            "x-grpc-field": "state"
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The snapshot it bound once finalized; `null` otherwise.",
+            "x-grpc-field": "snapshot_id"
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When it was finalized or aborted, RFC 3339; `null` while prepared.",
+            "x-grpc-field": "ended_at"
+          },
+          "manifest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its signed manifest, base64url; `null` when none was written.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "operation_id",
+          "at",
+          "state",
+          "snapshot_id",
+          "ended_at",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "One backup a Host knows.",
+        "x-grpc-message": "permguard.host.v1.Backup"
+      },
+      "BackupList": {
+        "type": "object",
+        "properties": {
+          "backups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Backup"
+            },
+            "description": "Newest first.",
+            "x-grpc-field": "backups"
+          }
+        },
+        "required": [
+          "backups"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/backups` answers: the known snapshot manifests.",
+        "x-grpc-message": "permguard.host.v1.ListBackupsResponse"
+      },
       "HostWireError": {
         "type": "object",
         "properties": {
@@ -4897,6 +6593,11 @@
             },
             "description": "Every listener of the process, sorted by name, with its class and what it demands of its clients (WP-2.11).",
             "x-grpc-field": "listeners"
+          },
+          "storage": {
+            "oneOf": [{ "$ref": "#/components/schemas/HostStorage" }, { "type": "null" }],
+            "description": "Where the volume stands (TS-5): its qualification and evidence id, `null` before Bootstrap qualified it. The compatibility mode is published here.",
+            "x-grpc-field": "storage"
           }
         },
         "required": [
@@ -4907,11 +6608,32 @@
           "components",
           "assurance",
           "peer_sessions",
-          "listeners"
+          "listeners",
+          "storage"
         ],
         "additionalProperties": false,
         "description": "What `GET /host/v1/status` answers.",
         "x-grpc-message": "permguard.host.v1.GetStatusResponse"
+      },
+      "HostStorage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["qualification", "evidence"],
+        "description": "The volume's qualification as `host status` publishes it (TS-5): nothing about the provider.",
+        "x-grpc-message": "permguard.host.v1.HostStorage",
+        "properties": {
+          "qualification": {
+            "type": "string",
+            "enum": ["qualified", "compatibility_mode", "unqualified"],
+            "description": "How the volume's storage tuple is qualified under the profile in force.",
+            "x-grpc-field": "qualification"
+          },
+          "evidence": {
+            "type": ["string", "null"],
+            "description": "The evidence id of a qualified volume.",
+            "x-grpc-field": "evidence"
+          }
+        }
       },
       "HostListener": {
         "type": "object",
@@ -5121,6 +6843,23 @@
       "HostIdentity": {
         "type": "object",
         "properties": {
+          "host_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The stable Host identity id.",
+            "x-grpc-field": "host_id"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The current identity epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The current identity key's fingerprint.",
+            "x-grpc-field": "fingerprint"
+          },
           "document": {
             "type": "string",
             "description": "The signed identity document of the current epoch: COSE_Sign1 `permguard.host.identity.v1`, base64url without padding.",
@@ -5149,6 +6888,9 @@
           }
         },
         "required": [
+          "host_id",
+          "epoch",
+          "fingerprint",
           "document",
           "successions",
           "first_public_key",
@@ -5157,6 +6899,68 @@
         "additionalProperties": false,
         "description": "The public Host identity (WP-2.2).",
         "x-grpc-message": "permguard.host.v1.GetIdentityResponse"
+      },
+      "VerifyIdentityBody": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "The canonical HTTPS peer-session endpoint.",
+            "x-grpc-field": "address"
+          },
+          "host_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The Host identity expected on the peer channel.",
+            "x-grpc-field": "host_id"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The pinned epoch-1 identity fingerprint.",
+            "x-grpc-field": "fingerprint"
+          }
+        },
+        "required": [
+          "address",
+          "host_id",
+          "fingerprint"
+        ],
+        "additionalProperties": false,
+        "description": "A pinned peer to prove on a fresh PeerChannel.",
+        "x-grpc-message": "permguard.host.v1.VerifyIdentityRequest"
+      },
+      "IdentityVerified": {
+        "type": "object",
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "format": "uuid",
+            "x-grpc-field": "host_id"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "x-grpc-field": "epoch"
+          },
+          "fingerprint": {
+            "type": "string",
+            "x-grpc-field": "fingerprint"
+          },
+          "verified": {
+            "type": "boolean",
+            "const": true,
+            "x-grpc-field": "verified"
+          }
+        },
+        "required": [
+          "host_id",
+          "epoch",
+          "fingerprint",
+          "verified"
+        ],
+        "additionalProperties": false,
+        "description": "A peer identity proved on the connection that answered.",
+        "x-grpc-message": "permguard.host.v1.VerifyIdentityResponse"
       },
       "RotateIdentityBody": {
         "type": "object",
@@ -6278,6 +8082,55 @@
         "additionalProperties": false,
         "description": "The memberships.",
         "x-grpc-message": "permguard.host.v1.ListMembersResponse"
+      },
+      "VerifyMemberBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's idempotency key.",
+            "x-grpc-field": "request_id"
+          }
+        },
+        "required": ["request_id"],
+        "additionalProperties": false,
+        "description": "A request to prove one membership.",
+        "x-grpc-message": "permguard.host.v1.VerifyMemberRequest",
+        "x-grpc-only": ["membership_id"],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "MemberVerification": {
+        "type": "object",
+        "properties": {
+          "membership_id": {
+            "type": "string",
+            "x-grpc-field": "membership_id"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["proved", "scheduled"],
+            "x-grpc-field": "status"
+          },
+          "scheduled_at": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "x-grpc-field": "scheduled_at"
+          },
+          "member": {
+            "$ref": "#/components/schemas/Member",
+            "x-grpc-field": "member"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": ["membership_id", "status", "scheduled_at", "member", "receipt"],
+        "additionalProperties": false,
+        "description": "An immediate live proof or a durable proof schedule and its receipt.",
+        "x-grpc-message": "permguard.host.v1.VerifyMemberResponse"
       },
       "ApproveMemberBody": {
         "type": "object",
@@ -8131,6 +9984,654 @@
         "description": "What `GET /host/v1/audit/{class}/export` answers (WP-3.7).",
         "x-grpc-message": "permguard.host.v1.ExportAuditResponse"
       },
+      "StreamList": {
+        "type": "object",
+        "properties": {
+          "streams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamDescriptor"
+            },
+            "description": "Each descriptor and role the engine serves.",
+            "x-grpc-field": "streams"
+          }
+        },
+        "required": [
+          "streams"
+        ],
+        "additionalProperties": false,
+        "description": "What the Host's stream engine serves (WP-5.7a).",
+        "x-grpc-message": "permguard.host.v1.ListStreamsResponse"
+      },
+      "StreamDescriptor": {
+        "type": "object",
+        "properties": {
+          "plane": {
+            "type": "string",
+            "description": "The plane that declares the stream.",
+            "x-grpc-field": "plane"
+          },
+          "stream_type": {
+            "type": "string",
+            "description": "The stream's type.",
+            "x-grpc-field": "stream_type"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The descriptor's version.",
+            "x-grpc-field": "version"
+          },
+          "role": {
+            "type": "string",
+            "description": "`producer` or `consumer`.",
+            "x-grpc-field": "role"
+          },
+          "retention": {
+            "type": "string",
+            "description": "`evidence` or `history`.",
+            "x-grpc-field": "retention"
+          },
+          "ring": {
+            "type": "string",
+            "description": "The ring its batches are signed under.",
+            "x-grpc-field": "ring"
+          },
+          "task": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The membership task that ships it; `null` when none does.",
+            "x-grpc-field": "task"
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamResource"
+            },
+            "description": "Each resource the engine holds of it.",
+            "x-grpc-field": "resources"
+          }
+        },
+        "required": [
+          "plane",
+          "stream_type",
+          "version",
+          "role",
+          "retention",
+          "ring",
+          "task",
+          "resources"
+        ],
+        "additionalProperties": false,
+        "description": "One descriptor and role.",
+        "x-grpc-message": "permguard.host.v1.StreamDescriptor"
+      },
+      "StreamResource": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "The canonical resource.",
+            "x-grpc-field": "resource"
+          },
+          "state": {
+            "type": "string",
+            "description": "`open`, `forked`, `behind` (a drain left records unshipped) or `held` (a consumer).",
+            "x-grpc-field": "state"
+          }
+        },
+        "required": [
+          "resource",
+          "state"
+        ],
+        "additionalProperties": false,
+        "description": "One resource of a stream and where it stands.",
+        "x-grpc-message": "permguard.host.v1.StreamResource"
+      },
+      "StreamFrontier": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "The resource read.",
+            "x-grpc-field": "resource"
+          },
+          "producer": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamProducerRun"
+            },
+            "description": "The runs the producer holds, in order.",
+            "x-grpc-field": "producer"
+          },
+          "consumer": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamConsumerRun"
+            },
+            "description": "The runs consumers hold, each producer's.",
+            "x-grpc-field": "consumer"
+          }
+        },
+        "required": [
+          "resource",
+          "producer",
+          "consumer"
+        ],
+        "additionalProperties": false,
+        "description": "Where each run of the stream stands.",
+        "x-grpc-message": "permguard.host.v1.GetStreamFrontierResponse"
+      },
+      "StreamProducerRun": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "string",
+            "description": "The run, hex.",
+            "x-grpc-field": "run"
+          },
+          "ended": {
+            "type": "boolean",
+            "description": "Whether the run ended: a later one succeeds it.",
+            "x-grpc-field": "ended"
+          },
+          "last_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The run's last durable sequence.",
+            "x-grpc-field": "last_seq"
+          },
+          "sealed": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The last sequence sealed in a signed batch.",
+            "x-grpc-field": "sealed"
+          },
+          "acknowledged": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The least acknowledgement of the required subscriptions; `null` when none holds the run.",
+            "x-grpc-field": "acknowledged"
+          },
+          "low_watermark": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence still held: 1 unless a prefix went.",
+            "x-grpc-field": "low_watermark"
+          }
+        },
+        "required": [
+          "run",
+          "ended",
+          "last_seq",
+          "sealed",
+          "acknowledged",
+          "low_watermark"
+        ],
+        "additionalProperties": false,
+        "description": "One run as the producer holds it.",
+        "x-grpc-message": "permguard.host.v1.StreamProducerRun"
+      },
+      "StreamConsumerRun": {
+        "type": "object",
+        "properties": {
+          "producer": {
+            "type": "string",
+            "description": "The producer Host, hex.",
+            "x-grpc-field": "producer"
+          },
+          "run": {
+            "type": "string",
+            "description": "The run, hex.",
+            "x-grpc-field": "run"
+          },
+          "acked": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The highest contiguous sequence held.",
+            "x-grpc-field": "acked"
+          },
+          "oldest_retained": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence still held.",
+            "x-grpc-field": "oldest_retained"
+          }
+        },
+        "required": [
+          "producer",
+          "run",
+          "acked",
+          "oldest_retained"
+        ],
+        "additionalProperties": false,
+        "description": "One run as a consumer holds it.",
+        "x-grpc-message": "permguard.host.v1.StreamConsumerRun"
+      },
+      "StreamRecordPage": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "The resource read.",
+            "x-grpc-field": "resource"
+          },
+          "run": {
+            "type": "string",
+            "description": "The run read, hex; empty when the stream holds no such run.",
+            "x-grpc-field": "run"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamRecord"
+            },
+            "description": "The page's records, in sequence order, from the first still held.",
+            "x-grpc-field": "records"
+          },
+          "next": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Where the next page starts; `null` on the last one.",
+            "x-grpc-field": "next"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StreamGap"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The deleted prefix the read started in, with the run's anchor; `null` when the read started at or above what is held. Never answered as complete.",
+            "x-grpc-field": "gap"
+          }
+        },
+        "required": [
+          "resource",
+          "run",
+          "records",
+          "next",
+          "gap"
+        ],
+        "additionalProperties": false,
+        "description": "One page of a run.",
+        "x-grpc-message": "permguard.host.v1.ListStreamRecordsResponse"
+      },
+      "StreamRecord": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The record's sequence.",
+            "x-grpc-field": "seq"
+          },
+          "record": {
+            "type": "string",
+            "description": "The record's bytes, base64url without padding.",
+            "x-grpc-field": "record"
+          },
+          "digest": {
+            "type": "string",
+            "description": "`sha256:<hex>` over the stream's record domain and the bytes.",
+            "x-grpc-field": "digest"
+          }
+        },
+        "required": [
+          "seq",
+          "record",
+          "digest"
+        ],
+        "additionalProperties": false,
+        "description": "One record.",
+        "x-grpc-message": "permguard.host.v1.StreamRecord"
+      },
+      "StreamGap": {
+        "type": "object",
+        "properties": {
+          "low_watermark": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence still held.",
+            "x-grpc-field": "low_watermark"
+          },
+          "anchor": {
+            "$ref": "#/components/schemas/StreamAnchor",
+            "description": "What the run keeps of what went.",
+            "x-grpc-field": "anchor"
+          }
+        },
+        "required": [
+          "low_watermark",
+          "anchor"
+        ],
+        "additionalProperties": false,
+        "description": "What a read below the first sequence still held reaches.",
+        "x-grpc-message": "permguard.host.v1.StreamGap"
+      },
+      "StreamSignerList": {
+        "type": "object",
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamRunSigners"
+            },
+            "description": "Each run's signer spans.",
+            "x-grpc-field": "runs"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "additionalProperties": false,
+        "description": "The keys each run's batches are signed under.",
+        "x-grpc-message": "permguard.host.v1.ListStreamSignersResponse"
+      },
+      "StreamRunSigners": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "`producer` or `consumer`.",
+            "x-grpc-field": "role"
+          },
+          "producer": {
+            "type": "string",
+            "description": "The producer Host, hex.",
+            "x-grpc-field": "producer"
+          },
+          "run": {
+            "type": "string",
+            "description": "The run, hex.",
+            "x-grpc-field": "run"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamSpan"
+            },
+            "description": "The spans, in order.",
+            "x-grpc-field": "spans"
+          }
+        },
+        "required": [
+          "role",
+          "producer",
+          "run",
+          "spans"
+        ],
+        "additionalProperties": false,
+        "description": "One run's spans.",
+        "x-grpc-message": "permguard.host.v1.StreamRunSigners"
+      },
+      "StreamSpan": {
+        "type": "object",
+        "properties": {
+          "from_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence the key signs.",
+            "x-grpc-field": "from_seq"
+          },
+          "kid": {
+            "type": "string",
+            "description": "The key's id.",
+            "x-grpc-field": "kid"
+          },
+          "jwk": {
+            "type": "string",
+            "description": "The public key as JSON.",
+            "x-grpc-field": "jwk"
+          }
+        },
+        "required": [
+          "from_seq",
+          "kid",
+          "jwk"
+        ],
+        "additionalProperties": false,
+        "description": "One signer span.",
+        "x-grpc-message": "permguard.host.v1.StreamSpan"
+      },
+      "StreamSubscriptionList": {
+        "type": "object",
+        "properties": {
+          "subscriptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamSubscription"
+            },
+            "description": "The producer's subscriptions.",
+            "x-grpc-field": "subscriptions"
+          }
+        },
+        "required": [
+          "subscriptions"
+        ],
+        "additionalProperties": false,
+        "description": "Who the producer ships to, and how far each acknowledged.",
+        "x-grpc-message": "permguard.host.v1.ListStreamSubscriptionsResponse"
+      },
+      "StreamSubscription": {
+        "type": "object",
+        "properties": {
+          "membership": {
+            "type": "string",
+            "description": "The membership's id.",
+            "x-grpc-field": "membership"
+          },
+          "task": {
+            "type": "string",
+            "description": "The task's id.",
+            "x-grpc-field": "task"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether it blocks the producer's deletion.",
+            "x-grpc-field": "required"
+          },
+          "state": {
+            "type": "string",
+            "description": "`active`, `paused` or `stopped`.",
+            "x-grpc-field": "state"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it stopped; `null` otherwise.",
+            "x-grpc-field": "reason"
+          },
+          "acked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamRunAck"
+            },
+            "description": "Its acknowledgement of each run.",
+            "x-grpc-field": "acked"
+          }
+        },
+        "required": [
+          "membership",
+          "task",
+          "required",
+          "state",
+          "reason",
+          "acked"
+        ],
+        "additionalProperties": false,
+        "description": "One subscription of the producer.",
+        "x-grpc-message": "permguard.host.v1.StreamSubscription"
+      },
+      "StreamRunAck": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "string",
+            "description": "The run, hex.",
+            "x-grpc-field": "run"
+          },
+          "acked": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The highest contiguous sequence acknowledged.",
+            "x-grpc-field": "acked"
+          }
+        },
+        "required": [
+          "run",
+          "acked"
+        ],
+        "additionalProperties": false,
+        "description": "One run's acknowledgement.",
+        "x-grpc-message": "permguard.host.v1.StreamRunAck"
+      },
+      "StreamGapList": {
+        "type": "object",
+        "properties": {
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamGapEntry"
+            },
+            "description": "Each run whose prefix went.",
+            "x-grpc-field": "gaps"
+          }
+        },
+        "required": [
+          "gaps"
+        ],
+        "additionalProperties": false,
+        "description": "The durable gaps of the stream.",
+        "x-grpc-message": "permguard.host.v1.ListStreamGapsResponse"
+      },
+      "StreamGapEntry": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "`producer` or `consumer`.",
+            "x-grpc-field": "role"
+          },
+          "producer": {
+            "type": "string",
+            "description": "The producer Host, hex.",
+            "x-grpc-field": "producer"
+          },
+          "run": {
+            "type": "string",
+            "description": "The run, hex.",
+            "x-grpc-field": "run"
+          },
+          "low_watermark": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence still held.",
+            "x-grpc-field": "low_watermark"
+          }
+        },
+        "required": [
+          "role",
+          "producer",
+          "run",
+          "low_watermark"
+        ],
+        "additionalProperties": false,
+        "description": "One run whose prefix went.",
+        "x-grpc-message": "permguard.host.v1.StreamGapEntry"
+      },
+      "StreamAnchorList": {
+        "type": "object",
+        "properties": {
+          "anchors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamAnchor"
+            },
+            "description": "Each run's prefix anchor.",
+            "x-grpc-field": "anchors"
+          }
+        },
+        "required": [
+          "anchors"
+        ],
+        "additionalProperties": false,
+        "description": "The retained prefix anchors of the stream.",
+        "x-grpc-message": "permguard.host.v1.ListStreamAnchorsResponse"
+      },
+      "StreamAnchor": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "`producer` or `consumer`.",
+            "x-grpc-field": "role"
+          },
+          "producer": {
+            "type": "string",
+            "description": "The producer Host, hex.",
+            "x-grpc-field": "producer"
+          },
+          "run": {
+            "type": "string",
+            "description": "The run, hex.",
+            "x-grpc-field": "run"
+          },
+          "through": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The last sequence deleted.",
+            "x-grpc-field": "through"
+          },
+          "low_watermark": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence still held.",
+            "x-grpc-field": "low_watermark"
+          },
+          "terminal_head": {
+            "type": "string",
+            "description": "The record digest at `through`.",
+            "x-grpc-field": "terminal_head"
+          },
+          "covering": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many deleted batches it covers.",
+            "x-grpc-field": "covering"
+          },
+          "anchor": {
+            "type": "string",
+            "description": "The anchor's deterministic CBOR (`contracts/cbor/stream.json`, `stream_anchor`), base64url without padding.",
+            "x-grpc-field": "anchor"
+          }
+        },
+        "required": [
+          "role",
+          "producer",
+          "run",
+          "through",
+          "low_watermark",
+          "terminal_head",
+          "covering",
+          "anchor"
+        ],
+        "additionalProperties": false,
+        "description": "One run's prefix anchor (WP-5.6b).",
+        "x-grpc-message": "permguard.host.v1.StreamAnchor"
+      },
       "PlanApprovalView": {
         "type": "object",
         "properties": {
@@ -8396,6 +10897,291 @@
         "additionalProperties": false,
         "description": "One key a member received: its coordinates, never its bytes (WP-4.7).",
         "x-grpc-message": "permguard.host.v1.ZoneKeyTuple"
+      },
+      "PlanGcBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The caller's name for this plan; a retry is answered with the same plan.",
+            "x-grpc-field": "request_id",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "resource": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Plane's zone, `plane/<p>/zone/<id>`, or ledger, `plane/<p>/zone/<id>/ledger/<id>`, as a grant names it; the whole Plane when absent or `null`.",
+            "x-grpc-field": "resource"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/gc/{job}/plan` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.PlanGcRequest",
+        "x-grpc-only": [
+          "job"
+        ],
+        "x-grpc-note": "`job` travels in the path on REST."
+      },
+      "RunGcBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The caller's name for this run; a retry is answered with the first run.",
+            "x-grpc-field": "request_id",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "receipt": {
+            "type": "string",
+            "description": "The receipt the plan step answered, base64url without padding.",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": [
+          "request_id",
+          "receipt"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/gc/{job}/run` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.RunGcRequest",
+        "x-grpc-only": [
+          "job"
+        ],
+        "x-grpc-note": "`job` travels in the path on REST."
+      },
+      "GcPlanned": {
+        "type": "object",
+        "properties": {
+          "job": {
+            "type": "string",
+            "description": "The job planned.",
+            "x-grpc-field": "job"
+          },
+          "resource": {
+            "type": "string",
+            "description": "The scope the plan names.",
+            "x-grpc-field": "resource"
+          },
+          "plan_id": {
+            "type": "string",
+            "description": "The plan's id, 32 hex characters.",
+            "x-grpc-field": "plan_id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "What the plan changes, `sha256:<hex>`.",
+            "x-grpc-field": "plan_digest"
+          },
+          "expires": {
+            "type": "string",
+            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made.",
+            "x-grpc-field": "expires",
+            "format": "date-time"
+          },
+          "receipt": {
+            "type": "string",
+            "description": "The receipt the run presents: COSE_Sign1 `permguard.operation.plan.v1` under `host.operations`, base64url without padding.",
+            "x-grpc-field": "receipt"
+          },
+          "approvals_required": {
+            "type": "integer",
+            "description": "Always 0: a garbage-collection plan requires no approval.",
+            "x-grpc-field": "approvals_required",
+            "minimum": 0
+          },
+          "report": {
+            "$ref": "#/components/schemas/GcReport",
+            "description": "What a run would remove now, and what it would keep and why.",
+            "x-grpc-field": "report"
+          }
+        },
+        "required": [
+          "job",
+          "resource",
+          "plan_id",
+          "plan_digest",
+          "expires",
+          "receipt",
+          "approvals_required",
+          "report"
+        ],
+        "additionalProperties": false,
+        "description": "What a garbage-collection plan answers.",
+        "x-grpc-message": "permguard.host.v1.PlanGcResponse"
+      },
+      "GcRan": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The run's receipt.",
+            "x-grpc-field": "receipt"
+          },
+          "job": {
+            "type": "string",
+            "description": "The job run.",
+            "x-grpc-field": "job"
+          },
+          "resource": {
+            "type": "string",
+            "description": "The scope swept.",
+            "x-grpc-field": "resource"
+          },
+          "plan_id": {
+            "type": "string",
+            "description": "The plan the run spent.",
+            "x-grpc-field": "plan_id"
+          },
+          "report": {
+            "$ref": "#/components/schemas/GcReport",
+            "description": "What the run removed, and what it kept and why.",
+            "x-grpc-field": "report"
+          }
+        },
+        "required": [
+          "receipt",
+          "job",
+          "resource",
+          "plan_id",
+          "report"
+        ],
+        "additionalProperties": false,
+        "description": "What a garbage-collection run answers.",
+        "x-grpc-message": "permguard.host.v1.RunGcResponse"
+      },
+      "GcReport": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GcEntry"
+            },
+            "description": "Each resource the job read, at most 256.",
+            "x-grpc-field": "entries"
+          },
+          "resumes_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The resource a run stopped in at its bound: what a later run removes.",
+            "x-grpc-field": "resumes_at"
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The resources the job could not read, and why: nothing of them was removed.",
+            "x-grpc-field": "skipped"
+          },
+          "omitted": {
+            "type": "integer",
+            "description": "Resources past the 256 listed, counted only.",
+            "x-grpc-field": "omitted",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "entries",
+          "resumes_at",
+          "skipped",
+          "omitted"
+        ],
+        "additionalProperties": false,
+        "description": "What a garbage-collection plan or run found, resource by resource.",
+        "x-grpc-message": "permguard.host.v1.GcReport"
+      },
+      "GcEntry": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "The resource, as a grant names it.",
+            "x-grpc-field": "resource"
+          },
+          "candidates": {
+            "type": "integer",
+            "description": "What the sweep found removable.",
+            "x-grpc-field": "candidates",
+            "minimum": 0
+          },
+          "candidate_bytes": {
+            "type": "integer",
+            "description": "Their bytes.",
+            "x-grpc-field": "candidate_bytes",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "description": "What it removed: zero for a plan.",
+            "x-grpc-field": "removed",
+            "minimum": 0
+          },
+          "removed_bytes": {
+            "type": "integer",
+            "description": "Their bytes.",
+            "x-grpc-field": "removed_bytes",
+            "minimum": 0
+          },
+          "kept": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GcKept"
+            },
+            "description": "What it kept, by reason.",
+            "x-grpc-field": "kept"
+          }
+        },
+        "required": [
+          "resource",
+          "candidates",
+          "candidate_bytes",
+          "removed",
+          "removed_bytes",
+          "kept"
+        ],
+        "additionalProperties": false,
+        "description": "One resource of a garbage-collection report.",
+        "x-grpc-message": "permguard.host.v1.GcEntry"
+      },
+      "GcKept": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "`reachable`, `pinned`, `grace`, `held` or `bound`.",
+            "x-grpc-field": "reason",
+            "enum": [
+              "reachable",
+              "pinned",
+              "grace",
+              "held",
+              "bound"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "description": "How many.",
+            "x-grpc-field": "count",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "reason",
+          "count"
+        ],
+        "additionalProperties": false,
+        "description": "What a sweep kept for one reason.",
+        "x-grpc-message": "permguard.host.v1.GcKept"
       }
     }
   },

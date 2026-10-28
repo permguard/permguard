@@ -167,6 +167,77 @@ pub(crate) fn refused(denial: AccessDenial, grpc: bool) -> Response<Body> {
     response
 }
 
+/// A domain refusal of class `unavailable` with the generic code, in the caller's protocol: the
+/// shared `{class, code, message}` body with `503` over HTTP, a trailers-only `UNAVAILABLE` with
+/// `permguard-error-class` and `permguard-error-code` over gRPC (TS-4: overload is a typed `503`).
+pub(crate) fn unavailable(message: &str, grpc: bool) -> Response<Body> {
+    let code = permguard_core::codes::common::UNAVAILABLE;
+    if grpc {
+        let mut response = Response::new(Body::empty());
+        let headers = response.headers_mut();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/grpc"),
+        );
+        headers.insert(
+            "grpc-status",
+            http::HeaderValue::from_str(
+                &permguard_core::GrpcCode::Unavailable.number().to_string(),
+            )
+            .unwrap_or_else(|_| http::HeaderValue::from_static("14")),
+        );
+        if let Ok(message) = http::HeaderValue::from_str(&grpc_message(message)) {
+            headers.insert("grpc-message", message);
+        }
+        headers.insert(
+            permguard_core::GRPC_ERROR_CLASS,
+            http::HeaderValue::from_static("unavailable"),
+        );
+        headers.insert(
+            permguard_core::GRPC_ERROR_CODE,
+            http::HeaderValue::from_static(code),
+        );
+        return response;
+    }
+
+    let body = serde_json::to_vec(&permguard_core::api::WireError {
+        class: permguard_core::ErrorClass::Unavailable,
+        code: code.to_owned(),
+        message: message.to_owned(),
+    })
+    .unwrap_or_default();
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+    response.headers_mut().insert(
+        http::header::CONTENT_TYPE,
+        http::HeaderValue::from_static("application/json"),
+    );
+
+    response
+}
+
+/// Whether a request speaks gRPC, as an extractor of the shed's handler: one look at the content
+/// type, where a `HeaderMap` extractor would clone every header of every request the surface
+/// serves — the handler's extractors run before the inner service, shed or not.
+pub(crate) struct SpeaksGrpc(pub(crate) bool);
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for SpeaksGrpc {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        Ok(Self(
+            parts
+                .headers
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.starts_with("application/grpc")),
+        ))
+    }
+}
+
 /// A gRPC trailers-only answer: HTTP `200`, and the status, message and code as headers.
 fn refused_in_grpc(denial: &AccessDenial) -> Response<Body> {
     let mut response = Response::new(Body::empty());

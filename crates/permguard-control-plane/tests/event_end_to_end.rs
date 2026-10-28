@@ -32,15 +32,18 @@ use permguard_control_plane::events::{ingest, read};
 use permguard_core::keys::{PublicSet as _, Sign as _};
 use permguard_core::{Disclosure, KeyManager, Metrics};
 use permguard_data_plane::temporal::imports::Imports;
-use permguard_data_plane::temporal::pull::{
-    ProducerTrust, Puller, Round as PullRound, Subscription,
-};
 use permguard_data_plane::temporal::shipper::{Round, Shipper};
 use permguard_data_plane::temporal::streams::Streams;
 use permguard_events::journal::Bounds;
 use permguard_events::record::{PRODUCER_CLASS_DATA_PLANE, Record, Stream};
 use permguard_std::keys::{DirectoryKeyManager, KeyPolicy};
 use serde_json::{Value, json};
+
+/// The authority every mirror of these tests lives under (WP-7.2a): a mirror in a configured URL's
+/// shape is never served since WP-7.7.
+const MIRROR_AUTHORITY: &str = "11111111111111111111111111111111";
+/// The task the mirrors of these tests were listed by: the local task.
+const MIRROR_TASK: &str = "00000000-0000-0000-0000-000000000000/local";
 
 const ZONE: &str = "acme";
 const LEDGER: &str = "agent-governance";
@@ -74,19 +77,6 @@ fn ring(tag: &str) -> Arc<DirectoryKeyManager> {
     keys.maintain().expect("the ring produces a key");
 
     Arc::new(keys)
-}
-
-fn trusted(keys: &DirectoryKeyManager, producer: &str) -> Vec<ProducerTrust> {
-    keys.public_keys()
-        .expect("the ring publishes")
-        .into_iter()
-        .map(|key| ProducerTrust {
-            key,
-            producer: producer.to_owned(),
-            zone: ZONE_ID.to_owned(),
-            ledger: LEDGER_ID.to_owned(),
-        })
-        .collect()
 }
 
 /// The control plane, as a sink and a reader a data plane can reach.
@@ -219,7 +209,10 @@ impl EventReader for Wire {
 
     fn get(&self, zone: &str, ledger: &str, event_id: &str) -> Result<Option<Value>, ReadError> {
         read::get(
-            &self.facade.store,
+            &read::Sources {
+                store: &self.facade.store,
+                host: None,
+            },
             &Scope::Tenant {
                 zone: zone.to_owned(),
                 ledger: ledger.to_owned(),
@@ -258,31 +251,79 @@ fn control(tag: &str, keys: &DirectoryKeyManager) -> Arc<Wire> {
 
     Arc::new(Wire {
         facade: EventFacade {
+            host: None,
             // These fixtures address records by identity, so there are no names to resolve.
             catalog: None,
             store: Arc::new(store),
             producers: Arc::new(std::sync::RwLock::new(producers)),
-            producer_files: Vec::new(),
+            local: None,
             cursor_key,
             disclosure: Disclosure::Full,
             metrics: Metrics::none(),
             base_url: "http://127.0.0.1:6443".to_owned(),
+            describer: permguard_core::stages::Describer::detached("control-plane"),
+            authorization: std::sync::Arc::new(
+                permguard_host::composition::Authorization::permissive(),
+            ),
         },
         down: std::sync::atomic::AtomicBool::new(false),
     })
 }
 
-/// A data plane's journals, on a real disk.
-fn journals(tag: &str, producer: &str) -> Arc<Streams> {
-    Arc::new(Streams::new(
-        scratch(&format!("{tag}-events")),
-        producer.to_owned(),
-        Bounds::default(),
-    ))
+/// A data plane upgraded beside the legacy journal `producer` wrote of `count` occurrences, on a
+/// real disk: what its old shipper still sends until it is empty (WP-6.2a).
+fn journals(tag: &str, producer: &str, count: u64) -> Arc<Streams> {
+    let root = scratch(&format!("{tag}-events"));
+    write_legacy(&root, producer, &occurrences(count, 1));
+    streams_over(&root)
 }
 
-/// Records `count` occurrences into a ledger's journal.
-fn record(streams: &Streams, count: u64, from: u64) {
+/// A plane's streams over `root`, on the Host's producer a test keeps in memory.
+fn streams_over(root: &std::path::Path) -> Arc<Streams> {
+    Arc::new(
+        Streams::new(
+            root.to_path_buf(),
+            root.join("planes"),
+            permguard_data_plane::temporal::testing::host_side(root),
+            Bounds::default(),
+        )
+        .expect("the floor is registered"),
+    )
+}
+
+/// Writes `records` as the legacy journal `producer` kept of the ledger below `root`, each
+/// placed in that journal's own chain: what an earlier release recorded.
+fn write_legacy(root: &std::path::Path, producer: &str, records: &[Record]) {
+    let stream = Stream {
+        producer: permguard_events::Producer {
+            class: PRODUCER_CLASS_DATA_PLANE.to_owned(),
+            id: producer.to_owned(),
+            instance: "01931f2c".to_owned(),
+        },
+        zone: ZONE_ID.to_owned(),
+        ledger: LEDGER_ID.to_owned(),
+    };
+    let mut journal = permguard_events::journal::Journal::open(
+        root.join(ZONE_ID).join(LEDGER_ID),
+        stream.clone(),
+        Bounds::default(),
+    )
+    .expect("the legacy journal opens");
+    for held in records {
+        let (seq, prev) = journal.next_position();
+        let mut held = held.clone();
+        held.stream = stream.clone();
+        held.seq = seq;
+        held.prev = prev;
+        journal
+            .append(&held.to_value().expect("the record renders"))
+            .expect("the record is durable");
+    }
+}
+
+/// `count` occurrences from `from`, as a plane proposes them.
+fn occurrences(count: u64, from: u64) -> Vec<Record> {
+    let mut proposed = Vec::new();
     for index in 0..count {
         let seq = from + index;
         let occurred = permguard_events::index::render_epoch_seconds(1_700_000_000 + seq as i64)
@@ -313,6 +354,7 @@ fn record(streams: &Streams, count: u64, from: u64) {
             prev: String::new(),
             event_type: DOGWOOD.to_owned(),
             event_id: format!("e-{seq}"),
+            source: None,
             occurrence_digest: permguard_events::occurrence_digest_of(&event)
                 .expect("the occurrence digests"),
             kind: "response".to_owned(),
@@ -324,18 +366,16 @@ fn record(streams: &Streams, count: u64, from: u64) {
             observed_at: occurred,
             event,
         };
-        streams
-            .append(ZONE_ID, LEDGER_ID, held)
-            .expect("the record is durable");
+        proposed.push(held);
     }
+    proposed
 }
 
 #[test]
 fn what_one_plane_recorded_is_what_the_other_holds_byte_for_byte() {
     let keys = ring("happy");
     let wire = control("happy", &keys);
-    let streams = journals("happy", "plane-a");
-    record(&streams, 12, 1);
+    let streams = journals("happy", "plane-a", 12);
 
     let shipper = Shipper::new(
         Arc::clone(&streams),
@@ -400,8 +440,7 @@ fn what_one_plane_recorded_is_what_the_other_holds_byte_for_byte() {
 fn a_control_plane_that_is_down_defers_and_the_history_stays() {
     let keys = ring("outage");
     let wire = control("outage", &keys);
-    let streams = journals("outage", "plane-a");
-    record(&streams, 5, 1);
+    let streams = journals("outage", "plane-a", 5);
     wire.down.store(true, std::sync::atomic::Ordering::Relaxed);
 
     let shipper = Shipper::new(
@@ -448,8 +487,7 @@ fn a_control_plane_that_is_down_defers_and_the_history_stays() {
 fn the_signed_checkpoint_is_written_before_the_batch_is_shipped() {
     let keys = ring("checkpoint");
     let wire = control("checkpoint", &keys);
-    let streams = journals("checkpoint", "plane-a");
-    record(&streams, 4, 1);
+    let streams = journals("checkpoint", "plane-a", 4);
     // The receiver is unreachable, so nothing this test sees can have come from an acknowledgement.
     wire.down.store(true, std::sync::atomic::Ordering::Relaxed);
 
@@ -492,108 +530,6 @@ fn the_signed_checkpoint_is_written_before_the_batch_is_shipped() {
     assert_eq!(
         state.acked_through, 0,
         "and acknowledgement is still a separate fact, which has not happened"
-    );
-}
-
-/// A second plane reads the first plane's history back, verified.
-#[test]
-fn an_imported_record_is_verified_before_it_is_applied_and_never_re_signed() {
-    let keys = ring("import");
-    let wire = control("import", &keys);
-    let streams = journals("import", "plane-a");
-    record(&streams, 6, 1);
-    Shipper::new(
-        Arc::clone(&streams),
-        Box::new(Handed(Arc::clone(&wire))),
-        Arc::new(permguard_events::envelope::RingSigner(
-            Arc::clone(&keys) as Arc<dyn KeyManager>
-        )),
-        1024 * 1024,
-        Metrics::none(),
-    )
-    .round();
-
-    // The second plane: its own journals, and an import store beside them.
-    let imports = Arc::new(Imports::new(scratch("import-pull")));
-    let puller = Puller::new(
-        Box::new(Handed(Arc::clone(&wire))),
-        Arc::clone(&imports),
-        vec![Subscription {
-            zone: ZONE_ID.to_owned(),
-            ledger: LEDGER_ID.to_owned(),
-            event_types: vec![DOGWOOD.to_owned()],
-        }],
-        trusted(&keys, "plane-a"),
-        permguard_core::config::Consistency::SharedEventual,
-        Metrics::none(),
-    );
-
-    let rounds = puller.round();
-    assert!(
-        matches!(
-            rounds[0].1,
-            PullRound::Imported {
-                records: 6,
-                duplicates: 0
-            }
-        ),
-        "{:?}",
-        rounds[0].1
-    );
-
-    // Imported records keep their origin identity: this plane did not record them, and the record
-    // says so.
-    let observed = imports.observable(ZONE_ID, LEDGER_ID).expect("it reads");
-    assert_eq!(observed.len(), 6);
-    for record in &observed {
-        assert_eq!(
-            record
-                .get("stream")
-                .and_then(|held| held.get("producer"))
-                .and_then(|held| held.get("id"))
-                .and_then(Value::as_str),
-            Some("plane-a"),
-            "an imported record must never be re-attributed to the plane that imported it"
-        );
-    }
-
-    // A second round imports nothing new, and does not double-count.
-    assert!(matches!(puller.round()[0].1, PullRound::Idle));
-    assert_eq!(
-        imports.observable(ZONE_ID, LEDGER_ID).expect("reads").len(),
-        6
-    );
-}
-
-/// A subscription naming a type nothing validates never advances its cursor over it.
-#[test]
-fn a_subscription_to_a_type_nothing_validates_is_quarantined_rather_than_imported() {
-    let keys = ring("unknown");
-    let wire = control("unknown", &keys);
-    let imports = Arc::new(Imports::new(scratch("unknown-pull")));
-    let puller = Puller::new(
-        Box::new(Handed(Arc::clone(&wire))),
-        Arc::clone(&imports),
-        vec![Subscription {
-            zone: ZONE_ID.to_owned(),
-            ledger: LEDGER_ID.to_owned(),
-            event_types: vec!["acme.pip.v1".to_owned()],
-        }],
-        trusted(&keys, "plane-a"),
-        permguard_core::config::Consistency::SharedEventual,
-        Metrics::none(),
-    );
-
-    match &puller.round()[0].1 {
-        PullRound::Quarantined { reason, .. } => {
-            assert!(reason.contains("acme.pip.v1"), "{reason}");
-        }
-        other => panic!("a type nothing validates must not be imported: {other:?}"),
-    }
-    assert_eq!(
-        imports.cursor(ZONE_ID, LEDGER_ID).expect("reads"),
-        None,
-        "the cursor must not advance over records nothing checked"
     );
 }
 
@@ -670,7 +606,10 @@ mod two_planes {
         let manifest =
             permguard_languages::manifest_file::from_yaml(example("manifest.yml").as_bytes())
                 .expect("the example's manifest parses");
-        let path = root.join(format!("{ZONE}-id")).join(format!("{LEDGER}-id"));
+        let path = root
+            .join(MIRROR_AUTHORITY)
+            .join(format!("{ZONE}-id"))
+            .join(format!("{LEDGER}-id"));
         std::fs::create_dir_all(&path).expect("the mirror directory is created");
         let store = FsStore::new(&path);
         let put_blob = |media_type: &str, data: &[u8]| {
@@ -762,6 +701,8 @@ mod two_planes {
             &permguard_control_client::checkpoint::Checkpoint {
                 head: head.to_string(),
                 counter: 1,
+                ref_digest: None,
+                ..Default::default()
             },
         )
         .expect("the checkpoint is written");
@@ -769,6 +710,8 @@ mod two_planes {
         permguard_data_plane::authz::store::record(
             &path,
             &Identity {
+                task: Some(MIRROR_TASK.to_owned()),
+                authority: Some(MIRROR_AUTHORITY.to_owned()),
                 zone_id: format!("{ZONE}-id"),
                 zone_name: ZONE.to_owned(),
                 ledger_id: format!("{LEDGER}-id"),
@@ -797,11 +740,17 @@ mod two_planes {
         std::fs::create_dir_all(&mirrors).expect("the mirrors root is created");
         mirror(&mirrors);
 
-        let streams = Arc::new(Streams::new(
-            root.join("events"),
-            producer.to_owned(),
-            bounds(),
-        ));
+        let _ = producer;
+        let events = root.join("events");
+        let streams = Arc::new(
+            Streams::new(
+                events.clone(),
+                root.join("planes"),
+                permguard_data_plane::temporal::testing::host_side(&events),
+                bounds(),
+            )
+            .expect("the floor is registered"),
+        );
         let decider = Arc::new(Decider::new(
             mirrors,
             Arc::new(Cache::new(64, 32 * 1024 * 1024)),
@@ -833,61 +782,168 @@ mod two_planes {
 
         serde_json::to_value(
             submitter
-                .submit(&request)
+                .submit(&request, "anonymous", None)
                 .await
                 .unwrap_or_else(|error| panic!("{fixture}: {error:?}")),
         )
         .expect("the answer renders")
     }
 
+    /// The authenticated name the gateway submits under: an identity trusted across origins.
+    const GATEWAY: &str = "spiffe://acme/gateway";
+
+    /// Origin A, the Host that recorded alice's login, and a third whose copy of it differs.
+    const ORIGIN_A: [u8; 16] = [0xA1; 16];
+    const ORIGIN_B: [u8; 16] = [0xB1; 16];
+    const ORIGIN_C: [u8; 16] = [0xC1; 16];
+    const RUN: [u8; 16] = [0x07; 16];
+
+    /// One occurrence of the example, submitted under `source`.
+    async fn submit_as(submitter: &Arc<Submitter>, fixture: &str, source: &str) -> Value {
+        let body: Value = serde_json::from_str(&example(fixture))
+            .unwrap_or_else(|error| panic!("{fixture}: {error}"));
+        let request: permguard_languages::temporal::SubmitRequest =
+            serde_json::from_value(body).unwrap_or_else(|error| panic!("{fixture}: {error}"));
+
+        serde_json::to_value(
+            submitter
+                .submit(&request, source, None)
+                .await
+                .unwrap_or_else(|error| panic!("{fixture}: {error:?}")),
+        )
+        .expect("the answer renders")
+    }
+
+    /// The Host's consumer of `data/events` on plane B's Host: the origins' runs it imported over
+    /// `events.import`, and the checkpoint it verified (WP-6.2c2a), as the Data Plane reads them.
+    #[derive(Default)]
+    struct HostConsumer {
+        runs: std::sync::Mutex<Vec<([u8; 16], Vec<Value>)>>,
+    }
+
+    impl permguard_host::composition::StreamConsumerReads for HostConsumer {
+        fn runs(
+            &self,
+            _: &permguard_core::authz::Resource,
+        ) -> Result<Vec<permguard_host::composition::ConsumedRun>, String> {
+            Ok(self
+                .runs
+                .lock()
+                .expect("lock")
+                .iter()
+                .map(
+                    |(origin, records)| permguard_host::composition::ConsumedRun {
+                        producer: *origin,
+                        run: RUN,
+                        acked: records.len() as u64,
+                        oldest_retained: 1,
+                    },
+                )
+                .collect())
+        }
+
+        fn locate(
+            &self,
+            _: &[u8; 16],
+            _: &[u8; 16],
+        ) -> Result<Option<permguard_core::authz::Resource>, String> {
+            Ok(None)
+        }
+
+        fn records(
+            &self,
+            _: &permguard_core::authz::Resource,
+            producer: &[u8; 16],
+            _: &[u8; 16],
+            from: u64,
+            limit: usize,
+        ) -> Result<permguard_host::composition::ConsumedPage, String> {
+            let runs = self.runs.lock().expect("lock");
+            let records = runs
+                .iter()
+                .find(|(origin, _)| origin == producer)
+                .map(|(_, records)| records.clone())
+                .unwrap_or_default();
+            Ok(permguard_host::composition::ConsumedPage {
+                records: (from..=records.len() as u64)
+                    .take(limit)
+                    .map(|seq| {
+                        (
+                            seq,
+                            serde_json::to_vec(&records[(seq - 1) as usize]).expect("bytes"),
+                        )
+                    })
+                    .collect(),
+                low_watermark: None,
+            })
+        }
+
+        fn batch(
+            &self,
+            _: &permguard_core::authz::Resource,
+            _: &[u8; 16],
+            _: &[u8; 16],
+            _: u64,
+        ) -> Result<Option<Vec<u8>>, String> {
+            Ok(None)
+        }
+
+        fn retain_above(
+            &self,
+            _: Arc<dyn permguard_host::composition::StreamFloor>,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    /// WP-6.2c2b2: alice logs in on plane A; plane A's Host ships it to the coordinator and plane
+    /// B's Host imports it over `events.import` into its consumer (the sessions, the manifests and
+    /// the batches' signatures are tested in `permguard-host`, `permguard-stream` and this crate's
+    /// provider); plane B, in a shared mode, decides on it together with what it recorded itself,
+    /// and an occurrence two origins recorded with different bytes is applied by neither.
     #[tokio::test]
     async fn a_login_on_one_plane_permits_a_read_on_another() {
-        let keys = ring("two-planes");
-        let wire = control("two-planes", &keys);
+        // Plane A records alice's login, on its Host's stream, under the gateway's name.
+        let (frankfurt, recorded_a) = plane("plane-a", "plane-a");
+        submit_as(&frankfurt, "events/1-login-request.json", GATEWAY).await;
+        submit_as(&frankfurt, "events/2-login-response.json", GATEWAY).await;
+        let held_a: Vec<Value> = recorded_a
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+            .expect("plane A's stream reads back");
+        assert_eq!(held_a.len(), 2);
 
-        // Plane A records alice's login and ships it.
-        let (frankfurt, journals_a) = plane("plane-a", "plane-a");
-        submit(&frankfurt, "events/1-login-request.json").await;
-        submit(&frankfurt, "events/2-login-response.json").await;
-        assert!(matches!(
-            Shipper::new(
-                Arc::clone(&journals_a),
-                Box::new(Handed(Arc::clone(&wire))),
-                Arc::new(permguard_events::envelope::RingSigner(
-                    Arc::clone(&keys) as Arc<dyn KeyManager>
-                )),
-                1024 * 1024,
-                Metrics::none(),
+        // Plane B reads its Host's consumer under a shared mode.
+        let (dublin, journals_b) = plane("plane-b", "plane-b");
+        let consumer = Arc::new(HostConsumer::default());
+        let imported = Arc::new(
+            permguard_data_plane::temporal::imported::Imported::new(
+                permguard_host::composition::StreamConsumer::over(Arc::clone(&consumer)
+                    as Arc<dyn permguard_host::composition::StreamConsumerReads>),
+                permguard_data_plane::temporal::testing::HOST_ID,
+                scratch("plane-b-planes"),
             )
-            .round()[0]
-                .1,
-            Round::Shipped { .. }
-        ));
-
-        // Plane B mirrors the same ledger and subscribes to the same history.
-        let (dublin, _journals_b) = plane("plane-b", "plane-b");
-        let imports = Arc::new(Imports::new(scratch("plane-b-imports")));
+            .expect("the floor is registered"),
+        );
         let dublin = Arc::new(
             Arc::try_unwrap(dublin)
                 .unwrap_or_else(|_| panic!("the submitter is not shared yet"))
                 .with_shared_history(
                     permguard_core::config::Consistency::SharedEventual,
-                    Arc::clone(&imports),
+                    Arc::new(Imports::new(scratch("plane-b-pull"))),
                     Duration::from_secs(3600),
-                ),
+                )
+                .with_imported(imported),
         );
 
-        // Before the pull, plane B has never seen alice log in.
+        // Before the import, plane B has never seen alice log in.
         let denied = submit(&dublin, "requests/1-read-before-login.json").await;
         assert_eq!(
             denied["decision"],
             json!(false),
-            "plane B has not imported anything yet: {denied}"
+            "plane B has imported nothing yet: {denied}"
         );
 
-        // And a login of its own, for a different user, recorded in plane B's own journal. This is
-        // what the import must not destroy: a rebuild that replayed only the imported half would
-        // discard it, and nothing else in this test would notice.
+        // A login of its own, for bob, in plane B's own stream: what the import must not destroy.
         for file in ["1-login-request.json", "2-login-response.json"] {
             let mut body: Value = serde_json::from_str(&example(&format!("events/{file}")))
                 .unwrap_or_else(|error| panic!("{file}: {error}"));
@@ -895,48 +951,41 @@ mod two_planes {
             let request: permguard_languages::temporal::SubmitRequest =
                 serde_json::from_value(body).unwrap_or_else(|error| panic!("{file}: {error}"));
             dublin
-                .submit(&request)
+                .submit(&request, GATEWAY, None)
                 .await
                 .unwrap_or_else(|error| panic!("{file}: {error:?}"));
         }
 
-        let rounds = Puller::new(
-            Box::new(Handed(Arc::clone(&wire))),
-            Arc::clone(&imports),
-            vec![Subscription {
-                zone: ZONE_ID.to_owned(),
-                ledger: LEDGER_ID.to_owned(),
-                event_types: vec![DOGWOOD.to_owned()],
-            }],
-            trusted(&keys, "plane-a"),
-            permguard_core::config::Consistency::SharedEventual,
-            Metrics::none(),
+        // Plane B's Host imported plane A's run.
+        consumer
+            .runs
+            .lock()
+            .expect("lock")
+            .push((ORIGIN_A, held_a.clone()));
+
+        let read = |event_id: &str, bob: bool| {
+            let mut body: Value =
+                serde_json::from_str(&example("requests/2-read-inside-window.json"))
+                    .expect("the occurrence parses");
+            if bob {
+                rename_to_bob(&mut body);
+            }
+            body["event"]["data"]["event_id"] = json!(event_id);
+            serde_json::from_value::<permguard_languages::temporal::SubmitRequest>(body)
+                .expect("the request parses")
+        };
+        let permitted = serde_json::to_value(
+            dublin
+                .submit(&read("01J8Z9-read-after-import", false), GATEWAY, None)
+                .await
+                .expect("the ledger is served"),
         )
-        .round();
-        assert!(
-            matches!(rounds[0].1, PullRound::Imported { records: 2, .. }),
-            "{:?}",
-            rounds[0].1
-        );
-
-        // The same read again — a different `event_id`, because the first one is now in plane B's
-        // own journal and a retry is not what this is about.
-        let mut body: Value = serde_json::from_str(&example("requests/2-read-inside-window.json"))
-            .expect("the occurrence parses");
-        body["event"]["data"]["event_id"] = json!("01J8Z9-read-after-import");
-        let request: permguard_languages::temporal::SubmitRequest =
-            serde_json::from_value(body).expect("the request parses");
-        let permitted =
-            serde_json::to_value(dublin.submit(&request).await.expect("the ledger is served"))
-                .expect("the answer renders");
-
+        .expect("the answer renders");
         assert_eq!(
             permitted["decision"],
             json!(true),
             "alice's login happened on plane A, and plane B decides against it: {permitted}"
         );
-        // And the answer says so, because the same request decided by two planes with different
-        // imported history can legitimately differ, and nothing else in it explains why.
         assert_eq!(
             permitted["history"]["mode"], "shared-eventual",
             "{permitted}"
@@ -946,40 +995,83 @@ mod two_planes {
             "an auditor reproducing this needs to know exactly what was visible: {permitted}"
         );
 
-        // And bob, whose login plane B recorded *itself* before the import arrived, can still
-        // read. This is the assertion the merge exists for: the import moved the watermark and
-        // rebuilt the engine, and a rebuild fed only the imported run would have thrown bob's
-        // login away — leaving a deny that looks exactly like a correct one.
-        let mut body: Value = serde_json::from_str(&example("requests/2-read-inside-window.json"))
-            .expect("the occurrence parses");
-        rename_to_bob(&mut body);
-        body["event"]["data"]["event_id"] = json!("01J8Z9-bob-read-after-import");
-        let request: permguard_languages::temporal::SubmitRequest =
-            serde_json::from_value(body).expect("the request parses");
-        let bob =
-            serde_json::to_value(dublin.submit(&request).await.expect("the ledger is served"))
-                .expect("the answer renders");
+        // Bob, whose login plane B recorded itself before the import, still reads: the rebuild
+        // the import caused replayed plane B's own history too.
+        let bob = serde_json::to_value(
+            dublin
+                .submit(&read("01J8Z9-bob-read-after-import", true), GATEWAY, None)
+                .await
+                .expect("the ledger is served"),
+        )
+        .expect("the answer renders");
         assert_eq!(
             bob["decision"],
             json!(true),
             "plane B's own history survived the import that rebuilt its engine: {bob}"
         );
 
-        // Plane B's journal holds what plane B recorded, and its chain is still its own: the
-        // import did not re-attribute anything to it.
-        let held = _journals_b
+        // A second origin holding the same occurrence, byte for byte: it applies once, and alice
+        // still reads (the positive control of what follows).
+        consumer
+            .runs
+            .lock()
+            .expect("lock")
+            .push((ORIGIN_B, held_a.clone()));
+        let duplicated = serde_json::to_value(
+            dublin
+                .submit(&read("01J8Z9-read-after-duplicate", false), GATEWAY, None)
+                .await
+                .expect("the ledger is served"),
+        )
+        .expect("the answer renders");
+        assert_eq!(
+            duplicated["decision"],
+            json!(true),
+            "the same login from two origins is one login: {duplicated}"
+        );
+
+        // A third origin recorded alice's login under the same name and identifier with other
+        // bytes: the occurrence is quarantined from shared decisions, and alice reads no more.
+        let mut conflicting = held_a.clone();
+        for record in &mut conflicting {
+            record["occurrence_digest"] = json!(format!("sha256:{}", "c".repeat(64)));
+        }
+        consumer
+            .runs
+            .lock()
+            .expect("lock")
+            .push((ORIGIN_C, conflicting));
+        let quarantined = serde_json::to_value(
+            dublin
+                .submit(&read("01J8Z9-read-after-conflict", false), GATEWAY, None)
+                .await
+                .expect("the ledger is served"),
+        )
+        .expect("the answer renders");
+        assert_eq!(
+            quarantined["decision"],
+            json!(false),
+            "a login two origins disagree on is applied by neither: {quarantined}"
+        );
+
+        // Plane B's stream holds what plane B recorded, its chain its own.
+        let held = journals_b
             .read_from(ZONE_ID, LEDGER_ID, 0, 100)
-            .expect("the journal reads back");
+            .expect("the stream reads back");
         assert_eq!(
             held.len(),
-            5,
-            "one denied read, bob's two login events, and two reads after the import"
+            7,
+            "one denied read, bob's two login events, and four reads after the import"
         );
+        let host = permguard_data_plane::temporal::testing::HOST_ID
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
         for record in &held {
             assert_eq!(
                 record["stream"]["producer"]["id"],
-                json!("plane-b"),
-                "an imported record must never be written into the importing plane's own chain"
+                json!(host),
+                "an imported record is never written into the importing plane's own chain"
             );
         }
     }
@@ -1003,8 +1095,7 @@ mod two_planes {
 fn the_signer_manifest_travels_with_the_stream_on_both_sides() {
     let keys = ring("signers");
     let wire = control("signers", &keys);
-    let streams = journals("signers", "plane-a");
-    record(&streams, 12, 1);
+    let streams = journals("signers", "plane-a", 12);
 
     let shipper = Shipper::new(
         Arc::clone(&streams),

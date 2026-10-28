@@ -48,8 +48,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex, OnceLock, PoisonError};
-use std::time::Duration;
+use std::sync::{Arc, Condvar, Mutex, OnceLock, PoisonError};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -258,6 +258,9 @@ pub enum MutationError<E> {
     Indeterminate(E),
     /// The journal could not be written before anything was applied: nothing was.
     Unavailable(String),
+    /// A backup barrier holds new mutations (WP-7.8): nothing was applied, and the same request
+    /// succeeds once the backup is finalized or aborted.
+    Quiesced(String),
 }
 
 impl<E: std::fmt::Display> std::fmt::Display for MutationError<E> {
@@ -283,6 +286,7 @@ impl<E: std::fmt::Display> std::fmt::Display for MutationError<E> {
                 f,
                 "the mutation journal is unavailable; nothing was applied: {detail}"
             ),
+            Self::Quiesced(detail) => write!(f, "nothing was applied: {detail}"),
         }
     }
 }
@@ -441,6 +445,49 @@ pub struct Mutations {
     time: Arc<TimeGuard>,
     health: OnceLock<Health>,
     compact_after: usize,
+    /// The backup barrier (WP-7.8) and the operations it waits for.
+    gate: Mutex<Gate>,
+    /// Signalled whenever an operation leaves, so a barrier waiting for them wakes.
+    drained: Condvar,
+}
+
+/// The backup barrier (WP-7.8, application-consistent snapshot): while it is held, every new
+/// operation of another domain than [`BARRIER_DOMAIN`] is refused, and a barrier is raised only once
+/// the operations already past it have ended.
+#[derive(Debug, Default)]
+struct Gate {
+    /// Until when the barrier holds: past it, the barrier no longer refuses anything.
+    held: Option<Instant>,
+    /// The operations admitted and not yet answered.
+    active: usize,
+}
+
+impl Gate {
+    fn holds(&self, now: Instant) -> bool {
+        self.held.is_some_and(|until| now < until)
+    }
+}
+
+/// The domain a backup barrier lets through: the backup's own prepare, finalize and abort.
+pub const BARRIER_DOMAIN: &str = "backup";
+/// The operations of [`BARRIER_DOMAIN`] the barrier lets through, and no other.
+pub const BARRIER_OPERATIONS: [&str; 3] = ["backup.prepare", "backup.finalize", "backup.abort"];
+
+/// An operation admitted past the barrier; dropping it lets a waiting barrier go on.
+struct Admitted<'a> {
+    engine: &'a Mutations,
+}
+
+impl Drop for Admitted<'_> {
+    fn drop(&mut self) {
+        let mut gate = self
+            .engine
+            .gate
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        gate.active = gate.active.saturating_sub(1);
+        self.engine.drained.notify_all();
+    }
 }
 
 /// Why pending work could not be finished.
@@ -538,6 +585,8 @@ impl Mutations {
             time,
             health: OnceLock::new(),
             compact_after: COMPACT_AFTER,
+            gate: Mutex::new(Gate::default()),
+            drained: Condvar::new(),
         };
         {
             let mut state = engine.state.lock().unwrap_or_else(PoisonError::into_inner);
@@ -700,6 +749,76 @@ impl Mutations {
         self.projection.project(event)
     }
 
+    /// Admits one operation of `domain` past the backup barrier, or refuses it while the barrier
+    /// holds.
+    fn admit(&self, domain: &str, operation: &str) -> Result<Admitted<'_>, String> {
+        let mut gate = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
+        let exempt = domain == BARRIER_DOMAIN && BARRIER_OPERATIONS.contains(&operation);
+        if !exempt && gate.holds(Instant::now()) {
+            return Err(
+                "a backup is being prepared: mutations resume when it is finalized or aborted"
+                    .to_owned(),
+            );
+        }
+        gate.active += 1;
+        Ok(Admitted { engine: self })
+    }
+
+    /// Raises the backup barrier until `until` (WP-7.8): every new operation of another domain is
+    /// refused from now on, and this answers once the operations already admitted have ended. One
+    /// still running after `wait` lowers the barrier again and refuses it; so does a barrier
+    /// already held.
+    pub fn quiesce(&self, until: Instant, wait: Duration) -> Result<(), String> {
+        let started = Instant::now();
+        let mut gate = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
+        if gate.holds(started) {
+            return Err("a backup barrier is already held".to_owned());
+        }
+        gate.held = Some(until);
+        while gate.active > 0 {
+            let left = wait.saturating_sub(started.elapsed());
+            if left.is_zero() {
+                gate.held = None;
+                return Err(format!(
+                    "{} operations were still running after {}s: the barrier is lowered",
+                    gate.active,
+                    wait.as_secs()
+                ));
+            }
+            gate = self
+                .drained
+                .wait_timeout(gate, left)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
+        Ok(())
+    }
+
+    /// Lowers the backup barrier: mutations resume.
+    pub fn release(&self) {
+        self.gate
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .held = None;
+    }
+
+    /// The order the next intent gets: how many operations the transaction has begun, what a
+    /// snapshot manifest names as the `mutations` revision (WP-7.8).
+    pub fn order(&self) -> u64 {
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .next
+    }
+
+    /// Whether a backup barrier refuses new mutations now.
+    pub fn quiesced(&self) -> bool {
+        self.gate
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .holds(Instant::now())
+    }
+
     /// Runs one operation through the protocol. `apply` is the domain mutation: it is given the
     /// [`Applying`] its mutators take, and answers the revision, the target and the answer.
     pub fn run<T, E>(
@@ -711,6 +830,31 @@ impl Mutations {
         T: Serialize + DeserializeOwned,
     {
         self.run_checked(begin, || Ok(()), apply)
+    }
+
+    /// Looks up and validates a completed request without starting a new mutation. Callers whose
+    /// domain work needs external I/O use this before that I/O, so a retry or a reused request id
+    /// never contacts the external system again.
+    pub fn replayed<T, E>(&self, begin: &Begin) -> Result<Option<Outcome<T>>, MutationError<E>>
+    where
+        T: DeserializeOwned,
+    {
+        let key = match (&begin.initiator, &begin.request) {
+            (Initiator::Principal(principal), Some(request)) => {
+                Some((principal.clone(), request.request_id.clone()))
+            }
+            _ => None,
+        };
+        let _in_flight = self.take(key.clone())?;
+        let Some(key) = &key else {
+            return Ok(None);
+        };
+        let Some(answer) = self.lookup(key, begin)? else {
+            return Ok(None);
+        };
+        self.settle()
+            .map_err(|halt| MutationError::Unrecorded(halt.detail()))?;
+        Ok(Some(answer))
     }
 
     /// [`Mutations::run`], with `check` the caller's validation (step 1): run after a retry is
@@ -747,6 +891,10 @@ impl Mutations {
         })?;
         // 1: the caller's validation.
         check().map_err(MutationError::Refused)?;
+        // A backup barrier refuses what is new; what was admitted before it runs to its answer.
+        let _admitted = self
+            .admit(begin.domain, begin.operation)
+            .map_err(MutationError::Quiesced)?;
 
         // 2: the intent.
         let operation_id = OperationId::mint().ok_or_else(|| {

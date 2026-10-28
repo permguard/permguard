@@ -1,0 +1,57 @@
+{
+  "folder": "dataderef",
+  "files": {
+    "test-data-derefs.yaml": {
+      "sha256": "sha256:2879d5fbf5b78d463846803a1e8641a365af27e4556b48698c43b969a2bbaeb9",
+      "cases": [
+        {
+          "note": "data/toplevel integer",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := data[2]\n"
+          ],
+          "data": {
+            "2": "bar"
+          },
+          "want_result": [
+            {
+              "x": "bar"
+            }
+          ]
+        },
+        {
+          "note": "data/nested integer",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := data.nested[2]\n"
+          ],
+          "data": {
+            "nested": {
+              "2": "bar"
+            }
+          },
+          "want_result": [
+            {
+              "x": "bar"
+            }
+          ]
+        },
+        {
+          "note": "data/negative case: nested integer",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := obj[2] if {\n\tobj := data.nested\n}\n"
+          ],
+          "data": {
+            "nested": {
+              "2": "bar"
+            }
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    }
+  }
+}

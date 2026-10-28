@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "zones": [
+    {
+      "id": "01a178c1-d7af-78ab-9195-c77cd8f078ad",
+      "name": "acme",
+      "created_at": 1793027332,
+      "updated_at": 1793027332
+    }
+  ]
+}

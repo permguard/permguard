@@ -1,0 +1,50 @@
+{
+  "folder": "regexreplace",
+  "files": {
+    "test-regexreplace-0001.yaml": {
+      "sha256": "sha256:c6da8e57159aed7e92471944464449cdae15016ef6b397df33b4d7dfeea14a08",
+      "cases": [
+        {
+          "note": "regex.replace: test pattern match and replace",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\ts := \"-wy-wxxy-\"\n\tx := regex.replace(s, \"w(x*)y\", \"0\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "-0-0-"
+            }
+          ]
+        },
+        {
+          "note": "regex.replace: work with groups",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\ts := \"foo\"\n\tx := regex.replace(s, \"(foo)\", \"$1$1\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "foofoo"
+            }
+          ]
+        },
+        {
+          "note": "regex.replace: bad regex pattern: Syntax error",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\ts := \"foo\"\n\tx := regex.replace(s, \"[\", \"$1\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -69,14 +69,10 @@ dataPlane:
     interval: "15s"
     timeout: "1m"
     parallelism: "4"
-    servers:
-      - url: "https://control-plane:6443"
-        tls:
-          ca_file: tls/control-plane-ca.pem
-          # The generated certificate names `localhost`, and this plane dials the compose service
-          # name: check the certificate against the name it actually carries, rather than turning
-          # verification off.
-          server_name: localhost
+    # The `policy.mirror` tasks of this Host's memberships: enroll it with its Control Plane's
+    # Host (`permguard host members invite` there, `permguard host members join` here) and every
+    # task is followed. No URL, TLS root or key here: the membership binds them (WP-7.7). Narrow
+    # them with `tasks: [{ membership: <id>, task: <id>, zones: [...], ledgers: [...] }]`.
 
   # The decision path, sized for the lab's container limits.
   decisions:
@@ -92,10 +88,10 @@ dataPlane:
     # That durability is the dominant cost of a decision — measured at roughly ten times the
     # evaluation itself, which is what `bench/decide.js` reports — and it is the price of an audit
     # trail that survives the process. What the decision path does *not* wait for is the record
-    # reaching the control plane; that is the spool's job, off the critical path.
+    # reaching a coordinator; the Host's stream ships it over `decisions.ship`, off the critical path.
     log:
       enabled: "true"
-      pdp_id: data-plane-docker-tls          # half of every stream identity: two replicas must never share one
+      # only where a version 1 spool left by an earlier release is shipped until empty
       server:
         url: "https://control-plane:6443"
         tls:
@@ -103,17 +99,11 @@ dataPlane:
           server_name: localhost
       spool:
         directory: "data/decisions/spool"
-        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        bytes: "64M"              # unacknowledged by the required subscriptions; past it decisions are refused
         age: "24h"
       batch: { bytes: "256k", interval: "1s" }
-      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      mode: "required"           # every answered decision has a durable record; one that cannot be is refused
       sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
-      # The secret input commitments are taken under. A different key from the pseudonymisation
-      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
-      # invalidate every commitment with it.
-      commitment:
-        key_ref: decision-commitment
-        key_version: "v1"
       include:
         subject_properties: []    # an allow-list, never "all": name a field to record it
         resource_properties: []
@@ -131,9 +121,7 @@ dataPlane:
   # submission closed, and there is nothing for a deployment to choose.
   # events:
   #   enabled: "true"
-  #   producer_id: data-plane-eu-1   # required when the interface is on. A producer id owns a hash
-  #                                  # chain: two planes sharing one would each append to a stream
-  #                                  # the other also claims, and neither history could be verified.
+  #   # the stream is named by the Host's `host_id` and run: no producer id is configured
   #   directory: data/events         # under the working directory
   #
   #   stream:
@@ -179,11 +167,6 @@ dataPlane:
   #       - zone: acme
   #         ledger: agent-governance
   #         event_types: [permguard.dogwood.event.v1]
-  #     producer_keys:               # required by either shared mode; bound to origin and tenant
-  #       - path: trust/data-plane-b-events.jwks
-  #         producer: data-plane-b
-  #         zone: acme
-  #         ledger: agent-governance
 
 limits:
   # Through Docker's port forwarding every connection from the host arrives as the compose
@@ -201,6 +184,8 @@ operations:
     retain: 1d
   secrets:
     provider: directory
+    # The root the per-zone keys derive from: decision input tags and pseudonyms (WP-3.3).
+    coordinator_root_ref: zone-root
   audit:
     sink: file
     retention: 7d

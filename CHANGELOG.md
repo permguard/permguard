@@ -17,7 +17,485 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.8] - 2026-10-28
+
+### Fixed
+
+- **The container images of a release are attested.**
+  GoReleaser 2.19 leaves `digests.txt` empty for `dockers_v2`, so `v0.1.7` published its images without their build provenance.
+  The release now reads every pushed tag's digest back from its registry, attests it and verifies it, as it does for the files.
+
+- **`pulldown-cmark` 0.13.5 (RUSTSEC-2026-0414).**
+  The Markdown parser `prost-build` uses at build time, never shipped in a binary, is moved past the advisory.
+
+## [0.1.7] - 2026-10-27
+
 ### Added
+
+- **Every release carries the exit gate's evidence, pinned and attested (WP-7.13).**
+  The release pipeline fuzzes the tagged source for the release budget, ten minutes per target, and attaches `fuzz-release.json`.
+  It attaches the serving gate's `permguard-gate.json` and the `traceability.json` report, which traces every section and finding of the blueprint to the code and tests that implement it and lists every recorded gap.
+  A last job writes `evidence-manifest.json` over the release as published, pinning every file by its SHA-256 to the tagged commit and naming what the gate still lacks, then attests and verifies it.
+  `scripts/verify-evidence.sh` repeats that verification from a downloaded release and fails closed.
+  CI uploads the traceability report on every run, and `task check:traceability` runs the check locally.
+
+- **A subscription the coordinator refused is named on health (F-08).**
+  A ship task answered `unverifiable` pauses until its membership's epoch moves, and one answered `fork`, `gone` or beyond what the producer holds stops until an operator acts.
+  Either keeps the Host `degraded: evidence_shipping`, naming the stream, its resource, its task, its membership and why, after every shipping pass, and the capability is restored once none remains.
+  A paused subscription resumes when the coordinator moves the membership's epoch; a stopped one is dropped when its task leaves the membership's manifest or the membership ends.
+
+- **Storage security and declared service objectives (TS-5).**
+  Bootstrap verifies the process runs as a dedicated non-root user and disables core dumps, reading the limit back.
+  It walks the volume without following a link and refuses, from `production`, an entry another user owns or may reach, a symbolic link, a FIFO or another filesystem mounted inside.
+  The filesystem probe and the qualification now run at every start; from `production` a qualified entry names its `encryption` mechanism, `revision` and `expires_at`, and an incomplete or expired one is refused.
+  `operations.backup` gains `recovery_key` (a secret reference whose fingerprint is the id every snapshot manifest binds), `retention` and `destruction`.
+  `restore plan` and `restore run` refuse a missing or wrong recovery key before they write anything.
+  A new top-level `objectives` section declares eleven typed, bounded service objectives, cross-validated against the bounds that act on them.
+  Discovery publishes the storage qualification and the objectives; readiness is held while a measured lag or headroom is past four fifths of its objective.
+  The chart takes the declarations as `hostControls` and refuses a `production` render without them, or with a root or privileged pod; its pods apply the fsGroup with `fsGroupChangePolicy: OnRootMismatch`.
+  The Compose lab runs its Hosts as the image's user with every capability dropped.
+
+- **Restore and split-brain drills, and the baseline volume recovered through every migration (WP-7.7).**
+  `scripts/drill-restore.sh` runs the restore drill on the Compose lab's `split-plane` profile.
+  It takes an application-consistent backup of the Data Plane, answers decisions the backup does not hold, loses the volume, and restores the verified snapshot in `dr` mode.
+  The drill then fences the Data Plane's memberships on the coordinator before restarting it.
+  The restored Data Plane must come back as the same Host under a new boot, with its memberships active, serving its ledger and shipping again.
+  `scripts/drill-split-brain.sh` proves on one volume that a successor started beside its predecessor, or a claim moved beside it, is refused before anything is written.
+  Each drill writes a JSON record of what it proved and of what it did not.
+  The new `drills` workflow runs both every week, the split-brain drill also on a cluster through `scripts/chart-takeover.sh`.
+  The release pipeline runs them against the release, never blocking it, and attaches the records.
+  `crates/permguard-all-in-one/tests/fixtures/legacy/baseline-8390f612` is the whole volume an all-in-one of the plan's baseline commit wrote, captured by `scripts/capture-baseline-volume.sh`.
+  A test starts today's server on it, runs every migration to `finalize`, and checks that the same requests get the same decisions before and after.
+  Upgrading that layout takes one manual step: the baseline kept the Control Plane's event store (`controlPlane.events.directory: data/events/store`) inside the legacy event history.
+  `migrate events` refuses to archive the history while the store is there, naming its files; move the store out and point the configuration at its new place, then archive.
+  The configured URL and its first-contact ring are removed in the same change: see *Removed*.
+
+- **A serving gate before every release, and a failpoint for the no-network invariant (TS-4).**
+  `permguard-bench gate` runs the candidate's own binaries over HTTP and gRPC, every workload and evidence mode.
+  It fails unless the candidate answers within the published p99 at `bench/slo.json`'s representative concurrency and at the concurrency its headroom requires.
+  It also fails unless, at four times its request bound, the candidate refuses typed, within the refusal objective and without an error.
+  Every outbound client of the Host and its planes now asks `permguard_core::egress` first: the control client over HTTP and gRPC, the Host peer client and the Vault Transit custody.
+  On the decision path the call is refused before anything leaves the process.
+  The refusal is counted in `permguard_decision_path_egress_total`, which reads zero on a correct plane and fails the gate otherwise.
+  CI runs the gate on every change; the release pipeline runs it on the tagged commit before anything is published.
+  `permguard_core::fault` gains `Fault::SlowFsync`, a flush that succeeds after a delay: a decision on a slow disk is answered once its record is durable, or refused, never answered unrecorded.
+
+- **A release benchmark, published with every release (TS-3).**
+  `permguard-bench run` starts the release's own `permguard-all-in-one` on loopback, applies `examples/basics` with the release's own CLI, and measures the native PDP over HTTP and gRPC, with the decision log off and `required`, on a ladder of offered concurrency.
+  The report (`permguard.bench.report.v1`) names the platform, the storage class with a measured `fsync` probe, the dataset and its digest, and per step p50/p95/p99 latency, throughput, CPU seconds, peak RSS, refusals by code and errors, with the refusal point of each run.
+  The release pipeline measures the Linux binaries it published and attaches `permguard-benchmark.json` to the release; CI runs a short ladder on every change.
+  `permguard-bench capacity <report>` reads off the concurrency each interface and evidence mode sustained within the published objective (`bench/slo.json`), less its headroom: capacity is configured from a report of the platform it runs on, never from a number measured elsewhere.
+
+- **A conformance gate per language (TL-6).**
+  `permguard_languages::conformance` records the languages model's eight gate items for Cedar, Rego and Dogwood.
+  The items are golden vectors, upstream corpus parity, adversarial tests, replay on two platforms, the engine-upgrade differential, fault injection, stored objects and the supply chain.
+  Each item passes with the tests and CI jobs that prove it, which a test checks are real tests, or is open with the reason.
+  Cedar and Rego pass every item; Dogwood's golden vectors and its corrupted-store fault are open.
+  Each runtime has a golden vector file of manifests, partitions and requests (`tests/vectors/<runtime>.json`), recorded against its locked engine.
+  An engine upgrade fails until the vectors are recorded again with `PERMGUARD_BLESS=1` and their diff reviewed.
+  Cedar reproduces the 74 requests of the 22 text-format cases of `cedar-policy/cedar-integration-tests` at its 4.11 run.
+  Regorus reproduces 1452 of OPA's `v1.2.0` conformance cases, every folder its own harness passes, 8 set apart by name with the reason.
+  Both corpora are vendored under `tests/corpus` with their source, revision and licence.
+  The Data Plane's discovery document lists each runtime with its descriptor digest, whether this deployment serves it and its gate (`languages[]`).
+  CI runs the languages crate on macOS as well.
+
+- **Image verification at deploy (TD-4).**
+  `imageVerification.enabled` starts every Permguard Pod the chart renders with a `verify-image` init container that runs `gh attestation verify` on the digest the Pod runs.
+  The digest's attestation must name the repository, the builder workflow `release-build.yml` and the release tag.
+  An unattested image, or one attested for another repository, builder or ref, never starts, and its Pod never becomes Ready.
+  While it is on, each enabled component names its image by digest: `controlPlane.digest`, `dataPlane.digest`, `allInOne.digest`, `dataPlane.drainController.digest`.
+  The verifier image is named by digest too, and the GitHub token comes from `imageVerification.tokenSecret`.
+  `values-production.yaml` turns it on, and a `regulated` workload refuses to render without it.
+  `docker/verifier/Dockerfile` builds the verifier from the pinned `cli/cli` release.
+  No published image passes the defaults yet: 0.1.6's images carry no attestation and no release has been built by `release-build.yml`.
+  0.1.5 passes with `release-pipeline.yml` and `refs/tags/v0.1.5` (`ops/container-verification.md`).
+
+- **The Compose lab's five profiles (TD-3).**
+  `docker-compose.lab.yml` runs `all-in-one`, `split-plane`, `multi-data-plane`, `multi-group` and `temporal-replicas`, started with the profile's name in `COMPOSE_PROFILES`.
+  The lab's own test authority issues every certificate and grants its operator on each volume before the Host first serves.
+  It enrolls each Data Plane over one-time invitations, with the exact fingerprints it read from both Hosts.
+  A Data Plane holds two memberships with its coordinator: `policy.mirror` on the Control Plane's tree of its zone, and its shipping tasks on its own.
+  Every Host is reached by its service name; the ports published on the host's loopback are ephemeral, and nothing depends on a loopback alias or the host's network.
+  `scripts/compose-lab.sh` (`task lab:test`) starts each profile on fresh volumes and runs what it must prove, the same on Linux and on macOS.
+- **`permguard host members sync <id>`.**
+  The member side syncs one membership to the coordinator's signed manifest now, rather than at its next periodic pass.
+
+- **The drain controller and the fenced recovery Job (TD-2).**
+  `dataPlane.drainController.enabled` renders, per group that keeps a volume, a CronJob running `permguard reclaim run` and the template of its drain Job.
+  A retained claim of an ordinal above the replicas gets a Job on that claim: the group's own image and configuration, a new claim generation, and `shutdown.recover_drain`.
+  The recovery drain resumes what an earlier drain left, drains, and prints its signed drain receipt and verification bundle when the drain completes.
+  The controller deletes the claim, under its UID, only when that receipt verifies under the member's identity pin its coordinator holds and is of the Job's own claim generation.
+  The coordinator's frontier must also acknowledge every stream run the receipt names through its last sequence.
+  A Job that fails, or that `jobDeadlineSeconds` ends (a forced timeout), keeps the claim and the Job; a Pod of the ordinal, or a group scaled back up, keeps it too.
+  Its ServiceAccount may only read the group workloads, list and delete claims, create, read and delete Jobs, and read Pods and their logs, in the release's namespace.
+- **The drain receipt (TD-2).**
+  A Host whose drain completes can state it as a COSE_Sign1 `permguard.drain.receipt.v1` under its `host.operations` ring.
+  The receipt names the Host, the volume, the claim generation, the time and every shipped stream run with its last sequence and acknowledgement.
+  `shutdown.recover_drain` (`PERMGUARD_SHUTDOWN_RECOVER_DRAIN`) makes a run stop once started and print the receipt of a complete drain as one JSON line; an incomplete drain prints none and exits 75.
+  A Host without its Host listener composes no Host API and issues no receipt.
+- **The chart serves the Server Host listener (TD-2).**
+  `controlPlane.hostListener`, `dataPlane.hostListener` and `allInOne.hostListener` render the `admin` listener on port 5444, with `allow`.
+  Its mutual TLS comes from a `kubernetes.io/tls` Secret whose `ca.crt` verifies the client certificates.
+  The control plane and the all-in-one get a `-host` Service, each group replica a `host` port on its headless Service, and `networkPolicy.host.from` names who may reach them.
+- **Autoscaling a group that keeps a volume (TD-2).**
+  It renders only with the drain controller enabled and a scale-down stabilization of at least the shutdown budget plus the drain Job's deadline.
+  It also needs `persistence.takeover` qualified, with the driver, the storage class of its claims and the evidence of a qualification run.
+  The autoscaler removes one replica per stabilization window.
+  `scripts/chart-takeover.sh` runs part of that qualification on a cluster: it kills the replica's Pod while it writes, round after round.
+  It checks that each successor claims a higher generation only after the old writer released the volume, and that recovery refuses no stale-writer frame, then runs `volume verify` offline.
+  Its record says what it did not prove: on one node the volume's lock serialized the successor, and provider fencing, a node kill and a partition need the storage and the nodes being qualified.
+- **`permguard reclaim run` (TD-2).**
+  One pass of the drain controller, printing one JSON line per retained claim: `drain-started`, `draining`, `kept` with why, `reclaimed`, `in-use` or `deleting`.
+  `--host-endpoint` names the coordinator's Host listener; the Kubernetes API is the cluster's own, or `--kube-api` with `--kube-token-file` and `--kube-ca`.
+- **The chart deploys the data plane as named groups (TD-1).**
+  `dataPlane.groups[]` renders one group per entry, and what a group leaves out comes from `dataPlane.groupDefaults`.
+  A group states its name, its membership `selector`, `replicas` or `autoscaling`, `service`, `evidence.mode`, `persistence`, `assurance.profile` and `assurance.custody`, and `shutdown`.
+  It may also state its own disruption budget, placement and network peers.
+  Each group has its own workload, Service, NetworkPolicy, disruption budget, autoscaler and membership manifest, all selected by the `permguard.com/group` label.
+  A group that keeps a volume is a StatefulSet with one claim template, and its claims are retained on scale-down and on deletion.
+  Its claims ask `ReadWriteOncePod` from `production` on Kubernetes 1.29 or later.
+  Its `preStop` hook runs `drain`, and its grace period is its `shutdown.timeoutSeconds` plus five seconds.
+  The server's volume is the directory `/var/lib/permguard/volume` inside the mount, created for the server's user by the first Pod.
+  An init container moves the volume's claim one generation forward in every Pod, so a `production` replica has the claim it needs and a previous Pod becomes a stale writer.
+  Each group renders `<group>-membership`: the selector, minimum assurance and `tasks.json` that `permguard host members invite create` takes for its replicas.
+  `values.schema.json` closes a group's keys: a key a group does not know is refused rather than ignored.
+- **The chart states every Host's assurance profile and refuses what the profile refuses (TD-1).**
+  The control plane and the all-in-one state theirs under their own `assurance`.
+  A `regulated` Host is refused when `host.identity` or `host.operations` is not in `pkcs11` or `kms` custody.
+  It is also refused when terminated upstream, on TLS 1.2, with an experimental runtime, or in `developmentMode`.
+  The `development` custody is refused above `development`, and a `pkcs11` or `kms` custody without the references Bootstrap needs is refused at every profile.
+  The chart also refuses duplicate or malformed group names, overlapping or malformed selectors, a selector outside `plane/data`, and a task wider than its membership.
+  It refuses evidence or temporal history without a volume, a claim retention other than `Retain`, a shared access mode, and autoscaling a group that keeps a volume.
+  It refuses a replicated temporal group without a declared shared consistency, and a drain that leaves no time to release the volume.
+  `task check:chart` lints the chart and runs its rendering tests; `scripts/chart-e2e.sh` scales a group `3 → 1` and back on a kind cluster.
+- **`drain`, for a container's `preStop` hook (TD-1).**
+  Every server binary answers `drain [--pid 1] [--wait 0]`: it sends SIGTERM to the server in its container and returns.
+  With `--wait <seconds>` it waits for the server to exit, and fails when the server is still running at the end.
+- **`volume claim --next [--create]` (TD-1).**
+  `volume claim --volume <directory> --next` moves the claim one generation forward, for an orchestrator that claims the volume before every Pod; `--generation <n>` stays for the operator.
+  With `--create` it first makes a missing volume directory, owner-only, inside an existing mount, and refuses a missing mount.
+- **A ledger's serving members and its evidence anchors from the command line (TC-5).**
+  `permguard ledgers get` prints the members assigned to serve the ledger, their lease and last session, the assurance they declared (never shown as verified) and their last member-reported progress, alike over REST and gRPC.
+  `permguard evidence anchors <zone> <ledger>` prints the retained prefix anchors of the ledger's decision and event streams through the Host listener, under `streams.read`, and says for each whether the Host serves the stream type and whether its stream list names the ledger.
+  The catalog's online `holds` and `tombstones list` are listed `blocked`: the catalog serves no route for them yet.
+- **The object sweep from the command line (TC-4).**
+  `permguard gc objects plan [--zone <id> [--ledger <id>]] --out <file>` asks the Host API for a plan of the Control Plane's sweep, changes nothing, prints the candidates and what is kept and why, and writes the plan to a new owner-only file; `permguard gc objects run --confirm-file <file>` runs it once and prints what was removed, what was kept and why, where it stopped, and the receipt, over REST or gRPC.
+  `gc mirrors|imports|streams` and `storage quota show|probe` are listed `blocked` in `ops/command-line.md`: the Host serves no such job or route yet.
+- **Backups, their offline verification and the layout migrations from the command line (TC-3).**
+  `permguard host backup prepare --token-out <file>` writes the snapshot token to a new owner-only file and prints the signed manifest, never the token; `finalize --backup-token-file --snapshot-id` and `abort --backup-token-file` end it (not `--token-file`, the bearer the command line authenticates with); `list` shows the Host's backups; over REST or gRPC.
+  `permguard backup verify --volume <snapshot> --manifest <file> --bundle <file> --pin <fingerprint>` checks a snapshot offline against its manifest under the bundle `host keys bundle export` wrote: exit 2 when it is only crash-consistent.
+  `permguard migrate plan --subsystem keys|audit|decisions|events --backup <reference> --out <file>` signs a plan receipt offline under the volume's `host.operations` (receipt operation `migrate`), `migrate run --confirm-file` spends it once and runs the server binary's own migration, `migrate status` and `migrate rollback --subsystem` read and undo a layout; a migration never builds its new generation over anything that exists, and dual control refuses an offline plan.
+- **The `host` command family reaches the key rings, the audit trails, the configuration, the lifecycle and the plans (TC-2).**
+  `permguard host keys {list, show, rotate, revoke plan|run, bundle export}`, `host audit {query, checkpoints, export}`, `host config {show --effective, revisions}`, `host status` and `host plans {list, approve}` call the Host listener over REST or gRPC, as `--host-endpoint` says, and print with `-o terminal|json|yaml`.
+  A key revocation writes its plan to a new owner-only file and runs from it; `bundle export` and `audit export` walk every page at the frontier their first page fixed into a new owner-only file, the bundle in the shape `ledgers import --bundle` reads.
+  `ops/command-line.md` is the command inventory: one row per command with its grant and its state, and a test walks the command tree against it; `host secrets`, `host drain` and `host maintenance` are listed `blocked`, the Host API serving none of their routes yet.
+- **An operator plans and runs the object sweep on the Host API (WP-7.11b).**
+  `POST /host/v1/gc/objects/plan` `{request_id, resource?}` and `POST /host/v1/gc/objects/run` `{request_id, receipt}`, gRPC `OperationsService.PlanGc` and `RunGc`, under the new grant `gc.manage` on the scope: the Control Plane, or a zone or ledger of it.
+  A plan changes nothing and answers its receipt (`gc.objects`, no approval) and, ledger by ledger, the candidates and their bytes and what is kept and why: `reachable`, `pinned`, `grace`, `held`.
+  A run spends its plan first, in an operation of its own, then sweeps the scope again outside any operation, under every recheck of the background pass, within `storage.gc.max_removals` and serialized with it, and answers what it removed, what it kept and why (`bound` too), where it stopped, and its receipt; a retry answers the recorded run, and a zone or ledger the catalog does not hold is `not_found`.
+  Both are audited, `host.gc.planned` and `host.gc.ran`, a run even when it removes nothing, and the Plane's `store.swept` record names the plan.
+  A store with `storage.gc.enabled: false` keeps every object: the job is not provided and the routes answer `unavailable`.
+- **A garbage-collection pass is bounded and checks the holds again before it deletes (WP-7.11a).**
+  `controlPlane.storage.gc.max_removals` (`PERMGUARD_STORAGE_GC_MAX_REMOVALS`, default `10000`) caps the objects one sweep removes; a pass that reaches it stops in the ledger it was sweeping, the next resumes there, and the `store.swept` record says where.
+  Under each ledger's transfer lock, after its pins are read and its refs walked and right before anything of it is removed, the holds are read again: a hold added during a pass keeps its ledger whole, temporaries included.
+  A push commit is refused `transfer_mismatch` when it reaches an object already on disk that its transfer did not declare and no ref reaches: a sweep could have removed it between its listing and the ref; one another ref reaches is pinned by the commit's session under the ledger's lock; a client declaring its whole closure, as the CLI does, is unaffected.
+- **An exported archive is imported into another Host (WP-7.10b).**
+  `permguard ledgers import <file> --as <zone>/<name>` and `permguard zones import <file> --as <zone>`, with `--mode archive|re-home`, the source Host's keys bundle (`--bundle`) and identity pin (`--pin`), reach `POST /v1/zones/{zone}/import` and gRPC `Import` under `catalog.write` and `policy.push`.
+  The archive is verified whole before anything is written: the manifest from the bundle and pin, the bundle's digest, every object canonical, each ledger's objects exactly what its refs reach, every statement on a ref the manifest names, the counts.
+  `archive` keeps it verbatim as foreign evidence under `<zone>/archives/`, never a ledger and never served; `re-home` creates new ledgers whose catalog record carries their provenance, lands their objects and copies no ref nor head statement, so a ledger serves once an operator pushes a head; a name already taken is refused and nothing is overwritten.
+- **A ledger or a zone is exported as a signed archive (WP-7.10a).**
+  `permguard ledgers export --zone <zone> <ledger> --out <file>` and `permguard zones export <zone> --out <file>`, over REST (`POST /v1/zones/{zone}/ledgers/{ledger}/export`, `POST /v1/zones/{zone}/export`) and gRPC (`ExportLedger`, `ExportZone`), under `catalog.read`, write a canonical CBOR archive to a new file only its owner reads.
+  The bundle carries every object a ref reaches and every head statement byte for byte; the manifest, a COSE_Sign1 `permguard.ledger.export.v1`, is signed by the Host under `host.operations` — the one artifact a Plane may have signed on that ring, its payload written by the Host — and binds the source Host, every ledger's refs and counts, and the bundle's digest.
+  An importer verifies it from the source Host's keys bundle and identity pin; an archive past what one message carries is refused before anything is signed.
+- **A producer keeps acknowledged batches for a declared retention (WP-7.9b).**
+  `operations.streams.acknowledged_retention` (`PERMGUARD_STREAM_ACKNOWLEDGED_RETENTION`, default `0s`) keeps each batch that long after every required coordinator acknowledged it, so a coordinator restored from a snapshot is resent what it lost: set it to the coordinators' snapshot interval plus their recovery time.
+  Each run's acknowledgement keeps when it reached its value, a few coalesced points per run; an acknowledgement from before the setting ages from the first pass that sees it.
+- **A producer resends to a coordinator restored from a snapshot (WP-7.9b).**
+  Each run's acknowledgement records the coordinator boot id it was answered under; the first answer below it under a new incarnation rewinds that run and resends the retained sealed batches byte for byte from the coordinator's `expected_seq`, logged `host.stream.coordinator_restored`.
+  Under the same incarnation an answer below the acknowledgement still stops the subscription `ack_behind`; a position below what the producer already deleted stops it with the new code `producer_gap`, logged `host.stream.producer_gap`, nothing reconstructed.
+- **A snapshot is restored offline in one of three modes (WP-7.9a).**
+  `permguard restore plan --volume <dir> --mode dr|forensic|clone --reason <text> --out <file>` requires the previous owner fenced by `volume claim`, a claim generation above the one the snapshot's last start recorded, then scans every journal and object tree, opens the identity and every ring through `--server-config`, and writes a mode-0600 plan receipt; `restore run --mode <mode> --confirm-file <file>` requires the same volume, mode and claim, scans again and transitions.
+  `dr` keeps the Host and starts a new incarnation of it; `forensic` is never served — the server refuses to start on it, the offline commands that write refuse it, and no later restore but a forensic one runs on it; `clone` runs the offline emergency reset and makes a new Host.
+  The restore is recorded `host/RESTORE` and audited `host.restore.planned` and `host.restore.completed`; under dual control the plan is refused, no approval reaching an offline volume yet.
+- **The backup barrier is served on the Host API (WP-7.8b).**
+  `POST /host/v1/backup/prepare`, `finalize` and `abort` under `backup.manage`, and `GET /host/v1/backups` under `backup.read`, answer alike over REST and `permguard.host.v1.OperationsService`, described in `host.json` and the proto.
+  The server opens the volume's backups at start, recovers their operations with the transaction, and records the abort of a prepare a restart cut short; `operations.backup.recovery_key_id` and `encryption_profile` reach every manifest.
+- **A mirror whose ledger or zone a legal or incident hold names is never reaped (WP-7.2 follow-up).**
+  The Data Plane reads the Host's holds (WP-7.3c); a mirror its task no longer lists stays a candidate while a hold in force names it, and a plane handed no hold store reaps nothing.
+- **The Host prepares an application-consistent backup of its volume (WP-7.8a).**
+  `backup.prepare` raises a barrier in the mutation transaction: every new mutation — grants, keys, memberships, the catalog, the refs, the collections — is refused `unavailable` until the backup is finalized, aborted, or its barrier expires after ten minutes, while reads and decisions go on.
+  It answers a COSE_Sign1 `permguard.snapshot.manifest.v1` under `host.operations`, binding the volume, the Host, the mutation revision, every file below `host/`, `data/` and `operations/` through a signed inventory, and the recovery-key id and encryption profile when `operations.backup` declares them, with a token answered once.
+  `backup::verify` checks a snapshot offline against that manifest and the keys bundle kept outside it: application-consistent when every file matches, journals allowed to have grown, and crash-consistent only, with each difference, when a file changed, went missing or appeared.
+  Writers outside the mutation transaction — the audit trail, the stream engine, the decision spool, the mirrors — are not paused, so a snapshot taken while they replace a view verifies as crash-consistent.
+  The grants `backup.manage` and `backup.read` are registered; the routes reach the wire in WP-7.8b.
+- **Membership mirrors are reaped only after a grace, settle name contests through aliases, alarm when stale during an outage, and report their progress (WP-7.2d).**
+  A ledger its task's complete listing no longer names is tombstoned (`TOMBSTONE`) and still served, and removed only by a later complete listing at least `mirrors.reap_grace` (default one hour) after the first; a listing that names it again restores it, and each step is audited (`mirror.tombstoned`, `mirror.restored`, `mirror.reaped`).
+  Two coordinators serving a ledger under one name stay refused until `mirrors.aliases` names the authority the names mean; the gate, the decision path and the round all resolve through it, and an alias whose authority holds nothing serves nothing.
+  Every round measures every held mirror, a coordinator that did not answer included, and alarms on each past `mirrors.stale_after`, naming its task and whether it is required (`permguard_sync_mirrors_stale`); every request answered from such a mirror is counted (`permguard_authz_stale_served_total`).
+  `mirrors.revocation_objective` declares how soon a revocation must arrive, and a configuration whose polling bound `interval × (1 + jitter)` cannot meet it is refused.
+  After every round each task reports its mirrors' state, counter, head and verification time on its own session, as member-reported `policy.mirror` progress.
+- **A membership mirror switches through one journal, and wakes on ref hints (WP-7.2c).**
+  A mirror over a `policy.mirror` task appends one item to its `journal.cborseq` for each verified advance — the task's revision, authority, zone, ledger, ref, head, counter, ref digest, ring epoch and set, the verification time, the closure digest, the exact signed statement and ring binding — and that append is the switch.
+  `VERIFIED.cose`, `RING-BINDING.cose`, `CHECKPOINT.cbor` and the checkpoint the decision path reads are views written after it and rewritten from it whenever a crash left them behind; a mirror that does not move appends nothing.
+  The journal stays bounded, rewritten atomically past 64 items with the latest 16, and a checkpoint found ahead of it is refused rather than rewound.
+  Each task the plane follows is watched: a ref hint from the coordinator runs the ordinary round at once, and a watch that is lost, overflows or goes silent runs one too before it reopens, so revocation reaches the plane in the time a round takes rather than the polling interval.
+  Hinted rounds keep at least one second between them.
+
+- **A membership mirror trusts only the `control.attest` set its membership pins (WP-7.2b).**
+  A ledger mirrored over a `policy.mirror` task verifies its head statement under the coordinator's `control.attest` keys the membership's signed manifest pins, never a key ring fetched from the coordinator; a task whose membership pins none is not mirrored.
+  The statement must name the task's coordinator as its authority and the pinned set's epoch and key-set digest.
+  The ring never goes back: a pin below the epoch a mirror was verified under is ring rollback, another set at the same epoch equivocation, and either refuses the mirror's advance before anything is fetched.
+  The checkpoint keeps the ring's epoch and key-set digest, and the mirror keeps the pinned binding in `RING-BINDING.cose`.
+
+- **A Data Plane mirrors the ledgers of its `policy.mirror` memberships over their task sessions (WP-7.2a).**
+  With `mirrors.enabled`, every active `policy.mirror` task of the Host's memberships is followed: each round the member opens a session to the coordinator, lists the ledgers the task covers through the new `list_ledgers` operation, and pulls each over that session, with the same verification and checkpoint a configured URL gets and no URL, TLS root or statement key of its own.
+  `mirrors.tasks` may narrow them by membership and task id with anchored zone and ledger patterns.
+  A ledger mirrored over a membership lives under its coordinator, `mirrors/<authority-host>/<zone>/<ledger>`, so two coordinators claiming one pair of ids never share a directory.
+  A request naming a ledger two mirrors answer to is refused `unavailable`, and every round reports the contest; a coordinator reads below a session's resource only where the task's signed selector reaches below it.
+  A coordinator is one source however many tasks reach it, required when one of its signed tasks is, even one `mirrors.tasks` leaves out; a task's mirror is removed only by that task's complete listing.
+  The rounds now wait `interval × (1 + jitter × u)`, `u` drawn in `[-1, 1]` from the operating system's CSPRNG, the full jitter in both directions.
+  Configured URL sources keep working unchanged until their removal (WP-7.7).
+
+- **REST and gRPC carry the same values, and the gap that remains is published (WP-7.5b).**
+  A REST evaluation or submission body is read strictly: a member named twice at any depth, open containers included, is refused `payload_malformed` before any policy runs.
+  Numbers travel only inside ±2^53 on both transports: REST now refuses a number past it with `value_unrepresentable` in an evaluation and in a submission, as gRPC and the client already did, and a whole number written as a decimal reaches a policy as the integer it is over both.
+  Where the Data Plane gRPC listener serves the evaluation interfaces, discovery and `host status` publish the relaxation `grpc.transport_parity_partial`: protobuf decoding drops an unknown field and keeps the last of two map entries.
+  Under `regulated`, which requires a strict protobuf decoder this build does not have, the evaluation interfaces are not served over gRPC at all; the plane's own gRPC service stays.
+
+- **Every evaluation interface goes through one pipeline (WP-7.5d).**
+  The native and temporal adapters, over HTTP and gRPC, decode their request into one tagged `EvaluationRequest`, whose interface id is fixed by the question's shape and never by caller data, and hand it to `evaluation::evaluate`.
+  It authorizes the actor on the exact ledger before anything is read, then answers through the handler of that interface; the temporal handler is built over the native decider, so both read the same verified snapshot and write the same decision log, and they never share a transaction.
+  A question of an interface the surface holds no handler for is refused `unavailable`.
+  What each transport answers is unchanged.
+
+- **A decision record names its interface, its authenticated actor apart from the asserted principal, its question and its runtimes (WP-7.5c).**
+  Version 1 decision records gain four optional members, inside the record digest and its logical identity: `interface`, the exact evaluation interface; `actor`, the principal the transport authenticated the request as, pseudonymised like `subject`; `question`, a keyed commitment to the interface, the store and the one evaluation asked; and `descriptors`, each partition of the profile with its runtime's descriptor digest.
+  The request's `principal` stays the member of that name and is only what the caller asserted: it is never recorded as the actor, and a request no transport authenticated records no actor.
+  Temporal decisions record the source the submission authenticated as.
+  A record written before carries none of the four members and digests as it always did.
+
+- **A partition promises only the interfaces its runtime implements, and a compiled partition is keyed by everything it was compiled for (WP-7.5a).**
+  The load gate refuses a partition whose `interfaces` name one its runtime's descriptor does not implement, by exact id; no runtime implements two, so a partition listing two is refused before an artifact could serve an interface it was not written for.
+  A profile's compatibility with a partition is read from the descriptor's interfaces rather than inferred from the kind of language.
+  The compiled-partition cache key adds the interface, the assurance profile and the enabled experimental contracts to the commit, partition and descriptor, and a ledger warms every interface its partitions promise.
+  No Trust Anchor interface is registered, implemented or bindable, and a test holds that absence.
+
+- **A PEP verifies a signed decision response offline (WP-6.6c).**
+  `permguard_control_client::attestation::verify` takes the request bytes sent, the response bytes received, the pinned `data.attest` keys, the expected audience, clock, advertised validity and skew, an optional exact policy state, and the PEP's outstanding nonces.
+  It checks strict JSON, the closed flattened JWS in canonical base64url, the JCS header and its type, algorithm and key, the signature, the closed JCS payload, the audience, both digests recomputed, the request ids, decision and evidence against the answer, the policy state and the lifetime.
+  The nonce is spent only once everything verified, so a forged response cannot burn a genuine one and a replay is refused.
+  A failure names the binding and never becomes a deny.
+  A golden vector under RFC 8032's published test key is frozen in `contracts/vectors/signed-response.json`, and every binding altered alone is refused by name.
+
+- **A native decision response is signed on request under the plane's `data.attest` ring (WP-6.6b).**
+  A request carrying `request_nonce` from an authenticated caller is answered with a top-level `attestation`, a flattened JWS of type `permguard.decision.response.v1`; gRPC carries the same three values in its `Attestation` message.
+  Its protected header is the closed JCS `{alg, kid, typ}`, and its closed payload binds the request digest, the nonce, the request ids, the caller's authenticated principal as `audience`, the exact policy state, the decision, the response digest, the evidence and a lifetime.
+  The policy state names the Host whose head statement vouched for the ledger, its ref, commit, counter and profile; the mirror checkpoint now keeps the authority and the ref, and a mirror pulled before signs from its next pull.
+  A request for a signature that cannot be made is refused `503` `response_signing_unavailable` before anything is decided; an anonymous one is refused `401` where the plane signs.
+  `decisions.response_signing` sets it: `enabled` (on where the ring is composed), `validity` (default `5m`, at most `1h`) and `clock_skew` (default `30s`, at most `5m`).
+  Native discovery publishes `response_signing`, `{state: optional, validity_seconds, clock_skew_seconds}` or `{state: disabled}`, and lists `urn:permguard:pdp:v1:signed-response` exactly when signing is offered; the temporal interface publishes neither.
+
+- **Every native decision says what became of its record, and a request for a signed response is never answered unsigned (WP-6.6a).**
+  Each decision's `context.evidence` is the closed object `{mode, status, record_id, position}`: `disabled` with no log, and with one `durable`, naming the record's id and its Host position `{host_id, run, sequence}`.
+  A boxcarred request carries it on each evaluation and not on the batch's own context; `context.id` stays and equals `record_id`.
+  `request_nonce` is accepted: base64url without padding, 16 to 64 bytes, anything else refused as `invalid_argument`.
+  Until this plane can sign, a nonce is refused before anything is decided or recorded with `503` `response_signing_unavailable`.
+  The request and response digests a signed response will bind are fixed by golden vectors.
+  Permit sampling below `1.0` is refused at start under `log.mode: required`, which answers only what it recorded.
+  REST, gRPC and the OpenAPI document carry the same members.
+
+- **A shared history keeps a durable logical index, and a conflict is handled per consistency mode (WP-6.4b).**
+  Each ledger keeps `indexes/logical.json` under its temporal directory: per `(authenticated source, event_id)`, the digest, the event time and every position `(origin, run, seq)` that recorded it.
+  An occurrence nobody vouched for keys by its origin instead, so it never collapses another origin's.
+  The import feeds it, finding this plane's own copy of each new key, and this plane's journal is read past a saved mark for the keys another origin already holds.
+  It is pruned at the import horizon and rebuilt from the consumer and the journal when it does not read.
+  Equal bytes apply once after convergence with every position kept; different bytes quarantine the occurrence, even when only one copy falls in the window.
+  A decision whose window holds a quarantined occurrence is refused with the new code `history_conflicted` (503) under `shared-bounded`.
+  Under `shared-eventual` it is decided without it, reported in the new `history.quarantined` count, and every other origin that recorded it is named in `degraded`.
+  An occurrence another origin recorded with other bytes is itself quarantined, and no decision is made about it in either mode.
+  Idempotency is local and convergent, never exactly-once.
+  REST, gRPC and the record's schema carry `quarantined`.
+
+- **A temporal decision cites the exact vector frontier it observed (WP-6.4a).**
+  The answer's `history` and the decision record's `event` reference gain optional members, first `frontier[]`: each imported run with `covered_through`, `low_watermark` and its gaps.
+  They also gain `origin_set_revision`, `max_staleness_seconds`, the freshness bound in force, and `time`, `occurred_at`.
+  Under `shared-eventual`, `degraded[]` names the required origins behind, gapped or past the bound; it is named only over the Host's import, never over the retired pull store.
+  A replay reads exactly the frontier its decision cites, captured once.
+  `watermark` and `gaps` keep their meaning, a `local` decision adds only `time`, and a record written before carries none of them and digests as it did.
+  REST, gRPC and the record's schema carry the same members.
+
+- **Dogwood's event version 2: one canonical field map the server projects (TL-5c).**
+  A partition whose manifest declares `input: {type: permguard.dogwood.event.v2}` accepts occurrences carrying `fields` in place of `logged` and `request_context` (DOGWOOD-05).
+  The server builds both projections per action and kind: a field the event and the action's context both declare is copied to both, so a caller can neither send two values nor omit one.
+  A field one side only declares must be listed in the new optional artifact `projections.json` (`history_only`, `request_only`), or the partition is refused at load.
+  A field neither side declares is refused, and a pin read from the context counts as shared, the server copying it into the history.
+  A version 2 partition refuses version 1 occurrences and the other way round, and it replays the version 1 records of its history as they were written.
+  The planes advertise and store both event types; the new artifact is refused on a partition that does not declare version 2.
+
+- **A Dogwood file's `@id` is read as upstream's grammar reads it, and `max_window` is held to upstream by pinned vectors (TL-5b).**
+  The alias is the file's one `@id("…")` annotation, read from each policy's annotation prefix rather than line by line (DOGWOOD-07).
+  Its escapes are decoded by Cedar's parser, and it is held to the common identity grammar.
+  A file declaring `@id` more than once, on one policy or across two, or an `@id` without a value, is refused at authoring and at load; split such a file into one file per `@id`.
+  At load the annotations this build reads must be the ones upstream parsed, policy by policy.
+  The `max_window` directive and the `@id` annotation are checked against upstream itself by vectors pinned to its revision (DOGWOOD-06).
+  An upgrade that changes either grammar fails the build until the vectors are rerun.
+
+- **Dogwood's warm state is bounded by bytes, its replays by a plan, and its providers are refused from `production` (TL-5a).**
+  From the `production` assurance profile upward a Dogwood partition carrying `providers.json` or a `.rhai` program is refused at load (DOGWOOD-01).
+  Upstream gives a running provider no wall-clock cancellation, so providers run in-process only under `development`; a partition without them serves at every profile that serves Dogwood.
+  The fixed bound of 256 warm histories per partition is replaced by bytes: `dataPlane.events.warm.bytes` for the Host (default 256 MiB), `warm.zone_bytes` (default a quarter of it) and `warm.partition_bytes` (default 64 MiB).
+  Each history is charged its engine and the events it observed, by an estimate a measuring test holds above what the engine retains (DOGWOOD-02, DOGWOOD-08).
+  A cold history is replayed under `dataPlane.events.replay.max_records`, `max_bytes`, `timeout` and `concurrency` (DOGWOOD-03).
+  Past any of them a decision kind answers `E` `evaluation_deadline_exceeded` and a history-only kind is accepted; the occurrence stays durable and the history is replayed before its next occurrence.
+  `dataPlane.events.replay.prewarm` replays the most recently used histories of each ledger in the background after load, off by default and never touching readiness.
+
+- **`permguard discover <url>` walks the discovery chain, and `inspect` reports states and stages.**
+  `discover` starts from the address of a process's telemetry listener or of a plane, and follows each link over HTTP or HTTPS: the process document's `host_id`, the Host's state and each plane, each plane's state and interfaces, and each interface document's `version`, `component`, `state`, `stage`, `sunset` and `limits`.
+  It never sends the operator's token, discovery being unauthenticated and a link able to name another host, and presents the operator's client certificate to the start address's host alone; a plane served only over gRPC is listed by its endpoint and not followed.
+  A hostile document cannot hold the walk: at most 64 planes and 256 interfaces per plane are followed, an address already read is not read again, and every string a server sent is printed escaped.
+  A link that does not answer is shown and the command exits `69`, and an address it does not walk is a usage error, `64`; a retired interface is shown as retired, and a deprecated one is warned with its sunset.
+  `inspect` now reports each plane's `state` and, over HTTP, the interfaces its document lists with their `stage`, warning about a deprecated one; its exit codes are unchanged.
+
+- **Decision signers of the Host's runs, the decision log's discovery document, and offline `decisions verify`.**
+  `GET /decisions/v1/signers` and `GetSigners` answer a Host run named by `pdp`, its `host_id`, and `instance`, its run, in lowercase hex, from the signers the Host's stream observed; a pair no stream holds is `404` `stream_unknown`.
+  The control plane publishes `/.well-known/permguard-decisions-native-v1-configuration` for `permguard.api.decisions.native.v1`: its endpoints, capabilities, offsets, read parameters and limits; its plane document lists it beside the event log's.
+  `permguard decisions export` with `-o json` or `-o yaml` writes a self-contained archive in the format `permguard.decisions.export.v1`, records, envelopes and inclusion paths with their scope, always carrying its proofs.
+  `permguard decisions verify --file <archive> --keys <jwks>` checks such an archive without contacting a server and exits `2` when a record was altered, an envelope does not verify, or a non-empty archive carries none.
+  It also exits `2` when a record belongs to another scope than the one the archive binds, or when a producer stream's archive misses part of a signed batch.
+  An archive that cannot be read, does not parse, declares another format or is truncated is refused with `decision_export_unreadable`, `decision_export_malformed`, `decision_export_type_unsupported` or `decision_export_truncated`, exit `64`.
+
+- **A shared temporal decision reads the origins the member Host imports, and measures its freshness from the coordinator's checkpoint.**
+  Under `shared-eventual` or `shared-bounded`, the Data Plane now reads, beside its own stream and what the HTTP pull imported before, the origins' runs its Host imported over `events.import`, from the Host's event consumer.
+  It keeps a rebuildable index of each imported run under `planes/data/temporal/<zone>/<ledger>/imported/`, caught up from the consumer before a shared decision, so a decision reads its window and never the whole imported history.
+  One logical occurrence, the same authenticated source and `event_id`, applies once whichever plane recorded it; one recorded with different bytes by two planes is left out of shared decisions, and said; a record with no source, or the anonymous one, is never merged with nor quarantined by another plane's.
+  An imported run a decision's window reads that the consumer no longer holds whole, or a checkpoint the Host kept that does not read or names another ledger, refuses the decision `imported_history_unreadable` rather than deciding on less.
+  `shared-bounded` decides only when the Host verified the coordinator's checkpoint within `events.pull.max_staleness`, the origins' runs are held through what that checkpoint names, and no gap is open, the Host's or the HTTP pull's: otherwise `history_stale` or `history_incomplete`, the event recorded and the decision withheld; an event's own time never counts.
+  The Data Plane registers a retention floor on the consumer, measured as its own stream's is, from the retention minimum, the lateness and the skew, on every ledger the consumer holds; the imported runs below it are deleted by the Host's garbage collection once that floor is registered, and kept whole before and wherever it was never measured.
+
+- **A member Host imports the required origins' event history over `events.import`.**
+  A Host that is a member of a coordinator with an `events.import` task, under a shared consistency mode (`events.pull.mode` `shared-eventual` or `shared-bounded`), now pulls each ledger of `events.pull.ledgers[]` the task covers, on its periodic membership pass.
+  It verifies the coordinator's checkpoint under the pinned `control.attest`, bound to its own session, ledger and coordinator, and each origin's manifest under the pinned `host.operations`; an origin whose manifest does not verify is left out of the pass and said.
+  Each batch past what it holds is ingested, as the origin shipped it, into the origin's own run of the Host's event consumer, verified under the origin's `data.attest` pins the coordinator signs into the checkpoint, every set its membership's manifests held, so a batch sealed under a set the origin has since rotated away from still verifies: nothing is re-signed, and the Host's own stream is never imported back.
+  The coordinator is the trust anchor: the member verifies the origins as the coordinator it pinned at approval attests them, not independently of it.
+  A ledger two memberships' import tasks cover is imported by neither, and a ledger holding 1024 gaps is not imported further; both are said on every pass.
+  Per ledger it keeps, beside the runs (`IMPORT`), the last checkpoint it verified, when, the origin set's revision, and every gap: a sequence the coordinator no longer holds (`retention`), a batch that does not verify (`unverifiable`) or that forks what is held (`fork`); a run is never imported past a gap, and the importer never removes one.
+  The ledgers' zone and ledger must be identifiers; another is left out and said.
+  The Data Plane does not read this history yet: a later change brings its shared modes onto it.
+
+- **A coordinator serves `events.import`: the required origins' event history, with a signed checkpoint.**
+  A Control Plane on a coordinator Host now answers the `events.import` task (contract version 1) on a member's task session over one ledger of the `data` plane.
+  An `origins` request answers every required origin of the ledger, the coordinator's active members whose `events.ship` task covers it, with the manifest in force, and one observation checkpoint signed now by the Control Plane's `control.attest` ring (`permguard.event.import-checkpoint.v1`): what the coordinator holds of each origin's runs, their acknowledged sequence, the first sequence still retained and when the last batch was admitted, the origin set's revision, and the session's channel binding.
+  The checkpoint is signed again on every request, also when nothing is new.
+  A `batch` request answers the batch covering one sequence of one origin's run as the origin shipped it, its batch file and the ring statement it was verified under; the coordinator re-signs nothing, and never sends a member its own stream.
+  The Host's event consumer now keeps, beside each run, every ring statement a batch was verified under (`statements/<sha256>.cbor`); a batch admitted before this release has none and is answered `unavailable`.
+  The task's consumer side is the member's Host: a member Host declares it, and the Data Plane no longer does; until a later change brings the import itself, a member approved with the task does not pull.
+  The origin set's revision digests each required origin's `host_id` and membership, so it moves when a member joins or leaves, and not when its manifest is re-issued.
+  A set of more than 64 required origins, or of more than 1024 runs, is answered `unavailable` rather than signed.
+  Each origin of a checkpoint also names its own `data.attest` pins over its membership's manifests, at most 64 (WP-6.2c2a).
+
+- **The drained legacy event history is archived.**
+  The history is drained once the old shipper has sent everything the version 1 event journals held, and every record they and the retired HTTP pull's store hold, and every unresolved pull gap, is older than the eviction's horizon (`retention_minimum` plus `allowed_lateness` plus `clock_skew` ago).
+  Then `events.directory` is carried byte for byte, without the journals' `LOCK` files, into `data/events-legacy` under the layout `events-legacy`.
+  Below the `production` profile the first start that finds it drained archives it; from `production` upward the start goes on and names `permguard migrate events --volume <dir> --backup <reference> --config <file>`, which archives it offline and reads the retention from the server's configuration file.
+  A history still holding anything unshipped or anything a loaded window may read, outside the volume, or holding a file that is not the history's is not archived, and the start never fails over one.
+  Once archived the Data Plane opens no legacy journal and no pull store: the legacy journal routes answer that the ledger is not held, and a shared mode without the Host's import decides as over a store that never read anything, so `shared-bounded` still refuses.
+  The old directory stays until `permguard migrate finalize --subsystem events-legacy` removes it.
+
+- **A drained version 1 decision spool is archived.**
+  Once the old shipper has sent everything a version 1 spool held, the spool is carried byte for byte, without its `LOCK`, into `data/decisions/legacy` under the layout `decisions-legacy`.
+  Below the `production` profile the first start that finds it drained archives it; from `production` upward the start goes on and names `permguard migrate decisions --volume <dir> --backup <reference> [--legacy <dir>]`, which archives it offline.
+  A spool still holding anything unshipped, outside the volume, or holding a file that is not the spool's is not archived, and the start never fails over one.
+  The old directory stays until `permguard migrate finalize --subsystem decisions-legacy` removes it.
+  The zone key witness `ZONE_KEYS` moves beside the spool, to `data/decisions/ZONE_KEYS` by default, copied once from the spool or from its archive.
+
+- **`streams verify` checks a stream's directory offline.**
+  Every server binary gains `streams verify <dir> --keys <file>`, for a producer's or a consumer run's directory copied off a volume and the `keys export` of `data.attest`.
+  It verifies every batch's signature, envelope and Merkle root, each run's chain from genesis or from its anchor, the anchor's checkpoint, and every record the journal holds against the batch that signed it, without repairing anything.
+  It exits `0` when everything holds, `2` when a check found an alteration, and `1` when the directory or the keys cannot be read.
+
+- **The Host API reads the streams.**
+  `GET /host/v1/streams` lists what the Host's stream engine produces and consumes, with each resource's state and retention class.
+  Under `/host/v1/streams/{plane}/{type}/` the `frontier`, `records`, `signers`, `subscriptions`, `gaps` and `anchors` reads answer for one resource, over REST and over `permguard.host.v1.EvidenceService`.
+  They take the new grant operation `streams.read`, on `host` for the list and on the stream's resource for the rest.
+  A `records` page starting below what a run still holds answers from there with the gap and the run's anchor.
+  Batches are still shipped on the membership's task transport: `ShipStreamBatch` answers `UNIMPLEMENTED`.
+  `permguard host streams list`, and `frontier`, `signers`, `subscriptions`, `gaps` and `anchors` with `<plane> <type> --resource <resource>`, print these reads over the Host endpoint's REST or gRPC; `runs` prints the frontier's runs as one history.
+
+- **Stream evidence is deleted by an hourly job, and what goes leaves an anchor.**
+  At start and every hour the Host deletes, of each stream it produces, the batches every required subscription acknowledged, for `history` streams only below the floor a Plane registers.
+  Of each stream it ingests as a coordinator, it deletes the batches admitted longer ago than the `retention_seconds` of the task that ships them, for `history` streams again only below the Plane's floor.
+  The deletion no longer happens in the shipping loop.
+  Before anything goes, the run's `ANCHOR` keeps the deleted range, its last record digest, the digest of every deleted batch, the signer keys and the last deleted batch whole.
+  Then a `host.stream.pruned` security record names what is about to go; a record the trail refuses deletes nothing.
+  Every stream gets a `host.stream.pruned` record at every pass, with nothing removed when there is nothing to remove.
+  One pass deletes at most 1024 batch files of a stream, and the journal segments that held only deleted records go with them.
+  A member shipping again a batch the coordinator already deleted is answered `ok` when the run's anchor proves it is the batch that went, and `gone` otherwise.
+
+- **Audit checkpoints leave the volume they attest.**
+  A Host that is the member of an `audit.checkpoints` task ships each checkpoint it seals, in its trail's order, to the coordinator, which verifies it under the member's pinned `host.operations` keys and keeps it.
+  A checkpoint that does not continue the trail the coordinator holds is refused as `fork`.
+  While a required task exports a trail, retention deletes a sealed day only once the coordinator acknowledged the seal that closes it.
+  From `production` up, a checkpoint not acknowledged within the new `audit.checkpoints.max_lag` (two hours by default) makes the Host `degraded: audit_egress`, naming the trail.
+  So does a trail no required task exports, a Host with no membership side to send them, or an egress that cannot be checked.
+
+- **A drain ships the evidence, and a volume left with unshipped records says so.**
+  On shutdown the Host ships its streams to every required subscription until they reach the durable tail or `shutdown.drain_timeout` ends.
+  A stream still behind is marked `unshipped` in its STATE, nothing past the coordinator's acknowledgement is deleted, and the drain is incomplete: the process exits 75.
+  A start that finds a mark ships those streams once while the Host is in Load, then serves `degraded: evidence` until they are shipped.
+  The member reports such a stream to its coordinator as `unshipped`, with its tail, and as `shipped` once it is, so the coordinator's member view shows the producer gap.
+
+- **An identity reset stops task sessions first and seals the audit trails before its rings retire.**
+  From the start of `identity/reset/run`, before the memberships are enumerated, the Host neither opens a task session as a member nor accepts one as a coordinator (`unavailable`).
+  It takes no invitation, enrollment, approval or join either, until a normal reset refused as `identity_reset_incomplete` lifts that again, the identity unchanged.
+  Before the identity and its key rings retire, every audit trail is checkpointed under the `host.operations` ring still active.
+  A trail that cannot be checkpointed refuses the reset with `audit_unavailable`, the identity unchanged, to be planned again.
+  The offline emergency reset, `permguard host identity reset run`, seals the trails the same way.
+  A reset requires that recovery checkpoint: a process that composes no checkpoint signer refuses the run with `audit_unavailable` before anything changes.
+  After a reset, joining with an invitation the old identity used reaches the coordinator, which refuses it, instead of answering the old identity's membership.
+
+- **NOTP transfers are durable sessions, and a push is a security mutation.**
+  A negotiation opens a transfer session, one record under `transfers/` beside the ledger, bound to the caller, the ledger, the ref, the request id and the request; the same request resumes it, the same request id with other parameters is refused `transfer_mismatch`.
+  A push reserves the bytes it declares against `notp.ledger_quota_bytes` before anything lands, uploads only the objects its closure declared and no byte past the reservation, and pins its closure, so garbage collection keeps an upload however long the push takes, and for `storage.gc.grace` after it ends.
+  Uploads, commits and fetches name their session and are refused `transfer_unknown` for another caller's, `transfer_expired` once it ended; a session stays open for `notp.transfer_ttl`, 15 minutes by default and at most one hour.
+  The ref update runs in the Host's security mutation transaction: its intent, the ref record carrying the operation id and the commit are durable before the answer, `ledger.pushed` is recorded at each phase, and a start resolves an update a crash left open; a Control Plane composed without the transaction does not serve NOTP.
+  REST, gRPC and the Host task transport share one facade and one compare-and-swap per ledger.
+  A data plane member pulls over the `policy.mirror` task, its reads bound to its membership and the resource of its session, and every commit sends a `WatchRefs` hint to the watches of its ledger.
+  The refusal codes `transfer_unknown`, `transfer_expired` and `transfer_mismatch` are new.
+
+- **NOTP speaks its target messages: ref states, transfer sessions and a head statement bound to its authority.**
+  A ref's state is now `(head, counter, previous_ref_digest)`, and its `ref_digest` is SHA-256 over the deterministic CBOR of that state under `permguard.notp.ref-state.v1\n`; a ref written before reads as a state without a previous digest, and its next write names it.
+  A push names the state it replaces, `expected_ref {counter, digest}`, instead of the old head; the old head's label is retired and refused, and a state that is not the current one is a conflict before anything is checked.
+  A negotiation opens a transfer session, `transfer_id` with a reservation and an expiry, that every upload, commit and fetch names, and a negotiation and a commit carry a `request_id`; until sessions become durable the server issues them and does not yet enforce them.
+  The head statement adds the signing Host's `authority_host_id`, the `ref_digest` and the ring's epoch and key-set digest, under the content type `application/vnd.permguard.head.v1+cbor`, and is signed in the ring's suite; a six-field statement is refused.
+  Clients judge freshness over `(counter, ref_digest)`: the same head reached through another history is an equivocation, and a checkpoint written before the ref digest is judged on its head until the next pull records the digest.
+  A manifest partition may list the `interfaces` it promises; every profile's interface must be among them, and from `production` up a partition without them is refused at load (`interfaces.explicit`).
+  The gRPC messages carry the same members, with `expected_old` reserved; the vectors are in `contracts/vectors/notp.json`.
+
+- **Members ship their stream batches, each subscription acknowledged on its own.**
+  The server's minute pass now ships what every active `decisions.ship` and `events.ship` task has due: one session per stream on its resource, batches sealed within the task's message bound, sent with the member's `data.attest` statement.
+  Each subscription, a membership's ship task, keeps its own acknowledgement per run in `subscriptions/<membership>-<task>.cbor` beside the stream.
+  `truncate_safe` is the least acknowledgement of the required subscriptions, kept as STATE's `acknowledged_seq`; the batch files every required subscription holds are deleted, never one beyond, and an optional subscription never blocks.
+  `out_of_order` resends from the coordinator's next sequence, `store_unavailable` backs the subscription off from one second to five minutes with full jitter, `unverifiable` pauses it until the membership's epoch moves, so an approval or a re-pin resumes it without a restart, and `fork`, `gone` or an acknowledgement beyond what the producer holds stops it.
+
+- **The coordinator ingests shipped stream batches.**
+  A coordinator now serves `decisions.ship` and `events.ship` version 1: a member ships a sealed batch with its `data.attest` ring statement, and the Host's stream engine keeps it under `consumer/` per producer run.
+  The batch is checked in the documented order: its producer's fork mark, the statement against the member's pin, the key in the pinned set, the signature and commitments, the task the batch names, the records' codec, then its range against what is held.
+  The answer is `ok` with the highest contiguous sequence held, `out_of_order` with the sequence to resend from, `unverifiable`, `gone` below the oldest sequence retained, `closed` for a batch of an earlier membership epoch, or `fork`.
+  A replay of records held is `ok` whatever its batching; a different record, a broken chain or a batch signed twice is a fork, which marks the producer's stream, records `host.stream.forked` in the `security` trail and suspends the membership.
+  A store that cannot keep the batch refuses with `store_unavailable`, so the member retries; nothing is acknowledged before the batch file, its signer span, its records and STATE are durable.
+  One producer's ingest never touches another's records.
+
+- **Sealed stream batches, and stream cutovers on a re-pin.**
+  A producer handed its descriptor's ring now seals its durable records into batches under `batches/<run>/<first>-<last>.jws` beside the stream.
+  A batch is canonical JSON: a flattened JWS whose protected header names the descriptor's batch `typ`, the algorithm of the signing key and its `kid`, and the record bytes.
+  The signed envelope names the stream key, the run, its membership and epoch when fenced, the range, the count, the head, the head before it (zeros at a run's first batch), the Merkle root over the record digests, the batch id, the time and the ring epoch.
+  A batch is durable before the seal answers it, never signed again, and a crash between it and its bookkeeping leaves it sealed; the oldest run with unsealed records is sealed first.
+  `signers.cbor` keeps, per run, the spans of the keys that signed it with each key's JWK, so a batch verifies after its key left the ring; a span is only ever appended.
+  Under a membership's fence, a rotated key seals nothing until the coordinator journaled the stream's cutover at its next sequence.
+  A member's cutover now names those streams, and is stream-less only when the Host signs none; a stream engine that cannot list its streams gets no cutover sent.
+  The server seals the decision log's and the event journal's batches under `data.attest`.
 
 - **The Host's stream engine.**
   `permguard-stream` gains the engine every Plane is to register its streams with instead of keeping a journal of its own.
@@ -261,6 +739,205 @@ is cut.
 
 ### Changed
 
+- **A `production` Host now needs its storage, backups and objectives declared (TS-5).**
+  A deployment upgrading under `production` or `regulated` adds, before it restarts:
+  `storage.qualified` with the volume's tuple and its encryption evidence: `storage.compatibility_mode` no longer admits an unqualified tuple under `production`;
+  `operations.backup` with a recovery key named by secret reference (at least 128 bits, no other key's), an encryption profile, a retention and a destruction procedure;
+  every key of `objectives`, and `storage.quotas.host.bytes` within `objectives.max_volume_size`.
+  A volume a copy or a hand left readable to its group must be narrowed: `chmod -R go-rwx` on the volume directory; `volume claim --next` does it for the entries the process owns.
+  From `production` a restore needs `operations.backup.recovery_key` in `--server-config`, and a backup must be finalized within `objectives.backup_interval`.
+  Processes started with `development` keep starting and log what `production` would refuse.
+
+- **`restore run --mode dr` rolls every producer run over (WP-7.7).**
+  A snapshot's runs are behind what its coordinators may have acknowledged before the loss, so a restored Data Plane that appended to them wrote other records at sequences a coordinator already held.
+  The coordinator rightly found a fork and suspended shipping, and nothing reopened it.
+  The restore now ends each decision and event run of the snapshot at its last durable record and opens its successor, before it records the restore.
+  The restored Host writes only to successors, which coordinators take as new runs.
+  The report gains `streams.runs_rolled_over` and `streams.forked`: a stream already forked is left to its operator, named.
+  A producer stream of a kind the restore does not know refuses it before anything is written.
+  After a `dr` restore, and before the restart, fence the Host's memberships on each coordinator with `host members fence`: the Host that was lost may still hold sessions there.
+- **A coordinator takes a batch signed again over the same records as an exact replay (WP-7.7).**
+  A restored producer seals again the records its snapshot held unsealed; when it had sealed and shipped the same range before the loss, the second batch file differs only in its id and time.
+  A coordinator holding a batch of that range now answers `ok` and keeps the first file when the new one is signed by the same key.
+  It must also commit to the same run, range, previous head, head and Merkle root.
+  Any other difference is still a fork; a held batch file that does not read is reported as the store's corruption, not as the producer's fork.
+
+- **`host.operations` in a remote KMS is refused where decisions or temporal events are recorded (TS-4).**
+  It signs the statement that opens a stream's run, which a decision log or a temporal journal does on the first record it appends, while a decision waits.
+  The no-network decision invariant keeps a remote KMS off that path, and the decision path now refuses the call.
+  The configuration is therefore refused at start, and the chart refuses it for a Data Plane that records evidence.
+  Keep `host.operations` in `pkcs11` (or `file` below `regulated`) on such a Host; `host.identity` may stay in the KMS.
+
+- **Past the request bound, a surface answers a typed refusal (TS-4).**
+  It was a plain-text `503`.
+  Over HTTP it is now the shared refusal body with `503`: class `unavailable`, code `unavailable`, and the message.
+  Over gRPC it is a trailers-only `UNAVAILABLE` carrying `permguard-error-class` and `permguard-error-code`.
+
+- **Policy evaluation, decision records and loads run on pools of their own (TS-3).**
+  `dataPlane.decisions.evaluation_concurrency` (`PERMGUARD_EVALUATION_CONCURRENCY`) bounds the evaluations running at once, by default the Host's logical cores.
+  A burst wider than that waits in `dataPlane.decisions.evaluation_queue` (`PERMGUARD_EVALUATION_QUEUE`, default 64) no longer than the request's deadline, and past it the plane answers `503` `evaluation_at_capacity` at once.
+  Decision records, with the group flush they wait on, take slots of their own, as many as `max_blocking`; loads, temporal staging and replay keep `max_blocking`'s other pool.
+  Under `required` evidence a plane past its records' bound now refuses `decision_unrecordable` instead of `load_at_capacity`: records waiting for their flush no longer take the slots the next request's load needs.
+  The evaluation slots and twice `max_blocking` may not exceed the runtime's 512 blocking threads; a configuration that asks for more is refused at start.
+  A `max_blocking` above 224 on an 8-core Host, valid before, is therefore refused: halve it, since it now sizes two pools.
+  The pools report `permguard_evaluation_*` (with `_queued`) and `permguard_evidence_*` beside `permguard_blocking_*`.
+  An evaluation's wait in the queue no longer counts against the deadline the quarantine breaker judges it by.
+
+- **From `production` up, a Data Plane serves only runtimes whose conformance gate passes (TL-6).**
+  A ledger of a runtime with an open item is refused at load, naming the items, even when its experimental runtime is opted into.
+  Dogwood is therefore served only under `development` until its gate passes.
+
+- **The Compose lab's `lab` profile is gone (TD-3).**
+  It started both planes on a configuration that predates membership and published the Data Plane on the loopback alias `127.0.0.2`.
+  `task lab:up` and `make lab-up` take `PROFILE` (default `split-plane`); Prometheus, Grafana, Loki, Promtail and Tempo start only with the `observability` profile, beside a lab profile or alone.
+  `task lab:down` and `task lab:clean` stop every profile.
+
+- **The chart's data plane objects are named after their group, and default to recorded evidence (TD-1).**
+  The data plane workload, Services, ConfigMap, disruption budget, autoscaler and NetworkPolicy are named `<release>-data-plane-<group>`.
+  A release that sets no `dataPlane.groups` renders the one group `default`, selector `plane/data/*`.
+  That group takes the single-group keys `dataPlane.replicaCount`, `autoscaling`, `persistence`, `podDisruptionBudget` and `service`, which are refused beside `groups`.
+  Upgrading from the single-group chart recreates the data plane under the new names, and clients that reached `<release>-data-plane` reach `<release>-data-plane-default`.
+  Each new replica starts on a new volume with a new Host identity.
+  The old chart's claim `<release>-data-plane` is kept on upgrade (`helm.sh/resource-policy: keep`) and no longer mounted, and the claims of its `perReplica` StatefulSet stay as Kubernetes left them.
+  They may hold decisions and events the old replicas did not ship: recover them before deleting the claims.
+  A group defaults to `production`, `evidence.mode: required` and a volume per replica, as the profile requires.
+  Its decision log is rendered with `mode: required` and needs the Plane signing ring, the coordinator root secret and the pseudonymisation key from the deployment's secrets; `best-effort` is refused, as the server refuses it.
+  `persistence.perReplica` and the chart-wide `persistence.enabled` now apply to the control plane and the all-in-one only.
+- **The control plane and the all-in-one keep their volume in a directory inside the mount, under a claim (TD-2).**
+  As for a data plane group, their working directory is `/var/lib/permguard/volume`, created for the server's user.
+  When they keep a volume, a claim init container moves its claim forward before every Pod.
+  Until now neither could start on a Kubernetes volume: making the mount's root private failed, its root belonging to root, and `production` refused a volume without a claim.
+  A control plane volume written by an earlier chart, with its files at the root of the claim, is not read: move them into `volume/` before upgrading.
+- **The chart renders the Host operations section as `host` (TD-2).**
+  It rendered the older spelling `telemetry`, so a values file setting `host.principals` or `host.authz` in `extraConfig` produced a section the server refused as duplicated.
+- **The command line reads chunked JSON answers (TD-2).**
+  A server answering a JSON request with `Transfer-Encoding: chunked`, as the Kubernetes API does, was read with its chunk sizes in the body.
+
+- **Discovery names the Host, every state and every interface's stage.**
+  The process document at `/.well-known/server-configuration` on the telemetry listener now carries `host_id`, once the Host's identity is open, the Host's `state`, and each plane's `state`, the lifecycle phases as they are when it is asked for.
+  Each plane's own document carries its `state`, and lists every interface it serves with its `stage`, `v1alpha1`, `v1` or `deprecated` with a `sunset`.
+  Every interface document, the native and temporal PDPs', the decision log's and the event store's, starts with a common header, on REST and on the gRPC configuration calls of those that have one: `version`, the product version `/version` publishes, `component`, `state`, `stage` and, when deprecated, `sunset`, and carries `limits`; the native PDP publishes its `max_evaluations`.
+  A retired interface id is refused `400` `interface_retired` and never answered under another id: its discovery document, and a manifest that binds it, which the Data Plane refuses with that code and a push refuses at the Control Plane's load gate, naming it in the refusal's detail.
+  Today `permguard.api.pdp.native.v1` and `permguard.api.decisions.native.v1` are `v1`, `permguard.api.pdp.temporal.v1alpha1` and `permguard.api.events.native.v1alpha1` are `v1alpha1`, and none is deprecated or retired.
+
+- **Legal and incident holds keep a ledger, or a zone's ledgers, from the garbage collection.**
+  `permguard host holds add`, `list` and `release` manage holds offline on the `--volume` of a stopped server: each is a file under `host/holds/` naming a ledger, `plane/control/zone/<id>/ledger/<id>`, or a zone, `plane/control/zone/<id>`, by ids, with an owner, a reason and either `--expires-at` or `--review-at`.
+  Adding and releasing a hold run in the Host's security-mutation transaction under the new phased audit actions `host.hold.added` and `host.hold.released`, whose records name the hold's id and resource and never its owner or reason.
+  The Control Plane's garbage collection sweeps nothing of a held ledger, unreachable objects included, and counts the held ledgers in its `store.swept` record; holds that cannot be read sweep nothing that pass.
+  Past `expires_at` a hold keeps nothing and is listed `expired`; past `review_at` it still keeps, is listed `review_due` and says so in the log.
+
+- **A catalog delete leaves a tombstone and destroys nothing, and a ledger can be archived.**
+  Deleting a zone or a ledger now writes a tombstone of its id, under `tombstones/` in the catalog, with the name it had, when it went, its last revision and the operation that deleted it; the id is never minted again.
+  What a deleted ledger held, its objects and refs, stays on disk for the garbage collection after retention; a delete no longer removes the ledger's or the zone's directory.
+  A deleted ledger is gone from listing and lookup, `404`, and so from every push, pull, fetch and mirror; a zone whose ledgers were all deleted can be deleted.
+  A ledger recreated under the name of a deleted one is a new ledger with a new id: the old one's decisions stay readable by the old ids, and none of them under the new one.
+  `POST /v1/zones/{zone}/ledgers/{ledger}/archive` and `…/restore`, gRPC `ArchiveLedger` and `RestoreLedger`, take `{request_id, expected_revision}` and run in the Host's security-mutation transaction under the new phased audit actions `catalog.ledger.archived` and `catalog.ledger.restored`.
+  Ledgers answer `state`, `active` or `archived`, on REST and gRPC; a record written before reads as `active`.
+  An archived ledger is still read, pulled and mirrored, and a push to it is refused `409` `ledger_archived`, gRPC `FAILED_PRECONDITION`, until it is restored.
+  `permguard ledgers archive` and `permguard ledgers restore` read the ledger's revision first, or take `--expected-revision`; the ledger reports show `state`.
+  A delete a crash left open is now reconciled at the next start from its tombstone; its retry answers `404`, the record being gone.
+
+- **Catalog changes carry a request id and the revision they were read at, and run in the Host's security-mutation transaction.**
+  Zones and ledgers now answer `revision`, 1 at creation and one more at each change; a record written before this release reads as revision 1.
+  A create, on REST and gRPC, names `request_id`; a rename names `request_id` and `expected_revision` in its body, and a delete as the query parameters `request_id` and `expected_revision`, all required, a revision being 1 or more.
+  A rename or a delete against another revision is refused `409` `revision_conflict`, gRPC `FAILED_PRECONDITION`, and changes nothing.
+  A retry by the same caller of the same request, its path and body unchanged, with the same `request_id` learns the first answer and applies nothing twice, also after a rename or a delete; the same id for another request is `409` `request_id_reused`.
+  Each change is an operation of the Host's security-mutation transaction: an intent and an applied record under the new phased audit actions `catalog.zone.created`, `catalog.zone.renamed`, `catalog.zone.deleted`, `catalog.ledger.created`, `catalog.ledger.renamed` and `catalog.ledger.deleted`, which name the records by id and never by name.
+  The plain `zone.*` and `ledger.*` actions stay registered for trails already written and are no longer written for a change; the `*.refused` actions are unchanged, and a name the rules refuse is refused before any intent.
+  An intent whose audit record cannot be written changes nothing and answers `503` `audit_unavailable`; a Host that composes no transaction refuses every change `503` `unavailable`.
+  A store failure during a change answers `500` `mutation_unrecorded` instead of `catalog_failed`, its outcome being unknown until the next start: a create or a rename that landed is then committed from the record, which keeps the operation that wrote it, and its retry learns the record; a delete is committed from its tombstone, and its retry answers `404`.
+  A body is closed, and a listing's `page` and `size` and a delete's parameters are strict: an unknown, repeated or malformed one is `400` `invalid_argument`, where it was ignored; a `size` of `0` still reads as no size.
+  `permguard zones update|delete` and `permguard ledgers update|delete` read the record first and send its revision, or send the one `--expected-revision` names; their reports show `revision`.
+  A conformance check, run by `task check:mutations`, holds that only the catalog facade calls the catalog's writing methods.
+
+- **Decision and event evidence reads take `evidence.read`.**
+  Every decision and event read of the Control Plane, the tenant and stream pages and one event by its id, on REST and gRPC, now takes the new operation `evidence.read`.
+  It is checked on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, the resource `catalog.read` takes.
+  A decision stream read takes the grant of the ledger its Host run records; a legacy stream, which mixes tenants, a grant covering `plane/control` whole.
+  A caller granted nothing under the plane is refused before any lookup, `401` or `403`, and a ledger nobody holds is refused as a foreign one unless the caller's grants cover the whole plane.
+  These reads were open before: grant `evidence.read` to every reader, or use `host.authz.public[]` for a public exposure meant as one; no setting reopens them.
+  The signers and the discovery documents stay open.
+  A decision or event stream read naming no stream the store or the Host's consumer ever held now answers `404` `stream_unknown` instead of an empty page.
+  Refused reads are counted as `permguard_decisions_reads_total` and `permguard_events_reads_total` with the new outcome `denied`.
+
+- **The decision tenant view reads the Host's stream by concrete ids, and a tail never shows a record that later disappears.**
+  `GET /zones/{zone}/ledgers/{ledger}/decisions/v1/records` and `Read` answer the Host consumer's runs of the ledger, resolved to its zone and ledger ids, and no longer the legacy store's per-tenant views, which were kept under the names a record carries.
+  A ledger recreated under a name reads none of the old one's decisions, and a cursor keeps working across a rename.
+  A ledger no catalog entry or Host stream answers to is `404` `scope_unknown`, never an empty page; a deleted ledger's decisions stay readable by its ids.
+  Decisions recorded before the upgrade stay readable, exportable and verifiable whole by `pdp` and `instance`; the legacy store no longer writes `views/`, and views an earlier release wrote are left on disk and aged out as before.
+  A legacy stream read stops at what the store acknowledged, so records written and not yet acknowledged, which the next batch may replace, are never shown.
+
+- **The Data Plane's HTTP pull is retired: a shared mode decides on what the Host imports over `events.import`.**
+  `dataPlane.events.pull.producer_keys` is refused at start, and the Helm chart refuses it; a shared mode no longer needs it.
+  The pull worker is gone: a Data Plane no longer reads the Control Plane's public event reads, and `events.destination` is used only while a legacy event journal still drains.
+  What the pull imported before stays under `data/events/pull`, read-only and still read by shared decisions, until a later change archives it; it is no longer compacted.
+  `dataPlane.events.pull.mode`, `max_staleness` and `ledgers[]` keep their names: the ledgers the Host imports, the mode the plane decides under and how stale a verified checkpoint may be; a ledger named twice is refused at start.
+  `interval` and each ledger's `event_types` are still accepted and are inert: the Host imports a ledger's whole history on its membership pass.
+  The log events `events.import_quarantined`, `events.import_evicted`, `events.import_eviction_failed` and `events.subscription_unresolved`, and the pull's `events.import_gap`, `events.import_refused` and `events.imported`, are gone with it; the metrics `permguard_temporal_imports_total`, `permguard_temporal_imported_records_total` and `permguard_temporal_import_gaps_total` are no longer emitted.
+
+- **The event reads answer from the Host's stream too, and the event producer key files are gone.**
+  A Control Plane composed with the Host's stream engine reads, besides its own event store, what the Host's consumer of `data/events` holds, in process.
+  A tenant read (`/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records`) answers what the store holds first, then each producer's runs of that ledger by `host_id` and the order they opened, every filter applied to both.
+  `producer` and `instance` naming a `host_id` and a run the consumer holds read that run alone; any other pair reads the store as before.
+  `GET /events/v1alpha1/records/{event_id}` and `GetRecord` search both.
+  Each `proof[]` entry now carries `format`: `host-batch-v1` with the sealed batch's JWS as `signature`, or `legacy-jws-v1` beside the store's JWS members, which are unchanged.
+  The tenant signers read answers each consumer run of the ledger beside the stored streams.
+  Configuration: `controlPlane.events.producer_keys` is retired and refused at start, and the Helm chart refuses it; the event store no longer re-reads key files.
+  Its ingest route (`POST /events/v1alpha1/batches`, `IngestBatch`) now trusts only the signing ring of a data plane in the same process, bound to the producer, zone and ledger each of that plane's legacy event journals names: a data plane in another process can no longer ship events over it.
+  The gauge `permguard_event_trusted_producers` and the log events `events.no_producers` and `events.producer_keys_reload_failed` are gone; health says the event store is degraded only while a legacy journal waits to ship and no ring can attest it.
+  `permguard events verify` and `permguard decisions verify` check a `host-batch-v1` entry's signature against the keys given (the `keys export` of `data.attest`), and count a record as included only when a batch names its Host, its run and its sequence and the record's path reaches that batch's root; before, `decisions verify` counted every record read from a Host as not included.
+  Records leave a Host only towards a coordinator, over `events.ship` and `decisions.ship`: a single process with no membership keeps them on its own stream, and the Control Plane's evidence reads answer nothing until it is a member of one.
+
+- **Temporal events are recorded on the Host's stream, and a submission takes `event.submit`.**
+  A Data Plane serving the temporal interface now appends each occurrence to the Host's stream engine, one stream per zone and ledger, as `data/events`; the Host's producer owns the run, the sequence, the flush and the seal, and ships them over the membership's `events.ship` task.
+  A record's `stream.producer.id` is the Host's `host_id` and `stream.producer.instance` the run, each as 32 lowercase hex digits; `seq` and `prev` are the engine's.
+  Every record names its `source`: the principal the submitting request authenticated as, `anonymous` under a public grant.
+  An occurrence is identified by its ledger, its source and its `event_id`: the same id from another source is another occurrence.
+  A submission is authorized like an evaluation, under the operation `event.submit`: under the plane before the store is looked for, then on the exact ledger its names resolve to, over HTTP and gRPC; a deployment that granted only `decision.evaluate` must grant `event.submit` to keep submitting.
+  The plane keeps beside the stream, under `planes/data/temporal`, only the positions it indexes and the answers it gave; it reads the records back from the Host's producer.
+  The Host's producer keeps every run whole until the plane registers the floor its loaded windows read from, and deletes nothing that floor or a required subscription still holds.
+  Configuration: `events.producer_id` (`PERMGUARD_EVENTS_PRODUCER_ID`) is retired and refused at start.
+  A plane serving the temporal interface refuses to start unless the Host composes a stream engine producing `data/events`, its `host_id` and the plane's `data.attest` ring.
+  An event journal left by an earlier release stays the first part of the ledger's history: it is read first, never appended to, shipped by the old shipper to its configured server until it is empty, and evicted as before.
+  The plane's `/events/v1alpha1/signers` read answers such a journal only; the Host's stream signers are the Host API's.
+  The Helm chart no longer sets `PERMGUARD_DECISIONS_LOG_PDP_ID` nor `PERMGUARD_EVENTS_PRODUCER_ID` from the pod name, which the server refuses, and refuses a values file or an `extraEnv` setting either.
+
+- **The decision reads answer from the Host's stream too, and every proof entry names its format.**
+  A Control Plane composed with the Host's stream engine reads, besides its own store, what the Host's consumer of `data/decisions` holds, in process.
+  A tenant read (`/zones/{zone}/ledgers/{ledger}/decisions/v1/records`) answers what the store holds first, then each producer's runs of that ledger by `host_id` and the order they opened, each record naming its `host_id` and run; the zone and ledger are resolved by name or id in the catalog.
+  `pdp` and `instance` naming a `host_id` and a run the consumer holds read that run alone; any other pair reads the store as before.
+  Each `proof[]` entry now carries `format`: `host-batch-v1` with the sealed batch's JWS as `signature`, its inclusion paths reaching the root that batch signs, or `legacy-jws-v1` beside the store's JWS members, which are unchanged.
+  A cursor standing in a run behind what the consumer still holds is refused as `offset_expired`.
+
+- **Decisions are recorded on the Host's stream, named by the Host and its run.**
+  A Data Plane keeping a decision log now appends each record to the Host's stream engine, one stream per zone and ledger, as `data/decisions`; the Host's producer owns the run, the sequence, the flush and the reserve.
+  A record's `stream.id` is the Host's `host_id` and `stream.instance` the run, each as 32 lowercase hex digits; `seq` and `prev` are the engine's.
+  The first record a process writes to a run is the marker governing what follows.
+  Records leave over the membership's `decisions.ship` task: when its subscription is due, a stream its task covers rolls over to a run carrying the subscription's fence, and a run no coordinator's task fences stays on the Host.
+  A forked stream no longer keeps the other streams of its producer from shipping.
+  Configuration: `decisions.log.pdp_id` (`PERMGUARD_DECISIONS_LOG_PDP_ID`) is retired and refused at start.
+  The new `decisions.log.mode` (`PERMGUARD_DECISIONS_LOG_MODE`) is `required` or `disabled`; unset, it follows `decisions.log.enabled`, and an `enabled` that contradicts it is refused.
+  `best-effort` is refused until its loss record is defined.
+  `decisions.log.on_full: open` is refused; `closed` is accepted and changes nothing.
+  In `required` a decision is answered only once its record is durable; when the stream holds more than `spool.bytes`, or older than `spool.age`, that its required subscriptions have not acknowledged, or the engine refuses the append, the decision is refused `unavailable` with `decision_unrecordable`.
+  A plane with the log on refuses to start unless the Host composes a stream engine producing `data/decisions` and the plane's `data.attest` signing ring.
+  A stream a coordinator's `decisions.ship` task covers opens its first run under that task's fence once the subscription has been seen.
+  `decisions.log.mode` and `decisions.log.enabled` saying different things are refused, within one layer or across layers.
+  A version 1 spool left by an earlier release is shipped by the old shipper to its configured server until it is empty, and nothing new is written to it.
+  It is shipped only while the log is on and `decisions.log.server` is configured; with the log off, a start that finds one says so.
+  A control plane receiving batches beside such a plane trusts that plane's ring under the name the spool's records carry.
+
+- **A journal can drop its oldest segments, and one missing its first segment no longer opens.**
+  The storage library's journals can now delete whole segments below a frame, recording the first frame they still hold in a `BASE` file beside the segments; the stream retention that uses it follows.
+  Opening a journal whose first segment is missing, without `BASE` or with one no segment starts at, is now refused as corruption rather than read from the segments that remain.
+  `volume verify` counts a journal's frames from `BASE` and reports a `BASE` that names no segment.
+
+- **Read cursors expire, and a read refuses what it does not take.**
+  The decision and event reads now issue version 2 cursors (`v2.` tokens): bound to the read's API, resource and filters, to the key that issued them, and to an expiry set by the new `operations.streams.cursor_ttl` (`PERMGUARD_STREAM_CURSOR_TTL`, one day by default, at most 365 days).
+  An earlier version 1 cursor is still accepted until the key that sealed it rotates out.
+  A cursor of another read, resource or filter set, or one past its expiry, is refused as `forged`, now a validation refusal; a malformed one as `offset_invalid`.
+  The REST reads refuse a query parameter they do not name, one given twice, `limit` together with `limit_records`, and a number, flag or `until` that does not parse, as `invalid_argument`, where they used to ignore it.
+
 - **The daily JSON-lines audit sink is gone; its chains move into the volume and stay verifiable.**
   The file sink that wrote `audit-YYYY-MM-DD.jsonl` and its `.seal` files is deleted.
   Since the Host trails it wrote nothing in a server, and now no code writes those files.
@@ -419,6 +1096,25 @@ is cut.
   A deployment with a single zone therefore holds a quarter of the cache's partitions, not all of them: set the two keys to the whole cache's values to keep the previous behaviour.
   A zone over its bound evicts only its own entries, so one zone cannot empty the cache for the others; a bound larger than the whole cache is refused at startup.
 
+### Removed
+
+- **A Data Plane no longer mirrors a configured URL (WP-7.7).**
+  `dataPlane.mirrors.servers`, with its TLS material and the ring a mirror took at first contact, is gone.
+  A file still naming it stops the start, saying what replaces it.
+  v0.1.6 is the last release that mirrors over a URL.
+  A Data Plane in its own process mirrors the `policy.mirror` tasks of its Host's memberships.
+  The signed manifest binds the coordinator, the scope and the ring its heads verify under.
+  An all-in-one mirrors its own Control Plane in-process, verified under its own `control.attest` ring, and `dataPlane.mirrors.local` narrows it by zone and ledger patterns.
+  Upgrading: remove `servers` from every configuration.
+  An all-in-one then serves as before, with nothing else to do.
+  A standalone Data Plane serves again once its Host is enrolled: `permguard host members invite` on the Control Plane's Host, `permguard host members join` on its own.
+  The mirrors a release up to v0.1.6 wrote, `data/mirrors/<zone>/<ledger>`, are never served, and the first mirror round removes them, recorded as `mirror.reaped`.
+  A plane with mirroring on that can follow no task says so at start and every round, rather than quietly serving nothing.
+  Nothing is lost: a mirror is a cache its coordinator fills again.
+  The chart no longer points a data plane group at its release's Control Plane: each replica is enrolled, as the group's `-membership` ConfigMap states.
+  No Plane trusts a key it fetched from `/control-plane/keys` or `/data-plane/keys` any more; the endpoints stay published for operators.
+  The legacy decision shipper no longer borrows the single mirror server as its destination: name it under `dataPlane.decisions.log.server`.
+
 ### Security
 
 - Releases are built, packaged and attested by one reusable workflow, `.github/workflows/release-build.yml`, which is the SLSA Build L3 builder their provenance names.
@@ -437,6 +1133,39 @@ is cut.
 - An identity rotation destroys every retired private key past its grace that the custody still holds, so a key a previous rotation could not destroy is tried again; a key kept is reported as `host.identity_key_kept`, and the public keys and successions stay.
 
 ### Fixed
+
+- **Concurrent temporal submissions are no longer refused out of order across a second boundary.**
+  A submission stamped its `observed_at` when it arrived, before the journal gave it a sequence, so two submissions racing across a second could be sequenced against their observation and the second refused `event_out_of_order`.
+  Under the ledger's lock, a record is now never observed before the one sequenced ahead of it, by up to 30 seconds; a record further ahead is a clock that moved, and carries nothing forward.
+
+- **A backup whose roots could not be flushed is aborted, not left `prepared` (WP-7.13).**
+  A prepare refused because a directory of a root could not be flushed left its operation listed `prepared` until the next restart, with no barrier behind it.
+  It is now recorded `aborted` when the prepare is refused.
+
+- **`limits.concurrent_requests` bounds the whole surface, as documented (TS-4).**
+  The bound was applied once per route, so a surface held the configured number of requests on each of its routes at once.
+  A deployment that relied on the larger effective bound sees refusals sooner and should size the setting from its benchmark report.
+  A plane surface's own `/health` and `/version` share its bound, so liveness and readiness probes belong on the Host's `/healthz` and `/readyz`, as the chart and the Compose lab already use.
+
+- **Cedar decides a request whose subject or resource nobody stated (TL-6).**
+  An entity that neither the entity store nor the request's properties state was added to the store with no attributes.
+  A schema that requires attributes then refused the whole request as `evaluation_input_rejected`.
+  The entity is now absent, as Cedar reads it, and the request is decided, as upstream's integration corpus decides it.
+
+- **Decisions answered just after a membership was synced are shipped (TD-3).**
+  A member that took its manifest with `host members sync` registered its ship tasks only at its next periodic pass, up to a minute later.
+  A decision recorded meanwhile opened its stream's first run without the task's fence; the pass then rolled the stream over, and that run's records were never acknowledged by the coordinator.
+  The ship tasks of every manifest a member accepts are now registered when it accepts it.
+
+- **An audit trail being created is no longer read as a damaged one (TD-3).**
+  A trail's directory exists a moment before its `META.cbor`, and listing the trails without the lock they are created under read such a trail as unreadable: a fresh Host logged `audit.sweep_failed`, and an audit export or an identity reset in that window would have refused.
+
+- **One commit pushed to two ledgers of the same name is two requests (TD-3).**
+  A push's request id named the ref and the new head but not the ledger, so `apply` of one commit to `acme/main` and `beta/main` within one second was refused `request_id_reused`.
+  The id now names the ledger's zone and ledger as well.
+
+- **An idle decision spool is neither full nor expired.**
+  The spool's pressure counted every segment it held, the last one acknowledged included, so a plane that had shipped everything ended its stream for `age_expiry` after a quiet day; it now measures only the segments holding a record the receiver has not acknowledged.
 
 - `admin.tls.allow` is refused whenever the file states it; the check used to run only when `realms_from` was set.
 - An object is never overwritten (H-06).

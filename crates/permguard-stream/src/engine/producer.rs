@@ -28,8 +28,19 @@ use permguard_objects::cbor::Value;
 
 use super::codec::{Map, encode, uint};
 use super::run::{Fence, RunEnd, RunStatement, statement_digest};
-use super::state::State;
+use super::state::{Base, State};
 use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex, record_digest};
+
+mod inspect;
+mod prune;
+mod runs;
+mod seal;
+mod ship;
+
+pub use seal::{
+    Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, Sealing, Span, Spans, canonical_jwk,
+};
+pub use ship::{MAX_SUBSCRIPTION_BYTES, PressureBounds, Subscription, SubscriptionState};
 
 /// The frame kinds of a producer's journal.
 pub(crate) const RUN_OPEN: u16 = 1;
@@ -56,6 +67,8 @@ pub(crate) struct Context {
     pub(crate) claim: u64,
     pub(crate) operations: Arc<Ring>,
     pub(crate) time: Arc<TimeGuard>,
+    /// The size past which the stream's journal segment rolls (WP-5.6b).
+    pub(crate) segment_bytes: u64,
 }
 
 /// What an append answers once its record is durable.
@@ -66,12 +79,45 @@ pub struct Receipt {
     pub record_digest: [u8; 32],
 }
 
+/// Where the next record of a stream lands: what a record that names its own position is built
+/// from (WP-6.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    pub run_id: [u8; 16],
+    pub seq: u64,
+    /// The digest of the record before it in the run; zeros at sequence 1.
+    pub prev: [u8; 32],
+}
+
+/// What a `dr` restore did to a producer's streams (WP-7.7): the successor of each run it rolled
+/// over, and each forked stream it left to its operator, by resource with where it forked.
+#[derive(Debug, Default)]
+pub struct Restored {
+    pub rolled: Vec<RunStatement>,
+    pub forked: Vec<(String, u64)>,
+}
+
 /// The typed producer handle of one descriptor.
 pub struct Producer<C> {
     context: Context,
     descriptor: Descriptor,
     codec: C,
     streams: Mutex<BTreeMap<String, Arc<Physical>>>,
+    /// The descriptor's ring, once the Host handed it: what batches are sealed under.
+    signer: Option<Arc<Ring>>,
+    /// Each subscription backing off: its attempts and the second it waits until (WP-5.4).
+    backoff: Mutex<BTreeMap<String, (u32, u64)>>,
+    /// The `history` floor the Plane registered (WP-5.6b), replaced when the Plane registers its
+    /// own through the composition (WP-6.2a).
+    floor: std::sync::RwLock<Option<Arc<dyn super::retention::RetentionFloor>>>,
+    /// Keeps the garbage collection's passes from overlapping (WP-5.6b).
+    pub(crate) lease: super::retention::Lease,
+    /// The fence of each subscription seen shipping, with its task's selector: what a stream it
+    /// covers opens its genesis run under (WP-6.1, after the review).
+    fences: Mutex<Vec<(permguard_core::authz::Selector, Fence)>>,
+    /// How long a batch is kept after every required subscription acknowledged it (WP-7.9b):
+    /// `None` deletes it at once.
+    acknowledged_retention: Option<std::time::Duration>,
 }
 
 impl<C> std::fmt::Debug for Producer<C> {
@@ -91,7 +137,183 @@ impl<C: RecordCodec> Producer<C> {
             descriptor,
             codec,
             streams: Mutex::new(BTreeMap::new()),
+            signer: None,
+            backoff: Mutex::new(BTreeMap::new()),
+            floor: std::sync::RwLock::new(None),
+            lease: super::retention::Lease::default(),
+            fences: Mutex::new(Vec::new()),
+            acknowledged_retention: None,
         }
+    }
+
+    /// This producer keeping each batch `retention` after every required subscription
+    /// acknowledged it (WP-7.9b): a coordinator restored from a snapshot that old is resent what
+    /// it lost. Zero deletes at once; a retention under a second counts as one.
+    pub fn with_acknowledged_retention(mut self, retention: std::time::Duration) -> Self {
+        self.acknowledged_retention = (!retention.is_zero()).then_some(retention);
+        self
+    }
+
+    /// The acknowledged retention in force, seconds.
+    pub(crate) fn acknowledged_retention_secs(&self) -> Option<u64> {
+        self.acknowledged_retention
+            .map(|retention| retention.as_secs().max(1))
+    }
+
+    /// This producer's `history` streams kept above `floor`, the oldest position a loaded
+    /// temporal contract reads (WP-5.6b).
+    pub fn with_retention_floor(
+        mut self,
+        floor: Arc<dyn super::retention::RetentionFloor>,
+    ) -> Self {
+        *self
+            .floor
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(floor);
+        self
+    }
+
+    /// The `history` floor in force.
+    pub(crate) fn floor(&self) -> Option<Arc<dyn super::retention::RetentionFloor>> {
+        self.floor
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// This producer sealing its batches under `signer`, the ring its descriptor names.
+    pub fn with_signer(mut self, signer: Arc<Ring>) -> Result<Self, StreamError> {
+        if signer.id() != self.descriptor.ring {
+            return Err(StreamError::Sign(format!(
+                "`{}/{}` seals under `{}`, not `{}`",
+                self.descriptor.plane,
+                self.descriptor.stream_type,
+                self.descriptor.ring,
+                signer.id()
+            )));
+        }
+        self.signer = Some(signer);
+        Ok(self)
+    }
+
+    /// Seals the next batch of the stream of `resource`, at most `max_records` and never more
+    /// than the descriptor's batch bound: answers it once its file is durable.
+    pub fn seal(&self, resource: &Resource, max_records: u64) -> Result<Sealing, StreamError> {
+        self.seal_within(resource, max_records, usize::MAX)
+    }
+
+    /// [`Producer::seal`] with the batch's records within `max_record_bytes` as well: what a ship
+    /// task's message bound allows (WP-5.4).
+    pub fn seal_within(
+        &self,
+        resource: &Resource,
+        max_records: u64,
+        max_record_bytes: usize,
+    ) -> Result<Sealing, StreamError> {
+        let Some(signer) = &self.signer else {
+            return Err(StreamError::Sign(
+                "the producer was handed no ring to seal under".to_owned(),
+            ));
+        };
+        let bound = max_records.min(u64::from(self.descriptor.max_batch_records));
+        self.physical(resource)?.seal(
+            &self.context,
+            &self.descriptor,
+            signer,
+            bound,
+            max_record_bytes,
+        )
+    }
+
+    /// The signer spans of the stream of `resource`.
+    pub fn spans(&self, resource: &Resource) -> Result<Spans, StreamError> {
+        let physical = self.physical(resource)?;
+        let writer = physical.writer();
+        seal::spans_of(&writer.dir)
+    }
+
+    /// The cutovers this producer's streams wait for, as their CUTOVER views hold them.
+    pub fn pending_cutovers(&self) -> Result<Vec<Cutover>, StreamError> {
+        let mut found = Vec::new();
+        for physical in self.every()? {
+            if let Some(cutover) = seal::cutover_of(&physical.writer().dir)?
+                && !cutover.confirmed
+            {
+                found.push(cutover);
+            }
+        }
+        Ok(found)
+    }
+
+    /// `(stream, from_seq)` of every stream fenced by `membership_id` that needs a cutover before
+    /// the descriptor ring's key `kid` seals it, each recorded pending (WP-4.5, WP-5.2).
+    pub fn due_cutovers(
+        &self,
+        membership_id: &[u8; 16],
+        kid: &str,
+    ) -> Result<Vec<(String, u64)>, StreamError> {
+        let Some(signer) = &self.signer else {
+            return Err(StreamError::Sign(
+                "the producer was handed no ring to seal under".to_owned(),
+            ));
+        };
+        let mut due = Vec::new();
+        for physical in self.every()? {
+            if let Some(stream) = physical.due(&self.descriptor, signer, membership_id, kid)? {
+                due.push(stream);
+            }
+        }
+        Ok(due)
+    }
+
+    /// Records that the coordinator journaled the cutover of `stream` to `kid`: the key seals
+    /// from the sequence the cutover names. Refuses a cutover the stream does not wait for.
+    pub fn confirm_cutover(&self, stream: &str, kid: &str) -> Result<(), StreamError> {
+        confirm(&self.every()?, stream, kid)
+    }
+
+    /// Every stream of this producer on disk, opened: the key of one not open yet read from the
+    /// run its journal starts with, and refused unless it is this producer's at that place. A
+    /// stream is opened under the map's lock, as `physical` opens one, so no journal is ever held
+    /// twice; once open it stays in the map, and a later call only lists the directory.
+    fn every(&self) -> Result<Vec<Arc<Physical>>, StreamError> {
+        let mut streams = self.streams.lock().unwrap_or_else(PoisonError::into_inner);
+        let host = hex(&self.context.host_id);
+        let mut found = Vec::new();
+        for component in self.context.dir.subdirs()? {
+            if let Some(open) = streams
+                .values()
+                .find(|physical| physical.key.resource_component() == component)
+            {
+                found.push(Arc::clone(open));
+                continue;
+            }
+            let dir = self.context.dir.subdir(&component, false)?;
+            if !dir.subdirs()?.contains(&host) {
+                continue;
+            }
+            let Some(key) = Physical::key_of(&self.context, &dir.subdir(&host, false)?)? else {
+                continue;
+            };
+            let ours = key.plane == self.descriptor.plane
+                && key.stream_type == self.descriptor.stream_type
+                && key.version == self.descriptor.version
+                && key.producer_host_id == self.context.host_id
+                && key.resource_component() == component;
+            if !ours {
+                return Err(StreamError::Corruption(format!(
+                    "the stream at `{component}` opens a run of another stream"
+                )));
+            }
+            let physical = Arc::new(Physical::open(
+                &self.context,
+                &self.descriptor,
+                key.clone(),
+            )?);
+            streams.insert(key.resource, Arc::clone(&physical));
+            found.push(physical);
+        }
+        Ok(found)
     }
 
     /// The physical stream of `resource`, opened and recovered on first use.
@@ -124,6 +346,74 @@ impl<C: RecordCodec> Producer<C> {
         resource: &Resource,
         bytes: Vec<u8>,
     ) -> Result<Receipt, StreamError> {
+        // The typed validator: what is appended reads back as a record, and is its canonical
+        // encoding (after the review).
+        self.check(&bytes)?;
+        let physical = self.physical(resource)?;
+        let mut bytes = Some(bytes);
+        physical.append(
+            &self.context,
+            self.genesis_fence(resource),
+            self.descriptor.record_domain,
+            &mut |_| Ok(bytes.take().into_iter().collect()),
+        )
+    }
+
+    /// Appends the records `build` makes from the stream's next position, under the lock that
+    /// gives sequences, so a record can name its own place (WP-6.1): the records take consecutive
+    /// sequences from `position.seq`, each checked by the codec as [`Self::append_bytes`] checks
+    /// one. Answers the last record's receipt once the flush covering it completed.
+    pub fn append_with(
+        &self,
+        resource: &Resource,
+        build: impl FnOnce(Position) -> Result<Vec<Vec<u8>>, String>,
+    ) -> Result<Receipt, StreamError> {
+        let physical = self.physical(resource)?;
+        let mut build = Some(build);
+        physical.append(
+            &self.context,
+            self.genesis_fence(resource),
+            self.descriptor.record_domain,
+            &mut |position| {
+                let build = build
+                    .take()
+                    .ok_or_else(|| StreamError::Invalid("a record built twice".to_owned()))?;
+                let records = build(position).map_err(StreamError::Invalid)?;
+                for bytes in &records {
+                    self.check(bytes)?;
+                }
+                Ok(records)
+            },
+        )
+    }
+
+    /// The fence a stream of `resource` opens its genesis run under: the first subscription seen
+    /// shipping whose task covers it, `None` on a standalone Host.
+    fn genesis_fence(&self, resource: &Resource) -> Option<Fence> {
+        self.fences
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .find(|(selector, _)| selector.contains(resource))
+            .map(|(_, fence)| fence.clone())
+    }
+
+    /// Remembers `fence`, with its task's `selector`, for the genesis runs it covers: in place of
+    /// an earlier epoch of the same task.
+    pub(crate) fn remember_fence(&self, selector: &permguard_core::authz::Selector, fence: Fence) {
+        let mut fences = self.fences.lock().unwrap_or_else(PoisonError::into_inner);
+        match fences.iter_mut().find(|(_, held)| {
+            held.membership_id == fence.membership_id && held.task_id == fence.task_id
+        }) {
+            Some(held) if held.1.epoch <= fence.epoch => *held = (selector.clone(), fence),
+            Some(_) => {}
+            None => fences.push((selector.clone(), fence)),
+        }
+    }
+
+    /// Refuses a record's `bytes` the codec does not read back, or not in its canonical
+    /// encoding, or past the descriptor's bound.
+    fn check(&self, bytes: &[u8]) -> Result<(), StreamError> {
         if bytes.len() > self.descriptor.max_record_bytes as usize {
             return Err(StreamError::Invalid(format!(
                 "a record of {} bytes; this stream takes up to {}",
@@ -131,16 +421,13 @@ impl<C: RecordCodec> Producer<C> {
                 self.descriptor.max_record_bytes
             )));
         }
-        // The typed validator: what is appended reads back as a record, and is its canonical
-        // encoding (after the review).
-        let record = self.codec.decode(&bytes).map_err(StreamError::Invalid)?;
+        let record = self.codec.decode(bytes).map_err(StreamError::Invalid)?;
         if self.codec.encode(&record).map_err(StreamError::Invalid)? != bytes {
             return Err(StreamError::Invalid(
                 "a record is appended in its canonical encoding".to_owned(),
             ));
         }
-        let physical = self.physical(resource)?;
-        physical.append(&self.context, bytes, self.descriptor.record_domain)
+        Ok(())
     }
 
     /// The run the stream of `resource` writes under, opening a genesis run carrying `fence`
@@ -182,6 +469,39 @@ impl<C: RecordCodec> Producer<C> {
             .rollover(&self.context, fence, Some(approval))
     }
 
+    /// Rolls every stream of this producer over after a `dr` restore (WP-7.7, owner decision of
+    /// 2026-10-26): each run of the snapshot ends at its last durable record and its successor
+    /// opens under this handle's boot id, the restore's, with the run's fence. A coordinator may
+    /// hold a run further than its snapshot does, so the restored producer never appends to one;
+    /// its successors are new runs to every consumer. A forked stream is left to its operator.
+    pub fn succeed_restored(&self) -> Result<Restored, StreamError> {
+        let mut restored = Restored::default();
+        for physical in self.every()? {
+            let (run, forked) = {
+                let writer = physical.writer();
+                (
+                    writer.run.clone(),
+                    writer.state.as_ref().and_then(|state| state.forked_at_seq),
+                )
+            };
+            let Some(run) = run else {
+                continue;
+            };
+            if let Some(at_seq) = forked {
+                restored
+                    .forked
+                    .push((physical.key.resource.clone(), at_seq));
+                continue;
+            }
+            restored.rolled.push(physical.rollover(
+                &self.context,
+                run.statement.fence.clone(),
+                None,
+            )?);
+        }
+        Ok(restored)
+    }
+
     /// The stream's STATE, once it holds a run.
     pub fn state(&self, resource: &Resource) -> Result<Option<State>, StreamError> {
         let physical = self.physical(resource)?;
@@ -189,20 +509,68 @@ impl<C: RecordCodec> Producer<C> {
         Ok(writer.state.clone())
     }
 
-    /// The records of the current run from `from_seq`, at most `limit`.
+    /// The records of the current run from `from_seq`, at most `limit`; a read starting at or
+    /// below what the run deleted answers from the sequence after it, with the gap and the run's
+    /// anchor (WP-5.6c), never as complete.
     pub fn read(
         &self,
         resource: &Resource,
         from_seq: u64,
         limit: usize,
-    ) -> Result<Vec<(u64, C::Record)>, StreamError> {
+    ) -> Result<super::anchor::Page<C::Record>, StreamError> {
         let physical = self.physical(resource)?;
+        let page = Self::page_of(&physical, from_seq, limit)?;
+        Ok(super::anchor::Page {
+            records: page
+                .records
+                .into_iter()
+                .map(|(seq, bytes)| {
+                    Ok((
+                        seq,
+                        self.codec.decode(&bytes).map_err(StreamError::Invalid)?,
+                    ))
+                })
+                .collect::<Result<_, StreamError>>()?,
+            gap: page.gap,
+        })
+    }
+
+    /// [`Self::read`] of `physical`, the records as their bytes.
+    fn page_of(
+        physical: &Physical,
+        from_seq: u64,
+        limit: usize,
+    ) -> Result<super::anchor::Page<Vec<u8>>, StreamError> {
         let writer = physical.writer();
         let Some(run) = &writer.run else {
-            return Ok(Vec::new());
+            return Ok(super::anchor::Page {
+                records: Vec::new(),
+                gap: None,
+            });
         };
+        // Read without creating: a stream that never sealed has no batches directory.
+        let mut anchor = None;
+        if writer.dir.subdirs()?.iter().any(|name| name == "batches") {
+            let batches = writer.dir.subdir("batches", false)?;
+            let run_dir = hex(&run.statement.run_id);
+            if batches.subdirs()?.contains(&run_dir) {
+                anchor = super::anchor::anchor_in(&batches.subdir(&run_dir, false)?)?;
+            }
+        }
+        let low_watermark = anchor.as_ref().map_or(1, |anchor| anchor.low_watermark);
+        let gap = match anchor {
+            Some(anchor) if from_seq < anchor.low_watermark => Some(super::anchor::Gap {
+                low_watermark: anchor.low_watermark,
+                anchor,
+            }),
+            _ => None,
+        };
+        let from_seq = from_seq.max(low_watermark).max(1);
         let mut found = Vec::new();
-        let mut in_run = false;
+        // Below the journal's first frame the run may have opened earlier (WP-5.6).
+        let mut in_run = writer
+            .base()
+            .is_some_and(|base| statement_digest(&base.statement) == run.digest);
         for frame in writer.journal.frames()? {
             match frame.kind {
                 RUN_OPEN => in_run = statement_digest(&frame.payload) == run.digest,
@@ -211,17 +579,17 @@ impl<C: RecordCodec> Producer<C> {
                     for (offset, bytes) in records.into_iter().enumerate() {
                         let seq = first + offset as u64;
                         if seq >= from_seq && found.len() < limit {
-                            found.push((
-                                seq,
-                                self.codec.decode(&bytes).map_err(StreamError::Invalid)?,
-                            ));
+                            found.push((seq, bytes));
                         }
                     }
                 }
                 _ => {}
             }
         }
-        Ok(found)
+        Ok(super::anchor::Page {
+            records: found,
+            gap,
+        })
     }
 }
 
@@ -254,6 +622,8 @@ struct Writer {
     /// Whether RESERVE holds allocated blocks; `false` where the filesystem cannot, which leaves
     /// the stream to closed pressure.
     reserved: bool,
+    /// Where the next seal starts, while its run is current (WP-5.2).
+    next: Option<seal::Next>,
 }
 
 /// The sequences given and made durable, behind their own lock.
@@ -261,6 +631,8 @@ struct Writer {
 struct Queue {
     run_id: Option<[u8; 16]>,
     next_seq: u64,
+    /// The digest of the last record given a sequence: the `prev` of the next (WP-6.1).
+    last_digest: [u8; 32],
     durable: u64,
     pending: Vec<(u64, Vec<u8>)>,
     flushing: bool,
@@ -278,6 +650,8 @@ struct Physical {
     writer: Mutex<Writer>,
     queue: Mutex<Queue>,
     moved: Condvar,
+    /// Where each run's record groups sit in the journal, as far as a read has looked (WP-6.2a).
+    groups: Mutex<runs::Groups>,
 }
 
 /// A RECORDS frame's payload: the records from `first`, one flush's group.
@@ -328,6 +702,60 @@ pub fn decode_group(bytes: &[u8]) -> Result<(u64, Vec<Vec<u8>>), StreamError> {
     Ok((first, records))
 }
 
+/// Confirms the cutover of `stream` to `kid` among `streams`: refused unless it is the cutover
+/// that stream waits for.
+fn confirm(streams: &[Arc<Physical>], stream: &str, kid: &str) -> Result<(), StreamError> {
+    let component = stream
+        .split('/')
+        .nth(2)
+        .ok_or_else(|| StreamError::Invalid(format!("`{stream}` names no stream")))?;
+    let physical = streams
+        .iter()
+        .find(|physical| physical.key.resource_component() == component)
+        .ok_or_else(|| StreamError::Invalid(format!("`{stream}` is no stream of this Host")))?;
+    let writer = physical.writer();
+    match seal::cutover_of(&writer.dir)? {
+        Some(mut cutover) if cutover.stream == stream && cutover.kid == kid => {
+            if !cutover.confirmed {
+                cutover.confirmed = true;
+                seal::keep_cutover(&writer.dir, &cutover)?;
+            }
+            Ok(())
+        }
+        _ => Err(StreamError::Invalid(format!(
+            "`{stream}` waits for no cutover to `{kid}`"
+        ))),
+    }
+}
+
+/// The base the journal starts at (WP-5.6): `None` while it holds every frame from 0. A STATE
+/// base above the journal's first frame is a deletion a crash stopped after STATE and before
+/// `BASE`, finished here; a journal starting after frame 0 where STATE names no base at that
+/// frame lost what its open needs, and is corruption.
+fn base_of(journal: &mut Journal, state: Option<&State>) -> Result<Option<Base>, StreamError> {
+    let base = state.and_then(|state| state.base.clone());
+    let first = journal.first_index();
+    match &base {
+        Some(held) if held.first_index > first => {
+            let reached = journal.drop_prefix(held.first_index, None)?;
+            if reached != held.first_index {
+                return Err(StreamError::Corruption(format!(
+                    "STATE's base is at frame {}, and no segment starts there",
+                    held.first_index
+                )));
+            }
+        }
+        Some(held) if held.first_index == first => {}
+        _ if first == 0 => return Ok(None),
+        _ => {
+            return Err(StreamError::Corruption(format!(
+                "the journal starts at frame {first}, and STATE names no base there"
+            )));
+        }
+    }
+    Ok(base)
+}
+
 fn random_id() -> Result<[u8; 16], StreamError> {
     use ring::rand::SecureRandom as _;
     let mut bytes = [0u8; 16];
@@ -355,18 +783,48 @@ impl Physical {
             .subdir(&key.resource_component(), true)?
             .subdir(&hex(&key.producer_host_id), true)?;
         let reserved = allocate(&dir, RESERVE_FILE, RESERVE_BYTES)?;
-        let (journal, _) = Journal::open(
+        let (mut journal, _) = Journal::open(
             dir.subdir(RECORDS_DIR, true)?,
             Options {
                 claim: context.claim,
+                segment_bytes: context.segment_bytes,
                 ..Options::default()
             },
         )?;
+        let state = read_view(&dir, STATE_FILE, format::VIEW)?
+            .map(|bytes| State::decode(&bytes))
+            .transpose()?;
         let mut runs: Vec<Run> = Vec::new();
+        let mut keys: Option<Vec<permguard_core::keys::Jwk>> = None;
+        // Once a prefix went (WP-5.6), the run open at the journal's first frame comes from
+        // STATE's base, written before `BASE`: a deletion a crash stopped between the two is
+        // finished here, and a journal starting where STATE names no base is corruption.
+        if let Some(base) = base_of(&mut journal, state.as_ref())? {
+            keys = Some(super::run::own_keys(&context.operations)?);
+            let statement =
+                RunStatement::verify_among(&base.statement, keys.as_deref().unwrap_or(&[]))?;
+            if statement.key != key {
+                return Err(StreamError::Corruption(
+                    "STATE's base opens a run of another stream".to_owned(),
+                ));
+            }
+            runs.push(Run {
+                digest: statement_digest(&base.statement),
+                statement,
+                last_seq: base.last_seq,
+                last_digest: base.last_digest,
+                ended: base.ended,
+            });
+        }
         for frame in journal.frames()? {
             match frame.kind {
                 RUN_OPEN => {
-                    let statement = RunStatement::verify_own(&frame.payload, &context.operations)?;
+                    // The ring's keys read once for every run the segments open (WP-5.2).
+                    if keys.is_none() {
+                        keys = Some(super::run::own_keys(&context.operations)?);
+                    }
+                    let statement =
+                        RunStatement::verify_among(&frame.payload, keys.as_deref().unwrap_or(&[]))?;
                     if statement.key != key {
                         return Err(StreamError::Corruption(format!(
                             "frame {} opens a run of another stream",
@@ -429,21 +887,20 @@ impl Physical {
                 }
             }
         }
-        let state = read_view(&dir, STATE_FILE, format::VIEW)?
-            .map(|bytes| State::decode(&bytes))
-            .transpose()?;
         let mut writer = Writer {
             journal,
             run: runs.last().cloned(),
             state,
             dir,
             reserved,
+            next: None,
         };
         writer.reconcile(context, &runs)?;
         let mut queue = Queue::default();
         if let Some(run) = &writer.run {
             queue.run_id = Some(run.statement.run_id);
             queue.next_seq = run.last_seq + 1;
+            queue.last_digest = run.last_digest;
             queue.durable = run.last_seq;
         }
         queue.forked = writer.state.as_ref().and_then(|state| state.forked_at_seq);
@@ -452,7 +909,47 @@ impl Physical {
             writer: Mutex::new(writer),
             queue: Mutex::new(queue),
             moved: Condvar::new(),
+            groups: Mutex::new(runs::Groups::default()),
         })
+    }
+
+    /// The key of the stream whose directory is `dir`, from the run its journal starts with,
+    /// verified; `None` when it holds no run.
+    fn key_of(context: &Context, dir: &Dir) -> Result<Option<StreamKey>, StreamError> {
+        if !dir.subdirs()?.iter().any(|name| name == RECORDS_DIR) {
+            return Ok(None);
+        }
+        let (journal, _) = Journal::open(
+            dir.subdir(RECORDS_DIR, false)?,
+            Options {
+                claim: context.claim,
+                segment_bytes: context.segment_bytes,
+                ..Options::default()
+            },
+        )?;
+        // Once a prefix went, the first run is the one STATE's base names (WP-5.6).
+        if journal.first_index() > 0 {
+            let state = read_view(dir, STATE_FILE, format::VIEW)?
+                .map(|bytes| State::decode(&bytes))
+                .transpose()?;
+            let Some(base) = state.and_then(|state| state.base) else {
+                return Err(StreamError::Corruption(format!(
+                    "the journal starts at frame {}, and STATE names no base",
+                    journal.first_index()
+                )));
+            };
+            return Ok(Some(
+                RunStatement::verify_own(&base.statement, &context.operations)?.key,
+            ));
+        }
+        for frame in journal.frames()? {
+            if frame.kind == RUN_OPEN {
+                return Ok(Some(
+                    RunStatement::verify_own(&frame.payload, &context.operations)?.key,
+                ));
+            }
+        }
+        Ok(None)
     }
 
     fn writer(&self) -> MutexGuard<'_, Writer> {
@@ -492,19 +989,23 @@ impl Physical {
         let mut queue = lock(&self.queue);
         queue.run_id = Some(statement.run_id);
         queue.next_seq = 1;
+        queue.last_digest = [0; 32];
         queue.durable = 0;
         Ok(statement)
     }
 
-    /// Gives `bytes` the next sequence and answers once a flush made it durable.
+    /// Gives the records `build` makes from the next position consecutive sequences, opening a
+    /// genesis run carrying `fence` when the stream holds none, and
+    /// answers once a flush made the last durable. `build` runs under the queue's lock, so the
+    /// position it is handed is the one its records take.
     fn append(
         &self,
         context: &Context,
-        bytes: Vec<u8>,
+        fence: Option<Fence>,
         domain: &str,
+        build: &mut dyn FnMut(Position) -> Result<Vec<Vec<u8>>, StreamError>,
     ) -> Result<Receipt, StreamError> {
-        self.ensure_run(context, None)?;
-        let digest = record_digest(domain, &bytes);
+        self.ensure_run(context, fence)?;
         let mut queue = lock(&self.queue);
         loop {
             if let Some(failed) = &queue.failed {
@@ -526,9 +1027,23 @@ impl Physical {
         let Some(run_id) = queue.run_id else {
             return Err(StreamError::Invalid("the stream holds no run".to_owned()));
         };
-        let seq = queue.next_seq;
-        queue.next_seq += 1;
-        queue.pending.push((seq, bytes));
+        let records = build(Position {
+            run_id,
+            seq: queue.next_seq,
+            prev: queue.last_digest,
+        })?;
+        if records.is_empty() {
+            return Err(StreamError::Invalid("an append of no record".to_owned()));
+        }
+        let mut seq = 0;
+        let mut digest = queue.last_digest;
+        for bytes in records {
+            seq = queue.next_seq;
+            queue.next_seq += 1;
+            digest = record_digest(domain, &bytes);
+            queue.pending.push((seq, bytes));
+        }
+        queue.last_digest = digest;
         queue.waiting += 1;
         let outcome = loop {
             if queue.durable >= seq && queue.run_id == Some(run_id) {
@@ -677,6 +1192,7 @@ impl Physical {
         if let Some(current) = &writer.run {
             queue.run_id = Some(current.statement.run_id);
             queue.next_seq = current.last_seq + 1;
+            queue.last_digest = current.last_digest;
             queue.durable = current.last_seq;
             if current.statement.run_id == statement.run_id {
                 queue.forked = None;
@@ -699,6 +1215,100 @@ impl Physical {
 }
 
 impl Writer {
+    /// STATE's base, once the journal no longer starts at frame 0 (WP-5.6).
+    fn base(&self) -> Option<&Base> {
+        let first = self.journal.first_index();
+        self.state
+            .as_ref()
+            .and_then(|state| state.base.as_ref())
+            .filter(|base| first > 0 && base.first_index == first)
+    }
+
+    /// Keeps `base` as STATE's, before the journal's prefix goes (WP-5.6b).
+    fn keep_base(&mut self, base: Base) -> Result<(), StreamError> {
+        let Some(mut state) = self.state.clone() else {
+            return Err(StreamError::Corruption(
+                "a stream whose prefix goes holds no STATE".to_owned(),
+            ));
+        };
+        state.base = Some(base);
+        replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
+        self.state = Some(state);
+        Ok(())
+    }
+
+    /// Puts STATE's base back to `base`, after a prefix deletion that did not reach the journal.
+    fn restore_base(&mut self, base: Option<Base>) -> Result<(), StreamError> {
+        let Some(mut state) = self.state.clone() else {
+            return Ok(());
+        };
+        state.base = base;
+        replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
+        self.state = Some(state);
+        Ok(())
+    }
+
+    /// Keeps `mark` as STATE's `unshipped`, or removes it (WP-5.8).
+    fn keep_unshipped(&mut self, mark: Option<super::state::Unshipped>) -> Result<(), StreamError> {
+        // A stream behind holds a run, and so a STATE: a mark with nowhere to go is never lost
+        // quietly (after the review).
+        let Some(mut state) = self.state.clone() else {
+            return match mark {
+                Some(_) => Err(StreamError::Corruption(
+                    "a stream behind holds no STATE to mark".to_owned(),
+                )),
+                None => Ok(()),
+            };
+        };
+        if state.unshipped == mark {
+            return Ok(());
+        }
+        state.unshipped = mark;
+        replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
+        self.state = Some(state);
+        Ok(())
+    }
+
+    /// Moves STATE's `acknowledged_seq` to `acknowledged`, the current run's `truncate_safe`,
+    /// never past `signed_seq` (WP-5.4).
+    fn keep_acknowledged(&mut self, acknowledged: u64) -> Result<(), StreamError> {
+        let Some(mut state) = self.state.clone() else {
+            return Ok(());
+        };
+        // Never backwards (after the review).
+        let acknowledged = acknowledged.min(state.signed_seq);
+        if acknowledged <= state.acknowledged_seq {
+            return Ok(());
+        }
+        state.acknowledged_seq = acknowledged;
+        replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
+        self.state = Some(state);
+        Ok(())
+    }
+
+    /// Moves STATE's `signed_seq` to `signed`, the watermark the batch files of `run` cover.
+    fn keep_signed(&mut self, run: &Run, signed: u64) -> Result<(), StreamError> {
+        let Some(mut state) = self
+            .state
+            .clone()
+            .filter(|state| state.run_id == run.statement.run_id)
+        else {
+            return Err(StreamError::Corruption(
+                "STATE names another run than the stream writes".to_owned(),
+            ));
+        };
+        if state.signed_seq == signed {
+            return Ok(());
+        }
+        // The head moves with it: a watermark never passes the durable one STATE names.
+        state.next_seq = run.last_seq + 1;
+        state.durable_seq = run.last_seq;
+        state.signed_seq = signed;
+        replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
+        self.state = Some(state);
+        Ok(())
+    }
+
     /// Writes STATE for `run`: its watermarks at the head, with `pending` and `forked`.
     fn keep_state(
         &mut self,
@@ -720,6 +1330,10 @@ impl Writer {
             oldest_retained_seq: held.map_or(1, |state| state.oldest_retained_seq),
             pending_successor: pending,
             forked_at_seq: forked,
+            // A drain's mark outlives a rollover: it goes only when nothing is behind.
+            unshipped: self.state.as_ref().and_then(|state| state.unshipped),
+            // What the journal's deleted prefix gave its open belongs to the journal, not the run.
+            base: self.state.as_ref().and_then(|state| state.base.clone()),
         };
         replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
         self.state = Some(state);
@@ -837,5 +1451,156 @@ impl<C: RecordCodec> permguard_host::composition::StreamAppender for Producer<C>
                 seq: receipt.seq,
             })
             .map_err(|error| error.to_string())
+    }
+
+    fn append_with(
+        &self,
+        resource: &Resource,
+        build: permguard_host::composition::BuildRecords<'_>,
+    ) -> Result<permguard_host::composition::StreamReceipt, String> {
+        Producer::append_with(self, resource, |position| {
+            build(permguard_host::composition::StreamPosition {
+                run_id: position.run_id,
+                seq: position.seq,
+                prev: position.prev,
+            })
+        })
+        .map(|receipt| permguard_host::composition::StreamReceipt {
+            run_id: receipt.run_id,
+            seq: receipt.seq,
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn pressure(
+        &self,
+        resource: &Resource,
+        max_bytes: u64,
+        max_age_secs: u64,
+    ) -> Result<Option<&'static str>, String> {
+        // Without a ring nothing is ever sealed or acknowledged, so the pressure is unknown: an
+        // error, which a Plane refuses its records on, never `None`.
+        Producer::pressure(
+            self,
+            resource,
+            PressureBounds {
+                max_bytes,
+                max_age_secs,
+            },
+        )
+        .map_err(|error| error.to_string())
+    }
+
+    fn runs(
+        &self,
+        resource: &Resource,
+    ) -> Result<Vec<permguard_host::composition::ProducedRun>, String> {
+        self.produced_runs(resource)
+            .map_err(|error| error.to_string())
+    }
+
+    fn records(
+        &self,
+        resource: &Resource,
+        run: &[u8; 16],
+        from: u64,
+        limit: usize,
+    ) -> Result<permguard_host::composition::ConsumedPage, String> {
+        let page = self
+            .produced_records(resource, run, from, limit)
+            .map_err(|error| error.to_string())?;
+        Ok(permguard_host::composition::ConsumedPage {
+            records: page.records,
+            low_watermark: page.gap.map(|gap| gap.low_watermark),
+        })
+    }
+
+    fn retain_above(
+        &self,
+        floor: Arc<dyn permguard_host::composition::StreamFloor>,
+    ) -> Result<(), String> {
+        *self
+            .floor
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(Arc::new(super::retention::PlaneFloor(floor)));
+        Ok(())
+    }
+}
+
+impl<C: RecordCodec> permguard_host::composition::StreamCutovers for Producer<C> {
+    fn due(
+        &self,
+        membership_id: &[u8; 16],
+        ring: &str,
+        kid: &str,
+    ) -> Result<Vec<(String, u64)>, String> {
+        if ring != self.descriptor.ring {
+            return Ok(Vec::new());
+        }
+        self.due_cutovers(membership_id, kid)
+            .map_err(|error| error.to_string())
+    }
+
+    fn journaled(&self, ring: &str, kid: &str, streams: &[(String, u64)]) -> Result<(), String> {
+        if ring != self.descriptor.ring {
+            return Ok(());
+        }
+        let ours = format!("{}/{}/", self.descriptor.plane, self.descriptor.stream_type);
+        let mine: Vec<&(String, u64)> = streams
+            .iter()
+            .filter(|(stream, _)| stream.starts_with(&ours))
+            .collect();
+        if mine.is_empty() {
+            return Ok(());
+        }
+        // The streams on disk, listed once for them all (after the review).
+        let every = self.every().map_err(|error| error.to_string())?;
+        for (stream, _) in mine {
+            confirm(&every, stream, kid).map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+}
+
+impl<C: RecordCodec> super::retention::Prunable for Producer<C> {
+    fn name(&self) -> String {
+        format!(
+            "producer {}/{} version {}",
+            self.descriptor.plane, self.descriptor.stream_type, self.descriptor.version
+        )
+    }
+
+    fn plan(&self, _now: u64) -> Result<Vec<super::retention::Pruned>, StreamError> {
+        let mut planned = Vec::new();
+        for physical in self.every()? {
+            planned.extend(self.prune_stream(&physical, None)?);
+        }
+        Ok(planned)
+    }
+
+    fn run(
+        &self,
+        _now: u64,
+        audit: super::retention::Audit<'_>,
+    ) -> Result<Option<Vec<super::retention::Pruned>>, StreamError> {
+        let Some(_held) = self.lease.take() else {
+            return Ok(None);
+        };
+        // One stream that fails does not stop the others, nor their records (after the review).
+        let mut pruned = Vec::new();
+        for physical in self.every()? {
+            match self.prune_stream(&physical, Some(audit)) {
+                Ok(done) => pruned.extend(done),
+                Err(error) => tracing::error!(
+                    event.name = "host.stream.prune_failed",
+                    component = "host",
+                    stream = %Self::pruned_name(&physical),
+                    error = %error,
+                    "a stream's garbage collection pass failed; the others go on"
+                ),
+            }
+        }
+        Ok(Some(pruned))
     }
 }

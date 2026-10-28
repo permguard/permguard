@@ -9,6 +9,9 @@
     "PERMGUARD_COPYRIGHT_HOLDER": "Nitro Agility S.r.l."
   },
   "rust-analyzer.check.command": "clippy",
+  // Its own target directory: the editor's checks never wait on, or hold, the lock of the
+  // command line's builds and tests.
+  "rust-analyzer.cargo.targetDir": true,
   "rust-analyzer.check.allTargets": true,
   "files.exclude": { "**/target": true },
   "search.exclude": { "**/target": true, "**/.volume": true }

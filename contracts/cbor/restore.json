@@ -1,0 +1,20 @@
+{
+  "artifact": "the restore marker host/RESTORE, a storage-library view written last by `permguard restore run`",
+  "authority": "1-architecture/8-architecture-storage-operations.md#restore-modes, WP-7.9 decisions of 2026-10-24 (labels, types, cardinalities); crates/permguard-host/src/restore.rs",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "restore_marker": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "v", "type": "uint", "occurs": "required", "note": "the record version, 1; another is refused" },
+        { "label": 2, "name": "mode", "type": "text", "occurs": "required", "note": "dr, forensic or clone" },
+        { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 4, "name": "generation", "type": "uint", "occurs": "required", "note": "the claim generation the restore ran under" },
+        { "label": 5, "name": "previous_boot_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes, the boot id of the snapshot's last start" },
+        { "label": 6, "name": "plan_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes, the plan the run consumed" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["restore_marker"]
+}

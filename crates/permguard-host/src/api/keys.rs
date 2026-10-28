@@ -316,6 +316,23 @@ impl HostApi {
         let resource = permguard_core::authz::Resource::parse(&query.resource)
             .map_err(|error| invalid(format!("`resource`: {error}")))?;
         let _admitted = self.admit_on(actor, operations::KEYS_READ, &resource)?;
+        self.key_bundle_page(query, &resource)
+    }
+
+    /// One page of the bundle of `resource`, for a caller already admitted, or for the Host itself
+    /// (its drain receipt carries its own bundle, TD-2).
+    pub(crate) fn key_bundle_page(
+        &self,
+        query: &KeyBundleQuery,
+        resource: &permguard_core::authz::Resource,
+    ) -> Result<KeyBundlePage, Refusal> {
+        let invalid = |detail: String| {
+            Refusal::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                detail,
+            )
+        };
         let limit = match query.limit {
             None => PAGE_DEFAULT,
             Some(limit) => usize::try_from(limit)

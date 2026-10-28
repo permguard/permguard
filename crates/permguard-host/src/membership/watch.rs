@@ -93,7 +93,8 @@ impl Queue {
     }
 
     /// Takes what is queued; `None` once the queue overflowed.
-    fn take(&self) -> Option<Vec<WatchHint>> {
+    #[doc(hidden)]
+    pub fn take(&self) -> Option<Vec<WatchHint>> {
         let mut pending = self.pending.lock().unwrap_or_else(PoisonError::into_inner);
         if pending.overflowed {
             return None;
@@ -135,7 +136,8 @@ impl Hub {
 
     /// Registers a watch of `task_type` over `lease`'s selector and resource, from `request`'s
     /// positions.
-    pub(crate) fn subscribe(
+    #[doc(hidden)]
+    pub fn subscribe(
         &self,
         task_type: TaskType,
         lease: &Lease,

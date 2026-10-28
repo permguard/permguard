@@ -69,6 +69,10 @@ opentelemetry-otlp.workspace = true
 opentelemetry_sdk.workspace = true
 tracing-opentelemetry.workspace = true
 
+# The `drain` command signals the server it runs beside (`prestop`).
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true }
+
 [features]
 # The PKCS#11 custody of the Host's keys (WP-3.2): loads the token's module at runtime.
 pkcs11 = ["dep:cryptoki"]

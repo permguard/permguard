@@ -8,7 +8,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use permguard_notp::{CommitPushRequest, NegotiatePushRequest, ObjectClaim, UploadObjectsRequest};
+use permguard_notp::{
+    CommitPushRequest, ExpectedRef, NegotiatePushRequest, ObjectClaim, UploadObjectsRequest,
+};
 use permguard_objects::digest::Digest;
 use permguard_objects::object::{self, Kind, Object, Tree};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ALIAS, ANNOTATION_POLICY_ID};
@@ -58,6 +60,30 @@ pub struct PullOutcome {
     pub previous_counter: Option<u64>,
 }
 
+/// The request id of a push: the ledger, the ref and the new head name it. A retry of the same
+/// apply is the same request; the same commit applied to another ref, or to the same ref of
+/// another ledger, is another one (TD-3: two ledgers named alike in two zones, given one commit in
+/// one second, collided on one id and the second push was refused as a reused request).
+fn push_request_id(ledger: &config::LedgerConfig, r#ref: &str, new_head: &Digest) -> String {
+    let named = |id: &str, name: &str| {
+        if id.is_empty() {
+            name.to_owned()
+        } else {
+            id.to_owned()
+        }
+    };
+    Digest::compute(
+        format!(
+            "{zone}/{ledger}\n{ref}\n{new_head}",
+            zone = named(&ledger.zone_id, &ledger.zone),
+            ledger = named(&ledger.ledger_id, &ledger.ledger),
+            ref = r#ref
+        )
+        .as_bytes(),
+    )
+    .to_string()
+}
+
 impl Workspace<'_> {
     /// Apply: plan, then push — negotiate once, upload the missing objects
     /// in batches, commit with compare-and-swap, verify the returned
@@ -101,6 +127,8 @@ impl Workspace<'_> {
         };
         let commit_bytes = commit.encode().map_err(|error| err(error.to_string()))?;
         let new_head = inventory::put(self.store, &commit_bytes).map_err(err)?;
+        let expected_ref = self.expected_ref(remote, ledger, &r#ref, checkpoint.as_ref())?;
+        let request_id = push_request_id(ledger, &r#ref, &new_head);
 
         // The delta closure: reachable from the new head, minus the old one.
         let stop = match &expected_old {
@@ -127,8 +155,9 @@ impl Workspace<'_> {
             .negotiate_push(&NegotiatePushRequest {
                 r#ref: r#ref.clone(),
                 new_head: new_head.clone(),
-                expected_old: expected_old.clone(),
+                expected_ref: expected_ref.clone(),
                 closure: claims,
+                request_id: request_id.clone(),
             })
             .map_err(err)?;
         let mut uploaded = 0usize;
@@ -152,6 +181,7 @@ impl Workspace<'_> {
                         objects: std::mem::take(&mut batch),
                         // Raw here: compression is the transport's concern.
                         compression: None,
+                        transfer_id: negotiated.transfer_id,
                     })
                     .map_err(err)?;
                 batch_bytes = 0;
@@ -165,6 +195,7 @@ impl Workspace<'_> {
                 .upload(&UploadObjectsRequest {
                     objects: batch,
                     compression: None,
+                    transfer_id: negotiated.transfer_id,
                 })
                 .map_err(err)?;
         }
@@ -174,7 +205,9 @@ impl Workspace<'_> {
             .commit_push(&CommitPushRequest {
                 r#ref: r#ref.clone(),
                 new_head: new_head.clone(),
-                expected_old,
+                expected_ref,
+                transfer_id: negotiated.transfer_id,
+                request_id,
             })
             .map_err(err)?;
 
@@ -191,10 +224,20 @@ impl Workspace<'_> {
                 .as_ref(),
         )
         .map_err(err)?;
+        if committed.head != statement.digest
+            || committed.counter != statement.counter
+            || committed.ref_digest != statement.ref_digest
+        {
+            return Err(err(
+                "the committed ref state is not the one its statement signs",
+            ));
+        }
 
         let checkpoint = Checkpoint {
             head: statement.digest.to_string(),
             counter: statement.counter,
+            ref_digest: Some(statement.ref_digest.to_string()),
+            ..Checkpoint::default()
         };
         config::write_checkpoint(self.store, &r#ref, &checkpoint).map_err(err)?;
         config::write_head(self.store, &r#ref).map_err(err)?;
@@ -203,6 +246,50 @@ impl Workspace<'_> {
             counter: checkpoint.counter,
             uploaded,
         })
+    }
+
+    /// The ref state an apply expects to replace: the checkpoint's, `None` before the first
+    /// apply. A checkpoint written before the ref digest names no digest: the server's
+    /// advertised state, verified against it, names the digest when its head is the one held.
+    fn expected_ref(
+        &self,
+        remote: &dyn Remote,
+        ledger: &config::LedgerConfig,
+        r#ref: &str,
+        checkpoint: Option<&Checkpoint>,
+    ) -> Result<Option<ExpectedRef>> {
+        let Some(held) = checkpoint else {
+            return Ok(None);
+        };
+        if let Some(digest) = &held.ref_digest {
+            return Ok(Some(ExpectedRef {
+                counter: held.counter,
+                digest: Digest::parse(digest).map_err(|_| err("the checkpoint is corrupt"))?,
+            }));
+        }
+        let answer = remote
+            .get_ref(r#ref)
+            .map_err(err)?
+            .ok_or_else(|| err(format!("the ref `{ref}` is gone from the server", ref = r#ref)))?;
+        let jwks = remote.keyring().map_err(err)?;
+        let statement = verify::verify_statement(
+            &jwks,
+            &answer.statement,
+            &ledger.zone_id,
+            &ledger.ledger_id,
+            r#ref,
+            Some(held),
+        )
+        .map_err(err)?;
+        if statement.digest.to_string() != held.head || statement.counter != held.counter {
+            return Err(err(
+                "the ref moved since this workspace last synchronized: pull first",
+            ));
+        }
+        Ok(Some(ExpectedRef {
+            counter: statement.counter,
+            digest: statement.ref_digest,
+        }))
     }
 
     /// Pull: the client's fetch-and-prove cycle, with the workspace's file
@@ -1236,4 +1323,55 @@ fn now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs() as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tracked(zone: &str, ledger: &str) -> config::LedgerConfig {
+        config::LedgerConfig {
+            remote: "origin".to_owned(),
+            zone: zone.to_owned(),
+            ledger: "main".to_owned(),
+            zone_id: format!("{zone}-id"),
+            ledger_id: ledger.to_owned(),
+        }
+    }
+
+    /// TD-3: one commit pushed to the same ref of two ledgers is two requests; a retry of one
+    /// push is the same request.
+    #[test]
+    fn a_push_is_named_by_its_ledger_its_ref_and_its_head() {
+        let head = Digest::compute(b"one commit");
+        let acme = push_request_id(&tracked("acme", "l1"), "main", &head);
+        assert_eq!(acme, push_request_id(&tracked("acme", "l1"), "main", &head));
+        assert_ne!(acme, push_request_id(&tracked("beta", "l1"), "main", &head));
+        assert_ne!(acme, push_request_id(&tracked("acme", "l2"), "main", &head));
+        assert_ne!(
+            acme,
+            push_request_id(&tracked("acme", "l1"), "other", &head)
+        );
+        assert_ne!(
+            acme,
+            push_request_id(&tracked("acme", "l1"), "main", &Digest::compute(b"another"))
+        );
+        // Before checkout resolved the ids, the names stand for them.
+        let unresolved = config::LedgerConfig {
+            zone_id: String::new(),
+            ledger_id: String::new(),
+            ..tracked("acme", "l1")
+        };
+        assert_ne!(
+            push_request_id(&unresolved, "main", &head),
+            push_request_id(
+                &config::LedgerConfig {
+                    zone: "beta".to_owned(),
+                    ..unresolved.clone()
+                },
+                "main",
+                &head
+            )
+        );
+    }
 }

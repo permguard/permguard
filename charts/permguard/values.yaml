@@ -26,15 +26,52 @@ image:
   tag: ""
   pullSecrets: []
 
+# Image verification at deploy (TD-4). On, every Permguard Pod starts with a `verify-image` init
+# container that runs `gh attestation verify` on the exact digest the Pod runs: the GitHub artifact
+# attestation, its Sigstore signature, its SLSA provenance, the builder workflow, the repository and
+# the tag — the policy the release itself applies (`scripts/verify-provenance.sh`). An image that
+# fails it never starts, so its Pod never becomes Ready.
+#
+# On, each enabled component names its image by digest (`controlPlane.digest`, `dataPlane.digest`,
+# `allInOne.digest`, `dataPlane.drainController.digest`): a tag resolved later by the kubelet is not
+# what was verified. A `regulated` workload refuses to render without it; `values-production.yaml`
+# turns it on.
+imageVerification:
+  enabled: false
+  # The source repository and the builder workflow the provenance must name.
+  repository: permguard/permguard
+  signerWorkflow: permguard/permguard/.github/workflows/release-build.yml
+  # The ref the image was built from. Empty means `refs/tags/v<appVersion>`.
+  sourceRef: ""
+  verifier:
+    # An image whose entrypoint is the GitHub CLI, by digest: `<registry>/<name>@sha256:<hex>`.
+    # `docker/verifier/Dockerfile` builds one from the pinned `cli/cli` release.
+    image: ""
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 256Mi }
+  # The token the attestation API is read with (any GitHub token; no scope is needed for a public
+  # repository), from a Secret: never a value.
+  tokenSecret:
+    name: ""
+    key: token
+
 controlPlane:
   enabled: true
   repository: control-plane
+  # The image's digest, `sha256:<hex>`: what `imageVerification` verifies and the Pod runs.
+  digest: ""
   # One. A control plane's catalog, refs and key ring have a single maintaining process, so two
   # replicas either fight over one volume or diverge behind one Service — a zone created through
   # one pod missing from the other. `templates/checks.yaml` refuses more, rather than letting a
   # cluster discover it. Availability comes from a PodDisruptionBudget and a fast restart until the
   # catalog lives in something that arbitrates.
   replicaCount: 1
+  # The serving floor of this Host, as for a data plane group: see `dataPlane.groupDefaults.assurance`.
+  assurance:
+    profile: production
+    addedControls: []
+    custody: {}
   # The plane's public surface and the Server Host operations surface. The latter serves process
   # discovery, health, readiness and metrics and must never be part of the public API.
   ports:
@@ -53,6 +90,17 @@ controlPlane:
   tls:
     secretName: ""
     terminatedUpstream: false
+  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, mutual TLS
+  # only. Off by default; a Host without it holds no membership, ships no evidence and issues no
+  # drain receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key`
+  # the listener presents and whose `ca.crt` its clients' certificates are verified against;
+  # `allow` names the operators' certificates, as `admin.allow` does (`cn:<name>`, `san:<uri>`).
+  hostListener:
+    enabled: false
+    port: 5444
+    tls:
+      secretName: ""
+    allow: []
   service:
     type: ClusterIP
     annotations: {}
@@ -117,55 +165,128 @@ controlPlane:
   #         enabled: "true"
   #         directory: "data/events/store"     # a PersistentVolume, for the same reason
   #         retention: "90d"
-  #         producer_keys:                      # mandatory, and bound: no decision-key fallback
-  #           - path: /etc/permguard/trust/data-plane-events.jwks
-  #             producer: data-plane-eu-1
-  #             zone: "*"
-  #             ledger: "*"
+  #         # no producer key file: events arrive over the Host's `events.ship`
   #     experimental:
   #       dogwood: { enabled: "true" }        # required alongside it, and refused if missing
   extraConfig: {}
-  # Extra environment for the container, as a list of EnvVar. `PERMGUARD_DECISIONS_LOG_PDP_ID` is
-  # already set from the pod name; anything here is merged after it.
+  # Extra environment for the container, as a list of EnvVar.
   extraEnv: []
 
 dataPlane:
   enabled: true
   repository: data-plane
-  # A data plane holds no authority: it mirrors a ledger and answers from it, so it scales. What it
-  # may not do is share one volume with its own replicas — with `persistence.enabled` this chart
-  # gives the component one claim and mounts it in all of them, which `templates/checks.yaml`
-  # refuses. Replicated means each replica mirrors into its own volume.
+  # The image's digest, `sha256:<hex>`: what `imageVerification` verifies and the Pod runs.
+  digest: ""
+  # The data plane is rendered as named groups (TD-1), not as one implicit global plane. Each group
+  # has one membership selector and one operating policy, and each of its replicas is a distinct
+  # Server: its own Host identity, its own volume. A group gets its own workload, Service,
+  # NetworkPolicy, disruption budget, autoscaler and membership manifest, so two groups never route,
+  # admit or scale each other's traffic.
   #
-  # A plane serving the TEMPORAL interface is different in kind: its event journal is the history
-  # its own policies decide against, not a cache. It needs storage that survives a restart and, for
-  # now, one replica. A pull mode makes several journals converge asynchronously; it cannot prove a
-  # read on pod B includes a login just recorded on pod A. The chart therefore refuses every
-  # multi-replica temporal topology until the serving path has history ownership/routing or a
-  # globally ordered watermark. A single temporal replica can still use `persistence.perReplica`
-  # when a StatefulSet identity is operationally useful:
+  #   groups:
+  #     - name: billing                        # a DNS label; it names objects and labels pods only
+  #       selector: plane/data/zone/billing/*  # the membership selector its replicas enroll under
+  #       replicas: 3
+  #     - name: people
+  #       selector: plane/data/zone/people/*
+  #       replicas: 2
+  #       # `host.identity` in the KMS; `host.operations` in the token, since it signs while a
+  #       # recorded decision waits and a remote KMS is not allowed there.
+  #       assurance:
+  #         profile: regulated
+  #         custody:
+  #           provider: pkcs11
+  #           identity: kms
+  #           pkcs11: { module: /usr/lib/softhsm/libsofthsm2.so, tokenLabel: permguard, pinRef: hsm-pin }
+  #           kms: { address: "https://vault:8200", tokenRef: vault-token }
   #
-  #   extraConfig:
-  #     dataPlane:
-  #       events:
-  #         enabled: "true"
-  #         # `producer_id` is NOT set here: it owns a hash chain, and the chart takes it from the
-  #         # pod name for the same reason it takes the decision log's. Pinning it is refused.
-  #         retention: { minimum: "48h" }
-  #         pull:
-  #           mode: shared-eventual       # replication/audit convergence, not request-time HA
-  #           ledgers: [{ zone: acme, ledger: agent-governance, event_types: [permguard.dogwood.event.v1] }]
-  #           producer_keys:                    # mandatory in a shared mode
-  #             - { path: /etc/permguard/trust/peer-events.jwks, producer: peer-plane, zone: acme, ledger: agent-governance }
-  #     experimental:
-  #       dogwood: { enabled: "true" }
+  # What a group leaves out comes from `groupDefaults` below. The Plane-wide values in this section
+  # (image, ports, TLS, resources, placement, `extraConfig`, `extraEnv`) are the static
+  # configuration every group shares; a group's own `extraConfig` and `extraEnv` are layered on top.
   #
-  # Both are required, and the chart refuses one without the other: `events.enabled` is a statement
-  # about disks, `experimental.dogwood.enabled` is a statement about accepting a contract whose
-  # shape is not yet stable, and a plane that has said one and not the other refuses to start. A
-  # `helm template` that fails naming the setting is worth more than a CrashLoopBackOff that does
-  # not.
-  replicaCount: 3
+  # Empty `groups` renders one group, `default`, with selector `plane/data/*`. The keys of the older
+  # single-group chart — `dataPlane.replicaCount`, `autoscaling`, `persistence`,
+  # `podDisruptionBudget` and `service` — still describe that one group; beside a non-empty `groups` they would be
+  # a second source of truth, and `templates/checks.yaml` refuses them.
+  groups: []
+  groupDefaults:
+    replicas: 3
+    # A group that keeps a volume autoscales only with the drain controller enabled, its storage
+    # takeover qualified (`persistence.takeover`) and a scale-down stabilization of at least its
+    # shutdown budget plus the drain Job's deadline (TD-2): removing a replica that keeps evidence
+    # needs all three, and the chart refuses each missing one.
+    autoscaling:
+      enabled: false
+      minReplicas: 3
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 70
+      scaleDownStabilizationSeconds: 1200
+    service:
+      enabled: true
+      type: ClusterIP
+      annotations: {}
+    # `required` (a decision is answered only once its record is durable) or `disabled`, rendered as
+    # the decision log's `mode`. `production` and `regulated` take `required` only: the decision-log
+    # contract lets `production` relax it per ledger, with a recorded risk acceptance, never for a
+    # whole group; `best-effort` is refused until its loss record is defined, as the server does.
+    evidence:
+      mode: required
+    # A group with a volume is a StatefulSet: one claim per replica, from one template, retained
+    # when the group scales down and when the release is deleted — deleting a claim that may hold
+    # unshipped evidence is a separate, verified operation, never a side effect of `helm`.
+    # `accessModes` empty means `ReadWriteOncePod` from `production` on Kubernetes 1.29 or later,
+    # `ReadWriteOnce` otherwise; state them when the storage class does not offer the former.
+    # `size` and `storageClass` empty take the chart-wide `persistence` values.
+    persistence:
+      enabled: true
+      size: ""
+      storageClass: ""
+      accessModes: []
+      retention:
+        whenScaled: Retain
+        whenDeleted: Retain
+      # Evidence that this storage revokes a replica's old writer before attaching its successor,
+      # which automatic failover and autoscaling need (TD-2): the CSI `driver`, the `storageClass`
+      # and the `evidence` reference of the qualification — a node kill and a partition on that
+      # driver and class, which `scripts/chart-takeover.sh` starts with its Pod kills and its
+      # offline verification. The chart cannot check the evidence; it refuses only its absence.
+      # A Kubernetes lease or an expired heartbeat alone is not fencing.
+      takeover:
+        qualified: false
+        driver: ""
+        storageClass: ""
+        evidence: ""
+    # The serving floor of every replica (`development`, `production`, `regulated`), rendered into
+    # its Host configuration, checked at Bootstrap and published by discovery. `custody` says where
+    # the Host's private keys are held: `provider` (`development`, `file`, `pkcs11`, `kms`), the
+    # `identity` and `operations` rings when they differ, and the `pkcs11` (`module`, `tokenLabel`,
+    # `pinRef`) or `kms` (`address`, `mount`, `tokenRef`, `ca`) references. `regulated` keeps
+    # `host.identity` and `host.operations` in `pkcs11` or `kms`, and the chart refuses it otherwise.
+    # Where decisions are recorded, `host.operations` stays out of a remote KMS: it signs while a
+    # decision waits (TS-4).
+    assurance:
+      profile: production
+      addedControls: []
+      custody: {}
+    podDisruptionBudget:
+      enabled: true
+      budget: maxUnavailable
+      value: 1
+    # One budget for a replica's shutdown. The `preStop` hook asks the server to drain, which then
+    # has `timeoutSeconds` to stop: `drainTimeoutSeconds` of it to drain, at least one second left
+    # to seal and release the volume. The grace period is `timeoutSeconds` plus five seconds.
+    shutdown:
+      timeoutSeconds: 30
+      drainTimeoutSeconds: 25
+    # The membership tasks its replicas are invited with, by type. Empty renders `policy.mirror`,
+    # `decisions.ship` when evidence is recorded and `events.ship` when the group keeps temporal
+    # history, each on the group's selector. An entry of one of those types narrows it
+    # (`selector`, `resourceTypes`, `required`, `limits`, `assuranceRequirements`, `taskId`); an
+    # entry of another membership type adds it.
+    tasks: []
+    # Who may reach the group: `public.from` and `telemetry.from` as under `networkPolicy`, which
+    # they replace for this group when set.
+    networkPolicy: {}
   ports:
     http: 7443
     grpc: 7443
@@ -183,24 +304,49 @@ dataPlane:
   tls:
     secretName: ""
     terminatedUpstream: false
-  service:
-    type: ClusterIP
-    annotations: {}
+  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, mutual TLS
+  # only. Off by default, and shared by every group; a Host without it holds no membership, ships no evidence and issues no
+  # drain receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key`
+  # the listener presents and whose `ca.crt` its clients' certificates are verified against;
+  # `allow` names the operators' certificates, as `admin.allow` does (`cn:<name>`, `san:<uri>`).
+  hostListener:
+    enabled: false
+    port: 5444
+    tls:
+      secretName: ""
+    allow: []
+  # The drain controller (TD-2): a CronJob per group that keeps a volume, running
+  # `permguard reclaim run` with the CLI image. A retained claim of an ordinal above the replicas
+  # gets a fenced drain Job on its own claim; the claim is deleted only when that Job prints a drain
+  # receipt that verifies under the member's pin the coordinator holds and the coordinator's
+  # frontier acknowledges every stream it names. A Job that fails or reaches `jobDeadlineSeconds`
+  # (a forced timeout) never authorizes it. Needs the data plane's Host listener, the coordinator's
+  # (`coordinator`, or this release's control plane Host listener when empty) and `tls.secretName`,
+  # a `kubernetes.io/tls` Secret holding the client certificate of an operator granted
+  # `membership.read` and `streams.read` there, and the authority (`ca.crt`) to verify it against.
+  # A record no required subscription acknowledges keeps the claim: decisions recorded before the
+  # replica enrolled, and events of a group whose memberships have no `events.ship` task, whose
+  # temporal history is then kept on the claim rather than reclaimed.
+  # One coordinator: a stream another coordinator acknowledges keeps its claim. A succeeded Job
+  # whose proof is missing (no receipt, no membership) keeps its claim too, and stays until an
+  # operator deletes it; the next pass then runs a new one.
+  drainController:
+    enabled: false
+    schedule: "*/5 * * * *"
+    repository: cli
+    # The CLI image's digest, under `imageVerification`.
+    digest: ""
+    coordinator: ""
+    tls:
+      secretName: ""
+    jobDeadlineSeconds: 600
   resources:
     requests:
       cpu: 100m
       memory: 64Mi
     limits:
       memory: 256Mi
-  podDisruptionBudget:
-    enabled: true
-    budget: minAvailable
-    value: 2
-  autoscaling:
-    enabled: false
-    minReplicas: 3
-    maxReplicas: 12
-    targetCPUUtilizationPercentage: 70
+  # Placement, for every group unless a group states its own.
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -209,10 +355,10 @@ dataPlane:
   # `controlPlane.extraVolumes`.
   extraVolumes: []
   extraVolumeMounts: []
-  # Extra configuration merged into the generated ConfigMap. This is where a data plane in a cluster
-  # says where its policies come from: mirroring lives under `dataPlane.mirrors`, and the URL alone means
-  # every zone and every ledger that control plane lists. Patterns narrow it; per-server `tls` carries
-  # the authority (and, for mutual TLS, our own certificate) out of a mounted Secret.
+  # Extra configuration merged into the generated ConfigMap. A data plane in a cluster mirrors the
+  # `policy.mirror` tasks of its replicas' memberships (WP-7.7): no URL, TLS root or key here, the
+  # signed manifest binds them. `tasks` narrows them by membership and task ids with zone and ledger
+  # patterns; absent, every task is followed whole.
   #
   # extraConfig:
   #   dataPlane:
@@ -222,23 +368,20 @@ dataPlane:
   #       timeout: "2m"          # per ledger
   #       parallelism: "4"
   #       jitter: "0.1"          # so replicas do not all wake on the same second
-  #       servers:
-  #         - url: "https://permguard-control-plane:6443"
-  #           zones: ["acme-.*"]                   # absent: every zone the server lists
+  #       tasks:
+  #         - membership: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"  # as `host members list` shows it
+  #           task: "policy-mirror"
+  #           zones: ["acme-.*"]                   # absent: every zone the task lists
   #           ledgers: ["main-ledger"]             # absent: every ledger of a matching zone
-  #           tls:
-  #             ca_file: tls/control-plane-ca.pem  # from a Secret mounted on the volume
   #     decisions:
   #       cache:
   #         partitions: "64"   # compiled partitions held in memory at once
   #         bytes: "256M"      # what they may weigh, against this pod's memory limit
   #       max_evaluations: "256"
-  #       # Every decision, recorded. `pdp_id` must differ per replica: two producers sharing one
-  #       # write two records at a single (stream, seq), which closes a stream at the far end. With
-  #       # replicaCount > 1 take it from the pod name rather than from this file.
+  #       # Every decision, recorded on the Host's stream, named by its `host_id` and run. Whether
+  #       # the log is on, and its `mode`, come from each group's `evidence.mode`: stating them here
+  #       # as well is refused.
   #       log:
-  #         enabled: "true"
-  #         pdp_id: permguard-data-plane-0
   #         server:
   #           url: "grpcs://permguard-control-plane:6443"
   #           tls:
@@ -250,7 +393,6 @@ dataPlane:
   #           bytes: "512M"             # decision records only; the terminal record is reserved apart
   #           age: "24h"
   #         batch: { bytes: "256k", interval: "1s" }
-  #         on_full: "open"             # or "closed": refuse to decide rather than decide unrecorded
   #         sample: { permits: "1.0" }
   #         commitment:
   #           key_ref: decision-commitment   # required: a commitment keyed by anything public is
@@ -265,7 +407,14 @@ dataPlane:
 allInOne:
   enabled: false
   repository: all-in-one
+  # The image's digest, `sha256:<hex>`: what `imageVerification` verifies and the Pod runs.
+  digest: ""
   replicaCount: 1
+  # The serving floor of this Host: see `dataPlane.groupDefaults.assurance`.
+  assurance:
+    profile: production
+    addedControls: []
+    custody: {}
   ports:
     controlHttp: 6443
     dataHttp: 7443
@@ -281,6 +430,17 @@ allInOne:
   tls:
     secretName: ""
     terminatedUpstream: false
+  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, mutual TLS
+  # only. Off by default; a Host without it holds no membership, ships no evidence and issues no
+  # drain receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key`
+  # the listener presents and whose `ca.crt` its clients' certificates are verified against;
+  # `allow` names the operators' certificates, as `admin.allow` does (`cn:<name>`, `san:<uri>`).
+  hostListener:
+    enabled: false
+    port: 5444
+    tls:
+      secretName: ""
+    allow: []
   service:
     type: ClusterIP
     annotations: {}
@@ -294,16 +454,15 @@ allInOne:
       memory: 96Mi
     limits:
       memory: 384Mi
-  # Extra configuration merged into the generated ConfigMap. An all-in-one that runs at the edge and
-  # follows a control plane elsewhere states it the same way — under `dataPlane.mirrors`, exactly as a
-  # standalone data plane does. One hosting both planes itself has nothing to mirror.
+  # Extra configuration merged into the generated ConfigMap. An all-in-one mirrors its own control
+  # plane in-process, and the tasks of any membership it holds (WP-7.7); `local` narrows the first.
   #
   # extraConfig:
   #   dataPlane:
   #     mirrors:
   #       enabled: "true"
-  #       servers:
-  #         - url: "https://control.acme.com"   # the URL alone: everything it lists
+  #       local:
+  #         zones: ["acme"]   # absent: every zone this process's own control plane holds
   extraConfig: {}
   extraEnv: []
 
@@ -315,6 +474,10 @@ podSecurityContext:
   runAsUser: 65532
   runAsGroup: 65532
   fsGroup: 65532
+  # The kubelet applies the fsGroup once, to the mount's root, and never again: the default policy
+  # re-grants the group read and write on every file at every remount, and the Host refuses a
+  # volume its group can read (TS-5).
+  fsGroupChangePolicy: OnRootMismatch
   seccompProfile:
     type: RuntimeDefault
 
@@ -325,31 +488,21 @@ securityContext:
   capabilities:
     drop: ["ALL"]
 
-# Where a plane keeps generated keys and its audit trail.
+# Where the control plane and the all-in-one keep generated keys and their audit trail. Data plane
+# groups state their own storage under `dataPlane.groupDefaults.persistence`, and take `size` and
+# `storageClass` from here when they leave them empty.
 #
 # `emptyDir` by default, and that is a real decision rather than a placeholder: with `autogenerate`
 # on, a pod that loses this directory mints itself a new signing key on restart, which is fine for a
 # test environment and wrong for anything issuing tokens somebody else verifies.
-#
-# A real installation turns it on and, by default, gets one claim per component. A replicated
-# component with persistent storage instead needs a volume per replica: one claim mounted in three
-# pods is one journal three processes write, which is the corruption the exclusive lock exists to
-# refuse. `perReplica` requests the StatefulSet shape; `templates/checks.yaml` still refuses a
-# temporal data plane above one replica because isolated storage does not provide synchronous
-# history visibility.
 persistence:
-  # The default for every component. A component overrides it with its own
-  # `persistence: { enabled: … }` — one switch cannot say "a volume for the control plane, none for
-  # the replicated data plane", and that is exactly what a real installation needs.
+  # The default for the control plane and the all-in-one; each may override it with its own
+  # `persistence: { enabled: … }`.
   enabled: false
-  # A volume per replica, from a StatefulSet's `volumeClaimTemplates`, instead of one claim shared
-  # by every pod. This makes replicated non-temporal journals safe to write. It is also a valid
-  # storage shape for one temporal replica, but does not make multiple temporal replicas coherent;
-  # that topology is refused separately.
-  #
-  # Switching this on an existing release changes the workload kind, and Kubernetes does not
+  # A StatefulSet with a claim template instead of one PersistentVolumeClaim, for the control
+  # plane. Switching it on an existing release changes the workload kind, and Kubernetes does not
   # convert a Deployment into a StatefulSet: the old workload has to be deleted first. That is why
-  # it is opted into rather than deduced from the replica count.
+  # it is opted into rather than deduced.
   perReplica: false
   storageClass: ""
   accessModes: ["ReadWriteOnce"]
@@ -445,6 +598,9 @@ networkPolicy:
     from: []
   telemetry:
     from: []
+  # The Host listener's peers: operators, peer Hosts and the drain controller.
+  host:
+    from: []
 
 serviceAccount:
   create: true
@@ -453,3 +609,41 @@ serviceAccount:
 
 commonLabels: {}
 commonAnnotations: {}
+
+# What every Host of this release declares of its storage, backups and service objectives (TS-5),
+# in the configuration's own syntax, merged under each unit's `extraConfig`. From `production` the
+# chart refuses to render without them, as Bootstrap would refuse to start:
+#
+# - `storage`: the volume's qualified tuple (`qualified`, each entry with its `evidence`,
+#   `encryption` mechanism, evidence `revision` and `expires_at`; `compatibility_mode` relaxes
+#   nothing from `production`); `volume.storage_class` and `volume.driver`; `quotas.host.bytes`.
+# - `backup`: `recovery_key` (a secret reference, at least 128 bits, no other key's),
+#   `encryption_profile`, `retention` and `destruction` (the tested procedure's evidence id).
+# - `objectives`: `data_loss`, `recovery_time`, `max_volume_size`, `membership_offline_grace`,
+#   `mirror_staleness`, `evidence_shipping_lag`, `spool_headroom`, `checkpoint_export_lag`,
+#   `backup_interval`, `restore_test_interval` and `key_recovery_owner`.
+hostControls:
+  storage: {}
+  #   volume: { storage_class: fast-ssd, driver: ebs.csi.aws.com }
+  #   qualified:
+  #     - { storage_class: fast-ssd, driver: ebs.csi.aws.com, filesystem: ext4, version: "6.8",
+  #         evidence: QUAL-2026-01, encryption: aws-kms-ebs, revision: "3",
+  #         expires_at: "2027-06-30T00:00:00Z" }
+  #   quotas: { host: { bytes: 80G } }
+  backup: {}
+  #   recovery_key: backup-recovery
+  #   encryption_profile: aes-256-gcm
+  #   retention: 90d
+  #   destruction: DESTROY-2026-01
+  objectives: {}
+  #   data_loss: 0s
+  #   recovery_time: 1h
+  #   max_volume_size: 100G
+  #   membership_offline_grace: 24h
+  #   mirror_staleness: 1h
+  #   evidence_shipping_lag: 1d
+  #   spool_headroom: 20%
+  #   checkpoint_export_lag: 1d
+  #   backup_interval: 1d
+  #   restore_test_interval: 30d
+  #   key_recovery_owner: security-team

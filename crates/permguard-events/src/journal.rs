@@ -70,6 +70,80 @@ const LOCK_FILE: &str = "LOCK";
 /// holding a stream apart from a directory that merely exists — how a restart finds every stream
 /// it has to ship, including ones no request has touched since.
 pub const STATE_FILE: &str = "STATE";
+
+/// The stream an existing journal's `STATE` names, read without opening it (WP-6.2a): what a
+/// legacy journal is reopened as, and the name a control plane beside it trusts its ring under.
+pub fn stream_of(directory: impl AsRef<Path>) -> Result<Stream, JournalError> {
+    let bytes = fs::read(directory.as_ref().join(STATE_FILE))
+        .map_err(|error| JournalError::Io(error.to_string()))?;
+    let held: State =
+        serde_json::from_slice(&bytes).map_err(|error| JournalError::Corrupt(error.to_string()))?;
+    Ok(held.stream)
+}
+
+/// Whether the journal at `directory` holds nothing its shipper has still to send and nothing a
+/// loaded window could still read (WP-6.2d, owner decision of 2026-10-19): acknowledged through
+/// its durable point, and its newest record occurred before `horizon`, in epoch seconds, the
+/// boundary its eviction already uses. Opened as its shipper opens it, so a torn tail is cut and a
+/// temporary swept before anything digests it; a record whose time cannot be read keeps it.
+pub fn drained_before(
+    directory: impl AsRef<Path>,
+    bounds: Bounds,
+    horizon: i64,
+) -> Result<bool, JournalError> {
+    let directory = directory.as_ref();
+    let journal = Journal::open(directory, stream_of(directory)?, bounds)?;
+    let state = journal.state();
+    if state.acked_through < state.durable_through {
+        return Ok(false);
+    }
+    let retained = journal.read_from(state.oldest_retained.saturating_sub(1), usize::MAX)?;
+    Ok(retained.iter().all(|record| {
+        record
+            .get("occurred_at")
+            .and_then(Value::as_str)
+            .and_then(crate::index::epoch_seconds)
+            .is_some_and(|occurred| occurred < horizon)
+    }))
+}
+
+/// Whether `relative`, a `/`-separated path inside a journal's directory, is one of the journal's
+/// own files, its `LOCK` among them (WP-6.2d): what its archive carries. A directory is named with
+/// a trailing `/`.
+pub fn of_journal(relative: &str) -> bool {
+    let parts: Vec<&str> = relative.trim_end_matches('/').split('/').collect();
+    let directory = relative.ends_with('/');
+    match parts.as_slice() {
+        [OCCURRENCES_DIRECTORY] => directory,
+        [OCCURRENCES_DIRECTORY, shard] => {
+            directory && shard.len() == 2 && shard.bytes().all(|b| b.is_ascii_hexdigit())
+        }
+        [OCCURRENCES_DIRECTORY, _, name] => {
+            !directory && name.ends_with(OCCURRENCE_SUFFIX) && name.len() > OCCURRENCE_SUFFIX.len()
+        }
+        [name] if !directory => {
+            [
+                LOCK_FILE,
+                STATE_FILE,
+                RESERVE_FILE,
+                OCCURRENCES_STATE_FILE,
+                crate::index::INDEX_FILE,
+                permguard_stream::SIGNERS_FILE,
+            ]
+            .contains(name)
+                || numbered(name, SEGMENT_PREFIX, SEGMENT_SUFFIX)
+                || numbered(name, CHECKPOINT_PREFIX, CHECKPOINT_SUFFIX)
+        }
+        _ => false,
+    }
+}
+
+/// Whether `name` is `prefix`, a sequence, `suffix`.
+fn numbered(name: &str, prefix: &str, suffix: &str) -> bool {
+    name.strip_prefix(prefix)
+        .and_then(|rest| rest.strip_suffix(suffix))
+        .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+}
 const RESERVE_FILE: &str = "RESERVE";
 const SEGMENT_PREFIX: &str = "seg-";
 const SEGMENT_SUFFIX: &str = ".events";
@@ -126,6 +200,10 @@ impl State {
 pub struct KnownOccurrence {
     /// The id a client retries with.
     pub event_id: String,
+    /// The source the occurrence was recorded under, with `event_id` what identifies it (WP-6.2a);
+    /// absent in a legacy journal's entries, which identify it by `event_id` alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     /// Where the occurrence sits in this stream.
     pub seq: u64,
     /// The canonical digest of what was recorded under that id.
@@ -699,6 +777,7 @@ impl Journal {
                     }
                     None => self.record_occurrence(&KnownOccurrence {
                         event_id: event_id.to_owned(),
+                        source: None,
                         seq,
                         occurrence_digest: occurrence_digest.to_owned(),
                         decision_id: None,
@@ -1381,6 +1460,7 @@ mod tests {
             prev: prev.to_owned(),
             event_type: "permguard.dogwood.event.v1".to_owned(),
             event_id: format!("e{seq}"),
+            source: None,
             occurrence_digest: GENESIS.to_owned(),
             kind: "request".to_owned(),
             profile: "temporal".to_owned(),
@@ -2174,6 +2254,7 @@ mod tests {
         journal
             .record_occurrence(&KnownOccurrence {
                 event_id: "evt-1".to_owned(),
+                source: None,
                 seq: 1,
                 occurrence_digest: "sha256:aaa".to_owned(),
                 decision_id: None,
@@ -2215,6 +2296,7 @@ mod tests {
         journal
             .record_occurrence(&KnownOccurrence {
                 event_id: "e2".to_owned(),
+                source: None,
                 seq: 2,
                 occurrence_digest: GENESIS.to_owned(),
                 decision_id: None,
@@ -2256,6 +2338,7 @@ mod tests {
         journal
             .record_occurrence(&KnownOccurrence {
                 event_id: hostile.to_owned(),
+                source: None,
                 seq: 1,
                 occurrence_digest: "sha256:bbb".to_owned(),
                 decision_id: None,
@@ -2290,6 +2373,7 @@ mod tests {
             journal
                 .record_occurrence(&KnownOccurrence {
                     event_id: format!("evt-{seq}"),
+                    source: None,
                     seq,
                     occurrence_digest: format!("sha256:{seq}"),
                     decision_id: None,

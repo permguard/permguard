@@ -48,10 +48,11 @@ use permguard_core::fault;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::journal::JournalError;
+/// The error an index answers with, named here for a reader that keeps no journal of its own.
+pub use crate::journal::JournalError;
 
 /// Where the index is kept, beside the segments it is derived from.
-pub(crate) const INDEX_FILE: &str = "INDEX";
+pub const INDEX_FILE: &str = "INDEX";
 
 /// Where one record lives, and what it is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +164,11 @@ impl Index {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(JournalError::Io(error.to_string())),
         }
+    }
+
+    /// Every entry, in key order: what a caller deriving something per position walks.
+    pub fn entries(&self) -> impl Iterator<Item = (&Key, &Located)> {
+        self.entries.iter()
     }
 
     /// How many records are indexed.

@@ -84,8 +84,12 @@ pub struct Submitter {
     allowed_lateness: std::time::Duration,
     /// Which history this plane's decisions range over.
     consistency: permguard_core::config::Consistency,
-    /// The imported histories, when this plane reads other planes' events.
+    /// The imported histories, when this plane reads other planes' events: what the HTTP pull
+    /// imported before WP-6.2c, read-only.
     imports: Option<Arc<super::imports::Imports>>,
+    /// The origins the member Host imports over `events.import` (WP-6.2c2b1): the history and the
+    /// freshness a shared mode decides on.
+    imported: Option<Arc<super::imported::Imported>>,
     /// How stale imported history may be before `shared-bounded` fails decisions closed.
     max_staleness: std::time::Duration,
     /// The imported watermark each `(zone, ledger, history, partition)` has been rebuilt to.
@@ -104,6 +108,84 @@ pub struct Submitter {
     /// request would then find its engine non-empty and the note current, skip the rebuild, and
     /// decide against a history that is still missing the event.
     applied: std::sync::Mutex<std::collections::BTreeMap<(String, String, String, String), String>>,
+    /// What warm histories may hold, per partition, zone and Host (DOGWOOD-02).
+    warm: Arc<permguard_languages::warm::Budget>,
+    /// What a cold history's replay may cost (DOGWOOD-03).
+    replay: ReplayPlan,
+    /// How many cold replays are running now.
+    replaying: std::sync::atomic::AtomicUsize,
+    /// One lock per ledger, held for writing while prewarm replays one of its histories and for
+    /// reading from a submission's replay to its apply: a prewarm never replaces an engine a
+    /// submission is feeding, and never holds another ledger's submissions (after the review).
+    prewarming: std::sync::Mutex<Exclusions>,
+}
+
+/// The prewarm exclusion of each ledger, by zone and ledger.
+type Exclusions = std::collections::HashMap<(String, String), Arc<std::sync::RwLock<()>>>;
+
+/// What `ensure_history` left behind: the partitions whose replay was abandoned, and the imported
+/// history it captured — what the replay read and what the decision cites (WP-6.4a).
+struct Ensured {
+    abandoned: std::collections::BTreeMap<String, permguard_languages::evaluate::Verdict>,
+    shared: Option<super::imported::Shared>,
+}
+
+impl Ensured {
+    fn of(
+        shared: Option<super::imported::Shared>,
+        abandoned: std::collections::BTreeMap<String, permguard_languages::evaluate::Verdict>,
+    ) -> Self {
+        Self { abandoned, shared }
+    }
+}
+
+/// The replay plan of a cold history (DOGWOOD-03, owner decision of 2026-10-21).
+///
+/// A replay is part of the decision that needed it. Past any of these limits the partitions it was
+/// for answer `E` `evaluation_deadline_exceeded` — the replay cannot finish within the decision's
+/// budget — and the history stays marked for replay; the occurrence is durable either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReplayPlan {
+    /// The most records one replay reads.
+    pub max_records: u64,
+    /// The most bytes one replay feeds an engine, as the occurrences spell them.
+    pub max_bytes: u64,
+    /// How long one submission's replay may run.
+    pub timeout: std::time::Duration,
+    /// How many cold replays run at once; a submission needing another is turned away at once.
+    pub concurrency: usize,
+}
+
+impl Default for ReplayPlan {
+    fn default() -> Self {
+        Self {
+            max_records: permguard_core::config::DEFAULT_EVENTS_REPLAY_MAX_RECORDS,
+            max_bytes: permguard_core::config::DEFAULT_EVENTS_REPLAY_MAX_BYTES,
+            timeout: permguard_core::config::DEFAULT_EVENTS_REPLAY_TIMEOUT,
+            concurrency: permguard_core::config::DEFAULT_EVENTS_REPLAY_CONCURRENCY,
+        }
+    }
+}
+
+impl ReplayPlan {
+    /// The plan a configuration states.
+    pub fn of(config: &permguard_core::config::Config) -> Self {
+        Self {
+            max_records: config.events_replay_max_records(),
+            max_bytes: config.events_replay_max_bytes(),
+            timeout: config.events_replay_timeout(),
+            concurrency: config.events_replay_concurrency(),
+        }
+    }
+}
+
+/// One cold replay's slot, given back when it is dropped.
+struct Replaying<'a>(&'a std::sync::atomic::AtomicUsize);
+
+impl Drop for Replaying<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 impl Submitter {
@@ -127,23 +209,211 @@ impl Submitter {
             // nothing to explain why.
             consistency: permguard_core::config::Consistency::Local,
             imports: None,
+            imported: None,
             max_staleness: permguard_core::config::DEFAULT_EVENTS_PULL_MAX_STALENESS,
             applied: std::sync::Mutex::new(std::collections::BTreeMap::new()),
+            warm: permguard_languages::warm::Budget::new(
+                permguard_languages::warm::Limits::default(),
+            ),
+            replay: ReplayPlan::default(),
+            replaying: std::sync::atomic::AtomicUsize::new(0),
+            prewarming: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
+    }
+
+    /// The prewarm exclusion of one ledger.
+    fn exclusion(&self, zone: &str, ledger: &str) -> Arc<std::sync::RwLock<()>> {
+        let mut locks = match self.prewarming.lock() {
+            Ok(locks) => locks,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        Arc::clone(
+            locks
+                .entry((zone.to_owned(), ledger.to_owned()))
+                .or_default(),
+        )
+    }
+
+    /// Replays up to `count` recently used histories of each ledger this plane journals
+    /// (DOGWOOD-03, owner decision of 2026-10-21), and returns how many it warmed.
+    ///
+    /// Run in the background after load. It claims nothing: readiness is not touched, and a
+    /// submission that arrives first replays its own history as it always does. What it replays is
+    /// what the ledger's sequencer has applied, read under the ledger's exclusion where it cannot
+    /// move, under the same plan a submission's replay runs under — including its concurrency
+    /// slots — and only into a history still cold: it never replaces an engine a submission fed,
+    /// and the occurrences waiting for their turn apply on top of it in order.
+    pub async fn prewarm(self: &Arc<Self>, count: usize) -> usize {
+        /// How far back the tail read for recently used histories goes, per ledger.
+        const TAIL: u64 = 4096;
+
+        if count == 0 {
+            return 0;
+        }
+        let mut ledgers = self.streams.host_ledgers();
+        ledgers.extend(self.streams.ledgers());
+        ledgers.sort();
+        ledgers.dedup();
+
+        let mut warmed = 0;
+        for (zone, ledger) in ledgers {
+            let Ok(sequencer) = self.streams.sequencer(&zone, &ledger) else {
+                continue;
+            };
+            // Only where to read the tail from: what is replayed is bounded again under the lock.
+            let through = sequencer.applied_through();
+            let after = through.saturating_sub(TAIL);
+            let Ok(tail) = self.streams.read_from(
+                &zone,
+                &ledger,
+                after,
+                usize::try_from(through - after).unwrap_or(usize::MAX),
+            ) else {
+                continue;
+            };
+            // The most recent occurrence of each history, newest histories first.
+            let mut picked: Vec<Record> = Vec::new();
+            for value in tail.iter().rev() {
+                let Ok(record) = permguard_events::record::validate(value) else {
+                    continue;
+                };
+                let same = |held: &Record| {
+                    held.profile == record.profile && held.history_key == record.history_key
+                };
+                if let Some(held) = picked.iter_mut().find(|held| same(held)) {
+                    if record.occurred_at > held.occurred_at {
+                        *held = record;
+                    }
+                } else if picked.len() < count {
+                    picked.push(record);
+                }
+            }
+            for record in picked {
+                let Ok(loaded) = self.decider.loaded(&zone, &ledger, &record.profile).await else {
+                    continue;
+                };
+                let this = Arc::clone(self);
+                let (zone, ledger) = (zone.clone(), ledger.clone());
+                let warm = tokio::task::spawn_blocking(move || {
+                    this.prewarm_one(&loaded, &zone, &ledger, &record)
+                })
+                .await
+                .unwrap_or(false);
+                if warm {
+                    warmed += 1;
+                }
+            }
+        }
+
+        warmed
+    }
+
+    /// Replays one history up to what the ledger has applied, if it is still cold.
+    fn prewarm_one(&self, loaded: &Loaded, zone: &str, ledger: &str, record: &Record) -> bool {
+        let exclusion = self.exclusion(zone, ledger);
+        let Ok(_exclusive) = exclusion.write() else {
+            return false;
+        };
+        // Read under the lock: a submission releases its turn only after its apply, and none
+        // reaches its replay while this is held, so what the ledger has applied cannot move now.
+        let Ok(sequencer) = self.streams.sequencer(zone, ledger) else {
+            return false;
+        };
+        let through = sequencer.applied_through();
+        let Ok(addressed) = self.addressed(loaded, &record.profile) else {
+            return false;
+        };
+        let Ok(body) = serde_json::from_value::<OccurrenceBody>(record.event.clone()) else {
+            return false;
+        };
+        let Ok(occurrence) = body.read() else {
+            return false;
+        };
+        let history = history_of(&record.history_key);
+        let mut checks: Vec<Verified<'_>> = Vec::with_capacity(addressed.len());
+        for (partition, engine) in &addressed {
+            engine.bind_warm(&self.warm, zone);
+            if permguard_languages::guard::contained(|| engine.observed(&history)).unwrap_or(1) > 0
+            {
+                return false;
+            }
+            let Ok(Ok(checked)) =
+                permguard_languages::guard::contained(|| engine.check(&occurrence))
+            else {
+                return false;
+            };
+            checks.push((Arc::clone(partition), *engine, checked));
+        }
+
+        matches!(
+            self.ensure_history(&checks, &history, &occurrence, zone, ledger, through + 1),
+            Ok(ensured) if ensured.abandoned.is_empty()
+        )
+    }
+
+    /// Charges warm histories to this budget (DOGWOOD-02).
+    pub fn with_warm(mut self, budget: Arc<permguard_languages::warm::Budget>) -> Self {
+        self.warm = budget;
+
+        self
+    }
+
+    /// Replays cold histories under this plan (DOGWOOD-03).
+    pub fn with_replay(mut self, plan: ReplayPlan) -> Self {
+        self.replay = plan;
+
+        self
+    }
+
+    /// The warm budget, for a caller that reports what it holds.
+    pub fn warm(&self) -> &Arc<permguard_languages::warm::Budget> {
+        &self.warm
     }
 
     /// Decides against imported history as well, under this mode.
     pub fn with_shared_history(
-        mut self,
+        self,
         consistency: permguard_core::config::Consistency,
         imports: Arc<super::imports::Imports>,
         max_staleness: std::time::Duration,
     ) -> Self {
+        let mut this = self.with_shared_mode(consistency, max_staleness);
+        this.imports = Some(imports);
+
+        this
+    }
+
+    /// Decides under this shared mode with no store of the retired pull, once the volume archived
+    /// it (WP-6.2d): a decision is scoped as over a store that never read anything, so without
+    /// the Host's import `shared-bounded` still refuses.
+    pub fn with_shared_mode(
+        mut self,
+        consistency: permguard_core::config::Consistency,
+        max_staleness: std::time::Duration,
+    ) -> Self {
         self.consistency = consistency;
-        self.imports = Some(imports);
         self.max_staleness = max_staleness;
 
         self
+    }
+
+    /// Decides against the origins the member Host imports as well (WP-6.2c2b1): their records,
+    /// and freshness from the checkpoint the Host last verified.
+    pub fn with_imported(mut self, imported: Arc<super::imported::Imported>) -> Self {
+        self.imported = Some(imported);
+
+        self
+    }
+
+    /// The origins the member Host imports, when this plane reads them.
+    pub fn imported(&self) -> Option<&Arc<super::imported::Imported>> {
+        self.imported.as_ref()
+    }
+
+    /// The retired pull's store, when this plane still reads it: not once the volume archived it
+    /// (WP-6.2d).
+    pub fn imports(&self) -> Option<&Arc<super::imports::Imports>> {
+        self.imports.as_ref()
     }
 
     /// Which history this plane's decisions range over.
@@ -156,13 +426,30 @@ impl Submitter {
         &self.streams
     }
 
-    /// Submits one occurrence.
+    /// The decider whose services this submitter shares: the verified snapshot, the scheduler
+    /// and the decision log (WP-7.5d).
+    pub fn decider(&self) -> &Decider {
+        &self.decider
+    }
+
+    /// Where the mirrors this plane decides against are, for the gate's resolution of names.
+    pub fn root(&self) -> &std::path::Path {
+        self.decider.root()
+    }
+
+    /// Submits one occurrence as `source`, the principal the request authenticated as, once the
+    /// gate authorized `event.submit` on the `authorized` ids (WP-6.2a): the mirror recorded under
+    /// must be that one.
     pub async fn submit(
         self: &Arc<Self>,
         request: &SubmitRequest,
+        source: &str,
+        authorized: Option<&(String, String)>,
     ) -> Result<SubmitResponse, ApiError> {
         let started = Instant::now();
-        let answered = self.answer(request).await;
+        // The decision path (TS-4), as for a stateless decision.
+        let answered =
+            permguard_core::egress::decision(self.answer(request, source, authorized)).await;
         self.metrics.observe(
             &measure::SUBMISSION_SECONDS,
             &[],
@@ -172,7 +459,12 @@ impl Submitter {
         answered
     }
 
-    async fn answer(self: &Arc<Self>, request: &SubmitRequest) -> Result<SubmitResponse, ApiError> {
+    async fn answer(
+        self: &Arc<Self>,
+        request: &SubmitRequest,
+        source: &str,
+        authorized: Option<&(String, String)>,
+    ) -> Result<SubmitResponse, ApiError> {
         // The plane's own clock on this submission, which the decision record carries: how long
         // this plane took, separate from how long the transport took.
         let started_at = Instant::now();
@@ -202,6 +494,21 @@ impl Submitter {
         let (zone_name, ledger_name) = (zone.clone(), ledger.clone());
         let zone = mirror.identity.zone_id.clone();
         let ledger = mirror.identity.ledger_id.clone();
+        // A mirror replaced between the gate and here never widens the grant (WP-6.2a, as the
+        // decision path does since WP-2.4).
+        if let Some((zone_id, ledger_id)) = authorized
+            && (&zone, &ledger) != (zone_id, ledger_id)
+        {
+            self.metrics.count(
+                &measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, "store_changed")],
+            );
+            return Err(ApiError::new(
+                ErrorClass::Unavailable,
+                permguard_core::codes::common::UNAVAILABLE,
+                "the store the request names changed while the request was authorized; retry",
+            ));
+        }
         self.streams
             .adopt((&zone, &ledger), (&zone_name, &ledger_name))
             .map_err(|error| {
@@ -227,6 +534,7 @@ impl Submitter {
         if let Some(settled) = self.settled(
             &zone,
             &ledger,
+            source,
             &event,
             &occurrence.event_id,
             &profile,
@@ -277,14 +585,24 @@ impl Submitter {
                 occurrence.clone(),
                 occurrence_kind.clone(),
                 event,
+                source.to_owned(),
             );
             self.blocking
                 .run(&[], move || {
-                    let (loaded, event_type, zone, ledger, profile, occurrence, kind, event) =
-                        staging;
+                    let (
+                        loaded,
+                        event_type,
+                        zone,
+                        ledger,
+                        profile,
+                        occurrence,
+                        kind,
+                        event,
+                        source,
+                    ) = staging;
 
                     this.stage(
-                        loaded, event_type, zone, ledger, profile, occurrence, kind, event,
+                        loaded, event_type, zone, ledger, profile, occurrence, kind, event, source,
                     )
                 })
                 .await
@@ -366,7 +684,15 @@ impl Submitter {
                     history: watermark.history.clone(),
                     consistency: Some(history.mode.clone()),
                     watermark: history.watermark.clone(),
+                    // What the decision cited, as the answer says it (WP-6.4a).
+                    frontier: history.frontier.clone(),
+                    origin_set_revision: history.origin_set_revision.clone(),
+                    max_staleness_seconds: history.max_staleness_seconds,
+                    degraded: history.degraded.clone(),
+                    time: Some(history.time.clone()),
+                    quarantined: (history.quarantined > 0).then_some(history.quarantined),
                 },
+                actor: Some(source),
             })
             .await?;
 
@@ -403,6 +729,7 @@ impl Submitter {
         self.keep_outcome(
             &zone,
             &ledger,
+            source,
             &response.event_id,
             crate::temporal::streams::Routed {
                 profile: &profile,
@@ -430,8 +757,32 @@ impl Submitter {
         occurrence: Occurrence,
         occurrence_kind: String,
         event: serde_json::Value,
+        source: String,
     ) -> Result<Staged, ApiError> {
         let addressed = self.addressed(&loaded, &profile)?;
+        // Every engine charges its warm histories to this plane's budget, under this zone, before
+        // it is handed any work (DOGWOOD-02).
+        for (partition, engine) in &addressed {
+            engine.bind_warm(&self.warm, &zone);
+            // Each partition accepts the event version its manifest declares, version 1 when it
+            // declares none (TL-5c): a version 2 partition never reads two bags, and a version 1
+            // partition never projects.
+            let accepts = partition
+                .input
+                .as_deref()
+                .unwrap_or(permguard_languages::event::EVENT_TYPE);
+            if accepts != event_type {
+                return Err(ApiError::new(
+                    ErrorClass::Validation,
+                    permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED,
+                    format!(
+                        "the partition `{}` accepts `{accepts}`, and the occurrence is \
+                         `{event_type}`",
+                        partition.name
+                    ),
+                ));
+            }
+        }
 
         // Every partition, before anything is written. A profile may address several with
         // different schemas, and an occurrence only some of them accept is not one this ledger can
@@ -526,6 +877,7 @@ impl Submitter {
             prev: String::new(),
             event_type: event_type.clone(),
             event_id: occurrence.event_id.clone(),
+            source: Some(source.clone()),
             occurrence_digest: occurrence_digest_of(&event).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Validation,
@@ -621,7 +973,6 @@ impl Submitter {
         self.metrics
             .observe(&measure::APPEND_SECONDS, &[], appending.as_secs_f64());
         self.publish_watermarks(&zone, &ledger);
-
         let mut recovering = false;
         let (sequence, instance) = match written {
             Written::Appended {
@@ -688,7 +1039,10 @@ impl Submitter {
                         ),
                     ));
                 }
-                match self.streams.outcome(&zone, &ledger, &occurrence.event_id) {
+                match self
+                    .streams
+                    .outcome(&zone, &ledger, &source, &occurrence.event_id)
+                {
                     Ok(Some(held)) => match serde_json::from_value::<SubmitResponse>(held) {
                         Ok(response) => {
                             info!(
@@ -764,9 +1118,13 @@ impl Submitter {
             }
         };
 
+        // The receipt names the record's own place on the stream it names: its run and its
+        // sequence there. `sequence` is the plane's local ordinal across the legacy journal and
+        // the Host's runs, what turns and replays are ordered by; the two differ past the first
+        // run, or beside a legacy journal (WP-6.2a, after the review).
         let watermark = Watermark {
             instance,
-            sequence,
+            sequence: record.seq,
             history: history.as_ref().map(|key| key.digest.clone()),
         };
 
@@ -824,7 +1182,10 @@ impl Submitter {
         // so the follower returns the response the leader just committed instead of rebuilding
         // and observing the same occurrence again.
         if recovering {
-            match self.streams.outcome(&zone, &ledger, &occurrence.event_id) {
+            match self
+                .streams
+                .outcome(&zone, &ledger, &source, &occurrence.event_id)
+            {
                 Ok(Some(held)) => {
                     let response =
                         serde_json::from_value::<SubmitResponse>(held).map_err(|error| {
@@ -876,7 +1237,19 @@ impl Submitter {
         // allowed a later concurrent submission to pass the freshness check while an earlier,
         // durable sequence was still waiting to be applied. The current record is excluded by its
         // sequence, so rebuilding here cannot observe it twice.
-        if let Err(error) = self.ensure_history(
+        // Never while prewarm replays this ledger: it would replace the engine this feeds.
+        let exclusion = self.exclusion(&zone, &ledger);
+        let _replaying = exclusion.read().map_err(|_| {
+            ApiError::new(
+                ErrorClass::Internal,
+                permguard_core::codes::pdp_temporal::HISTORY_LOCK_POISONED,
+                "this plane's prewarm left its lock unusable",
+            )
+        })?;
+        let Ensured {
+            abandoned,
+            shared: captured,
+        } = match self.ensure_history(
             &checks,
             &partition_key,
             &occurrence,
@@ -884,28 +1257,50 @@ impl Submitter {
             &ledger,
             sequence,
         ) {
-            self.invalidate_history(&zone, &ledger, &partition_key);
-            return Err(error);
-        }
-
-        // The history this decision will range over, and — for a bounded mode — whether it is
-        // fresh enough to range over at all. Checked after the event is durable and before it is
-        // decided: the record is kept either way, because losing it would change what *future*
-        // decisions mean, and only the answer is withheld.
-        let history = match self.history_scope(&zone, &ledger) {
-            Ok(history) => history,
+            Ok(ensured) => ensured,
             Err(error) => {
-                // The record is durable but was deliberately not applied. Mark this history dirty
-                // now: the next event in the same history repairs the hole from the journal before
-                // it is evaluated, without waiting for a process restart.
                 self.invalidate_history(&zone, &ledger, &partition_key);
                 return Err(error);
             }
         };
 
+        // The history this decision will range over, and — for a bounded mode — whether it is
+        // fresh enough to range over at all. Checked after the event is durable and before it is
+        // decided: the record is kept either way, because losing it would change what *future*
+        // decisions mean, and only the answer is withheld.
+        // What this decision ranges over, and the occurrence's own logical key (WP-6.4b).
+        let window = window_of(&checks, &occurrence);
+        let current = super::logical::key(
+            record.source.as_deref(),
+            &record.stream.producer.id,
+            &record.event_id,
+        );
+        let history =
+            match self.history_scope(&zone, &ledger, &partition_key, captured, window, &current) {
+                Ok(history) => history,
+                Err(error) => {
+                    // The record is durable but was deliberately not applied. Mark this history dirty
+                    // now: the next event in the same history repairs the hole from the journal before
+                    // it is evaluated, without waiting for a process restart.
+                    self.invalidate_history(&zone, &ledger, &partition_key);
+                    return Err(error);
+                }
+            };
+
         // Durable, and this record's turn. Only now may an engine see it.
         let applying = Instant::now();
-        let (verdicts, complete) = self.apply(&checks, &partition_key, &occurrence, &zone, &ledger);
+        let (verdicts, complete) = self.apply(
+            &checks,
+            &partition_key,
+            &occurrence,
+            &zone,
+            &ledger,
+            &abandoned,
+        );
+        if !abandoned.is_empty() {
+            // Behind its journal: replayed before the next occurrence of this history.
+            self.invalidate_history(&zone, &ledger, &partition_key);
+        }
         if !complete {
             // A partition may have observed the occurrence before a sibling failed. Replaying the
             // complete retained run is the only state that makes all addressed partitions agree.
@@ -966,6 +1361,7 @@ impl Submitter {
             self.keep_outcome(
                 &zone,
                 &ledger,
+                &source,
                 &response.event_id,
                 crate::temporal::streams::Routed {
                     profile: &profile,
@@ -1002,7 +1398,7 @@ impl Submitter {
         );
         let decision_id = self
             .streams
-            .decision_id(&zone, &ledger, &occurrence.event_id)
+            .decision_id(&zone, &ledger, &source, &occurrence.event_id)
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
@@ -1042,6 +1438,7 @@ impl Submitter {
         &self,
         zone: &str,
         ledger: &str,
+        source: &str,
         event_id: &str,
         routed: crate::temporal::streams::Routed<'_>,
         response: &SubmitResponse,
@@ -1054,7 +1451,7 @@ impl Submitter {
             )
         })?;
         self.streams
-            .record_outcome(zone, ledger, event_id, routed, &held)
+            .record_outcome(zone, ledger, source, event_id, routed, &held)
             .map_err(|error| {
                 warn!(
                     event.name = "temporal.outcome_unwritable",
@@ -1088,14 +1485,33 @@ impl Submitter {
         occurrence: &Occurrence,
         zone: &str,
         ledger: &str,
+        abandoned: &std::collections::BTreeMap<String, permguard_languages::evaluate::Verdict>,
     ) -> (Vec<(String, permguard_languages::evaluate::Verdict)>, bool) {
         let mut verdicts = Vec::with_capacity(checks.len());
         let mut complete = true;
         for (partition, engine, checked) in checks {
+            // A partition whose replay was abandoned is not shown the occurrence: its history is
+            // behind, and the answer is the `E` its replay plan gave (DOGWOOD-03).
+            if let Some(verdict) = abandoned.get(&partition.name) {
+                if let Some(failure) = verdict.failure() {
+                    self.metrics.count(
+                        &crate::authz::measure::PARTITION_FAILURES,
+                        &[(permguard_core::metrics::labels::REASON, failure.code)],
+                    );
+                }
+                // A decision kind answers the `E`. A history-only kind is accepted: the record is
+                // durable, and the history stays marked, so the next submission replays it
+                // (after the review).
+                if checked.decides {
+                    complete = false;
+                    verdicts.push((partition.name.clone(), verdict.clone()));
+                }
+                continue;
+            }
             // Inside the panic boundary: an engine that came apart applying a durable occurrence is
             // that partition's `E`, never a lost submission.
             let applied = permguard_languages::guard::contained(|| {
-                engine.apply(history, occurrence, checked)
+                engine.apply_replayed(history, occurrence, checked)
             })
             .unwrap_or_else(|_| {
                 Applied::Decided(permguard_languages::evaluate::Verdict::panicked(
@@ -1251,35 +1667,48 @@ impl Submitter {
         };
         let behind = |candidate: &serde_json::Value| super::imports::order_of(candidate) > order;
 
-        let mut newer = self.streams.scan(zone, ledger, &query).map_err(|error| {
-            ApiError::new(
-                ErrorClass::Unavailable,
-                permguard_core::codes::pdp_temporal::HISTORY_UNREADABLE,
-                format!("this plane's own journal could not be read: {error}"),
-            )
-        })?;
+        let mut newer =
+            both(&query, |query| self.streams.scan(zone, ledger, query)).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::HISTORY_UNREADABLE,
+                    format!("this plane's own journal could not be read: {error}"),
+                )
+            })?;
         // "Already observed" is everything below this sequence: this record and whatever the
         // journal placed after it have not been fed to the engine yet, and are not evidence of
         // where the history stands.
-        newer.retain(|candidate| {
-            candidate
-                .get("seq")
-                .and_then(serde_json::Value::as_u64)
-                .is_some_and(|sequence| sequence < before_local_sequence)
-                && behind(candidate)
-        });
+        newer
+            .retain(|(position, candidate)| *position < before_local_sequence && behind(candidate));
+        let mut newer: Vec<serde_json::Value> =
+            newer.into_iter().map(|(_, candidate)| candidate).collect();
         // The imported half feeds the same engine in a shared mode, so it settles the same question.
         if let Some(imports) = &self.imports
             && self.consistency.is_shared()
             && newer.is_empty()
         {
-            newer = imports.window(zone, ledger, &query).map_err(|error| {
+            newer = both(&query, |query| imports.window(zone, ledger, query)).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
                     permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
                     format!("the imported history could not be read: {error}"),
                 )
             })?;
+            newer.retain(behind);
+        }
+        if let Some(imported) = &self.imported
+            && self.consistency.is_shared()
+            && newer.is_empty()
+        {
+            newer = both(&query, |query| imported.window(zone, ledger, query, None)).map_err(
+                |error| {
+                    ApiError::new(
+                        ErrorClass::Unavailable,
+                        permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
+                        format!("the imported history could not be read: {error}"),
+                    )
+                },
+            )?;
             newer.retain(behind);
         }
 
@@ -1356,10 +1785,12 @@ impl Submitter {
     /// favour of the request: an identifier reused over different bytes, or routed differently, is
     /// a conflict, because answering it from the first occurrence's outcome would answer a
     /// question nobody asked.
+    #[allow(clippy::too_many_arguments)]
     fn settled(
         &self,
         zone: &str,
         ledger: &str,
+        source: &str,
         event: &serde_json::Value,
         event_id: &str,
         profile: &str,
@@ -1367,7 +1798,7 @@ impl Submitter {
     ) -> Result<Option<SubmitResponse>, ApiError> {
         let known = self
             .streams
-            .known(zone, ledger, event_id)
+            .known(zone, ledger, source, event_id)
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
@@ -1482,22 +1913,38 @@ impl Submitter {
     /// Reported for every mode, including `local`: an auditor reproducing a decision needs to know
     /// what was visible, and "only this plane's own events" is an answer to that question rather
     /// than the absence of one.
-    fn history_scope(&self, zone: &str, ledger: &str) -> Result<HistoryScope, ApiError> {
-        let Some(imports) = &self.imports else {
-            return Ok(HistoryScope::local());
-        };
+    fn history_scope(
+        &self,
+        zone: &str,
+        ledger: &str,
+        history: &str,
+        captured: Option<super::imported::Shared>,
+        window: Option<(i64, i64)>,
+        current: &super::logical::Key,
+    ) -> Result<HistoryScope, ApiError> {
+        if let Some(imported) = &self.imported
+            && self.consistency.is_shared()
+        {
+            return self.host_scope(imported, zone, ledger, history, captured, window, current);
+        }
         if !self.consistency.is_shared() {
             return Ok(HistoryScope::local());
         }
-        let state = imports.state(zone, ledger).map_err(|error| {
-            ApiError::new(
-                ErrorClass::Unavailable,
-                permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
-                format!(
-                    "this plane's imported history for `{zone}/{ledger}` cannot be read: {error}"
-                ),
-            )
-        })?;
+        // The retired pull's store archived (WP-6.2d) and no import from the Host: the stalest
+        // state there is, a store that never read anything.
+        let state = match &self.imports {
+            Some(imports) => imports.state(zone, ledger).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
+                    format!(
+                        "this plane's imported history for `{zone}/{ledger}` cannot be read: \
+                         {error}"
+                    ),
+                )
+            })?,
+            None => super::imports::Cursor::default(),
+        };
         let staleness = staleness_of(&state.read_at);
         self.metrics.set_aggregated(
             &measure::IMPORT_STALENESS,
@@ -1596,6 +2043,233 @@ impl Submitter {
             // Reported for every mode, `shared-eventual` included: it decides through a hole, and
             // an auditor reproducing the decision has to be able to see that it did.
             gaps: gaps as u64,
+            // The retired pull store holds no Host run, so it names no frontier nor origin set.
+            max_staleness_seconds: Some(self.max_staleness.as_secs()),
+            ..HistoryScope::local()
+        })
+    }
+
+    /// The scope of a shared decision over the origins the member Host imports (WP-6.2c2b1, owner
+    /// decision of 2026-10-18): freshness is this Host's age since it verified the coordinator's
+    /// checkpoint, never an event's time; `shared-bounded` also wants every run the checkpoint
+    /// names held through what it names, and no gap, the Host's or the HTTP pull's.
+    #[allow(clippy::too_many_arguments)]
+    fn host_scope(
+        &self,
+        imported: &super::imported::Imported,
+        zone: &str,
+        ledger: &str,
+        history: &str,
+        captured: Option<super::imported::Shared>,
+        window: Option<(i64, i64)>,
+        current: &super::logical::Key,
+    ) -> Result<HistoryScope, ApiError> {
+        let unreadable = |error: String| {
+            ApiError::new(
+                ErrorClass::Unavailable,
+                permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
+                format!(
+                    "this plane's imported history for `{zone}/{ledger}` cannot be read: {error}"
+                ),
+            )
+        };
+        // The view the replay read (WP-6.4a, after the review), read again only when nothing
+        // captured one.
+        let shared = match captured {
+            Some(shared) => shared,
+            None => imported
+                .shared(zone, ledger)
+                .map_err(|error| unreadable(error.to_string()))?,
+        };
+        let legacy = match &self.imports {
+            Some(imports) => Some(
+                imports
+                    .state(zone, ledger)
+                    .map_err(|error| unreadable(error.to_string()))?,
+            ),
+            None => None,
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|since| since.as_secs())
+            .unwrap_or_default();
+        let staleness = shared
+            .state
+            .as_ref()
+            .map(|state| now.saturating_sub(state.verified_at));
+        self.metrics.set_aggregated(
+            &measure::IMPORT_STALENESS,
+            permguard_core::Aggregate::Max,
+            &format!("{zone}/{ledger}"),
+            staleness.unwrap_or_default() as f64,
+        );
+        let bounded = matches!(
+            self.consistency,
+            permguard_core::config::Consistency::SharedBounded
+        );
+        let refuse = |code: &'static str, reason: String| {
+            self.metrics.count(
+                &measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, code)],
+            );
+            Err(ApiError::new(ErrorClass::Unavailable, code, reason))
+        };
+        if bounded {
+            let bound = self.max_staleness.as_secs();
+            match staleness {
+                None => {
+                    return refuse(
+                        permguard_core::codes::pdp_temporal::HISTORY_STALE,
+                        format!(
+                            "this Host has never verified a coordinator's checkpoint of \
+                             `{zone}/{ledger}`, and `shared-bounded` decides only on history it \
+                             can vouch for. The event is recorded; the decision is withheld"
+                        ),
+                    );
+                }
+                Some(held) if held > bound => {
+                    return refuse(
+                        permguard_core::codes::pdp_temporal::HISTORY_STALE,
+                        format!(
+                            "this Host last verified the coordinator's checkpoint of \
+                             `{zone}/{ledger}` {held}s ago, and `shared-bounded` decides only on \
+                             history no older than {bound}s. The event is recorded; the decision \
+                             is withheld"
+                        ),
+                    );
+                }
+                Some(_) => {}
+            }
+            if let Some((_, _, have, wanted)) = shared.behind.first() {
+                return refuse(
+                    permguard_core::codes::pdp_temporal::HISTORY_STALE,
+                    format!(
+                        "the coordinator's checkpoint of `{zone}/{ledger}` names an origin's run \
+                         through {wanted} and this Host holds it through {have}, so \
+                         `shared-bounded` would decide on less than the checkpoint vouches for. \
+                         The event is recorded; the decision is withheld"
+                    ),
+                );
+            }
+        }
+        let host_gaps = shared.state.as_ref().map_or(0, |state| state.gaps.len());
+        let legacy_gaps = legacy.as_ref().map_or(0, |state| {
+            state.gaps.iter().filter(|gap| !gap.resolved).count()
+        });
+        let gaps = host_gaps + legacy_gaps;
+        self.metrics.set_aggregated(
+            &measure::IMPORT_GAPS_OPEN,
+            permguard_core::Aggregate::Sum,
+            &format!("{zone}/{ledger}"),
+            gaps as f64,
+        );
+        if gaps > 0 && bounded {
+            return refuse(
+                permguard_core::codes::pdp_temporal::HISTORY_INCOMPLETE,
+                format!(
+                    "the shared history of `{zone}/{ledger}` has {gaps} recorded gap(s), and \
+                     `shared-bounded` decides only on a history it holds whole. The event is \
+                     recorded; the decision is withheld until a snapshot or a change of the \
+                     required origins resolves them"
+                ),
+            );
+        }
+        let legacy_mark = legacy
+            .as_ref()
+            .filter(|state| !state.offset.is_empty())
+            .map(|state| state.offset.clone())
+            .unwrap_or_default();
+        // A digest conflict in this decision's window (WP-6.4b, owner decision of 2026-10-21): the
+        // logical occurrence is quarantined; `shared-bounded` refuses, the frontier being
+        // inconsistent, and `shared-eventual` decides without it and says so. No window is an
+        // instant that is not a canonical one, which the replay refuses on its own.
+        let quarantined = match window {
+            Some((from, until)) => imported
+                .quarantined(zone, ledger, history, from, until)
+                .map_err(|error| unreadable(error.to_string()))?,
+            None => Vec::new(),
+        };
+        if bounded && !quarantined.is_empty() {
+            return refuse(
+                permguard_core::codes::pdp_temporal::HISTORY_CONFLICTED,
+                format!(
+                    "the shared history of `{zone}/{ledger}` holds {} occurrence(s) in this \
+                     decision's window recorded with different bytes by more than one origin, and \
+                     `shared-bounded` decides only on a consistent history. The event is \
+                     recorded; the decision is withheld while a conflicting occurrence is in the \
+                     window",
+                    quarantined.len()
+                ),
+            );
+        }
+        // The occurrence itself recorded with other bytes by another origin: quarantined, it is
+        // no occurrence a decision can be about, in either mode.
+        if imported
+            .conflicting(zone, ledger)
+            .map_err(|error| unreadable(error.to_string()))?
+            .contains(current)
+        {
+            return refuse(
+                permguard_core::codes::pdp_temporal::HISTORY_CONFLICTED,
+                format!(
+                    "the occurrence `{}` is recorded with different bytes by another origin of \
+                     `{zone}/{ledger}`, so it is quarantined from shared history. The event is \
+                     recorded; no decision is made about it",
+                    current.1
+                ),
+            );
+        }
+        let own = imported.own();
+        let conflicted_origins: std::collections::BTreeSet<&str> = quarantined
+            .iter()
+            .flat_map(|entry| entry.positions.iter().map(|(origin, _, _)| origin.as_str()))
+            .filter(|origin| *origin != own)
+            .collect();
+        // The required origins a `shared-eventual` decision is degraded by (WP-6.4a): those behind
+        // the checkpoint or gapped, and every one of them once the checkpoint is older than the
+        // bound. A `shared-bounded` decision reaching here has none: it refused above.
+        let stale = staleness.is_none_or(|held| held > self.max_staleness.as_secs());
+        let degraded: Vec<String> = if bounded {
+            Vec::new()
+        } else {
+            shared
+                .required
+                .iter()
+                .filter(|origin| {
+                    stale
+                        || shared
+                            .behind
+                            .iter()
+                            .any(|(behind, _, _, _)| super::imported::hex(behind) == **origin)
+                        || shared.state.as_ref().is_some_and(|state| {
+                            state
+                                .gaps
+                                .iter()
+                                .any(|gap| super::imported::hex(&gap.origin) == **origin)
+                        })
+                })
+                .map(String::as_str)
+                // Every other origin that recorded a quarantined occurrence, required or not.
+                .chain(conflicted_origins)
+                .collect::<std::collections::BTreeSet<&str>>()
+                .into_iter()
+                .map(str::to_owned)
+                .collect()
+        };
+        Ok(HistoryScope {
+            mode: self.consistency.as_str().to_owned(),
+            watermark: Some(format!("{legacy_mark}|{}", shared.watermark)),
+            staleness_seconds: staleness,
+            gaps: gaps as u64,
+            frontier: shared.frontier,
+            origin_set_revision: shared
+                .state
+                .as_ref()
+                .map(|state| super::imported::hex(&state.revision)),
+            max_staleness_seconds: Some(self.max_staleness.as_secs()),
+            degraded,
+            quarantined: quarantined.len() as u64,
+            ..HistoryScope::local()
         })
     }
 
@@ -1630,7 +2304,7 @@ impl Submitter {
         zone: &str,
         ledger: &str,
         before_local_sequence: u64,
-    ) -> Result<(), ApiError> {
+    ) -> Result<Ensured, ApiError> {
         let imported = match (&self.imports, self.consistency.is_shared()) {
             (Some(imports), true) => Some(imports.state(zone, ledger).map_err(|error| {
                 ApiError::new(
@@ -1641,11 +2315,30 @@ impl Submitter {
             })?),
             _ => None,
         };
-        let watermark = imported
+        let mut captured: Option<super::imported::Shared> = None;
+        let mut watermark = imported
             .as_ref()
             .filter(|state| state.imported > 0)
             .map(|state| state.offset.clone())
             .unwrap_or_default();
+        // What the plane has indexed of the origins the Host imports moves it too (WP-6.2c2b1).
+        if let Some(host_imports) = &self.imported
+            && self.consistency.is_shared()
+        {
+            let shared = host_imports.shared(zone, ledger).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
+                    error.to_string(),
+                )
+            })?;
+            watermark = format!("{watermark}|{}", shared.watermark);
+            captured = Some(shared);
+        }
+        // The imported history as captured here is what a replay reads and what the decision
+        // cites (WP-6.4a, after the review): one frontier, never two readings of a moving one.
+        let bound: Option<Vec<permguard_core::frontier::FrontierRun>> =
+            captured.as_ref().map(|shared| shared.frontier.clone());
 
         // The note is per partition — see the field. A partition needs a rebuild when its engine
         // has been told nothing (fresh: recompiled, evicted, or first sight of this history), or
@@ -1689,17 +2382,86 @@ impl Submitter {
                 .collect()
         };
         if stale.is_empty() {
-            return Ok(());
+            return Ok(Ensured {
+                abandoned: std::collections::BTreeMap::new(),
+                shared: captured,
+            });
         }
 
-        let records = self.observable(
+        // The replay plan (DOGWOOD-03): a bounded number of cold replays at once, each within one
+        // deadline, a record count and a byte count. Past any of them the stale partitions answer
+        // `E` and stay marked for replay; nothing goes on working once the caller is answered.
+        let abandon = |why: String| -> std::collections::BTreeMap<
+            String,
+            permguard_languages::evaluate::Verdict,
+        > {
+            warn!(
+                event.name = "temporal.replay_abandoned",
+                component = COMPONENT,
+                zone,
+                ledger,
+                code = permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED,
+                "a cold history's replay did not fit its plan: answering `E` rather than deciding \
+                 against a history that is behind"
+            );
+            stale
+                .iter()
+                .map(|partition| {
+                    (
+                        partition.clone(),
+                        permguard_languages::evaluate::Verdict::deadline_exceeded(why.clone()),
+                    )
+                })
+                .collect()
+        };
+        if self
+            .replaying
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            >= self.replay.concurrency
+        {
+            self.replaying
+                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            return Ok(Ensured::of(
+                captured.clone(),
+                abandon(format!(
+                    "{} cold histories are already being replayed, the most this plane runs at once \
+                 (`events.replay.concurrency`)",
+                    self.replay.concurrency
+                )),
+            ));
+        }
+        let _slot = Replaying(&self.replaying);
+        let deadline = std::time::Instant::now() + self.replay.timeout;
+
+        let Some(records) = self.observable(
             zone,
             ledger,
             history,
             occurrence,
             checks,
             before_local_sequence,
-        )?;
+            bound.as_deref(),
+        )?
+        else {
+            return Ok(Ensured::of(
+                captured.clone(),
+                abandon(format!(
+                    "the history holds more than {} records, the most one replay reads \
+                 (`events.replay.max_records`)",
+                    self.replay.max_records
+                )),
+            ));
+        };
+        if std::time::Instant::now() >= deadline {
+            return Ok(Ensured::of(
+                captured.clone(),
+                abandon(format!(
+                    "the history could not be read within {:?} (`events.replay.timeout`)",
+                    self.replay.timeout
+                )),
+            ));
+        }
+        let mut abandoned = std::collections::BTreeMap::new();
         // Only what is stale. A partition that is already up to date must not be rebuilt by a
         // sibling's staleness — a rebuild discards a history to replace it, and doing that
         // needlessly is a window somebody's concurrent decision falls into.
@@ -1709,7 +2471,14 @@ impl Submitter {
             .collect();
         for (partition, engine, _) in rebuilding {
             let mut occurrences = Vec::new();
+            let mut late = false;
             for stored in &records {
+                // The checks are part of the replay's work, under the same deadline (after the
+                // review).
+                if std::time::Instant::now() >= deadline {
+                    late = true;
+                    break;
+                }
                 // A ledger history is shared by profiles, while a partition's history is not. A
                 // record addressed to a sibling profile or partition remains valid evidence but is
                 // never an input to this engine.
@@ -1761,10 +2530,47 @@ impl Submitter {
                 }
                 occurrences.push(stored.occurrence.clone());
             }
-            contained(permguard_core::codes::common::UNAVAILABLE, || {
-                engine.rebuild(history, &occurrences)
-            })
-            .map_err(|refused| {
+            if late {
+                abandoned.insert(
+                    partition.name.clone(),
+                    permguard_languages::evaluate::Verdict::deadline_exceeded(format!(
+                        "the history could not be checked within {:?} (`events.replay.timeout`)",
+                        self.replay.timeout
+                    )),
+                );
+                continue;
+            }
+            let bytes: u64 = occurrences
+                .iter()
+                .map(|occurrence| occurrence.weight() as u64)
+                .sum();
+            if bytes > self.replay.max_bytes {
+                abandoned.insert(
+                    partition.name.clone(),
+                    permguard_languages::evaluate::Verdict::deadline_exceeded(format!(
+                        "the history spells {bytes} bytes, more than the {} one replay feeds an \
+                         engine (`events.replay.max_bytes`)",
+                        self.replay.max_bytes
+                    )),
+                );
+                continue;
+            }
+            let rebuilt = contained(permguard_core::codes::common::UNAVAILABLE, || {
+                engine.rebuild(history, &occurrences, Some(deadline))
+            });
+            if let Err(refused) = &rebuilt
+                && refused.code == permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED
+            {
+                abandoned.insert(
+                    partition.name.clone(),
+                    permguard_languages::evaluate::Verdict::deadline_exceeded(format!(
+                        "{} (`events.replay.timeout` is {:?})",
+                        refused.message, self.replay.timeout
+                    )),
+                );
+                continue;
+            }
+            rebuilt.map_err(|refused| {
                 warn!(
                     event.name = "temporal.rebuild_failed",
                     component = COMPONENT,
@@ -1788,10 +2594,16 @@ impl Submitter {
             )
         })?;
         for partition in stale {
+            if abandoned.contains_key(&partition) {
+                continue;
+            }
             applied.insert(key_of(&partition), watermark.clone());
         }
 
-        Ok(())
+        Ok(Ensured {
+            abandoned,
+            shared: captured,
+        })
     }
 
     /// The ordered run a partition of this ledger should have observed.
@@ -1800,6 +2612,7 @@ impl Submitter {
     /// run in the documented deterministic order. One function, because "what did this policy see"
     /// has one answer: a shared-mode rebuild that replayed only the imported half would silently
     /// discard everything this plane recorded itself.
+    #[allow(clippy::too_many_arguments)]
     fn observable(
         &self,
         zone: &str,
@@ -1808,7 +2621,8 @@ impl Submitter {
         occurrence: &Occurrence,
         checks: &[Verified<'_>],
         before_local_sequence: u64,
-    ) -> Result<Vec<StoredOccurrence>, ApiError> {
+        bound: Option<&[permguard_core::frontier::FrontierRun]>,
+    ) -> Result<Option<Vec<StoredOccurrence>>, ApiError> {
         let unreadable = |what: &str, detail: String| {
             ApiError::new(
                 ErrorClass::Unavailable,
@@ -1817,22 +2631,12 @@ impl Submitter {
             )
         };
 
-        // The window this partition's policies can actually look back over, taken from the loaded
-        // schemas rather than from retention. `max_window` is a validation and retention ceiling —
-        // reading everything inside it because a leaf *could* ask for it is exactly the read this
-        // index exists to avoid, and the widest declared window is the widest any leaf can name.
-        let window = checks
-            .iter()
-            .map(|(_, engine, _)| engine.contract().max_window_seconds)
-            .max()
-            .unwrap_or(0);
-        let until =
-            permguard_events::index::epoch_seconds(&occurrence.occurred_at).ok_or_else(|| {
-                unreadable(
-                    "this occurrence",
-                    "its instant is not a canonical one".to_owned(),
-                )
-            })?;
+        let (from, until) = window_of(checks, occurrence).ok_or_else(|| {
+            unreadable(
+                "this occurrence",
+                "its instant is not a canonical one".to_owned(),
+            )
+        })?;
         let query = permguard_events::index::Query {
             event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
             history: history.to_owned(),
@@ -1841,21 +2645,16 @@ impl Submitter {
             // that answers that leaf and lies to the others.
             action: None,
             kind: None,
-            from: until.saturating_sub(window),
+            from,
             until,
         };
 
         // A range scan over this history and this window, never a read of the ledger.
-        let mut records = self
-            .streams
-            .scan(zone, ledger, &query)
+        let mut records = both(&query, |query| self.streams.scan(zone, ledger, query))
             .map_err(|error| unreadable("this plane's own journal", error.to_string()))?;
-        records.retain(|record| {
-            record
-                .get("seq")
-                .and_then(serde_json::Value::as_u64)
-                .is_some_and(|sequence| sequence < before_local_sequence)
-        });
+        records.retain(|(position, _)| *position < before_local_sequence);
+        let mut records: Vec<serde_json::Value> =
+            records.into_iter().map(|(_, record)| record).collect();
         if let Some(imports) = &self.imports
             && self.consistency.is_shared()
         {
@@ -1864,22 +2663,77 @@ impl Submitter {
             // record and filter", so a plane in a shared mode paid its whole retained import
             // history on every decision while its own journal cost one window.
             records.extend(
-                imports
-                    .window(zone, ledger, &query)
+                both(&query, |query| imports.window(zone, ledger, query))
                     .map_err(|error| unreadable("the imported history", error.to_string()))?,
             );
         }
-        records.sort_by_key(super::imports::order_of);
+        if let Some(imported) = &self.imported
+            && self.consistency.is_shared()
+        {
+            records.extend(
+                both(&query, |query| imported.window(zone, ledger, query, bound))
+                    .map_err(|error| unreadable("the imported history", error.to_string()))?,
+            );
+        }
+        // The replay plan's record bound, before anything is parsed (DOGWOOD-03).
+        if records.len() as u64 > self.replay.max_records {
+            return Ok(None);
+        }
+        let records = if self.consistency.is_shared() {
+            // One logical occurrence applies once, whichever plane recorded it; one recorded with
+            // different bytes is quarantined (WP-6.2c2b1).
+            // The conflicts the durable logical index knows, beyond this window (WP-6.4b).
+            let known = match &self.imported {
+                Some(imported) => imported
+                    .conflicting(zone, ledger)
+                    .map_err(|error| unreadable("the logical index", error.to_string()))?,
+                None => std::collections::BTreeSet::new(),
+            };
+            let (records, quarantined) = super::imported::deduplicated(records, &known);
+            // A conflict the window itself shows, which an index rebuilt from the consumer alone
+            // may not hold yet: `shared-bounded` still decides only on a consistent history.
+            if quarantined > 0
+                && self.consistency == permguard_core::config::Consistency::SharedBounded
+            {
+                return Err(ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::HISTORY_CONFLICTED,
+                    format!(
+                        "the shared history of `{zone}/{ledger}` holds {quarantined} \
+                         occurrence(s) in this decision's window recorded with different bytes \
+                         by more than one origin, and `shared-bounded` decides only on a \
+                         consistent history. The event is recorded; the decision is withheld \
+                         while a conflicting occurrence is in the window"
+                    ),
+                ));
+            }
+            if quarantined > 0 {
+                tracing::warn!(
+                    event.name = "temporal.occurrence_quarantined",
+                    component = "temporal",
+                    zone,
+                    ledger,
+                    quarantined,
+                    "occurrences recorded with different bytes by more than one plane are left \
+                     out of shared decisions"
+                );
+            }
+            records
+        } else {
+            let mut records = records;
+            records.sort_by_key(super::imports::order_of);
+            records
+        };
 
         let mut occurrences = Vec::with_capacity(records.len());
         for value in &records {
             let record = permguard_events::record::validate(value)
                 .map_err(|error| unreadable("a stored record", error.to_string()))?;
-            let body: OccurrenceBody = serde_json::from_value(record.event.clone())
-                .map_err(|error| unreadable("a stored record", error.to_string()))?;
-            let occurrence = body
-                .read()
-                .map_err(|malformed| unreadable("a stored occurrence", malformed.to_string()))?;
+            // Each record by the version it was written in: version 1 records stay as written and
+            // replay beside version 2 ones (TL-5c).
+            let occurrence =
+                permguard_languages::event::read_typed(&record.event_type, &record.event)
+                    .map_err(|why| unreadable("a stored occurrence", why))?;
             if occurrence.event_id != record.event_id
                 || occurrence.kind != record.kind
                 || occurrence.occurred_at != record.occurred_at
@@ -1892,7 +2746,7 @@ impl Submitter {
             occurrences.push(StoredOccurrence { record, occurrence });
         }
 
-        Ok(occurrences)
+        Ok(Some(occurrences))
     }
 
     /// The occurrence's history key, which every addressed partition must agree on.
@@ -1981,14 +2835,15 @@ impl Submitter {
             )
         })?;
         let declared = body.kind.as_deref().unwrap_or_default();
-        // The type is checked, never obeyed. This build implements one occurrence contract; a
-        // second one is a registry entry with its own validator, not a branch here.
-        if declared != permguard_languages::event::EVENT_TYPE {
+        // The type is checked, never obeyed: one of the two registered versions, and which one the
+        // addressed partitions accept is checked against their manifests in `stage` (TL-5c).
+        if !EVENT_TYPES.contains(&declared) {
             return Err(malformed(
                 permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED,
                 format!(
-                    "`{declared}` is not an event type this plane accepts; it accepts `{}`",
-                    permguard_languages::event::EVENT_TYPE
+                    "`{declared}` is not an event type this plane accepts; it accepts `{}` and \
+                     `{}`",
+                    EVENT_TYPES[0], EVENT_TYPES[1]
                 ),
             ));
         }
@@ -1998,18 +2853,25 @@ impl Submitter {
                 "`event.data` is required".to_owned(),
             )
         })?;
-        let parsed: OccurrenceBody = serde_json::from_value(data.clone()).map_err(|error| {
-            malformed(
-                permguard_core::codes::pdp_temporal::EVENT_MALFORMED,
-                format!(
-                    "`event.data` is not a `{}`: {error}",
-                    permguard_languages::event::EVENT_TYPE
-                ),
-            )
-        })?;
-        let occurrence = parsed
-            .read()
-            .map_err(|why| malformed(why.code, why.message))?;
+        let occurrence = if declared == permguard_languages::event::EVENT_TYPE_V2 {
+            let parsed: permguard_languages::OccurrenceBodyV2 =
+                serde_json::from_value(data.clone()).map_err(|error| {
+                    malformed(
+                        permguard_core::codes::pdp_temporal::EVENT_MALFORMED,
+                        format!("`event.data` is not a `{declared}`: {error}"),
+                    )
+                })?;
+            parsed.read()
+        } else {
+            let parsed: OccurrenceBody = serde_json::from_value(data.clone()).map_err(|error| {
+                malformed(
+                    permguard_core::codes::pdp_temporal::EVENT_MALFORMED,
+                    format!("`event.data` is not a `{declared}`: {error}"),
+                )
+            })?;
+            parsed.read()
+        }
+        .map_err(|why| malformed(why.code, why.message))?;
 
         Ok(Read {
             zone,
@@ -2251,6 +3113,22 @@ impl Submitter {
     }
 }
 
+/// The window a decision about `occurrence` reads, `[from, until]` in epoch seconds: back from the
+/// occurrence's own instant over the widest window the addressed partitions' policies declare,
+/// taken from the loaded schemas rather than from retention. `max_window` is a validation and
+/// retention ceiling — reading everything inside it because a leaf *could* ask for it is exactly
+/// the read the index exists to avoid, and the widest declared window is the widest any leaf can
+/// name. `None` when the instant is not a canonical one.
+fn window_of(checks: &[Verified<'_>], occurrence: &Occurrence) -> Option<(i64, i64)> {
+    let window = checks
+        .iter()
+        .map(|(_, engine, _)| engine.contract().max_window_seconds)
+        .max()
+        .unwrap_or(0);
+    let until = permguard_events::index::epoch_seconds(&occurrence.occurred_at)?;
+    Some((until.saturating_sub(window), until))
+}
+
 /// How long ago an instant was, in seconds, or `None` for one that never happened.
 fn staleness_of(read_at: &str) -> Option<u64> {
     let then = permguard_events::index::epoch_seconds(read_at)?;
@@ -2278,6 +3156,27 @@ struct StoredOccurrence {
     record: Record,
     occurrence: Occurrence,
 }
+
+/// One history scan over every registered event version: a history written in version 1 and
+/// continued in version 2 is one history (TL-5c). The caller orders what it read.
+fn both<T, E>(
+    query: &permguard_events::index::Query,
+    mut read: impl FnMut(&permguard_events::index::Query) -> Result<Vec<T>, E>,
+) -> Result<Vec<T>, E> {
+    let mut held = Vec::new();
+    for event_type in EVENT_TYPES {
+        let mut each = query.clone();
+        each.event_type = event_type.to_owned();
+        held.extend(read(&each)?);
+    }
+    Ok(held)
+}
+
+/// The registered event types a temporal submission may assert, version 1 first.
+const EVENT_TYPES: [&str; 2] = [
+    permguard_languages::event::EVENT_TYPE,
+    permguard_languages::event::EVENT_TYPE_V2,
+];
 
 /// The registered event type this submission asserted, after it was checked.
 fn temporal_event_type(request: &SubmitRequest) -> String {
@@ -2433,6 +3332,9 @@ fn permguard_data_plane_mirror_of(
     zone: &str,
     ledger: &str,
 ) -> Result<crate::authz::store::Mirror, ApiError> {
+    if !crate::authz::store::contested(root, zone, ledger).is_empty() {
+        return Err(crate::authz::decide::contested_ledger(zone, ledger));
+    }
     crate::authz::store::find(root, zone, ledger).ok_or_else(|| {
         ApiError::new(
             ErrorClass::NotFound,

@@ -268,10 +268,28 @@ pub trait Sign: Send + Sync {
     }
 }
 
+/// A ring's published set at one epoch, as an artifact signed under it names it (WP-7.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeySetView {
+    pub epoch: u64,
+    /// The digest of the published set at `epoch`.
+    pub digest: [u8; 32],
+    /// The JOSE algorithm of the ring's suite: `EdDSA` or `ES256`.
+    pub algorithm: &'static str,
+}
+
 /// Reads one ring's public set, and does nothing else: what publishing or verifying needs.
 pub trait PublicSet: Send + Sync {
     /// Every key a client may need to verify with.
     fn public_keys(&self) -> Result<Vec<Jwk>>;
+
+    /// The ring's epoch, set digest and algorithm, for an artifact that binds them: a ring that
+    /// keeps no epoch names none.
+    fn key_set(&self) -> Result<KeySetView> {
+        Err(crate::error::KeyError::not_ready(
+            "this ring names no epoch or key set",
+        ))
+    }
 }
 
 /// Signs with one ring and reads its public set: what a plane that publishes what it signs needs.

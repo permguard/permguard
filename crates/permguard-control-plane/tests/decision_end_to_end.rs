@@ -214,6 +214,8 @@ fn decided<'a>(id: &'a str, zone: &'a str, permit: bool) -> Decided<'a> {
         at: "2026-08-24T10:00:00Z".to_owned(),
         zone,
         ledger: "main-ledger",
+        zone_id: zone,
+        ledger_id: "main-ledger",
         scope: None,
         commit: "sha256:ec1773bf",
         counter: 3,
@@ -241,6 +243,10 @@ fn decided<'a>(id: &'a str, zone: &'a str, permit: bool) -> Decided<'a> {
         request_id: None,
         latency_us: 143,
         event: None,
+        interface: None,
+        actor: None,
+        question: None,
+        descriptors: Default::default(),
     }
 }
 
@@ -426,8 +432,11 @@ fn a_batch_the_store_refuses_on_its_merits_stops_the_shipper_instead_of_looping(
     );
 }
 
+/// WP-6.3a, owner decision of 2026-10-20: a legacy producer's stream reaches the store whole,
+/// both tenants' decisions and the epoch governing them, read by its producer and instance; no
+/// view keyed by the names its records carry is kept, the tenant view being the Host's.
 #[test]
-fn each_tenant_s_view_is_populated_from_the_one_producer_stream() {
+fn a_legacy_stream_reaches_the_store_whole_and_no_view_by_name() {
     let pair = pair("tenancy", bounds());
     for index in 0..20 {
         let zone = if index % 2 == 0 { "acme" } else { "globex" };
@@ -437,27 +446,41 @@ fn each_tenant_s_view_is_populated_from_the_one_producer_stream() {
     }
     assert!(matches!(pair.shipper.round(), Round::Shipped { .. }));
 
+    let stream = pair.journal.stream().expect("a stream");
+    let records = read_all(
+        &pair.store,
+        &Scope::Stream {
+            pdp_id: stream.id.clone(),
+            instance: stream.instance.clone(),
+        },
+    );
+    assert_eq!(
+        records.first().map(|record| record["kind"].clone()),
+        Some(json!("marker")),
+        "the epoch that governs them"
+    );
     for zone in ["acme", "globex"] {
-        let records = read_all(
-            &pair.store,
-            &Scope::Tenant {
-                zone: zone.to_owned(),
-                ledger: "main-ledger".to_owned(),
-            },
-        );
-        assert!(
+        assert_eq!(
             records
                 .iter()
-                .filter(|record| record["kind"] == json!("decision"))
-                .all(|record| record["store"]["zone"] == json!(zone)),
-            "{zone} sees only its own"
+                .filter(|record| record["store"]["zone"] == json!(zone))
+                .count(),
+            10,
+            "{zone}'s decisions"
         );
-        assert_eq!(
-            records.first().map(|record| record["kind"].clone()),
-            Some(json!("marker")),
-            "and the epoch that governs them, which carries no tenant data at all"
+        assert!(
+            read_all(
+                &pair.store,
+                &Scope::Tenant {
+                    zone: zone.to_owned(),
+                    ledger: "main-ledger".to_owned(),
+                },
+            )
+            .is_empty(),
+            "no view by name"
         );
     }
+    assert!(!pair.store.root().join("views").exists());
 }
 
 #[test]
@@ -518,6 +541,11 @@ fn asking_for_the_signers_of_a_stream_nobody_holds_is_not_found() {
         producer_files: Vec::new(),
         disclosure: permguard_core::Disclosure::Full,
         metrics: Metrics::none(),
+        host: None,
+        catalog: None,
+        base_url: String::new(),
+        describer: permguard_core::stages::Describer::detached("control-plane"),
+        authorization: std::sync::Arc::new(permguard_host::composition::Authorization::permissive()),
     };
 
     let refused = facade

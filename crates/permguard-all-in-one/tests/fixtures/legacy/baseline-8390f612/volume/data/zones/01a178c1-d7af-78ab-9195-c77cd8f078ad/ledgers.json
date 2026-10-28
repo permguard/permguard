@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "ledgers": [
+    {
+      "id": "01a178c1-d7c0-7ed3-ab6c-06a7e932d924",
+      "zone_id": "01a178c1-d7af-78ab-9195-c77cd8f078ad",
+      "name": "main-ledger",
+      "default_ref": "main",
+      "created_at": 1793027332,
+      "updated_at": 1793027332
+    },
+    {
+      "id": "01a178c1-d8d4-7e99-b87f-bad0ddb3a927",
+      "zone_id": "01a178c1-d7af-78ab-9195-c77cd8f078ad",
+      "name": "agent-governance",
+      "default_ref": "main",
+      "created_at": 1793027332,
+      "updated_at": 1793027332
+    }
+  ]
+}

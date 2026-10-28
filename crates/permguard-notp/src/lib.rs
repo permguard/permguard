@@ -20,12 +20,17 @@
 //! protocol knows the objects, the objects know no protocol.
 
 pub mod codec;
+pub mod mirror;
 pub mod pull;
 pub mod push;
 
-pub use codec::WireError;
+pub use codec::{ExpectedRef, MAX_REQUEST_ID_BYTES, TransferId, WireError, is_request_id};
+pub use mirror::{
+    ListLedgersAnswer, ListedLedger, MAX_LISTED_LEDGERS, MirrorOperation, MirrorRequest,
+};
 pub use pull::{
-    FetchObjectsRequest, FetchObjectsResponse, NegotiatePullRequest, NegotiatePullResponse,
+    FetchObjectsRequest, FetchObjectsResponse, GetRefRequest, GetRefResponse, NegotiatePullRequest,
+    NegotiatePullResponse,
 };
 pub use push::{
     CommitPushRequest, CommitPushResponse, NegotiatePushRequest, NegotiatePushResponse,

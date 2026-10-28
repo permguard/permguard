@@ -252,6 +252,44 @@
           "note": "the digest of the seal of `through`, whose last_seq is low_watermark - 1"
         }
       ]
+    },
+    "checkpoint_ship": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "class", "type": "text", "occurs": "required", "note": "WP-5.9: `security`, `operations` or `access`; the trail's resource is the task session's" },
+        { "label": 2, "name": "checkpoint", "type": "bytes", "occurs": "required", "note": "the COSE_Sign1 permguard.audit.checkpoint.v1 the member sealed, at most 16 KiB" },
+        { "label": 3, "name": "statement", "type": "bytes", "occurs": "required", "note": "the member's host.operations ring statement, matching the membership's pin" },
+        { "label": 4, "name": "anchor", "type": "bytes", "occurs": "optional", "note": "the trail's ANCHOR.cbor, when retention deleted a prefix" }
+      ]
+    },
+    "checkpoint_ack": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "trail", "type": "text", "occurs": "required", "note": "`<class>:<resource>`" },
+        { "label": 2, "name": "checkpoint", "type": "bytes", "occurs": "required", "note": "32 bytes: SHA-256 under `permguard.audit.checkpoint.v1\\n` of the envelope kept" },
+        { "label": 3, "name": "received_at", "type": "uint", "occurs": "required", "note": "the coordinator's clock, seconds" }
+      ]
+    },
+    "egress_acks": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "trails", "type": "array<map:egress_ack>", "occurs": "required", "note": "the member's, per membership and task, at most 4096, by trail" }
+      ]
+    },
+    "egress_ack": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "trail", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "name", "type": "text", "occurs": "required", "note": "the acknowledged checkpoint's file name in the member's trail" },
+        { "label": 3, "name": "digest", "type": "bytes", "occurs": "required", "note": "32 bytes: its envelope's digest" }
+      ]
+    },
+    "kept_checkpoint": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "count", "type": "uint", "occurs": "required", "note": "the coordinator's LAST: how many checkpoints of the trail it keeps" },
+        { "label": 2, "name": "digest", "type": "bytes", "occurs": "required", "note": "32 bytes: the last one's envelope digest" }
+      ]
     }
   },
   "arrays": {},
@@ -259,6 +297,10 @@
     "audit_record",
     "trail_meta",
     "checkpoint",
-    "anchor"
+    "anchor",
+    "checkpoint_ship",
+    "checkpoint_ack",
+    "egress_acks",
+    "kept_checkpoint"
   ]
 }

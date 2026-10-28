@@ -17,12 +17,15 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicU64, Ordering};
 
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::Serialize;
 
 use permguard_core::assurance::AssuranceProfile;
-use permguard_core::authz::{Principal, Selector};
-use permguard_host::authz::{AuthzError, GrantId, GrantRecord, GrantStore, Issue};
+use permguard_core::authz::Principal;
+use permguard_host::authz::{AuthzError, GrantRecord, GrantStore};
 use permguard_host::keys::custody::Custodian;
 use permguard_host::keys::ring::HOST_IDENTITY;
 use permguard_host::operations::grants;
@@ -30,14 +33,18 @@ use permguard_host::operations::journal::Initiator;
 use permguard_host::operations::mutation::{MutationError, Mutations};
 use permguard_host::storage::volume::Volume;
 
-use crate::args::{Globals, GrantsAction, HostAction, IdentityAction, ResetAction};
+use crate::args::{
+    Globals, GrantRevokeAction, GrantsAction, HoldsAction, HostAction, IdentityAction,
+    InviteAction, MemberChangeArgs, MemberRevokeAction, MembersAction, PinAction, ResetAction,
+};
 use crate::failure::{EXIT_READY, Failure};
 use crate::output::Report;
 use crate::session::render;
 use crate::trace::Trace;
+use permguard_host::api::host_input::{IdentityPin, InvitationHandoff, PinStore};
 
 /// The `--volume` target an offline command works on (TC-1): stated, never guessed.
-fn volume_of(globals: &Globals) -> Result<std::path::PathBuf, Failure> {
+pub(crate) fn volume_of(globals: &Globals) -> Result<std::path::PathBuf, Failure> {
     globals.volume.clone().ok_or_else(|| {
         Failure::usage(
             "an offline host command works on a volume: name it with --volume <dir>, the \
@@ -55,7 +62,16 @@ pub fn host_command(
 ) -> Result<ExitCode, Failure> {
     match action {
         HostAction::Grants { action } => grants(globals, server_config, action, trace),
+        HostAction::Holds { action } => holds(globals, server_config, action, trace),
         HostAction::Identity { action } => identity(globals, server_config, action, trace),
+        HostAction::Members { action } => members(globals, action, trace),
+        HostAction::Streams { action } => streams(globals, action, trace),
+        HostAction::Keys { action } => super::host_ops::keys(globals, action, trace),
+        HostAction::Audit { action } => super::host_ops::audit(globals, action, trace),
+        HostAction::Config { action } => super::host_ops::config(globals, action, trace),
+        HostAction::Status => super::host_ops::status(globals, trace),
+        HostAction::Plans { action } => super::host_ops::plans(globals, action, trace),
+        HostAction::Backup { action } => super::host_ops::backup(globals, action, trace),
     }
 }
 
@@ -65,10 +81,10 @@ fn grants(
     action: GrantsAction,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
-    let volume = volume_of(globals)?;
     let now = permguard_host::authz::store::now();
     match action {
         GrantsAction::Bootstrap { fingerprint } => {
+            let volume = volume_of(globals)?;
             let (store, mutations) = open_mutable(&volume, server_config, trace)?;
             let (commitment, grant) =
                 grants::bootstrap(&mutations, &store, &fingerprint, now).map_err(refused)?;
@@ -92,93 +108,40 @@ fn grants(
             selector,
             types,
             expires,
-            issued_by,
+            expected_revision,
         } => {
-            let (store, mutations) = open_mutable(&volume, server_config, trace)?;
-            let expires_at = match expires {
-                Some(text) => Some(
-                    permguard_core::time::from_rfc3339(&text)
-                        .and_then(|seconds| u64::try_from(seconds).ok())
-                        .ok_or_else(|| {
-                            Failure::usage(format!("`{text}` is not an RFC 3339 instant"))
-                        })?,
-                ),
-                None => None,
-            };
-            let record = grants::issue(
-                &mutations,
-                &store,
-                Initiator::System(INITIATOR.to_owned()),
-                Issue {
-                    principal: Principal::new(principal)
-                        .map_err(|error| Failure::usage(format!("--principal: {error}")))?,
+            let backend = online_host(globals, trace, false)?;
+            let answer = backend
+                .create_grant(&permguard_host::api::CreateGrant {
+                    request_id: request_id(),
+                    expected_revision,
+                    principal,
                     operations,
-                    selector: Selector::parse(&selector)
-                        .map_err(|error| Failure::usage(format!("--selector: {error}")))?,
-                    resource_types: if types.is_empty() {
-                        vec!["*".to_owned()]
-                    } else {
-                        types
-                    },
+                    selector,
+                    resource_types: types,
                     constraints: BTreeMap::new(),
-                    issued_by,
-                    expires_at,
-                },
-                now,
-            )
-            .map_err(refused)?;
-            render(&grant_report(&record), globals.output, trace)?;
+                    expires_at: expires,
+                })
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
         }
-        GrantsAction::Revoke { grant_id, by } => {
-            let (store, mutations) = open_mutable(&volume, server_config, trace)?;
-            let id =
-                GrantId::parse(&grant_id).map_err(|error| Failure::usage(error.to_string()))?;
-            let record = grants::revoke(
-                &mutations,
-                &store,
-                Initiator::System(INITIATOR.to_owned()),
-                id,
-                &by,
-                now,
-            )
-            .map_err(refused)?;
-            render(&grant_report(&record), globals.output, trace)?;
-        }
+        GrantsAction::Revoke { action } => grant_revoke(globals, action, trace)?,
         GrantsAction::List {
             principal,
             selector,
         } => {
-            let (store, _held) = open(&volume, trace)?;
-            let grants: Vec<GrantReportBody> = store
-                .records()
-                .iter()
-                .filter(|record| {
-                    principal
-                        .as_deref()
-                        .is_none_or(|wanted| record.principal_id.as_str() == wanted)
-                })
-                .filter(|record| {
-                    selector
-                        .as_deref()
-                        .is_none_or(|wanted| record.selector.to_string() == wanted)
-                })
-                .map(grant_report)
-                .collect();
-            render(
-                &GrantsReport {
-                    revision: store.revision(),
-                    grants,
-                },
-                globals.output,
-                trace,
-            )?;
+            let backend = online_host(globals, trace, false)?;
+            let answer = backend
+                .grants(principal.as_deref(), selector.as_deref())
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
         }
     }
     Ok(ExitCode::from(EXIT_READY))
 }
 
 /// The initiator the CLI's operations name in the mutation journal and the audit trail.
-const INITIATOR: &str = "cli";
+pub(super) const INITIATOR: &str = "cli";
 
 /// Opens the grant store and the mutation journal of `volume`, resolving any grant mutation a
 /// crash left open: what a command that mutates needs.
@@ -209,6 +172,34 @@ fn open(
     volume: &std::path::Path,
     trace: &Trace,
 ) -> Result<(std::sync::Arc<GrantStore>, Volume), Failure> {
+    let held = claim(volume, trace)?;
+    let (store, recovery) = GrantStore::open(&held).map_err(failure)?;
+    if recovery.truncated_bytes > 0 {
+        trace.say(format!(
+            "the grant journal recovered, truncating {} byte(s)",
+            recovery.truncated_bytes
+        ));
+    }
+    Ok((store, held))
+}
+
+/// Claims `volume`, an existing one only, without opening any store: what `host holds` reads and
+/// writes beside the grants (after the review). A volume restored for forensics is refused: the
+/// offline commands that write never work on it (WP-7.9).
+pub(super) fn claim(volume: &std::path::Path, trace: &Trace) -> Result<Volume, Failure> {
+    let held = hold(volume, trace)?;
+    if let Some(reason) = permguard_host::restore::serving_refused(&held)
+        .map_err(|error| Failure::unavailable(format!("reading the restore marker: {error}")))?
+    {
+        return Err(Failure::usage(format!(
+            "{reason}; nothing is written to it"
+        )));
+    }
+    Ok(held)
+}
+
+/// [`claim`] without the forensic refusal: what `restore`, which judges the marker itself, holds.
+pub(super) fn hold(volume: &std::path::Path, trace: &Trace) -> Result<Volume, Failure> {
     trace.say(format!("volume: {}", volume.display()));
     // An existing volume only: a mistyped path must not become a fresh volume holding grants the
     // server never sees. The volume's own layout marker is what says it is one.
@@ -221,25 +212,231 @@ fn open(
     // Offline: the claim takes the process lock, so a volume a running server holds is refused
     // here with the lock's own message rather than written under it. The development profile is
     // the one that serves an unclaimed volume; the profile the server runs under is its own.
-    let held = Volume::claim(volume, AssuranceProfile::Development)
-        .map_err(|error| Failure::unavailable(format!("claiming the volume: {error}")))?;
-    let (store, recovery) = GrantStore::open(&held).map_err(failure)?;
-    if recovery.truncated_bytes > 0 {
+    Volume::claim(volume, AssuranceProfile::Development)
+        .map_err(|error| Failure::unavailable(format!("claiming the volume: {error}")))
+}
+
+/// `permguard host holds …` (WP-7.3c): offline, on the volume of a stopped server, through the
+/// Host's mutation transaction, the holds a crash left open resolved first.
+fn holds(
+    globals: &Globals,
+    server_config: Option<&Path>,
+    action: HoldsAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    use permguard_host::holds::{self, Deadline, HoldStore, NewHold};
+
+    let volume = volume_of(globals)?;
+    let held = claim(&volume, trace)?;
+    let store = HoldStore::open(&held)
+        .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?;
+    let now = permguard_host::authz::store::now();
+    match action {
+        HoldsAction::List => {
+            let listed = store.list().map_err(hold_refused)?;
+            std::mem::forget(held);
+            render(
+                &HoldListReport {
+                    holds: listed.iter().map(|hold| HoldView::of(hold, now)).collect(),
+                },
+                globals.output,
+                trace,
+            )?;
+        }
+        HoldsAction::Add {
+            resource,
+            owner,
+            reason,
+            expires_at,
+            review_at,
+        } => {
+            let mutations = offline_holds(&held, &store, server_config, trace)?;
+            std::mem::forget(held);
+            let at = |text: String| {
+                permguard_core::time::from_rfc3339(&text)
+                    .and_then(|seconds| u64::try_from(seconds).ok())
+                    .ok_or_else(|| Failure::usage(format!("`{text}` is not an RFC 3339 instant")))
+            };
+            let deadline = match (expires_at, review_at) {
+                (Some(text), None) => Deadline::Expires(at(text)?),
+                (None, Some(text)) => Deadline::Review(at(text)?),
+                _ => {
+                    return Err(Failure::usage(
+                        "a hold names exactly one of --expires-at and --review-at",
+                    ));
+                }
+            };
+            let added = holds::add(
+                &mutations,
+                &store,
+                Initiator::System("cli".to_owned()),
+                NewHold {
+                    resource,
+                    owner,
+                    reason,
+                    deadline,
+                },
+                now,
+            )
+            .map_err(hold_mutation_refused)?;
+            render(
+                &HoldReport {
+                    action: "added",
+                    hold: HoldView::of(&added, now),
+                },
+                globals.output,
+                trace,
+            )?;
+        }
+        HoldsAction::Release { id } => {
+            let mutations = offline_holds(&held, &store, server_config, trace)?;
+            std::mem::forget(held);
+            let released =
+                holds::release(&mutations, &store, Initiator::System("cli".to_owned()), &id)
+                    .map_err(hold_mutation_refused)?;
+            render(
+                &HoldReport {
+                    action: "released",
+                    hold: HoldView::of(&released, now),
+                },
+                globals.output,
+                trace,
+            )?;
+        }
+    }
+    Ok(ExitCode::from(EXIT_READY))
+}
+
+/// The offline transaction, the hold operations a crash left open resolved first.
+fn offline_holds(
+    held: &Volume,
+    store: &permguard_host::holds::HoldStore,
+    server_config: Option<&Path>,
+    trace: &Trace,
+) -> Result<Mutations, Failure> {
+    let mutations = offline_engine(held, server_config, trace)?;
+    let recovered = mutations
+        .recover(&permguard_host::holds::Holds(store))
+        .map_err(|error| Failure::unavailable(format!("recovering hold mutations: {error}")))?;
+    if !recovered.reconciled.is_empty() || !recovered.failed.is_empty() {
         trace.say(format!(
-            "the grant journal recovered, truncating {} byte(s)",
-            recovery.truncated_bytes
+            "hold mutations left open by a crash: {} committed, {} failed",
+            recovered.reconciled.len(),
+            recovered.failed.len()
         ));
     }
-    Ok((store, held))
+    Ok(mutations)
+}
+
+fn hold_refused(error: permguard_host::holds::HoldError) -> Failure {
+    use permguard_host::holds::HoldError;
+    match error {
+        HoldError::Invalid(_) | HoldError::NotFound(_) => Failure::usage(error.to_string()),
+        HoldError::Storage(_) => Failure::unavailable(error.to_string()),
+        HoldError::Record(_) => Failure::internal(error.to_string()),
+    }
+}
+
+fn hold_mutation_refused(error: MutationError<permguard_host::holds::HoldError>) -> Failure {
+    match error {
+        MutationError::Refused(error) => hold_refused(error),
+        MutationError::RequestIdReused(detail) => Failure::usage(detail),
+        other @ (MutationError::AuditUnavailable(_)
+        | MutationError::Unavailable(_)
+        | MutationError::Quiesced(_)) => Failure::unavailable(other),
+        other @ (MutationError::Unrecorded(_) | MutationError::Indeterminate(_)) => {
+            Failure::internal(other)
+        }
+    }
+}
+
+/// One hold as the CLI reports it: its times in RFC 3339 and where it stands now.
+#[derive(Debug, Serialize)]
+struct HoldView {
+    id: String,
+    resource: String,
+    owner: String,
+    reason: String,
+    status: &'static str,
+    created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    review_at: Option<String>,
+}
+
+impl HoldView {
+    fn of(hold: &permguard_host::holds::Hold, now: u64) -> Self {
+        let when = |seconds: u64| {
+            permguard_core::time::to_rfc3339(i64::try_from(seconds).unwrap_or(i64::MAX))
+        };
+        Self {
+            id: hold.id.clone(),
+            resource: hold.resource.clone(),
+            owner: hold.owner.clone(),
+            reason: hold.reason.clone(),
+            status: hold.status(now).as_str(),
+            created_at: when(hold.created_at),
+            expires_at: hold.expires_at.map(when),
+            review_at: hold.review_at.map(when),
+        }
+    }
+
+    fn render(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        writeln!(out, "  id:       {}", self.id)?;
+        writeln!(out, "  resource: {}", self.resource)?;
+        writeln!(out, "  owner:    {}", self.owner)?;
+        writeln!(out, "  reason:   {}", self.reason)?;
+        writeln!(out, "  status:   {}", self.status)?;
+        if let Some(at) = &self.expires_at {
+            writeln!(out, "  expires:  {at}")?;
+        }
+        if let Some(at) = &self.review_at {
+            writeln!(out, "  review:   {at}")?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct HoldReport {
+    action: &'static str,
+    #[serde(flatten)]
+    hold: HoldView,
+}
+
+impl Report for HoldReport {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        writeln!(out, "hold {}", self.action)?;
+        self.hold.render(out)
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct HoldListReport {
+    holds: Vec<HoldView>,
+}
+
+impl Report for HoldListReport {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        if self.holds.is_empty() {
+            return writeln!(out, "no holds");
+        }
+        for hold in &self.holds {
+            hold.render(out)?;
+            writeln!(out)?;
+        }
+        writeln!(out, "{} hold(s).", self.holds.len())
+    }
 }
 
 fn refused(error: MutationError<AuthzError>) -> Failure {
     match error {
         MutationError::Refused(error) => failure(error),
         MutationError::RequestIdReused(detail) => Failure::usage(detail),
-        other @ (MutationError::AuditUnavailable(_) | MutationError::Unavailable(_)) => {
-            Failure::unavailable(other)
-        }
+        other @ (MutationError::AuditUnavailable(_)
+        | MutationError::Unavailable(_)
+        | MutationError::Quiesced(_)) => Failure::unavailable(other),
         other @ (MutationError::Unrecorded(_) | MutationError::Indeterminate(_)) => {
             Failure::internal(other)
         }
@@ -310,35 +507,6 @@ impl Report for GrantReportBody {
 }
 
 #[derive(Serialize)]
-struct GrantsReport {
-    revision: u64,
-    grants: Vec<GrantReportBody>,
-}
-
-impl Report for GrantsReport {
-    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
-        writeln!(
-            out,
-            "{} grant(s) at revision {}",
-            self.grants.len(),
-            self.revision
-        )?;
-        for grant in &self.grants {
-            writeln!(
-                out,
-                "{}  {:<8} {}  {}  {}",
-                grant.grant_id,
-                grant.status,
-                grant.principal,
-                grant.operations.join(","),
-                grant.selector
-            )?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Serialize)]
 struct BootstrapReport {
     principal: String,
     fingerprint: String,
@@ -391,7 +559,7 @@ fn offline_engine(
 /// The custody `serve` keeps the volume's keys in (WP-3.2, owner decision of 2026-10-08): read
 /// from the server's configuration and the environment, as `serve` reads them. Without
 /// `--server-config` the keys are the `development` custody's plaintext files.
-fn custodian(
+pub(super) fn custodian(
     held: &Volume,
     server_config: Option<&Path>,
 ) -> Result<std::sync::Arc<Custodian>, Failure> {
@@ -415,7 +583,7 @@ fn without_custody(server_config: Option<&Path>, error: impl std::fmt::Display) 
     }
 }
 
-fn open_identity(
+pub(super) fn open_identity(
     held: &Volume,
     server_config: Option<&Path>,
 ) -> Result<permguard_host::identity::Identity, Failure> {
@@ -462,12 +630,12 @@ fn identity(
     action: IdentityAction,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
-    let volume = volume_of(globals)?;
     use permguard_host::identity::{self, Identity, Suite};
 
     let now = permguard_host::authz::store::now();
     match action {
         IdentityAction::Provision { suite } => {
+            let volume = volume_of(globals)?;
             let suite = Suite::from_name(&suite).ok_or_else(|| {
                 Failure::usage(format!(
                     "`{suite}` is not a suite: pg-ed25519-sha256-v1 or pg-p256-sha256-v1"
@@ -502,7 +670,7 @@ fn identity(
                 identity::IdentityError::Provisioned => Failure::usage(error),
                 other => Failure::unavailable(other),
             })?;
-            let audit = audit_offline(&held, &opened)?;
+            let audit = audit_offline(&held, &opened, None)?;
             audit
                 .append(
                     &permguard_core::AuditEvent::new(
@@ -531,51 +699,734 @@ fn identity(
             std::mem::forget(held);
         }
         IdentityAction::Show => {
-            let (_store, held) = open(&volume, trace)?;
-            let opened = open_identity(&held, server_config)?;
-            render(
-                &identity_report(&opened, false, None),
-                globals.output,
-                trace,
-            )?;
+            let identity = online_host(globals, trace, false)?
+                .identity()
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&identity, globals, trace)?;
+        }
+        IdentityAction::Verify { url, fingerprint } => {
+            let identity = online_host_at(globals, trace, &url, false)?
+                .identity()
+                .map_err(|failure| Failure::from_client(&failure))?;
+            let verified = verify_identity(&identity)?;
+            if verified.first_fingerprint() != fingerprint {
+                return Err(Failure::usage(format!(
+                    "the peer identity fingerprint is {}, not {fingerprint}",
+                    verified.first_fingerprint()
+                )));
+            }
+            let answer = online_host(globals, trace, false)?
+                .verify_identity(&permguard_host::api::VerifyIdentity {
+                    address: peer_address(&url)?,
+                    host_id: permguard_host::identity::record::uuid_text(&verified.host_id),
+                    fingerprint,
+                })
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
         }
         IdentityAction::Rotate { expected_epoch } => {
-            let (_store, held) = open(&volume, trace)?;
-            let opened = open_identity(&held, server_config)?;
-            let mutations =
-                Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(&opened))
-                    .map_err(|error| {
-                        Failure::unavailable(format!("opening the mutation journal: {error}"))
-                    })?;
-            mutations
-                .recover(&identity::Identities(&opened))
-                .map_err(|error| Failure::unavailable(format!("recovering: {error}")))?;
-            identity::rotate(
-                &mutations,
-                &opened,
-                Initiator::System(INITIATOR.to_owned()),
-                expected_epoch,
-                now,
-            )
-            .map_err(|error| match error {
-                MutationError::Refused(identity::IdentityError::Conflict { .. }) => {
-                    Failure::usage(error)
-                }
-                other @ (MutationError::AuditUnavailable(_) | MutationError::Unavailable(_)) => {
-                    Failure::unavailable(other)
-                }
-                other => Failure::internal(other),
-            })?;
-            render(
-                &identity_report(&opened, false, None),
-                globals.output,
-                trace,
-            )?;
-            std::mem::forget(held);
+            let answer = online_host(globals, trace, false)?
+                .rotate_identity(&permguard_host::api::RotateIdentity {
+                    request_id: request_id(),
+                    expected_epoch,
+                })
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
         }
+        IdentityAction::Pin { action } => pin(globals, action, trace)?,
         IdentityAction::Reset { action } => reset(globals, server_config, action, trace)?,
     }
     Ok(ExitCode::from(EXIT_READY))
+}
+
+static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+pub(super) fn request_id() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!(
+        "cli-{nanos}-{}-{}",
+        std::process::id(),
+        REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+pub(super) fn online_host(
+    globals: &Globals,
+    trace: &Trace,
+    invitation_token: bool,
+) -> Result<Box<dyn permguard_control_client::host::Host>, Failure> {
+    let store = crate::session::open_store(globals, trace)?;
+    let url = crate::session::resolve_endpoint_url(
+        "host.endpoint",
+        globals.host_endpoint.as_deref(),
+        &store,
+        trace,
+    )?;
+    online_host_with_store(globals, trace, &url, &store, invitation_token)
+}
+
+fn online_host_at(
+    globals: &Globals,
+    trace: &Trace,
+    url: &str,
+    invitation_token: bool,
+) -> Result<Box<dyn permguard_control_client::host::Host>, Failure> {
+    let store = crate::session::open_store(globals, trace)?;
+    online_host_with_store(globals, trace, url, &store, invitation_token)
+}
+
+fn online_host_with_store(
+    globals: &Globals,
+    trace: &Trace,
+    url: &str,
+    store: &crate::settings::Store,
+    invitation_token: bool,
+) -> Result<Box<dyn permguard_control_client::host::Host>, Failure> {
+    let mut effective = globals.clone();
+    if invitation_token {
+        effective.token_file = None;
+    }
+    let tls = crate::target::tls(&effective, store, trace)?;
+    permguard_control_client::host::client(url, &tls, crate::narrator::for_run(globals.verbose))
+        .map_err(Failure::usage)
+}
+
+fn require_verified_tls_endpoint(url: &str, skip_verification: bool) -> Result<(), Failure> {
+    let endpoint = permguard_control_client::Endpoint::parse(url).map_err(Failure::usage)?;
+    if !endpoint.is_tls() || skip_verification {
+        return Err(Failure::usage(
+            "a membership invitation is read and sent only over verified TLS",
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReport(serde_json::Value);
+
+impl Report for JsonReport {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        writeln!(
+            out,
+            "{}",
+            serde_json::to_string_pretty(&self.0).unwrap_or_else(|_| "null".to_owned())
+        )
+    }
+}
+
+/// `permguard host streams …` (WP-5.7b): the Host API's stream reads, printed as it answers
+/// them; `runs` lists the frontier's runs, the producer's and each consumer's, as one history.
+fn streams(
+    globals: &Globals,
+    action: crate::args::StreamsAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    use crate::args::StreamsAction;
+    use permguard_control_client::host::StreamName;
+
+    let host = online_host(globals, trace, false)?;
+    let failed =
+        |failure: permguard_control_client::catalog::Failure| Failure::from_client(&failure);
+    let args = match &action {
+        StreamsAction::List => {
+            render_json(&host.streams().map_err(failed)?, globals, trace)?;
+            return Ok(ExitCode::SUCCESS);
+        }
+        StreamsAction::Frontier(args)
+        | StreamsAction::Signers(args)
+        | StreamsAction::Runs(args)
+        | StreamsAction::Subscriptions(args)
+        | StreamsAction::Gaps(args)
+        | StreamsAction::Anchors(args) => args,
+    };
+    let stream = StreamName {
+        plane: &args.plane,
+        stream_type: &args.stream_type,
+        resource: &args.resource,
+    };
+    match action {
+        StreamsAction::List => {}
+        StreamsAction::Frontier(_) => {
+            render_json(
+                &host.stream_frontier(&stream).map_err(failed)?,
+                globals,
+                trace,
+            )?;
+        }
+        StreamsAction::Runs(_) => {
+            let frontier = host.stream_frontier(&stream).map_err(failed)?;
+            render_json(&runs_of(frontier), globals, trace)?;
+        }
+        StreamsAction::Signers(_) => {
+            render_json(
+                &host.stream_signers(&stream).map_err(failed)?,
+                globals,
+                trace,
+            )?;
+        }
+        StreamsAction::Subscriptions(_) => {
+            render_json(
+                &host.stream_subscriptions(&stream).map_err(failed)?,
+                globals,
+                trace,
+            )?;
+        }
+        StreamsAction::Gaps(_) => {
+            render_json(&host.stream_gaps(&stream).map_err(failed)?, globals, trace)?;
+        }
+        StreamsAction::Anchors(_) => {
+            render_json(
+                &host.stream_anchors(&stream).map_err(failed)?,
+                globals,
+                trace,
+            )?;
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// The run history `host streams runs` prints: every run of the frontier, the producer's then
+/// each consumer's, with its role and what it holds (owner decision of 2026-10-17).
+fn runs_of(frontier: permguard_host::api::streams::Frontier) -> serde_json::Value {
+    let mut runs: Vec<serde_json::Value> = frontier
+        .producer
+        .into_iter()
+        .map(|run| {
+            serde_json::json!({
+                "role": "producer",
+                "run": run.run,
+                "ended": run.ended,
+                "last_seq": run.last_seq,
+                "sealed": run.sealed,
+                "acknowledged": run.acknowledged,
+                "oldest_retained": run.low_watermark,
+            })
+        })
+        .collect();
+    runs.extend(frontier.consumer.into_iter().map(|run| {
+        serde_json::json!({
+            "role": "consumer",
+            "producer": run.producer,
+            "run": run.run,
+            "acked": run.acked,
+            "oldest_retained": run.oldest_retained,
+        })
+    }));
+    serde_json::json!({ "resource": frontier.resource, "runs": runs })
+}
+
+pub(super) fn render_json(
+    value: &impl Serialize,
+    globals: &Globals,
+    trace: &Trace,
+) -> Result<(), Failure> {
+    let value = serde_json::to_value(value)
+        .map_err(|error| Failure::internal(format!("rendering the Host answer: {error}")))?;
+    render(&JsonReport(value), globals.output, trace)
+}
+
+pub(super) fn read_json<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    what: &str,
+) -> Result<T, Failure> {
+    let bytes = crate::confirm::read_bytes(Some(path), what, 1024 * 1024)?;
+    permguard_host::api::decode_external_json(&bytes).map_err(|error| {
+        // Serde may quote an unknown field name. These documents can carry invitations,
+        // evidence and other secrets, so only the structural position crosses the trust
+        // boundary into an operator-visible error.
+        Failure::usage(format!(
+            "{}: invalid {what} JSON at line {} column {}",
+            path.display(),
+            error.line(),
+            error.column()
+        ))
+    })
+}
+
+pub(super) fn rooted_file(globals: &Globals, path: &Path) -> std::path::PathBuf {
+    if path.is_absolute() {
+        path.to_owned()
+    } else {
+        globals.workdir.join(path)
+    }
+}
+
+fn verify_identity(
+    identity: &permguard_host::api::IdentityView,
+) -> Result<permguard_host::identity::Verified, Failure> {
+    let decode = |text: &str| {
+        URL_SAFE_NO_PAD
+            .decode(text)
+            .map_err(|_| Failure::usage("the Host returned identity bytes that are not base64url"))
+    };
+    let document = decode(&identity.document)?;
+    let first = decode(&identity.first_public_key)?;
+    let successions = identity
+        .successions
+        .iter()
+        .map(|item| decode(item))
+        .collect::<Result<Vec<_>, _>>()?;
+    permguard_host::identity::verify_published(&document, &successions, &first)
+        .map_err(|error| Failure::usage(format!("the Host identity proof is invalid: {error}")))
+}
+
+/// The Host-to-Host session endpoint corresponding to an administrative Host endpoint.
+fn peer_address(address: &str) -> Result<String, Failure> {
+    if let Some(authority) = address.strip_prefix("grpcs://") {
+        return Ok(format!("https://{authority}"));
+    }
+    if address.starts_with("https://") {
+        return Ok(address.to_owned());
+    }
+    Err(Failure::usage(
+        "the Host endpoint has no canonical HTTPS peer-session address",
+    ))
+}
+
+fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<ExitCode, Failure> {
+    use permguard_control_client::host::Change;
+    use permguard_host::api::members::{
+        ApproveMember, AssuranceOffer, CreateInvite, JoinMembership, PlanMemberRevoke,
+        RunMemberRevoke, TaskView, VerifyMember,
+    };
+
+    match action {
+        MembersAction::Invite { action } => match action {
+            InviteAction::Create {
+                selector,
+                tasks,
+                expires,
+                expect_fingerprint,
+                min_assurance,
+            } => {
+                let tasks: Vec<TaskView> =
+                    read_json(&rooted_file(globals, &tasks), "membership tasks")?;
+                let backend = online_host(globals, trace, false)?;
+                let identity = backend
+                    .identity()
+                    .map_err(|failure| Failure::from_client(&failure))?;
+                let verified = verify_identity(&identity)?;
+                let created = backend
+                    .create_invite(&CreateInvite {
+                        request_id: request_id(),
+                        selector: selector.clone(),
+                        tasks: tasks.clone(),
+                        expires,
+                        expected_fingerprint: expect_fingerprint,
+                        min_assurance,
+                        max_uses: 1,
+                    })
+                    .map_err(|failure| Failure::from_client(&failure))?;
+                let store = crate::session::open_store(globals, trace)?;
+                let address = crate::session::resolve_endpoint_url(
+                    "host.endpoint",
+                    globals.host_endpoint.as_deref(),
+                    &store,
+                    trace,
+                )?;
+                let address = peer_address(&address)?;
+                render_json(
+                    &InvitationHandoff {
+                        version: 1,
+                        coordinator: permguard_host::api::members::CoordinatorView {
+                            address,
+                            host_id: permguard_host::identity::record::uuid_text(&verified.host_id),
+                            fingerprint: verified.first_fingerprint().to_owned(),
+                        },
+                        invite_id: created.invite_id,
+                        token: created.token,
+                        requested: permguard_host::api::members::NarrowView { selector, tasks },
+                        expires: created.expires,
+                    },
+                    globals,
+                    trace,
+                )?;
+            }
+            InviteAction::List => {
+                let answer = online_host(globals, trace, false)?
+                    .invites()
+                    .map_err(|failure| Failure::from_client(&failure))?;
+                render_json(&answer, globals, trace)?;
+            }
+            InviteAction::Revoke { id } => {
+                let answer = online_host(globals, trace, false)?
+                    .delete_invite(&id, &request_id())
+                    .map_err(|failure| Failure::from_client(&failure))?;
+                render_json(&answer, globals, trace)?;
+            }
+        },
+        MembersAction::Join {
+            coordinator_url,
+            pin_fingerprint,
+        } => {
+            // Resolve and classify both channels before opening the secret handoff. In
+            // particular, a misspelled or clear-text target must not become an oracle for a
+            // token file's existence or contents.
+            let store = crate::session::open_store(globals, trace)?;
+            let member_url = crate::session::resolve_endpoint_url(
+                "host.endpoint",
+                globals.host_endpoint.as_deref(),
+                &store,
+                trace,
+            )?;
+            require_verified_tls_endpoint(&member_url, globals.tls_skip_verify)?;
+            require_verified_tls_endpoint(&coordinator_url, globals.tls_skip_verify)?;
+            let token_file = globals.token_file.as_deref().ok_or_else(|| {
+                Failure::usage("host members join reads its invitation handoff from --token-file")
+            })?;
+            let handoff: InvitationHandoff =
+                read_json(&rooted_file(globals, token_file), "invitation handoff")?;
+            if handoff.version != 1 {
+                return Err(Failure::usage("the invitation handoff version is not 1"));
+            }
+            if handoff.coordinator.address != coordinator_url {
+                return Err(Failure::usage(
+                    "the coordinator URL differs from the invitation handoff",
+                ));
+            }
+            let fingerprint = match pin_fingerprint {
+                Some(fingerprint) => fingerprint,
+                None => {
+                    let pins = read_pin_store(&pin_store_path(&store))?;
+                    let url = canonical_url(&coordinator_url)?;
+                    pins.pins
+                        .iter()
+                        .find(|pin| pin.url == url && pin.host_id == handoff.coordinator.host_id)
+                        .map(|pin| pin.fingerprint.clone())
+                        .ok_or_else(|| {
+                            Failure::usage(
+                                "host members join needs --pin-fingerprint or an exact local pin \
+                                 for the coordinator URL and Host id",
+                            )
+                        })?
+                }
+            };
+            if handoff.coordinator.fingerprint != fingerprint {
+                return Err(Failure::usage(
+                    "the coordinator fingerprint differs from the invitation handoff",
+                ));
+            }
+            let answer = online_host_with_store(globals, trace, &member_url, &store, true)?
+                .join(&JoinMembership {
+                    request_id: request_id(),
+                    coordinator: handoff.coordinator,
+                    invite_id: handoff.invite_id,
+                    token: handoff.token,
+                    requested: handoff.requested,
+                })
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
+        }
+        MembersAction::Pending => {
+            let answer = online_host(globals, trace, false)?
+                .members(Some("pending"))
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
+        }
+        MembersAction::Approve {
+            id,
+            expected_revision,
+            narrow,
+            assurance_result,
+        } => {
+            let narrow = narrow
+                .as_deref()
+                .map(|path| read_json(&rooted_file(globals, path), "membership narrowing"))
+                .transpose()?;
+            let assurance: Option<AssuranceOffer> = assurance_result
+                .as_deref()
+                .map(|path| read_json(&rooted_file(globals, path), "assurance result"))
+                .transpose()?;
+            let answer = online_host(globals, trace, false)?
+                .approve_member(
+                    &id,
+                    &ApproveMember {
+                        request_id: request_id(),
+                        expected_revision,
+                        narrow,
+                        lease_policy: None,
+                        assurance,
+                    },
+                )
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
+        }
+        MembersAction::Reject(args) => change_member(globals, trace, Change::Reject, args)?,
+        MembersAction::Suspend(args) => change_member(globals, trace, Change::Suspend, args)?,
+        MembersAction::Resume(args) => change_member(globals, trace, Change::Resume, args)?,
+        MembersAction::Fence(args) => change_member(globals, trace, Change::Fence, args)?,
+        MembersAction::List => {
+            let answer = online_host(globals, trace, false)?
+                .members(None)
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
+        }
+        MembersAction::Get { id } => {
+            let answer = online_host(globals, trace, false)?
+                .member(&id)
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
+        }
+        MembersAction::Sync { id } => {
+            let answer = online_host(globals, trace, false)?
+                .sync_membership(
+                    &id,
+                    &permguard_host::api::members::SyncMembership {
+                        request_id: request_id(),
+                    },
+                )
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
+        }
+        MembersAction::Revoke { action } => match action {
+            MemberRevokeAction::Plan {
+                id,
+                reason,
+                expected_revision,
+                out,
+            } => {
+                let reserved = Reserved::claim(&rooted_file(globals, &out))?;
+                let answer = online_host(globals, trace, false)?
+                    .plan_member_revoke(
+                        &id,
+                        &PlanMemberRevoke {
+                            request_id: request_id(),
+                            reason,
+                            expected_revision,
+                        },
+                    )
+                    .map_err(|failure| Failure::from_client(&failure))?;
+                reserved.fill(&serde_json::to_vec_pretty(&answer).map_err(Failure::internal)?)?;
+                render_json(&answer, globals, trace)?;
+            }
+            MemberRevokeAction::Run { id, confirm_file } => {
+                let plan: permguard_host::api::Planned = read_json(
+                    &rooted_file(globals, &confirm_file),
+                    "membership revocation plan",
+                )?;
+                let answer = online_host(globals, trace, false)?
+                    .run_member_revoke(
+                        &id,
+                        &RunMemberRevoke {
+                            request_id: request_id(),
+                            receipt: plan.receipt,
+                        },
+                    )
+                    .map_err(|failure| Failure::from_client(&failure))?;
+                render_json(&answer, globals, trace)?;
+            }
+        },
+        MembersAction::Sessions { id } => {
+            let backend = online_host(globals, trace, false)?;
+            if let Some(id) = id {
+                let answer = backend
+                    .member_sessions(&id)
+                    .map_err(|failure| Failure::from_client(&failure))?;
+                render_json(&answer, globals, trace)?;
+            } else {
+                let members = backend
+                    .members(None)
+                    .map_err(|failure| Failure::from_client(&failure))?;
+                let mut all = BTreeMap::new();
+                for member in members.members {
+                    let sessions = backend
+                        .member_sessions(&member.membership_id)
+                        .map_err(|failure| Failure::from_client(&failure))?;
+                    all.insert(member.membership_id, sessions);
+                }
+                render_json(&all, globals, trace)?;
+            }
+        }
+        MembersAction::Verify { id } => {
+            let answer = online_host(globals, trace, false)?
+                .verify_member(
+                    &id,
+                    &VerifyMember {
+                        request_id: request_id(),
+                    },
+                )
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
+        }
+    }
+    Ok(ExitCode::from(EXIT_READY))
+}
+
+fn change_member(
+    globals: &Globals,
+    trace: &Trace,
+    change: permguard_control_client::host::Change,
+    args: MemberChangeArgs,
+) -> Result<(), Failure> {
+    let answer = online_host(globals, trace, false)?
+        .change_member(
+            change,
+            &args.id,
+            &permguard_host::api::members::ChangeMember {
+                request_id: request_id(),
+                expected_revision: args.expected_revision,
+                reason: Some(args.reason),
+            },
+        )
+        .map_err(|failure| Failure::from_client(&failure))?;
+    render_json(&answer, globals, trace)
+}
+
+fn grant_revoke(
+    globals: &Globals,
+    action: GrantRevokeAction,
+    trace: &Trace,
+) -> Result<(), Failure> {
+    match action {
+        GrantRevokeAction::Plan {
+            grant_id,
+            expected_revision,
+            out,
+        } => {
+            let reserved = Reserved::claim(&rooted_file(globals, &out))?;
+            let answer = online_host(globals, trace, false)?
+                .plan_grant_revoke(
+                    &grant_id,
+                    &permguard_host::api::PlanRevoke {
+                        request_id: request_id(),
+                        expected_revision,
+                    },
+                )
+                .map_err(|failure| Failure::from_client(&failure))?;
+            reserved.fill(&serde_json::to_vec_pretty(&answer).map_err(Failure::internal)?)?;
+            render_json(&answer, globals, trace)
+        }
+        GrantRevokeAction::Run {
+            grant_id,
+            confirm_file,
+        } => {
+            let plan: permguard_host::api::Planned = read_json(
+                &rooted_file(globals, &confirm_file),
+                "grant revocation plan",
+            )?;
+            let answer = online_host(globals, trace, false)?
+                .run_grant_revoke(
+                    &grant_id,
+                    &permguard_host::api::RunRevoke {
+                        request_id: request_id(),
+                        receipt: plan.receipt,
+                    },
+                )
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)
+        }
+    }
+}
+
+fn canonical_url(url: &str) -> Result<String, Failure> {
+    let endpoint = permguard_control_client::Endpoint::parse(url).map_err(Failure::usage)?;
+    let scheme = match (endpoint.is_grpc(), endpoint.is_tls()) {
+        (false, false) => "http",
+        (false, true) => "https",
+        (true, false) => "grpc",
+        (true, true) => "grpcs",
+    };
+    Ok(format!(
+        "{scheme}://{}",
+        endpoint.authority().to_lowercase()
+    ))
+}
+
+fn pin_store_path(store: &crate::settings::Store) -> std::path::PathBuf {
+    store
+        .path()
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("host-pins.json")
+}
+
+fn read_pin_store(path: &Path) -> Result<PinStore, Failure> {
+    let pins = if path.is_file() {
+        read_json::<PinStore>(path, "Host identity pin store")?
+    } else {
+        PinStore {
+            version: 1,
+            pins: Vec::new(),
+        }
+    };
+    if pins.version != 1 {
+        return Err(Failure::usage(
+            "the Host identity pin store version is not 1",
+        ));
+    }
+    Ok(pins)
+}
+
+fn pin(globals: &Globals, action: PinAction, trace: &Trace) -> Result<(), Failure> {
+    let store = crate::session::open_store(globals, trace)?;
+    let path = pin_store_path(&store);
+    let mut pins = read_pin_store(&path)?;
+    match action {
+        PinAction::Add {
+            url,
+            host_id,
+            fingerprint,
+        } => {
+            let url = canonical_url(&url)?;
+            format!("{host_id} {fingerprint}")
+                .parse::<permguard_core::peer::PinnedPeer>()
+                .map_err(Failure::usage)?;
+            if let Some(existing) = pins
+                .pins
+                .iter()
+                .find(|pin| pin.url == url && pin.host_id == host_id)
+            {
+                if existing.fingerprint != fingerprint {
+                    return Err(Failure::usage(
+                        "that endpoint and Host id are pinned to a different fingerprint",
+                    ));
+                }
+            } else {
+                pins.pins.push(IdentityPin {
+                    url,
+                    host_id,
+                    fingerprint,
+                });
+                pins.pins.sort_by(|left, right| {
+                    (&left.url, &left.host_id).cmp(&(&right.url, &right.host_id))
+                });
+                write_pin_store(&path, &pins)?;
+            }
+            render_json(&pins, globals, trace)?;
+        }
+        PinAction::List => render_json(&pins, globals, trace)?,
+        PinAction::Remove { url, host_id } => {
+            let url = canonical_url(&url)?;
+            let before = pins.pins.len();
+            pins.pins
+                .retain(|pin| !(pin.url == url && pin.host_id == host_id));
+            if pins.pins.len() == before {
+                return Err(Failure::usage("that endpoint and Host id are not pinned"));
+            }
+            write_pin_store(&path, &pins)?;
+            render_json(&pins, globals, trace)?;
+        }
+    }
+    Ok(())
+}
+
+fn write_pin_store(path: &Path, pins: &PinStore) -> Result<(), Failure> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)
+        .map_err(|error| Failure::unavailable(format!("creating the pin directory: {error}")))?;
+    let directory = permguard_host::storage::Dir::open(parent)
+        .map_err(|error| Failure::unavailable(format!("opening the pin directory: {error}")))?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| Failure::usage("the Host identity pin store needs a UTF-8 file name"))?;
+    let mut bytes = serde_json::to_vec_pretty(pins).map_err(Failure::internal)?;
+    bytes.push(b'\n');
+    permguard_host::storage::write::replace_bytes(&directory, name, &bytes)
+        .map_err(|error| Failure::unavailable(format!("publishing {}: {error}", path.display())))
 }
 
 /// What an offline reset's plan step answers (WP-4.1, WP-3.9): the receipt it wrote binds the
@@ -611,7 +1462,7 @@ struct ResetPlanned {
 const RESET_MODE: &str = "emergency";
 
 /// What a Host API refusal says, for a CLI failure.
-fn refusal_text(refusal: &permguard_host::api::Refusal) -> String {
+pub(super) fn refusal_text(refusal: &permguard_host::api::Refusal) -> String {
     refusal
         .error()
         .map_or_else(|| "denied".to_owned(), ToString::to_string)
@@ -658,7 +1509,7 @@ impl Report for ResetPlan {
 }
 
 #[derive(Serialize)]
-struct ResetReport {
+pub(super) struct ResetReport {
     old_host_id: String,
     host_id: String,
     fingerprint: String,
@@ -758,7 +1609,7 @@ fn reset(
     trace: &Trace,
 ) -> Result<(), Failure> {
     let volume = volume_of(globals)?;
-    use permguard_host::identity::{self, IdentityError};
+    use permguard_host::identity;
     use permguard_host::membership::Store;
 
     let now = permguard_host::authz::store::now();
@@ -949,11 +1800,17 @@ fn reset(
             let opened = std::sync::Arc::new(
                 open_identity(&held, server_config)?.with_provisioner(provisioner),
             );
-            let mutations =
-                Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(opened.as_ref()))
-                    .map_err(|error| {
-                        Failure::unavailable(format!("opening the mutation journal: {error}"))
-                    })?;
+            // One audit engine for the mutations and the checkpoints the reset seals (WP-4.9).
+            let audit = std::sync::Arc::new(audit_offline(&held, &opened, Some(&time))?);
+            let mutations = Mutations::open(
+                &held,
+                std::sync::Arc::clone(&audit)
+                    as std::sync::Arc<dyn permguard_host::operations::mutation::Projection>,
+                std::sync::Arc::clone(&time),
+            )
+            .map_err(|error| {
+                Failure::unavailable(format!("opening the mutation journal: {error}"))
+            })?;
             let store = open_members(&held)?;
             mutations
                 .recover(&identity::Identities(&opened))
@@ -1014,54 +1871,92 @@ fn reset(
                 time,
             )
             .map_err(|error| Failure::unavailable(format!("the key rings: {error:#}")))?;
-            let done = permguard_host::membership::reset::emergency(
-                &store,
-                &mutations,
-                &opened,
-                &rings,
-                &Initiator::System(INITIATOR.to_owned()),
-                now,
-            )
-            .map_err(|error| match error {
-                permguard_host::membership::reset::EmergencyError::Identity(
-                    MutationError::Refused(IdentityError::Refused(_)),
-                ) => Failure::usage(error),
-                other => Failure::unavailable(other),
-            })?;
-            render(
-                &ResetReport {
-                    old_host_id: identity::record::uuid_text(&done.reset.old_host_id),
-                    host_id: identity::record::uuid_text(&done.reset.host_id),
-                    fingerprint: done.reset.fingerprint,
-                    witness: done.reset.witness,
-                    ended: done
-                        .ended
-                        .iter()
-                        .map(|held| identity::record::uuid_text(&held.request.membership_id))
-                        .collect(),
-                    orphaned: done
-                        .orphaned
-                        .iter()
-                        .map(|held| ResetOrphanedReport {
-                            membership_id: identity::record::uuid_text(&held.request.membership_id),
-                            coordinator: identity::record::uuid_text(
-                                &held.request.coordinator.host_id,
-                            ),
-                            address: held.request.coordinator_address.clone(),
-                        })
-                        .collect(),
-                },
-                globals.output,
-                trace,
-            )?;
+            let done = emergency(&store, &mutations, &opened, &rings, &audit, now, trace)?;
+            render(&reset_report(&done), globals.output, trace)?;
             std::mem::forget(held);
         }
     }
     Ok(())
 }
 
+/// The offline emergency reset of `opened` (WP-4.1): the audit trails sealed under
+/// `host.operations` first, then a new identity, every membership ended or orphaned. What
+/// `reset run` and a `clone` restore run (WP-7.9).
+pub(super) fn emergency(
+    store: &permguard_host::membership::Store,
+    mutations: &Mutations,
+    opened: &permguard_host::identity::Identity,
+    rings: &[std::sync::Arc<permguard_host::keys::ring::Ring>],
+    audit: &std::sync::Arc<permguard_host::audit::Engine>,
+    now: u64,
+    trace: &Trace,
+) -> Result<permguard_host::membership::reset::Emergency, Failure> {
+    use permguard_host::identity::IdentityError;
+    // The trails sealed under `host.operations` before it retires with the identity: a
+    // reset requires that recovery checkpoint, so a volume without the ring is refused
+    // before the identity or a membership changes (WP-4.9).
+    let signer = rings
+        .iter()
+        .find(|ring| ring.id() == permguard_host::keys::ring::HOST_OPERATIONS)
+        .ok_or_else(|| {
+            Failure::unavailable(
+                "no host.operations ring: a reset requires a recovery audit checkpoint; \
+                 the identity and its memberships are unchanged, plan again",
+            )
+        })?;
+    audit.seal_with(std::sync::Arc::clone(signer)
+        as std::sync::Arc<
+            dyn permguard_host::audit::checkpoint::CheckpointSigner,
+        >);
+    let evidence = || -> Result<(), String> {
+        let sealed = audit.checkpoint_all().map_err(|error| error.to_string())?;
+        trace.say(format!("{} audit checkpoint(s) sealed", sealed.len()));
+        Ok(())
+    };
+    permguard_host::membership::reset::emergency(
+        store,
+        mutations,
+        opened,
+        rings,
+        &Initiator::System(INITIATOR.to_owned()),
+        now,
+        &evidence,
+    )
+    .map_err(|error| match error {
+        permguard_host::membership::reset::EmergencyError::Identity(MutationError::Refused(
+            IdentityError::Refused(_),
+        )) => Failure::usage(error),
+        other => Failure::unavailable(other),
+    })
+}
+
+/// What a reset `done` reports.
+pub(super) fn reset_report(done: &permguard_host::membership::reset::Emergency) -> ResetReport {
+    use permguard_host::identity::record::uuid_text;
+    ResetReport {
+        old_host_id: uuid_text(&done.reset.old_host_id),
+        host_id: uuid_text(&done.reset.host_id),
+        fingerprint: done.reset.fingerprint.clone(),
+        witness: done.reset.witness.clone(),
+        ended: done
+            .ended
+            .iter()
+            .map(|held| uuid_text(&held.request.membership_id))
+            .collect(),
+        orphaned: done
+            .orphaned
+            .iter()
+            .map(|held| ResetOrphanedReport {
+                membership_id: uuid_text(&held.request.membership_id),
+                coordinator: uuid_text(&held.request.coordinator.host_id),
+                address: held.request.coordinator_address.clone(),
+            })
+            .collect(),
+    }
+}
+
 /// The plans store of `held`, its operations a crash left open resolved.
-fn open_plans(
+pub(super) fn open_plans(
     held: &Volume,
     mutations: &Mutations,
     now: u64,
@@ -1075,7 +1970,57 @@ fn open_plans(
 }
 
 /// Writes `bytes` to a new file at `path`, readable by its owner only.
-fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
+/// A new owner-only `--out` file, claimed before the Host is asked (after the TC-2 review): an
+/// answer the Host gives, a plan above all, always has its file, and a file that exists is refused
+/// before anything changes. Dropped unfilled, it is removed.
+pub(super) struct Reserved {
+    path: std::path::PathBuf,
+    file: Option<std::fs::File>,
+}
+
+impl Reserved {
+    pub(super) fn claim(path: &Path) -> Result<Self, Failure> {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.mode(0o600);
+        }
+        let file = options
+            .open(path)
+            .map_err(|error| Failure::usage(format!("--out {}: {error}", path.display())))?;
+        Ok(Self {
+            path: path.to_owned(),
+            file: Some(file),
+        })
+    }
+
+    /// Writes `bytes`, the whole file.
+    pub(super) fn fill(mut self, bytes: &[u8]) -> Result<(), Failure> {
+        use std::io::Write as _;
+        let mut file = self
+            .file
+            .take()
+            .ok_or_else(|| Failure::internal("filled twice"))?;
+        let written = file.write_all(bytes);
+        drop(file);
+        written.map_err(|error| {
+            let _ = std::fs::remove_file(&self.path);
+            Failure::unavailable(format!("writing {}: {error}", self.path.display()))
+        })
+    }
+}
+
+impl Drop for Reserved {
+    fn drop(&mut self) {
+        if self.file.take().is_some() {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
     use std::io::Write as _;
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
@@ -1092,13 +2037,20 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
 }
 
 /// An audit engine on `held`, stamped with `identity`.
-fn audit_offline(
+pub(super) fn audit_offline(
     held: &Volume,
     identity: &permguard_host::identity::Identity,
+    time: Option<&std::sync::Arc<permguard_host::time::TimeGuard>>,
 ) -> Result<permguard_host::audit::Engine, Failure> {
-    let time = std::sync::Arc::new(permguard_host::time::TimeGuard::system(
-        std::time::Duration::from_secs(30),
-    ));
+    // The guard the command's other engines share, when it has one.
+    let time = time.map_or_else(
+        || {
+            std::sync::Arc::new(permguard_host::time::TimeGuard::system(
+                std::time::Duration::from_secs(30),
+            ))
+        },
+        std::sync::Arc::clone,
+    );
     permguard_host::audit::Engine::open(
         held,
         permguard_host::audit::Stamp {
@@ -1178,5 +2130,118 @@ impl Report for IdentityReport {
             )?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod wp_4_8_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    #[test]
+    fn the_independent_host_cli_vector_matches_the_closed_private_shapes() {
+        let vector: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/vectors/host-cli.json"
+        )))
+        .expect("the independent vector is JSON");
+        let handoff: InvitationHandoff =
+            serde_json::from_value(vector["invitation_handoff"].clone())
+                .expect("the invitation handoff has the closed versioned shape");
+        let pins: PinStore = serde_json::from_value(vector["pin_store"].clone())
+            .expect("the pin store has the closed versioned shape");
+        let tasks: Vec<permguard_host::api::members::TaskView> =
+            serde_json::from_value(vector["membership_tasks"].clone())
+                .expect("the independent tasks have the closed non-empty shape");
+        let narrow: permguard_host::api::members::NarrowView =
+            serde_json::from_value(vector["membership_narrowing"].clone())
+                .expect("the independent narrowing has the closed non-empty shape");
+        let assurance: permguard_host::api::members::AssuranceOffer =
+            serde_json::from_value(vector["assurance_result"].clone())
+                .expect("the independent assurance result has approvals and evidence");
+
+        assert_eq!(handoff.version, 1);
+        assert_eq!(pins.version, 1);
+        assert_eq!(pins.pins.len(), 1);
+        assert!(!tasks.is_empty());
+        assert_eq!(narrow.tasks, tasks);
+        assert!(!assurance.approvals.is_empty());
+        assert!(!assurance.evidence.is_empty());
+        assert_eq!(handoff.requested, narrow);
+        assert_eq!(handoff.coordinator.host_id, pins.pins[0].host_id);
+        assert_eq!(handoff.coordinator.fingerprint, pins.pins[0].fingerprint);
+        for (bytes, digest, shape) in [
+            (
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../contracts/vectors/host-cli-tasks.json"
+                ))
+                .as_slice(),
+                "sha256:b52bb2c65a2ef1402be6a0e30748b192bbf6f5aa9fab606679e4479bbb298fc1",
+                &vector["membership_tasks"],
+            ),
+            (
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../contracts/vectors/host-cli-narrow.json"
+                ))
+                .as_slice(),
+                "sha256:40ae5fb8f2e0da8cda987a9be7d931f2cf94047b7130e23bfc8bb8b0d90f8676",
+                &vector["membership_narrowing"],
+            ),
+            (
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../contracts/vectors/host-cli-assurance-result.json"
+                ))
+                .as_slice(),
+                "sha256:b2a0f2573f90d09b8c8c325cb5bd862f608fbd7ccd3656467f4eea6f1e62208d",
+                &vector["assurance_result"],
+            ),
+        ] {
+            assert_eq!(
+                permguard_objects::digest::Digest::compute(bytes).to_string(),
+                digest,
+                "the independently generated fixture bytes stay exact"
+            );
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(bytes).expect("fixture JSON"),
+                *shape,
+                "the standalone fixture and aggregate vector have one shape"
+            );
+        }
+        for case in vector["coordinator_addresses"]
+            .as_array()
+            .expect("coordinator address cases")
+        {
+            let actual = match peer_address(case["administration"].as_str().expect("an admin URL"))
+            {
+                Ok(address) => address,
+                Err(_) => panic!("the admin URL has a canonical peer URL"),
+            };
+            assert_eq!(actual, case["peer"].as_str().expect("a peer URL"));
+        }
+        for (name, malformed) in vector["unknown_nested_fields"]
+            .as_object()
+            .expect("the independent malformed cases")
+        {
+            let refused = match name.as_str() {
+                "tasks_limits" => serde_json::from_value::<
+                    Vec<permguard_host::api::members::TaskView>,
+                >(malformed.clone())
+                .is_err(),
+                "narrowing_task" => serde_json::from_value::<
+                    permguard_host::api::members::NarrowView,
+                >(malformed.clone())
+                .is_err(),
+                "assurance_approval" | "assurance_evidence" => serde_json::from_value::<
+                    permguard_host::api::members::AssuranceOffer,
+                >(malformed.clone())
+                .is_err(),
+                other => panic!("an unknown malformed golden case `{other}`"),
+            };
+            assert!(refused, "the nested unknown field in `{name}` is refused");
+        }
     }
 }

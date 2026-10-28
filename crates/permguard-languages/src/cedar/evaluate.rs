@@ -218,6 +218,10 @@ impl CedarEvaluator {
             ),
         ] {
             match stated_attrs(&items, kind, id) {
+                // Nothing stated anywhere: the entity is absent, as Cedar reads an entity no store
+                // holds — no attributes, no parents — and a schema that requires attributes is not
+                // made to judge one invented with none (TL-6, found by the upstream corpus).
+                None if properties.is_empty() => {}
                 None => items.push(json!({
                     "uid": {"type": kind, "id": id},
                     "attrs": Value::Object(properties.clone()),
@@ -457,7 +461,9 @@ mod tests {
             error.code,
             permguard_core::codes::pdp_native::EVALUATION_FAILED
         );
-        assert!(error.message.contains("clearance"), "{error}");
+        // `alice` is stated nowhere, so Cedar reads her as absent and the policy reading her
+        // clearance fails: the failure names that policy.
+        assert!(error.message.contains("01a0-cleared"), "{error}");
         assert!(verdict.determining().is_empty(), "`E` cites no policy");
         assert_eq!(
             resolve([verdict]).resolution,
@@ -506,7 +512,7 @@ mod tests {
             failure.code,
             permguard_core::codes::pdp_native::EVALUATION_FAILED
         );
-        assert!(failure.message.contains("clearance"), "{failure}");
+        assert!(failure.message.contains("01a0-cleared"), "{failure}");
         assert_eq!(resolve([verdict]).resolution, Resolution::Deny);
 
         let elsewhere = compiled.evaluate(&query("alice", "write", "plan"));
@@ -881,6 +887,71 @@ mod tests {
     }
 
     /// Default deny: no policy matched is an abstain, `A`, not a deny a forbid decided.
+    /// TL-6, found by the upstream corpus: a resource the store does not hold and the request
+    /// does not describe is absent, as Cedar reads it, and a schema that requires its attributes
+    /// does not refuse the request for an entity nobody stated.
+    #[test]
+    fn an_entity_nobody_stated_is_absent_rather_than_empty() {
+        let schema = r#"
+            entity User;
+            entity Document { owner: User };
+            action read appliesTo { principal: [User], resource: [Document] };
+        "#;
+        let compiled = Cedar
+            .compile(
+                &[stored(
+                    "01a0-read",
+                    r#"permit (principal == User::"alice", action == Action::"read", resource);"#,
+                )],
+                &crate::artifact::Artifacts::just(crate::cedar::SCHEMA_ARTIFACT, schema.as_bytes())
+                    .expect("the Cedar schema artifact"),
+            )
+            .expect("the policies compile");
+        // Neither the store nor the request states `Document::"budget"`: decided, not refused.
+        let verdict = compiled.evaluate(&query("alice", "read", "budget"));
+        assert!(verdict.permitted(), "{verdict:?}");
+        // Stated by the request without what the schema requires: still refused, as before.
+        let mut stated = query("alice", "read", "budget");
+        stated
+            .resource
+            .properties
+            .insert("title".to_owned(), json!("budget"));
+        assert_eq!(
+            compiled.evaluate(&stated).error().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_INPUT_REJECTED)
+        );
+    }
+
+    /// Timeout fault injection (TL-6): a Cedar partition reached after its decision's deadline
+    /// answers `E` and decides nothing — not the permit its policies would have given.
+    #[test]
+    fn a_partition_reached_past_its_deadline_fails_closed() {
+        let compiled = Cedar
+            .compile(
+                &[stored(
+                    "01a0-read",
+                    r#"permit (principal, action == Action::"read", resource);"#,
+                )],
+                &crate::artifact::Artifacts::default(),
+            )
+            .expect("the policies compile");
+        let mut late = query("alice", "read", "budget");
+        late.deadline = Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+        let verdict = compiled.evaluate(&late);
+        assert_eq!(
+            verdict.error().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED),
+            "{verdict:?}"
+        );
+        assert!(verdict.determining().is_empty());
+        // In time, the same request is permitted.
+        assert!(
+            compiled
+                .evaluate(&query("alice", "read", "budget"))
+                .permitted()
+        );
+    }
+
     #[test]
     fn nothing_matched_is_an_abstain() {
         let compiled = Cedar

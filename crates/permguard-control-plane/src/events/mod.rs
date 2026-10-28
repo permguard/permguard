@@ -27,6 +27,7 @@
 //! | [`read`] | the bounded, filtered read, over the shared stream-window contract |
 //! | [`retention`] | dropping sealed segments while keeping what proves the rest |
 //! | [`http`] / [`grpc`] | the two transports, over one facade and one validation path |
+//! | [`import`] | the `events.import` task: the required origins' history, served to a member's Host |
 //! | [`measure`] | what it counts about itself |
 //!
 //! # What is not here
@@ -38,12 +39,12 @@
 pub mod configuration;
 pub mod grpc;
 pub mod http;
+pub mod import;
 pub mod ingest;
 pub mod measure;
 pub mod read;
 pub mod retention;
 pub mod store;
-pub mod trust;
 
 pub use ingest::{Accepted, Refused};
 pub use store::EventStore;

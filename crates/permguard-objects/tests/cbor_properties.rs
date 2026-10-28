@@ -90,6 +90,7 @@ fn manifest() -> impl Strategy<Value = Manifest> {
                 partitions.insert(
                     partition_name.clone(),
                     Partition {
+                        interfaces: Vec::new(),
                         runtime: runtime_name,
                         media_types,
                         schema: false,

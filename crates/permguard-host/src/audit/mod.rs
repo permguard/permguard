@@ -167,6 +167,12 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.grant.revoke_planned", HOST),
     mutation("host.grant.revoked", HOST),
     mutation("host.grant.expired", HOST),
+    // An application-consistent snapshot (WP-7.8): its prepare, and how it ended.
+    mutation("host.backup.prepared", HOST),
+    mutation("host.backup.finalized", HOST),
+    mutation("host.backup.aborted", HOST),
+    mutation("host.hold.added", HOST),
+    mutation("host.hold.released", HOST),
     // An approval of a plan (WP-3.9): a mutation of the plan's domain.
     mutation("host.plan.approved", HOST),
     // A plan consumed ahead of its change (WP-3.9): the offline reset's.
@@ -177,6 +183,16 @@ pub const REGISTRY: &[ActionSchema] = &[
     // Its reset (WP-4.1): planned, then run.
     mutation("host.identity.reset_planned", HOST),
     mutation("host.identity.reset", HOST),
+    // A restore (WP-7.9): planned, then run.
+    mutation("host.restore.planned", HOST),
+    mutation("host.restore.completed", HOST),
+    // An operator's garbage collection (WP-7.11b): planned, then run, even when it removes
+    // nothing.
+    mutation("host.gc.planned", HOST),
+    mutation("host.gc.ran", HOST),
+    // A layout migration planned offline from the command line (TC-3); its run is the
+    // migration's own record.
+    mutation("host.migrate.planned", HOST),
     // The key rings (WP-3.1): every journal entry an `operations` record, an operator's
     // rotation and revocation each a mutation.
     ActionSchema {
@@ -211,6 +227,7 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.membership.revoked", HOST),
     mutation("host.membership.joined", HOST),
     mutation("host.membership.synced", HOST),
+    mutation("host.membership.verified", HOST),
     mutation("host.membership.orphaned", HOST),
     // Task sessions (WP-4.3): every lease issued, every epoch refused, every clone alarm, each
     // a security record of the coordinator; a hold for review a mutation.
@@ -261,6 +278,35 @@ pub const REGISTRY: &[ActionSchema] = &[
             ("task", FactType::Text(128)),
             ("open_boot_id", FactType::Text(32)),
             ("new_boot_id", FactType::Text(32)),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
+    // Retention (WP-5.6b, owner decision of 2026-10-17): every pass of the garbage collection
+    // over a stream, written after the run's anchor and before anything is deleted, also when
+    // nothing is.
+    ActionSchema {
+        action: "host.stream.pruned",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("stream", FactType::Text(256)),
+            ("role", FactType::Text(16)),
+            ("run", FactType::Text(32)),
+            ("through", FactType::Uint),
+            ("batches", FactType::Uint),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
+    ActionSchema {
+        action: "host.stream.forked",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("task", FactType::Text(128)),
+            ("stream", FactType::Text(256)),
+            ("at_seq", FactType::Uint),
         ],
         max_bytes: 8 * 1024,
         phases: false,
@@ -358,7 +404,25 @@ pub const REGISTRY: &[ActionSchema] = &[
     action("ledger.create.refused", Class::Security, CONTROL),
     action("ledger.rename.refused", Class::Security, CONTROL),
     action("ledger.delete.refused", Class::Security, CONTROL),
-    action("ledger.pushed", Class::Security, CONTROL),
+    // An export: what left the plane, signed under `host.operations` (WP-7.10).
+    action("ledger.exported", Class::Security, CONTROL),
+    action("zone.exported", Class::Security, CONTROL),
+    // An archive kept as foreign evidence (WP-7.10); a re-home is a `ledger.created`.
+    action("zone.archive_imported", Class::Security, CONTROL),
+    action("ledger.archive.refused", Class::Security, CONTROL),
+    action("ledger.restore.refused", Class::Security, CONTROL),
+    // A catalog mutation (WP-7.3a, owner decision of 2026-10-20): the phases of one mutation
+    // transaction (WP-3.6). The plain actions above stay registered for the trails they wrote.
+    mutation("catalog.zone.created", CONTROL),
+    mutation("catalog.zone.renamed", CONTROL),
+    mutation("catalog.zone.deleted", CONTROL),
+    mutation("catalog.ledger.created", CONTROL),
+    mutation("catalog.ledger.renamed", CONTROL),
+    mutation("catalog.ledger.deleted", CONTROL),
+    mutation("catalog.ledger.archived", CONTROL),
+    mutation("catalog.ledger.restored", CONTROL),
+    // A ref update (WP-7.12): a phase of one mutation transaction (WP-3.6).
+    mutation("ledger.pushed", CONTROL),
     action("notp.push.negotiate.refused", Class::Security, CONTROL),
     action("notp.upload.refused", Class::Security, CONTROL),
     action("notp.push.commit.refused", Class::Security, CONTROL),
@@ -366,6 +430,10 @@ pub const REGISTRY: &[ActionSchema] = &[
     // The Data Plane: decisions and mirrors.
     action("authz.decision", Class::Access, DATA),
     action("ledger.synchronized", Class::Operations, DATA),
+    // A mirror's reap candidacy (WP-7.2d): its task no longer lists it, lists it again, or it went.
+    action("mirror.tombstoned", Class::Operations, DATA),
+    action("mirror.restored", Class::Operations, DATA),
+    action("mirror.reaped", Class::Operations, DATA),
     // The engine itself: the mark a gap in an access trail leaves, in that trail.
     ActionSchema {
         action: "audit.access_dropped",
@@ -539,6 +607,8 @@ struct Inner {
     pending_drops: Mutex<BTreeMap<String, u64>>,
     /// How long `access` and `operations` day files are kept.
     retention: OnceLock<std::time::Duration>,
+    /// What the export of each trail allows retention to delete (WP-5.9).
+    egress: OnceLock<Arc<dyn EgressFloor>>,
     /// How long `security` day files are kept; for ever unless set.
     retention_security: OnceLock<std::time::Duration>,
     signer: OnceLock<Arc<dyn CheckpointSigner>>,
@@ -548,6 +618,18 @@ struct Inner {
     unsealed: Mutex<std::collections::BTreeSet<(Class, String)>>,
     /// The trails the witness left a checkpoint of unanswered: `audit_witness` likewise.
     unwitnessed: Mutex<std::collections::BTreeSet<(Class, String)>>,
+}
+
+/// One trail a listing found: its class, its digest, and the resource its `META.cbor` names or
+/// why it names none.
+type Listed = (Class, String, Result<String, String>);
+
+/// What the export of a trail allows retention to delete (WP-5.9, owner decision of 2026-10-16).
+pub trait EgressFloor: Send + Sync {
+    /// `None` when no required task exports the trail of `(class, resource)`: retention as
+    /// configured. Otherwise the last checkpoint a coordinator acknowledged, by its file name, and
+    /// `Some(None)` while none is.
+    fn acknowledged(&self, class: Class, resource: &str) -> Option<Option<String>>;
 }
 
 /// The audit engine of one process.
@@ -586,6 +668,12 @@ impl Engine {
     /// from now on; without it a `security` trail keeps every day (owner decision of 2026-10-11).
     pub fn retain_security_for(&self, retention: std::time::Duration) {
         let _ = self.inner.retention_security.set(retention);
+    }
+
+    /// Bounds retention by the export of each trail from now on (WP-5.9): a day goes only once
+    /// the seal that closes it was acknowledged, while a required task exports its trail.
+    pub fn gate_retention_with(&self, egress: Arc<dyn EgressFloor>) {
+        let _ = self.inner.egress.set(egress);
     }
 
     /// Seals every ended day of every trail with `signer` from now on.
@@ -635,6 +723,7 @@ impl Engine {
             dropped: AtomicU64::new(0),
             pending_drops: Mutex::new(BTreeMap::new()),
             retention: OnceLock::new(),
+            egress: OnceLock::new(),
             retention_security: OnceLock::new(),
             signer: OnceLock::new(),
             witness: OnceLock::new(),
@@ -685,14 +774,20 @@ impl Engine {
             .map_err(|error| Refused::Storage(error.to_string()))
     }
 
-    /// Seals every ended day of every trail on the volume that no seal closed yet, deletes what
-    /// retention allows, and asks the witness for the co-signatures still missing; answers the
-    /// checkpoints written. A trail that fails is logged and the others go on.
-    pub fn sweep(&self) -> Result<Vec<String>, Refused> {
+    /// Every trail on the volume, by class and digest, with the resource its `META.cbor` names or
+    /// why it names none.
+    ///
+    /// Listed under the lock a trail is created under (TD-3): a trail's directory exists a moment
+    /// before its `META.cbor` does, and a listing between the two read the trail being created as
+    /// one whose `META.cbor` is unreadable.
+    fn trails(&self) -> Result<Vec<Listed>, Refused> {
+        let _creating = self
+            .inner
+            .open
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let storage = |error: crate::storage::StorageError| Refused::Storage(error.to_string());
-        let today = trail::day_name(self.inner.time.now_secs());
-        let mut written = Vec::new();
-        let mut visited = Vec::new();
+        let mut trails = Vec::new();
         for class_name in self.inner.trails.subdirs().map_err(storage)? {
             let Some(class) = Class::parse(&class_name) else {
                 continue;
@@ -720,42 +815,106 @@ impl Engine {
                                 .to_owned())
                         }
                     });
-                let resource = match resource {
-                    Ok(resource) => resource,
-                    Err(error) => {
-                        tracing::error!(
-                            event.name = "audit.sweep_failed",
-                            component = "host",
-                            class = class.as_str(),
-                            trail = %digest,
-                            error = %error,
-                            "an audit trail could not be swept"
-                        );
-                        continue;
-                    }
-                };
-                let mut open = self
-                    .inner
-                    .open
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner);
-                match self.inner.trail(&mut open, class, &resource) {
-                    Ok(trail) => {
-                        written.extend(self.inner.maintain(trail, class, &resource, &today));
-                    }
-                    Err(error) => tracing::error!(
+                trails.push((class, digest, resource));
+            }
+        }
+        Ok(trails)
+    }
+
+    /// Seals every ended day of every trail on the volume that no seal closed yet, deletes what
+    /// retention allows, and asks the witness for the co-signatures still missing; answers the
+    /// checkpoints written. A trail that fails is logged and the others go on.
+    pub fn sweep(&self) -> Result<Vec<String>, Refused> {
+        let today = trail::day_name(self.inner.time.now_secs());
+        let mut written = Vec::new();
+        let mut visited = Vec::new();
+        for (class, digest, resource) in self.trails()? {
+            let resource = match resource {
+                Ok(resource) => resource,
+                Err(error) => {
+                    tracing::error!(
                         event.name = "audit.sweep_failed",
                         component = "host",
                         class = class.as_str(),
+                        trail = %digest,
                         error = %error,
                         "an audit trail could not be swept"
-                    ),
+                    );
+                    continue;
                 }
-                drop(open);
-                visited.push((class, resource));
+            };
+            let mut open = self
+                .inner
+                .open
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            match self.inner.trail(&mut open, class, &resource) {
+                Ok(trail) => {
+                    written.extend(self.inner.maintain(trail, class, &resource, &today));
+                }
+                Err(error) => tracing::error!(
+                    event.name = "audit.sweep_failed",
+                    component = "host",
+                    class = class.as_str(),
+                    error = %error,
+                    "an audit trail could not be swept"
+                ),
             }
+            drop(open);
+            visited.push((class, resource));
         }
         self.inner.ask_witness(&visited);
+        Ok(written)
+    }
+
+    /// Every trail on the volume, by class and resource (WP-5.9: what an export ships); a trail
+    /// whose `META.cbor` cannot be read refuses the listing rather than being skipped.
+    pub fn trails_held(&self) -> Result<Vec<(Class, String)>, Refused> {
+        self.trails()?
+            .into_iter()
+            .map(|(class, digest, resource)| {
+                resource.map(|resource| (class, resource)).map_err(|error| {
+                    Refused::Storage(format!(
+                        "the {} trail {digest} cannot be read: {error}",
+                        class.as_str()
+                    ))
+                })
+            })
+            .collect()
+    }
+
+    /// The bytes of the `ANCHOR.cbor` of `(class, resource)`, when retention deleted a prefix.
+    pub fn anchor_bytes(&self, class: Class, resource: &str) -> Result<Option<Vec<u8>>, Refused> {
+        match trail::directory(&self.inner.trails, class, resource, false) {
+            Ok(dir) => dir
+                .read(checkpoint::ANCHOR)
+                .map_err(|error| Refused::Storage(error.to_string())),
+            Err(error) if not_found(&error) => Ok(None),
+            Err(error) => Err(Refused::Storage(error.to_string())),
+        }
+    }
+
+    /// Whether a checkpoint signer is registered: without one this process seals nothing.
+    pub fn seals(&self) -> bool {
+        self.inner.signer.get().is_some()
+    }
+
+    /// Checkpoints every trail on the volume now, as [`Engine::checkpoint`] does one (WP-4.9: the
+    /// evidence an identity reset seals before its rings retire); answers the newest checkpoint
+    /// of each trail holding records. Refused at the first trail that cannot be checkpointed, a
+    /// trail whose `META.cbor` cannot be read included: nothing is skipped. The trails sealed
+    /// before it keep their checkpoints, which only add to what a trail proves.
+    pub fn checkpoint_all(&self) -> Result<Vec<String>, Refused> {
+        let mut written = Vec::new();
+        for (class, digest, resource) in self.trails()? {
+            let resource = resource.map_err(|error| {
+                Refused::Storage(format!(
+                    "the {} trail {digest} cannot be checkpointed: {error}",
+                    class.as_str()
+                ))
+            })?;
+            written.extend(self.checkpoint(class, &resource)?);
+        }
         Ok(written)
     }
 
@@ -1149,7 +1308,11 @@ impl Inner {
                 Err(error) => self.seal_failed(class, resource, &error),
             }
         }
-        if let Err(error) = trail.prune(today) {
+        let egress = self
+            .egress
+            .get()
+            .and_then(|floor| floor.acknowledged(class, resource));
+        if let Err(error) = trail.prune(today, egress.as_ref().map(|held| held.as_deref())) {
             tracing::error!(
                 event.name = "audit.retention_failed",
                 component = "host",

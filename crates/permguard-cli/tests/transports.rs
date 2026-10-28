@@ -156,6 +156,7 @@ fn zone(id: &str, name: &str) -> proto::Zone {
         name: name.into(),
         created_at: 1,
         updated_at: 1,
+        revision: 1,
     }
 }
 
@@ -168,12 +169,15 @@ fn ledger() -> proto::Ledger {
         created_at: 1,
         updated_at: 1,
         default_ref: "main".into(),
+        revision: 1,
+        state: "active".into(),
+        provenance: None,
     }
 }
 
 fn rest() -> Router {
-    let zones = r#"[{"id":"z-1","name":"acme","created_at":1,"updated_at":1},{"id":"z-2","name":"beta","created_at":1,"updated_at":1}]"#;
-    let ledgers = r#"[{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1}]"#;
+    let zones = r#"[{"id":"z-1","name":"acme","created_at":1,"updated_at":1,"revision":1},{"id":"z-2","name":"beta","created_at":1,"updated_at":1,"revision":1}]"#;
+    let ledgers = r#"[{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":1,"state":"active"}]"#;
     let json = |body: String| {
         move || {
             let body = body.clone();
@@ -186,6 +190,86 @@ fn rest() -> Router {
     Router::new()
         .route("/v1/zones", get(json(zones.to_owned())))
         .route("/v1/zones/acme/ledgers", get(json(ledgers.to_owned())))
+        .route(
+            "/v1/zones/acme/ledgers/main-ledger",
+            // The Control Plane's answer, with the members the Host's composition names; the
+            // binding carries members a later server may add, which a client reads past.
+            get(json(
+                serde_json::json!({
+                    "id": "l-1", "zone_id": "z-1", "name": "main-ledger", "default_ref": "main",
+                    "created_at": 1, "updated_at": 1, "revision": 1, "state": "active",
+                    "serving_members": [{
+                        "host_id": "01a3", "membership_id": "m-1", "task_id": "mirror",
+                        "declared_assurance": "production",
+                        "assurance_binding_status": {
+                            "verdict": "accepted", "current": true, "policy_revision": "p-3",
+                            "task_ids": ["mirror"],
+                            "claims": [{"control": "key.storage", "class": "attested", "by": "verifier-1"}],
+                            "appraised_by": "verifier-1", "issued_at": "2026-10-01T00:00:00Z",
+                            "expires_at": "2027-01-01T00:00:00Z", "binding_digest": "sha256:cd"
+                        },
+                        "lease_state": "live", "last_session_at": "2026-10-25T10:00:00Z",
+                        "progress": {
+                            "report_seq": 7, "reported_at": "2026-10-25T09:59:00Z",
+                            "received_at": "2026-10-25T10:00:00Z", "state": "serving",
+                            "checkpoint_digest": "sha256:ab", "stale": false
+                        }
+                    }, {
+                        "host_id": "02b4", "membership_id": "m-2", "task_id": "mirror",
+                        "declared_assurance": "development", "lease_state": "none"
+                    }]
+                })
+                .to_string(),
+            )),
+        )
+        .route(
+            "/v1/zones/acme/import",
+            post(|body: String| async move {
+                use base64::Engine as _;
+                let sent: Value = serde_json::from_str(&body).expect("JSON");
+                let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+                assert_eq!(sent["mode"], "re-home");
+                assert_eq!(sent["name"], "copy");
+                assert_eq!(sent["pin"], "sha256:pin");
+                assert_eq!(sent["archive"], b64(ARCHIVE));
+                assert_eq!(sent["bundle"]["manifest"], b64(b"bundle"));
+                assert_eq!(sent["bundle"]["items"][0], b64(b"item"));
+                let answer = serde_json::json!({
+                    "mode": "re-home",
+                    "manifest_digest": format!("sha256:{}", "cd".repeat(32)),
+                    "source_host_id": "07".repeat(16),
+                    "source_zone_id": "z-src",
+                    "ledgers": [{
+                        "id": "l-1", "zone_id": "z-1", "name": "copy", "default_ref": "main",
+                        "created_at": 1, "updated_at": 1, "revision": 1, "state": "active",
+                        "provenance": {
+                            "manifest_digest": format!("sha256:{}", "cd".repeat(32)),
+                            "source_host_id": "07".repeat(16),
+                            "source_zone_id": "z-src",
+                            "source_ledger_id": "l-src",
+                            "exported_at": 1_800_000_000u64,
+                        }
+                    }],
+                });
+                ([("content-type", "application/json")], answer.to_string())
+            }),
+        )
+        .route(
+            "/v1/zones/acme/ledgers/main-ledger/export",
+            post(|| async {
+                use base64::Engine as _;
+                let answer = exported();
+                let body = serde_json::json!({
+                    "archive": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&answer.archive),
+                    "zone_id": answer.zone_id,
+                    "bundle_digest": answer.bundle_digest,
+                    "bundle_bytes": answer.bundle_bytes,
+                    "exported_at": answer.exported_at,
+                    "ledgers": [{"id": "l-1", "name": "main-ledger", "refs": 1, "objects": 4, "statements": 1}],
+                });
+                ([("content-type", "application/json")], body.to_string())
+            }),
+        )
         .route(
             "/.well-known/server-configuration",
             get(json(DISCOVERY.to_owned())),
@@ -222,6 +306,9 @@ fn rest() -> Router {
                         max_batch_bytes: 8 * 1024 * 1024,
                         max_batch_objects: 1000,
                         compression: None,
+                        transfer_id: [0x7a; 16],
+                        reservation: 3,
+                        expiry: 1_800_000_000,
                     }
                     .encode()
                     .expect("it encodes"),
@@ -368,7 +455,50 @@ impl ZoneCatalog for Plane {
         &self,
         _request: Request<proto::GetLedgerRequest>,
     ) -> Result<Response<proto::LedgerResponse>, Status> {
-        unserved()
+        Ok(Response::new(proto::LedgerResponse {
+            ledger: Some(proto::Ledger {
+                serving_members: vec![
+                    proto::ServingMember {
+                        host_id: "01a3".into(),
+                        membership_id: "m-1".into(),
+                        task_id: "mirror".into(),
+                        declared_assurance: "production".into(),
+                        assurance_binding_status: Some(proto::ServingAssurance {
+                            verdict: "accepted".into(),
+                            current: true,
+                            policy_revision: "p-3".into(),
+                            claims: vec![proto::ServingClaim {
+                                control: "key.storage".into(),
+                                class: "attested".into(),
+                                by: "verifier-1".into(),
+                            }],
+                            expires_at: "2027-01-01T00:00:00Z".into(),
+                        }),
+                        lease_state: "live".into(),
+                        last_session_at: Some("2026-10-25T10:00:00Z".into()),
+                        progress: Some(proto::ServingProgress {
+                            report_seq: 7,
+                            reported_at: "2026-10-25T09:59:00Z".into(),
+                            received_at: "2026-10-25T10:00:00Z".into(),
+                            state: Some("serving".into()),
+                            checkpoint_digest: Some("sha256:ab".into()),
+                            stale: false,
+                        }),
+                    },
+                    proto::ServingMember {
+                        host_id: "02b4".into(),
+                        membership_id: "m-2".into(),
+                        task_id: "mirror".into(),
+                        declared_assurance: "development".into(),
+                        assurance_binding_status: None,
+                        lease_state: "none".into(),
+                        last_session_at: None,
+                        progress: None,
+                    },
+                ],
+                ..ledger()
+            }),
+        }))
     }
 
     async fn rename_ledger(
@@ -384,7 +514,98 @@ impl ZoneCatalog for Plane {
     ) -> Result<Response<proto::LedgerResponse>, Status> {
         unserved()
     }
+
+    async fn archive_ledger(
+        &self,
+        _request: Request<proto::ArchiveLedgerRequest>,
+    ) -> Result<Response<proto::LedgerResponse>, Status> {
+        unserved()
+    }
+
+    async fn restore_ledger(
+        &self,
+        _request: Request<proto::RestoreLedgerRequest>,
+    ) -> Result<Response<proto::LedgerResponse>, Status> {
+        unserved()
+    }
+
+    async fn export_ledger(
+        &self,
+        request: Request<proto::ExportLedgerRequest>,
+    ) -> Result<Response<proto::ExportResponse>, Status> {
+        let request = request.into_inner();
+        assert_eq!(
+            (request.zone.as_str(), request.ledger.as_str()),
+            ("acme", "main-ledger")
+        );
+        Ok(Response::new(exported()))
+    }
+
+    async fn export_zone(
+        &self,
+        _request: Request<proto::ExportZoneRequest>,
+    ) -> Result<Response<proto::ExportResponse>, Status> {
+        unserved()
+    }
+
+    async fn import(
+        &self,
+        request: Request<proto::ImportRequest>,
+    ) -> Result<Response<proto::ImportResponse>, Status> {
+        let request = request.into_inner();
+        assert_eq!(
+            (
+                request.zone.as_str(),
+                request.mode.as_str(),
+                request.name.as_str(),
+                request.pin.as_str()
+            ),
+            ("acme", "re-home", "copy", "sha256:pin")
+        );
+        assert_eq!(request.archive, ARCHIVE);
+        assert_eq!(request.bundle_manifest, b"bundle".to_vec());
+        assert_eq!(request.bundle_items, vec![b"item".to_vec()]);
+        Ok(Response::new(proto::ImportResponse {
+            mode: "re-home".to_owned(),
+            manifest_digest: format!("sha256:{}", "cd".repeat(32)),
+            source_host_id: "07".repeat(16),
+            source_zone_id: "z-src".to_owned(),
+            archive: None,
+            ledgers: vec![proto::Ledger {
+                name: "copy".to_owned(),
+                provenance: Some(proto::LedgerProvenance {
+                    manifest_digest: format!("sha256:{}", "cd".repeat(32)),
+                    source_host_id: "07".repeat(16),
+                    source_zone_id: "z-src".to_owned(),
+                    source_ledger_id: "l-src".to_owned(),
+                    exported_at: 1_800_000_000,
+                }),
+                ..ledger()
+            }],
+        }))
+    }
 }
+
+/// What the fake answers an export: an archive of a few bytes, and what it binds.
+fn exported() -> proto::ExportResponse {
+    proto::ExportResponse {
+        archive: ARCHIVE.to_vec(),
+        zone_id: "z-1".to_owned(),
+        bundle_digest: format!("sha256:{}", "ab".repeat(32)),
+        bundle_bytes: 3,
+        exported_at: 1_800_000_000,
+        ledgers: vec![proto::ExportedLedger {
+            id: "l-1".to_owned(),
+            name: "main-ledger".to_owned(),
+            refs: 1,
+            objects: 4,
+            statements: 1,
+        }],
+    }
+}
+
+/// The archive bytes the fake answers.
+const ARCHIVE: &[u8] = &[0xa2, 0x01, 0x40, 0x02, 0x40, 0xff];
 
 #[tonic::async_trait]
 impl PolicyDecisionPoint for Plane {
@@ -727,6 +948,121 @@ fn every_network_command_answers_the_same_over_https_and_grpcs() {
     }
 }
 
+/// WP-7.10: `ledgers export` writes the archive the plane answers, byte for byte, to a new file
+/// only its owner reads, and reports what it binds alike on both transports; a file already there
+/// is refused.
+#[test]
+fn a_ledger_export_writes_the_archive_on_both_transports() {
+    let dir = scratch("export");
+    let pki = pki(&dir);
+    let address = serve(rest().merge(grpc()), &pki, Seen::default());
+    let mut reports = Vec::new();
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        let file = dir.join(format!("{scheme}.export"));
+        let args = [
+            "-o",
+            "json",
+            "--tls-ca-file",
+            &pki.authority.display().to_string(),
+            "ledgers",
+            "export",
+            "--zone",
+            "acme",
+            "main-ledger",
+            "--out",
+            &file.display().to_string(),
+            "--control-endpoint",
+            &endpoint,
+        ];
+        let output = cli(&dir, &args);
+        assert!(output.status.success(), "{scheme}: {output:?}");
+        assert_eq!(std::fs::read(&file).expect("written"), ARCHIVE, "{scheme}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&file)
+                .expect("written")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "{scheme}: the owner's alone");
+        }
+        let mut report: Value = serde_json::from_slice(&output.stdout).expect("JSON");
+        assert_eq!(report["ledgers"][0]["objects"], 4, "{scheme}");
+        report["path"] = Value::Null;
+        reports.push(report);
+        let again = cli(&dir, &args);
+        assert!(
+            !again.status.success(),
+            "{scheme}: an existing file is kept"
+        );
+        assert_eq!(std::fs::read(&file).expect("kept"), ARCHIVE);
+    }
+    assert_eq!(reports[0], reports[1], "the transports report alike");
+}
+
+/// WP-7.10: `ledgers import` hands the plane the archive, the keys bundle file decoded and the
+/// pin, alike on both transports, and reports the ledger re-homed with its provenance; an `--as`
+/// naming no zone is refused before anything is read.
+#[test]
+fn a_ledger_import_hands_the_archive_and_the_bundle_on_both_transports() {
+    use base64::Engine as _;
+    let dir = scratch("import");
+    let pki = pki(&dir);
+    let address = serve(rest().merge(grpc()), &pki, Seen::default());
+    let archive = dir.join("release.export");
+    std::fs::write(&archive, ARCHIVE).expect("written");
+    let bundle = dir.join("source.bundle");
+    let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+    std::fs::write(
+        &bundle,
+        serde_json::json!({"manifest": b64(b"bundle"), "items": [b64(b"item")]}).to_string(),
+    )
+    .expect("written");
+    let run = |scheme: &str, target: &str| {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        cli(
+            &dir,
+            &[
+                "-o",
+                "json",
+                "--tls-ca-file",
+                &pki.authority.display().to_string(),
+                "ledgers",
+                "import",
+                &archive.display().to_string(),
+                "--as",
+                target,
+                "--mode",
+                "re-home",
+                "--bundle",
+                &bundle.display().to_string(),
+                "--pin",
+                "sha256:pin",
+                "--control-endpoint",
+                &endpoint,
+            ],
+        )
+    };
+    let mut reports = Vec::new();
+    for scheme in ["https", "grpcs"] {
+        let output = run(scheme, "acme/copy");
+        assert!(output.status.success(), "{scheme}: {output:?}");
+        let report: Value = serde_json::from_slice(&output.stdout).expect("JSON");
+        assert_eq!(
+            report["ledgers"][0]["provenance"]["source_ledger_id"], "l-src",
+            "{scheme}"
+        );
+        reports.push(report);
+    }
+    assert_eq!(
+        reports[0]["ledgers"][0]["provenance"],
+        reports[1]["ledgers"][0]["provenance"]
+    );
+    let refused = run("https", "copy");
+    assert_eq!(refused.status.code(), Some(64), "{refused:?}");
+}
+
 #[test]
 fn an_unreachable_single_target_exits_sixty_nine() {
     let dir = scratch("unreachable");
@@ -778,8 +1114,8 @@ fn the_token_travels_as_a_bearer_on_both_transports_and_never_in_a_report() {
     );
 }
 
-/// The Host facade of the client, against the real Host API on its own listener: the status and
-/// the identity read the same over `https` and `grpcs`, the token deciding who asks.
+/// The Host facade of the client, against the real Host API on its own listener: status, identity
+/// and grants read the same over `https` and `grpcs`; an absent membership service refuses alike.
 #[test]
 fn the_host_facade_reads_the_same_over_https_and_grpcs() {
     use permguard_control_client::host;
@@ -789,6 +1125,14 @@ fn the_host_facade_reads_the_same_over_https_and_grpcs() {
     let dir = scratch("host");
     let pki = pki(&dir);
     let address = host_listener(&dir, &pki);
+    let admin_token = dir.join("admin-token");
+    std::fs::write(&admin_token, ADMIN).expect("the administrator token writes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&admin_token, std::fs::Permissions::from_mode(0o600))
+            .expect("the token is private");
+    }
     let tls = |token: Option<&str>| TlsOptions {
         ca_file: Some(pki.authority.clone()),
         token: token.map(|token| Credential::new(token.as_bytes().to_vec())),
@@ -796,18 +1140,79 @@ fn the_host_facade_reads_the_same_over_https_and_grpcs() {
     };
     let mut statuses = Vec::new();
     let mut identities = Vec::new();
+    let mut grants = Vec::new();
+    let mut members_refused = Vec::new();
+    let mut verify_refused = Vec::new();
+    let mut cli_identities = Vec::new();
+    let mut cli_grants = Vec::new();
     for scheme in ["https", "grpcs"] {
         let url = format!("{scheme}://localhost:{}", address.port());
         let client = host::client(&url, &tls(Some(ADMIN)), Box::new(Silent)).expect("a client");
         statuses.push(client.status().expect("the status"));
         identities.push(client.identity().expect("the identity"));
+        grants.push(client.grants(None, None).expect("the grants"));
+        members_refused.push(
+            client
+                .members(None)
+                .expect_err("this fixture composes no membership service"),
+        );
+        verify_refused.push(
+            client
+                .verify_member(
+                    "0198f2aa-0000-7000-8000-000000000002",
+                    &permguard_host::api::members::VerifyMember {
+                        request_id: "transport-verify".to_owned(),
+                    },
+                )
+                .expect_err("this fixture composes no membership service"),
+        );
         // Nobody: refused the same way on both.
         let anonymous = host::client(&url, &tls(None), Box::new(Silent)).expect("a client");
         let refused = anonymous.status().expect_err("nobody reads the status");
         assert_eq!(refused.reason, "unauthenticated", "{scheme}: {refused:?}");
+
+        for (command, answers) in [
+            (["host", "identity", "show"].as_slice(), &mut cli_identities),
+            (["host", "grants", "list"].as_slice(), &mut cli_grants),
+        ] {
+            let output = cli(
+                &dir,
+                &[
+                    "-o",
+                    "json",
+                    "--host-endpoint",
+                    &url,
+                    "--tls-ca-file",
+                    pki.authority.to_str().expect("a UTF-8 path"),
+                    "--token-file",
+                    admin_token.to_str().expect("a UTF-8 path"),
+                    command[0],
+                    command[1],
+                    command[2],
+                ],
+            );
+            assert!(output.status.success(), "{scheme}: {output:?}");
+            answers.push(
+                serde_json::from_slice::<Value>(&output.stdout).expect("the CLI answers JSON"),
+            );
+        }
     }
     assert_eq!(statuses[0], statuses[1]);
     assert_eq!(identities[0], identities[1]);
+    assert_eq!(grants[0], grants[1]);
+    assert_eq!(members_refused[0].reason, members_refused[1].reason);
+    assert_eq!(verify_refused[0].reason, verify_refused[1].reason);
+    assert_eq!(cli_identities[0], cli_identities[1]);
+    for shown in &cli_identities {
+        assert!(shown["host_id"].as_str().is_some_and(|id| !id.is_empty()));
+        assert_eq!(shown["epoch"], 1);
+        assert!(
+            shown["fingerprint"]
+                .as_str()
+                .is_some_and(|fingerprint| fingerprint.starts_with("sha256:"))
+        );
+    }
+    assert_eq!(cli_grants[0], cli_grants[1]);
     assert!(!identities[0].document.is_empty());
 }
 
@@ -1027,8 +1432,9 @@ fn a_push_over_https_carries_the_operators_token() {
         .negotiate_push(&permguard_notp::NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: digest.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: vec![permguard_notp::ObjectClaim { digest, size: 3 }],
+            request_id: "push-1".into(),
         })
         .expect("the negotiation answers over TLS");
     assert_eq!(*seen.lock().unwrap(), vec![Some(format!("Bearer {TOKEN}"))]);
@@ -1218,4 +1624,71 @@ fn an_event_read_that_does_not_verify_exits_two_over_both_transports() {
         assert!(stderr.contains("events_unverified"), "{scheme}: {stderr}");
         assert!(!output.stdout.is_empty(), "{scheme}");
     }
+}
+
+/// TC-5: `ledgers get` prints the members assigned to serve the ledger with what they reported,
+/// alike over REST and gRPC, and says that the assurance is declared and the progress
+/// member-reported.
+#[test]
+fn a_ledger_get_lists_its_serving_members_on_both_transports() {
+    let dir = scratch("members");
+    let pki = pki(&dir);
+    let address = serve(rest().merge(grpc()), &pki, Seen::default());
+    let mut answers = Vec::new();
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        let get = |format: &str| {
+            cli(
+                &dir,
+                &[
+                    "-o",
+                    format,
+                    "--tls-ca-file",
+                    &pki.authority.display().to_string(),
+                    "ledgers",
+                    "get",
+                    "--zone",
+                    "acme",
+                    "main-ledger",
+                    "--control-endpoint",
+                    &endpoint,
+                ],
+            )
+        };
+        let output = get("json");
+        assert!(output.status.success(), "{scheme}: {output:?}");
+        let report: Value = serde_json::from_slice(&output.stdout).expect("JSON");
+        let member = &report["serving_members"][0];
+        assert_eq!(member["lease_state"], "live", "{scheme}");
+        assert_eq!(member["progress"]["report_seq"], 7, "{scheme}");
+        assert_eq!(
+            member["assurance_binding_status"]["claims"][0]["by"], "verifier-1",
+            "{scheme}"
+        );
+        assert!(
+            report["serving_members"][1]["progress"].is_null(),
+            "{scheme}"
+        );
+        let terminal = get("terminal");
+        let text = String::from_utf8_lossy(&terminal.stdout).into_owned();
+        for line in [
+            "served by (assigned; progress is member-reported):",
+            "task mirror lease live, last session 2026-10-25T10:00:00Z",
+            "declared assurance production (declared, not verified); binding accepted, current \
+             under policy p-3 until 2027-01-01T00:00:00Z",
+            "reported #7 at 2026-10-25T09:59:00Z (serving), received 2026-10-25T10:00:00Z, \
+             checkpoint sha256:ab",
+            "task mirror lease none",
+            "declared assurance development (declared, not verified)",
+            "no report yet",
+        ] {
+            assert!(text.contains(line), "{scheme}: `{line}` in {text}");
+        }
+        assert!(!text.contains("stale"), "{scheme}: {text}");
+        answers.push(report);
+    }
+    assert_eq!(
+        answers[0], answers[1],
+        "the same members over REST and gRPC"
+    );
 }

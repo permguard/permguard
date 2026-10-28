@@ -230,12 +230,16 @@ pub fn parse_name(name: &str) -> Option<(String, Option<u64>)> {
 pub fn ordered(names: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut found: Vec<((String, u64), String)> = names
         .into_iter()
-        .filter_map(|name| {
-            parse_name(&name).map(|(period, seq)| ((period, seq.unwrap_or(u64::MAX)), name))
-        })
+        .filter_map(|name| order_of(&name).map(|key| (key, name)))
         .collect();
     found.sort();
     found.into_iter().map(|(_, name)| name).collect()
+}
+
+/// Where the checkpoint file `name` stands in its trail's order: its day, then its sequence, the
+/// day's seal last; `None` for a name that is not a checkpoint's.
+pub fn order_of(name: &str) -> Option<(String, u64)> {
+    parse_name(name).map(|(period, seq)| (period, seq.unwrap_or(u64::MAX)))
 }
 
 /// What signs a checkpoint: the server's `host.operations` ring.

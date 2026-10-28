@@ -39,6 +39,7 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
+pub mod archive;
 pub mod chain;
 pub mod envelope;
 pub mod index;

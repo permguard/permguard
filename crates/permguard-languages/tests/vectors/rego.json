@@ -1,0 +1,292 @@
+{
+  "runtime": "rego",
+  "engine": {
+    "name": "regorus",
+    "version": "0.12.0"
+  },
+  "manifests": [
+    {
+      "name": "a stateless profile of one rego partition",
+      "yaml": "metadata:\n  kind: policy\n  name: vectors\nruntimes:\n  rego:\n    language: { name: rego, constraint: \">=1.0.0\" }\n    engine:   { name: permguard, constraint: \">=0.1.0 <0.2.0\" }\npartitions:\n  rules:\n    runtime: rego\n    schema: false\nprofiles:\n  default: { type: permguard.api.pdp.native.v1, partitions: [rules] }\n",
+      "expect": "accepted"
+    },
+    {
+      "name": "a language range this build does not meet",
+      "yaml": "metadata:\n  kind: policy\n  name: vectors\nruntimes:\n  rego:\n    language: { name: rego, constraint: \">=99.0.0\" }\n    engine:   { name: permguard, constraint: \">=0.1.0 <0.2.0\" }\npartitions:\n  rules:\n    runtime: rego\nprofiles:\n  default: { type: permguard.api.pdp.native.v1, partitions: [rules] }\n",
+      "expect": {
+        "refused": "manifest rejected: runtime `rego`: language rego 1.0.0 does not satisfy `>=99.0.0`"
+      }
+    },
+    {
+      "name": "a temporal profile naming a rego partition",
+      "yaml": "metadata:\n  kind: policy\n  name: vectors\nruntimes:\n  rego:\n    language: { name: rego, constraint: \">=1.0.0\" }\n    engine:   { name: permguard, constraint: \">=0.1.0 <0.2.0\" }\npartitions:\n  rules:\n    runtime: rego\nprofiles:\n  default: { type: permguard.api.pdp.temporal.v1alpha1, partitions: [rules] }\n",
+      "expect": {
+        "refused": "manifest rejected: the profile `default` is `permguard.api.pdp.temporal.v1alpha1` and names the partition `rules`, which runs `rego` — a runtime that decides from the request alone. A temporal profile records history and decides against it, and there is no conversion that would make a stateless partition do so"
+      }
+    },
+    {
+      "name": "a profile naming no partition the manifest has",
+      "yaml": "metadata:\n  kind: policy\n  name: vectors\nruntimes:\n  rego:\n    language: { name: rego, constraint: \">=1.0.0\" }\n    engine:   { name: permguard, constraint: \">=0.1.0 <0.2.0\" }\npartitions:\n  rules:\n    runtime: rego\nprofiles:\n  default: { type: permguard.api.pdp.native.v1, partitions: [missing] }\n",
+      "expect": {
+        "refused": "manifest rejected: profile `default` names the partition `missing`, which is not declared"
+      }
+    }
+  ],
+  "partitions": [
+    {
+      "name": "modules",
+      "policies": [
+        {
+          "id": "m-allow",
+          "source": "package permguard.vectors.allow\n\nallow if input.action.name == \"read\"\n"
+        },
+        {
+          "id": "m-deny",
+          "source": "package permguard.vectors.deny\n\ndeny if input.resource.id == \"secret\"\n"
+        }
+      ],
+      "artifacts": {},
+      "expect": "compiles"
+    },
+    {
+      "name": "failing",
+      "policies": [
+        {
+          "id": "m-number",
+          "source": "package permguard.vectors.number\n\nallow := 42\n"
+        },
+        {
+          "id": "m-deny",
+          "source": "package permguard.vectors.deny\n\ndeny if input.action.name == \"delete\"\n"
+        }
+      ],
+      "artifacts": {},
+      "expect": "compiles"
+    },
+    {
+      "name": "document",
+      "policies": [
+        {
+          "id": "m-level",
+          "source": "package permguard.vectors.level\n\nallow if input.partition.level >= 3\n"
+        }
+      ],
+      "artifacts": {
+        "permguard.rego.schema.v1": {
+          "type": "object",
+          "properties": {
+            "level": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "level"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "expect": "compiles"
+    },
+    {
+      "name": "clock",
+      "policies": [
+        {
+          "id": "m-clock",
+          "source": "package permguard.vectors.clock\n\nallow if time.now_ns() > 0\n"
+        }
+      ],
+      "artifacts": {},
+      "expect": {
+        "refused": "rego: module m-clock: rego: `time.now_ns` is not a built-in this runtime allows: only pure, deterministic built-ins are, so the clock, randomness, UUIDs, the network and the environment cannot reach a decision"
+      }
+    },
+    {
+      "name": "unparsable",
+      "policies": [
+        {
+          "id": "m-broken",
+          "source": "package permguard.vectors.broken\n\nallow if {\n"
+        }
+      ],
+      "artifacts": {},
+      "expect": {
+        "refused": "rego: module m-broken does not parse: rego: \n--> policy.rego:4:1\n  |\n4 | \n  | ^\nerror: expecting expression"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "name": "a module allows",
+      "partition": "modules",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "expect": {
+        "verdict": "P",
+        "determining": [
+          "m-allow"
+        ]
+      }
+    },
+    {
+      "name": "a deny overrides the allow",
+      "partition": "modules",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "secret"
+      },
+      "expect": {
+        "verdict": "D",
+        "determining": [
+          "m-deny"
+        ]
+      }
+    },
+    {
+      "name": "neither rule holds",
+      "partition": "modules",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "write"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "expect": {
+        "verdict": "A"
+      }
+    },
+    {
+      "name": "a rule that is not a boolean",
+      "partition": "failing",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "expect": {
+        "verdict": "E",
+        "code": "evaluation_failed"
+      }
+    },
+    {
+      "name": "a true deny beside a failing rule",
+      "partition": "failing",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "delete"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "expect": {
+        "verdict": "D",
+        "determining": [
+          "m-deny"
+        ],
+        "beside": "evaluation_failed"
+      }
+    },
+    {
+      "name": "the document reaches the rule",
+      "partition": "document",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "input": {
+        "rego": {
+          "level": 5
+        }
+      },
+      "expect": {
+        "verdict": "P",
+        "determining": [
+          "m-level"
+        ]
+      }
+    },
+    {
+      "name": "a document below the floor",
+      "partition": "document",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "input": {
+        "rego": {
+          "level": 1
+        }
+      },
+      "expect": {
+        "verdict": "A"
+      }
+    },
+    {
+      "name": "a document the schema refuses",
+      "partition": "document",
+      "subject": {
+        "type": "User",
+        "id": "alice"
+      },
+      "action": {
+        "name": "read"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "input": {
+        "rego": {
+          "level": "high"
+        }
+      },
+      "expect": {
+        "input_refused": "rego: the document does not satisfy this partition's schema: \"high\" is not of type \"integer\" (at /level)"
+      }
+    }
+  ]
+}

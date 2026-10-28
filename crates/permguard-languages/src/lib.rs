@@ -32,6 +32,8 @@ mod dogwood;
 mod rego;
 
 pub mod artifact;
+pub mod attestation;
+pub mod conformance;
 pub mod descriptor;
 pub mod evaluate;
 pub mod fanout;
@@ -45,11 +47,12 @@ pub mod registry;
 pub mod request;
 pub mod role;
 pub mod temporal;
+pub mod warm;
 pub mod worker;
 
 pub use dogwood::artifacts as dogwood_artifacts;
 pub use dogwood::occurrence::{
-    self as event, EntityRef, EntityUidBody, Occurrence, OccurrenceBody,
+    self as event, EntityRef, EntityUidBody, Occurrence, OccurrenceBody, OccurrenceBodyV2,
 };
 pub use dogwood::{NAME as DOGWOOD, POLICY_MEDIA_TYPE as MEDIA_TYPE_POLICY_DOGWOOD};
 pub use evaluate::{

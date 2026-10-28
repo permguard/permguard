@@ -22,9 +22,13 @@
 //! of the state.
 
 pub mod audit;
+pub mod backups;
 pub mod bounds;
 pub mod config;
+pub mod drain;
+pub mod gc;
 pub mod grants;
+pub mod host_input;
 pub mod identity;
 pub mod keys;
 pub mod members;
@@ -33,6 +37,7 @@ pub mod replay;
 pub mod reset;
 pub mod sessions;
 pub mod status;
+pub mod streams;
 
 use std::sync::Arc;
 
@@ -50,7 +55,9 @@ use crate::operations::mutation::{
 pub use bounds::Bounds;
 pub use config::{Effective, Setting};
 pub use grants::{CreateGrant, GrantView, Grants, PlanRevoke, Planned, Revoked, RunRevoke};
-pub use identity::{IdentityRotated, IdentityView, RotateIdentity};
+pub use identity::{
+    IdentityRotated, IdentityVerified, IdentityView, RotateIdentity, VerifyIdentity,
+};
 pub use keys::{
     KeyBundlePage, KeyBundleQuery, KeyRevoked, PlanKeyRevoke, RingBinding, RingBindings,
     RingRotated, RingSummary, RingView, Rings, RotateRing, RunKeyRevoke,
@@ -63,6 +70,16 @@ pub const COMPONENT: &str = "host-api";
 
 /// The longest request id a mutation may carry, in bytes.
 pub const MAX_REQUEST_ID_BYTES: usize = 128;
+
+/// Decodes a closed operator JSON document after its caller has enforced the carrier's byte
+/// ceiling. The CLI is its current caller; keeping this entry point public lets the untrusted
+/// boundary be fuzzed with each concrete document type.
+// conformance: boundary
+pub fn decode_external_json<T: serde::de::DeserializeOwned>(
+    bytes: &[u8],
+) -> Result<T, serde_json::Error> {
+    serde_json::from_slice(bytes)
+}
 
 /// What the facade refuses with: a domain refusal, a conflict naming the current revision, or a
 /// denial of access. The transports render each the one way every Permguard surface does.
@@ -246,6 +263,19 @@ pub struct HostApi {
     listeners: Vec<permguard_core::ListenerReport>,
     memberships: Option<Arc<members::MembershipService>>,
     audit: Option<Arc<crate::audit::Engine>>,
+    /// The stream engine's reads (WP-5.7a), given once the server composed the engine.
+    streams: Option<Arc<dyn streams::StreamReads>>,
+    /// The application-consistent snapshots (WP-7.8), given once the server opened them.
+    backups: Option<Arc<crate::operations::backup::Backups>>,
+    /// The recovery-key id and encryption profile every snapshot manifest binds.
+    backup_labels: (Option<String>, Option<String>),
+    /// The garbage-collection jobs the Planes provide (WP-7.11b), filled as they register.
+    gc: Arc<crate::gc::Jobs>,
+    /// Held while a gc run checks and spends its plan (WP-7.11b).
+    gc_spending: std::sync::Mutex<()>,
+    /// The volume this process claimed and the claim generation it holds, which a drain receipt
+    /// names (TD-2).
+    volume: Option<([u8; 16], u64)>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -277,7 +307,38 @@ impl HostApi {
             listeners: composition.listeners,
             memberships: composition.memberships,
             audit: composition.audit,
+            streams: None,
+            backups: None,
+            backup_labels: (None, None),
+            gc: Arc::default(),
+            gc_spending: std::sync::Mutex::new(()),
+            volume: None,
         }
+    }
+
+    /// This facade serving the volume's backups (WP-7.8), binding `recovery_key_id` and
+    /// `encryption_profile` in every manifest.
+    pub fn with_backups(
+        mut self,
+        backups: Arc<crate::operations::backup::Backups>,
+        recovery_key_id: Option<String>,
+        encryption_profile: Option<String>,
+    ) -> Self {
+        self.backups = Some(backups);
+        self.backup_labels = (recovery_key_id, encryption_profile);
+        self
+    }
+
+    /// This facade reading the Host's streams through `streams` (WP-5.7a).
+    /// Names the volume this process claimed and its claim generation (TD-2).
+    pub fn with_volume(mut self, volume_id: [u8; 16], generation: u64) -> Self {
+        self.volume = Some((volume_id, generation));
+        self
+    }
+
+    pub fn with_streams(mut self, streams: Arc<dyn streams::StreamReads>) -> Self {
+        self.streams = Some(streams);
+        self
     }
 
     /// Whether `actor` may do `operation` on the Host itself, with the principal it acts as.
@@ -395,6 +456,59 @@ impl HostApi {
         }
     }
 
+    /// Returns or rejects an existing mutation before a caller performs external I/O. `None`
+    /// means no completed request exists and the caller may do its preparatory work before
+    /// entering [`Self::transact`].
+    #[allow(clippy::too_many_arguments)]
+    fn replayed<T, R>(
+        &self,
+        domain: &'static str,
+        principal: &Principal,
+        operation: &'static str,
+        action: &'static str,
+        mutation: &Mutation,
+        request: &R,
+        target: Option<String>,
+        reconciled: impl FnOnce(OperationId, u64, Option<String>) -> Result<T, Refusal>,
+    ) -> Result<Option<T>, Refusal>
+    where
+        T: Serialize + serde::de::DeserializeOwned,
+        R: Serialize,
+    {
+        let mutations = self.mutations()?;
+        let request_id = mutation.validated()?;
+        let digest = replay::digest_of(request)?;
+        let _in_flight = self.replay.begin(principal, request_id)?;
+        if let Some(stored) = self
+            .replay
+            .lookup::<T>(principal, request_id, operation, &digest)?
+        {
+            return Ok(Some(stored));
+        }
+        let begin = Begin {
+            domain,
+            operation,
+            action,
+            initiator: Initiator::Principal(principal.as_str().to_owned()),
+            request: Some(RequestKey {
+                request_id: request_id.to_owned(),
+                digest,
+            }),
+            target,
+        };
+        match mutations.replayed::<T, Refusal>(&begin) {
+            Ok(Some(Outcome::Replayed(value))) => Ok(Some(value)),
+            Ok(Some(Outcome::Reconciled {
+                operation_id,
+                revision,
+                target,
+            })) => reconciled(operation_id, revision, target).map(Some),
+            Ok(Some(Outcome::Applied(_))) => unreachable!("a lookup cannot apply a mutation"),
+            Ok(None) => Ok(None),
+            Err(error) => Err(refusal_of_mutation(operation, error)),
+        }
+    }
+
     /// Mints the receipt of the operation `operation_id`, which produced `revision`.
     fn receipt(&self, operation_id: OperationId, revision: u64) -> Receipt {
         Receipt {
@@ -480,6 +594,12 @@ fn refusal_of_mutation(operation: &str, error: MutationError<Refusal>) -> Refusa
             )
             .with_internal(detail),
         ),
+        // A backup barrier (WP-7.8): the same request succeeds once the backup ends.
+        MutationError::Quiesced(detail) => Refusal::Api(ApiError::new(
+            ErrorClass::Unavailable,
+            codes::common::UNAVAILABLE,
+            format!("{detail}; nothing was applied"),
+        )),
     }
 }
 
@@ -830,11 +950,15 @@ pub(crate) mod testing {
             audit: None,
             memberships: Some(Arc::new(members::MembershipService {
                 store: memberships,
-                // The coordinator's Planes consume shipped decisions and provide the mirror, as a
-                // Control Plane declares (WP-4.4).
+                // The coordinator's Planes consume shipped decisions and events and provide the
+                // mirror, as a Control Plane declares (WP-4.4, WP-6.2c1).
                 capabilities: crate::membership::Capabilities::default()
                     .declare(
                         crate::membership::record::TaskType::DecisionsShip,
+                        crate::membership::record::Role::Coordinator,
+                    )
+                    .declare(
+                        crate::membership::record::TaskType::EventsShip,
                         crate::membership::record::Role::Coordinator,
                     )
                     .declare(
@@ -846,6 +970,9 @@ pub(crate) mod testing {
                 // these controls are untouched (WP-4.2).
                 appraisal: crate::membership::appraisal::tests::appraisal(),
                 live: Arc::default(),
+                streams: None,
+                shipping: None,
+                importing: None,
             })),
         });
         (api, store, volume)

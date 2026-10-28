@@ -1,0 +1,80 @@
+{
+  "folder": "regexfind",
+  "files": {
+    "test-regexfind-0334.yaml": {
+      "sha256": "sha256:f0972b49ce91c9272813ee65595b4c31a9f19dbd4393a12a5387c1532e5e814a",
+      "cases": [
+        {
+          "note": "regexfind/finds all match values",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.find_n(\"a.\", \"paranormal\", -1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "ar",
+                  "an",
+                  "al"
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-regexfind-0335.yaml": {
+      "sha256": "sha256:b2c892005c7950e5f9fa8fd7fac190ce69119ff3156881ffda6a9d948a2ec68d",
+      "cases": [
+        {
+          "note": "regexfind/finds specified number of match values",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.find_n(\"a.\", \"paranormal\", 2, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "ar",
+                  "an"
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-regexfind-0336.yaml": {
+      "sha256": "sha256:13e7ad53d9a8babf9be59128ea60f53236d07da71e578bda224c0bc6c68660f8",
+      "cases": [
+        {
+          "note": "regexfind/finds no matching values",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.find_n(\"bork\", \"paranormal\", -1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

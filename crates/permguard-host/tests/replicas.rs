@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use permguard_core::config::{Layers, SETTING_LOG_PDP_ID, SETTING_WORKING_DIR, SettingClass};
+use permguard_core::config::{Layers, SETTING_WORKING_DIR, SettingClass};
 use permguard_core::{BuildSettings, Config, ConfigFile};
 use permguard_host::storage::volume::Volume;
 
@@ -48,7 +48,6 @@ fn replica(name: &str, port: u16) -> (PathBuf, Config) {
                     volume.to_string_lossy().into_owned(),
                 ),
                 (DECLARED.to_owned(), format!("127.0.0.1:{port}")),
-                (SETTING_LOG_PDP_ID.to_owned(), format!("pdp-{name}")),
             ]),
     )
     .expect("the replica's configuration builds");
@@ -80,7 +79,9 @@ fn f27_two_replicas_share_one_static_file_and_differ_only_in_startup_settings() 
         .filter(|(key, (value, _))| listed_b[*key].0 != *value)
         .map(|(key, _)| key)
         .collect();
-    for key in [DECLARED, SETTING_LOG_PDP_ID, SETTING_WORKING_DIR] {
+    // No producer name is supplied per replica any more: the streams are named by each Host's
+    // own `host_id` (WP-6.1, WP-6.2a).
+    for key in [DECLARED, SETTING_WORKING_DIR] {
         assert!(
             differing.iter().any(|differs| *differs == key),
             "{key} is supplied per replica"

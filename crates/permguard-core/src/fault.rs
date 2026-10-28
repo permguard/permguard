@@ -22,6 +22,7 @@
 //! | [`Fault::FsyncTimes`]   | the next flushes under the scope, as many as it says, fail; later ones succeed |
 //! | [`Fault::WriteFails`]   | every write under the scope fails with an I/O error, writing nothing |
 //! | [`Fault::DiskFull`]     | writes under the scope succeed until the quota is spent, then fail with `StorageFull`, writing nothing |
+//! | [`Fault::SlowFsync`]    | every flush under the scope succeeds, after the delay: a slow disk (TS-4) |
 //!
 //! A fault is scoped to a directory and every path below it — or, with [`inject_exact`], to one
 //! path alone, which is how a test fails a directory's flush without failing the flushes of the
@@ -48,6 +49,9 @@ pub enum Fault {
     DiskFull { remaining_bytes: u64 },
     /// Every write fails with an I/O error, writing nothing.
     WriteFails,
+    /// Every flush succeeds, after `delay`: a disk slow to make data durable. Several rules
+    /// covering a path wait the longest of them, once.
+    SlowFsync { delay: std::time::Duration },
 }
 
 struct Rule {
@@ -179,6 +183,7 @@ pub fn sync(path: &Path, flush: impl FnOnce() -> io::Result<()>) -> io::Result<(
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut fails = false;
+        let mut delay = std::time::Duration::ZERO;
         for rule in rules.iter_mut().filter(|rule| rule.covers(path)) {
             match &mut rule.fault {
                 Fault::Fsync => fails = true,
@@ -186,11 +191,17 @@ pub fn sync(path: &Path, flush: impl FnOnce() -> io::Result<()>) -> io::Result<(
                     *remaining -= 1;
                     fails = true;
                 }
+                Fault::SlowFsync { delay: slow } => delay = delay.max(*slow),
                 _ => {}
             }
         }
+        // Released before the wait: other stores, and other tests, consult the rules meanwhile.
+        drop(rules);
         if fails {
             return Err(io::Error::other("injected fault: fsync failed"));
+        }
+        if !delay.is_zero() {
+            std::thread::sleep(delay);
         }
     }
 
@@ -251,6 +262,38 @@ mod tests {
                 "the failed write charged no quota, whatever the order"
             );
         }
+    }
+
+    #[test]
+    fn test_a_slow_flush_waits_and_succeeds_under_its_scope_only() {
+        let volume = scope("slow");
+        let inside = volume.join("segment");
+        let outside = scope("slow-other").join("segment");
+        let _slow = inject(
+            &volume,
+            Fault::SlowFsync {
+                delay: std::time::Duration::from_millis(300),
+            },
+        );
+        let started = std::time::Instant::now();
+        assert!(
+            sync(&inside, || Ok(())).is_ok(),
+            "a slow flush still succeeds"
+        );
+        assert!(started.elapsed() >= std::time::Duration::from_millis(300));
+        // Half the delay: room for a loaded machine, and still far from a slowed call.
+        let started = std::time::Instant::now();
+        assert!(sync(&outside, || Ok(())).is_ok());
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(150),
+            "a sibling scope is not slowed"
+        );
+        let started = std::time::Instant::now();
+        assert!(write(&inside, 10, || Ok(())).is_ok());
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(150),
+            "writes are untouched"
+        );
     }
 
     #[test]

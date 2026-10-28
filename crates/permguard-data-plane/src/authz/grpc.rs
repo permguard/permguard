@@ -45,6 +45,9 @@ pub struct PdpApi {
     pub decider: std::sync::Arc<Decider>,
     pub disclosure: Disclosure,
     pub base_url: String,
+    /// Who serves the interface, its build and its phase: the discovery document's common header
+    /// (WP-7.4a).
+    pub describer: permguard_core::stages::Describer,
     /// The Host's authorization: `decision.evaluate` on the exact ledger, before any policy runs.
     pub authorization: std::sync::Arc<permguard_host::composition::Authorization>,
 }
@@ -75,7 +78,16 @@ impl PolicyDecisionPoint for PdpApi {
         &self,
         _request: Request<GetConfigurationRequest>,
     ) -> Result<Response<GetConfigurationResponse>, Status> {
-        let document = configuration::configuration(&self.base_url);
+        let header = self
+            .describer
+            .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+            .map_err(|refused| status_of(&refused, self.disclosure))?;
+        let document = configuration::configuration(
+            &self.base_url,
+            header,
+            self.decider.max_evaluations(),
+            self.decider.response_signing(),
+        );
 
         Ok(Response::new(GetConfigurationResponse {
             r#interface: document.interface.to_owned(),
@@ -90,6 +102,31 @@ impl PolicyDecisionPoint for PdpApi {
                 zone: document.store_scope.zone.to_owned(),
                 ledger: document.store_scope.ledger.to_owned(),
                 profile: document.store_scope.profile.to_owned(),
+            }),
+            version: document.header.version,
+            component: document.header.component,
+            state: document.header.state,
+            stage: document.header.stage,
+            sunset: document.header.sunset,
+            limits: [(
+                "max_evaluations".to_owned(),
+                document.limits.max_evaluations,
+            )]
+            .into_iter()
+            .collect(),
+            response_signing: Some(match document.response_signing {
+                configuration::ResponseSigningState::Optional {
+                    validity_seconds,
+                    clock_skew_seconds,
+                } => crate::v1::ResponseSigning {
+                    state: "optional".to_owned(),
+                    validity_seconds,
+                    clock_skew_seconds,
+                },
+                configuration::ResponseSigningState::Disabled => crate::v1::ResponseSigning {
+                    state: "disabled".to_owned(),
+                    ..crate::v1::ResponseSigning::default()
+                },
             }),
         }))
     }
@@ -116,34 +153,34 @@ impl PdpApi {
             .get("traceparent")
             .and_then(|value| value.to_str().ok())
             .and_then(super::wire::TraceContext::parse);
-        let mut wire =
-            translate::request_from_proto(request.into_inner()).map_err(|malformed| {
-                status_of(
-                    &ApiError::new(ErrorClass::Validation, malformed.code, malformed.message),
-                    self.disclosure,
-                )
-            })?;
-        if wire.request_id.is_none() {
-            wire.request_id = carried;
-        }
-
-        // Authorization before evaluation, and before the mirror is looked up (WP-2.4, P8).
-        let authorized = super::gate::evaluation(
-            &self.authorization,
-            &actor,
-            self.decider.root(),
-            wire.zone.as_deref(),
-            wire.ledger.as_deref(),
-        )
-        .map_err(|denial| super::gate::grpc_denial(&denial))?;
-
-        match self
-            .decider
-            .decide_as(&wire, trace, authorized.as_ref())
-            .await
-        {
-            Ok(answered) => Ok(Response::new(translate::response_to_proto(answered))),
-            Err(failed) => Err(status_of(&failed, self.disclosure)),
+        let wire = translate::request_from_proto(request.into_inner()).map_err(|malformed| {
+            status_of(
+                &ApiError::new(ErrorClass::Validation, malformed.code, malformed.message),
+                self.disclosure,
+            )
+        })?;
+        // The shared pipeline (WP-7.5d), as over HTTP: the actor authorized, then the native
+        // handler; the metadata's request id fills a body that carries none.
+        let services = crate::evaluation::Services {
+            authorization: &self.authorization,
+            decider: &self.decider,
+            submitter: None,
+        };
+        let asked = crate::evaluation::EvaluationRequest::native(wire, carried, trace);
+        match crate::evaluation::evaluate(&services, &actor, asked).await {
+            Ok(crate::evaluation::Answer::Native(answered)) => {
+                Ok(Response::new(translate::response_to_proto(*answered)))
+            }
+            Ok(crate::evaluation::Answer::Temporal(_)) => Err(status_of(
+                &crate::evaluation::mismatched("native gRPC"),
+                self.disclosure,
+            )),
+            Err(crate::evaluation::Refused::Denied(denial)) => {
+                Err(super::gate::grpc_denial(&denial))
+            }
+            Err(crate::evaluation::Refused::Failed(failed)) => {
+                Err(status_of(&failed, self.disclosure))
+            }
         }
     }
 }

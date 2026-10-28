@@ -66,6 +66,8 @@ fn decided(id: &str, permit: bool) -> Decided<'_> {
         at: "2026-08-24T10:00:00Z".to_owned(),
         zone: "acme",
         ledger: "main-ledger",
+        zone_id: "acme",
+        ledger_id: "main-ledger",
         scope: None,
         commit: "sha256:ec1773bf",
         counter: 3,
@@ -93,6 +95,10 @@ fn decided(id: &str, permit: bool) -> Decided<'_> {
         request_id: Some("lab-1".to_owned()),
         latency_us: 143,
         event: None,
+        interface: None,
+        actor: None,
+        question: None,
+        descriptors: Default::default(),
     }
 }
 
@@ -768,4 +774,136 @@ fn one_decision_id_reused_for_a_different_answer_is_refused() {
         .filter(|record| record["kind"] == json!("decision"))
         .count();
     assert_eq!(decisions, 1, "the conflicting record was not appended");
+}
+
+/// WP-7.5c, IFACE-05: the evidence binding is part of a decision's identity. The same handle
+/// asked through another interface, by another actor, about another question or under another
+/// runtime is another decision, refused rather than written as a retry of the first; the same
+/// binding again is the retry.
+#[test]
+fn one_decision_id_under_another_evidence_binding_is_refused() {
+    let bound = |id| {
+        let mut decided = decided(id, true);
+        decided.interface = Some(permguard_core::domains::interface::PDP_NATIVE_V1.to_owned());
+        decided.actor = Some(("Actor".to_owned(), "v1:a1c7".to_owned()));
+        decided.question = Some(json!({"subject": {"type": "User", "id": "alice"}}));
+        decided.descriptors =
+            std::collections::BTreeMap::from([("app".to_owned(), "sha256:d1".to_owned())]);
+        decided
+    };
+    let journal = journal("binding-conflict", "1.0", WhenFull::Open, bounds());
+    journal.record(&bound("d-bound")).expect("the first lands");
+    journal
+        .record(&bound("d-bound"))
+        .expect("the same binding again is the retry");
+
+    type Vary = fn(&mut Decided<'_>);
+    let variants: [(&str, Vary); 4] = [
+        ("interface", |decided| {
+            decided.interface =
+                Some(permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1.to_owned());
+        }),
+        ("actor", |decided| {
+            decided.actor = Some(("Actor".to_owned(), "v1:b2d8".to_owned()));
+        }),
+        ("question", |decided| {
+            decided.question = Some(json!({"subject": {"type": "User", "id": "bob"}}));
+        }),
+        ("descriptors", |decided| {
+            decided.descriptors =
+                std::collections::BTreeMap::from([("app".to_owned(), "sha256:d2".to_owned())]);
+        }),
+    ];
+    for (member, vary) in variants {
+        let mut other = bound("d-bound");
+        vary(&mut other);
+        let refused = journal
+            .record(&other)
+            .expect_err("another binding under the same identity is refused");
+        assert!(
+            refused.to_string().contains("d-bound"),
+            "{member}: the refusal names the identity: {refused}"
+        );
+    }
+
+    let decisions = everything(&journal)
+        .into_iter()
+        .filter(|record| record["kind"] == json!("decision"))
+        .collect::<Vec<_>>();
+    assert_eq!(decisions.len(), 1, "one record: {decisions:?}");
+    let record = &decisions[0];
+    assert_eq!(
+        record["interface"],
+        json!(permguard_core::domains::interface::PDP_NATIVE_V1)
+    );
+    assert_eq!(record["actor"], json!({"type": "Actor", "id": "v1:a1c7"}));
+    assert_eq!(record["descriptors"], json!({"app": "sha256:d1"}));
+    let question = record["question"].as_str().expect("a commitment");
+    assert!(
+        question.starts_with("hmac-sha256:v1:") && !question.contains("alice"),
+        "committed under the input key, never in clear: {question}"
+    );
+}
+
+/// WP-6.1, owner decision of 2026-10-16: a version 1 spool an upgraded plane left is opened for
+/// its shipper alone while it holds anything unshipped, writing nothing (no marker, no decision);
+/// once acknowledged through its last record, or with no spool at all, there is nothing to open.
+#[test]
+fn a_legacy_spool_is_drained_and_never_written() {
+    let directory = scratch("legacy-drain");
+    assert!(
+        permguard_data_plane::decisions::open_legacy(&directory, bounds(), Metrics::none())
+            .expect("no spool")
+            .is_none()
+    );
+    {
+        let journal = Journal::open(
+            &directory,
+            "data-plane-test",
+            epoch("1.0"),
+            WhenFull::Closed,
+            bounds(),
+            Commitment::new(*b"a-commitment-key", "v1"),
+            Metrics::none(),
+        )
+        .expect("the journal opens");
+        journal.record(&decided("old-1", false)).expect("recorded");
+    }
+    assert_eq!(
+        permguard_decisions::spool::producer_of(&directory).expect("read without opening"),
+        Some("data-plane-test".to_owned()),
+        "the producer its records name"
+    );
+    assert_eq!(
+        permguard_decisions::spool::producer_of(&scratch("legacy-none")).expect("no spool"),
+        None
+    );
+    let held = permguard_data_plane::decisions::open_legacy(&directory, bounds(), Metrics::none())
+        .expect("the spool reads")
+        .expect("two records unshipped");
+    let records = everything(&held);
+    assert_eq!(
+        records.len(),
+        2,
+        "the marker and the decision, and nothing written on open"
+    );
+    assert_eq!(records[1]["id"], json!("old-1"));
+    assert!(
+        held.record(&decided("new-1", false)).is_err(),
+        "a drained spool takes no decision"
+    );
+    assert_eq!(everything(&held).len(), 2);
+    let last = &records[1];
+    held.acknowledge(
+        last["seq"].as_u64().expect("a seq"),
+        &permguard_decisions::record::digest_of(last).expect("a digest"),
+    )
+    .expect("acknowledged");
+    drop(held);
+    assert!(
+        permguard_data_plane::decisions::open_legacy(&directory, bounds(), Metrics::none())
+            .expect("the spool reads")
+            .is_none(),
+        "shipped through its last record: nothing to drain"
+    );
 }

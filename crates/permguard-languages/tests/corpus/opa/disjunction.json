@@ -1,0 +1,517 @@
+{
+  "folder": "disjunction",
+  "files": {
+    "test-disjunction-0763.yaml": {
+      "sha256": "sha256:564ece3fc023a28deeae00155ddbb99ab2d740316ffe82525e99db1efdc9a187",
+      "cases": [
+        {
+          "note": "disjunction/incr: query set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.a[i] = x\n}\n\np contains y if {\n\tdata.b[j] = y\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "goodbye",
+                "hello"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-disjunction-0764.yaml": {
+      "sha256": "sha256:fa676f2f89575eb2155a152641045827813100ac60a6d6b740003df8f3940b04",
+      "cases": [
+        {
+          "note": "disjunction/incr: query set constants",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains 100\n\np contains x if {\n\tdata.a[x]\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                0,
+                1,
+                2,
+                3,
+                100
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-disjunction-0765.yaml": {
+      "sha256": "sha256:0b18f84a68d53d8d2b4639875e0eb456c211fe8084d9daea4c39d08355722aa8",
+      "cases": [
+        {
+          "note": "disjunction/incr: query object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[k] := v if {\n\tdata.b[v] = k\n}\n\np[k] := v if {\n\tdata.a[i] = v\n\tdata.g[k][j] = v\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            },
+            "g": {
+              "a": [
+                "1",
+                "0",
+                "0",
+                "0"
+              ],
+              "b": [
+                "0",
+                "2",
+                "0",
+                "0"
+              ],
+              "c": [
+                "0",
+                "0",
+                "0",
+                "4"
+              ]
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": "1",
+                "b": "2",
+                "c": "4",
+                "goodbye": "v2",
+                "hello": "v1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-disjunction-0766.yaml": {
+      "sha256": "sha256:d7be2cad300376b0fa35b32db3edee81cdf180dec3568d718814e81ca09ab39b",
+      "cases": [
+        {
+          "note": "disjunction/incr: query object constant key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[\"a\"] := 1\n\np[\"b\"] := 2\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "b": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-disjunction-0767.yaml": {
+      "sha256": "sha256:438c8438865d95b28ef09cb1b969c10c5e2e1141448e6510dfb31acf0cf6d2d7",
+      "cases": [
+        {
+          "note": "disjunction/incr: iter set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q[x]\n}\n\nq contains x if {\n\tdata.a[i] = x\n}\n\nq contains y if {\n\tdata.b[j] = y\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "goodbye",
+                "hello"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-disjunction-0768.yaml": {
+      "sha256": "sha256:73fffc4fe5707c6d1ef417cccc5f869525a9d7bab5a4027214ea61f7587ab4af",
+      "cases": [
+        {
+          "note": "disjunction/incr: eval set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q = s\n\ts[x]\n}\n\nq contains x if {\n\tdata.a[_0] = x\n}\n\nq contains y if {\n\tdata.b[_0] = y\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "goodbye",
+                "hello"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-disjunction-0769.yaml": {
+      "sha256": "sha256:5f96a4bf56321fab82b53f6f25d021427c3d7b51a4a76ece4c7af1b2e0cab512",
+      "cases": [
+        {
+          "note": "disjunction/incr: eval object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[k] := v if {\n\tdata.generated.q[k] = v\n}\n\nq[k] := v if {\n\tdata.b[v] = k\n}\n\nq[k] := v if {\n\tdata.a[i] = v\n\tdata.g[k][j] = v\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            },
+            "g": {
+              "a": [
+                "1",
+                "0",
+                "0",
+                "0"
+              ],
+              "b": [
+                "0",
+                "2",
+                "0",
+                "0"
+              ],
+              "c": [
+                "0",
+                "0",
+                "0",
+                "4"
+              ]
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": "1",
+                "b": "2",
+                "c": "4",
+                "goodbye": "v2",
+                "hello": "v1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-disjunction-0770.yaml": {
+      "sha256": "sha256:2faa2f2fccb77338ec6486441ce03ceb52e3a4443a2264307c9e4d79078f8840",
+      "cases": [
+        {
+          "note": "disjunction/incr: eval object constant key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[k] := v if {\n\tdata.generated.q[k] = v\n}\n\nq[\"a\"] := 1\n\nq[\"b\"] := 2\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "b": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-disjunction-0771.yaml": {
+      "sha256": "sha256:644219238c0578b4a5c0964888cdd924fb951aef6237d840fc07b25ab93a0c21",
+      "cases": [
+        {
+          "note": "disjunction/complete: undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tfalse\n}\n\np if {\n\tfalse\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-disjunction-0772.yaml": {
+      "sha256": "sha256:e2d5753eb241dedf009342108124eb23a1f0622bb7222a0ad7d68f87edc30c89",
+      "cases": [
+        {
+          "note": "disjunction/complete: error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := true\n\np := false if {\n\tfalse\n}\n\np := false\n"
+          ],
+          "data": {
+          },
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        }
+      ]
+    },
+    "test-disjunction-0773.yaml": {
+      "sha256": "sha256:acfbcd20660663a23deee4e7abcc9064c551357f84ee3ed0df30d7dad3d7353e",
+      "cases": [
+        {
+          "note": "disjunction/complete: valid",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := true\n\np := true\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-disjunction-0774.yaml": {
+      "sha256": "sha256:c452aa7924ad52449de30b7a7decc51e6f99bf152b480fb9852c509290c6c2b9",
+      "cases": [
+        {
+          "note": "disjunction/complete: valid-2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := true\n\np := false if {\n\tfalse\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-disjunction-0775.yaml": {
+      "sha256": "sha256:8f820133cf9e5110d367adabfee7ff98de0211b585d800dd313c0d6f4e70aed0",
+      "cases": [
+        {
+          "note": "disjunction/complete: reference error",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q\n}\n\nq := true\n\nq := false\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "disjunction/complete: nested conflict, else",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q\n}\n\nq if {\n\tfalse\n}\n\nelse := true\n\nq if {\n\tfalse\n}\n\nelse := false\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "disjunction/nested function with conflict",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tx := data.test.q(1)\n\tx == true\n}\n\nq(_) := true\n\nq(_) := false\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "functions must not produce multiple outputs for same inputs"
+        },
+        {
+          "note": "disjunction/nested function with conflict, else",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tx := data.test.q(1)\n}\n\nq(_) if {\n\tfalse\n}\n\nelse := true\n\nq(_) if {\n\tfalse\n}\n\nelse := false\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "functions must not produce multiple outputs for same inputs"
+        },
+        {
+          "note": "disjunction/complete: conflict involving early-exit complete rule (set enumeration)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tq\n}\n\nxs := {1, 2}\n\nq := xs[_]\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "disjunction/complete: conflict involving early-exit complete rule (array enumeration)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tq\n}\n\nxs := [1, 2]\n\nq := xs[_]\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "disjunction/complete: conflict involving early-exit complete rule (object enumeration)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tq\n}\n\nxs := {\"a\": 1, \"b\": 2}\n\nq := xs[_]\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "disjunction/complete: conflict involving early-exit partial rule",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tq\n}\n\nxs := {1, 2}\n\nq[y] := x if {\n\tx := xs[_]\n\ty := 1\n}\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "object keys must be unique"
+        },
+        {
+          "note": "disjunction/complete: conflict involving early-exit complete rule, else",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tq\n}\n\nxs := {1, 2}\n\nq := false if {\n\tfalse\n} else := xs[_]\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "disjunction/complete: conflict involving early-exit complete rule, multiple",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tq\n}\n\nxs := {1, 2}\n\nq := xs[_]\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "disjunction/complete: conflict involving early-exit complete rule, data array enumeration",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tq\n}\n\nq := data.arr[_]\n"
+          ],
+          "data": {
+            "arr": [
+              "1",
+              "2"
+            ]
+          },
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "disjunction/complete: conflict involving early-exit complete rule, data object enumeration",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tq\n}\n\nq := data.obj[_]\n"
+          ],
+          "data": {
+            "obj": {
+              "a": "1",
+              "b": "2"
+            }
+          },
+          "want_error_code": "eval_conflict_error",
+          "want_error": "complete rules must not produce multiple outputs"
+        }
+      ]
+    },
+    "test-disjunction-0776.yaml": {
+      "sha256": "sha256:b3f4aefc55ef8b966ca3aa1148719de9ac653c570d0a8c270b0109d1dde12a66",
+      "cases": [
+        {
+          "note": "disjunction/complete: reference valid",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.generated.q\n}\n\nq := true\n\nq := true\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

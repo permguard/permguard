@@ -349,6 +349,180 @@ fn enroll(coordinator: &Host, member: &Host) -> Pending {
     pending
 }
 
+#[test]
+fn a_coordinator_verification_schedule_survives_reopen_replays_and_only_the_proven_member_consumes_it()
+ {
+    let coordinator = Host::new("verify-schedule-c");
+    let member = Host::new("verify-schedule-m");
+    let pending = enroll(&coordinator, &member);
+    let id = pending.membership_id;
+    let scheduled_at = now();
+
+    assert_eq!(
+        coordinator
+            .store
+            .schedule_verification(&id, scheduled_at)
+            .expect("scheduled"),
+        scheduled_at
+    );
+    assert_eq!(
+        coordinator
+            .store
+            .schedule_verification(&id, scheduled_at + 1)
+            .expect("an exact replay is idempotent"),
+        scheduled_at
+    );
+    assert!(
+        member
+            .store
+            .schedule_verification(&id, scheduled_at)
+            .is_err(),
+        "the member side proves immediately instead of scheduling a coordinator challenge"
+    );
+
+    let reopened = Store::open(coordinator.volume()).expect("the store reopens");
+    assert_eq!(
+        reopened.verification_scheduled(&id).expect("readable"),
+        Some(scheduled_at)
+    );
+    assert!(
+        !reopened
+            .satisfy_verification(&id, &coordinator.identity.host_id())
+            .expect("a different proven Host changes nothing")
+    );
+    assert_eq!(
+        reopened
+            .verification_scheduled(&id)
+            .expect("still readable"),
+        Some(scheduled_at)
+    );
+    assert!(
+        reopened
+            .satisfy_verification(&id, &member.identity.host_id())
+            .expect("the member's proven session consumes the schedule")
+    );
+    assert_eq!(
+        reopened.verification_scheduled(&id).expect("readable"),
+        None
+    );
+}
+
+#[test]
+fn verification_recovery_keeps_the_exact_result_after_consumption_and_a_later_schedule() {
+    let coordinator = Host::new("verify-recovery-c");
+    let member = Host::new("verify-recovery-m");
+    let pending = enroll(&coordinator, &member);
+    let id = pending.membership_id;
+    let first_at = now();
+    let first_result = "the exact first answer".to_owned();
+    let first_revision = coordinator.store.membership(&id).expect("held").revision;
+    let mutations = crate::operations::mutation::Mutations::open_offline(
+        coordinator.volume(),
+        "verification-recovery-test",
+    )
+    .expect("the mutation engine opens");
+    let request_id = "verify-recovery-request".to_owned();
+    let begin = crate::operations::mutation::Begin {
+        domain: DOMAIN,
+        operation: VERIFY,
+        action: AUDIT_VERIFIED,
+        initiator: crate::operations::journal::Initiator::Principal(
+            "spiffe://acme/operators/root".to_owned(),
+        ),
+        request: Some(crate::operations::journal::RequestKey {
+            request_id,
+            digest: "the same request digest".to_owned(),
+        }),
+        target: Some(uuid_text(&id)),
+    };
+    let interrupted = mutations.run::<String, String>(begin.clone(), |applying| {
+        coordinator
+            .store
+            .schedule_verification_mutation(applying, &id, first_at)
+            .expect("applied before the simulated crash");
+        coordinator
+            .store
+            .record_verification_result(applying, &id, first_revision, &first_result)
+            .expect("the exact result is durable before the simulated crash");
+        Err(crate::operations::mutation::Failure::Indeterminate(
+            "the process crashed after domain apply".to_owned(),
+        ))
+    });
+    assert!(matches!(
+        interrupted,
+        Err(crate::operations::mutation::MutationError::Indeterminate(_))
+    ));
+    assert!(
+        coordinator
+            .store
+            .satisfy_verification(&id, &member.identity.host_id())
+            .expect("the first pending marker is consumed")
+    );
+
+    let later = Applying::for_tests(42);
+    let later_at = first_at + 1;
+    coordinator
+        .store
+        .schedule_verification_mutation(&later, &id, later_at)
+        .expect("a later verification is scheduled");
+    coordinator
+        .store
+        .record_verification_result(&later, &id, first_revision, &"the later answer".to_owned())
+        .expect("the later exact result is durable");
+    assert!(
+        coordinator
+            .store
+            .record_verification_result(
+                &later,
+                &id,
+                first_revision,
+                &"a different answer".to_owned(),
+            )
+            .is_err(),
+        "an operation's exact result is immutable"
+    );
+
+    let recovered = mutations
+        .recover(&Memberships(coordinator.store.as_ref()))
+        .expect("the interrupted operation recovers");
+    assert_eq!(recovered.reconciled.len(), 1);
+    let replayed = mutations
+        .run::<String, String>(begin, |_| unreachable!("recovery already applied it"))
+        .expect("the recovered request replays");
+    let operation_id = match replayed {
+        crate::operations::mutation::Outcome::Reconciled {
+            operation_id,
+            revision,
+            target,
+        } => {
+            assert_eq!(revision, first_revision);
+            assert_eq!(target.as_deref(), Some(uuid_text(&id).as_str()));
+            operation_id
+        }
+        other => panic!("the interrupted apply reconciles, not {other:?}"),
+    };
+    assert_eq!(
+        coordinator
+            .store
+            .verification_result::<String>(&operation_id)
+            .expect("the first exact result reads"),
+        first_result
+    );
+    assert_eq!(
+        Memberships(coordinator.store.as_ref())
+            .observe(&operation_id, Some(&uuid_text(&[0x55; 16]))),
+        None,
+        "the immutable result belongs only to its original target"
+    );
+    assert_eq!(
+        coordinator
+            .store
+            .verification_scheduled(&id)
+            .expect("the later marker reads"),
+        Some(later_at)
+    );
+}
+
 /// What the member's sync would receive, and accepts.
 fn sync(coordinator: &Host, member: &Host, id: &[u8; 16]) -> Status {
     let held = member.store.membership(id).expect("held").epoch();
@@ -914,7 +1088,45 @@ pub(crate) mod protocol {
                 )
                 .into_bytes());
             }
+            // A store the handler cannot reach now (WP-5.4).
+            if body == b"unavailable?" {
+                return Err(crate::session::Refusal {
+                    code: permguard_core::codes::stream::STORE_UNAVAILABLE,
+                    reason: "the store cannot answer now".to_owned(),
+                });
+            }
             Ok([b"echo:".as_slice(), body].concat())
+        }
+
+        // A fork, reported through the session's incidents (WP-5.3).
+        fn handle_with(
+            &self,
+            context: &crate::membership::task::TaskContext,
+            body: &[u8],
+            incidents: &dyn crate::membership::task::Incidents,
+        ) -> Result<Vec<u8>, crate::session::Refusal> {
+            // Two reports in one message: the second, the membership suspended, does nothing.
+            if body == b"fork twice?" {
+                for _ in 0..2 {
+                    incidents
+                        .stream_forked("data/decisions/forked/run", 3)
+                        .map_err(|reason| crate::session::Refusal {
+                            code: permguard_core::codes::common::UNAVAILABLE,
+                            reason,
+                        })?;
+                }
+                return Ok(b"forked".to_vec());
+            }
+            if body == b"fork?" {
+                incidents
+                    .stream_forked("data/decisions/forked/run", 3)
+                    .map_err(|reason| crate::session::Refusal {
+                        code: permguard_core::codes::common::UNAVAILABLE,
+                        reason,
+                    })?;
+                return Ok(b"forked".to_vec());
+            }
+            self.handle(context, body)
         }
     }
 
@@ -925,6 +1137,7 @@ pub(crate) mod protocol {
             (TaskType::DecisionsShip, 1),
             (TaskType::DecisionsShip, 2),
             (TaskType::EventsShip, 1),
+            (TaskType::EventsImport, 1),
         ]
         .into_iter()
         .fold(Capabilities::default(), |capabilities, (task, version)| {
@@ -1202,6 +1415,8 @@ pub(crate) mod protocol {
             connector,
             declared_assurance: AssuranceProfile::Production,
             time: &side.context.time,
+            streams: None,
+            shipping: None,
         }
     }
 
@@ -2168,4 +2383,64 @@ fn approval_refuses_a_version_the_provider_did_not_register() {
         ),
         Err(MembershipError::Widened(_))
     ));
+}
+
+/// WP-7.2b: the `control.attest` set a mirror verifies under is the coordinator's pin in force,
+/// never a retiring one nor a member's, with the held statement that matches it, whatever else is
+/// held beside it.
+#[test]
+fn the_control_attest_pin_in_force_is_chosen_with_its_matching_statement() {
+    let c = Host::new("pin-pick");
+    let held = c.statement(CONTROL_ATTEST);
+    let pin = |owner: Role, retiring: bool, epoch: u64| RingPin {
+        owner,
+        ring: CONTROL_ATTEST.to_owned(),
+        epoch,
+        key_set_digest: super::keys_digest(&held).expect("a digest"),
+        binding: held.binding.clone(),
+        retiring,
+    };
+    let current = pin(Role::Coordinator, false, held.epoch);
+    let retiring = pin(Role::Coordinator, true, held.epoch + 1);
+    let other = c.statement(HOST_OPERATIONS);
+    let statements = vec![other.clone(), held.clone()];
+
+    let pins = vec![retiring.clone(), current.clone()];
+    let (chosen, statement) =
+        super::pinned_control_attest(&pins, &statements).expect("the pin in force");
+    assert_eq!(chosen, &current, "never the retiring pin");
+    assert_eq!(
+        statement, &held,
+        "the statement that matches, not the first held"
+    );
+
+    assert!(super::pinned_control_attest(&[retiring], &statements).is_none());
+    assert!(
+        super::pinned_control_attest(&[pin(Role::Member, false, held.epoch)], &statements)
+            .is_none(),
+        "a member's pin is not the coordinator's"
+    );
+    assert!(
+        super::pinned_control_attest(std::slice::from_ref(&current), &[other]).is_none(),
+        "no statement of the pinned set held"
+    );
+
+    // Verified under the coordinator's identity, and under no other Host's.
+    let ring =
+        super::verified_control_attest(std::slice::from_ref(&current), &statements, &c.verified())
+            .expect("the coordinator's binding");
+    assert_eq!(
+        (ring.epoch, ring.key_set_digest, ring.binding.clone()),
+        (
+            current.epoch,
+            current.key_set_digest,
+            current.binding.clone()
+        )
+    );
+    assert_eq!(ring.keys, held.keys);
+    let stranger = Host::new("pin-pick-stranger");
+    assert!(
+        super::verified_control_attest(&[current], &statements, &stranger.verified()).is_none(),
+        "a binding is the coordinator's or nothing"
+    );
 }

@@ -1,0 +1,43 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Compose lab's all-in-one (TD-3, `all-in-one`): one Server with the Control and Data Planes,
+# the development baseline. What varies per container comes from the environment
+# `permguard-lab serve` sets — the listeners' certificates, issued by the lab's own authority.
+#
+# A lab, on its own network: the development profile and a test authority. Never a template for a
+# deployment.
+
+working_dir: /var/lib/permguard/volume
+development_mode: true
+autogenerate: true
+assurance: { profile: development }
+log: { level: info, format: json }
+
+runtime: { planes: [control, data] }
+
+host:
+  addr: 0.0.0.0:5443
+  # The Data Plane's own certificate, as its mirror presents it to the Control Plane.
+  principals: [{ san_uri: "spiffe://permguard-lab/all-in-one" }]
+admin: { addr: 0.0.0.0:5444 }
+
+operations:
+  keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }
+  secrets: { provider: directory, coordinator_root_ref: zone-root }
+  audit: { pseudonym: { enabled: true, key_ref: audit-pseudonym, key_version: "v1" } }
+
+controlPlane:
+  public:
+    http: { addr: 0.0.0.0:6443 }
+    grpc: { addr: 0.0.0.0:6443 }
+
+dataPlane:
+  public:
+    http: { addr: 0.0.0.0:7443 }
+    grpc: { addr: 0.0.0.0:7443 }
+  # The baseline has no membership: its Data Plane follows its own Control Plane in-process, every
+  # zone and ledger it holds, verified under this Host's own `control.attest` ring (WP-7.7).
+  mirrors:
+    enabled: "true"
+    interval: 5s

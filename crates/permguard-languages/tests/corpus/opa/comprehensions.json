@@ -1,0 +1,690 @@
+{
+  "folder": "comprehensions",
+  "files": {
+    "test-comprehensions-0781.yaml": {
+      "sha256": "sha256:aa6c4569d77bd023f76fb4e70a3148983acbcc83a2efab273c6d909d874b8176",
+      "cases": [
+        {
+          "note": "comprehensions/array simple",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\txs = [x | x = data.a[_]]\n\t__local0__ = xs[i]\n\t__local0__ > 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0782.yaml": {
+      "sha256": "sha256:c0c46cdcf275c3d196fed3151ef1f623c7cb907d2e710632856c51a740c889f7",
+      "cases": [
+        {
+          "note": "comprehensions/array nested",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\tys = [y | x = [z | z = data.a[_]]; y = x[_]]\n\t__local0__ = ys[i]\n\t__local0__ > 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0783.yaml": {
+      "sha256": "sha256:5e1e04889264b5591d62a39414f2759917f5dae4f968e7e382121a9540d5983a",
+      "cases": [
+        {
+          "note": "comprehensions/array embedded array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\t__local0__ = [x | x = data.a[_]]\n\txs = [__local0__]\n\t__local1__ = xs[0][i]\n\t__local1__ > 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0784.yaml": {
+      "sha256": "sha256:f2ac0651d10bcb92b596a90667d8d5bf329a969036304991538f057e40af56a2",
+      "cases": [
+        {
+          "note": "comprehensions/array embedded object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\t__local0__ = [x | x = data.a[_]]\n\txs = {\"a\": __local0__}\n\t__local1__ = xs.a[i]\n\t__local1__ > 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0785.yaml": {
+      "sha256": "sha256:3189cf18c89b35453a3980f1de521344a783324fb1ea546c71036eb0c2d5f33d",
+      "cases": [
+        {
+          "note": "comprehensions/array embedded set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := xs if {\n\t__local0__ = [x | x = data.a[_]]\n\txs = {__local0__}\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  2,
+                  3,
+                  4
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-comprehensions-0786.yaml": {
+      "sha256": "sha256:d10c6153f7bdaa4c7a8e0fa35cb77967cbbdb80438fa30ca91d1680c864f7512",
+      "cases": [
+        {
+          "note": "comprehensions/array closure",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\ty = 1\n\tx = [y | y = 1]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0787.yaml": {
+      "sha256": "sha256:0bfa95945c6e0cbaf4c5eb4794279b46e9562577ec86ca22f7616df5033c4206",
+      "cases": [
+        {
+          "note": "comprehensions/array dereference embedded",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q.a[2][i] = x\n}\n\nq[k] := v if {\n\tk = \"a\"\n\tv = [y | i = [z | z = data.a[_]]; i[_] = _; i = y]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0788.yaml": {
+      "sha256": "sha256:a0a8756f7a28264b3b6a8a5961cd833bebfb82b8dce800ed16242881afa9c039",
+      "cases": [
+        {
+          "note": "comprehensions/object simple",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\txs = {s: x | x = data.a[_]; format_int(x, 10, s)}\n\ty = xs[i]\n\ty > 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                "2",
+                "3",
+                "4"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0789.yaml": {
+      "sha256": "sha256:617f01ef7e736fb3ce8b7bde0a2c13703ed39c5a070c88e65594c80e794569e7",
+      "cases": [
+        {
+          "note": "comprehensions/object non-string key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\txs = {k: 1 | data.a[_] = k}\n\txs[x]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0790.yaml": {
+      "sha256": "sha256:6f09bcb230afc0479d40a1c57b65bed4bec4d1d87027c51b6e1d75be83da401c",
+      "cases": [
+        {
+          "note": "comprehensions/object nested",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := r if {\n\tr = {x: y | z = {i: q | i = data.b[q]}; x = z[y]}\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "v1": "hello",
+                "v2": "goodbye"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-comprehensions-0791.yaml": {
+      "sha256": "sha256:9d6401eb6389ddd84f0432a2522be4635a7ac73554a377e898153f905ea54d2d",
+      "cases": [
+        {
+          "note": "comprehensions/object embedded array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\t__local0__ = {s: x | x = data.a[_]; format_int(x, 10, s)}\n\txs = [__local0__]\n\t__local1__ = xs[0][i]\n\t__local1__ > 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                "2",
+                "3",
+                "4"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0792.yaml": {
+      "sha256": "sha256:ca9d13ed99d7033f6fcdf637808b84da09f7afbe1291fad4b830305842d25d34",
+      "cases": [
+        {
+          "note": "comprehensions/object embedded object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\t__local0__ = {s: x | x = data.a[_]; format_int(x, 10, s)}\n\txs = {\"a\": __local0__}\n\t__local1__ = xs.a[i]\n\t__local1__ > 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                "2",
+                "3",
+                "4"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0793.yaml": {
+      "sha256": "sha256:af59750eacccc49230cf4980c16a2da81937efd94db858c27a069a455bb8a0af",
+      "cases": [
+        {
+          "note": "comprehensions/object embedded set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := xs if {\n\t__local0__ = {s: x | x = data.a[_]; format_int(x, 10, s)}\n\txs = {__local0__}\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "1": 1,
+                  "2": 2,
+                  "3": 3,
+                  "4": 4
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-comprehensions-0794.yaml": {
+      "sha256": "sha256:78ce670946dd6f9994ab81630086f378ac3391e5d681e8fd7eb92bae26c9bcf4",
+      "cases": [
+        {
+          "note": "comprehensions/object closure",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\ty = 1\n\tx = {\"foo\": y | y = 1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "foo": 1
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0795.yaml": {
+      "sha256": "sha256:2123e3459976f6a1ec5746f47600021d58b91463b304168d92371e7d68f47653",
+      "cases": [
+        {
+          "note": "comprehensions/object dereference embedded",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\narr := [4]\n\np contains x if {\n\tdata.generated.q.a = x\n}\n\nq[k] := v if {\n\tk = \"a\"\n\tv = {\"bar\": y | i = {\"foo\": z | z = data.generated.arr[_]}; i[_] = _; i = y}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                {
+                  "bar": {
+                    "foo": 4
+                  }
+                }
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0796.yaml": {
+      "sha256": "sha256:420766181205b6ea26fecf862e94023c456fd11fdbee9788132caef9d0232c2e",
+      "cases": [
+        {
+          "note": "comprehensions/object conflict",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q.a = x\n}\n\nq[k] := v if {\n\tk = \"a\"\n\tv = {\"bar\": y | i = {\"foo\": z | z = data.a[_]}; i[_] = _; i = y}\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_error_code": "eval_conflict_error",
+          "want_error": "object keys must be unique"
+        }
+      ]
+    },
+    "test-comprehensions-0797.yaml": {
+      "sha256": "sha256:cdf260b96a7f448e255f14cd5f907bbbe26255a632b3c1ea99a2e314d50a67d2",
+      "cases": [
+        {
+          "note": "comprehensions/set simple",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := y if {\n\ty = {x | x = data.a[_]; x > 1}\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3,
+                4
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-comprehensions-0798.yaml": {
+      "sha256": "sha256:adad7c5748e400d3c41415a4a543bdcf7e71dffc2e09cc96eddde84c957005eb",
+      "cases": [
+        {
+          "note": "comprehensions/set nested",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\tys = {y | x = {z | z = data.a[_]}; y = x[_]}\n\t__local0__ = ys[i]\n\t__local0__ > 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0799.yaml": {
+      "sha256": "sha256:ba4af51754989c5c267fdf72995953b9b591970ca0484eda6e6dd8d8ee643821",
+      "cases": [
+        {
+          "note": "comprehensions/set embedded array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\t__local0__ = {x | x = data.a[_]}\n\txs = [__local0__]\n\t__local1__ = xs[0][i]\n\t__local1__ > 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0800.yaml": {
+      "sha256": "sha256:583c045b86c023ce2521695769da0a900164ddfcfaa7de1e262e632131610db2",
+      "cases": [
+        {
+          "note": "comprehensions/set embedded object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains i if {\n\t__local0__ = {x | x = data.a[_]}\n\txs = {\"a\": __local0__}\n\t__local1__ = xs.a[i]\n\t__local1__ > 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0801.yaml": {
+      "sha256": "sha256:e3a786462a375c81b94493c96e215a4a8ac67193c92f63e75e0e7bba495c056e",
+      "cases": [
+        {
+          "note": "comprehensions/set embedded set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := xs if {\n\t__local0__ = {x | x = data.a[_]}\n\txs = {__local0__}\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1,
+                  2,
+                  3,
+                  4
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-comprehensions-0802.yaml": {
+      "sha256": "sha256:e0301b693bf02e85129d5e7caa6d4635c5974e17efe64c1257dfc27c0d9b8963",
+      "cases": [
+        {
+          "note": "comprehensions/set closure",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\ty = 1\n\tx = {y | y = 1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  1
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-0803.yaml": {
+      "sha256": "sha256:357124568c61fff5b5118b48892ea10fe6f141e988856131c618b2a20e13cafb",
+      "cases": [
+        {
+          "note": "comprehensions/set dereference embedded",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.generated.q.a = x\n}\n\nq[k] := v if {\n\tk = \"a\"\n\tv = {y | i = {z | z = data.a[_]}; i[_] = _; i = y}\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+                    1,
+                    2,
+                    3,
+                    4
+                  ]
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-comprehensions-and-vars.yaml": {
+      "sha256": "sha256:92ea0847620ac75af09311ad82ce53a8600ff104b76653542137133fe29730a1",
+      "cases": [
+        {
+          "note": "comprehensions/var bindings have no effect outside",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nxs := {\"a\", \"b\", \"c\"}\n\np := x if {\n\ty := {x | xs[x]}\n\tz := {x | xs[x]}\n\tcount(y) == count(z)\n\tx := count(y)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 3
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,390 @@
+{
+  "folder": "objectremove",
+  "files": {
+    "test-objectremove-0279.yaml": {
+      "sha256": "sha256:562d7a8a2db0c0a9454e7f923bb3d07dc8496a16168e53ff9f2ef6da972dbd5b",
+      "cases": [
+        {
+          "note": "objectremove/base",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.remove({\"a\": 1, \"b\": {\"c\": 3}}, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "b": {
+                  "c": 3
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectremove-0280.yaml": {
+      "sha256": "sha256:7a2cad369bf1c15d19ae2106d4e81875f72750689f85d93c2fef563c071d1f71",
+      "cases": [
+        {
+          "note": "objectremove/multiple keys set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.remove({\"a\": 1, \"b\": {\"c\": 3}, \"d\": 4}, {\"b\", \"d\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectremove-0281.yaml": {
+      "sha256": "sha256:b0b58b2ec2a128f6bc6c1b1c494c624833765bb9a2d438dd4be9de64ecc52167",
+      "cases": [
+        {
+          "note": "objectremove/multiple keys array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.remove({\"a\": 1, \"b\": {\"c\": 3}, \"d\": 4}, [\"d\", \"b\"], __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectremove-0282.yaml": {
+      "sha256": "sha256:f7b6a479c4a53b09a003776fe903a88991ab3c93336132ca07265a198cb2ce3b",
+      "cases": [
+        {
+          "note": "objectremove/multiple keys object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.remove({\"a\": 1, \"b\": {\"c\": 3}, \"d\": 4}, {\"b\": 1, \"d\": \"\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectremove-0283.yaml": {
+      "sha256": "sha256:e8bc11af0dd11a8d50e18b2e62f3a846af30d6999ec504ff3ad8047ac6a75607",
+      "cases": [
+        {
+          "note": "objectremove/multiple keys object nested",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.remove({\"a\": {\"b\": {\"c\": 2}}, \"x\": 123}, {\"a\": {\"b\": {\"foo\": \"bar\"}}}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "x": 123
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectremove-0284.yaml": {
+      "sha256": "sha256:17abc8a611789838b01a95d555bd3fcdf3342f4325692403ca655201399f4c44",
+      "cases": [
+        {
+          "note": "objectremove/empty object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.remove({}, {\"a\", \"b\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectremove-0285.yaml": {
+      "sha256": "sha256:4f879c4fac8dc4048e3df10aa6ee48ddcb199e125224126cba4ce66d7201c931",
+      "cases": [
+        {
+          "note": "objectremove/empty keys set",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.remove({\"a\": 1, \"b\": {\"c\": 3}}, set(), __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "b": {
+                  "c": 3
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectremove-0286.yaml": {
+      "sha256": "sha256:9313139425e5d3a215668a7adead8c5eaf1ac9baae6a2999804466acbffafdb5",
+      "cases": [
+        {
+          "note": "objectremove/empty keys array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.remove({\"a\": 1, \"b\": {\"c\": 3}}, [], __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "b": {
+                  "c": 3
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectremove-0287.yaml": {
+      "sha256": "sha256:f55db32a3e61ebbd4de6ddd319585f396d523c354416c488201c52f47f678f3f",
+      "cases": [
+        {
+          "note": "objectremove/empty keys obj",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.remove({\"a\": 1, \"b\": {\"c\": 3}}, {}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "b": {
+                  "c": 3
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectremove-0288.yaml": {
+      "sha256": "sha256:435309dbf8b59a22ded81328c0f2199a47d9328785ba7e5a6df2ba3768e496d4",
+      "cases": [
+        {
+          "note": "objectremove/key doesnt exist",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.remove({\"a\": 1, \"b\": {\"c\": 3}}, {\"z\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "b": {
+                  "c": 3
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectremove-0289.yaml": {
+      "sha256": "sha256:8ace40dbfd2ec01fdf34bffee642d0231a11a4e725d021264cbf207e60ba936a",
+      "cases": [
+        {
+          "note": "objectremove/error invalid object param type array input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.remove(__local2__, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": [\"a\"]}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.remove: operand 1 must be object but got array",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectremove-0290.yaml": {
+      "sha256": "sha256:6b5190651ef03ee715e2829233ecae7f8e1fbba42fb52aee054ba0082a8b9c59",
+      "cases": [
+        {
+          "note": "objectremove/error invalid object param type bool input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.remove(__local2__, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": false}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.remove: operand 1 must be object but got boolean",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectremove-0291.yaml": {
+      "sha256": "sha256:c4cd9b12b13c1fd78adbea1eddc5121932dfa3885d3df46b810c12a7a661441f",
+      "cases": [
+        {
+          "note": "objectremove/error invalid object param type number input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.remove(__local2__, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": 123}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.remove: operand 1 must be object but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectremove-0292.yaml": {
+      "sha256": "sha256:120be39bc9b13a4645b8103cba632a6dec9856a78c3041f80781ac86dd087fe6",
+      "cases": [
+        {
+          "note": "objectremove/error invalid object param type string input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.remove(__local2__, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": \"foo\"}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.remove: operand 1 must be object but got string",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectremove-0293.yaml": {
+      "sha256": "sha256:442cc9f94b639cccad1defcee8864fb61db22bc80d4b0c5226badee974bab67a",
+      "cases": [
+        {
+          "note": "objectremove/error invalid object param type nil input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.remove(__local2__, {\"a\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": null}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.remove: operand 1 must be object but got null",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectremove-0294.yaml": {
+      "sha256": "sha256:39476cc5f914d2b1d2b45f6f90024ee5f2c372e9843b403bc0682ecee804efe1",
+      "cases": [
+        {
+          "note": "objectremove/error invalid key param type string input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.remove({\"a\": 1}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": \"foo\"}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.remove: operand 2 must be one of {object, set, array} but got string",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectremove-0295.yaml": {
+      "sha256": "sha256:69cfdb7ff55cbb7e40fff461e3b0abf49677fef84dac88e22531d481a537f507",
+      "cases": [
+        {
+          "note": "objectremove/error invalid key param type boolean input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.remove({\"a\": 1}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": true}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.remove: operand 2 must be one of {object, set, array} but got boolean",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectremove-0296.yaml": {
+      "sha256": "sha256:517eb06dbd776f0c01775e6e7fb99cce209a18128c9fd81bd6f1de53c41b246d",
+      "cases": [
+        {
+          "note": "objectremove/error invalid key param type number input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.remove({\"a\": 1}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": 22}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.remove: operand 2 must be one of {object, set, array} but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectremove-0297.yaml": {
+      "sha256": "sha256:45222316f0adfab11df8416b77a69c3261f4ed01d1d715c2bfbf4a04f25b280c",
+      "cases": [
+        {
+          "note": "objectremove/error invalid key param type nil input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tobject.remove({\"a\": 1}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": null}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.remove: operand 2 must be one of {object, set, array} but got null",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

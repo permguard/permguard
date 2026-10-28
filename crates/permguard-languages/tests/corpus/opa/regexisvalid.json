@@ -1,0 +1,63 @@
+{
+  "folder": "regexisvalid",
+  "files": {
+    "test-regexisvalid-0329.yaml": {
+      "sha256": "sha256:fd32d9127fb9fe9b107d181d40c4752cd7fa062c29c03d3d72b3d1228b17e347",
+      "cases": [
+        {
+          "note": "regexisvalid/bad operand type",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\t__local0__ = data.num\n\tregex.is_valid(__local0__, x)\n}\n"
+          ],
+          "data": {
+            "num": 10
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-regexisvalid-0330.yaml": {
+      "sha256": "sha256:a5f687bfdcb4f4a7fa206b91acea5354c834523f7795c235951f1729d07e6d54",
+      "cases": [
+        {
+          "note": "regexisvalid/bad pattern",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tregex.is_valid(`++`, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-regexisvalid-0331.yaml": {
+      "sha256": "sha256:841529e893f58d371be5129b79902447fa866e15bb95ec857bf7c868bf391e6e",
+      "cases": [
+        {
+          "note": "regexisvalid/good pattern",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tregex.is_valid(`.+`, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

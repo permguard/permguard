@@ -48,6 +48,8 @@ pub const CEDAR_ENTITIES_V1: &str = permguard_core::domains::input::CEDAR_ENTITI
 pub const REGO_DATA_V1: &str = permguard_core::domains::input::REGO_DATA_V1;
 /// The registered name of the Dogwood occurrence input.
 pub const DOGWOOD_EVENT_V1: &str = crate::dogwood::occurrence::EVENT_TYPE;
+/// The registered name of the Dogwood occurrence's version 2, one canonical field map (TL-5c).
+pub const DOGWOOD_EVENT_V2: &str = crate::dogwood::occurrence::EVENT_TYPE_V2;
 
 /// One partition input, as the wire carries it.
 ///
@@ -246,13 +248,43 @@ impl InputType for DogwoodEventV1 {
     }
 }
 
+/// The Dogwood occurrence's version 2: one canonical field map the partition projects (TL-5c).
+///
+/// A temporal occurrence like version 1, and like it never a per-partition input.
+struct DogwoodEventV2;
+
+impl InputType for DogwoodEventV2 {
+    fn name(&self) -> &'static str {
+        DOGWOOD_EVENT_V2
+    }
+
+    fn version(&self) -> u32 {
+        2
+    }
+
+    fn runtime(&self) -> &'static str {
+        crate::dogwood::NAME
+    }
+
+    fn normalize(&self, data: &Value) -> Result<PartitionData, String> {
+        DogwoodEventV1
+            .normalize(data)
+            .map_err(|why| why.replace(DOGWOOD_EVENT_V1, DOGWOOD_EVENT_V2))
+    }
+
+    fn empty(&self) -> PartitionData {
+        PartitionData::Absent
+    }
+}
+
 /// Every input type this build implements, in a fixed order.
 pub fn input_types() -> &'static [&'static dyn InputType] {
     const CEDAR: &CedarEntitiesV1 = &CedarEntitiesV1;
     const REGO: &RegoDataV1 = &RegoDataV1;
     const DOGWOOD: &DogwoodEventV1 = &DogwoodEventV1;
+    const DOGWOOD_V2: &DogwoodEventV2 = &DogwoodEventV2;
 
-    &[CEDAR, REGO, DOGWOOD]
+    &[CEDAR, REGO, DOGWOOD, DOGWOOD_V2]
 }
 
 /// The input type of that name, when this build implements one.

@@ -1,19 +1,215 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The consumer side: one journal per producer run, `consumer/<sha256(resource)>/<producer-host>/
-//! <run>/records/`, records kept contiguous from sequence 1. What admits them is the ingest of
-//! WP-5.3, after it verified the producer's batch; this handle keeps and reads them with the
-//! Plane's codec, and refuses a gap.
+//! The consumer side: one directory per producer run, `consumer/<sha256(resource)>/<producer-host>/
+//! <run>/`, its records kept contiguous from sequence 1 (WP-5.1), and the ingest that admits them
+//! (WP-5.3; owner decisions of 2026-10-14).
+//!
+//! ```text
+//! consumer/<sha256(resource)>/<producer-host>/
+//! ├── FORKED                         {1 run, 2 at_seq}: every later batch answered `fork`
+//! └── <run>/
+//!     ├── records/                   the records verbatim, the authority on `acked`
+//!     ├── batches/<first>-<last>.jws the batch files verbatim
+//!     ├── signers.cbor               the spans of the keys the batches were verified under
+//!     ├── statements/<sha256>.cbor   each ring statement a batch was verified under, verbatim
+//!                                    (WP-6.2c1): what the coordinator forwards to `events.import`
+//!     ├── STATE                      {1 acked, 2 oldest_retained, 3 opened?}
+//!     └── ANCHOR                     what the run keeps of a deleted prefix (WP-5.6b)
+//! ```
+//!
+//! The records journal holds, after each admitted batch's RECORDS frame, an `ADMITTED` frame
+//! {1 through, 2 at}: the consumer's own time the batch was admitted at, which its retention
+//! counts from (owner decision of 2026-10-17). Records a crash left without one are dated by the
+//! open that finds them, so they are kept longer, never shorter. Once a prefix went, the first
+//! RECORDS frame left says where the records held start; with none left, the run's `ANCHOR` does.
+//!
+//! Ingest checks in the blueprint's order: the message's bounds, the producer's fork mark, the
+//! ring pin and the key, the signature and the batch's own commitments, the task the batch names,
+//! the records' codec, then the range against what is held. A batch's files are written in the
+//! order batch file, span, records, STATE, and the answer follows them all: a crash between them
+//! leaves what the next delivery of the batch finds and completes.
 
-use std::sync::{Mutex, PoisonError};
+use std::collections::BTreeMap;
+use std::sync::{Mutex, MutexGuard, PoisonError};
+
+use sha2::{Digest as _, Sha256};
 
 use permguard_core::authz::Resource;
-use permguard_host::storage::Dir;
+use permguard_host::membership::record::{RingPin, RingStatement};
 use permguard_host::storage::journal::{Journal, Options};
+use permguard_host::storage::write::{Published, publish_immutable, read_view, replace_view};
+use permguard_host::storage::{Dir, StorageError, format};
+use permguard_objects::cbor::Value;
 
-use super::producer::{RECORDS, decode_group};
-use super::{Descriptor, RecordCodec, StreamError, hex};
+use super::batch::{GENESIS_HEAD, KeyView, SealedBatch, digest_string};
+use super::codec::{Map, encode, uint};
+use super::ingest::{Answer, Forked, Outcome, Ship, Shipping};
+use super::producer::{RECORDS, Span, Spans, canonical_jwk, decode_group};
+use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex};
+
+mod import;
+mod inspect;
+mod prune;
+
+/// The frame kind of a batch's admission time (WP-5.6b).
+const ADMITTED: u16 = 4;
+const FORKED: &str = "FORKED";
+const STATE: &str = "STATE";
+const SIGNERS: &str = "signers.cbor";
+const STATEMENTS: &str = "statements";
+const BATCHES: &str = "batches";
+const RECORDS_DIR: &str = "records";
+/// The most bytes a consumer's STATE and FORKED take.
+pub const MAX_VIEW_BYTES: usize = 256;
+
+/// A consumer run's STATE.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConsumerState {
+    /// The highest contiguous sequence held.
+    pub acked: u64,
+    /// The oldest sequence whose bytes are held; below it a range is `gone` (WP-5.6 moves it).
+    pub oldest_retained: u64,
+    /// When the consumer first admitted the run, microseconds since the epoch: the order the runs
+    /// of one producer opened, which the public reads follow (WP-6.1b, after the review).
+    pub opened: Option<u64>,
+}
+
+impl ConsumerState {
+    pub fn encode(&self) -> Result<Vec<u8>, StreamError> {
+        let mut pairs = vec![(1, uint(self.acked)?), (2, uint(self.oldest_retained)?)];
+        if let Some(opened) = self.opened {
+            pairs.push((3, uint(opened)?));
+        }
+        encode(pairs)
+    }
+
+    // conformance: boundary
+    pub fn decode(bytes: &[u8]) -> Result<Self, StreamError> {
+        if bytes.len() > MAX_VIEW_BYTES {
+            return Err(StreamError::Invalid(
+                "a consumer STATE is out of its bound".to_owned(),
+            ));
+        }
+        let mut map = Map::read(bytes, "a consumer STATE")?;
+        let state = Self {
+            acked: map.uint(1)?,
+            oldest_retained: map.uint(2)?,
+            opened: map.optional_uint(3)?,
+        };
+        map.finish()?;
+        if state.oldest_retained == 0 {
+            return Err(StreamError::Invalid(
+                "a consumer STATE retains from sequence 1 or later".to_owned(),
+            ));
+        }
+        Ok(state)
+    }
+}
+
+/// A producer's stream found forked: the run and the first sequence that differed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForkMark {
+    pub run: [u8; 16],
+    pub at_seq: u64,
+}
+
+impl ForkMark {
+    pub fn encode(&self) -> Result<Vec<u8>, StreamError> {
+        encode(vec![
+            (1, Value::Bytes(self.run.to_vec())),
+            (2, uint(self.at_seq)?),
+        ])
+    }
+
+    // conformance: boundary
+    pub fn decode(bytes: &[u8]) -> Result<Self, StreamError> {
+        if bytes.len() > MAX_VIEW_BYTES {
+            return Err(StreamError::Invalid(
+                "a fork mark is out of its bound".to_owned(),
+            ));
+        }
+        let mut map = Map::read(bytes, "a fork mark")?;
+        let mark = Self {
+            run: map.fixed(1)?,
+            at_seq: map.uint(2)?,
+        };
+        map.finish()?;
+        Ok(mark)
+    }
+}
+
+/// One producer run as the consumer holds it, kept open between batches.
+struct Held {
+    dir: Dir,
+    journal: Journal,
+    /// The highest contiguous sequence the records hold.
+    acked: u64,
+    /// The digest of the record at `acked`, as the envelope spells it; genesis before any.
+    last: String,
+    oldest_retained: u64,
+    /// When the run was first admitted (WP-6.1b).
+    opened: Option<u64>,
+    /// Each RECORDS frame's first sequence and journal index, in order: where a read of a range
+    /// starts, so a replay never reads the whole run (after the review).
+    groups: Vec<(u64, u64)>,
+    /// Each admission still held, `(through, at)`, in order (WP-5.6b).
+    admitted: Vec<(u64, u64)>,
+    /// Records a crash left before their admission was written: dated by the open that found
+    /// them, in memory, and written by the next garbage collection pass, never by a read.
+    undated: Option<(u64, u64)>,
+}
+
+/// Now, in microseconds since the epoch: when a run was first admitted, fine enough that two runs
+/// of one producer admitted in one second keep their order.
+fn opened_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| u64::try_from(since.as_micros()).unwrap_or(u64::MAX))
+        .unwrap_or_default()
+}
+
+/// The payload of an `ADMITTED` frame.
+fn encode_admitted(through: u64, at: u64) -> Result<Vec<u8>, StreamError> {
+    encode(vec![(1, uint(through)?), (2, uint(at)?)])
+}
+
+fn decode_admitted(bytes: &[u8]) -> Result<(u64, u64), StreamError> {
+    let mut map = Map::read(bytes, "an admission")?;
+    let read = (map.uint(1)?, map.uint(2)?);
+    map.finish()?;
+    Ok(read)
+}
+
+impl Held {
+    /// The records held from `from` through `to`, read from the frame `from` is in.
+    fn records(&self, from: u64, to: u64) -> Result<Vec<(u64, Vec<u8>)>, StreamError> {
+        let at = self.groups.partition_point(|(first, _)| *first <= from);
+        let Some((_, index)) = at.checked_sub(1).and_then(|at| self.groups.get(at)) else {
+            return Ok(Vec::new());
+        };
+        let mut found = Vec::new();
+        for frame in self.journal.frames_from(*index)? {
+            if frame.kind != RECORDS {
+                continue;
+            }
+            let (first, records) = decode_group(&frame.payload)?;
+            if first > to {
+                break;
+            }
+            for (offset, bytes) in records.into_iter().enumerate() {
+                let seq = first + offset as u64;
+                if (from..=to).contains(&seq) {
+                    found.push((seq, bytes));
+                }
+            }
+        }
+        Ok(found)
+    }
+}
+
+/// A run held open: `(resource component, producer, run)`.
+type RunAt = (String, [u8; 16], [u8; 16]);
 
 /// The typed consumer handle of one descriptor.
 pub struct Consumer<C> {
@@ -21,8 +217,22 @@ pub struct Consumer<C> {
     claim: u64,
     descriptor: Descriptor,
     codec: C,
-    /// Serializes admissions: one writer per consumer stream.
-    writing: Mutex<()>,
+    /// The clock an admission is dated by (WP-5.6b).
+    time: std::sync::Arc<permguard_host::time::TimeGuard>,
+    /// The `history` floor the Plane registered, and where each stream's retention comes from.
+    /// The `history` floor: the server's at build, a Plane's once it registers one (WP-6.2c2b1).
+    floor: std::sync::RwLock<Option<std::sync::Arc<dyn super::retention::RetentionFloor>>>,
+    /// Whether a Plane registered its floor through the composition: what a retention that waits
+    /// for one reads (WP-6.2c2b1).
+    plane_floor: std::sync::atomic::AtomicBool,
+    source: Option<std::sync::Arc<dyn super::retention::RetentionSource>>,
+    /// Keeps the garbage collection's passes from overlapping.
+    lease: super::retention::Lease,
+    /// The size past which a run's journal segment rolls (WP-5.6b).
+    segment_bytes: u64,
+    /// The runs held open, by `(resource component, producer, run)`; the lock serializes
+    /// admissions, one writer per consumer stream.
+    held: Mutex<BTreeMap<RunAt, Held>>,
 }
 
 impl<C> std::fmt::Debug for Consumer<C> {
@@ -34,50 +244,225 @@ impl<C> std::fmt::Debug for Consumer<C> {
     }
 }
 
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The name a cutover and an incident give a stream: its plane, type, resource digest and run.
+fn stream_name(key: &StreamKey, run: &[u8; 16]) -> String {
+    format!(
+        "{}/{}/{}/{}",
+        key.plane,
+        key.stream_type,
+        key.resource_component(),
+        hex(run)
+    )
+}
+
+/// The subdirectory `name` of `dir`, created when `create`, `None` when absent otherwise.
+fn child(dir: &Dir, name: &str, create: bool) -> Result<Option<Dir>, StreamError> {
+    if create || dir.subdirs()?.iter().any(|held| held == name) {
+        return Ok(Some(dir.subdir(name, true)?));
+    }
+    Ok(None)
+}
+
 impl<C: RecordCodec> Consumer<C> {
-    pub(crate) fn new(dir: Dir, claim: u64, descriptor: Descriptor, codec: C) -> Self {
+    pub(crate) fn new(
+        dir: Dir,
+        claim: u64,
+        descriptor: Descriptor,
+        codec: C,
+        time: std::sync::Arc<permguard_host::time::TimeGuard>,
+    ) -> Self {
         Self {
             dir,
             claim,
             descriptor,
             codec,
-            writing: Mutex::new(()),
+            time,
+            floor: std::sync::RwLock::new(None),
+            plane_floor: std::sync::atomic::AtomicBool::new(false),
+            source: None,
+            lease: super::retention::Lease::default(),
+            segment_bytes: permguard_host::storage::journal::DEFAULT_SEGMENT_BYTES,
+            held: Mutex::new(BTreeMap::new()),
         }
     }
 
-    fn journal(
+    /// This consumer's run journals rolling their segments past `bytes` (WP-5.6b).
+    pub(crate) fn with_segment_bytes(mut self, bytes: u64) -> Self {
+        self.segment_bytes = bytes;
+        self
+    }
+
+    /// This consumer's `history` streams kept above `floor` (WP-5.6b).
+    pub fn with_retention_floor(
+        mut self,
+        floor: std::sync::Arc<dyn super::retention::RetentionFloor>,
+    ) -> Self {
+        *self
+            .floor
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(floor);
+        self
+    }
+
+    /// Whether a Plane registered the floor its loaded windows read through the composition
+    /// (WP-6.2c2b1).
+    pub fn plane_floor_registered(&self) -> bool {
+        self.plane_floor.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// This consumer's streams deleted past the retention `source` answers (WP-5.6b): without
+    /// one, nothing is deleted.
+    pub fn with_retention_source(
+        mut self,
+        source: std::sync::Arc<dyn super::retention::RetentionSource>,
+    ) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    /// The ring the descriptor's batches are signed under.
+    pub fn ring(&self) -> &'static str {
+        self.descriptor.ring
+    }
+
+    /// The directory of `key`'s producer, beside its runs; `None` when absent and not `create`.
+    fn producer_dir(&self, key: &StreamKey, create: bool) -> Result<Option<Dir>, StreamError> {
+        let Some(resource) = child(&self.dir, &key.resource_component(), create)? else {
+            return Ok(None);
+        };
+        child(&resource, &hex(&key.producer_host_id), create)
+    }
+
+    /// Opens `key`'s run `run_id`: the head re-derived from its records, the authority; `None`
+    /// when the run is absent and not `create`, so a read leaves nothing behind.
+    fn open(
         &self,
-        resource: &Resource,
-        producer: [u8; 16],
+        key: &StreamKey,
         run_id: [u8; 16],
-    ) -> Result<Journal, StreamError> {
-        let key = self.descriptor.key(resource, producer)?;
-        let dir = self
-            .dir
-            .subdir(&key.resource_component(), true)?
-            .subdir(&hex(&producer), true)?
-            .subdir(&hex(&run_id), true)?
-            .subdir("records", true)?;
+        create: bool,
+    ) -> Result<Option<Held>, StreamError> {
+        let Some(producer) = self.producer_dir(key, create)? else {
+            return Ok(None);
+        };
+        if create && !producer.exists(prune::RESERVE_FILE)? {
+            // The reserve a deletion's writes take (WP-5.6b); where the filesystem cannot
+            // allocate it, the consumer goes on without.
+            let _ = permguard_host::storage::write::allocate(
+                &producer,
+                prune::RESERVE_FILE,
+                prune::RESERVE_BYTES,
+            );
+        }
+        let Some(dir) = child(&producer, &hex(&run_id), create)? else {
+            return Ok(None);
+        };
         let (journal, _) = Journal::open(
-            dir,
+            dir.subdir(RECORDS_DIR, true)?,
             Options {
                 claim: self.claim,
+                segment_bytes: self.segment_bytes,
                 ..Options::default()
             },
         )?;
-        Ok(journal)
-    }
-
-    /// The last sequence kept of `producer`'s run `run_id` over `resource`.
-    fn head(journal: &Journal) -> Result<u64, StreamError> {
-        let mut head = 0;
-        for frame in journal.frames()? {
-            if frame.kind == RECORDS {
-                let (first, records) = decode_group(&frame.payload)?;
-                head = first + records.len() as u64 - 1;
+        let mut acked = 0;
+        let mut last = GENESIS_HEAD.to_owned();
+        let mut groups = Vec::new();
+        let mut admitted = Vec::new();
+        let frames = journal.frames()?;
+        // Once a prefix went (WP-5.6b): the first RECORDS frame left says where the records held
+        // start; with none left, every record went, through the anchor's `through`.
+        if journal.first_index() > 0 {
+            match frames.iter().find(|frame| frame.kind == RECORDS) {
+                Some(frame) => acked = decode_group(&frame.payload)?.0 - 1,
+                None => {
+                    let anchor = read_view(&dir, super::anchor::ANCHOR, format::VIEW)?
+                        .map(|bytes| super::anchor::Anchor::decode(&bytes))
+                        .transpose()?
+                        .ok_or_else(|| {
+                            StreamError::Corruption(format!(
+                                "run {} lost a prefix and keeps no anchor",
+                                hex(&run_id)
+                            ))
+                        })?;
+                    acked = anchor.through;
+                    last = anchor.terminal_head;
+                }
             }
         }
-        Ok(head)
+        for frame in frames {
+            if frame.kind == ADMITTED {
+                admitted.push(decode_admitted(&frame.payload)?);
+                continue;
+            }
+            if frame.kind != RECORDS {
+                continue;
+            }
+            let (first, records) = decode_group(&frame.payload)?;
+            if first != acked + 1 {
+                return Err(StreamError::Corruption(format!(
+                    "the records of run {} skip from {acked} to {first}",
+                    hex(&run_id)
+                )));
+            }
+            groups.push((first, frame.index));
+            acked += records.len() as u64;
+            if let Some(record) = records.last() {
+                last = digest_string(self.descriptor.record_domain, record);
+            }
+        }
+        let state = read_view(&dir, STATE, format::VIEW)?
+            .map(|bytes| ConsumerState::decode(&bytes))
+            .transpose()?;
+        let oldest_retained = state.map_or(1, |state| state.oldest_retained);
+        let opened = state.and_then(|state| state.opened);
+        // Records a crash left before their admission was written: dated now, kept longer;
+        // written by the next pass, not by this open, which may serve a read (after the review).
+        let undated = (acked > admitted.last().map_or(0, |(through, _)| *through))
+            .then(|| (acked, self.time.now_secs()));
+        Ok(Some(Held {
+            dir,
+            journal,
+            acked,
+            last,
+            oldest_retained,
+            opened,
+            groups,
+            admitted,
+            undated,
+        }))
+    }
+
+    /// Runs `work` on `key`'s run `run_id`, held open; `None` when the run is absent and not
+    /// `create`. A storage error drops the run from the cache, so the next call opens it again
+    /// and its journal recovers: one failed flush never closes a run for the process's life
+    /// (after the review).
+    fn with_held<R>(
+        &self,
+        key: &StreamKey,
+        run_id: [u8; 16],
+        create: bool,
+        work: impl FnOnce(&mut Held) -> Result<R, StreamError>,
+    ) -> Result<Option<R>, StreamError> {
+        let mut all = lock(&self.held);
+        let at = (key.resource_component(), key.producer_host_id, run_id);
+        if !all.contains_key(&at) {
+            let Some(opened) = self.open(key, run_id, create)? else {
+                return Ok(None);
+            };
+            all.insert(at.clone(), opened);
+        }
+        let held = all
+            .get_mut(&at)
+            .ok_or_else(|| StreamError::Corruption("a run held vanished".to_owned()))?;
+        let done = work(held);
+        if matches!(done, Err(StreamError::Storage(_))) {
+            all.remove(&at);
+        }
+        done.map(Some)
     }
 
     /// Keeps `records`, verified upstream, from `first_seq` of `producer`'s run `run_id`: refused
@@ -90,29 +475,455 @@ impl<C: RecordCodec> Consumer<C> {
         first_seq: u64,
         records: &[Vec<u8>],
     ) -> Result<u64, StreamError> {
-        let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut journal = self.journal(resource, producer, run_id)?;
-        let head = Self::head(&journal)?;
-        if first_seq != head + 1 || records.is_empty() {
-            return Err(StreamError::Invalid(format!(
-                "records from sequence {first_seq} do not continue the {head} kept"
-            )));
-        }
+        let key = self.descriptor.key(resource, producer)?;
         for record in records {
-            if record.len() > self.descriptor.max_record_bytes as usize {
-                return Err(StreamError::Invalid(
-                    "a record over the stream's bound".to_owned(),
+            self.validate(record)?;
+        }
+        self.with_held(&key, run_id, true, |held| {
+            if first_seq != held.acked + 1 || records.is_empty() {
+                return Err(StreamError::Invalid(format!(
+                    "records from sequence {first_seq} do not continue the {} kept",
+                    held.acked
+                )));
+            }
+            self.append(held, first_seq, records)?;
+            Ok(held.acked)
+        })?
+        .ok_or_else(|| StreamError::Corruption("a run opened for writing is absent".to_owned()))
+    }
+
+    /// The typed validator: within the stream's bound, read by the codec, in its canonical
+    /// encoding.
+    fn validate(&self, record: &[u8]) -> Result<(), StreamError> {
+        if record.len() > self.descriptor.max_record_bytes as usize {
+            return Err(StreamError::Invalid(
+                "a record over the stream's bound".to_owned(),
+            ));
+        }
+        let decoded = self.codec.decode(record).map_err(StreamError::Invalid)?;
+        if self.codec.encode(&decoded).map_err(StreamError::Invalid)? != record {
+            return Err(StreamError::Invalid(
+                "a record not in its canonical encoding".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Appends `records` from `first_seq`, the run's next, and keeps STATE after them.
+    fn append(
+        &self,
+        held: &mut Held,
+        first_seq: u64,
+        records: &[Vec<u8>],
+    ) -> Result<(), StreamError> {
+        let group = super::producer::encode_group(first_seq, records.iter().map(Vec::as_slice))?;
+        let index = held.journal.append(RECORDS, &group)?;
+        held.groups.push((first_seq, index));
+        held.acked = first_seq + records.len() as u64 - 1;
+        if let Some(record) = records.last() {
+            held.last = digest_string(self.descriptor.record_domain, record);
+        }
+        // The consumer's own time, which its retention counts from (WP-5.6b).
+        let at = self.time.now_secs();
+        held.journal
+            .append(ADMITTED, &encode_admitted(held.acked, at)?)?;
+        held.admitted.push((held.acked, at));
+        held.undated = None;
+        if held.opened.is_none() {
+            held.opened = Some(opened_now());
+        }
+        replace_view(
+            &held.dir,
+            STATE,
+            format::VIEW,
+            &ConsumerState {
+                acked: held.acked,
+                oldest_retained: held.oldest_retained,
+                opened: held.opened,
+            }
+            .encode()?,
+        )?;
+        Ok(())
+    }
+
+    /// Ingests one shipped batch of the task `shipping` names (WP-5.3): answers the outcome, and
+    /// the fork found when it is one. An error is a store that cannot answer now: `deferred`.
+    pub fn ingest(
+        &self,
+        shipping: &Shipping<'_>,
+        body: &[u8],
+    ) -> Result<(Answer, Option<Forked>), StreamError> {
+        let unverifiable = || Ok((Answer::of(Outcome::Unverifiable, 0), None));
+        // Transport bounds, then what the message holds.
+        let Ok(ship) = Ship::decode(body) else {
+            return unverifiable();
+        };
+        // The task's resource and producer: the stream the batch must be of.
+        let Ok(resource) = Resource::parse(shipping.resource) else {
+            return unverifiable();
+        };
+        let Ok(key) = self.descriptor.key(&resource, shipping.member) else {
+            return unverifiable();
+        };
+        // A forked producer is answered `fork` until an operator acts; the incident is reported
+        // again, so a suspension that failed is retried (after the review).
+        if let Some(mark) = self.mark(&key)? {
+            return Ok((
+                Answer::of(Outcome::Fork, 0),
+                Some(Forked {
+                    stream: stream_name(&key, &mark.run),
+                    at_seq: mark.at_seq,
+                }),
+            ));
+        }
+        let (Ok(batch), Ok(statement)) = (
+            SealedBatch::decode(&ship.batch),
+            RingStatement::decode(&ship.statement),
+        ) else {
+            return unverifiable();
+        };
+        // The ring pin, then the key in the pinned set.
+        let (Ok(kid), Ok(claimed)) = (batch.kid(), batch.envelope_unverified()) else {
+            return unverifiable();
+        };
+        let Some(run) = unhex16(&claimed.run) else {
+            return unverifiable();
+        };
+        let stream = stream_name(&key, &run);
+        let pins: Vec<RingPin> = (shipping.pins)(&stream, claimed.first_seq);
+        if !pins.iter().any(|pin| {
+            pin.ring == self.descriptor.ring
+                && permguard_host::membership::statement_matches(&statement, pin).is_ok()
+        }) {
+            return unverifiable();
+        }
+        let Some(jwk) = statement
+            .keys
+            .iter()
+            .filter_map(|text| serde_json::from_str::<permguard_core::keys::Jwk>(text).ok())
+            .find(|jwk| jwk.kid == kid)
+        else {
+            return unverifiable();
+        };
+        // The signature, the batch's commitments, then the task the batch names.
+        let Ok((envelope, records)) = batch.verify(
+            std::slice::from_ref(&jwk),
+            self.descriptor.batch_typ,
+            self.descriptor.record_domain,
+        ) else {
+            return unverifiable();
+        };
+        let membership = permguard_host::identity::record::uuid_text(&shipping.membership_id);
+        if envelope.stream_key != KeyView::of(&key)
+            || envelope.descriptor_version != self.descriptor.version
+            || envelope.run != claimed.run
+            || envelope.membership_id.as_deref() != Some(membership.as_str())
+        {
+            return unverifiable();
+        }
+        // The run's fence epoch is the one it was opened under: a re-pin moves the lease's on
+        // while the run goes on, so an earlier epoch of the same membership is the run's own; a
+        // later one no lease has issued (after the review). A restored volume is fenced by the
+        // lease's epoch and boot id before its batches arrive (WP-4.3).
+        if envelope.epoch.is_none_or(|epoch| epoch > shipping.epoch) {
+            return unverifiable();
+        }
+        // The typed Plane validator.
+        if records.iter().any(|record| self.validate(record).is_err()) {
+            return unverifiable();
+        }
+        let ingested = self.with_held(&key, run, true, |held| {
+            self.admit_batch(
+                held,
+                &key,
+                run,
+                &stream,
+                &envelope,
+                &records,
+                &jwk,
+                &ship.batch,
+                &ship.statement,
+            )
+        })?;
+        ingested
+            .ok_or_else(|| StreamError::Corruption("a run opened for writing is absent".to_owned()))
+    }
+
+    /// The range of a verified batch against what `held` holds, then the durable writes.
+    #[allow(clippy::too_many_arguments)]
+    fn admit_batch(
+        &self,
+        held: &mut Held,
+        key: &StreamKey,
+        run: [u8; 16],
+        stream: &str,
+        envelope: &super::batch::Envelope,
+        records: &[Vec<u8>],
+        jwk: &permguard_core::keys::Jwk,
+        file: &[u8],
+        statement: &[u8],
+    ) -> Result<(Answer, Option<Forked>), StreamError> {
+        let (first, last) = (envelope.first_seq, envelope.last_seq);
+        if first < held.oldest_retained {
+            // Below the low watermark (WP-5.6c): a batch wholly there that the anchor covers is
+            // the one that went, proved equal, and nothing is written; any other is `gone`.
+            // The key too: the span the anchor keeps for the batch's first sequence names the key
+            // it was signed under, as a live range signed by another key is a fork (after the
+            // review).
+            let equal = last < held.oldest_retained
+                && super::anchor::anchor_in(&held.dir)?.is_some_and(|anchor| {
+                    anchor
+                        .signers
+                        .iter()
+                        .rev()
+                        .find(|span| span.from_seq <= first)
+                        .is_some_and(|span| span.kid == jwk.kid)
+                        && super::anchor::envelope_digest(envelope)
+                            .is_ok_and(|digest| anchor.covering.contains(&digest))
+                });
+            let outcome = if equal { Outcome::Ok } else { Outcome::Gone };
+            return Ok((Answer::of(outcome, held.acked), None));
+        }
+        if first > held.acked + 1 {
+            return Ok((
+                Answer {
+                    outcome: Outcome::OutOfOrder,
+                    acked: held.acked,
+                    expected_seq: Some(held.acked + 1),
+                },
+                None,
+            ));
+        }
+        let forked = |at_seq: u64| -> Result<(Answer, Option<Forked>), StreamError> {
+            self.fork(key, run, at_seq, stream)?;
+            Ok((
+                Answer::of(Outcome::Fork, 0),
+                Some(Forked {
+                    stream: stream.to_owned(),
+                    at_seq,
+                }),
+            ))
+        };
+        // The record before the batch: genesis, the head held, or the record held; below the
+        // oldest retained no record remains to compare, and retention's anchor (WP-5.6) answers.
+        let previous = if first == 1 {
+            Some(GENESIS_HEAD.to_owned())
+        } else if first - 1 == held.acked {
+            Some(held.last.clone())
+        } else if first - 1 < held.oldest_retained {
+            None
+        } else {
+            held.records(first - 1, first - 1)?
+                .first()
+                .map(|(_, record)| digest_string(self.descriptor.record_domain, record))
+        };
+        if previous.is_some_and(|previous| envelope.previous_head != previous) {
+            return forked(first);
+        }
+        // The overlap, against the records held.
+        let overlap_end = last.min(held.acked);
+        if overlap_end >= first {
+            let held_overlap = held.records(first, overlap_end)?;
+            if held_overlap.len() as u64 != overlap_end - first + 1 {
+                return Err(StreamError::Corruption(
+                    "the run does not hold the records its head says".to_owned(),
                 ));
             }
-            self.codec.decode(record).map_err(StreamError::Invalid)?;
+            if let Some(at) = held_overlap
+                .iter()
+                .zip(records)
+                .position(|((_, held), sent)| held != sent)
+            {
+                return forked(first + at as u64);
+            }
         }
-        let group = super::producer::encode_group(first_seq, records.iter().map(Vec::as_slice))?;
-        journal.append(RECORDS, &group)?;
-        Ok(head + records.len() as u64)
+        // The span, decided before anything is written: another key over a range the spans
+        // already cover is a conflicting transition (after the review).
+        let mut spans = match read_view(&held.dir, SIGNERS, format::VIEW)? {
+            Some(bytes) => Spans::decode(&bytes)?,
+            None => Spans::default(),
+        };
+        let new_span = match spans.signing(&run, first) {
+            Some(span) if span.kid == jwk.kid => false,
+            covering => {
+                let later = spans
+                    .runs
+                    .iter()
+                    .find(|(held, _)| *held == run)
+                    .and_then(|(_, spans)| spans.last())
+                    .is_some_and(|span| span.from_seq >= first);
+                if covering.is_some() && later {
+                    return forked(first);
+                }
+                true
+            }
+        };
+        // Durable before the answer: the statement, the batch file, the span, the records, STATE.
+        // The statement is kept by its digest, so a batch delivered again under a re-pinned set
+        // adds the new one beside the first (WP-6.2c1).
+        let statements = held.dir.subdir(STATEMENTS, true)?;
+        let name = format!("{}.cbor", hex(&Sha256::digest(statement)));
+        publish_immutable(&statements, &name, statement, &|_| true, &|stored| {
+            stored == statement
+        })?;
+        let batches = held.dir.subdir(BATCHES, true)?;
+        match publish_immutable(
+            &batches,
+            &format!("{first}-{last}.jws"),
+            file,
+            &|_| true,
+            &|stored| stored == file,
+        ) {
+            Ok(Published::Written | Published::AlreadyThere) => {}
+            // Another batch file of the same range: signed again over the same records and
+            // commitments, as a producer restored in `dr` mode seals what its snapshot held
+            // unsealed, it is an exact replay and the first file stays (WP-7.7); over anything
+            // else, a fork.
+            Err(StorageError::Corruption(_)) => {
+                if !self.same_commitments(&batches, first, last, envelope, &jwk.kid)? {
+                    return forked(first);
+                }
+            }
+            Err(error) => return Err(error.into()),
+        }
+        if new_span {
+            spans.append(
+                run,
+                Span {
+                    from_seq: first,
+                    kid: jwk.kid.clone(),
+                    jwk: canonical_jwk(jwk)?,
+                },
+            )?;
+            replace_view(&held.dir, SIGNERS, format::VIEW, &spans.encode()?)?;
+        }
+        if last > held.acked {
+            let suffix = &records[(held.acked + 1 - first) as usize..];
+            let from = held.acked + 1;
+            self.append(held, from, suffix)?;
+        }
+        Ok((Answer::of(Outcome::Ok, held.acked), None))
+    }
+
+    /// Whether the batch file held for `first`..`last` commits to what `envelope` commits to, under
+    /// the same key `kid`: the same run, stream, range, previous head, head and Merkle root. Another
+    /// key over a range held is a conflicting transition. The held file was verified when it was
+    /// admitted; what is compared is its envelope. A held file that does not read is the store's
+    /// corruption, never the producer's fork.
+    fn same_commitments(
+        &self,
+        batches: &Dir,
+        first: u64,
+        last: u64,
+        envelope: &super::batch::Envelope,
+        kid: &str,
+    ) -> Result<bool, StreamError> {
+        let name = format!("{first}-{last}.jws");
+        let unreadable = || {
+            StreamError::Corruption(format!(
+                "the batch file `{name}` held does not read as a batch"
+            ))
+        };
+        let held = batches.read(&name)?.ok_or_else(unreadable)?;
+        let held = SealedBatch::decode(&held).map_err(|_| unreadable())?;
+        let (held_kid, held) = (
+            held.kid().map_err(|_| unreadable())?,
+            held.envelope_unverified().map_err(|_| unreadable())?,
+        );
+        Ok(held_kid == kid
+            && held.run == envelope.run
+            && held.stream_key == envelope.stream_key
+            && held.descriptor_version == envelope.descriptor_version
+            && (held.first_seq, held.last_seq, held.count)
+                == (envelope.first_seq, envelope.last_seq, envelope.count)
+            && held.previous_head == envelope.previous_head
+            && held.head == envelope.head
+            && held.merkle_root == envelope.merkle_root)
+    }
+
+    /// The fork mark of `key`'s producer, when its stream was found forked.
+    fn mark(&self, key: &StreamKey) -> Result<Option<ForkMark>, StreamError> {
+        let Some(dir) = self.producer_dir(key, false)? else {
+            return Ok(None);
+        };
+        read_view(&dir, FORKED, format::VIEW)?
+            .map(|bytes| ForkMark::decode(&bytes))
+            .transpose()
+    }
+
+    /// Marks `key`'s producer forked at `at_seq` of `run`: every later batch is answered `fork`.
+    fn fork(
+        &self,
+        key: &StreamKey,
+        run: [u8; 16],
+        at_seq: u64,
+        stream: &str,
+    ) -> Result<(), StreamError> {
+        let dir = self
+            .producer_dir(key, true)?
+            .ok_or_else(|| StreamError::Corruption("a producer directory is absent".to_owned()))?;
+        if read_view(&dir, FORKED, format::VIEW)?.is_none() {
+            replace_view(
+                &dir,
+                FORKED,
+                format::VIEW,
+                &ForkMark { run, at_seq }.encode()?,
+            )?;
+        }
+        tracing::error!(
+            event.name = "host.stream.forked",
+            component = "stream",
+            stream = %stream,
+            at_seq = at_seq,
+            "a producer's stream differs from what the consumer holds: it is closed until an operator acts"
+        );
+        Ok(())
+    }
+
+    /// The fork mark of `producer` over `resource`, when its stream was found forked.
+    pub fn forked(
+        &self,
+        resource: &Resource,
+        producer: [u8; 16],
+    ) -> Result<Option<ForkMark>, StreamError> {
+        self.mark(&self.descriptor.key(resource, producer)?)
+    }
+
+    /// The highest contiguous sequence held of `producer`'s run `run_id` over `resource`: 0 for
+    /// a run never ingested.
+    pub fn acked(
+        &self,
+        resource: &Resource,
+        producer: [u8; 16],
+        run_id: [u8; 16],
+    ) -> Result<u64, StreamError> {
+        let key = self.descriptor.key(resource, producer)?;
+        Ok(self
+            .with_held(&key, run_id, false, |held| Ok(held.acked))?
+            .unwrap_or(0))
+    }
+
+    /// The signer spans of `producer`'s run `run_id` over `resource`.
+    pub fn spans(
+        &self,
+        resource: &Resource,
+        producer: [u8; 16],
+        run_id: [u8; 16],
+    ) -> Result<Spans, StreamError> {
+        let key = self.descriptor.key(resource, producer)?;
+        Ok(self
+            .with_held(&key, run_id, false, |held| {
+                Ok(match read_view(&held.dir, SIGNERS, format::VIEW)? {
+                    Some(bytes) => Spans::decode(&bytes)?,
+                    None => Spans::default(),
+                })
+            })?
+            .unwrap_or_default())
     }
 
     /// The records kept of `producer`'s run `run_id` over `resource` from `from_seq`, at most
-    /// `limit`.
+    /// `limit`; a read starting below the first sequence still held answers from there, with the
+    /// gap and the run's anchor (WP-5.6c), never as complete.
     pub fn read(
         &self,
         resource: &Resource,
@@ -120,24 +931,109 @@ impl<C: RecordCodec> Consumer<C> {
         run_id: [u8; 16],
         from_seq: u64,
         limit: usize,
-    ) -> Result<Vec<(u64, C::Record)>, StreamError> {
-        let journal = self.journal(resource, producer, run_id)?;
-        let mut found = Vec::new();
-        for frame in journal.frames()? {
-            if frame.kind != RECORDS {
-                continue;
-            }
-            let (first, records) = decode_group(&frame.payload)?;
-            for (offset, bytes) in records.into_iter().enumerate() {
-                let seq = first + offset as u64;
-                if seq >= from_seq && found.len() < limit {
-                    found.push((
+    ) -> Result<super::anchor::Page<C::Record>, StreamError> {
+        let page = self.read_raw(resource, producer, run_id, from_seq, limit)?;
+        Ok(super::anchor::Page {
+            records: page
+                .records
+                .into_iter()
+                .map(|(seq, bytes)| {
+                    Ok((
                         seq,
                         self.codec.decode(&bytes).map_err(StreamError::Invalid)?,
-                    ));
-                }
+                    ))
+                })
+                .collect::<Result<_, StreamError>>()?,
+            gap: page.gap,
+        })
+    }
+
+    /// [`Self::read`], the records as their bytes.
+    pub(super) fn read_raw(
+        &self,
+        resource: &Resource,
+        producer: [u8; 16],
+        run_id: [u8; 16],
+        from_seq: u64,
+        limit: usize,
+    ) -> Result<super::anchor::Page<Vec<u8>>, StreamError> {
+        let key = self.descriptor.key(resource, producer)?;
+        // Sequence 0 is none: a read from it reads from the start (after the review).
+        let from_seq = from_seq.max(1);
+        let held = self.with_held(&key, run_id, false, |held| {
+            let gap = if from_seq < held.oldest_retained {
+                let anchor = super::anchor::anchor_in(&held.dir)?.ok_or_else(|| {
+                    StreamError::Corruption(format!(
+                        "run {} lost a prefix and keeps no anchor",
+                        hex(&run_id)
+                    ))
+                })?;
+                Some(super::anchor::Gap {
+                    low_watermark: held.oldest_retained,
+                    anchor,
+                })
+            } else {
+                None
+            };
+            let from = from_seq.max(held.oldest_retained).max(1);
+            let to = held
+                .acked
+                .min(from.saturating_add(limit as u64).saturating_sub(1));
+            Ok((held.records(from, to)?, gap))
+        })?;
+        let (records, gap) = held.unwrap_or_default();
+        Ok(super::anchor::Page { records, gap })
+    }
+}
+
+fn unhex16(text: &str) -> Option<[u8; 16]> {
+    if text.len() != 32 {
+        return None;
+    }
+    let bytes: Option<Vec<u8>> = (0..32)
+        .step_by(2)
+        .map(|at| u8::from_str_radix(text.get(at..at + 2)?, 16).ok())
+        .collect();
+    bytes?.try_into().ok()
+}
+
+impl<C: RecordCodec> super::retention::Prunable for Consumer<C> {
+    fn name(&self) -> String {
+        format!(
+            "consumer {}/{} version {}",
+            self.descriptor.plane, self.descriptor.stream_type, self.descriptor.version
+        )
+    }
+
+    fn plan(&self, now: u64) -> Result<Vec<super::retention::Pruned>, StreamError> {
+        self.runs()?
+            .into_iter()
+            .map(|(key, run)| self.prune_run(&key, run, now, None))
+            .collect()
+    }
+
+    fn run(
+        &self,
+        now: u64,
+        audit: super::retention::Audit<'_>,
+    ) -> Result<Option<Vec<super::retention::Pruned>>, StreamError> {
+        let Some(_held) = self.lease.take() else {
+            return Ok(None);
+        };
+        // One run that fails does not stop the others, nor their records (after the review).
+        let mut pruned = Vec::new();
+        for (key, run) in self.runs()? {
+            match self.prune_run(&key, run, now, Some(audit)) {
+                Ok(done) => pruned.push(done),
+                Err(error) => tracing::error!(
+                    event.name = "host.stream.prune_failed",
+                    component = "host",
+                    stream = %prune::pruned_name(&key, &run),
+                    error = %error,
+                    "a stream's garbage collection pass failed; the others go on"
+                ),
             }
         }
-        Ok(found)
+        Ok(Some(pruned))
     }
 }

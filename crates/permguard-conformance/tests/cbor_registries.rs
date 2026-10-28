@@ -15,9 +15,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use permguard_host::membership::zone;
 use permguard_notp::{
-    CommitPushRequest, CommitPushResponse, FetchObjectsRequest, FetchObjectsResponse,
-    NegotiatePullRequest, NegotiatePullResponse, NegotiatePushRequest, NegotiatePushResponse,
-    ObjectClaim, UploadObjectsRequest, UploadObjectsResponse,
+    CommitPushRequest, CommitPushResponse, ExpectedRef, FetchObjectsRequest, FetchObjectsResponse,
+    GetRefRequest, GetRefResponse, MirrorOperation, MirrorRequest, NegotiatePullRequest,
+    NegotiatePullResponse, NegotiatePushRequest, NegotiatePushResponse, ObjectClaim,
+    UploadObjectsRequest, UploadObjectsResponse,
 };
 use permguard_objects::Digest;
 use permguard_objects::cbor::{self, Value};
@@ -30,28 +31,33 @@ use permguard_objects::manifest::{
     Partition, Profile, Requirement, Runtime,
 };
 use permguard_objects::object::{self, Blob, Commit, Kind, Tree, TreeEntry};
+use permguard_objects::refstate::RefState;
 use permguard_objects::semver::Constraint;
 use permguard_objects::statement::{HeadStatement, SignedHead, StatementError};
 use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 18] = [
+const REGISTRIES: [&str; 22] = [
     "audit.json",
+    "drain-receipt.json",
     "grant.json",
     "head-statement.json",
     "identity.json",
+    "journal.json",
     "kdf.json",
     "key-set.json",
     "keys.json",
     "keys-bundle.json",
     "layout.json",
+    "ledger-export.json",
     "manifest.json",
     "membership.json",
     "mutation.json",
     "notp.json",
     "objects.json",
     "operation-plan.json",
+    "restore.json",
     "sealed-key.json",
     "session.json",
     "stream.json",
@@ -431,15 +437,24 @@ fn head_statement() -> HeadStatement {
         digest: Digest::compute(b"commit"),
         counter: 42,
         signed_at: 1_787_836_802,
+        authority_host_id: [0x01; 16],
+        ref_digest: Digest::compute(b"ref state"),
+        ring_epoch: 3,
+        key_set_digest: Digest::compute(b"key set"),
     }
 }
 
 fn signed_head(key: &SigningKey) -> Vec<u8> {
-    SignedHead::sign_with(&head_statement(), HEAD_KID.as_bytes(), |bytes| {
-        key.sign(bytes)
-            .map(|signature| signature.to_vec())
-            .map_err(|error| StatementError::Signer(error.to_string()))
-    })
+    SignedHead::sign_with(
+        &head_statement(),
+        Suite::Ed25519Sha256V1,
+        HEAD_KID.as_bytes(),
+        |bytes| {
+            key.sign(bytes)
+                .map(|signature| signature.to_vec())
+                .map_err(|error| StatementError::Signer(error.to_string()))
+        },
+    )
     .expect("the statement signs")
     .encode()
     .expect("the envelope encodes")
@@ -555,6 +570,7 @@ fn manifest_samples() -> Vec<Sample> {
     let decoder =
         || -> Option<Decoder> { Some(Box::new(|bytes: &[u8]| verdict(Manifest::decode(bytes)))) };
     let plain = Partition {
+        interfaces: Vec::new(),
         runtime: "cedar".into(),
         media_types: vec!["application/vnd.permguard.policy.cedar".into()],
         schema: true,
@@ -563,6 +579,7 @@ fn manifest_samples() -> Vec<Sample> {
         input: None,
     };
     let typed = Partition {
+        interfaces: vec![PROFILE_PDP_NATIVE_V1.into()],
         runtime: "cedar".into(),
         media_types: vec!["application/vnd.permguard.policy.cedar".into()],
         schema: false,
@@ -594,6 +611,7 @@ fn manifest_samples() -> Vec<Sample> {
                 "partition.input",
                 "partition.artifacts",
                 "partition.history",
+                "partition.interfaces",
             ],
             decoder(),
         ),
@@ -607,7 +625,7 @@ fn head_statement_samples() -> Vec<Sample> {
     let decoder: Decoder = Box::new(move |bytes: &[u8]| {
         let envelope = resign(bytes, &key);
         let signed = SignedHead::decode(&envelope).map_err(|error| format!("{error:?}"))?;
-        verdict(signed.verify(&public))
+        verdict(signed.verify(Suite::Ed25519Sha256V1, &public))
     });
     vec![sample("cose_sign1", envelope, &[], Some(decoder))]
 }
@@ -680,6 +698,125 @@ fn grant_samples() -> Vec<Sample> {
             Some(Box::new(|bytes: &[u8]| verdict(Transition::decode(bytes)))),
         ),
     ]
+}
+
+fn ledger_export_samples() -> Vec<Sample> {
+    use permguard_host::exports::{ExportedLedger, ExportedRef, Manifest, bundle_digest};
+
+    let entry = |pairs: Vec<(Value, Value)>| {
+        permguard_objects::cbor::encode(&Value::Map(pairs)).expect("encodes")
+    };
+    let object = entry(vec![
+        (Value::Int(1), Value::Int(0)),
+        (Value::Int(2), Value::Int(1)),
+        (Value::Int(3), Value::Bytes(b"an object".to_vec())),
+    ]);
+    let statement = entry(vec![
+        (Value::Int(1), Value::Int(0)),
+        (Value::Int(2), Value::Int(2)),
+        (Value::Int(3), Value::Bytes(b"a statement".to_vec())),
+        (Value::Int(4), Value::Text("main".to_owned())),
+    ]);
+    let manifest = Manifest {
+        host_id: HOST_ID,
+        exported_at: 1_800_000_000,
+        zone_id: "zone-id".to_owned(),
+        zone_name: "delivery".to_owned(),
+        ledgers: vec![ExportedLedger {
+            id: "ledger-id".to_owned(),
+            name: "release".to_owned(),
+            default_ref: "main".to_owned(),
+            refs: vec![ExportedRef {
+                name: "main".to_owned(),
+                counter: 2,
+                head: Digest::compute(b"a head"),
+            }],
+            objects: 1,
+            statements: 1,
+        }],
+        bundle_digest: bundle_digest(b"the bundle"),
+        bundle_bytes: 10,
+    };
+    vec![
+        sample(
+            "export_archive",
+            entry(vec![
+                (Value::Int(1), Value::Bytes(b"a COSE_Sign1".to_vec())),
+                (Value::Int(2), Value::Bytes(b"a bundle".to_vec())),
+            ]),
+            &[],
+            None,
+        ),
+        sample("bundle_entry", object, &[], None),
+        sample("bundle_entry", statement, &["bundle_entry.ref"], None),
+        sample(
+            "export_manifest",
+            manifest.encode().expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Manifest::decode(bytes)))),
+        ),
+    ]
+}
+
+fn drain_receipt_samples() -> Vec<Sample> {
+    use permguard_host::operations::drain::{DrainReceipt, DrainedStream};
+
+    let stream = |run: &str, last_seq: u64| DrainedStream {
+        plane: "data".to_owned(),
+        stream_type: "decisions".to_owned(),
+        resource: "plane/data/zone/acme/ledger/main".to_owned(),
+        run: run.to_owned(),
+        last_seq,
+        acknowledged: last_seq,
+    };
+    [
+        Vec::new(),
+        vec![stream(&"0a".repeat(16), 12), stream(&"0c".repeat(16), 3)],
+    ]
+    .into_iter()
+    .map(|streams| {
+        sample(
+            "drain_receipt",
+            DrainReceipt {
+                host_id: HOST_ID,
+                volume_id: ZONE_ID,
+                generation: 4,
+                drained_at: 1_800_000_000,
+                streams,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(DrainReceipt::decode(bytes))
+            })),
+        )
+    })
+    .collect()
+}
+
+fn restore_samples() -> Vec<Sample> {
+    use permguard_host::restore::{Marker, Mode};
+
+    [Mode::Dr, Mode::Forensic, Mode::Clone]
+        .into_iter()
+        .map(|mode| {
+            sample(
+                "restore_marker",
+                Marker {
+                    mode,
+                    at: 1_800_000_000,
+                    generation: 3,
+                    previous_boot_id: ZONE_ID,
+                    plan_id: SCOPE_ID,
+                }
+                .encode()
+                .expect("encodes"),
+                &[],
+                Some(Box::new(|bytes: &[u8]| verdict(Marker::decode(bytes)))),
+            )
+        })
+        .collect()
 }
 
 fn identity_samples() -> Vec<Sample> {
@@ -1249,6 +1386,123 @@ fn membership_samples() -> Vec<Sample> {
             decoder(|bytes| verdict(zone::Receipt::decode(bytes))),
         ),
         sample(
+            "import_request",
+            permguard_host::membership::import::Request::Origins
+                .encode()
+                .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(permguard_host::membership::import::Request::decode(bytes))),
+        ),
+        sample(
+            "import_request",
+            permguard_host::membership::import::Request::Batch {
+                host_id: SCOPE_ID,
+                run: [4; 16],
+                seq: 3,
+            }
+            .encode()
+            .expect("encodes"),
+            &[
+                "import_request.host_id",
+                "import_request.run",
+                "import_request.seq",
+            ],
+            decoder(|bytes| verdict(permguard_host::membership::import::Request::decode(bytes))),
+        ),
+        sample(
+            "import_origins",
+            permguard_host::membership::import::Origins {
+                checkpoint: vec![0xD2; 8],
+                origins: vec![permguard_host::membership::import::Origin {
+                    host_id: SCOPE_ID,
+                    membership_id: [6; 16],
+                    manifest: vec![0xD2; 8],
+                }],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(permguard_host::membership::import::Origins::decode(bytes))),
+        ),
+        sample(
+            "import_checkpoint",
+            permguard_host::membership::import::Checkpoint {
+                coordinator: [1; 16],
+                resource: "plane/data/zone/z/ledger/l".to_owned(),
+                revision: [2; 32],
+                origins: vec![permguard_host::membership::import::CheckpointOrigin {
+                    host_id: SCOPE_ID,
+                    runs: vec![
+                        permguard_host::membership::import::CheckpointRun {
+                            run: [4; 16],
+                            acked: 9,
+                            oldest_retained: 1,
+                            admitted_at: Some(1_800_000_000),
+                        },
+                        permguard_host::membership::import::CheckpointRun {
+                            run: [5; 16],
+                            acked: 0,
+                            oldest_retained: 1,
+                            admitted_at: None,
+                        },
+                    ],
+                    pins: vec![permguard_host::membership::record::RingPin {
+                        owner: permguard_host::membership::record::Role::Member,
+                        ring: permguard_host::keys::ring::DATA_ATTEST.to_owned(),
+                        epoch: 2,
+                        key_set_digest: [0xA2; 32],
+                        binding: vec![0xA2; 8],
+                        retiring: false,
+                    }],
+                }],
+                issued_at: 1_800_000_100,
+                channel_binding: [7; 32],
+                ring_epoch: 1,
+                key_set_digest: [8; 32],
+            }
+            .encode()
+            .expect("encodes"),
+            &["checkpoint_run.admitted_at"],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::import::Checkpoint::decode(
+                    bytes,
+                ))
+            }),
+        ),
+        sample(
+            "import_state",
+            permguard_host::membership::import::State {
+                membership_id: [3; 16],
+                revision: [2; 32],
+                checkpoint: vec![0xD2; 8],
+                verified_at: 1_800_000_200,
+                gaps: vec![
+                    permguard_host::membership::import::Gap {
+                        origin: SCOPE_ID,
+                        run: [4; 16],
+                        from: 1,
+                        through: Some(2),
+                        reason: permguard_host::membership::import::RETENTION.to_owned(),
+                        detected_at: 1_800_000_300,
+                        revision: [2; 32],
+                    },
+                    permguard_host::membership::import::Gap {
+                        origin: SCOPE_ID,
+                        run: [5; 16],
+                        from: 7,
+                        through: None,
+                        reason: permguard_host::membership::import::UNVERIFIABLE.to_owned(),
+                        detected_at: 1_800_000_300,
+                        revision: [2; 32],
+                    },
+                ],
+            }
+            .encode()
+            .expect("encodes"),
+            &["import_gap.through"],
+            decoder(|bytes| verdict(permguard_host::membership::import::State::decode(bytes))),
+        ),
+        sample(
             "operator_approval",
             OperatorApproval {
                 membership_id: SCOPE_ID,
@@ -1759,9 +2013,14 @@ fn keys_samples() -> Vec<Sample> {
 }
 
 /// The stream engine's records (WP-5.1): a genesis run and a successor naming every optional
-/// label, a run end, a group of records, a STATE without and with its optional labels.
+/// label, a run end, a group of records, a STATE without and with its optional labels; a
+/// stream's signer spans and its cutover (WP-5.2).
 fn stream_samples() -> Vec<Sample> {
-    use permguard_stream::engine::{Fence, RunEnd, RunStatement, State, StreamKey};
+    use permguard_stream::engine::ingest::{Answer, Outcome, Ship};
+    use permguard_stream::engine::{
+        ConsumerState, Cutover, Fence, ForkMark, RunEnd, RunStatement, Span, Spans, State,
+        StreamKey, Subscription, SubscriptionState,
+    };
 
     let key = StreamKey::new(
         "data",
@@ -1806,6 +2065,41 @@ fn stream_samples() -> Vec<Sample> {
         oldest_retained_seq: 1,
         pending_successor: None,
         forked_at_seq: None,
+        unshipped: None,
+        base: None,
+    };
+    // WP-5.2: a stream's signer spans, two runs, the second with two keys, and its cutover.
+    let span = |from_seq: u64, kid: &str| Span {
+        from_seq,
+        kid: kid.to_owned(),
+        jwk: permguard_stream::engine::canonical_jwk(&permguard_core::keys::Jwk::okp(
+            kid,
+            "Ed25519",
+            "EdDSA",
+            "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+        ))
+        .expect("canonical"),
+    };
+    let signers = Spans {
+        runs: vec![
+            ([3; 16], vec![span(1, "data.attest:a")]),
+            (
+                [6; 16],
+                vec![span(1, "data.attest:a"), span(9, "data.attest:b")],
+            ),
+        ],
+    };
+    let cutover = Cutover {
+        stream: format!(
+            "data/decisions/{}/{}",
+            key.resource_component(),
+            "06".repeat(16)
+        ),
+        membership_id: SCOPE_ID,
+        ring: "data.attest".to_owned(),
+        kid: "data.attest:b".to_owned(),
+        from_seq: 9,
+        confirmed: true,
     };
     let statement_decoder = || -> Option<Decoder> {
         Some(Box::new(|bytes: &[u8]| {
@@ -1857,15 +2151,223 @@ fn stream_samples() -> Vec<Sample> {
             State {
                 pending_successor: Some(vec![9; 40]),
                 forked_at_seq: Some(2),
-                ..state
+                // WP-5.8: what an incomplete drain left.
+                unshipped: Some(permguard_stream::engine::state::Unshipped {
+                    tail: 2,
+                    truncate_safe: 1,
+                    run: [3; 16],
+                }),
+                ..state.clone()
             }
             .encode()
             .expect("encodes"),
             &[
                 "stream_state.pending_successor",
                 "stream_state.forked_at_seq",
+                "stream_state.unshipped",
             ],
             state_decoder(),
+        ),
+        sample(
+            "stream_signers",
+            signers.encode().expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Spans::decode(bytes)))),
+        ),
+        sample(
+            "stream_cutover",
+            cutover.encode().expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Cutover::decode(bytes)))),
+        ),
+        // WP-5.3: the ingest's message and answers, a consumer's STATE and fork mark.
+        sample(
+            "ship_message",
+            Ship {
+                batch: b"{}".to_vec(),
+                statement: vec![0xa0],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Ship::decode(bytes)))),
+        ),
+        sample(
+            "ingest_answer",
+            Answer::of(Outcome::Ok, 4).encode().expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Answer::decode(bytes)))),
+        ),
+        sample(
+            "ingest_answer",
+            Answer {
+                outcome: Outcome::OutOfOrder,
+                acked: 4,
+                expected_seq: Some(5),
+            }
+            .encode()
+            .expect("encodes"),
+            &["ingest_answer.expected_seq"],
+            Some(Box::new(|bytes: &[u8]| verdict(Answer::decode(bytes)))),
+        ),
+        sample(
+            "consumer_state",
+            ConsumerState {
+                acked: 4,
+                oldest_retained: 1,
+                opened: Some(1_792_000_000_000_000),
+            }
+            .encode()
+            .expect("encodes"),
+            &["consumer_state.opened"],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(ConsumerState::decode(bytes))
+            })),
+        ),
+        sample(
+            "fork_mark",
+            ForkMark {
+                run: [6; 16],
+                at_seq: 3,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(ForkMark::decode(bytes)))),
+        ),
+        // WP-5.4: a producer's subscriptions, active, paused and stopped, and a pruned mark.
+        sample(
+            "subscription",
+            Subscription {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                required: true,
+                runs: vec![([3; 16], 4), ([6; 16], 1)],
+                boots: Vec::new(),
+                points: Vec::new(),
+                state: SubscriptionState::Active,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(Subscription::decode(bytes))
+            })),
+        ),
+        sample(
+            "subscription",
+            Subscription {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                required: false,
+                runs: Vec::new(),
+                boots: Vec::new(),
+                points: Vec::new(),
+                state: SubscriptionState::Paused { epoch: 2 },
+            }
+            .encode()
+            .expect("encodes"),
+            &["subscription.paused_epoch"],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(Subscription::decode(bytes))
+            })),
+        ),
+        sample(
+            "subscription",
+            Subscription {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                required: true,
+                runs: Vec::new(),
+                boots: Vec::new(),
+                points: Vec::new(),
+                state: SubscriptionState::Stopped {
+                    reason: "fork".to_owned(),
+                },
+            }
+            .encode()
+            .expect("encodes"),
+            &["subscription.reason"],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(Subscription::decode(bytes))
+            })),
+        ),
+        // WP-7.9b: a run's acknowledgement with the coordinator boot id it was answered under.
+        sample(
+            "subscription",
+            Subscription {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                required: true,
+                runs: vec![([3; 16], 4)],
+                boots: vec![([3; 16], HOST_ID)],
+                points: vec![([3; 16], vec![(2, 1_800_000_000), (4, 1_800_000_600)])],
+                state: SubscriptionState::Active,
+            }
+            .encode()
+            .expect("encodes"),
+            &[
+                "subscription_run.coordinator_boot_id",
+                "subscription_run.points",
+            ],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(Subscription::decode(bytes))
+            })),
+        ),
+        sample("pruned_mark", vec![0xa1, 0x01, 0x04], &[], None),
+        // WP-5.6b: STATE's base once a prefix went, a run's anchor and a consumer's admission.
+        sample(
+            "stream_state",
+            State {
+                base: Some(permguard_stream::engine::state::Base {
+                    first_index: 7,
+                    statement: vec![8; 64],
+                    last_seq: 2,
+                    last_digest: [4; 32],
+                    ended: false,
+                }),
+                ..state.clone()
+            }
+            .encode()
+            .expect("encodes"),
+            &["stream_state.base"],
+            state_decoder(),
+        ),
+        sample(
+            "stream_anchor",
+            permguard_stream::engine::anchor::Anchor {
+                resource: "plane/data/zone/z/ledger/l".to_owned(),
+                run: [3; 16],
+                low_watermark: 5,
+                through: 4,
+                terminal_head: format!("sha256:{}", "a".repeat(64)),
+                covering: vec![
+                    format!("sha256:{}", "b".repeat(64)),
+                    format!("sha256:{}", "c".repeat(64)),
+                ],
+                signers: vec![Span {
+                    from_seq: 1,
+                    kid: "kid-1".to_owned(),
+                    jwk: "{\"kty\":\"OKP\"}".to_owned(),
+                }],
+                checkpoint: vec![9; 32],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(permguard_stream::engine::anchor::Anchor::decode(bytes))
+            })),
+        ),
+        sample(
+            "admitted",
+            cbor::encode(&cbor::Value::Map(vec![
+                (cbor::Value::Int(1), cbor::Value::Int(4)),
+                (cbor::Value::Int(2), cbor::Value::Int(1_800_000_000)),
+            ]))
+            .expect("encodes"),
+            &[],
+            None,
         ),
     ]
 }
@@ -2203,6 +2705,14 @@ fn notp_samples() -> Vec<Sample> {
     let statement = signed_head(&ed25519());
     let head = Digest::compute(b"head");
     let old = Digest::compute(b"old");
+    let transfer_id = [0x7a; 16];
+    let first = RefState::first(old.clone());
+    let second = first.successor(head.clone()).expect("a successor");
+    let ref_digest = second.ref_digest().expect("a ref digest");
+    let expected = ExpectedRef {
+        counter: 1,
+        digest: first.ref_digest().expect("a ref digest"),
+    };
     let object = Blob {
         media_type: "application/vnd.permguard.policy.cedar".into(),
         data: b"permit(principal, action, resource);".to_vec(),
@@ -2210,24 +2720,71 @@ fn notp_samples() -> Vec<Sample> {
     .encode()
     .expect("the blob encodes");
     let missing = vec![Digest::compute(&object), Digest::compute(b"tree")];
-    let commit_response = CommitPushResponse {
-        head: head.clone(),
-        counter: 2,
-        statement: statement.clone(),
-    }
-    .encode()
-    .expect("it encodes");
     vec![
-        // The `GET ref` answer has no public encoder: the control plane writes it inline with the
-        // labels of the commit answer, so those bytes are its sample. The client reads it with a
-        // private, closed decoder, so no refusal is asserted here.
-        sample("ref_answer", commit_response.clone(), &[], None),
+        sample(
+            "ref_state",
+            second.encode().expect("it encodes"),
+            &["ref_state.previous_ref_digest"],
+            Some(Box::new(|bytes: &[u8]| verdict(RefState::decode(bytes)))),
+        ),
+        sample(
+            "ref_state",
+            first.encode().expect("it encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(RefState::decode(bytes)))),
+        ),
+        sample(
+            "ref_answer",
+            GetRefResponse {
+                head: head.clone(),
+                counter: 2,
+                statement: statement.clone(),
+                ref_digest: ref_digest.clone(),
+            }
+            .encode()
+            .expect("it encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(GetRefResponse::decode(bytes))
+            })),
+        ),
+        sample(
+            "get_ref_request",
+            GetRefRequest {
+                r#ref: "main".into(),
+            }
+            .encode()
+            .expect("it encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(GetRefRequest::decode(bytes))
+            })),
+        ),
+        sample(
+            "mirror_request",
+            MirrorRequest {
+                operation: MirrorOperation::GetRef,
+                zone: "0198f2aa-0000-7000-8000-000000000001".into(),
+                ledger: "0198f3bb-0000-7000-8000-000000000002".into(),
+                body: GetRefRequest {
+                    r#ref: "main".into(),
+                }
+                .encode()
+                .expect("it encodes"),
+            }
+            .encode()
+            .expect("it encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(MirrorRequest::decode(bytes))
+            })),
+        ),
         sample(
             "negotiate_push_request",
             NegotiatePushRequest {
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: Some(old.clone()),
+                expected_ref: Some(expected.clone()),
                 closure: vec![
                     ObjectClaim {
                         digest: Digest::compute(&object),
@@ -2238,10 +2795,11 @@ fn notp_samples() -> Vec<Sample> {
                         size: 120,
                     },
                 ],
+                request_id: "push-1".into(),
             }
             .encode()
             .expect("it encodes"),
-            &["negotiate_push_request.expected_old"],
+            &["negotiate_push_request.expected_ref"],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(NegotiatePushRequest::decode(bytes))
             })),
@@ -2251,8 +2809,9 @@ fn notp_samples() -> Vec<Sample> {
             NegotiatePushRequest {
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: None,
+                expected_ref: None,
                 closure: Vec::new(),
+                request_id: "push-1".into(),
             }
             .encode()
             .expect("it encodes"),
@@ -2268,6 +2827,9 @@ fn notp_samples() -> Vec<Sample> {
                 max_batch_bytes: 8 << 20,
                 max_batch_objects: 512,
                 compression: Some("deflate".into()),
+                transfer_id,
+                reservation: 4096,
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2283,6 +2845,9 @@ fn notp_samples() -> Vec<Sample> {
                 max_batch_bytes: 8 << 20,
                 max_batch_objects: 512,
                 compression: None,
+                transfer_id,
+                reservation: 0,
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2296,6 +2861,7 @@ fn notp_samples() -> Vec<Sample> {
             UploadObjectsRequest {
                 objects: vec![object.clone()],
                 compression: Some("deflate".into()),
+                transfer_id,
             }
             .encode()
             .expect("it encodes"),
@@ -2309,6 +2875,7 @@ fn notp_samples() -> Vec<Sample> {
             UploadObjectsRequest {
                 objects: vec![object.clone()],
                 compression: None,
+                transfer_id,
             }
             .encode()
             .expect("it encodes"),
@@ -2321,6 +2888,7 @@ fn notp_samples() -> Vec<Sample> {
             "upload_objects_response",
             UploadObjectsResponse {
                 received: missing.clone(),
+                remaining: 1024,
             }
             .encode()
             .expect("it encodes"),
@@ -2334,11 +2902,13 @@ fn notp_samples() -> Vec<Sample> {
             CommitPushRequest {
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: Some(old.clone()),
+                expected_ref: Some(expected.clone()),
+                transfer_id,
+                request_id: "commit-1".into(),
             }
             .encode()
             .expect("it encodes"),
-            &["commit_push_request.expected_old"],
+            &["commit_push_request.expected_ref"],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(CommitPushRequest::decode(bytes))
             })),
@@ -2348,7 +2918,9 @@ fn notp_samples() -> Vec<Sample> {
             CommitPushRequest {
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: None,
+                expected_ref: None,
+                transfer_id,
+                request_id: "commit-1".into(),
             }
             .encode()
             .expect("it encodes"),
@@ -2359,7 +2931,14 @@ fn notp_samples() -> Vec<Sample> {
         ),
         sample(
             "commit_push_response",
-            commit_response,
+            CommitPushResponse {
+                head: head.clone(),
+                counter: 2,
+                statement: statement.clone(),
+                ref_digest: ref_digest.clone(),
+            }
+            .encode()
+            .expect("it encodes"),
             &[],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(CommitPushResponse::decode(bytes))
@@ -2371,10 +2950,14 @@ fn notp_samples() -> Vec<Sample> {
                 r#ref: "main".into(),
                 at: Some(head.clone()),
                 have: vec![old.clone()],
+                checkpoint: Some(expected),
             }
             .encode()
             .expect("it encodes"),
-            &["negotiate_pull_request.at"],
+            &[
+                "negotiate_pull_request.at",
+                "negotiate_pull_request.checkpoint",
+            ],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(NegotiatePullRequest::decode(bytes))
             })),
@@ -2385,6 +2968,7 @@ fn notp_samples() -> Vec<Sample> {
                 r#ref: "main".into(),
                 at: None,
                 have: Vec::new(),
+                checkpoint: None,
             }
             .encode()
             .expect("it encodes"),
@@ -2403,6 +2987,9 @@ fn notp_samples() -> Vec<Sample> {
                 max_batch_bytes: 8 << 20,
                 max_batch_objects: 512,
                 compression: Some("deflate".into()),
+                transfer_id,
+                ref_digest: ref_digest.clone(),
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2421,6 +3008,9 @@ fn notp_samples() -> Vec<Sample> {
                 max_batch_bytes: 8 << 20,
                 max_batch_objects: 512,
                 compression: None,
+                transfer_id,
+                ref_digest,
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2434,6 +3024,7 @@ fn notp_samples() -> Vec<Sample> {
             FetchObjectsRequest {
                 digests: missing.clone(),
                 accept_compression: Some("deflate".into()),
+                transfer_id,
             }
             .encode()
             .expect("it encodes"),
@@ -2447,6 +3038,7 @@ fn notp_samples() -> Vec<Sample> {
             FetchObjectsRequest {
                 digests: missing,
                 accept_compression: None,
+                transfer_id,
             }
             .encode()
             .expect("it encodes"),
@@ -2460,6 +3052,7 @@ fn notp_samples() -> Vec<Sample> {
             FetchObjectsResponse {
                 objects: vec![object.clone()],
                 compression: Some("deflate".into()),
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2473,6 +3066,7 @@ fn notp_samples() -> Vec<Sample> {
             FetchObjectsResponse {
                 objects: vec![object],
                 compression: None,
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2495,10 +3089,14 @@ fn samples(file: &str) -> Vec<Sample> {
         "sealed-key.json" => sealed_key_samples(),
         "grant.json" => grant_samples(),
         "layout.json" => layout_samples(),
+        "journal.json" => journal_samples(),
         "audit.json" => audit_samples(),
         "operation-plan.json" => operation_plan_samples(),
         "mutation.json" => mutation_samples(),
         "identity.json" => identity_samples(),
+        "restore.json" => restore_samples(),
+        "drain-receipt.json" => drain_receipt_samples(),
+        "ledger-export.json" => ledger_export_samples(),
         "session.json" => session_samples(),
         "stream.json" => stream_samples(),
         "keys.json" => keys_samples(),
@@ -2511,6 +3109,7 @@ fn samples(file: &str) -> Vec<Sample> {
 fn audit_samples() -> Vec<Sample> {
     use permguard_host::audit::checkpoint::{Anchor, Checkpoint};
     use permguard_host::audit::record::{AuditRecord, FactValue, TrailMeta, genesis};
+    use permguard_host::membership::egress::{Ack, Acked, Acks, Kept, Ship};
     use permguard_objects::digest::Digest;
 
     let full = AuditRecord {
@@ -2606,6 +3205,68 @@ fn audit_samples() -> Vec<Sample> {
             &[],
             Some(Box::new(|bytes: &[u8]| verdict(Anchor::decode(bytes)))),
         ),
+        // WP-5.9: the `audit.checkpoints` task's records.
+        sample(
+            "checkpoint_ship",
+            Ship {
+                class: "security".to_owned(),
+                checkpoint: vec![0x84, 1],
+                statement: vec![0xa1, 2],
+                anchor: Some(vec![0xa4, 3]),
+            }
+            .encode()
+            .expect("encodes"),
+            &["checkpoint_ship.anchor"],
+            Some(Box::new(|bytes: &[u8]| verdict(Ship::decode(bytes)))),
+        ),
+        sample(
+            "checkpoint_ship",
+            Ship {
+                class: "operations".to_owned(),
+                checkpoint: vec![0x84, 1],
+                statement: vec![0xa1, 2],
+                anchor: None,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Ship::decode(bytes)))),
+        ),
+        sample(
+            "checkpoint_ack",
+            Ack {
+                trail: "security:host".to_owned(),
+                checkpoint: [4; 32],
+                received_at: 1_800_086_400,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Ack::decode(bytes)))),
+        ),
+        sample(
+            "egress_acks",
+            Acks(vec![Acked {
+                trail: "security:host".to_owned(),
+                name: "2027-01-15.cose".to_owned(),
+                digest: [5; 32],
+            }])
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Acks::decode(bytes)))),
+        ),
+        sample(
+            "kept_checkpoint",
+            Kept {
+                count: 2,
+                digest: [6; 32],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Kept::decode(bytes)))),
+        ),
     ]
 }
 
@@ -2657,6 +3318,17 @@ fn operation_plan_samples() -> Vec<Sample> {
             None,
         ),
     ]
+}
+
+fn journal_samples() -> Vec<Sample> {
+    use permguard_host::storage::journal::{decode_base, encode_base};
+
+    vec![sample(
+        "base",
+        encode_base(4, 2).expect("BASE encodes"),
+        &[],
+        Some(Box::new(|bytes: &[u8]| verdict(decode_base(bytes)))),
+    )]
 }
 
 fn layout_samples() -> Vec<Sample> {
@@ -3165,6 +3837,16 @@ fn test_operation_plan_records_match_their_registry() {
 #[test]
 fn test_operation_plan_records_refuse_unknown_labels() {
     assert_unknown_labels_refused("operation-plan.json");
+}
+
+#[test]
+fn test_journal_base_matches_its_registry() {
+    assert_samples_match("journal.json");
+}
+
+#[test]
+fn test_journal_base_refuses_unknown_labels() {
+    assert_unknown_labels_refused("journal.json");
 }
 
 #[test]

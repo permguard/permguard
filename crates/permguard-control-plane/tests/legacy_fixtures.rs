@@ -86,9 +86,7 @@ fn build(root: &Path) {
         .expect("the ledger is created");
     let store = FileObjectStore::new(ledger_directory(root));
     let (digest, _) = store.put_object(&blob()).expect("the object lands");
-    store
-        .update_ref("refs/main", None, &digest)
-        .expect("the ref is created");
+    write_ref(&store, "refs/main", &digest);
 }
 
 fn verify(root: &Path) {
@@ -126,4 +124,23 @@ fn test_the_v1_zones_root_fixture_is_read_by_the_current_code() {
         copy_dir(Path::new(FIXTURE), &work);
     }
     verify(&work);
+}
+
+/// A ref written the way the server writes one: through an offline mutation transaction.
+fn write_ref(
+    store: &FileObjectStore,
+    name: &str,
+    head: &permguard_objects::Digest,
+) -> permguard_control_plane::store::RefUpdate {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let volume = std::env::temp_dir().join(format!(
+        "permguard-test-volume-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    ));
+    let _ = std::fs::remove_dir_all(&volume);
+    let mutations = permguard_control_plane::store::testing::offline_ref_mutations(&volume)
+        .expect("a mutation transaction opens");
+    permguard_control_plane::store::testing::update_ref(&mutations, store, name, None, head)
+        .expect("the ref is created")
 }

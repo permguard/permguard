@@ -13,6 +13,7 @@
 //! | `POST …/{id}/suspend`, `resume`, `fence`       | `membership.admin` | a receipt and the manifest, a new epoch  |
 //! | `POST …/{id}/appraise`                         | `membership.admin` | a receipt and the manifest, a new epoch  |
 //! | `GET …/{id}/sessions`                          | `membership.read`  | the open task sessions, with boot ids    |
+//! | `POST …/{id}/verify`                           | `membership.admin` | proof now, or a durable scheduled proof  |
 //! | `POST …/{id}/revoke/plan`, `…/revoke/run`      | `membership.admin` | a plan; a receipt and the manifest       |
 //! | `POST /host/v1/memberships/join`, `…/{id}/sync`| `membership.admin` | the member's view of the membership      |
 //!
@@ -48,9 +49,9 @@ use crate::membership::service::code_of;
 use crate::membership::{
     APPRAISE, APPROVE, AUDIT_APPRAISED, AUDIT_APPROVED, AUDIT_ASSURANCE_APPROVED,
     AUDIT_ASSURANCE_REVOKED, AUDIT_FENCED, AUDIT_INVITE_REVOKED, AUDIT_INVITED, AUDIT_REJECTED,
-    AUDIT_RESUMED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED, AUDIT_SUSPENDED, Capabilities, Coordinator,
-    DOMAIN, FENCE, Held, INVITE, INVITE_REVOKE, MembershipError, Narrow, NewInvite, Offered,
-    REJECT, RESUME, REVOKE_PLAN, REVOKE_RUN, SUSPEND, Store,
+    AUDIT_RESUMED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED, AUDIT_SUSPENDED, AUDIT_VERIFIED,
+    Capabilities, Coordinator, DOMAIN, FENCE, Held, INVITE, INVITE_REVOKE, MembershipError, Narrow,
+    NewInvite, Offered, REJECT, RESUME, REVOKE_PLAN, REVOKE_RUN, SUSPEND, Store, VERIFY,
 };
 use crate::operations::journal::Initiator;
 use crate::operations::mutation::{Applied, Applying, Failure};
@@ -59,6 +60,14 @@ use permguard_objects::cose::Sign1;
 
 /// The revocation a plan names.
 const REVOKE: &str = "members.revoke";
+/// The capability an unshipped stream degrades (WP-5.8).
+const EVIDENCE: &str = "evidence";
+/// How many unshipped streams, or late trails, the readiness names; the rest are counted.
+const UNSHIPPED_NAMED: usize = 8;
+/// The capability a checkpoint that did not leave the volume in time degrades (WP-5.9).
+const AUDIT_EGRESS: &str = "audit_egress";
+/// The capability a subscription the coordinator refused degrades until it ships again (F-08).
+const EVIDENCE_SHIPPING: &str = "evidence_shipping";
 
 /// What the composition hands the facade for the memberships.
 pub struct MembershipService {
@@ -72,6 +81,14 @@ pub struct MembershipService {
     pub appraisal: Appraisal,
     /// The open task sessions this Host coordinates (WP-4.3).
     pub live: Arc<crate::membership::task::LiveSessions>,
+    /// The streams this Host signs, as a re-pin cuts them over (WP-5.2); without an engine it
+    /// signs none.
+    pub streams: Option<Arc<dyn crate::composition::StreamCutovers>>,
+    /// The streams this Host ships over its ship tasks (WP-5.4); without an engine it ships none.
+    pub shipping: Option<Arc<dyn crate::composition::StreamShipping>>,
+    /// The consumer and the ledgers the member side imports with, as its `events.import` tasks
+    /// deliver them (WP-6.2c2a); without one it imports nothing.
+    pub importing: Option<Arc<crate::membership::member::import::Importing>>,
 }
 
 /// One open task session of a membership, as an operator reads it (WP-4.3).
@@ -981,6 +998,26 @@ pub struct SyncMembership {
     pub request_id: String,
 }
 
+/// `POST /host/v1/members/{id}/verify` on either side of a membership.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VerifyMember {
+    pub request_id: String,
+}
+
+/// One verification operation: immediate proof by a member, or a durable challenge scheduled by
+/// its coordinator for the next inbound proven peer session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberVerification {
+    pub receipt: Receipt,
+    pub membership_id: String,
+    /// `proved` or `scheduled`.
+    pub status: String,
+    /// RFC 3339, present for a durable coordinator schedule.
+    pub scheduled_at: Option<String>,
+    pub member: MemberView,
+}
+
 /// A membership refusal, as the Host API answers it.
 pub fn refusal_of(error: MembershipError) -> Refusal {
     // What the coordinator refused keeps its code where the caller can act on it; a transport
@@ -1362,6 +1399,70 @@ impl HostApi {
             .membership(&id_of(id)?)
             .ok_or_else(|| refusal_of(MembershipError::Unknown(format!("no membership `{id}`"))))?;
         Ok(MemberView::of(&held, &self.viewing(memberships)))
+    }
+
+    /// The required origins of `resource` for `events.import` (WP-6.2c1, owner decision of
+    /// 2026-10-19): the members this Host coordinates, active and not held, whose `events.ship`
+    /// task covers it, each with its manifest in force; the revision digests their hosts and
+    /// memberships. Empty without a membership store.
+    pub fn import_origins(
+        &self,
+        resource: &permguard_core::authz::Resource,
+    ) -> Result<crate::membership::import::OriginSet, String> {
+        let Ok(memberships) = self.memberships() else {
+            return Ok(crate::membership::import::OriginSet::default());
+        };
+        let mut origins = Vec::new();
+        let mut named = Vec::new();
+        let mut pins = Vec::new();
+        for (id, held) in memberships.store.memberships() {
+            let Some((manifest, envelope, _)) = held.manifest.as_ref() else {
+                continue;
+            };
+            if held.role != Role::Coordinator
+                || held.status != Status::Active
+                || held.held_epoch.is_some()
+                || !manifest.tasks.iter().any(|task| {
+                    task.task_type == TaskType::EventsShip && task.selector.contains(resource)
+                })
+            {
+                continue;
+            }
+            let host_id = held.request.member.host_id;
+            named.push((host_id, id));
+            // Every manifest of the membership, oldest first: the sets its batches were sealed
+            // under, retired ones included (after the review).
+            let history: Vec<Manifest> = memberships
+                .store
+                .history(&id)
+                .iter()
+                .filter_map(|envelope| {
+                    Sign1::decode(envelope)
+                        .ok()
+                        .and_then(|sign1| Manifest::decode(sign1.payload_unverified()).ok())
+                })
+                .collect();
+            pins.push((host_id, crate::membership::import::origin_pins(&history)));
+            origins.push(crate::membership::import::Origin {
+                host_id,
+                membership_id: id,
+                manifest: envelope.clone(),
+            });
+        }
+        origins.sort_by_key(|origin| origin.host_id);
+        if origins
+            .windows(2)
+            .any(|pair| pair[0].host_id == pair[1].host_id)
+        {
+            // Two active memberships of one Host: its one stream cannot be named twice.
+            return Err("a member holds two active memberships covering the resource".to_owned());
+        }
+        Ok(crate::membership::import::OriginSet {
+            revision: crate::membership::import::revision(&named)
+                .map_err(|error| error.to_string())?,
+            origins,
+            pins,
+        })
     }
 
     /// The members this Host coordinates whose active `policy.mirror` task covers `resource`,
@@ -2048,6 +2149,453 @@ impl HostApi {
             .await
     }
 
+    /// Exports the audit checkpoints this Host's `audit.checkpoints` tasks have not had
+    /// acknowledged (WP-5.9): the server's periodic pass, after the streams.
+    pub async fn export_checkpoints_due(&self) -> usize {
+        let Some(engine) = self.audit.as_deref() else {
+            return 0;
+        };
+        let Ok((memberships, connector)) = self.member_side() else {
+            return 0;
+        };
+        let Ok(member) = self.acting_member(memberships, connector) else {
+            return 0;
+        };
+        member
+            .export_checkpoints(
+                crate::operations::journal::Initiator::System("host".to_owned()),
+                engine,
+            )
+            .await
+    }
+
+    /// Checks that every trail's checkpoints left the volume within `max_lag` (WP-5.9, owner
+    /// decision of 2026-10-16): a trail whose oldest checkpoint not acknowledged by a required
+    /// `audit.checkpoints` task is older, or that no required task exports, degrades
+    /// `audit_egress`, named; restored once none is. `enforce` is whether the profile asks it,
+    /// `production` upward. Answers the trails named.
+    pub fn check_audit_egress(
+        &self,
+        enforce: bool,
+        max_lag: std::time::Duration,
+    ) -> Result<Vec<String>, String> {
+        let lifecycle = self.health.lifecycle();
+        if !enforce {
+            lifecycle.restore(permguard_core::lifecycle::HOST, AUDIT_EGRESS);
+            return Ok(Vec::new());
+        }
+        // A check that cannot be made is never a healthy one (after the review).
+        let late = self.late_trails(max_lag).unwrap_or_else(|error| {
+            vec![format!(
+                "the checkpoints' egress could not be checked: {error}"
+            )]
+        });
+        if late.is_empty() {
+            lifecycle.restore(permguard_core::lifecycle::HOST, AUDIT_EGRESS);
+        } else {
+            let more = late.len().saturating_sub(UNSHIPPED_NAMED);
+            lifecycle.degrade(
+                permguard_core::lifecycle::HOST,
+                AUDIT_EGRESS,
+                format!(
+                    "audit checkpoints have not left the volume: {}{}",
+                    late.iter()
+                        .take(UNSHIPPED_NAMED)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                    if more > 0 {
+                        format!("; and {more} more")
+                    } else {
+                        String::new()
+                    }
+                ),
+            );
+        }
+        Ok(late)
+    }
+
+    /// The trails whose checkpoints did not leave the volume within `max_lag`, each named with
+    /// why.
+    fn late_trails(&self, max_lag: std::time::Duration) -> Result<Vec<String>, String> {
+        let Some(engine) = self.audit.as_deref() else {
+            return Ok(vec![
+                "no audit engine is composed: nothing seals or exports the trails".to_owned(),
+            ]);
+        };
+        let store = self
+            .memberships
+            .as_deref()
+            .map(|memberships| &memberships.store);
+        let now = self.time.now_secs();
+        let mut late = Vec::new();
+        for (class, resource) in engine.trails_held().map_err(|error| error.to_string())? {
+            let trail = format!("{}:{resource}", class.as_str());
+            let listing = engine
+                .checkpoints(class, &resource, None)
+                .map_err(|error| format!("{error:?}"))?;
+            if listing.files.is_empty() {
+                continue;
+            }
+            let exporters: Vec<_> = store
+                .map(|store| store.exporting(&resource))
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|(.., required)| *required)
+                .collect();
+            if exporters.is_empty() {
+                late.push(format!(
+                    "{trail}: no required audit.checkpoints task exports it"
+                ));
+                continue;
+            }
+            for (id, task_id, _) in exporters {
+                let acks = store
+                    .map(|store| store.egress_acks(&id, &task_id))
+                    .transpose()
+                    .map_err(|error| error.to_string())?
+                    .unwrap_or_default();
+                let from = match crate::membership::egress::pending_from(&listing, acks.of(&trail))
+                {
+                    Ok(from) => from,
+                    Err(error) => {
+                        late.push(format!("{trail}: {error}"));
+                        break;
+                    }
+                };
+                let Some(oldest) = listing.files.get(from) else {
+                    continue;
+                };
+                let created = crate::audit::checkpoint::read_unverified(&oldest.envelope)
+                    .map_err(|error| error.to_string())?
+                    .created_at;
+                if now.saturating_sub(created) >= max_lag.as_secs() {
+                    late.push(format!(
+                        "{trail}: not acknowledged since {}",
+                        permguard_core::time::to_rfc3339(
+                            i64::try_from(created).unwrap_or(i64::MAX)
+                        )
+                    ));
+                    break;
+                }
+            }
+        }
+        Ok(late)
+    }
+
+    /// Ships what this Host's ship tasks have due (WP-5.4): the server's periodic pass.
+    pub async fn ship_due(&self) -> usize {
+        let shipped = match self.member_side() {
+            Ok((memberships, connector)) => match self.acting_member(memberships, connector) {
+                Ok(member) => {
+                    member
+                        .ship_due(crate::operations::journal::Initiator::System(
+                            "host".to_owned(),
+                        ))
+                        .await
+                }
+                Err(_) => 0,
+            },
+            Err(_) => 0,
+        };
+        // Whether or not this pass could reach a coordinator: what it refused earlier still
+        // keeps those streams from shipping.
+        self.report_refused();
+        shipped
+    }
+
+    /// Names the subscriptions the coordinator refused on the Host's health, `degraded:
+    /// evidence_shipping`, and restores it once none remains (F-08): a refusal never stops
+    /// shipping silently. A stream engine that cannot be read leaves the last report standing.
+    fn report_refused(&self) {
+        let Some(engine) = self.shipping() else {
+            return;
+        };
+        let refused = match engine.refused() {
+            Ok(refused) => refused,
+            Err(error) => {
+                tracing::warn!(
+                    event.name = "host.membership.refused_unread",
+                    component = "host",
+                    error = %error,
+                    "the refused subscriptions could not be read: the last report stands and the next pass reads again"
+                );
+                return;
+            }
+        };
+        let lifecycle = self.health.lifecycle();
+        if refused.is_empty() {
+            lifecycle.restore(permguard_core::lifecycle::HOST, EVIDENCE_SHIPPING);
+            return;
+        }
+        let named: Vec<String> = refused
+            .iter()
+            .take(UNSHIPPED_NAMED)
+            .map(|held| {
+                format!(
+                    "{} {} on task {} of membership {}: {}",
+                    held.stream,
+                    held.resource,
+                    held.task_id,
+                    uuid_text(&held.membership_id),
+                    held.state
+                )
+            })
+            .collect();
+        let more = refused.len().saturating_sub(UNSHIPPED_NAMED);
+        lifecycle.degrade(
+            permguard_core::lifecycle::HOST,
+            EVIDENCE_SHIPPING,
+            format!(
+                "shipping refused by the coordinator: {}{}",
+                named.join("; "),
+                if more > 0 {
+                    format!("; and {more} more")
+                } else {
+                    String::new()
+                }
+            ),
+        );
+    }
+
+    /// The `policy.mirror` tasks of every active membership this Host holds as a member, from
+    /// the manifests in force (WP-7.2a): what a Data Plane mirror round snapshots.
+    pub fn mirror_tasks(&self) -> Vec<crate::composition::MirrorTask> {
+        let Ok(memberships) = self.memberships() else {
+            return Vec::new();
+        };
+        let mut tasks = Vec::new();
+        for (membership_id, held) in memberships.store.memberships() {
+            if held.role != crate::membership::record::Role::Member
+                || held.status != crate::membership::record::Status::Active
+            {
+                continue;
+            }
+            // The nil id is the local task's (WP-7.7): a membership minted with it is never
+            // mirrored, so no coordinator can pass a task of its own off as this Host's.
+            if membership_id == crate::membership::local::LOCAL_MEMBERSHIP {
+                tracing::warn!(
+                    event.name = "host.membership.nil_id",
+                    component = "host",
+                    "a membership holds the nil id, which only the local task carries: its tasks \
+                     are not mirrored"
+                );
+                continue;
+            }
+            let Some((manifest, ..)) = &held.manifest else {
+                continue;
+            };
+            for task in &manifest.tasks {
+                if task.task_type != crate::membership::record::TaskType::PolicyMirror {
+                    continue;
+                }
+                tasks.push(crate::composition::MirrorTask {
+                    membership_id,
+                    task_id: task.task_id.clone(),
+                    coordinator: held.request.coordinator.host_id,
+                    revision: manifest.epoch,
+                    resource: task.selector.prefix().to_string(),
+                    required: task.required,
+                    max_body_bytes: task.limits.max_body_bytes,
+                });
+            }
+        }
+        tasks
+    }
+
+    /// Opens a `policy.mirror` task session for `task` and turns it into a watch from
+    /// `positions` (WP-7.2c, `WatchRefs`): the coordinator answers at once, then sends the hints
+    /// of refs that move past them, and heartbeats.
+    pub async fn watch_mirror(
+        &self,
+        task: &crate::composition::MirrorTask,
+        positions: Vec<(String, u64)>,
+    ) -> Result<Box<dyn crate::composition::MirrorWatch>, crate::composition::MirrorRefusal> {
+        let mut held = self.member_task(task).await?;
+        held.watch(positions).await.map_err(mirror_refusal)?;
+        Ok(Box::new(MirrorWatching { task: held }))
+    }
+
+    /// A member task session over `task`'s resource, its lease verified and kept.
+    async fn member_task(
+        &self,
+        task: &crate::composition::MirrorTask,
+    ) -> Result<crate::membership::member::MemberTask, crate::composition::MirrorRefusal> {
+        let refused = |refusal: Refusal| match refusal {
+            Refusal::Api(error) | Refusal::Conflict { error, .. } => {
+                crate::composition::MirrorRefusal {
+                    code: error.code().to_owned(),
+                    reason: error.to_string(),
+                }
+            }
+            Refusal::Denied(denial) => crate::composition::MirrorRefusal {
+                code: denial.code().to_owned(),
+                reason: denial.message().to_owned(),
+            },
+        };
+        let (memberships, connector) = self.member_side().map_err(refused)?;
+        let member = self
+            .acting_member(memberships, connector)
+            .map_err(refused)?;
+        member
+            .open_task(
+                crate::operations::journal::Initiator::System("host".to_owned()),
+                &task.membership_id,
+                &task.task_id,
+                &task.resource,
+                Vec::new(),
+            )
+            .await
+            .map_err(mirror_refusal)
+    }
+
+    /// Opens a `policy.mirror` task session for `task` (WP-7.2a): the lease verified under the
+    /// coordinator's pin, bound to the connection, and kept; the session carries the mirror
+    /// round's reads.
+    pub async fn open_mirror(
+        &self,
+        task: &crate::composition::MirrorTask,
+    ) -> Result<Box<dyn crate::composition::MirrorSession>, crate::composition::MirrorRefusal> {
+        let held = self.member_task(task).await?;
+        let memberships = self
+            .memberships()
+            .map_err(|_| crate::composition::MirrorRefusal {
+                code: codes::common::UNAVAILABLE.to_owned(),
+                reason: "no membership store is open on this process".to_owned(),
+            })?;
+        // The `control.attest` set of the manifest in force once the session opened — a revision
+        // the coordinator issued at it already accepted — its binding verified under the
+        // coordinator's identity the session just proved (WP-7.2b).
+        let ring = memberships
+            .store
+            .membership(&task.membership_id)
+            .and_then(|membership| {
+                let (manifest, ..) = membership.manifest?;
+                let statements = memberships
+                    .store
+                    .statements_held(&task.membership_id, manifest.epoch);
+                crate::membership::verified_control_attest(
+                    &manifest.ring_pins,
+                    &statements,
+                    held.peer(),
+                )
+            });
+        Ok(Box::new(MirrorHeld {
+            task: held,
+            ring,
+            time: Arc::clone(&self.time),
+        }))
+    }
+
+    /// Imports what this Host's `events.import` tasks have due (WP-6.2c2a): the server's periodic
+    /// pass. Nothing without a consumer composed for it.
+    pub async fn import_due(&self) -> usize {
+        let Ok((memberships, connector)) = self.member_side() else {
+            return 0;
+        };
+        let Some(importing) = memberships.importing.as_ref() else {
+            return 0;
+        };
+        let Ok(member) = self.acting_member(memberships, connector) else {
+            return 0;
+        };
+        member
+            .import_due(
+                crate::operations::journal::Initiator::System("host".to_owned()),
+                importing,
+            )
+            .await
+    }
+
+    /// The engine the member side ships with, when one is composed.
+    fn shipping(&self) -> Option<&Arc<dyn crate::composition::StreamShipping>> {
+        self.memberships
+            .as_deref()
+            .and_then(|memberships| memberships.shipping.as_ref())
+    }
+
+    /// Whether this Host ships streams at all: a stream engine composed on its member side
+    /// (WP-5.8).
+    pub fn ships_streams(&self) -> bool {
+        self.shipping().is_some()
+    }
+
+    /// Keeps a subscription for every ship task of every live membership, shipping nothing
+    /// (WP-5.8): a drain calls it before it judges. Nothing without a peer client.
+    pub fn register_subscriptions(&self) -> Result<(), String> {
+        let Ok((memberships, connector)) = self.member_side() else {
+            return Ok(());
+        };
+        self.acting_member(memberships, connector)
+            .map_err(|refusal| format!("{refusal:?}"))?
+            .register_subscriptions()
+    }
+
+    /// Whether a stream is behind its required subscriptions now (WP-5.8): what a drain still has
+    /// to ship.
+    pub fn shipping_behind(&self) -> Result<bool, String> {
+        match self.shipping() {
+            Some(engine) => Ok(!engine.behind()?.is_empty()),
+            None => Ok(false),
+        }
+    }
+
+    /// Marks every stream still behind `unshipped` in its STATE, as an incomplete drain leaves
+    /// it, and reports them (WP-5.8): answers the marks.
+    pub fn mark_unshipped(&self) -> Result<Vec<crate::composition::Unshipped>, String> {
+        let Some(engine) = self.shipping() else {
+            return Ok(Vec::new());
+        };
+        let marked = engine.mark_unshipped()?;
+        self.report_unshipped(&marked);
+        Ok(marked)
+    }
+
+    /// Removes the marks of the streams shipped since, and reports those that remain: the Host
+    /// is `degraded: evidence` while one does (WP-5.8).
+    pub fn settle_unshipped(&self) -> Result<Vec<crate::composition::Unshipped>, String> {
+        let Some(engine) = self.shipping() else {
+            return Ok(Vec::new());
+        };
+        let remaining = engine.settle_unshipped()?;
+        self.report_unshipped(&remaining);
+        Ok(remaining)
+    }
+
+    /// Names the unshipped streams on the Host's readiness, for a controller that must not take
+    /// the volume for scratch; restored once none remains.
+    fn report_unshipped(&self, remaining: &[crate::composition::Unshipped]) {
+        let lifecycle = self.health.lifecycle();
+        if remaining.is_empty() {
+            lifecycle.restore(permguard_core::lifecycle::HOST, EVIDENCE);
+            return;
+        }
+        let named: Vec<String> = remaining
+            .iter()
+            .take(UNSHIPPED_NAMED)
+            .map(|mark| {
+                format!(
+                    "{} {} through {} (acknowledged through {})",
+                    mark.stream, mark.resource, mark.tail, mark.truncate_safe
+                )
+            })
+            .collect();
+        let more = remaining.len().saturating_sub(UNSHIPPED_NAMED);
+        lifecycle.degrade(
+            permguard_core::lifecycle::HOST,
+            EVIDENCE,
+            format!(
+                "unshipped evidence: {}{}",
+                named.join("; "),
+                if more > 0 {
+                    format!("; and {more} more")
+                } else {
+                    String::new()
+                }
+            ),
+        );
+    }
+
     pub(super) fn acting_member<'a>(
         &'a self,
         memberships: &'a MembershipService,
@@ -2062,6 +2610,8 @@ impl HostApi {
             connector,
             declared_assurance: self.declared_assurance()?,
             time: &self.time,
+            streams: memberships.streams.as_deref(),
+            shipping: memberships.shipping.as_deref(),
         })
     }
 
@@ -2155,7 +2705,240 @@ impl HostApi {
             .map_err(refusal_of)?;
         Ok(MemberView::of(&held, &self.viewing(memberships)))
     }
+
+    /// `POST /host/v1/members/{id}/verify`: a member proves immediately by running the normal
+    /// proven sync; a coordinator durably schedules the next inbound proof and an exact replay
+    /// returns that first schedule.
+    pub async fn verify_member(
+        &self,
+        actor: &Actor,
+        id: &str,
+        verify: VerifyMember,
+    ) -> Result<MemberVerification, Refusal> {
+        let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
+        let mutation = Mutation {
+            request_id: verify.request_id.clone(),
+            expected_revision: None,
+        };
+        mutation.validated()?;
+        let membership_id = id_of(id)?;
+        let memberships = self.memberships()?;
+        let held = memberships
+            .store
+            .membership(&membership_id)
+            .ok_or_else(|| refusal_of(MembershipError::Unknown(format!("no membership `{id}`"))))?;
+        if held.role == Role::Member {
+            if let Some(replayed) = self.replayed(
+                DOMAIN,
+                &admitted.principal,
+                VERIFY,
+                AUDIT_VERIFIED,
+                &mutation,
+                &(id, &verify),
+                Some(id.to_owned()),
+                |operation_id, _, _| {
+                    memberships
+                        .store
+                        .verification_result(&operation_id)
+                        .map_err(refusal_of)
+                },
+            )? {
+                return Ok(replayed);
+            }
+            let connector = memberships.connector.as_deref().ok_or_else(|| {
+                Refusal::new(
+                    ErrorClass::Unavailable,
+                    codes::host::PEER_CLIENT_UNCONFIGURED,
+                    "this Host cannot reach a coordinator: its Host listener has no TLS certificate or no client CA",
+                )
+            })?;
+            let held = self
+                .acting_member(memberships, connector)?
+                .sync(
+                    Initiator::Principal(admitted.principal.as_str().to_owned()),
+                    &membership_id,
+                )
+                .await
+                .map_err(refusal_of)?;
+            return self.transact(
+                DOMAIN,
+                &admitted.principal,
+                VERIFY,
+                AUDIT_VERIFIED,
+                &mutation,
+                &(id, &verify),
+                Some(id.to_owned()),
+                || Ok(()),
+                |applying| {
+                    let value = MemberVerification {
+                        receipt: self.receipt(applying.operation_id(), held.revision),
+                        membership_id: id.to_owned(),
+                        status: "proved".to_owned(),
+                        scheduled_at: None,
+                        member: MemberView::of(&held, &self.viewing(memberships)),
+                    };
+                    memberships
+                        .store
+                        .record_verification_result(applying, &membership_id, held.revision, &value)
+                        .map_err(failure)?;
+                    Ok(Applied {
+                        revision: held.revision,
+                        target: Some(id.to_owned()),
+                        value,
+                    })
+                },
+                |operation_id, _, _| {
+                    memberships
+                        .store
+                        .verification_result(&operation_id)
+                        .map_err(refusal_of)
+                },
+            );
+        }
+        let now = self.time.now_secs();
+        self.transact(
+            DOMAIN,
+            &admitted.principal,
+            VERIFY,
+            AUDIT_VERIFIED,
+            &mutation,
+            &(id, &verify),
+            Some(id.to_owned()),
+            || Ok(()),
+            |applying| {
+                let scheduled = memberships
+                    .store
+                    .schedule_verification_mutation(applying, &membership_id, now)
+                    .map_err(failure)?;
+                let value = MemberVerification {
+                    receipt: self.receipt(applying.operation_id(), held.revision),
+                    membership_id: id.to_owned(),
+                    status: "scheduled".to_owned(),
+                    scheduled_at: Some(rfc3339(scheduled)),
+                    member: MemberView::of(&held, &self.viewing(memberships)),
+                };
+                memberships
+                    .store
+                    .record_verification_result(applying, &membership_id, held.revision, &value)
+                    .map_err(failure)?;
+                Ok(Applied {
+                    revision: held.revision,
+                    target: Some(id.to_owned()),
+                    value,
+                })
+            },
+            |operation_id, _, _| {
+                memberships
+                    .store
+                    .verification_result(&operation_id)
+                    .map_err(refusal_of)
+            },
+        )
+    }
 }
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+/// What a `policy.mirror` request is numbered by: the coordinator's replay window answers a request
+/// id it saw with the answer it gave, so each is used once in this incarnation, the boot id naming
+/// the incarnation.
+static MIRROR_REQUEST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// An open `policy.mirror` session, as the member holds it (WP-7.2a).
+struct MirrorHeld {
+    task: crate::membership::member::MemberTask,
+    ring: Option<crate::composition::PinnedRing>,
+    /// The Host's guarded clock, what a progress report is dated by (WP-2.12).
+    time: Arc<crate::time::TimeGuard>,
+}
+
+impl crate::composition::MirrorSession for MirrorHeld {
+    fn ring(&self) -> Option<crate::composition::PinnedRing> {
+        self.ring.clone()
+    }
+
+    fn report(
+        &mut self,
+        resources: Vec<crate::membership::record::ProgressResource>,
+    ) -> permguard_core::BoxFuture<'_, Result<(), crate::composition::MirrorRefusal>> {
+        Box::pin(async move {
+            let lease = &self.task.lease;
+            let progress = crate::membership::record::TaskProgress {
+                membership_id: lease.membership_id,
+                task_id: lease.task_id.clone(),
+                manifest_epoch: lease.epoch,
+                member_boot_id: lease.member_boot_id,
+                report_seq: crate::membership::member::next_report_seq(),
+                reported_at: self.time.now_secs(),
+                resources,
+            };
+            self.task
+                .report(&progress)
+                .await
+                .map(|_| ())
+                .map_err(mirror_refusal)
+        })
+    }
+
+    fn call(
+        &mut self,
+        body: Vec<u8>,
+    ) -> permguard_core::BoxFuture<'_, Result<Vec<u8>, crate::composition::MirrorRefusal>> {
+        Box::pin(async move {
+            let request_id = format!(
+                "mirror-{}-{}",
+                self.task
+                    .lease
+                    .member_boot_id
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>(),
+                MIRROR_REQUEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+            );
+            self.task
+                .send(&request_id, body)
+                .await
+                .map_err(mirror_refusal)
+        })
+    }
+}
+
+/// A `policy.mirror` session turned into a watch (WP-7.2c).
+struct MirrorWatching {
+    task: crate::membership::member::MemberTask,
+}
+
+impl crate::composition::MirrorWatch for MirrorWatching {
+    fn next(
+        &mut self,
+    ) -> permguard_core::BoxFuture<'_, Result<Vec<(String, u64)>, crate::composition::MirrorRefusal>>
+    {
+        Box::pin(async move {
+            self.task
+                .next_event()
+                .await
+                .map(|event| {
+                    event
+                        .hints
+                        .into_iter()
+                        .map(|hint| (hint.key, hint.counter))
+                        .collect()
+                })
+                .map_err(mirror_refusal)
+        })
+    }
+}
+
+/// A membership error as a mirror refusal: the coordinator's code when it answered one.
+fn mirror_refusal(error: crate::membership::MembershipError) -> crate::composition::MirrorRefusal {
+    match error {
+        crate::membership::MembershipError::Remote { code, reason } => {
+            crate::composition::MirrorRefusal { code, reason }
+        }
+        other => crate::composition::MirrorRefusal {
+            code: codes::common::UNAVAILABLE.to_owned(),
+            reason: other.to_string(),
+        },
+    }
+}

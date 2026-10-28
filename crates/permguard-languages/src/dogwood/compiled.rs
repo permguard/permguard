@@ -86,6 +86,41 @@ impl Evaluating for super::Dogwood {
         let lowered = LoweredPolicySet::from_str(&source, &service, &schema)
             .map_err(|error| format!("dogwood: the partition does not lower: {error}"))?;
 
+        // DOGWOOD-07: the annotations this build reads are the ones upstream parsed, policy by
+        // policy — an alias is identity, and two readings of one source must not differ. The file's
+        // own rule (one `@id` at most) is held at load too, for a ledger pushed before it.
+        let mut read_ids: Vec<Option<String>> = Vec::new();
+        for stored in policies {
+            let text = super::source_of(&stored.source, "a Dogwood policy")?;
+            let read = super::annotations::read(text)?;
+            super::annotations::alias_of(&read)
+                .map_err(|error| format!("policy {}: {error}", stored.id))?;
+            for annotations in read {
+                read_ids.push(
+                    annotations
+                        .into_iter()
+                        .find(|annotation| annotation.key == super::annotations::ID)
+                        .and_then(|annotation| annotation.raw),
+                );
+            }
+        }
+        let lowered_ids: Vec<Option<String>> = lowered
+            .rules()
+            .map(|rule| {
+                lowered
+                    .as_cedar()
+                    .policy(&cedar_policy::PolicyId::new(&rule.cedar_policy_id))
+                    .map(|policy| policy.annotation(super::annotations::ID).map(str::to_owned))
+                    .ok_or_else(|| {
+                        format!(
+                            "dogwood: the lowered set names rule `{}` and holds no such policy",
+                            rule.cedar_policy_id
+                        )
+                    })
+            })
+            .collect::<Result<_, _>>()?;
+        super::annotations::agrees_with(&read_ids, &lowered_ids)?;
+
         // Validation is not advisory. A set with errors is a set whose policies mean something
         // other than what they say, and serving it would be answering against a model nobody
         // agreed to.
@@ -103,6 +138,14 @@ impl Evaluating for super::Dogwood {
 
         let contract = contract_of(&lowered, artifacts)?;
         check_pins_are_injectable(&contract)?;
+        // What a version 2 occurrence projects into: the action's context, and the one-sided
+        // fields the author declared (TL-5c). Read for every partition; checked against the
+        // manifest's input at load (`check_input`).
+        let context = super::projection::context_leaves(action_source)?;
+        let projections = artifacts
+            .bytes(registry::PROJECTIONS)
+            .map(super::projection::Projections::parse)
+            .transpose()?;
         // The *augmented* schema: the action schema plus what lowering added to it (the hoisted
         // `context.providers.<id>` fields). Kept beside the authorizer because an attributed
         // entity store has to be checked against it before a decision, and afterwards is too
@@ -138,13 +181,16 @@ impl Evaluating for super::Dogwood {
         // is not kept: engines belong to histories, and this partition has none yet.
         drop(authorizer);
         Ok(Box::new(CompiledDogwood {
-            histories: Mutex::new(Histories::default()),
+            histories: Arc::new(Mutex::new(Histories::default())),
             inputs,
             cedar_schema,
             contract,
             owners,
             identities,
             footprint,
+            warm: std::sync::OnceLock::new(),
+            context,
+            projections,
         }))
     }
 }
@@ -574,73 +620,68 @@ struct Held {
     /// answers. Counted here rather than outside, because what a rebuild replaces is the engine,
     /// and a count kept beside it would survive the thing it described.
     observed: std::sync::atomic::AtomicU64,
+    /// What the warm budget is charged for this engine: its lowered set and the events it observed.
+    bytes: std::sync::atomic::AtomicU64,
 }
 
-/// How many history partitions one compiled partition keeps engines for.
+/// What one observed event is charged, beyond its own spelled bytes (DOGWOOD-08).
 ///
-/// # Why there is a bound at all, and why eviction is safe
-///
-/// A schema that pins the caller has one history per caller, and a tenant has as many callers as it
-/// has. Keeping an engine for each would make memory a function of the tenant's user base, which is
-/// a caller-controlled allocation — the thing a multi-tenant plane must never have.
-///
-/// Evicting one costs a rebuild and changes no answer: the durable journal is the authority, and a
-/// history that is asked for again is replayed from it before it decides. What eviction buys is
-/// that the cost of a cold history is paid by the request that wanted it, rather than by the whole
-/// plane running out of memory.
-///
-/// This is a bound on what is held *warm*, never on how many histories a ledger may have. Each one
-/// held costs a lowered policy set as well as the events it has absorbed, so the number is chosen
-/// to be generous for a working set and small enough that a partition's memory stays something an
-/// operator can reason about.
-const HOT_HISTORIES: usize = 256;
+/// Measured by `tests/warm_footprint.rs`: upstream's history keeps about 3.7 KiB per small event
+/// plus about two bytes per byte it spells; the charge is held above that by the same test.
+const EVENT_BASE_BYTES: u64 = 4096;
+
+/// The factor on an event's spelled bytes, measured with [`EVENT_BASE_BYTES`].
+const EVENT_BYTE_FACTOR: u64 = 4;
+
+/// The factor on the compiled set's footprint that a warm engine is charged before any event: a
+/// fresh authorizer keeps its own lowered set and Cedar state, measured at about 1.6 times the
+/// footprint of the example partition.
+const ENGINE_FOOTPRINT_FACTOR: u64 = 2;
+
+/// What a warm engine is charged for one observed occurrence.
+fn event_bytes(occurrence: &Occurrence) -> u64 {
+    EVENT_BASE_BYTES.saturating_add((occurrence.weight() as u64).saturating_mul(EVENT_BYTE_FACTOR))
+}
 
 /// The history partitions this compiled partition currently holds engines for.
 ///
-/// Least-recently-used, so what stays is what is being asked about. The recency list is kept beside
-/// the map rather than inside it because an engine is handed out as an `Arc` and used without the
-/// map's lock held — two callers of one history share an engine, and neither blocks the other's
-/// history.
+/// # Why the bound is bytes, and why eviction is safe
+///
+/// A schema that pins the caller has one history per caller, and each engine holds a lowered
+/// policy set and the events it observed: memory grows with the tenant's callers and with what
+/// they record — a caller-controlled allocation. The bound is therefore bytes, charged to a
+/// [`crate::warm::Budget`] per partition, per zone and per Host (DOGWOOD-02), never a count.
+///
+/// Evicting one costs a rebuild and changes no answer: the durable journal is the authority, and a
+/// history that is asked for again is replayed from it before it decides.
 #[derive(Default)]
 struct Histories {
     held: std::collections::HashMap<String, Arc<Held>>,
-    /// Most recently used last.
-    recency: std::collections::VecDeque<String>,
 }
 
-impl Histories {
-    /// Notes that `history` was just used, and returns whatever it is holding for it.
-    fn touch(&mut self, history: &str) -> Option<Arc<Held>> {
-        let found = self.held.get(history).map(Arc::clone)?;
-        if let Some(at) = self.recency.iter().position(|held| held == history) {
-            self.recency.remove(at);
-        }
-        self.recency.push_back(history.to_owned());
-
-        Some(found)
-    }
-
-    /// Installs an engine for `history`, evicting the coldest if that puts it over the bound.
-    fn keep(&mut self, history: &str, engine: Arc<Held>) {
-        if let Some(at) = self.recency.iter().position(|held| held == history) {
-            self.recency.remove(at);
-        }
-        self.held.insert(history.to_owned(), engine);
-        self.recency.push_back(history.to_owned());
-
-        while self.recency.len() > HOT_HISTORIES {
-            let Some(coldest) = self.recency.pop_front() else {
-                break;
-            };
-            self.held.remove(&coldest);
+/// The budget evicts through this: it drops the engine, and any caller still holding the `Arc`
+/// finishes with it.
+impl crate::warm::Evict for Mutex<Histories> {
+    fn evict(&self, history: &str) {
+        if let Ok(mut histories) = self.lock() {
+            histories.held.remove(history);
         }
     }
+}
+
+/// Where this partition's warm histories are charged.
+struct Warm {
+    budget: Arc<crate::warm::Budget>,
+    zone: String,
+    owner: u64,
 }
 
 /// A Dogwood partition, compiled and ready.
 struct CompiledDogwood {
-    /// One engine per history partition, bounded and least-recently-used.
-    histories: Mutex<Histories>,
+    /// One engine per history partition, bounded by the warm budget.
+    histories: Arc<Mutex<Histories>>,
+    /// The budget it charges, bound by the plane or, unbound, one of its own.
+    warm: std::sync::OnceLock<Warm>,
     /// What it takes to build a fresh authorizer, for a cold history or a rebuild.
     inputs: Inputs,
     /// The lowered Cedar schema, for the checks that happen before a decision.
@@ -650,6 +691,11 @@ struct CompiledDogwood {
     owners: Vec<String>,
     identities: Vec<String>,
     footprint: usize,
+    /// The leaves of each action's context, by qualified action: one side of a version 2
+    /// occurrence's projection.
+    context: BTreeMap<String, super::projection::Side>,
+    /// The one-sided fields `projections.json` declares, when the partition carries it.
+    projections: Option<super::projection::Projections>,
 }
 
 /// The refusal of a history whose lock an earlier evaluation left poisoned: a panic's aftermath.
@@ -676,15 +722,15 @@ impl CompiledDogwood {
     /// the durable record rather than from what happened to still be in memory.
     fn engine(&self, history: &str) -> Result<Arc<Held>, Refused> {
         {
-            let mut histories = self.histories.lock().map_err(|_| {
+            let histories = self.histories.lock().map_err(|_| {
                 Refused::new(
                     POISONED,
                     "this partition's history is not in a state it can decide against, because an \
                      earlier evaluation of it panicked",
                 )
             })?;
-            if let Some(found) = histories.touch(history) {
-                return Ok(found);
+            if let Some(found) = histories.held.get(history) {
+                return Ok(Arc::clone(found));
             }
         }
 
@@ -698,6 +744,7 @@ impl CompiledDogwood {
                 )
             })?),
             observed: std::sync::atomic::AtomicU64::new(0),
+            bytes: std::sync::atomic::AtomicU64::new(self.engine_bytes()),
         });
 
         let mut histories = self.histories.lock().map_err(|_| {
@@ -709,12 +756,118 @@ impl CompiledDogwood {
         })?;
         // Another caller may have built one meanwhile. Theirs wins: two engines for one history
         // would each hold half of it.
-        if let Some(found) = histories.touch(history) {
-            return Ok(found);
+        if let Some(found) = histories.held.get(history) {
+            return Ok(Arc::clone(found));
         }
-        histories.keep(history, Arc::clone(&fresh));
+        histories
+            .held
+            .insert(history.to_owned(), Arc::clone(&fresh));
+        drop(histories);
+        self.charge(history, &fresh);
 
         Ok(fresh)
+    }
+
+    /// The occurrence as this partition decides it: a version 2 occurrence's fields projected into
+    /// its two bags by the schemas (TL-5c); a version 1 occurrence as it came.
+    ///
+    /// Replay projects every version 2 record by the schemas now loaded, whatever input the
+    /// partition declares: a ledger moved back to version 1 reads its version 2 records as the
+    /// schemas place them, one-sided fields being admitted under version 1 anyway. A record that no
+    /// longer projects — a field the schemas dropped — makes its history unreplayable, exactly as a
+    /// version 1 record that no longer checks does: it stays evidence and is never replayed
+    /// silently.
+    fn projected<'a>(
+        &self,
+        occurrence: &'a Occurrence,
+    ) -> Result<std::borrow::Cow<'a, Occurrence>, Refused> {
+        let Some(fields) = &occurrence.fields else {
+            return Ok(std::borrow::Cow::Borrowed(occurrence));
+        };
+        let Some(signature) = self
+            .contract
+            .signature(&occurrence.action, &occurrence.kind)
+        else {
+            return Err(unknown_event(&self.contract, occurrence));
+        };
+        let empty = super::projection::Side::default();
+        let (logged, request_context) = super::projection::project(
+            fields,
+            &super::projection::Side::of_event(super::projection::event_leaves(signature)),
+            self.context.get(&occurrence.action).unwrap_or(&empty),
+        )
+        .map_err(|why| {
+            Refused::new(
+                permguard_core::codes::pdp_temporal::EVENT_FIELD_UNDECLARED,
+                why,
+            )
+        })?;
+        let mut projected = occurrence.clone();
+        projected.logged = logged;
+        projected.request_context = request_context;
+        projected.fields = None;
+
+        Ok(std::borrow::Cow::Owned(projected))
+    }
+
+    /// What a warm engine is charged before it observes anything.
+    fn engine_bytes(&self) -> u64 {
+        (self.footprint as u64).saturating_mul(ENGINE_FOOTPRINT_FACTOR)
+    }
+
+    /// The budget this partition charges: the plane's once bound, its own until then.
+    fn warm(&self) -> &Warm {
+        self.warm.get_or_init(|| {
+            self.bound(crate::warm::Budget::new(crate::warm::Limits::default()), "")
+        })
+    }
+
+    fn bound(&self, budget: Arc<crate::warm::Budget>, zone: &str) -> Warm {
+        let evictor: std::sync::Weak<dyn crate::warm::Evict> =
+            Arc::downgrade(&self.histories) as std::sync::Weak<dyn crate::warm::Evict>;
+        let owner = budget.register(evictor);
+
+        Warm {
+            budget,
+            zone: zone.to_owned(),
+            owner,
+        }
+    }
+
+    /// Charges one engine's bytes as its history's most recent use, and evicts what that pushes
+    /// out. Called with no lock held: the victims' owners take their own.
+    ///
+    /// An engine the budget already evicted is not charged again: it is held only by whoever is
+    /// finishing with it. (An eviction landing between that check and the charge leaves one entry
+    /// counted for the history until it is next charged or the partition is dropped — an
+    /// overcount, never an undercount.)
+    fn charge(&self, history: &str, engine: &Arc<Held>) {
+        let current = self.histories.lock().is_ok_and(|histories| {
+            histories
+                .held
+                .get(history)
+                .is_some_and(|held| Arc::ptr_eq(held, engine))
+        });
+        if !current {
+            return;
+        }
+        let warm = self.warm();
+        let victims = warm.budget.charge(
+            warm.owner,
+            &warm.zone,
+            history,
+            engine.bytes.load(std::sync::atomic::Ordering::Relaxed),
+        );
+        crate::warm::evict_all(victims);
+    }
+}
+
+impl Drop for CompiledDogwood {
+    /// A partition the cache dropped holds nothing any more.
+    fn drop(&mut self) {
+        if let Some(warm) = self.warm.get() {
+            warm.budget.release(warm.owner);
+        }
     }
 }
 
@@ -757,6 +910,7 @@ impl crate::temporal::Temporal for CompiledDogwood {
     }
 
     fn check(&self, occurrence: &Occurrence) -> Result<Checked, Refused> {
+        let occurrence = &*self.projected(occurrence)?;
         let Some(signature) = self
             .contract
             .signature(&occurrence.action, &occurrence.kind)
@@ -844,7 +998,12 @@ impl crate::temporal::Temporal for CompiledDogwood {
         })
     }
 
-    fn rebuild(&self, history: &str, occurrences: &[Occurrence]) -> Result<(), Refused> {
+    fn rebuild(
+        &self,
+        history: &str,
+        occurrences: &[Occurrence],
+        deadline: Option<std::time::Instant>,
+    ) -> Result<(), Refused> {
         // Built before any lock is taken, so a rebuild that fails leaves this history deciding
         // against what it already had rather than against nothing.
         let mut fresh = self.inputs.rebuild().map_err(|detail| {
@@ -853,7 +1012,31 @@ impl crate::temporal::Temporal for CompiledDogwood {
                 detail,
             )
         })?;
-        for occurrence in occurrences {
+        let mut bytes = self.engine_bytes();
+        for (at, occurrence) in occurrences.iter().enumerate() {
+            // Checked between events: the replay belongs to a decision whose budget is spent, and
+            // abandoning it leaves the history as it was (DOGWOOD-03).
+            if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+                return Err(Refused::new(
+                    permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED,
+                    format!(
+                        "the replay of this history did not finish within its budget: {at} of {} \
+                         occurrences observed",
+                        occurrences.len()
+                    ),
+                ));
+            }
+            bytes = bytes.saturating_add(event_bytes(occurrence));
+            let occurrence = &*self.projected(occurrence).map_err(|refused| {
+                Refused::new(
+                    permguard_core::codes::pdp_temporal::HISTORY_NOT_REPLAYABLE,
+                    format!(
+                        "the occurrence `{}` is in this partition's history and does not project \
+                         by its schemas: {}",
+                        occurrence.event_id, refused.message
+                    ),
+                )
+            })?;
             let event = occurrence.to_event().map_err(|malformed| {
                 Refused::new(
                     permguard_core::codes::pdp_temporal::HISTORY_NOT_REPLAYABLE,
@@ -888,24 +1071,114 @@ impl crate::temporal::Temporal for CompiledDogwood {
             occurrences.len() as u64,
             std::sync::atomic::Ordering::Relaxed,
         );
+        engine
+            .bytes
+            .store(bytes, std::sync::atomic::Ordering::Relaxed);
+        drop(held);
+        self.charge(history, &engine);
 
         Ok(())
+    }
+
+    fn apply_replayed(&self, history: &str, occurrence: &Occurrence, checked: &Checked) -> Applied {
+        // Taken under the map's lock and held: an eviction landing after this takes the engine out
+        // of the map, never out of this call, which decides against the whole history it holds.
+        let held = self
+            .histories
+            .lock()
+            .ok()
+            .and_then(|histories| histories.held.get(history).map(Arc::clone));
+        let Some(engine) = held else {
+            return Applied::Decided(Verdict::engine_failed(
+                "this history was evicted from the warm budget between its replay and this \
+                 occurrence; it is replayed before the next one"
+                    .to_owned(),
+            ));
+        };
+
+        self.decide(history, &engine, occurrence, checked)
+    }
+
+    fn check_input(&self, input: Option<&str>) -> Result<(), String> {
+        if input == Some(super::occurrence::EVENT_TYPE_V2) {
+            return super::projection::check_complete(
+                &self.contract.signatures,
+                &self.context,
+                &self.projections.clone().unwrap_or_default(),
+            );
+        }
+        if self.projections.is_some() {
+            return Err(format!(
+                "dogwood: the partition carries `{}`, which only a partition whose input is `{}` \
+                 reads; declarations nothing reads are not kept",
+                registry::PROJECTIONS_FILENAME,
+                super::occurrence::EVENT_TYPE_V2
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn bind_warm(&self, budget: &Arc<crate::warm::Budget>, zone: &str) {
+        // The first binding wins: the plane binds a partition before it hands it any work, and
+        // one used unbound keeps the budget of its own it started with. A compiled partition
+        // belongs to one ledger and so to one zone: a later call naming another zone is a no-op
+        // too.
+        if self
+            .warm
+            .get()
+            .is_some_and(|warm| Arc::ptr_eq(&warm.budget, budget))
+        {
+            return;
+        }
+        let bound = self.bound(Arc::clone(budget), zone);
+        if let Err(bound) = self.warm.set(bound) {
+            budget.release(bound.owner);
+        }
     }
 
     fn observed(&self, history: &str) -> u64 {
         // Absent is zero, and deliberately: a history this process never held and one it evicted
         // are the same state to a caller, and both must be replayed before they decide.
-        let Ok(mut histories) = self.histories.lock() else {
+        let Ok(histories) = self.histories.lock() else {
             return 0;
         };
 
         histories
-            .touch(history)
+            .held
+            .get(history)
             .map(|engine| engine.observed.load(std::sync::atomic::Ordering::Relaxed))
             .unwrap_or(0)
     }
 
     fn apply(&self, history: &str, occurrence: &Occurrence, checked: &Checked) -> Applied {
+        // The history this occurrence belongs to, and no other. A schema that pins the caller has
+        // one history per caller, and Alice's `Login` is invisible to Bob's `Read` because the two
+        // are not in the same one — not because a policy checks.
+        let engine = match self.engine(history) {
+            Ok(engine) => engine,
+            Err(refused) => return Applied::Decided(unheld(refused)),
+        };
+
+        self.decide(history, &engine, occurrence, checked)
+    }
+}
+
+impl CompiledDogwood {
+    /// Observes one durable occurrence into `engine` and decides it when its kind decides.
+    fn decide(
+        &self,
+        history: &str,
+        engine: &Arc<Held>,
+        occurrence: &Occurrence,
+        checked: &Checked,
+    ) -> Applied {
+        // Charged as it came, so a replayed history and a live one are charged alike.
+        let charged = event_bytes(occurrence);
+        let occurrence = match self.projected(occurrence) {
+            Ok(projected) => projected,
+            Err(refused) => return Applied::Decided(Verdict::engine_failed(refused.message)),
+        };
         let event = match occurrence.to_event() {
             Ok(event) => event,
             // Checked before it was journalled, so this is not a caller's mistake reaching here
@@ -914,14 +1187,6 @@ impl crate::temporal::Temporal for CompiledDogwood {
             Err(malformed) => {
                 return Applied::Decided(Verdict::engine_failed(malformed.to_string()));
             }
-        };
-
-        // The history this occurrence belongs to, and no other. A schema that pins the caller has
-        // one history per caller, and Alice's `Login` is invisible to Bob's `Read` because the two
-        // are not in the same one — not because a policy checks.
-        let engine = match self.engine(history) {
-            Ok(engine) => engine,
-            Err(refused) => return Applied::Decided(unheld(refused)),
         };
 
         // The lock is held across the whole call because that is what makes this history ordered:
@@ -934,6 +1199,9 @@ impl crate::temporal::Temporal for CompiledDogwood {
                 engine
                     .observed
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                engine
+                    .bytes
+                    .fetch_add(charged, std::sync::atomic::Ordering::Relaxed);
 
                 // Entered with room to recurse in: this is where a Dogwood partition
                 // actually decides, and a thread whose stack the platform under-reports would
@@ -950,6 +1218,9 @@ impl crate::temporal::Temporal for CompiledDogwood {
                 ));
             }
         };
+        // Charged once the engine's lock is released: an eviction this causes takes locks of its
+        // own.
+        self.charge(history, engine);
 
         let Some(response) = response else {
             // Upstream returns `None` for a history-only kind, and that is the whole answer: the
@@ -1405,6 +1676,271 @@ mod tests {
         .expect("the body parses");
 
         body.read().expect("the occurrence is well formed")
+    }
+
+    /// One occurrence of upstream's trace as version 2: one canonical field map (TL-5c).
+    fn occurrence_v2(at: i64, action: &str, kind: &str, user: &str, fields: Json) -> Occurrence {
+        let instant = permguard_events::index::render_epoch_seconds(at)
+            .expect("the trace's timepoints are instants");
+        let body: super::super::occurrence::OccurrenceBodyV2 = serde_json::from_value(json!({
+            "event_id": format!("{action}-{kind}-{at}"),
+            "kind": kind,
+            "action": action,
+            "principal": format!("Drupe::OAuthUser::\"{user}\""),
+            "resource": "Drupe::Gateway::\"gw1\"",
+            "fields": fields,
+            "occurred_at": instant,
+        }))
+        .expect("the body parses");
+
+        body.read().expect("the occurrence is well formed")
+    }
+
+    /// The one-sided fields of upstream's pinned schema against its action schema.
+    const PROJECTIONS: &str =
+        r#"{"history_only": ["requestId", "sessionId"], "request_only": ["system"]}"#;
+
+    /// TL-5c: a version 2 partition declares every one-sided field, per action and kind; the
+    /// declarations belong to version 2; a declaration naming a field no side has is refused.
+    #[test]
+    fn a_version_2_partition_declares_every_one_sided_field() {
+        let v2 = Some(super::super::occurrence::EVENT_TYPE_V2);
+        let v1 = Some(super::super::occurrence::EVENT_TYPE);
+
+        let bare = example();
+        let temporal = bare.temporal().expect("it remembers");
+        let why = temporal
+            .check_input(v2)
+            .expect_err("one-sided and undeclared");
+        assert!(
+            why.contains("history_only") || why.contains("request_only"),
+            "{why}"
+        );
+        temporal
+            .check_input(v1)
+            .expect("version 1 needs no declaration");
+        temporal
+            .check_input(None)
+            .expect("nor does an undeclared input");
+
+        let declared = compile_with(vec![
+            (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+            (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+            (registry::PROJECTIONS, PROJECTIONS),
+        ])
+        .expect("it compiles");
+        let temporal = declared.temporal().expect("it remembers");
+        temporal
+            .check_input(v2)
+            .expect("every one-sided field is declared");
+        for input in [v1, None] {
+            let why = temporal
+                .check_input(input)
+                .expect_err("declarations nothing reads");
+            assert!(why.contains("projections.json"), "{input:?}: {why}");
+        }
+
+        for (stray, needle) in [
+            (
+                r#"{"history_only": ["requestId", "sessionId", "nowhere"], "request_only": ["system"]}"#,
+                "no event logs it",
+            ),
+            (
+                r#"{"history_only": ["requestId", "sessionId"], "request_only": ["system", "elsewhere"]}"#,
+                "no action's context",
+            ),
+            (
+                r#"{"history_only": ["requestId"], "request_only": ["system"]}"#,
+                "sessionId",
+            ),
+        ] {
+            let compiled = compile_with(vec![
+                (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+                (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+                (registry::PROJECTIONS, stray),
+            ])
+            .expect("it compiles");
+            let why = compiled
+                .temporal()
+                .expect("it remembers")
+                .check_input(v2)
+                .expect_err("refused");
+            assert!(why.contains(needle), "{stray}: {why}");
+        }
+    }
+
+    /// TL-5c: version 2 decides as version 1 does, the shared fields reaching both the history and
+    /// the request from one map; a field neither side declares is refused.
+    #[test]
+    fn a_version_2_occurrence_projects_and_decides_as_version_1_does() {
+        let compiled = compile_with(vec![
+            (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+            (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+            (registry::PROJECTIONS, PROJECTIONS),
+        ])
+        .expect("it compiles");
+        let temporal = compiled.temporal().expect("it remembers");
+
+        let login = occurrence_v2(
+            5,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"input": {"user": "alice", "server": "s1"}, "output": {}}),
+        );
+        let checked = temporal.check(&login).expect("well formed");
+        let key = history(&checked);
+        assert!(matches!(
+            temporal.apply(&key, &login, &checked),
+            Applied::Observed
+        ));
+        // The read correlates the logged login's `input.user` with the request's
+        // `context.input.user`: a permit says the one field reached both sides.
+        let read = occurrence_v2(
+            100,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"input": {"user": "alice", "document": "doc1"}}),
+        );
+        let checked = temporal.check(&read).expect("well formed");
+        match temporal.apply(&key, &read, &checked) {
+            Applied::Decided(verdict) => assert!(verdict.permitted(), "{verdict:?}"),
+            other => panic!("{other:?}"),
+        }
+
+        let stray = occurrence_v2(
+            101,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"input": {"user": "alice", "document": "doc1"}, "bogus": 1}),
+        );
+        let refused = temporal
+            .check(&stray)
+            .expect_err("neither side declares it");
+        assert_eq!(
+            refused.code,
+            permguard_core::codes::pdp_temporal::EVENT_FIELD_UNDECLARED
+        );
+    }
+
+    /// TL-5c, the migration fixture: a version 1 history replayed by a version 2 partition decides
+    /// the next version 2 occurrence as it would after the same events sent as version 2.
+    #[test]
+    fn a_version_1_history_replays_into_a_version_2_partition() {
+        let compiled = compile_with(vec![
+            (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+            (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+            (registry::PROJECTIONS, PROJECTIONS),
+        ])
+        .expect("it compiles");
+        let temporal = compiled.temporal().expect("it remembers");
+        let read = occurrence_v2(
+            100,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"input": {"user": "alice", "document": "doc1"}}),
+        );
+        let checked = temporal.check(&read).expect("well formed");
+        let key = history(&checked);
+
+        let mut verdicts = Vec::new();
+        for login in [
+            occurrence(
+                5,
+                "Drupe::Action::Login",
+                "response",
+                "alice",
+                json!({"input": {"user": "alice", "server": "s1"}, "output": {}}),
+            ),
+            occurrence_v2(
+                5,
+                "Drupe::Action::Login",
+                "response",
+                "alice",
+                json!({"input": {"user": "alice", "server": "s1"}, "output": {}}),
+            ),
+        ] {
+            temporal
+                .rebuild(&key, &[login], None)
+                .expect("the history replays");
+            match temporal.apply(&key, &read, &checked) {
+                Applied::Decided(verdict) => verdicts.push(verdict.permitted()),
+                other => panic!("{other:?}"),
+            }
+        }
+        assert_eq!(
+            verdicts,
+            [true, true],
+            "version 1 history and version 2 agree"
+        );
+    }
+
+    /// The required conformance case "provider infinite loop, deep recursion, large collection":
+    /// each is contained by upstream's sandbox and answers `E`, never a permit and never a hang.
+    #[test]
+    fn a_runaway_provider_is_contained_and_answers_e() {
+        let policy = r#"@id("runaway")
+permit (
+    principal,
+    action == Drupe::Action::"Read",
+    resource
+)
+when { Run::Away(context.input.document).ok == true };
+"#;
+        for (case, script) in [
+            ("an infinite loop", "fn evaluate(text) { loop { } }"),
+            (
+                "deep recursion",
+                "fn down(n) { down(n + 1) } fn evaluate(text) { down(0) }",
+            ),
+            (
+                "a large collection",
+                "fn evaluate(text) { let a = []; loop { a.push(text); } }",
+            ),
+        ] {
+            let providers = serde_json::json!({
+                "availableProviders": {
+                    "Run::Away": {
+                        "argumentTypes": [{"paramType": "string"}],
+                        "outputType": {
+                            "paramType": "record",
+                            "fields": {"ok": {"paramType": "bool"}},
+                            "required": ["ok"]
+                        },
+                        "implementation": {"kind": "rhai", "script": script}
+                    }
+                }
+            })
+            .to_string();
+            let compiled = compile_policy_with(
+                policy,
+                vec![
+                    (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+                    (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+                    (registry::PROVIDERS, &providers),
+                ],
+            )
+            .expect("it compiles");
+            let temporal = compiled.temporal().expect("it remembers");
+            let read = occurrence(
+                100,
+                "Drupe::Action::Read",
+                "request",
+                "alice",
+                json!({"input": {"user": "alice", "document": "doc1"}}),
+            );
+            let checked = temporal.check(&read).expect("well formed");
+            match temporal.apply(&history(&checked), &read, &checked) {
+                Applied::Decided(verdict) => assert!(
+                    verdict.error().is_some() && !verdict.permitted(),
+                    "{case}: {verdict:?}"
+                ),
+                other => panic!("{case}: {other:?}"),
+            }
+        }
     }
 
     /// The whole point: upstream's policy, upstream's schema, upstream's trace, upstream's answers.
@@ -2109,7 +2645,7 @@ mod tests {
             json!({"input": {"user": "alice", "server": "s1"}, "output": {}}),
         );
         temporal
-            .rebuild(&history(&checked), &[login, read.clone()])
+            .rebuild(&history(&checked), &[login, read.clone()], None)
             .expect("the partition rebuilds");
 
         let checked = temporal.check(&read).expect("well formed");
@@ -2212,6 +2748,14 @@ mod tests {
     fn evicting_a_cold_history_costs_a_replay_and_never_an_answer() {
         let compiled = example();
         let temporal = compiled.temporal().expect("it remembers");
+        // A partition bound that holds three engines and not four (DOGWOOD-02).
+        let engine = 2 * compiled.footprint() as u64;
+        let budget = crate::warm::Budget::new(crate::warm::Limits {
+            host: u64::MAX,
+            zone: u64::MAX,
+            partition: engine * 3 + engine / 2,
+        });
+        temporal.bind_warm(&budget, "acme");
 
         let login_of = |user: &str| {
             occurrence(
@@ -2240,7 +2784,7 @@ mod tests {
         assert!(temporal.observed(&first) > 0, "warm");
 
         // Then more callers than the bound holds, each touching its own history.
-        for at in 0..=super::HOT_HISTORIES {
+        for at in 0..3 {
             let user = format!("crowd-{at}");
             let held = login_of(&user);
             let checked = temporal.check(&held).expect("well formed");
@@ -2256,7 +2800,7 @@ mod tests {
         // Replayed from what the journal holds — which is what the plane does on seeing `0` — the
         // verdict is the one it was before the eviction.
         temporal
-            .rebuild(&first, &[login_of("first")])
+            .rebuild(&first, &[login_of("first")], None)
             .expect("an evicted history is rebuilt from the durable record");
         let read = read_of("first");
         let checked = temporal.check(&read).expect("well formed");
@@ -2267,6 +2811,134 @@ mod tests {
             ),
             other => panic!("{other:?}"),
         }
+    }
+
+    /// DOGWOOD-02, DOGWOOD-08: every warm engine is charged its lowered set and the events it
+    /// observed, to the budget the plane bound, under the zone it named; the budget's three bounds
+    /// see the same bytes.
+    #[test]
+    fn a_warm_history_is_charged_its_set_and_its_events_to_the_bound_budget() {
+        let compiled = example();
+        let temporal = compiled.temporal().expect("it remembers");
+        let budget = crate::warm::Budget::new(crate::warm::Limits::default());
+        temporal.bind_warm(&budget, "acme");
+        // A second binding is a no-op: the first wins.
+        temporal.bind_warm(
+            &crate::warm::Budget::new(crate::warm::Limits::default()),
+            "other",
+        );
+
+        let login = occurrence(
+            5,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"input": {"user": "alice", "server": "s1"}, "output": {}}),
+        );
+        let checked = temporal.check(&login).expect("well formed");
+        let key = history(&checked);
+        temporal.apply(&key, &login, &checked);
+
+        let (host, zone, _) = budget.held("acme", 1);
+        let expected = 2 * compiled.footprint() as u64 + super::event_bytes(&login);
+        assert_eq!(host, expected, "its set and its one event");
+        assert_eq!(zone, expected, "charged under the zone the plane named");
+
+        // A rebuild charges what it replayed, replacing what was there.
+        temporal
+            .rebuild(&key, &[login.clone(), login.clone()], None)
+            .expect("it rebuilds");
+        assert_eq!(
+            budget.held("acme", 1).0,
+            2 * compiled.footprint() as u64 + 2 * super::event_bytes(&login)
+        );
+
+        // Dropped by the cache, the partition holds nothing.
+        drop(compiled);
+        assert_eq!(budget.held("acme", 1), (0, 0, 0));
+    }
+
+    /// After the review: a history evicted between its replay and the occurrence answers `E`
+    /// rather than being rebuilt empty and decided against one record; a held one decides.
+    #[test]
+    fn an_occurrence_after_a_replay_needs_the_history_still_held() {
+        let compiled = example();
+        let temporal = compiled.temporal().expect("it remembers");
+        let login = occurrence(
+            5,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"input": {"user": "alice", "server": "s1"}, "output": {}}),
+        );
+        let read = occurrence(
+            100,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"input": {"user": "alice", "document": "doc1"}}),
+        );
+        let checked = temporal.check(&read).expect("well formed");
+        let key = history(&checked);
+
+        match temporal.apply_replayed(&key, &read, &checked) {
+            Applied::Decided(verdict) => assert_eq!(
+                verdict.error().map(|failure| failure.code),
+                Some(permguard_core::codes::pdp_native::EVALUATION_FAILED),
+                "{verdict:?}"
+            ),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(temporal.observed(&key), 0, "nothing was built empty");
+
+        temporal
+            .rebuild(&key, &[login], None)
+            .expect("the history is replayed");
+        match temporal.apply_replayed(&key, &read, &checked) {
+            Applied::Decided(verdict) => assert!(verdict.permitted(), "{verdict:?}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// DOGWOOD-03: a replay past its deadline is abandoned between two events, refused
+    /// `evaluation_deadline_exceeded`, and the history keeps what it had.
+    #[test]
+    fn a_replay_past_its_deadline_stops_and_keeps_the_history() {
+        let compiled = example();
+        let temporal = compiled.temporal().expect("it remembers");
+        let login = occurrence(
+            5,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"input": {"user": "alice", "server": "s1"}, "output": {}}),
+        );
+        let checked = temporal.check(&login).expect("well formed");
+        let key = history(&checked);
+        temporal.apply(&key, &login, &checked);
+
+        let refused = temporal
+            .rebuild(
+                &key,
+                &[login.clone(), login.clone()],
+                Some(std::time::Instant::now()),
+            )
+            .expect_err("no time is left");
+        assert_eq!(
+            refused.code,
+            permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED
+        );
+        assert!(refused.message.contains("0 of 2"), "{}", refused.message);
+        assert_eq!(temporal.observed(&key), 1, "the history kept what it had");
+
+        temporal
+            .rebuild(
+                &key,
+                &[login.clone(), login],
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(60)),
+            )
+            .expect("a replay with time left finishes");
+        assert_eq!(temporal.observed(&key), 2);
     }
 
     /// A rebuild that cannot be built leaves the partition deciding against what it had.
@@ -2295,7 +2967,7 @@ mod tests {
             .logged
             .insert("input".to_owned(), DogwoodValue::Int(7));
         let refused = temporal
-            .rebuild(&history(&checked), &[broken])
+            .rebuild(&history(&checked), &[broken], None)
             .expect_err("an unreplayable history is not a history");
         assert_eq!(refused.code, "history_not_replayable");
 

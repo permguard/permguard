@@ -44,16 +44,17 @@ impl Reported {
 }
 
 /// The process-level server-configuration route: serves the registry
-/// document the composition built — every plane this process hosts and each
-/// plane's endpoints.
-pub fn configuration_route(document: String) -> Router {
+/// document the composition builds — every plane this process hosts and each
+/// plane's endpoints — rendered when it is asked for, so the states it names are the current
+/// ones (WP-7.4a).
+pub fn configuration_route(document: std::sync::Arc<dyn Fn() -> String + Send + Sync>) -> Router {
     use axum::http::header;
     use axum::response::IntoResponse as _;
 
     Router::new().route(
         "/.well-known/server-configuration",
         get(move || {
-            let document = document.clone();
+            let document = document();
             async move { ([(header::CONTENT_TYPE, "application/json")], document).into_response() }
         }),
     )

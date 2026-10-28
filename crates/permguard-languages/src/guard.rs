@@ -88,6 +88,15 @@ impl<L: Language + 'static> Language for Guarded<L> {
         contained(|| self.0.required_schemas(profile)).unwrap_or(&[FLOOR_CAME_APART])
     }
 
+    fn refused_artifacts(
+        &self,
+        profile: permguard_core::assurance::AssuranceProfile,
+    ) -> &'static [&'static str] {
+        // A floor that came apart refuses every partition rather than none.
+        contained(|| self.0.refused_artifacts(profile))
+            .unwrap_or(&[crate::registry::EVERY_ARTIFACT])
+    }
+
     fn isolation_required(&self, profile: permguard_core::assurance::AssuranceProfile) -> bool {
         // A requirement that came apart is kept: isolate rather than run unbounded.
         contained(|| self.0.isolation_required(profile)).unwrap_or(true)
@@ -237,6 +246,12 @@ mod tests {
         fn declared_alias(&self, _source: &[u8]) -> Result<Option<String>, String> {
             panic!("the alias reader came apart")
         }
+        fn refused_artifacts(
+            &self,
+            _profile: permguard_core::assurance::AssuranceProfile,
+        ) -> &'static [&'static str] {
+            panic!("the floor came apart")
+        }
         fn authoring(&self) -> Option<&dyn Authoring> {
             Some(self)
         }
@@ -282,6 +297,11 @@ mod tests {
         // A reader that came apart refuses the alias: never read as declaring none.
         let refused = guarded.declared_alias(b"x").expect_err("refused");
         assert!(refused.contains("came apart reading an alias"), "{refused}");
+        // A floor that came apart refuses every partition rather than none (DOGWOOD-01).
+        assert_eq!(
+            guarded.refused_artifacts(permguard_core::assurance::AssuranceProfile::Development),
+            [crate::registry::EVERY_ARTIFACT]
+        );
         let authoring = guarded.authoring().expect("it authors");
         assert!(authoring.extract(b"x").is_err());
         let evaluating = guarded.evaluating().expect("it evaluates");

@@ -121,18 +121,40 @@ impl Service for HostApiService {
 
     fn drain<'a>(
         &'a self,
-        _context: &'a ServerContext<'a>,
+        context: &'a ServerContext<'a>,
         deadline: std::time::Instant,
     ) -> BoxFuture<'a, Result<permguard_core::Drained>> {
+        use permguard_core::Drained;
+
         let surface = match self.running.lock() {
             Ok(mut running) => running.take(),
             Err(_) => return ready(Err(anyhow!("the Host listener lock is poisoned"))),
         };
-        Box::pin(crate::host::drain_surfaces(
-            COMPONENT,
-            surface.into_iter().collect(),
-            deadline,
-        ))
+        Box::pin(async move {
+            let surfaces =
+                crate::host::drain_surfaces(COMPONENT, surface.into_iter().collect(), deadline)
+                    .await?;
+            // The evidence after the requests (WP-5.8): the producers ship to their required
+            // subscriptions, and a stream left behind makes the drain incomplete.
+            let shipped = match context.host_handles::<HostApi>() {
+                Some(api) => crate::shipping::drain(&api, deadline).await?,
+                None => Drained::Complete,
+            };
+            if (&surfaces, &shipped) == (&Drained::Complete, &Drained::Complete)
+                && context.config().shutdown_recover_drain()
+                && let Some(api) = context.host_handles::<HostApi>()
+            {
+                crate::shipping::print_receipt(&api)?;
+            }
+            Ok(match (surfaces, shipped) {
+                (Drained::Complete, Drained::Complete) => Drained::Complete,
+                (Drained::Incomplete(cut), Drained::Complete)
+                | (Drained::Complete, Drained::Incomplete(cut)) => Drained::Incomplete(cut),
+                (Drained::Incomplete(cut), Drained::Incomplete(unshipped)) => {
+                    Drained::Incomplete(format!("{cut}; {unshipped}"))
+                }
+            })
+        })
     }
 
     fn stop<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {

@@ -31,8 +31,10 @@ pub mod config_section;
 pub mod correlation;
 pub mod decisions;
 pub mod domains;
+pub mod egress;
 pub mod error;
 pub mod fault;
+pub mod frontier;
 pub mod future;
 pub mod identity;
 pub mod keys;
@@ -42,6 +44,7 @@ pub mod listener;
 pub mod logging;
 pub mod metrics;
 pub mod mirrors;
+pub mod objectives;
 pub mod peer;
 pub mod plane;
 pub mod pseudonym;
@@ -49,6 +52,7 @@ pub mod realm;
 pub mod redact;
 pub mod secrets;
 pub mod server;
+pub mod stages;
 pub mod storage;
 pub mod time;
 pub mod tls;
@@ -62,7 +66,9 @@ pub use audit::{
     AuditDestination, AuditEvent, AuditOutcome, AuditPhase, AuditSink, Fact, Sensitivity, Subject,
 };
 pub use authz::NoRules;
-pub use catalog::{Catalog, CatalogError, Ledger, Selector, Zone};
+pub use catalog::{
+    Catalog, CatalogError, Ledger, LedgerState, Provenance, Selector, Tombstone, Zone,
+};
 pub use config::{BuildSettings, Config, Layers};
 pub use config_file::ConfigFile;
 pub use config_section::{AnyConfigSection, ConfigSection};

@@ -988,7 +988,7 @@ pub struct VerifiedPeer {
 }
 
 /// The suite and public key bytes a JWK names.
-fn public_of(jwk: &Jwk) -> Option<(Suite, Vec<u8>)> {
+pub fn public_of(jwk: &Jwk) -> Option<(Suite, Vec<u8>)> {
     let suite = suite_of(jwk)?;
     let mut bytes = B64.decode(&jwk.x).ok()?;
     if let Some(y) = jwk.y.as_deref() {

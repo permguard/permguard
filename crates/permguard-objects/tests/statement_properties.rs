@@ -7,6 +7,7 @@
 #![allow(clippy::unwrap_used)]
 
 use permguard_objects::Digest;
+use permguard_objects::crypto::suite::Suite;
 use permguard_objects::statement::{HeadStatement, SignedHead};
 use proptest::prelude::*;
 use ring::signature::{Ed25519KeyPair, KeyPair as _};
@@ -25,15 +26,27 @@ fn statement() -> impl Strategy<Value = HeadStatement> {
         any::<[u8; 32]>(),
         0..=i64::MAX as u64,
         any::<i64>(),
+        (
+            any::<[u8; 16]>(),
+            any::<[u8; 32]>(),
+            0..=i64::MAX as u64,
+            any::<[u8; 32]>(),
+        ),
     )
         .prop_map(
-            |(zone, ledger, r#ref, digest, counter, signed_at)| HeadStatement {
-                zone,
-                ledger,
-                r#ref,
-                digest: Digest::compute(&digest),
-                counter,
-                signed_at,
+            |(zone, ledger, r#ref, digest, counter, signed_at, (authority, state, epoch, set))| {
+                HeadStatement {
+                    zone,
+                    ledger,
+                    r#ref,
+                    digest: Digest::compute(&digest),
+                    counter,
+                    signed_at,
+                    authority_host_id: authority,
+                    ref_digest: Digest::compute(&state),
+                    ring_epoch: epoch,
+                    key_set_digest: Digest::compute(&set),
+                }
             },
         )
 }
@@ -47,7 +60,7 @@ proptest! {
         prop_assert_eq!(&decoded, &signed);
         prop_assert_eq!(decoded.encode(), signed.encode());
         prop_assert_eq!(decoded.statement_unverified().unwrap(), statement.clone());
-        prop_assert_eq!(decoded.verify(key().public_key().as_ref()).unwrap(), statement);
+        prop_assert_eq!(decoded.verify(Suite::Ed25519Sha256V1, key().public_key().as_ref()).unwrap(), statement);
         prop_assert_eq!(decoded.kid().unwrap(), b"control.attest:k".to_vec());
     }
 
@@ -59,7 +72,7 @@ proptest! {
 
         let verified = SignedHead::decode(&bytes)
             .ok()
-            .and_then(|head| head.verify(key().public_key().as_ref()).ok());
+            .and_then(|head| head.verify(Suite::Ed25519Sha256V1, key().public_key().as_ref()).ok());
         prop_assert!(verified.is_none(), "byte {} flipped and the head still verified", at);
     }
 }

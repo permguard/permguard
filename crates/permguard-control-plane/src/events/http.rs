@@ -68,12 +68,15 @@ pub const SIGNERS_PATH: &str = "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha
 pub struct EventFacade {
     /// Where events are kept.
     pub store: Arc<EventStore>,
-    /// The published key sets of the producers this plane accepts.
-    ///
-    /// Never fetched: ingestion must not depend on reaching the planes that are shipping to it.
+    /// The Host's consumer of the event stream, which the public reads answer from beside the
+    /// store (WP-6.2b); `None` when no engine consumes it.
+    pub host: Option<permguard_host::composition::StreamConsumer>,
+    /// Producers bound by whoever composes the facade: empty in a served deployment, where the
+    /// in-process ring is the only trust (WP-6.2b); what a test or an embedding names directly.
     pub producers: Arc<std::sync::RwLock<Vec<ProducerTrust>>>,
-    /// Where those sets are read from, for the re-read when a batch cannot be attributed.
-    pub producer_files: Vec<ProducerFile>,
+    /// The ring of the data plane sharing this process, bound to the legacy journals it may
+    /// still ship (WP-6.2b): no key file is read.
+    pub local: Option<LocalTrust>,
     /// The secret read offsets are signed with.
     pub cursor_key: crate::decisions::cursorkey::CursorKeys,
     /// The catalog, for turning the scope a reader named into the one records are keyed by.
@@ -90,17 +93,66 @@ pub struct EventFacade {
     /// The document's endpoints are absolute, because the producer that reads it is configured with
     /// one URL and has to arrive at four. A relative path would leave it joining strings.
     pub base_url: String,
+    /// Who serves the interface, its build and its phase: the discovery document's common header
+    /// (WP-7.4a).
+    pub describer: permguard_core::stages::Describer,
+    /// The Host's authorization, every evidence read decides with before it looks anything up
+    /// (WP-6.3c).
+    pub authorization: Arc<permguard_host::composition::Authorization>,
 }
 
+/// The `data.attest` ring of the data plane sharing this process, and the legacy journals beside
+/// it that its old shipper may still send here (WP-6.2b, owner decision of 2026-10-18).
 #[derive(Clone)]
-pub struct ProducerFile {
-    pub path: std::path::PathBuf,
-    pub producer: String,
-    pub zone: String,
-    pub ledger: String,
+pub struct LocalTrust {
+    /// The ring; `None` when this process composes no `data.attest` ring, which leaves the
+    /// journals' batches refused and the store degraded rather than silently waiting.
+    pub keys: Option<Arc<dyn permguard_core::keys::PublicSet>>,
+    /// `(producer, zone, ledger)` of each legacy journal.
+    pub bindings: Vec<(String, String, String)>,
 }
 
 impl EventFacade {
+    /// The scope `actor` may read under `evidence.read`, resolved to ids (WP-6.3c): refused before
+    /// any lookup when nothing is granted under the plane; an unknown scope `not_found` only under
+    /// a whole-plane grant; any other on its ledger, a tenant's or a stream's.
+    pub(crate) fn gate(
+        &self,
+        actor: &permguard_core::authz::Actor,
+        scope: Scope,
+    ) -> Result<Scope, crate::evidence::Gated<read::ReadError>> {
+        use crate::evidence::{self, Gated};
+
+        evidence::admitted(&self.authorization, actor).map_err(Gated::Denied)?;
+        let scope = match read::canonical(self.catalog.as_ref(), scope) {
+            Ok(scope) => scope,
+            Err(error @ read::ReadError::Unknown(_)) => {
+                evidence::unknown(&self.authorization, actor).map_err(Gated::Denied)?;
+                return Err(Gated::Refused(error));
+            }
+            Err(error) => return Err(Gated::Refused(error)),
+        };
+        let (Scope::Tenant { zone, ledger } | Scope::Stream { zone, ledger, .. }) = &scope;
+        evidence::on_ledger(&self.authorization, actor, zone, ledger).map_err(Gated::Denied)?;
+        Ok(scope)
+    }
+
+    /// Counts a read refused by the gate (WP-6.3c), as the decision reads do.
+    pub(crate) fn denied(&self, kind: &'static str) {
+        self.metrics.count(
+            &measure::READS,
+            &[(labels::SCOPE, kind), (labels::OUTCOME, "denied")],
+        );
+    }
+
+    /// Where its reads find their events: the store, and the Host's consumer (WP-6.2b).
+    pub(crate) fn sources(&self) -> read::Sources<'_> {
+        read::Sources {
+            store: &self.store,
+            host: self.host.as_ref(),
+        }
+    }
+
     /// The keys a **new** batch may be signed under: what the producers publish today, and nothing
     /// else.
     ///
@@ -117,10 +169,57 @@ impl EventFacade {
     /// So ingest asks this, and a reader checking what is already stored asks
     /// [`EventFacade::verification_keys`].
     pub fn accepted_producers(&self) -> Vec<ProducerTrust> {
-        self.producers
+        let mut producers = self
+            .producers
             .read()
             .map(|held| held.clone())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // Read on every batch, so the ring's rotation needs no reload: what it publishes now.
+        if let Some(local) = &self.local
+            && let Some(keys) = &local.keys
+        {
+            match keys.public_keys() {
+                Ok(keys) => {
+                    for key in keys {
+                        for (producer, zone, ledger) in &local.bindings {
+                            producers.push(ProducerTrust {
+                                key: key.clone(),
+                                producer: producer.clone(),
+                                zone: zone.clone(),
+                                ledger: ledger.clone(),
+                            });
+                        }
+                    }
+                }
+                Err(error) => tracing::warn!(
+                    event.name = "events.local_keys_unreadable",
+                    error = %error,
+                    "the ring of the data plane in this process cannot publish its keys: batches \
+                     of its legacy journals are refused until it can"
+                ),
+            }
+        }
+        producers
+    }
+
+    /// Whether this store waits for batches over its ingest route: a bound producer, or a
+    /// legacy journal beside it (WP-6.2b). A plane in this process records on the Host's stream,
+    /// and a store expecting nothing is not degraded.
+    pub fn expects_batches(&self) -> bool {
+        self.local
+            .as_ref()
+            .is_some_and(|local| !local.bindings.is_empty())
+            || self
+                .producers
+                .read()
+                .map(|held| !held.is_empty())
+                .unwrap_or(true)
+    }
+
+    /// Whether this store expects batches it can accept from nobody: a legacy journal or a bound
+    /// producer waits, and no key is trusted. Health reports the store degraded then.
+    pub fn awaits_trust(&self) -> bool {
+        self.expects_batches() && self.accepted_producers().is_empty()
     }
 
     /// Every key that may verify evidence this store already holds.
@@ -149,48 +248,13 @@ impl EventFacade {
         Ok(keys)
     }
 
-    /// Re-reads the producers' published sets, for a batch nothing could attribute.
-    ///
-    /// A producer that rotates its ring should be a file to update rather than a plane to restart.
-    pub(crate) fn reload_producers(&self) -> Result<(), String> {
-        let mut keys = Vec::new();
-        for source in &self.producer_files {
-            let text = std::fs::read_to_string(&source.path)
-                .map_err(|error| format!("reading {}: {error}", source.path.display()))?;
-            let parsed = serde_json::from_str::<serde_json::Value>(&text)
-                .map_err(|error| format!("parsing {}: {error}", source.path.display()))?;
-            let set = parsed.get("keys").cloned().unwrap_or(parsed);
-            let found: Vec<Jwk> = serde_json::from_value(set)
-                .map_err(|error| format!("{} is not a JWKS: {error}", source.path.display()))?;
-            if found.is_empty() {
-                return Err(format!("{} publishes no keys", source.path.display()));
-            }
-            keys.extend(found.into_iter().map(|key| ProducerTrust {
-                key,
-                producer: source.producer.clone(),
-                zone: source.zone.clone(),
-                ledger: source.ledger.clone(),
-            }));
-        }
-        if keys.is_empty() {
-            return Err("no event producer trust sources are configured".to_owned());
-        }
-        if let Ok(mut held) = self.producers.write() {
-            *held = keys;
-        } else {
-            return Err("the event producer trust lock is poisoned".to_owned());
-        }
-
-        Ok(())
-    }
-
     /// The event types this store accepts.
     ///
     /// Read off the language registry rather than configured: a type is accepted exactly when this
     /// build carries something that can validate it, and a list an operator could widen would be a
     /// way to store records nothing here understands.
     pub fn accepted_types(&self) -> Vec<&'static str> {
-        vec![permguard_languages::event::EVENT_TYPE]
+        permguard_languages::event::EVENT_TYPES.to_vec()
     }
 
     /// Accepts one batch.
@@ -258,7 +322,7 @@ impl EventFacade {
                     error.to_string(),
                 )
             })?;
-        let truncated = page.truncated;
+        let mut truncated = page.truncated;
         let mut answered = Vec::with_capacity(page.streams.len());
         for stream in page.streams {
             let state = self.store.stream_state(&stream).map_err(|error| {
@@ -297,6 +361,84 @@ impl EventFacade {
             });
         }
 
+        // The Host consumer's runs of the ledger beside the legacy streams (WP-6.2b), in the same
+        // `(class, producer, instance)` order: past `after`, and no further than the last legacy
+        // stream of a truncated page, so the next page skips none of the streams in between.
+        if let Some(host) = &self.host {
+            let tuple = |view: &StreamSignersView| {
+                (
+                    view.producer_class.clone(),
+                    view.producer.clone(),
+                    view.instance.clone(),
+                )
+            };
+            let after = ask
+                .after
+                .as_ref()
+                .map(|after| permguard_stream::StreamPosition::clone(after).into_tuple());
+            let reached = truncated.then(|| answered.last().map(tuple)).flatten();
+            let unavailable = |error: String| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::stream::STORE_UNAVAILABLE,
+                    error,
+                )
+            };
+            let resource = permguard_core::authz::Resource::ledger("data", &zone, &ledger);
+            for run in host.signers(&resource).map_err(unavailable)? {
+                let view = StreamSignersView {
+                    producer_class: permguard_events::PRODUCER_CLASS_DATA_PLANE.to_owned(),
+                    producer: crate::decisions::read::hex(&run.producer),
+                    instance: crate::decisions::read::hex(&run.run),
+                    acked: run.acked,
+                    spans: Vec::new(),
+                };
+                let asked = |filter: &Option<String>, held: &str| {
+                    filter.as_deref().is_none_or(|filter| filter == held)
+                };
+                if !asked(&ask.producer_class, &view.producer_class)
+                    || !asked(&ask.producer, &view.producer)
+                    || !asked(&ask.instance, &view.instance)
+                    || after.as_ref().is_some_and(|after| tuple(&view) <= *after)
+                    || reached
+                        .as_ref()
+                        .is_some_and(|reached| tuple(&view) > *reached)
+                {
+                    continue;
+                }
+                let mut signers = permguard_stream::Signers::empty();
+                for (from, kid, jwk) in &run.spans {
+                    let jwk: serde_json::Value = serde_json::from_str(jwk).map_err(|error| {
+                        unavailable(format!("a signer of the Host's stream: {error}"))
+                    })?;
+                    signers
+                        .observe(*from, kid, &jwk)
+                        .map_err(|error| unavailable(format!("{error:?}")))?;
+                }
+                let spans = signers.covering(from_seq, until);
+                if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
+                    return Err(ApiError::new(
+                        ErrorClass::Validation,
+                        permguard_core::codes::stream::SIGNER_RANGE_TOO_WIDE,
+                        format!(
+                            "this range crosses more than {} signing-key spans; narrow \
+                             `from_seq` and `until_seq`",
+                            permguard_stream::MAX_SIGNER_SPANS
+                        ),
+                    ));
+                }
+                answered.push(StreamSignersView {
+                    spans: spans.to_vec(),
+                    ..view
+                });
+            }
+            answered.sort_by_key(tuple);
+            if answered.len() > SIGNERS_STREAM_CEILING {
+                answered.truncate(SIGNERS_STREAM_CEILING);
+                truncated = true;
+            }
+        }
+
         // The cursor is the last stream of a truncated page: the next ask passes it back as
         // `after` and the walk resumes strictly past it.
         let next = truncated
@@ -318,19 +460,7 @@ impl EventFacade {
     pub fn ingest(&self, batch: &Batch) -> Result<Accepted, Refused> {
         let started = std::time::Instant::now();
         let types = self.accepted_types();
-        let mut answered = ingest::accept(&self.store, batch, &self.accepted_producers(), &types);
-        if matches!(answered, Err(Refused::Unattributable(_))) {
-            // One re-read, then one retry: a producer that rotated is the ordinary reason a
-            // signature stops being attributable, and it should not need an operator.
-            if let Err(error) = self.reload_producers() {
-                tracing::warn!(
-                    event.name = "events.producer_keys_reload_failed",
-                    error = error.as_str(),
-                    "the event producer trust set could not be reloaded; keeping the last complete set"
-                );
-            }
-            answered = ingest::accept(&self.store, batch, &self.accepted_producers(), &types);
-        }
+        let answered = ingest::accept(&self.store, batch, &self.accepted_producers(), &types);
         self.metrics.observe(
             &measure::INGEST_SECONDS,
             &[],
@@ -371,7 +501,7 @@ impl EventFacade {
         window: &Window,
         kind: &'static str,
     ) -> Result<read::Page, read::ReadError> {
-        let answered = read::read(&self.store, scope, filters, &self.cursor_key, window);
+        let answered = read::read_with(&self.sources(), scope, filters, &self.cursor_key, window);
         match &answered {
             Ok(page) => {
                 self.metrics.count(
@@ -474,7 +604,22 @@ async fn signers(
     Path((zone, ledger)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let asked = asked_of(query.as_deref());
+    let asked = match asked_of(
+        query.as_deref(),
+        &[
+            "from_seq",
+            "until_seq",
+            "after_class",
+            "after_producer",
+            "after_instance",
+            "producer_class",
+            "producer",
+            "instance",
+        ],
+    ) {
+        Ok(asked) => asked,
+        Err(error) => return refuse(&facade, error),
+    };
     let bound = |name: &str| -> Result<u64, String> {
         match asked.value(name) {
             None => Ok(0),
@@ -560,12 +705,20 @@ async fn signers(
 ///
 /// Unauthenticated on purpose, like every other layer of the discovery chain: it says what the
 /// shapes are, never what is inside them. Reading a record still takes a scope and an offset.
-async fn document(State(facade): State<EventFacade>) -> Json<super::configuration::Document> {
-    Json(super::configuration::document(
-        &facade.base_url,
-        &facade.base_url,
-        &facade.accepted_types(),
-    ))
+async fn document(State(facade): State<EventFacade>) -> Response {
+    match facade
+        .describer
+        .header(permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1)
+    {
+        Ok(header) => Json(super::configuration::document(
+            &facade.base_url,
+            &facade.base_url,
+            &facade.accepted_types(),
+            header,
+        ))
+        .into_response(),
+        Err(refused) => crate::wire::http_error(&refused, facade.disclosure),
+    }
 }
 
 async fn batches(State(facade): State<EventFacade>, body: axum::body::Bytes) -> Response {
@@ -632,22 +785,19 @@ fn api_error(refused: &Refused) -> ApiError {
 #[derive(Debug, Default)]
 struct Asked {
     from: Option<String>,
-    until: Option<String>,
+    until: Option<permguard_stream::Frontier>,
     limit_records: Option<usize>,
     limit_bytes: Option<u64>,
     proof: bool,
     filters: Filters,
-    named: Vec<(String, String)>,
+    query: crate::query::Query,
 }
 
 impl Asked {
     fn window(&self) -> Window {
         Window {
             from: self.from.clone(),
-            until: self
-                .until
-                .as_deref()
-                .and_then(permguard_stream::Frontier::decode),
+            until: self.until.clone(),
             limit_records: self.limit_records.unwrap_or_default(),
             limit_bytes: self.limit_bytes.unwrap_or_default(),
             proof: self.proof,
@@ -655,73 +805,71 @@ impl Asked {
     }
 
     fn value(&self, wanted: &str) -> Option<String> {
-        self.named
-            .iter()
-            .find(|(name, _)| name == wanted)
-            .map(|(_, value)| value.clone())
+        self.query.value(wanted)
     }
 }
 
-/// Reads the query string this API defines, and nothing else.
-///
-/// Hand-parsed rather than deserialised, for two reasons that both matter: an offset is opaque and
-/// must survive percent-encoding untouched, and a parameter nobody declared should be ignored
-/// rather than become a deserialisation failure a caller cannot act on.
-fn asked_of(query: Option<&str>) -> Asked {
+/// The filters a read of events narrows by.
+const FILTERS: [&str; 10] = [
+    "event_type",
+    "producer",
+    "instance",
+    "profile",
+    "policy_partition",
+    "kind",
+    "event_id",
+    "since",
+    "until_time",
+    "history",
+];
+
+/// Reads the query string of a read taking `names`, strictly (WP-5.5): a parameter it does not
+/// name, one given twice (but `event_type`, which a reader repeats to ask for several), or a value
+/// that does not parse is refused.
+fn asked_of(query: Option<&str>, names: &[&str]) -> Result<Asked, ApiError> {
+    let query = crate::query::parse(query, names, &["event_type"])?;
     let mut asked = Asked::default();
-    for pair in query.unwrap_or_default().split('&') {
-        let Some((name, value)) = pair.split_once('=') else {
-            continue;
-        };
-        let value = percent_decode(value);
-        match name {
-            "from" => asked.from = Some(value.clone()),
-            "until" => asked.until = Some(value.clone()),
-            "limit_records" | "limit" => asked.limit_records = value.parse().ok(),
-            "limit_bytes" => asked.limit_bytes = value.parse().ok(),
-            "proof" => asked.proof = matches!(value.as_str(), "true" | "1" | "yes"),
-            // Repeated, because a reader asking for two types is asking for both rather than
-            // whichever the query string happened to mention last.
-            "event_type" => asked.filters.event_types.push(value.clone()),
-            "producer" => asked.filters.producer = Some(value.clone()),
-            "instance" => asked.filters.instance = Some(value.clone()),
-            "profile" => asked.filters.profile = Some(value.clone()),
-            "policy_partition" => asked.filters.policy_partition = Some(value.clone()),
-            "kind" => asked.filters.kind = Some(value.clone()),
-            "event_id" => asked.filters.event_id = Some(value.clone()),
-            "since" => asked.filters.since = Some(value.clone()),
-            "until_time" => asked.filters.until_time = Some(value.clone()),
-            "history" => asked.filters.history = Some(value.clone()),
-            _ => {}
-        }
-        asked.named.push((name.to_owned(), value));
+    if names.contains(&"from") {
+        asked.from = query.value("from");
+        asked.until = query.frontier("until")?;
+        asked.limit_records = query.limit_records()?;
+        asked.limit_bytes = query.number("limit_bytes")?;
+        asked.proof = query.flag("proof")?;
     }
-
-    asked
+    asked.filters.event_types = query.values("event_type");
+    asked.filters.producer = query.value("producer");
+    asked.filters.instance = query.value("instance");
+    asked.filters.profile = query.value("profile");
+    asked.filters.policy_partition = query.value("policy_partition");
+    asked.filters.kind = query.value("kind");
+    asked.filters.event_id = query.value("event_id");
+    asked.filters.since = query.value("since");
+    asked.filters.until_time = query.value("until_time");
+    asked.filters.history = query.value("history");
+    asked.query = query;
+    Ok(asked)
 }
 
-fn percent_decode(value: &str) -> String {
-    let bytes = value.replace('+', " ").into_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            let pair = std::str::from_utf8(&bytes[index + 1..index + 3]).unwrap_or_default();
-            if let Ok(byte) = u8::from_str_radix(pair, 16) {
-                out.push(byte);
-                index += 3;
-                continue;
-            }
-        }
-        out.push(bytes[index]);
-        index += 1;
-    }
-
-    String::from_utf8_lossy(&out).into_owned()
+/// The names a bounded read of events takes: the window, the filters and `extra`.
+fn reading(extra: &[&'static str]) -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = crate::query::WINDOW.to_vec();
+    names.extend_from_slice(&FILTERS);
+    names.extend_from_slice(extra);
+    names
 }
 
-async fn records(State(facade): State<EventFacade>, RawQuery(query): RawQuery) -> Response {
-    let asked = asked_of(query.as_deref());
+async fn records(
+    State(facade): State<EventFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let asked = match asked_of(
+        query.as_deref(),
+        &reading(&["zone", "ledger", "producer_class"]),
+    ) {
+        Ok(asked) => asked,
+        Err(error) => return refuse(&facade, error),
+    };
     let named = |wanted: &str| asked.value(wanted);
     let (Some(zone), Some(ledger), Some(class), Some(producer), Some(instance)) = (
         named("zone"),
@@ -743,6 +891,7 @@ async fn records(State(facade): State<EventFacade>, RawQuery(query): RawQuery) -
 
     serve(
         facade,
+        actor,
         Scope::Stream {
             zone,
             ledger,
@@ -758,20 +907,35 @@ async fn records(State(facade): State<EventFacade>, RawQuery(query): RawQuery) -
 
 async fn tenant_records(
     State(facade): State<EventFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let asked = asked_of(query.as_deref());
+    let asked = match asked_of(query.as_deref(), &reading(&[])) {
+        Ok(asked) => asked,
+        Err(error) => return refuse(&facade, error),
+    };
 
-    serve(facade, Scope::Tenant { zone, ledger }, asked, "tenant").await
+    serve(
+        facade,
+        actor,
+        Scope::Tenant { zone, ledger },
+        asked,
+        "tenant",
+    )
+    .await
 }
 
 async fn record(
     State(facade): State<EventFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     Path(event_id): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let asked = asked_of(query.as_deref());
+    let asked = match asked_of(query.as_deref(), &["zone", "ledger"]) {
+        Ok(asked) => asked,
+        Err(error) => return refuse(&facade, error),
+    };
     let (Some(zone), Some(ledger)) = (asked.value("zone"), asked.value("ledger")) else {
         return refuse(
             &facade,
@@ -785,15 +949,19 @@ async fn record(
     // Resolved like every other read, and like the gRPC `get` beside it. Without this the two
     // transports answered the same request differently: gRPC found the record by name, REST looked
     // for a directory named after it and reported the occurrence missing.
-    let scope = match read::canonical(facade.catalog.as_ref(), Scope::Tenant { zone, ledger }) {
+    let scope = match facade.gate(&actor, Scope::Tenant { zone, ledger }) {
         Ok(scope) => scope,
-        Err(error) => return read_refusal(&facade, error),
+        Err(crate::evidence::Gated::Denied(denial)) => {
+            facade.denied("record");
+            return wire::http_denial(&denial);
+        }
+        Err(crate::evidence::Gated::Refused(error)) => return read_refusal(&facade, error),
     };
 
     let found = {
         let (facade, scope) = (facade.clone(), scope.clone());
         tokio::task::spawn_blocking(move || {
-            read::get(&facade.store, &scope, &event_id, &facade.cursor_key)
+            read::get(&facade.sources(), &scope, &event_id, &facade.cursor_key)
         })
         .await
         .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
@@ -813,10 +981,21 @@ async fn record(
     }
 }
 
-async fn serve(facade: EventFacade, scope: Scope, asked: Asked, kind: &'static str) -> Response {
-    let scope = match read::canonical(facade.catalog.as_ref(), scope) {
+async fn serve(
+    facade: EventFacade,
+    actor: Arc<permguard_core::authz::Actor>,
+    scope: Scope,
+    asked: Asked,
+    kind: &'static str,
+) -> Response {
+    // Authorization before any lookup that could say whether the ledger exists (WP-6.3c).
+    let scope = match facade.gate(&actor, scope) {
         Ok(scope) => scope,
-        Err(error) => return read_refusal(&facade, error),
+        Err(crate::evidence::Gated::Denied(denial)) => {
+            facade.denied(kind);
+            return wire::http_denial(&denial);
+        }
+        Err(crate::evidence::Gated::Refused(error)) => return read_refusal(&facade, error),
     };
     let window = asked.window();
     let filters = asked.filters.clone();
@@ -853,14 +1032,18 @@ fn read_refusal(facade: &EventFacade, error: read::ReadError) -> Response {
             .into_response(),
         read::ReadError::Offset(refused) => refuse(
             facade,
-            ApiError::new(
-                ErrorClass::Validation,
-                permguard_core::codes::stream::OFFSET_INVALID,
-                refused.to_string(),
-            ),
+            ApiError::new(ErrorClass::Validation, refused.code(), refused.to_string()),
         ),
         // A scope nobody holds is a 404, never an empty page: the two are the same shape to a
         // script, and only one of them means the ledger is empty.
+        read::ReadError::NotHeld(detail) => refuse(
+            facade,
+            ApiError::new(
+                ErrorClass::NotFound,
+                permguard_core::codes::stream::STREAM_UNKNOWN,
+                detail,
+            ),
+        ),
         read::ReadError::Unknown(detail) => refuse(
             facade,
             ApiError::new(
@@ -972,6 +1155,7 @@ mod openapi {
                 prev: prev.clone(),
                 event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
                 event_id: format!("evt-{seq}"),
+                source: None,
                 occurrence_digest: occurrence_digest_of(&event).expect("the occurrence digests"),
                 kind: "request".to_owned(),
                 profile: "temporal".to_owned(),
@@ -1096,7 +1280,18 @@ mod openapi {
             oldest_available: "BBBB".to_owned(),
             high_watermark: "CCCC".to_owned(),
             more: false,
-            proof: vec![serde_json::to_value(&signed).expect("a signature serialises")],
+            // Each entry names its format (WP-6.2b): the legacy JWS, and a Host batch's.
+            proof: vec![
+                {
+                    let mut legacy = serde_json::to_value(&signed).expect("a signature serialises");
+                    legacy["format"] = json!(crate::decisions::read::LEGACY_FORMAT);
+                    legacy
+                },
+                json!({
+                    "format": crate::decisions::read::HOST_FORMAT,
+                    "signature": serde_json::to_value(&signed).expect("a signature serialises"),
+                }),
+            ],
             inclusion: vec![json!({
                 "seq": 1,
                 "leaf": leaves[0],
@@ -1110,6 +1305,16 @@ mod openapi {
             },
         };
         doc.check("EventBlock", &page);
+        // A proof entry naming no format, or the other format's members, is not one.
+        let mut unnamed = serde_json::to_value(&page).expect("a page serialises");
+        unnamed["proof"][0]
+            .as_object_mut()
+            .expect("an object")
+            .remove("format");
+        assert!(!doc.accepts_json("EventBlock", &unnamed));
+        let mut crossed = serde_json::to_value(&page).expect("a page serialises");
+        crossed["proof"][1]["format"] = json!(crate::decisions::read::LEGACY_FORMAT);
+        assert!(!doc.accepts_json("EventBlock", &crossed));
         let bare = permguard_stream::Block {
             proof: Vec::new(),
             inclusion: Vec::new(),
@@ -1157,8 +1362,31 @@ mod openapi {
             "http://plane.example",
             "plane.example",
             &[permguard_languages::event::EVENT_TYPE],
+            permguard_core::stages::Describer::detached("control-plane")
+                .header(permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1)
+                .expect("served"),
         );
         doc.check("Document", &configuration);
+        // A deprecated interface's header, every member present (WP-7.4a).
+        doc.check(
+            "Document",
+            &super::super::configuration::document(
+                "http://plane.example",
+                "plane.example",
+                &[permguard_languages::event::EVENT_TYPE],
+                permguard_core::stages::Header::of(
+                    &permguard_core::stages::Registered {
+                        id: permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1,
+                        stage: permguard_core::stages::Stage::Deprecated {
+                            sunset: "2027-06-30T00:00:00Z",
+                        },
+                    },
+                    "control-plane",
+                    "0.1.0",
+                    permguard_core::lifecycle::Phase::Serving,
+                ),
+            ),
+        );
         let mut unlimited = serde_json::to_value(&configuration).expect("it serialises");
         unlimited
             .as_object_mut()
@@ -1170,5 +1398,457 @@ mod openapi {
         doc.check("Offsets", &configuration.offsets);
 
         doc.assert_covered();
+    }
+
+    /// WP-5.5: a read of events takes its window, its filters and its own names, each once but
+    /// `event_type`, with values that parse; anything else is a validation refusal.
+    #[test]
+    fn a_read_of_events_takes_only_its_parameters() {
+        let names = reading(&["zone"]);
+        let asked = asked_of(
+            Some("zone=acme&event_type=a&event_type=b&limit_records=3&proof=true&history=all"),
+            &names,
+        )
+        .expect("it parses");
+        assert_eq!(asked.filters.event_types, vec!["a", "b"]);
+        assert_eq!(asked.limit_records, Some(3));
+        assert!(asked.proof);
+        assert_eq!(asked.filters.history.as_deref(), Some("all"));
+        assert_eq!(asked.value("zone").as_deref(), Some("acme"));
+
+        for query in [
+            "color=red",
+            "producer=a&producer=b",
+            "limit=1&limit_records=2",
+            "limit_bytes=many",
+            "proof=yes",
+            "until=nothing",
+            "kind",
+        ] {
+            let error = asked_of(Some(query), &names).expect_err(query);
+            assert_eq!(
+                error.code(),
+                permguard_core::codes::common::INVALID_ARGUMENT,
+                "{query}"
+            );
+        }
+        // A read without a window refuses one.
+        assert!(asked_of(Some("from=a"), &FILTERS).is_err());
+    }
+
+    /// WP-5.5: over REST, an offset of another read is `forged` and a malformed one
+    /// `offset_invalid`, both `400`.
+    #[tokio::test]
+    async fn an_offset_of_another_read_is_forged_over_rest() {
+        use http_body_util::BodyExt as _;
+        use permguard_stream::cursor::CursorError;
+
+        let root =
+            std::env::temp_dir().join(format!("permguard-events-refusal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let facade = EventFacade {
+            host: None,
+            catalog: None,
+            store: std::sync::Arc::new(crate::events::EventStore::open(&root).expect("it opens")),
+            producers: std::sync::Arc::new(std::sync::RwLock::new(Vec::new())),
+            local: None,
+            cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
+                b"a-test-cursor-key-of-32-bytes!!!!",
+                [1; 16],
+                "events",
+            )
+            .expect("a cursor key"),
+            disclosure: permguard_core::Disclosure::default(),
+            metrics: permguard_core::metrics::Metrics::default(),
+            base_url: String::new(),
+            describer: permguard_core::stages::Describer::detached("control-plane"),
+            authorization: std::sync::Arc::new(
+                permguard_host::composition::Authorization::permissive(),
+            ),
+        };
+        for (error, code) in [
+            (CursorError::Forged, "forged"),
+            (CursorError::WrongApi, "forged"),
+            (CursorError::Malformed, "offset_invalid"),
+        ] {
+            let response = read_refusal(&facade, read::ReadError::Offset(error));
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{code}");
+            let bytes = response
+                .into_body()
+                .collect()
+                .await
+                .expect("the body reads")
+                .to_bytes();
+            let body: serde_json::Value = serde_json::from_slice(&bytes).expect("a JSON body");
+            assert_eq!(body["code"], code, "{body}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod gate {
+    //! WP-6.3c (owner decisions of 2026-10-20): every event evidence read takes `evidence.read`
+    //! on its ledger in this plane's tree, on both transports.
+
+    #![allow(clippy::expect_used)]
+
+    use http_body_util::BodyExt as _;
+    use tower::ServiceExt as _;
+
+    use super::*;
+
+    fn auditor() -> Arc<permguard_core::authz::Actor> {
+        Arc::new(permguard_core::authz::Actor::Authenticated(
+            permguard_core::authz::ActorContext::new(
+                permguard_core::authz::Principal::new("spiffe://acme/auditor")
+                    .expect("a principal"),
+                permguard_core::authz::Credential::SanUri,
+                None,
+            ),
+        ))
+    }
+
+    /// A store nobody wrote, read under a grant of `evidence.read` on `selector` alone.
+    fn facade(tag: &str, selector: &str) -> EventFacade {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-events-gate-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        EventFacade {
+            host: None,
+            catalog: None,
+            store: Arc::new(crate::events::EventStore::open(&root).expect("it opens")),
+            producers: Arc::new(std::sync::RwLock::new(Vec::new())),
+            local: None,
+            cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
+                b"a-test-cursor-key-of-32-bytes!!!!",
+                [1; 16],
+                "events",
+            )
+            .expect("a cursor key"),
+            disclosure: permguard_core::Disclosure::default(),
+            metrics: permguard_core::metrics::Metrics::default(),
+            base_url: String::new(),
+            describer: permguard_core::stages::Describer::detached("control-plane"),
+            authorization: Arc::new(permguard_host::composition::Authorization::public_only(&[
+                permguard_host::authz::PublicGrant::new(
+                    &[permguard_core::authz::operations::EVIDENCE_READ],
+                    permguard_core::authz::Selector::parse(selector).expect("a selector"),
+                ),
+            ])),
+        }
+    }
+
+    /// WP-7.4a, owner decisions of 2026-10-21: the event store's discovery document carries the
+    /// common header, the same on REST and over gRPC, and a retired interface's document is
+    /// refused `interface_retired` on both, never answered under another id.
+    #[tokio::test]
+    async fn the_event_document_carries_the_header_on_both_transports_and_a_retired_one_is_refused()
+    {
+        use crate::v1::event_log_server::EventLog as _;
+        use permguard_core::stages::{Describer, Registered, Stage};
+
+        static RETIRED: &[Registered] = &[Registered {
+            id: permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1,
+            stage: Stage::Retired,
+        }];
+        let get = |facade: EventFacade| async move {
+            let answer = routes(facade)
+                .layer(axum::Extension(auditor()))
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(super::super::configuration::CONFIGURATION_PATH)
+                        .body(axum::body::Body::empty())
+                        .expect("a request"),
+                )
+                .await
+                .expect("answered");
+            let status = answer.status().as_u16();
+            let bytes = answer
+                .into_body()
+                .collect()
+                .await
+                .expect("a body")
+                .to_bytes();
+            (
+                status,
+                serde_json::from_slice::<serde_json::Value>(&bytes).expect("JSON"),
+            )
+        };
+
+        let served = facade("header", "plane/control/*");
+        let (status, document) = get(served.clone()).await;
+        assert_eq!(status, 200);
+        assert_eq!(
+            (
+                document["component"].as_str(),
+                document["state"].as_str(),
+                document["stage"].as_str(),
+                document["version"].as_str()
+            ),
+            (
+                Some("control-plane"),
+                Some("bootstrap"),
+                Some("v1alpha1"),
+                Some("")
+            )
+        );
+        let over_grpc = served
+            .get_event_configuration(tonic::Request::new(
+                crate::v1::GetEventConfigurationRequest {},
+            ))
+            .await
+            .expect("answered")
+            .into_inner();
+        assert_eq!(
+            (
+                over_grpc.version.as_str(),
+                over_grpc.component.as_str(),
+                over_grpc.state.as_str(),
+                over_grpc.stage.as_str(),
+                over_grpc.sunset
+            ),
+            ("", "control-plane", "bootstrap", "v1alpha1", None)
+        );
+        for name in ["max_records", "max_bytes", "max_examined"] {
+            assert_eq!(
+                serde_json::json!(over_grpc.limits[name]),
+                document["limits"][name],
+                "{name}"
+            );
+        }
+
+        let mut retired = served;
+        retired.describer = Describer::detached("control-plane").with_registry(RETIRED);
+        let (status, refused) = get(retired.clone()).await;
+        assert_eq!(status, 400);
+        assert_eq!(refused["code"], "interface_retired");
+        assert_eq!(refused["class"], "validation");
+        let refused = retired
+            .get_event_configuration(tonic::Request::new(
+                crate::v1::GetEventConfigurationRequest {},
+            ))
+            .await
+            .expect_err("retired");
+        assert_eq!(refused.code(), tonic::Code::InvalidArgument);
+    }
+
+    async fn status(facade: &EventFacade, uri: &str) -> StatusCode {
+        let answer = routes(facade.clone())
+            .layer(axum::Extension(auditor()))
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(uri)
+                    .body(axum::body::Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        let status = answer.status();
+        let _ = answer.into_body().collect().await;
+        status
+    }
+
+    /// WP-6.3c: a tenant read, a stream read and one event by its id each take the grant of the
+    /// ledger they name, and no other.
+    #[tokio::test]
+    async fn an_event_read_takes_evidence_read_on_its_ledger() {
+        let held = facade("ledger", "plane/control/zone/acme/ledger/main");
+        let stream = |ledger: &str| {
+            format!(
+                "/events/v1alpha1/records?zone=acme&ledger={ledger}&producer_class={}&producer=p&instance=i",
+                permguard_events::PRODUCER_CLASS_DATA_PLANE
+            )
+        };
+        for (granted, answered, refused) in [
+            (
+                "/v1/zones/acme/ledgers/main/events/v1alpha1/records".to_owned(),
+                StatusCode::OK,
+                "/v1/zones/acme/ledgers/audit/events/v1alpha1/records".to_owned(),
+            ),
+            (stream("main"), StatusCode::NOT_FOUND, stream("audit")),
+            (
+                "/events/v1alpha1/records/e-1?zone=acme&ledger=main".to_owned(),
+                StatusCode::NOT_FOUND,
+                "/events/v1alpha1/records/e-1?zone=acme&ledger=audit".to_owned(),
+            ),
+        ] {
+            assert_eq!(status(&held, &granted).await, answered, "{granted}");
+            assert_eq!(
+                status(&held, &refused).await,
+                StatusCode::FORBIDDEN,
+                "{refused}"
+            );
+        }
+    }
+
+    /// WP-6.3c: the gRPC reads are gated as the REST ones.
+    #[tokio::test]
+    async fn the_grpc_event_reads_are_gated_as_the_rest_reads() {
+        use crate::v1::event_log_server::EventLog;
+
+        let held = facade("grpc", "plane/control/zone/acme/ledger/main");
+        let list = |ledger: &str| {
+            let mut request = tonic::Request::new(crate::v1::ListRecordsRequest {
+                zone: "acme".to_owned(),
+                ledger: ledger.to_owned(),
+                ..Default::default()
+            });
+            request.extensions_mut().insert(auditor());
+            request
+        };
+        assert!(EventLog::list_records(&held, list("main")).await.is_ok());
+        let refused = EventLog::list_records(&held, list("audit"))
+            .await
+            .expect_err("another ledger");
+        assert_eq!(refused.code(), tonic::Code::PermissionDenied);
+        let mut nobody = tonic::Request::new(crate::v1::GetRecordRequest {
+            zone: "acme".to_owned(),
+            ledger: "main".to_owned(),
+            event_id: "e-1".to_owned(),
+        });
+        let refused = EventLog::get_record(&held, nobody)
+            .await
+            .expect_err("nobody");
+        assert_eq!(refused.code(), tonic::Code::Unauthenticated);
+        nobody = tonic::Request::new(crate::v1::GetRecordRequest {
+            zone: "acme".to_owned(),
+            ledger: "audit".to_owned(),
+            event_id: "e-1".to_owned(),
+        });
+        nobody.extensions_mut().insert(auditor());
+        let refused = EventLog::get_record(&held, nobody)
+            .await
+            .expect_err("another ledger");
+        assert_eq!(refused.code(), tonic::Code::PermissionDenied);
+    }
+
+    /// WP-6.3c, after the review: a caller granted nothing under the plane is refused before the
+    /// catalog is consulted, on both transports, and the refusal counted; nobody is
+    /// `UNAUTHENTICATED` over gRPC.
+    #[tokio::test]
+    async fn nothing_granted_under_the_plane_is_refused_before_any_lookup() {
+        use crate::v1::event_log_server::EventLog;
+        use permguard_core::Recorder as _;
+
+        let registry = Arc::new(permguard_std::metrics::Registry::new());
+        let held = EventFacade {
+            catalog: Some(Arc::new(crate::evidence::Untouchable)),
+            metrics: permguard_core::Metrics::new(
+                Arc::clone(&registry) as Arc<dyn permguard_core::Recorder>
+            ),
+            ..facade("before", "plane/data/*")
+        };
+        assert_eq!(
+            status(&held, "/v1/zones/acme/ledgers/main/events/v1alpha1/records").await,
+            StatusCode::FORBIDDEN
+        );
+        let mut asked = tonic::Request::new(crate::v1::ListRecordsRequest {
+            zone: "acme".to_owned(),
+            ledger: "main".to_owned(),
+            ..Default::default()
+        });
+        asked.extensions_mut().insert(auditor());
+        let refused = EventLog::list_records(&held, asked)
+            .await
+            .expect_err("nothing granted");
+        assert_eq!(refused.code(), tonic::Code::PermissionDenied);
+        let nobody = tonic::Request::new(crate::v1::ListRecordsRequest {
+            zone: "acme".to_owned(),
+            ledger: "main".to_owned(),
+            ..Default::default()
+        });
+        let refused = EventLog::list_records(&held, nobody)
+            .await
+            .expect_err("nobody");
+        assert_eq!(refused.code(), tonic::Code::Unauthenticated);
+        let denied: f64 = registry
+            .snapshot()
+            .into_iter()
+            .filter(|sample| {
+                sample.metric.name() == measure::READS.name()
+                    && sample
+                        .labels
+                        .iter()
+                        .any(|(name, value)| name == "outcome" && value == "denied")
+            })
+            .map(|sample| match sample.reading {
+                permguard_core::metrics::Reading::Value(value) => value,
+                permguard_core::metrics::Reading::Distribution { count, .. } => count as f64,
+            })
+            .sum();
+        assert_eq!(denied, 3.0);
+    }
+
+    /// WP-6.3c, after the review: a ledger nobody holds is refused as a foreign one, on both
+    /// transports and for one event by its id, unless the caller's grants cover the whole plane.
+    #[tokio::test]
+    async fn an_unknown_and_a_foreign_ledger_are_refused_alike() {
+        use crate::v1::event_log_server::EventLog;
+        use permguard_core::catalog::{Catalog as _, Selector};
+
+        let root = std::env::temp_dir().join(format!(
+            "permguard-events-gate-catalog-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let catalog = permguard_std::catalog::FileCatalog::new(root.join("catalog"));
+        let zone = catalog.create_zone("acme").expect("a zone");
+        let main = catalog
+            .create_ledger(&Selector::Id(zone.id.clone()), "main")
+            .expect("a ledger");
+        catalog
+            .create_ledger(&Selector::Id(zone.id.clone()), "audit")
+            .expect("another");
+        let catalog: Arc<dyn permguard_core::catalog::Catalog> = Arc::new(catalog);
+        let on = |tag: &str, selector: &str| EventFacade {
+            catalog: Some(Arc::clone(&catalog)),
+            ..facade(tag, selector)
+        };
+        let ledger = on(
+            "unknown-ledger",
+            &format!("plane/control/zone/{}/ledger/{}", zone.id, main.id),
+        );
+        let records = |name: &str| format!("/v1/zones/acme/ledgers/{name}/events/v1alpha1/records");
+        let record = |name: &str| format!("/events/v1alpha1/records/e-1?zone=acme&ledger={name}");
+        assert_eq!(status(&ledger, &records("main")).await, StatusCode::OK);
+        for path in [
+            records("audit"),
+            records("nowhere"),
+            record("audit"),
+            record("nowhere"),
+        ] {
+            assert_eq!(
+                status(&ledger, &path).await,
+                StatusCode::FORBIDDEN,
+                "{path}"
+            );
+        }
+        let get = |name: &str| {
+            let mut asked = tonic::Request::new(crate::v1::GetRecordRequest {
+                zone: "acme".to_owned(),
+                ledger: name.to_owned(),
+                event_id: "e-1".to_owned(),
+            });
+            asked.extensions_mut().insert(auditor());
+            asked
+        };
+        for name in ["audit", "nowhere"] {
+            let refused = EventLog::get_record(&ledger, get(name))
+                .await
+                .expect_err("refused");
+            assert_eq!(refused.code(), tonic::Code::PermissionDenied, "{name}");
+        }
+        let plane = on("unknown-plane", "plane/control/*");
+        assert_eq!(
+            status(&plane, &records("nowhere")).await,
+            StatusCode::NOT_FOUND
+        );
+        let refused = EventLog::get_record(&plane, get("nowhere"))
+            .await
+            .expect_err("not held");
+        assert_eq!(refused.code(), tonic::Code::NotFound);
     }
 }

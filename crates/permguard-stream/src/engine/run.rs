@@ -228,20 +228,16 @@ impl RunStatement {
         envelope: &[u8],
         operations: &permguard_host::keys::ring::Ring,
     ) -> Result<Self, StreamError> {
-        let failed =
-            |error: permguard_host::keys::ring::RingError| StreamError::Sign(error.to_string());
-        let Some((seq, ..)) = operations.frontier().map_err(failed)? else {
-            return Err(StreamError::Sign(
-                "the `host.operations` ring holds no key".to_owned(),
-            ));
-        };
-        let keys = operations
-            .history(seq)
-            .map_err(failed)?
-            .keys
-            .into_iter()
-            .filter_map(|key| serde_json::from_str::<permguard_core::keys::Jwk>(&key.jwk).ok());
-        Self::verify_under(envelope, keys)
+        Self::verify_under(envelope, own_keys(operations)?)
+    }
+
+    /// [`RunStatement::verify_own`] under `keys`, every key `host.operations` ever published as
+    /// [`own_keys`] answers them: what a reader verifying many runs reads once (WP-5.2).
+    pub fn verify_among(
+        envelope: &[u8],
+        keys: &[permguard_core::keys::Jwk],
+    ) -> Result<Self, StreamError> {
+        Self::verify_under(envelope, keys.iter().cloned())
     }
 
     fn verify_under(
@@ -279,6 +275,29 @@ impl RunStatement {
             .map_err(|error| StreamError::Invalid(error.to_string()))?;
         Self::decode(payload)
     }
+}
+
+/// Every key the `host.operations` ring ever published, from its history to its last journal
+/// entry.
+pub fn own_keys(
+    operations: &permguard_host::keys::ring::Ring,
+) -> Result<Vec<permguard_core::keys::Jwk>, StreamError> {
+    let failed =
+        |error: permguard_host::keys::ring::RingError| StreamError::Sign(error.to_string());
+    // The frontier is `(epoch, seq, digest)`: the history runs to its last journal entry (WP-5.2,
+    // found by the rotating crash test).
+    let Some((_, seq, _)) = operations.frontier().map_err(failed)? else {
+        return Err(StreamError::Sign(
+            "the `host.operations` ring holds no key".to_owned(),
+        ));
+    };
+    Ok(operations
+        .history(seq)
+        .map_err(failed)?
+        .keys
+        .into_iter()
+        .filter_map(|key| serde_json::from_str::<permguard_core::keys::Jwk>(&key.jwk).ok())
+        .collect())
 }
 
 /// The digest a STATE and a check cite a run statement's envelope by.

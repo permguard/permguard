@@ -10,7 +10,7 @@ exposes the Server Host operations surface to Prometheus and the kubelet. It is 
 NetworkPolicy, an ingress or a mesh can allow one without allowing the other: process discovery and
 metrics describe the inside of the process, and health tells an attacker when it is struggling.
 */}}
-{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane }}
 {{- if $plane.enabled }}
 apiVersion: v1
 kind: Service
@@ -135,4 +135,29 @@ spec:
     - name: telemetry
       port: {{ .Values.allInOne.ports.telemetry }}
       targetPort: telemetry
+{{- end }}
+{{- /*
+The Host listener's Service (TD-2), for the control plane and the all-in-one: where operators,
+member Hosts and the drain controller reach the coordinator. TCP passes through: the peer proof
+stays on one end-to-end TLS connection, which nothing in between terminates.
+*/ -}}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane "all-in-one" .Values.allInOne }}
+{{- if and $plane.enabled $plane.hostListener.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "permguard.fullname" $ }}-{{ $component }}-host
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 4 }}
+  ports:
+    - name: host
+      port: {{ $plane.hostListener.port }}
+      targetPort: host
+      protocol: TCP
+{{- end }}
 {{- end }}

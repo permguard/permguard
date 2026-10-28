@@ -1,0 +1,152 @@
+{
+  "folder": "base64builtins",
+  "files": {
+    "test-base64builtins-0929.yaml": {
+      "sha256": "sha256:1c5145bdadb09e49d31b38dfa78506d740420e1715e2c1877f60ecb3352fc953",
+      "cases": [
+        {
+          "note": "base64builtins/encode-1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64.encode(\"hello\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "aGVsbG8="
+            }
+          ]
+        }
+      ]
+    },
+    "test-base64builtins-0930.yaml": {
+      "sha256": "sha256:d91160886010e527d2bb27bbf66245e21c40c7e00b7a8d9c18f1fb9acd5e3ed9",
+      "cases": [
+        {
+          "note": "base64builtins/encode-2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64.encode(\"there\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "dGhlcmU="
+            }
+          ]
+        }
+      ]
+    },
+    "test-base64builtins-0931.yaml": {
+      "sha256": "sha256:75ca311fdd1766822cf8ad33b77637a0f0d9d4751069765e00e45135f9f53104",
+      "cases": [
+        {
+          "note": "base64builtins/decode-1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64.decode(\"aGVsbG8=\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "hello"
+            }
+          ]
+        }
+      ]
+    },
+    "test-base64builtins-0932.yaml": {
+      "sha256": "sha256:ae4a95f18b7ca8af67f6418c5b0bad54f1e7edb4741c8d0458e50f1df2aaa269",
+      "cases": [
+        {
+          "note": "base64builtins/decode-2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64.decode(\"dGhlcmU=\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "there"
+            }
+          ]
+        }
+      ]
+    },
+    "test-base64builtins-0933.yaml": {
+      "sha256": "sha256:b21e83d63d968bbb3b2bf5bc831c1a1729154c174c365912be34458062561c5b",
+      "cases": [
+        {
+          "note": "base64builtins/encode-slash",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64.encode(\"subjects?_d\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "c3ViamVjdHM/X2Q="
+            }
+          ]
+        }
+      ]
+    },
+    "test-base64builtins-0934.yaml": {
+      "sha256": "sha256:e20ed72e7df88381a9a02cebb36dc32d98c8df8e170b45eda04845f896c8a512",
+      "cases": [
+        {
+          "note": "base64builtins/decode-slash",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64.decode(\"c3ViamVjdHM/X2Q=\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "subjects?_d"
+            }
+          ]
+        }
+      ]
+    },
+    "test-base64builtins-0935.yaml": {
+      "sha256": "sha256:3a9c1cca6f1d3784bfa11916a46bd43d1d1e11bb9310b4e10db337124dea1f5d",
+      "cases": [
+        {
+          "note": "base64builtins/is_valid-true",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64.is_valid(\"aGVsbG8=\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "base64builtins/is_valid-false",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tbase64.is_valid(\"{'not':'base64'}\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

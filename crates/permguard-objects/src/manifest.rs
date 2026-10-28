@@ -49,6 +49,52 @@ pub const PROFILE_TYPES: [&str; 3] = [
     PROFILE_PDP_V1,
 ];
 
+/// The evaluation interfaces a partition may promise: the exact ids, legacy spellings excluded.
+pub const INTERFACE_IDS: [&str; 2] = [PROFILE_PDP_NATIVE_V1, PROFILE_PDP_TEMPORAL_V1ALPHA1];
+
+/// The interface a profile type asks: its exact id, the legacy spelling read as the native one.
+pub fn interface_of(r#type: &str) -> &str {
+    if r#type == PROFILE_PDP_V1 {
+        PROFILE_PDP_NATIVE_V1
+    } else {
+        r#type
+    }
+}
+
+/// The interface ids `manifest` binds, its profiles' and its partitions', that `registry` holds as
+/// retired (WP-7.4a): what the load gate refuses `interface_retired`, never serving them under
+/// another id.
+pub fn retired_interfaces(
+    manifest: &Manifest,
+    registry: &[permguard_core::stages::Registered],
+) -> Vec<String> {
+    let mut bound: Vec<&str> = manifest
+        .profiles
+        .values()
+        .map(|profile| interface_of(&profile.r#type))
+        .chain(
+            manifest
+                .partitions
+                .values()
+                .flat_map(|partition| partition.interfaces.iter().map(|id| interface_of(id))),
+        )
+        .collect();
+    bound.sort_unstable();
+    bound.dedup();
+    permguard_core::stages::retired_in(registry, bound)
+}
+
+/// The partitions of `manifest` that list no interfaces, the legacy inference applying to
+/// them: what a load gate under `interfaces.explicit` refuses (WP-7.1).
+pub fn implicit_partitions(manifest: &Manifest) -> Vec<&str> {
+    manifest
+        .partitions
+        .iter()
+        .filter(|(_, partition)| partition.interfaces.is_empty())
+        .map(|(name, _)| name.as_str())
+        .collect()
+}
+
 /// Whether a profile type names the stateless interface, under either of its names.
 pub fn is_native_profile(r#type: &str) -> bool {
     r#type == PROFILE_PDP_NATIVE_V1 || r#type == PROFILE_PDP_V1
@@ -138,6 +184,10 @@ pub struct Partition {
     /// The one kind of request-supplied input this partition accepts, when it
     /// accepts any. A partition that declares none is addressed by nobody.
     pub input: Option<InputContract>,
+    /// The evaluation interfaces this partition promises, sorted and unique (WP-7.1). Empty is
+    /// a manifest written before them: its interfaces are inferred from the profiles naming it,
+    /// which only the `development` assurance profile admits.
+    pub interfaces: Vec<String>,
 }
 
 /// What a partition accepts as its own request-supplied input.
@@ -205,6 +255,7 @@ const PARTITION_SCHEMA: i64 = 3;
 const PARTITION_INPUT: i64 = 4;
 const PARTITION_ARTIFACTS: i64 = 5;
 const PARTITION_HISTORY: i64 = 6;
+const PARTITION_INTERFACES: i64 = 7;
 const ARTIFACT_TYPE: i64 = 1;
 const ARTIFACT_REQUIRED: i64 = 2;
 const INPUT_TYPE: i64 = 1;
@@ -303,6 +354,14 @@ impl Manifest {
                             }))
                             .chain(partition.history.iter().map(|history| {
                                 (Value::Int(PARTITION_HISTORY), text(history.as_str()))
+                            }))
+                            .chain((!partition.interfaces.is_empty()).then(|| {
+                                (
+                                    Value::Int(PARTITION_INTERFACES),
+                                    Value::Array(
+                                        partition.interfaces.iter().map(|id| text(id)).collect(),
+                                    ),
+                                )
                             }))
                             .collect(),
                         ),
@@ -406,6 +465,7 @@ impl Manifest {
                     PARTITION_INPUT,
                     PARTITION_ARTIFACTS,
                     PARTITION_HISTORY,
+                    PARTITION_INTERFACES,
                 ],
             )?;
             let media_types = match need(partition, PARTITION_MEDIA_TYPES, "media_types")? {
@@ -509,6 +569,40 @@ impl Manifest {
                 }
                 Some(_) => return Err(bad("partition.history must be text")),
             };
+            let interfaces = match partition
+                .iter()
+                .find(|(key, _)| *key == Value::Int(PARTITION_INTERFACES))
+            {
+                None => Vec::new(),
+                Some((_, Value::Array(items))) => {
+                    let ids = items
+                        .iter()
+                        .map(|item| match item {
+                            Value::Text(id) => Ok(id.clone()),
+                            _ => Err(bad("partition.interfaces must be strings")),
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    // Present means at least one, in order, each once: the canonical bytes have
+                    // one spelling of a set.
+                    if ids.is_empty() || !ids.windows(2).all(|pair| pair[0] < pair[1]) {
+                        return Err(bad(format!(
+                            "partition `{name}` lists its interfaces sorted, each once, at least \
+                             one"
+                        )));
+                    }
+                    if let Some(unknown) =
+                        ids.iter().find(|id| !INTERFACE_IDS.contains(&id.as_str()))
+                    {
+                        return Err(bad(format!(
+                            "partition `{name}` promises the interface `{unknown}`, which is no \
+                             evaluation interface (this build knows: {})",
+                            INTERFACE_IDS.join(", ")
+                        )));
+                    }
+                    ids
+                }
+                Some(_) => return Err(bad("partition.interfaces must be an array")),
+            };
             manifest.partitions.insert(
                 name.clone(),
                 Partition {
@@ -518,6 +612,7 @@ impl Manifest {
                     artifacts,
                     history,
                     input,
+                    interfaces,
                 },
             );
         }
@@ -574,6 +669,19 @@ impl Manifest {
                     return Err(bad(format!(
                         "profile `{name}` names the partition `{partition}` twice: it would be \
                          asked twice and cited twice, which is nobody's intent"
+                    )));
+                }
+            }
+            // Every partition the profile names promises its interface, when it lists any: one
+            // profile asks one question, of partitions that said they answer it (WP-7.1).
+            let asked = interface_of(&r#type);
+            for partition in &partitions {
+                let promised = &manifest.partitions[partition].interfaces;
+                if !promised.is_empty() && !promised.iter().any(|id| id == asked) {
+                    return Err(bad(format!(
+                        "profile `{name}` asks `{asked}` of the partition `{partition}`, which \
+                         promises only {}",
+                        promised.join(", ")
                     )));
                 }
             }
@@ -937,6 +1045,7 @@ mod tests {
                 (
                     "app".to_string(),
                     Partition {
+                        interfaces: Vec::new(),
                         runtime: "cedar".into(),
                         media_types: vec!["application/vnd.permguard.policy.cedar".into()],
                         schema: false,
@@ -948,6 +1057,7 @@ mod tests {
                 (
                     "gateway".to_string(),
                     Partition {
+                        interfaces: Vec::new(),
                         runtime: "rego".into(),
                         media_types: vec!["application/vnd.permguard.policy.rego".into()],
                         schema: false,
@@ -1055,6 +1165,7 @@ mod input_contract_tests {
         built.partitions.insert(
             "p".to_owned(),
             Partition {
+                interfaces: Vec::new(),
                 runtime: runtime.to_owned(),
                 media_types: vec!["application/vnd.permguard.policy.cedar".to_owned()],
                 schema: false,
@@ -1178,6 +1289,7 @@ mod profile_tests {
             built.partitions.insert(
                 name.to_owned(),
                 Partition {
+                    interfaces: Vec::new(),
                     runtime: "cedar".to_owned(),
                     media_types: vec!["application/vnd.permguard.policy.cedar".to_owned()],
                     schema: false,
@@ -1298,6 +1410,7 @@ mod artifact_contract_tests {
         built.partitions.insert(
             "p".to_owned(),
             Partition {
+                interfaces: Vec::new(),
                 runtime: "dogwood".to_owned(),
                 media_types: vec!["application/vnd.permguard.policy.dogwood".to_owned()],
                 schema,

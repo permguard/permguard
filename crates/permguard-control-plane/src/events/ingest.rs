@@ -382,22 +382,20 @@ fn check(batch: &Batch, envelope: &Envelope, accepted_types: &[&str]) -> Result<
 /// Those fields are redundant on purpose: they make filtering cheap and an audit readable. They
 /// are safe only while they say the same thing as the typed occurrence the digest covers.
 fn validate_occurrence(record: &record::Record) -> Result<(), Refused> {
-    if record.event_type != permguard_languages::event::EVENT_TYPE {
+    if !permguard_languages::event::EVENT_TYPES.contains(&record.event_type.as_str()) {
         return Err(Refused::Unregistered(format!(
             "this build has no payload validator for `{}`",
             record.event_type
         )));
     }
-    let body: permguard_languages::event::OccurrenceBody =
-        serde_json::from_value(record.event.clone()).map_err(|error| {
+    // Each version by its own validator (TL-5c).
+    let occurrence = permguard_languages::event::read_typed(&record.event_type, &record.event)
+        .map_err(|error| {
             Refused::Unverifiable(format!(
                 "the `{}` payload is malformed: {error}",
                 record.event_type
             ))
         })?;
-    let occurrence = body
-        .read()
-        .map_err(|error| Refused::Unverifiable(error.to_string()))?;
     for (name, stated, actual) in [
         (
             "event_id",
@@ -535,4 +533,78 @@ fn same_or_fork(
     );
 
     Err(Refused::Fork { seq })
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use permguard_events::record::{RECORD_TYPE, Record, VERSION, occurrence_digest_of};
+    use permguard_events::{GENESIS, Producer, Stream};
+    use serde_json::json;
+
+    fn record(event_type: &str, event: serde_json::Value) -> Record {
+        Record {
+            v: VERSION,
+            record_type: RECORD_TYPE.to_owned(),
+            stream: Stream::new(
+                Producer::data_plane("plane-a", "inst-1"),
+                "acme",
+                "agent-governance",
+            ),
+            seq: 1,
+            prev: GENESIS.to_owned(),
+            event_type: event_type.to_owned(),
+            event_id: "evt-1".to_owned(),
+            source: None,
+            occurrence_digest: occurrence_digest_of(&event).expect("the occurrence digests"),
+            kind: "request".to_owned(),
+            profile: "temporal".to_owned(),
+            policy_partitions: vec!["governance".to_owned()],
+            commit: "sha256:commit".to_owned(),
+            history_key: None,
+            occurred_at: "2026-08-28T10:15:30Z".to_owned(),
+            observed_at: "2026-08-28T10:15:31Z".to_owned(),
+            event,
+        }
+    }
+
+    /// TL-5c: the store validates each registered event version by its own contract.
+    #[test]
+    fn each_event_version_is_validated_by_its_own_contract() {
+        let body = |member: &str| {
+            let mut event = json!({
+                "event_id": "evt-1",
+                "kind": "request",
+                "action": "Drupe::Action::Login",
+                "principal": "Drupe::OAuthUser::\"alice\"",
+                "resource": "Drupe::Gateway::\"gw1\"",
+                "occurred_at": "2026-08-28T10:15:30Z",
+            });
+            event[member] = json!({"input": {"user": "alice"}});
+            event
+        };
+        validate_occurrence(&record(
+            permguard_languages::event::EVENT_TYPE,
+            body("logged"),
+        ))
+        .expect("version 1");
+        validate_occurrence(&record(
+            permguard_languages::event::EVENT_TYPE_V2,
+            body("fields"),
+        ))
+        .expect("version 2");
+        assert!(matches!(
+            validate_occurrence(&record(
+                permguard_languages::event::EVENT_TYPE_V2,
+                body("logged")
+            )),
+            Err(Refused::Unverifiable(_))
+        ));
+        assert!(matches!(
+            validate_occurrence(&record("permguard.dogwood.event.v3", body("fields"))),
+            Err(Refused::Unregistered(_))
+        ));
+    }
 }

@@ -40,7 +40,12 @@ pub struct TemporalPdpApi {
     pub submitter: std::sync::Arc<Submitter>,
     pub disclosure: Disclosure,
     pub base_url: String,
+    /// Who serves the interface, its build and its phase: the discovery document's common header
+    /// (WP-7.4a).
+    pub describer: permguard_core::stages::Describer,
     pub pdp: String,
+    /// The Host's authorization: `event.submit` on the exact ledger (WP-6.2a).
+    pub authorization: std::sync::Arc<permguard_host::composition::Authorization>,
 }
 
 #[tonic::async_trait]
@@ -49,6 +54,7 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
         &self,
         request: Request<SubmitEventRequest>,
     ) -> Result<Response<SubmitEventResponse>, Status> {
+        let actor = permguard_transport::actor_of(request.extensions());
         let wire = from_proto(request.into_inner()).map_err(|malformed| {
             status_of(
                 &ApiError::new(ErrorClass::Validation, malformed.code, malformed.message),
@@ -56,12 +62,28 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
             )
         })?;
 
-        match self.submitter.submit(&wire).await {
-            Ok(answered) => Ok(Response::new(to_proto(super::submit::disclosed(
-                answered,
+        // The shared pipeline (WP-7.5d), as over HTTP: authorization before anything is read or
+        // written (WP-6.2a), then the temporal handler.
+        let services = crate::evaluation::Services {
+            authorization: &self.authorization,
+            decider: self.submitter.decider(),
+            submitter: Some(&self.submitter),
+        };
+        let asked = crate::evaluation::EvaluationRequest::temporal(wire);
+        match crate::evaluation::evaluate(&services, &actor, asked).await {
+            Ok(crate::evaluation::Answer::Temporal(answered)) => Ok(Response::new(to_proto(
+                super::submit::disclosed(*answered, self.disclosure),
+            ))),
+            Ok(crate::evaluation::Answer::Native(_)) => Err(status_of(
+                &crate::evaluation::mismatched("temporal gRPC"),
                 self.disclosure,
-            )))),
-            Err(failed) => Err(status_of(&failed, self.disclosure)),
+            )),
+            Err(crate::evaluation::Refused::Denied(denial)) => {
+                Err(crate::authz::gate::grpc_denial(&denial))
+            }
+            Err(crate::evaluation::Refused::Failed(failed)) => {
+                Err(status_of(&failed, self.disclosure))
+            }
         }
     }
 
@@ -142,7 +164,11 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
         &self,
         _request: Request<GetTemporalConfigurationRequest>,
     ) -> Result<Response<GetTemporalConfigurationResponse>, Status> {
-        let document = configuration::document(&self.base_url, &self.pdp);
+        let header = self
+            .describer
+            .header(permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1)
+            .map_err(|refused| status_of(&refused, self.disclosure))?;
+        let document = configuration::document(&self.base_url, &self.pdp, header);
 
         Ok(Response::new(GetTemporalConfigurationResponse {
             r#interface: document.interface,
@@ -158,6 +184,12 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
                 ledger: document.store_scope.ledger,
                 profile: document.store_scope.profile,
             }),
+            version: document.header.version,
+            component: document.header.component,
+            state: document.header.state,
+            stage: document.header.stage,
+            sunset: document.header.sunset,
+            limits: document.limits.into_iter().collect(),
         }))
     }
 }
@@ -242,6 +274,30 @@ pub fn to_proto(response: SubmitResponse) -> SubmitEventResponse {
             watermark: response.history.watermark.unwrap_or_default(),
             staleness_seconds: response.history.staleness_seconds,
             gaps: response.history.gaps,
+            frontier: response
+                .history
+                .frontier
+                .into_iter()
+                .map(|run| crate::v1::FrontierRun {
+                    origin: run.origin,
+                    run: run.run,
+                    covered_through: run.covered_through,
+                    low_watermark: run.low_watermark,
+                    gaps: run
+                        .gaps
+                        .into_iter()
+                        .map(|gap| crate::v1::FrontierGap {
+                            from: gap.from,
+                            through: gap.through,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            origin_set_revision: response.history.origin_set_revision,
+            max_staleness_seconds: response.history.max_staleness_seconds,
+            degraded: response.history.degraded,
+            time: response.history.time,
+            quarantined: response.history.quarantined,
         }),
     }
 }

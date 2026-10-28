@@ -4,11 +4,11 @@
 //! The qualification registry: whether the volume's storage class, driver, filesystem and version
 //! are qualified for the assurance profile in force (WP-1.3, H-04).
 //!
-//! | Profile       | Qualified tuple | Unknown tuple, or a compatibility platform                     |
-//! | ------------- | --------------- | -------------------------------------------------------------- |
-//! | `development` | qualified       | accepted, reported                                             |
-//! | `production`  | qualified       | refused, unless `storage.compatibility_mode` is on (published) |
-//! | `regulated`   | qualified       | refused                                                        |
+//! | Profile       | Qualified tuple | Unknown tuple, or a compatibility platform                          |
+//! | ------------- | --------------- | ------------------------------------------------------------------- |
+//! | `development` | qualified       | accepted, reported; `compatibility_mode` when published or Windows  |
+//! | `production`  | qualified       | refused                                                             |
+//! | `regulated`   | qualified       | refused                                                             |
 //!
 //! The filesystem and version are what the probe observed; the storage class and driver come from
 //! configuration, which never overrides what the probe observed, so the tuple is built here and
@@ -17,6 +17,15 @@
 //! before a `.` or a `-`: `6.8` covers `6.8.0-45-generic`, `6.8.0-45-generic` covers only itself. A
 //! platform that meets the storage contract only as a compatibility mode (Windows) is never
 //! qualified, whatever the registry says.
+//!
+//! A qualified record also proves encryption at rest (TS-5): from `production` a matching entry
+//! must name its encryption mechanism, its evidence revision and when the evidence expires, and an
+//! entry past its expiry is stale. An incomplete or stale entry is refused from `production`;
+//! under `development` the volume runs unqualified, reported. A configuration boolean never proves
+//! encryption: `storage.compatibility_mode` relaxes nothing from `production` (TS-5, deciding the
+//! question WP-05 left open: the storage document keeps a missing, unknown or stale qualification
+//! out of Ready, and a profile never disables its own controls). Below `production` it is the
+//! published name of running on an unqualified platform.
 
 use permguard_core::assurance::AssuranceProfile;
 use permguard_core::volume::{Tuple, VolumeConfig};
@@ -27,8 +36,11 @@ use super::{PlatformMode, platform_mode};
 /// Where the volume stands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Standing {
-    /// A qualified tuple, and where its evidence is recorded.
-    Qualified { evidence: String },
+    /// A qualified tuple, where its evidence is recorded, and when that evidence expires.
+    Qualified {
+        evidence: String,
+        expires_at: Option<i64>,
+    },
     /// Not qualified, accepted under the compatibility mode, which is published.
     CompatibilityMode,
     /// Not qualified, accepted because the profile is below `production`; reported.
@@ -45,13 +57,34 @@ pub fn running_tuple(identity: &Identity, config: &VolumeConfig) -> Tuple {
     }
 }
 
-/// Whether the volume the probe observed as `identity` may serve under `profile`.
+impl Standing {
+    /// The word discovery and `host status` publish.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Qualified { .. } => "qualified",
+            Self::CompatibilityMode => "compatibility_mode",
+            Self::Unqualified => "unqualified",
+        }
+    }
+
+    /// The evidence id of a qualified volume.
+    pub fn evidence(&self) -> Option<&str> {
+        match self {
+            Self::Qualified { evidence, .. } => Some(evidence),
+            _ => None,
+        }
+    }
+}
+
+/// Whether the volume the probe observed as `identity` may serve under `profile` at `now`, in
+/// seconds since the epoch.
 pub fn qualify(
     identity: &Identity,
     config: &VolumeConfig,
     profile: AssuranceProfile,
+    now: i64,
 ) -> Result<Standing, Unsupported> {
-    qualify_on(platform_mode(), identity, config, profile)
+    qualify_on(platform_mode(), identity, config, profile, now)
 }
 
 fn qualify_on(
@@ -59,6 +92,7 @@ fn qualify_on(
     identity: &Identity,
     config: &VolumeConfig,
     profile: AssuranceProfile,
+    now: i64,
 ) -> Result<Standing, Unsupported> {
     let running = running_tuple(identity, config);
     let compatibility_platform = platform == PlatformMode::Compatibility;
@@ -69,9 +103,25 @@ fn qualify_on(
         .filter(|entry| entry_is_whole(&entry.tuple))
         .find(|entry| matches(&entry.tuple, &running));
     if let Some(entry) = entry {
-        return Ok(Standing::Qualified {
-            evidence: entry.evidence.clone(),
-        });
+        return match not_proving(entry, now) {
+            None => Ok(Standing::Qualified {
+                evidence: entry.evidence.clone(),
+                expires_at: entry.expires_at,
+            }),
+            Some(_) if profile == AssuranceProfile::Development => Ok(Standing::Unqualified),
+            Some((reason, why)) => Err(Unsupported {
+                reason,
+                detail: format!(
+                    "the qualified entry for storage class `{}`, driver `{}`, filesystem `{}`, \
+                     version `{}` (evidence `{}`) {why}",
+                    entry.tuple.storage_class,
+                    entry.tuple.driver,
+                    entry.tuple.filesystem,
+                    entry.tuple.version,
+                    entry.evidence
+                ),
+            }),
+        };
     }
     let refused = |why: &str| Unsupported {
         reason: Reason::UnknownTuple,
@@ -84,22 +134,57 @@ fn qualify_on(
         ),
     };
     match profile {
-        AssuranceProfile::Development if compatibility_platform => Ok(Standing::CompatibilityMode),
-        AssuranceProfile::Development => Ok(Standing::Unqualified),
-        AssuranceProfile::Production if config.compatibility_mode => {
+        AssuranceProfile::Development if compatibility_platform || config.compatibility_mode => {
             Ok(Standing::CompatibilityMode)
         }
+        AssuranceProfile::Development => Ok(Standing::Unqualified),
         AssuranceProfile::Production if compatibility_platform => Err(refused(
-            "runs on a platform that is only a compatibility mode, never qualified; under \
-             `production` it needs storage.compatibility_mode set and published",
+            "runs on a platform that is only a compatibility mode, never qualified, and \
+             `production` runs only on a qualified tuple",
         )),
         AssuranceProfile::Production => Err(refused(
-            "is not qualified for `production`; qualify it in storage.qualified, or set and \
-             publish storage.compatibility_mode",
+            "is not qualified for `production`: list it in storage.qualified with its evidence, \
+             encryption mechanism, revision and expiry; storage.compatibility_mode relaxes \
+             nothing from `production`",
         )),
         AssuranceProfile::Regulated => Err(refused(
             "is not qualified, and `regulated` runs only on a qualified tuple",
         )),
+    }
+}
+
+/// Why a matching entry does not prove encryption at rest at `now`: incomplete, or stale.
+fn not_proving(
+    entry: &permguard_core::volume::QualifiedTuple,
+    now: i64,
+) -> Option<(Reason, String)> {
+    let missing: Vec<&str> = [
+        ("encryption", entry.encryption.is_none()),
+        ("revision", entry.revision.is_none()),
+        ("expires_at", entry.expires_at.is_none()),
+    ]
+    .into_iter()
+    .filter_map(|(key, absent)| absent.then_some(key))
+    .collect();
+    if !missing.is_empty() {
+        return Some((
+            Reason::QualificationIncomplete,
+            format!(
+                "does not name its {}: a record proves encryption at rest only with its \
+                 mechanism, revision and expiry",
+                missing.join(", ")
+            ),
+        ));
+    }
+    match entry.expires_at {
+        Some(expires_at) if expires_at <= now => Some((
+            Reason::QualificationStale,
+            format!(
+                "expired at {}: renew the evidence and its revision",
+                permguard_core::time::to_rfc3339(expires_at)
+            ),
+        )),
+        _ => None,
     }
 }
 
@@ -160,6 +245,18 @@ mod tests {
         }
     }
 
+    /// 2026-10-27T00:00:00Z.
+    const NOW: i64 = 1_793_059_200;
+
+    fn qualify_on(
+        platform: PlatformMode,
+        identity: &Identity,
+        config: &VolumeConfig,
+        profile: AssuranceProfile,
+    ) -> Result<Standing, Unsupported> {
+        super::qualify_on(platform, identity, config, profile, NOW)
+    }
+
     fn config(compatibility_mode: bool) -> VolumeConfig {
         VolumeConfig {
             storage_class: Some("fast-ssd".to_owned()),
@@ -167,6 +264,9 @@ mod tests {
             qualified: vec![QualifiedTuple {
                 tuple: tuple("ext4"),
                 evidence: "QUAL-2026-01".to_owned(),
+                encryption: Some("aws-kms".to_owned()),
+                revision: Some("3".to_owned()),
+                expires_at: Some(NOW + 86_400),
             }],
             compatibility_mode,
             ..VolumeConfig::default()
@@ -206,15 +306,15 @@ mod tests {
                     profile
                 ),
                 Ok(Standing::Qualified {
-                    evidence: "QUAL-2026-01".to_owned()
+                    evidence: "QUAL-2026-01".to_owned(),
+                    expires_at: Some(NOW + 86_400),
                 })
             );
         }
     }
 
     #[test]
-    fn an_unknown_tuple_is_reported_in_development_compatibility_in_production_and_refused_in_regulated()
-     {
+    fn an_unknown_tuple_is_reported_in_development_and_refused_from_production() {
         let unknown = identity("btrfs");
         let on = |compatibility, profile| {
             qualify_on(
@@ -235,10 +335,18 @@ mod tests {
             Reason::UnknownTuple
         );
         assert_eq!(
-            on(true, AssuranceProfile::Production),
-            Ok(Standing::CompatibilityMode)
+            on(true, AssuranceProfile::Development),
+            Ok(Standing::CompatibilityMode),
+            "published below `production`"
         );
+        // TS-5: the compatibility mode relaxes nothing from `production`.
         for compatibility in [false, true] {
+            assert_eq!(
+                on(compatibility, AssuranceProfile::Production)
+                    .expect_err("refused")
+                    .reason,
+                Reason::UnknownTuple
+            );
             assert_eq!(
                 on(compatibility, AssuranceProfile::Regulated)
                     .expect_err("regulated runs only qualified")
@@ -313,10 +421,7 @@ mod tests {
             Ok(Standing::CompatibilityMode)
         );
         assert!(on(false, AssuranceProfile::Production).is_err());
-        assert_eq!(
-            on(true, AssuranceProfile::Production),
-            Ok(Standing::CompatibilityMode)
-        );
+        assert!(on(true, AssuranceProfile::Production).is_err());
         assert!(on(true, AssuranceProfile::Regulated).is_err());
     }
 
@@ -345,6 +450,71 @@ mod tests {
                 AssuranceProfile::Production
             )
             .is_err()
+        );
+    }
+
+    /// TS-5: from `production` a matching entry proves encryption at rest only with its
+    /// mechanism, revision and expiry, and only until it expires; the compatibility mode does not
+    /// cover an entry the operator named. `development` runs on it unqualified.
+    #[test]
+    fn an_incomplete_or_stale_record_is_refused_from_production() {
+        let incomplete = |strip: fn(&mut QualifiedTuple)| {
+            let mut config = config(true);
+            strip(&mut config.qualified[0]);
+            config
+        };
+        let cases: [(VolumeConfig, Reason, &str); 4] = [
+            (
+                incomplete(|e| e.encryption = None),
+                Reason::QualificationIncomplete,
+                "encryption",
+            ),
+            (
+                incomplete(|e| e.revision = None),
+                Reason::QualificationIncomplete,
+                "revision",
+            ),
+            (
+                incomplete(|e| e.expires_at = None),
+                Reason::QualificationIncomplete,
+                "expires_at",
+            ),
+            (
+                incomplete(|e| e.expires_at = Some(NOW)),
+                Reason::QualificationStale,
+                "expired at",
+            ),
+        ];
+        for (config, reason, said) in cases {
+            for profile in [AssuranceProfile::Production, AssuranceProfile::Regulated] {
+                let refused = qualify_on(PlatformMode::Full, &identity("ext4"), &config, profile)
+                    .expect_err("refused");
+                assert_eq!(refused.reason, reason);
+                assert!(refused.detail.contains(said), "{refused}");
+                assert!(refused.detail.contains("QUAL-2026-01"), "{refused}");
+            }
+            assert_eq!(
+                qualify_on(
+                    PlatformMode::Full,
+                    &identity("ext4"),
+                    &config,
+                    AssuranceProfile::Development
+                ),
+                Ok(Standing::Unqualified)
+            );
+        }
+        let fresh = config(false);
+        let standing = super::qualify_on(
+            PlatformMode::Full,
+            &identity("ext4"),
+            &fresh,
+            AssuranceProfile::Regulated,
+            NOW + 86_399,
+        )
+        .expect("still valid a second before it expires");
+        assert_eq!(
+            (standing.as_str(), standing.evidence()),
+            ("qualified", Some("QUAL-2026-01"))
         );
     }
 }

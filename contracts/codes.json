@@ -12,6 +12,18 @@
       "kind": "refusal",
       "class": "internal"
     },
+    "catalog.REVISION_CONFLICT": {
+      "code": "revision_conflict",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "catalog.LEDGER_ARCHIVED": {
+      "code": "ledger_archived",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
     "catalog.INVALID_NAME": {
       "code": "invalid_name",
       "contract": "6-contracts/7-contract-catalog-discovery.md",
@@ -80,6 +92,36 @@
     },
     "client.HEAD_UNVERIFIED": {
       "code": "head_unverified",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.BACKUP_UNVERIFIED": {
+      "code": "backup_unverified",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.DECISION_EXPORT_MALFORMED": {
+      "code": "decision_export_malformed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.DECISION_EXPORT_TRUNCATED": {
+      "code": "decision_export_truncated",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.DECISION_EXPORT_TYPE_UNSUPPORTED": {
+      "code": "decision_export_type_unsupported",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.DECISION_EXPORT_UNREADABLE": {
+      "code": "decision_export_unreadable",
       "contract": "5-command-line/1-command-line.md",
       "kind": "local",
       "class": "validation"
@@ -270,7 +312,8 @@
     "common.FORGED": {
       "code": "forged",
       "contract": "6-contracts/5-contract-stream-common.md",
-      "kind": "unused"
+      "kind": "refusal",
+      "class": "validation"
     },
     "common.INTERFACE_RETIRED": {
       "code": "interface_retired",
@@ -821,6 +864,24 @@
       "kind": "refusal",
       "class": "validation"
     },
+    "notp.TRANSFER_EXPIRED": {
+      "code": "transfer_expired",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "notp.TRANSFER_MISMATCH": {
+      "code": "transfer_mismatch",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "notp.TRANSFER_UNKNOWN": {
+      "code": "transfer_unknown",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
     "notp.VALUE_UNREPRESENTABLE": {
       "code": "value_unrepresentable",
       "contract": "6-contracts/1-contract-pdp-native-v1.md",
@@ -1292,6 +1353,12 @@
       "kind": "refusal",
       "class": "validation"
     },
+    "pdp_temporal.HISTORY_CONFLICTED": {
+      "code": "history_conflicted",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
     "pdp_temporal.HISTORY_CONTRACT_INCOMPATIBLE": {
       "code": "history_contract_incompatible",
       "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
@@ -1438,8 +1505,161 @@
       "contract": "1-architecture/8-architecture-storage-operations.md",
       "kind": "log"
     },
+    "storage.OWNER": {
+      "code": "storage_owner",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.MODE": {
+      "code": "storage_mode",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.LINK": {
+      "code": "storage_link",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.FILE_KIND": {
+      "code": "storage_file_kind",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PATH_ESCAPE": {
+      "code": "storage_path_escape",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.RUN_AS_ROOT": {
+      "code": "storage_run_as_root",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.CORE_DUMPS": {
+      "code": "storage_core_dumps",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_FLUSH": {
+      "code": "storage_probe_flush",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_PERMISSIONS": {
+      "code": "storage_probe_permissions",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_LOCK": {
+      "code": "storage_probe_lock",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_RENAME": {
+      "code": "storage_probe_rename",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_IDENTITY": {
+      "code": "storage_probe_identity",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_HARD_LINK": {
+      "code": "storage_probe_hard_link",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_TORN_APPEND": {
+      "code": "storage_probe_torn_append",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.PROBE_RESERVATION": {
+      "code": "storage_probe_reservation",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.FREE_BYTES": {
+      "code": "storage_free_bytes",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.FREE_INODES": {
+      "code": "storage_free_inodes",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.UNQUALIFIED": {
+      "code": "storage_unqualified",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.QUALIFICATION_INCOMPLETE": {
+      "code": "storage_qualification_incomplete",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.QUALIFICATION_STALE": {
+      "code": "storage_qualification_stale",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.BACKUP_POLICY_INCOMPLETE": {
+      "code": "backup_policy_incomplete",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.RECOVERY_KEY_MISMATCH": {
+      "code": "recovery_key_mismatch",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "storage.RECOVERY_KEY_MISSING": {
+      "code": "recovery_key_missing",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "storage.SNAPSHOT_UNBOUND": {
+      "code": "snapshot_unbound",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "storage.RECOVERY_KEY_WEAK": {
+      "code": "recovery_key_weak",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.RECOVERY_KEY_SHARED": {
+      "code": "recovery_key_shared",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.OBJECTIVES_INCOMPLETE": {
+      "code": "objectives_incomplete",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.OBJECTIVES_INCONSISTENT": {
+      "code": "objectives_inconsistent",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.OBJECTIVE_MARGIN": {
+      "code": "objective_margin",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
     "stream.ACK_AHEAD": {
       "code": "ack_ahead",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "log"
+    },
+    "stream.ACK_BEHIND": {
+      "code": "ack_behind",
       "contract": "6-contracts/5-contract-stream-common.md",
       "kind": "log"
     },
@@ -1557,6 +1777,11 @@
       "code": "out_of_order",
       "contract": "6-contracts/5-contract-stream-common.md",
       "kind": "ack"
+    },
+    "stream.PRODUCER_GAP": {
+      "code": "producer_gap",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
     },
     "stream.QUEUE_FULL": {
       "code": "queue_full",

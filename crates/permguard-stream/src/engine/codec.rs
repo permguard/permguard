@@ -123,6 +123,13 @@ impl Map {
         })
     }
 
+    pub(crate) fn boolean(&mut self, label: i64) -> Result<bool, StreamError> {
+        match self.value(label)? {
+            Value::Bool(value) => Ok(value),
+            _ => Err(self.mistyped(label)),
+        }
+    }
+
     pub(crate) fn array(&mut self, label: i64) -> Result<Vec<Value>, StreamError> {
         match self.value(label)? {
             Value::Array(values) => Ok(values),

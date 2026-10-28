@@ -139,11 +139,7 @@ controlPlane:
   #                                  # segment that has left is a gap a reader is told about.
   #                                  # Envelopes and the archived verification keys that prove
   #                                  # retained records are never dropped with them.
-  #   producer_keys:                 # required: key material plus producer/tenant authority
-  #     - path: trust/data-plane-events.jwks
-  #       producer: data-plane-eu-1
-  #       zone: "*"                  # `*` is allowed for zone/ledger, never for producer
-  #       ledger: "*"
+  #   # no producer key file: events arrive over the Host's `events.ship`
 
 dataPlane:
   public:
@@ -180,15 +176,9 @@ dataPlane:
     interval: "15s"
     timeout: "1m"
     parallelism: "4"
-    servers:
-      - url: "grpcs://127.0.0.1:6443"
-        tls:
-          # The authority this runtime generated beside the certificate it serves.
-          ca_file: tls/ca.pem
-          # Mutual TLS: the operator certificate this runtime generated, whose CN `local-operator`
-          # is the one the endpoint's allow list answers.
-          cert: tls/client.pem
-          key: tls/client.key
+    # This process's own Control Plane, in-process: every zone and every ledger it holds, verified
+    # under this Host's own `control.attest` ring, no URL and no TLS (WP-7.7). Narrow it with
+    #   local: { zones: ["acme"], ledgers: ["main-ledger"] }
 
   # The decision path, sized for a laptop: a handful of ledgers, a small heap.
   decisions:
@@ -204,10 +194,10 @@ dataPlane:
     # That durability is the dominant cost of a decision — measured at roughly ten times the
     # evaluation itself, which is what `bench/decide.js` reports — and it is the price of an audit
     # trail that survives the process. What the decision path does *not* wait for is the record
-    # reaching the control plane; that is the spool's job, off the critical path.
+    # reaching a coordinator; the Host's stream ships it over `decisions.ship`, off the critical path.
     log:
       enabled: "true"
-      pdp_id: all-in-one-local-mtls          # half of every stream identity: two replicas must never share one
+      # only where a version 1 spool left by an earlier release is shipped until empty
       server:
         url: "grpcs://127.0.0.1:6443"
         tls:
@@ -218,17 +208,11 @@ dataPlane:
           # two authorizations. Here they share the certificate this environment generates.
       spool:
         directory: "data/decisions/spool"
-        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        bytes: "64M"              # unacknowledged by the required subscriptions; past it decisions are refused
         age: "24h"
       batch: { bytes: "256k", interval: "1s" }
-      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      mode: "required"           # every answered decision has a durable record; one that cannot be is refused
       sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
-      # The secret input commitments are taken under. A different key from the pseudonymisation
-      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
-      # invalidate every commitment with it.
-      commitment:
-        key_ref: decision-commitment
-        key_version: "v1"
       include:
         subject_properties: []    # an allow-list, never "all": name a field to record it
         resource_properties: []
@@ -246,9 +230,7 @@ dataPlane:
   # submission closed, and there is nothing for a deployment to choose.
   # events:
   #   enabled: "true"
-  #   producer_id: data-plane-eu-1   # required when the interface is on. A producer id owns a hash
-  #                                  # chain: two planes sharing one would each append to a stream
-  #                                  # the other also claims, and neither history could be verified.
+  #   # the stream is named by the Host's `host_id` and run: no producer id is configured
   #   directory: data/events         # under the working directory
   #
   #   stream:
@@ -294,11 +276,6 @@ dataPlane:
   #       - zone: acme
   #         ledger: agent-governance
   #         event_types: [permguard.dogwood.event.v1]
-  #     producer_keys:               # required by either shared mode; bound to origin and tenant
-  #       - path: trust/data-plane-b-events.jwks
-  #         producer: data-plane-b
-  #         zone: acme
-  #         ledger: agent-governance
 
 operations:
   keys:
@@ -308,6 +285,8 @@ operations:
     retain: 1d
   secrets:
     provider: directory
+    # The root the per-zone keys derive from: decision input tags and pseudonyms (WP-3.3).
+    coordinator_root_ref: zone-root
   audit:
     sink: file
     retention: 7d

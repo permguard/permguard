@@ -1,0 +1,49 @@
+{
+  "folder": "trimsuffix",
+  "files": {
+    "test-trimsuffix-0370.yaml": {
+      "sha256": "sha256:4deef93a9c60e2ec47a2234bb2fab0f38ea5b22a0c71f485baa6539c2cb32fbc",
+      "cases": [
+        {
+          "note": "trimsuffix/trims suffix '!¡' from string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\ttrim_suffix(\"¡¡¡foo, bar!!!\", \", bar!!!\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "¡¡¡foo"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-trimsuffix-0371.yaml": {
+      "sha256": "sha256:5c2bdd01bf6e6baf655d4695e3de42c3ee41d77078ac4627ffeff2c002fec773",
+      "cases": [
+        {
+          "note": "trimsuffix/trims nothing from string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\ttrim_suffix(\"¡¡¡foo, bar!!!\", \", foo!!!\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "¡¡¡foo, bar!!!"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

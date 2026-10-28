@@ -21,7 +21,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use permguard_core::time;
 use serde::{Deserialize, Serialize};
 
-use crate::output::Report;
+use crate::output::{Report, printable};
 use crate::trace::Trace;
 use permguard_control_client::Endpoint;
 use permguard_control_client::http::Client;
@@ -80,6 +80,12 @@ pub struct PlaneInspection {
     /// Whether the plane reports itself ready, when it said.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ready: Option<bool>,
+    /// Its lifecycle phase, when it said (WP-7.4b).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    /// The interfaces its plane document lists, each with its stage (WP-7.4b).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub interfaces: Vec<InterfaceStage>,
     /// The plane the endpoint says it is, which is not always the one that was asked for.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reported_plane: Option<String>,
@@ -92,6 +98,17 @@ pub struct PlaneInspection {
     /// The commit it was built from.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
+}
+
+/// One interface a plane lists, and where it stands (WP-7.4b).
+#[derive(Debug, Serialize)]
+pub struct InterfaceStage {
+    pub id: String,
+    /// The stage its link names; absent when the link names none (after the review).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sunset: Option<String>,
 }
 
 /// Everything the planes answered, and when they were asked.
@@ -164,6 +181,13 @@ fn probe(
         read_plane(prober.client, endpoint, trace)
     };
     let latency_ms = elapsed_ms(started);
+    // The plane document is read after the latency is taken, so the latency stays the two
+    // questions every plane answers (after the review); gRPC lists no interfaces.
+    let interfaces = if outcome.is_ok() && !endpoint.is_grpc() {
+        read_interfaces(prober.client, endpoint, trace)
+    } else {
+        Vec::new()
+    };
 
     match outcome {
         Err(unreachable) => PlaneInspection {
@@ -175,6 +199,8 @@ fn probe(
             latency_ms,
             live: None,
             ready: None,
+            state: None,
+            interfaces: Vec::new(),
             reported_plane: None,
             product: None,
             version: None,
@@ -192,6 +218,8 @@ fn probe(
                 latency_ms,
                 live: answered.health.live(),
                 ready: answered.health.ready(),
+                state: answered.health.state(),
+                interfaces,
                 reported_plane: Some(answered.info.plane),
                 product: Some(answered.info.product),
                 version: Some(answered.info.version),
@@ -212,7 +240,7 @@ fn classify(health: &HealthAnswer) -> (Status, Option<&'static str>, Option<Stri
             Some(reason),
             Some(format!("its identity is known, but {detail}")),
         ),
-        HealthAnswer::Known { live, ready } => match (live, ready) {
+        HealthAnswer::Known { live, ready, .. } => match (live, ready) {
             (false, _) => (
                 Status::Unhealthy,
                 Some(permguard_core::codes::client::NOT_LIVE),
@@ -231,7 +259,7 @@ fn classify(health: &HealthAnswer) -> (Status, Option<&'static str>, Option<Stri
     }
 }
 
-/// One plane's two answers.
+/// One plane's answers: what it is, and how it is.
 struct PlaneAnswer {
     info: PlaneInfo,
     health: HealthAnswer,
@@ -248,6 +276,8 @@ enum HealthAnswer {
     Known {
         live: bool,
         ready: bool,
+        /// The phase, when the plane says one.
+        state: Option<String>,
     },
     Unknown {
         reason: &'static str,
@@ -266,6 +296,13 @@ impl HealthAnswer {
     fn ready(&self) -> Option<bool> {
         match self {
             Self::Known { ready, .. } => Some(*ready),
+            Self::Unknown { .. } => None,
+        }
+    }
+
+    fn state(&self) -> Option<String> {
+        match self {
+            Self::Known { state, .. } => state.clone(),
             Self::Unknown { .. } => None,
         }
     }
@@ -290,14 +327,32 @@ fn read_plane(
         Ok(body) => HealthAnswer::Known {
             live: body.live,
             ready: body.ready,
+            state: body.state,
         },
         Err(failure) => HealthAnswer::Unknown {
             reason: permguard_core::codes::client::HEALTH_UNREADABLE,
             detail: failure.detail,
         },
     };
-
     Ok(PlaneAnswer { info, health })
+}
+
+/// The interfaces a plane's document lists, with their stage; a document it does not answer lists
+/// none, which is not a failure of the probe.
+fn read_interfaces(client: &Client, endpoint: &Endpoint, trace: &Trace) -> Vec<InterfaceStage> {
+    fetch::<PlaneDocument>(client, endpoint, "/.well-known/server-configuration", trace)
+        .map(|document| {
+            document
+                .interfaces
+                .into_iter()
+                .map(|(id, link)| InterfaceStage {
+                    id,
+                    stage: link.stage,
+                    sunset: link.sunset,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The same two questions over gRPC: `GetInfo`, then `GetHealth` (TC-1).
@@ -332,6 +387,7 @@ fn read_plane_grpc(
         Ok(body) => HealthAnswer::Known {
             live: body.live,
             ready: body.ready,
+            state: Some(body.state).filter(|state| !state.is_empty()),
         },
         Err(status) => HealthAnswer::Unknown {
             reason: permguard_core::codes::client::HEALTH_UNREADABLE,
@@ -418,6 +474,23 @@ struct PlaneInfo {
 struct HealthBody {
     live: bool,
     ready: bool,
+    #[serde(default)]
+    state: Option<String>,
+}
+
+/// What a plane document lists of its interfaces (WP-7.4b).
+#[derive(Debug, Default, Deserialize)]
+struct PlaneDocument {
+    #[serde(default)]
+    interfaces: std::collections::BTreeMap<String, InterfaceLink>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InterfaceLink {
+    #[serde(default)]
+    stage: Option<String>,
+    #[serde(default)]
+    sunset: Option<String>,
 }
 
 impl Report for InspectReport {
@@ -436,23 +509,53 @@ impl Report for InspectReport {
             }
 
             if let Some(detail) = plane.detail.as_deref() {
-                writeln!(out, "  detail:   {detail}")?;
+                writeln!(out, "  detail:   {}", printable(detail))?;
             }
 
             if let Some(product) = plane.product.as_deref() {
-                writeln!(out, "  product:  {product}")?;
+                writeln!(out, "  product:  {}", printable(product))?;
             }
 
             if let Some(version) = plane.version.as_deref() {
-                writeln!(out, "  version:  {version}")?;
+                writeln!(out, "  version:  {}", printable(version))?;
             }
 
             if let Some(commit) = plane.commit.as_deref() {
-                writeln!(out, "  commit:   {commit}")?;
+                writeln!(out, "  commit:   {}", printable(commit))?;
             }
 
             if let (Some(live), Some(ready)) = (plane.live, plane.ready) {
                 writeln!(out, "  health:   live={live} ready={ready}")?;
+            }
+
+            if let Some(state) = plane.state.as_deref() {
+                writeln!(out, "  state:    {}", printable(state))?;
+            }
+
+            // Every string a server sent is printed escaped: a document cannot write control
+            // sequences to the operator's terminal (after the review).
+            for interface in &plane.interfaces {
+                writeln!(
+                    out,
+                    "  interface {} ({})",
+                    printable(&interface.id),
+                    printable(interface.stage.as_deref().unwrap_or("no stage"))
+                )?;
+                if interface.stage.as_deref() == Some("deprecated") {
+                    match interface.sunset.as_deref() {
+                        Some(sunset) => writeln!(
+                            out,
+                            "  warning:  {} is deprecated, served until {}",
+                            printable(&interface.id),
+                            printable(sunset)
+                        )?,
+                        None => writeln!(
+                            out,
+                            "  warning:  {} is deprecated",
+                            printable(&interface.id)
+                        )?,
+                    }
+                }
             }
 
             writeln!(out, "  latency:  {}ms", plane.latency_ms)?;
@@ -462,7 +565,8 @@ impl Report for InspectReport {
             {
                 writeln!(
                     out,
-                    "  warning:  this endpoint reports itself as the {reported} plane"
+                    "  warning:  this endpoint reports itself as the {} plane",
+                    printable(reported)
                 )?;
             }
 

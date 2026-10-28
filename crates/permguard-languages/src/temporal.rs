@@ -255,7 +255,36 @@ pub trait Temporal: Send + Sync {
     /// `occurrences` must already be in the deterministic order the caller documents; this does not
     /// sort, because the order across producers is a replication decision rather than a runtime
     /// one, and a runtime that re-sorted could disagree with the store that recorded them.
-    fn rebuild(&self, history: &str, occurrences: &[Occurrence]) -> Result<(), Refused>;
+    ///
+    /// # The deadline
+    ///
+    /// A replay is part of the decision that needed it, and stops when that decision's replay
+    /// budget runs out (DOGWOOD-03): past `deadline` the rebuild is abandoned between two events,
+    /// refused `evaluation_deadline_exceeded`, and the history keeps what it had. It never goes on
+    /// consuming work after the caller has been answered.
+    fn rebuild(
+        &self,
+        history: &str,
+        occurrences: &[Occurrence],
+        deadline: Option<std::time::Instant>,
+    ) -> Result<(), Refused>;
+
+    /// Charges this partition's warm histories to `budget`, under `zone` (DOGWOOD-02).
+    ///
+    /// Called by the plane each time it hands the partition work; the first call binds it, and
+    /// later ones are no-ops. A partition never bound charges a budget of its own under the
+    /// default bounds, so its warm state is bounded either way.
+    fn bind_warm(&self, budget: &std::sync::Arc<crate::warm::Budget>, zone: &str) {
+        let _ = (budget, zone);
+    }
+
+    /// Checks this partition against the input its manifest declares, at load and where a ledger
+    /// is authored (TL-5c): a version 2 partition's one-sided fields must be declared, and the
+    /// declarations belong to version 2 only.
+    fn check_input(&self, input: Option<&str>) -> Result<(), String> {
+        let _ = input;
+        Ok(())
+    }
 
     /// How many occurrences this partition's `history` has been given since it was built or last
     /// rebuilt.
@@ -285,6 +314,16 @@ pub trait Temporal: Send + Sync {
     /// index is scanned by, so a partition deciding under one key while the record was stored under
     /// another is a state this signature does not have.
     fn apply(&self, history: &str, occurrence: &Occurrence, checked: &Checked) -> Applied;
+
+    /// [`Temporal::apply`], for a plane that has just replayed `history` or found it warm.
+    ///
+    /// A history the warm budget evicted between that replay and this call holds nothing, and
+    /// observing the occurrence into an empty engine would decide against one record while the
+    /// plane believes the history whole. Such a history answers `E` rather than being rebuilt
+    /// empty, and the plane marks it for replay (after the review).
+    fn apply_replayed(&self, history: &str, occurrence: &Occurrence, checked: &Checked) -> Applied {
+        self.apply(history, occurrence, checked)
+    }
 }
 
 // ─── The interface, as the wire carries it ───────────────────────────────────
@@ -510,6 +549,30 @@ pub struct HistoryScope {
     /// auditor reproducing it has to be able to see that.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub gaps: u64,
+    /// The exact vector frontier a shared decision observed: each imported run, how far it held
+    /// it, what it still retained and its holes (WP-6.4a); empty for `local`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub frontier: Vec<permguard_core::frontier::FrontierRun>,
+    /// The revision of the origin set that defines the required origins, in hex.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_set_revision: Option<String>,
+    /// The freshness bound in force, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_staleness_seconds: Option<u64>,
+    /// The required origins a `shared-eventual` decision is degraded by: stale, behind or gapped.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<String>,
+    /// The time the runtime's windows range over: `occurred_at`.
+    #[serde(default = "occurred_at")]
+    pub time: String,
+    /// How many logical occurrences of this history a digest conflict quarantined: left out of a
+    /// `shared-eventual` decision (WP-6.4b); omitted at zero.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub quarantined: u64,
+}
+
+fn occurred_at() -> String {
+    permguard_core::frontier::TIME_OCCURRED_AT.to_owned()
 }
 
 fn is_zero(count: &u64) -> bool {
@@ -525,6 +588,12 @@ impl HistoryScope {
             staleness_seconds: None,
             // A plane reading only its own events has nothing imported to have a hole in.
             gaps: 0,
+            frontier: Vec::new(),
+            origin_set_revision: None,
+            max_staleness_seconds: None,
+            degraded: Vec::new(),
+            time: occurred_at(),
+            quarantined: 0,
         }
     }
 }

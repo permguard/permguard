@@ -48,10 +48,12 @@ pub struct PlaneInfo {
 }
 
 /// How a plane says it is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlaneHealth {
     pub live: bool,
     pub ready: bool,
+    /// Its lifecycle phase (WP-7.4b).
+    pub state: String,
 }
 
 /// The local reason a failed call is reported under (TC-1): a deadline, an endpoint that could
@@ -212,6 +214,14 @@ impl GrpcChannel {
     where
         F: std::future::Future<Output = Result<tonic::Response<T>, tonic::Status>>,
     {
+        // Never from a decision (TS-4): the channel dials on its first call, so the call is where
+        // the network would be reached.
+        if let Err(refused) =
+            permguard_core::egress::check(permguard_core::egress::Target::ControlPlane)
+        {
+            self.narrate(rpc, "refused on the decision path");
+            return Err(tonic::Status::unavailable(refused.to_string()));
+        }
         match self.runtime.block_on(future) {
             Ok(response) => {
                 self.narrate(rpc, "OK");
@@ -247,6 +257,7 @@ impl GrpcChannel {
                     .map(|health| PlaneHealth {
                         live: health.live,
                         ready: health.ready,
+                        state: health.state,
                     });
                 Ok((
                     PlaneInfo {
@@ -271,6 +282,7 @@ impl GrpcChannel {
                     .map(|health| PlaneHealth {
                         live: health.live,
                         ready: health.ready,
+                        state: health.state,
                     });
                 Ok((
                     PlaneInfo {
@@ -409,12 +421,17 @@ impl crate::catalog::Catalog for GrpcAdmin {
         GrpcAdmin::create_zone(self, name)
     }
 
-    fn rename_zone(&self, zone: &str, name: &str) -> Result<Zone, CatalogFailure> {
-        GrpcAdmin::rename_zone(self, zone, name)
+    fn rename_zone(
+        &self,
+        zone: &str,
+        name: &str,
+        expected_revision: u64,
+    ) -> Result<Zone, CatalogFailure> {
+        GrpcAdmin::rename_zone(self, zone, name, expected_revision)
     }
 
-    fn delete_zone(&self, zone: &str) -> Result<Zone, CatalogFailure> {
-        GrpcAdmin::delete_zone(self, zone)
+    fn delete_zone(&self, zone: &str, expected_revision: u64) -> Result<Zone, CatalogFailure> {
+        GrpcAdmin::delete_zone(self, zone, expected_revision)
     }
 
     fn create_ledger(&self, zone: &str, name: &str) -> Result<Ledger, CatalogFailure> {
@@ -426,12 +443,132 @@ impl crate::catalog::Catalog for GrpcAdmin {
         zone: &str,
         ledger: &str,
         name: &str,
+        expected_revision: u64,
     ) -> Result<Ledger, CatalogFailure> {
-        GrpcAdmin::rename_ledger(self, zone, ledger, name)
+        GrpcAdmin::rename_ledger(self, zone, ledger, name, expected_revision)
     }
 
-    fn delete_ledger(&self, zone: &str, ledger: &str) -> Result<Ledger, CatalogFailure> {
-        GrpcAdmin::delete_ledger(self, zone, ledger)
+    fn delete_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
+        GrpcAdmin::delete_ledger(self, zone, ledger, expected_revision)
+    }
+
+    fn archive_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
+        GrpcAdmin::archive_ledger(self, zone, ledger, expected_revision)
+    }
+
+    fn restore_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
+        GrpcAdmin::restore_ledger(self, zone, ledger, expected_revision)
+    }
+
+    fn export_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<crate::catalog::Export, CatalogFailure> {
+        let mut client = self.catalog();
+        let answer = self
+            .0
+            .call(
+                "ExportLedger",
+                client.export_ledger(proto::ExportLedgerRequest {
+                    zone: zone.to_owned(),
+                    ledger: ledger.to_owned(),
+                }),
+            )
+            .map_err(Self::failure)?;
+        Ok(Self::export(answer))
+    }
+
+    fn import(
+        &self,
+        zone: &str,
+        request: &crate::catalog::ImportRequest,
+    ) -> Result<crate::catalog::Imported, CatalogFailure> {
+        let mut client = self.catalog();
+        let answer = self
+            .0
+            .call(
+                "Import",
+                client.import(proto::ImportRequest {
+                    zone: zone.to_owned(),
+                    request_id: crate::catalog::request_id()?,
+                    mode: request.mode.clone(),
+                    name: request.name.clone().unwrap_or_default(),
+                    archive: request.archive.clone(),
+                    bundle_manifest: request.bundle_manifest.clone(),
+                    bundle_items: request.bundle_items.clone(),
+                    pin: request.pin.clone(),
+                }),
+            )
+            .map_err(Self::failure)?;
+        let ledger = |ledger: proto::Ledger| Ledger {
+            id: ledger.id,
+            zone_id: ledger.zone_id,
+            name: ledger.name,
+            default_ref: ledger.default_ref,
+            created_at: ledger.created_at,
+            updated_at: ledger.updated_at,
+            revision: ledger.revision,
+            state: active_unless_said(ledger.state),
+            provenance: ledger.provenance.map(provenance_of),
+            serving_members: Vec::new(),
+        };
+        Ok(crate::catalog::Imported {
+            mode: answer.mode,
+            manifest_digest: answer.manifest_digest,
+            source_host_id: answer.source_host_id,
+            source_zone_id: answer.source_zone_id,
+            archive: answer.archive.map(|record| crate::catalog::ArchiveRecord {
+                id: record.id,
+                name: record.name,
+                imported_at: record.imported_at,
+                manifest_digest: record.manifest_digest,
+                source_host_id: record.source_host_id,
+                source_zone_id: record.source_zone_id,
+                source_zone_name: record.source_zone_name,
+                ledgers: record
+                    .ledgers
+                    .into_iter()
+                    .map(|ledger| crate::catalog::ExportedLedger {
+                        id: ledger.id,
+                        name: ledger.name,
+                        refs: ledger.refs,
+                        objects: ledger.objects,
+                        statements: ledger.statements,
+                    })
+                    .collect(),
+            }),
+            ledgers: answer.ledgers.into_iter().map(ledger).collect(),
+        })
+    }
+
+    fn export_zone(&self, zone: &str) -> Result<crate::catalog::Export, CatalogFailure> {
+        let mut client = self.catalog();
+        let answer = self
+            .0
+            .call(
+                "ExportZone",
+                client.export_zone(proto::ExportZoneRequest {
+                    zone: zone.to_owned(),
+                }),
+            )
+            .map_err(Self::failure)?;
+        Ok(Self::export(answer))
     }
 }
 
@@ -484,10 +621,34 @@ pub(crate) fn failure_of(status: tonic::Status) -> CatalogFailure {
 impl GrpcAdmin {
     fn catalog(&self) -> proto::zone_catalog_client::ZoneCatalogClient<AuthChannel> {
         proto::zone_catalog_client::ZoneCatalogClient::new(self.0.channel.clone())
+            // An export's archive is as large as the server lets one message be (WP-7.10): the
+            // same ceiling REST reads under.
+            .max_decoding_message_size(crate::MAX_RESPONSE_BYTES as usize)
     }
 
     fn failure(status: tonic::Status) -> CatalogFailure {
         failure_of(status)
+    }
+
+    fn export(answer: proto::ExportResponse) -> crate::catalog::Export {
+        crate::catalog::Export {
+            archive: answer.archive,
+            zone_id: answer.zone_id,
+            bundle_digest: answer.bundle_digest,
+            bundle_bytes: answer.bundle_bytes,
+            exported_at: answer.exported_at,
+            ledgers: answer
+                .ledgers
+                .into_iter()
+                .map(|ledger| crate::catalog::ExportedLedger {
+                    id: ledger.id,
+                    name: ledger.name,
+                    refs: ledger.refs,
+                    objects: ledger.objects,
+                    statements: ledger.statements,
+                })
+                .collect(),
+        }
     }
 
     fn zone(answer: proto::ZoneResponse) -> Result<Zone, CatalogFailure> {
@@ -502,6 +663,7 @@ impl GrpcAdmin {
             name: zone.name,
             created_at: zone.created_at,
             updated_at: zone.updated_at,
+            revision: zone.revision,
         })
     }
 
@@ -519,6 +681,14 @@ impl GrpcAdmin {
             default_ref: ledger.default_ref,
             created_at: ledger.created_at,
             updated_at: ledger.updated_at,
+            revision: ledger.revision,
+            state: active_unless_said(ledger.state),
+            provenance: ledger.provenance.map(provenance_of),
+            serving_members: ledger
+                .serving_members
+                .into_iter()
+                .map(serving_member_of)
+                .collect(),
         })
     }
 
@@ -529,7 +699,10 @@ impl GrpcAdmin {
             self.0
                 .call(
                     "CreateZone",
-                    client.create_zone(proto::CreateZoneRequest { name }),
+                    client.create_zone(proto::CreateZoneRequest {
+                        name,
+                        request_id: crate::catalog::request_id()?,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
@@ -556,6 +729,7 @@ impl GrpcAdmin {
                 name: zone.name,
                 created_at: zone.created_at,
                 updated_at: zone.updated_at,
+                revision: zone.revision,
             })
             .collect())
     }
@@ -570,27 +744,41 @@ impl GrpcAdmin {
         )
     }
 
-    pub fn rename_zone(&self, zone: &str, name: &str) -> Result<Zone, CatalogFailure> {
+    pub fn rename_zone(
+        &self,
+        zone: &str,
+        name: &str,
+        expected_revision: u64,
+    ) -> Result<Zone, CatalogFailure> {
         let mut client = self.catalog();
         let (zone, name) = (zone.to_owned(), name.to_owned());
         Self::zone(
             self.0
                 .call(
                     "RenameZone",
-                    client.rename_zone(proto::RenameZoneRequest { zone, name }),
+                    client.rename_zone(proto::RenameZoneRequest {
+                        zone,
+                        name,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
     }
 
-    pub fn delete_zone(&self, zone: &str) -> Result<Zone, CatalogFailure> {
+    pub fn delete_zone(&self, zone: &str, expected_revision: u64) -> Result<Zone, CatalogFailure> {
         let mut client = self.catalog();
         let zone = zone.to_owned();
         Self::zone(
             self.0
                 .call(
                     "DeleteZone",
-                    client.delete_zone(proto::DeleteZoneRequest { zone }),
+                    client.delete_zone(proto::DeleteZoneRequest {
+                        zone,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
@@ -603,7 +791,11 @@ impl GrpcAdmin {
             self.0
                 .call(
                     "CreateLedger",
-                    client.create_ledger(proto::CreateLedgerRequest { zone, name }),
+                    client.create_ledger(proto::CreateLedgerRequest {
+                        zone,
+                        name,
+                        request_id: crate::catalog::request_id()?,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
@@ -634,6 +826,10 @@ impl GrpcAdmin {
                 default_ref: ledger.default_ref,
                 created_at: ledger.created_at,
                 updated_at: ledger.updated_at,
+                revision: ledger.revision,
+                state: active_unless_said(ledger.state),
+                provenance: ledger.provenance.map(provenance_of),
+                serving_members: Vec::new(),
             })
             .collect())
     }
@@ -656,6 +852,7 @@ impl GrpcAdmin {
         zone: &str,
         ledger: &str,
         name: &str,
+        expected_revision: u64,
     ) -> Result<Ledger, CatalogFailure> {
         let mut client = self.catalog();
         let (zone, ledger, name) = (zone.to_owned(), ledger.to_owned(), name.to_owned());
@@ -663,23 +860,147 @@ impl GrpcAdmin {
             self.0
                 .call(
                     "RenameLedger",
-                    client.rename_ledger(proto::RenameLedgerRequest { zone, ledger, name }),
+                    client.rename_ledger(proto::RenameLedgerRequest {
+                        zone,
+                        ledger,
+                        name,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
     }
 
-    pub fn delete_ledger(&self, zone: &str, ledger: &str) -> Result<Ledger, CatalogFailure> {
+    pub fn delete_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
         let mut client = self.catalog();
         let (zone, ledger) = (zone.to_owned(), ledger.to_owned());
         Self::ledger(
             self.0
                 .call(
                     "DeleteLedger",
-                    client.delete_ledger(proto::DeleteLedgerRequest { zone, ledger }),
+                    client.delete_ledger(proto::DeleteLedgerRequest {
+                        zone,
+                        ledger,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
                 )
                 .map_err(Self::failure)?,
         )
+    }
+
+    /// Archives a ledger (WP-7.3b).
+    pub fn archive_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
+        let mut client = self.catalog();
+        let (zone, ledger) = (zone.to_owned(), ledger.to_owned());
+        Self::ledger(
+            self.0
+                .call(
+                    "ArchiveLedger",
+                    client.archive_ledger(proto::ArchiveLedgerRequest {
+                        zone,
+                        ledger,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
+                )
+                .map_err(Self::failure)?,
+        )
+    }
+
+    /// Restores an archived ledger (WP-7.3b).
+    pub fn restore_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, CatalogFailure> {
+        let mut client = self.catalog();
+        let (zone, ledger) = (zone.to_owned(), ledger.to_owned());
+        Self::ledger(
+            self.0
+                .call(
+                    "RestoreLedger",
+                    client.restore_ledger(proto::RestoreLedgerRequest {
+                        zone,
+                        ledger,
+                        request_id: crate::catalog::request_id()?,
+                        expected_revision,
+                    }),
+                )
+                .map_err(Self::failure)?,
+        )
+    }
+}
+
+/// A serving member as `GetLedger` carries it on gRPC (TC-5).
+fn serving_member_of(member: proto::ServingMember) -> crate::catalog::ServingMember {
+    crate::catalog::ServingMember {
+        host_id: member.host_id,
+        membership_id: member.membership_id,
+        task_id: member.task_id,
+        declared_assurance: member.declared_assurance,
+        assurance: member.assurance_binding_status.map(|assurance| {
+            crate::catalog::ServingAssurance {
+                verdict: assurance.verdict,
+                current: assurance.current,
+                policy_revision: assurance.policy_revision,
+                claims: assurance
+                    .claims
+                    .into_iter()
+                    .map(|claim| crate::catalog::ServingClaim {
+                        control: claim.control,
+                        class: claim.class,
+                        by: claim.by,
+                    })
+                    .collect(),
+                expires_at: assurance.expires_at,
+            }
+        }),
+        lease_state: member.lease_state,
+        last_session_at: member.last_session_at,
+        progress: member
+            .progress
+            .map(|progress| crate::catalog::ServingProgress {
+                report_seq: progress.report_seq,
+                reported_at: progress.reported_at,
+                received_at: progress.received_at,
+                state: progress.state,
+                checkpoint_digest: progress.checkpoint_digest,
+                stale: progress.stale,
+            }),
+    }
+}
+
+/// A re-homed ledger's provenance as the wire carries it (WP-7.10).
+fn provenance_of(provenance: proto::LedgerProvenance) -> permguard_core::Provenance {
+    permguard_core::Provenance {
+        manifest_digest: provenance.manifest_digest,
+        source_host_id: provenance.source_host_id,
+        source_zone_id: provenance.source_zone_id,
+        source_ledger_id: provenance.source_ledger_id,
+        exported_at: provenance.exported_at,
+    }
+}
+
+/// A ledger's state as gRPC carries it: a server older than states sends none, which reads as
+/// `active`, as it does over REST (WP-7.3b).
+fn active_unless_said(state: String) -> String {
+    if state.is_empty() {
+        "active".to_owned()
+    } else {
+        state
     }
 }
 
@@ -748,6 +1069,21 @@ fn parse_digests(list: Vec<String>) -> Result<Vec<Digest>, String> {
     list.iter().map(|text| parse_digest(text)).collect()
 }
 
+/// A ref state the client names, in its proto shape.
+fn expected_ref(expected: &permguard_notp::ExpectedRef) -> proto::ExpectedRef {
+    proto::ExpectedRef {
+        counter: expected.counter,
+        digest: expected.digest.to_string(),
+    }
+}
+
+/// A transfer session id the server issued: exactly 16 bytes.
+fn transfer_id(bytes: &[u8]) -> Result<permguard_notp::TransferId, String> {
+    bytes
+        .try_into()
+        .map_err(|_| "the server issued a transfer id that is not 16 bytes".to_owned())
+}
+
 impl Remote for GrpcRemote {
     fn resolve(&self, zone: &str, ledger: &str) -> Result<(String, String), String> {
         // The zone catalog over the same channel, same runtime.
@@ -805,6 +1141,7 @@ impl Remote for GrpcRemote {
                 head: answer.head,
                 counter: answer.counter,
                 statement: answer.statement,
+                ref_digest: parse_digest(&answer.ref_digest)?.to_string(),
             })),
             Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
             Err(status) => Err(refusal(&status)),
@@ -822,11 +1159,7 @@ impl Remote for GrpcRemote {
             ledger,
             r#ref: request.r#ref.clone(),
             new_head: request.new_head.to_string(),
-            expected_old: request
-                .expected_old
-                .as_ref()
-                .map(|digest| digest.to_string())
-                .unwrap_or_default(),
+            expected_ref: request.expected_ref.as_ref().map(expected_ref),
             closure: request
                 .closure
                 .iter()
@@ -835,6 +1168,7 @@ impl Remote for GrpcRemote {
                     size: claim.size,
                 })
                 .collect(),
+            request_id: request.request_id.clone(),
         };
         let answer = self
             .channel
@@ -846,6 +1180,9 @@ impl Remote for GrpcRemote {
             max_batch_bytes: answer.max_batch_bytes,
             max_batch_objects: answer.max_batch_objects,
             compression: (!answer.compression.is_empty()).then_some(answer.compression),
+            transfer_id: transfer_id(&answer.transfer_id)?,
+            reservation: answer.reservation,
+            expiry: answer.expiry,
         })
     }
 
@@ -868,6 +1205,7 @@ impl Remote for GrpcRemote {
             ledger,
             objects,
             compression,
+            transfer_id: request.transfer_id.to_vec(),
         };
         let answer = self
             .channel
@@ -875,6 +1213,7 @@ impl Remote for GrpcRemote {
             .map_err(|status| refusal(&status))?;
         Ok(UploadObjectsResponse {
             received: parse_digests(answer.received)?,
+            remaining: answer.remaining,
         })
     }
 
@@ -886,11 +1225,9 @@ impl Remote for GrpcRemote {
             ledger,
             r#ref: request.r#ref.clone(),
             new_head: request.new_head.to_string(),
-            expected_old: request
-                .expected_old
-                .as_ref()
-                .map(|digest| digest.to_string())
-                .unwrap_or_default(),
+            expected_ref: request.expected_ref.as_ref().map(expected_ref),
+            transfer_id: request.transfer_id.to_vec(),
+            request_id: request.request_id.clone(),
         };
         let answer = self
             .channel
@@ -900,6 +1237,7 @@ impl Remote for GrpcRemote {
             head: parse_digest(&answer.head)?,
             counter: answer.counter,
             statement: answer.statement,
+            ref_digest: parse_digest(&answer.ref_digest)?,
         })
     }
 
@@ -923,6 +1261,7 @@ impl Remote for GrpcRemote {
                 .iter()
                 .map(|digest| digest.to_string())
                 .collect(),
+            checkpoint: request.checkpoint.as_ref().map(expected_ref),
         };
         let answer = self
             .channel
@@ -937,6 +1276,9 @@ impl Remote for GrpcRemote {
             max_batch_bytes: answer.max_batch_bytes,
             max_batch_objects: answer.max_batch_objects,
             compression: (!answer.compression.is_empty()).then_some(answer.compression),
+            transfer_id: transfer_id(&answer.transfer_id)?,
+            ref_digest: parse_digest(&answer.ref_digest)?,
+            expiry: answer.expiry,
         })
     }
 
@@ -952,6 +1294,7 @@ impl Remote for GrpcRemote {
                 .map(|digest| digest.to_string())
                 .collect(),
             accept_compression: self.compression.borrow().clone().unwrap_or_default(),
+            transfer_id: request.transfer_id.to_vec(),
         };
         let mut answer = self
             .channel
@@ -974,6 +1317,7 @@ impl Remote for GrpcRemote {
         Ok(FetchObjectsResponse {
             objects: answer.objects,
             compression: None,
+            expiry: answer.expiry,
         })
     }
 }
@@ -1055,7 +1399,7 @@ impl crate::pdp::Pdp for GrpcPdp {
         let endpoints = answer.endpoints.unwrap_or_default();
         let scope = answer.store_scope.unwrap_or_default();
 
-        Ok(serde_json::json!({
+        let mut document = serde_json::json!({
             "interface": answer.r#interface,
             "pdp": answer.pdp,
             "endpoints": {
@@ -1069,8 +1413,63 @@ impl crate::pdp::Pdp for GrpcPdp {
                 "ledger": scope.ledger,
                 "profile": scope.profile,
             },
-        }))
+        });
+        header_json(
+            &mut document,
+            answer.version,
+            answer.component,
+            answer.state,
+            answer.stage,
+            answer.sunset,
+            answer.limits,
+        );
+        // The closed `response_signing` object as the HTTP document writes it (WP-6.6b): the two
+        // numbers only when signing is offered.
+        if let (Some(object), Some(signing)) = (document.as_object_mut(), answer.response_signing) {
+            let state = if signing.state == "optional" {
+                serde_json::json!({
+                    "state": signing.state,
+                    "validity_seconds": signing.validity_seconds,
+                    "clock_skew_seconds": signing.clock_skew_seconds,
+                })
+            } else {
+                serde_json::json!({ "state": signing.state })
+            };
+            object.insert("response_signing".to_owned(), state);
+        }
+        Ok(document)
     }
+}
+
+/// The common header a gRPC configuration answer carries, as the HTTP document spells it
+/// (WP-7.4a): `sunset` only when there is one, `limits` by name.
+pub(crate) fn header_json(
+    document: &mut serde_json::Value,
+    version: String,
+    component: String,
+    state: String,
+    stage: String,
+    sunset: Option<String>,
+    limits: std::collections::HashMap<String, u64>,
+) {
+    let Some(object) = document.as_object_mut() else {
+        return;
+    };
+    object.insert("version".to_owned(), version.into());
+    object.insert("component".to_owned(), component.into());
+    object.insert("state".to_owned(), state.into());
+    object.insert("stage".to_owned(), stage.into());
+    if let Some(sunset) = sunset {
+        object.insert("sunset".to_owned(), sunset.into());
+    }
+    object.insert(
+        "limits".to_owned(),
+        limits
+            .into_iter()
+            .map(|(name, value)| (name, serde_json::Value::from(value)))
+            .collect::<serde_json::Map<_, _>>()
+            .into(),
+    );
 }
 
 /// The proto request a JSON payload means, **or a refusal**.
@@ -1102,8 +1501,10 @@ fn request_of(
     // the transport would be two contracts with one name.
     request.removed()?;
 
+    // `to_proto` fails only on a number the transport cannot carry exactly: refused with the
+    // code both servers answer for it (WP-7.5b, IFACE-06), so the client says what REST says.
     to_proto(&request).map_err(|message| permguard_languages::Malformed {
-        code: permguard_core::codes::notp::PAYLOAD_MALFORMED,
+        code: permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
         message,
     })
 }
@@ -1127,6 +1528,7 @@ fn to_proto(request: &permguard_languages::CheckRequest) -> Result<pdp::Evaluate
             .collect::<Result<Vec<pdp::Evaluation>, String>>()?,
         evaluations_semantic: semantic_of(request),
         request_id: text(&request.request_id),
+        request_nonce: text(&request.request_nonce),
     })
 }
 
@@ -1334,6 +1736,18 @@ fn answer_of(answer: pdp::EvaluateResponse) -> serde_json::Value {
         );
     }
 
+    // The signed response, as the REST answer carries it (WP-6.6b).
+    if let Some(attestation) = answer.attestation {
+        object.insert(
+            "attestation".to_owned(),
+            serde_json::json!({
+                "protected": attestation.protected,
+                "payload": attestation.payload,
+                "signature": attestation.signature,
+            }),
+        );
+    }
+
     Value::Object(object)
 }
 
@@ -1371,6 +1785,23 @@ fn context_of(context: pdp::DecisionContext) -> serde_json::Value {
                     .map(Value::String)
                     .collect(),
             ),
+        );
+    }
+    // The evidence object as the REST answer writes it: every member, `null` where it names
+    // nothing (WP-6.6).
+    if let Some(evidence) = context.evidence {
+        object.insert(
+            "evidence".to_owned(),
+            serde_json::json!({
+                "mode": evidence.mode,
+                "status": evidence.status,
+                "record_id": evidence.record_id,
+                "position": evidence.position.map(|position| serde_json::json!({
+                    "host_id": position.host_id,
+                    "run": position.run,
+                    "sequence": position.sequence,
+                })),
+            }),
         );
     }
 
@@ -1426,6 +1857,8 @@ mod request_tests {
             let why = request_of(&payload(json!({"context": {"n": refused}})))
                 .expect_err("{refused} cannot cross exactly");
             assert!(why.message.contains("2^53"), "{refused}: {}", why.message);
+            // The code both servers answer for it (WP-7.5b), never a generic malformed payload.
+            assert_eq!(why.code, permguard_core::codes::notp::VALUE_UNREPRESENTABLE);
         }
 
         // `u64::MAX` and 2^64 are the pair that used to slip through: `u64::MAX as f64` rounds up

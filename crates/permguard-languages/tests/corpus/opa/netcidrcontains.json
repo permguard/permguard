@@ -1,0 +1,255 @@
+{
+  "folder": "netcidrcontains",
+  "files": {
+    "test-netcidrcontains-0092.yaml": {
+      "sha256": "sha256:6c8862810ddb8575d3557b83deebaf32fb698ac0062d56e9bbd5a18a0435d1ea",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr contains subnet",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tnet.cidr_contains(\"10.0.0.0/8\", \"10.1.0.0/24\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0093.yaml": {
+      "sha256": "sha256:03a9e32110ceda2c39038a7353182934de35b588e1e577268b467fdef32a7f7f",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr does not contain subnet partial",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tnet.cidr_contains(\"172.17.0.0/24\", \"172.17.0.0/16\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0094.yaml": {
+      "sha256": "sha256:fa89943d68a3c6f257eb6f2e5a1b6320a8d1de4876d0c530544e56b5d55f19fb",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr does not contain subnet",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tnet.cidr_contains(\"10.0.0.0/8\", \"192.168.1.0/24\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0095.yaml": {
+      "sha256": "sha256:d7ca19c5401e36e377a1b6d681cd6d60878283db229cb2ed6e52758cf910b565",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr contains single ip subnet",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tnet.cidr_contains(\"10.0.0.0/8\", \"10.1.1.1/32\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0096.yaml": {
+      "sha256": "sha256:7e5954550c3b81035c31b7ce03bbef6e70dc59f707196d7e72d50f77f29344b2",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr contains subnet ipv6",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tnet.cidr_contains(\"2001:4860:4860::8888/32\", \"2001:4860:4860:1234::8888/40\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0097.yaml": {
+      "sha256": "sha256:cb5537e98fbf6a2c97301d75155aa62573ded4025c04bb6971e9d523e0771a3a",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr contains single ip subnet ipv6",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tnet.cidr_contains(\"2001:4860:4860::8888/32\", \"2001:4860:4860:1234:5678:1234:5678:8888/128\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0098.yaml": {
+      "sha256": "sha256:5aa66923380262e556875d413be6ef6fe58daf5b86d9a73b19497a5487d4a6d2",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr does not contain subnet partial ipv6",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tnet.cidr_contains(\"2001:4860::/96\", \"2001:4860::/32\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0099.yaml": {
+      "sha256": "sha256:3b4586465e22354dfe2909c89ea21fbed7539edb839f963c363f42896baf4f4b",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr does not contain subnet ipv6",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tnet.cidr_contains(\"2001:4860::/32\", \"fd1e:5bfe:8af3:9ddc::/64\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0100.yaml": {
+      "sha256": "sha256:772c9bebb99b909fc743aa52ae48ac2bbb5d92e751b294d5d1994bbc218f8cb7",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr subnet overlap malformed cidr a",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_contains(\"not-a-cidr\", \"192.168.1.67\", x)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0101.yaml": {
+      "sha256": "sha256:9006461c6a49ca2bc6d9cdbd3db67c75b6f1dbce76fe89df9fb9fd9d441708f6",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr subnet overlap malformed cidr b",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_contains(\"192.168.1.0/28\", \"not-a-cidr\", x)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0102.yaml": {
+      "sha256": "sha256:c16fe6fe679dc45d90f9bf8665e957b5923d0f349b3c1136f105737058484bca",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr contains ip",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tnet.cidr_contains(\"10.0.0.0/8\", \"10.1.2.3\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-netcidrcontains-0103.yaml": {
+      "sha256": "sha256:1045255bd073daf09f34c22e1a44ddc6c974f793a2c4dd6691d78b39260e4db5",
+      "cases": [
+        {
+          "note": "netcidrcontains/cidr does not contain ip",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tnet.cidr_contains(\"10.0.0.0/8\", \"192.168.1.1\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                false
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

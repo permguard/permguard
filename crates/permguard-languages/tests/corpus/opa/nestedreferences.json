@@ -1,0 +1,543 @@
+{
+  "folder": "nestedreferences",
+  "files": {
+    "test-nestedreferences-0709.yaml": {
+      "sha256": "sha256:8f5a08692e3ab2fd4f7ae5143d91d9b749373fc759af3593f02614e72bd4c900",
+      "cases": [
+        {
+          "note": "nestedreferences/ground ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.h[0][0]\n\tdata.a[__local0__] = 2\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "h": [
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                2,
+                3,
+                4
+              ]
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-nestedreferences-0710.yaml": {
+      "sha256": "sha256:ff8c8bae35b9b4f381d874064cee1c188dc163849f38cdb4302bfc5d0a33d173",
+      "cases": [
+        {
+          "note": "nestedreferences/non-ground ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.h[i][j]\n\tx = data.a[__local0__]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "h": [
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                2,
+                3,
+                4
+              ]
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0711.yaml": {
+      "sha256": "sha256:6a6554e114563f44fdcf6b0bfdf37abe96f5a4d386202f7f9d22052bb563ffa1",
+      "cases": [
+        {
+          "note": "nestedreferences/two deep",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.a[i]\n\t__local1__ = data.a[__local0__]\n\tx = data.a[__local1__]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0712.yaml": {
+      "sha256": "sha256:78387ab78b926e1689e37f5a362f2b9c6550e9b1138e26f92c1616d26b07e912",
+      "cases": [
+        {
+          "note": "nestedreferences/two deep",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.a[j]\n\t__local1__ = data.h[i][__local0__]\n\tx = data.a[__local1__]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "h": [
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                2,
+                3,
+                4
+              ]
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0713.yaml": {
+      "sha256": "sha256:5e569715dc227654ed01fa78534e94c2e98fc1545b32ef681a4742835178210a",
+      "cases": [
+        {
+          "note": "nestedreferences/two deep repeated var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.a[i]\n\t__local1__ = data.h[i][__local0__]\n\tx = data.a[__local1__]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "h": [
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                2,
+                3,
+                4
+              ]
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                3
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0714.yaml": {
+      "sha256": "sha256:95c1fbd16da908dc28d96ddb302bfd38967e9521611e1a708e25329850d6659b",
+      "cases": [
+        {
+          "note": "nestedreferences/no suffix",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.three\n\t4 = data.a[__local0__]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "three": 3
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-nestedreferences-0715.yaml": {
+      "sha256": "sha256:d1de2c9495fdd8f9276630ebd6792a48bac155ccfdf4cf3f800ffbf51962f0e9",
+      "cases": [
+        {
+          "note": "nestedreferences/var ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains y if {\n\tx = [1, 2, 3]\n\t__local0__ = x[_]\n\ty = data.a[__local0__]\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0716.yaml": {
+      "sha256": "sha256:4ec0a06c73d940b9e1de8d45e76c55106d2d9ecce9750ae0a3b8e680b13984fb",
+      "cases": [
+        {
+          "note": "nestedreferences/undefined",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.three.deadbeef\n\tdata.a[__local0__] = x\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-nestedreferences-0717.yaml": {
+      "sha256": "sha256:83591089ca2672beebdfe57d893157c4ef5e4a47b3cc93df154a34308fb9e6a7",
+      "cases": [
+        {
+          "note": "nestedreferences/vdoc ref: complete",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.generated.q[_]\n\tx = data.a[__local0__]\n}\n\nq := [2, 3]\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0718.yaml": {
+      "sha256": "sha256:55b8aa3e848bd40fa7a5b63a2b984b128e04a2ddc16e7e5b9deae98d64c13553",
+      "cases": [
+        {
+          "note": "nestedreferences/vdoc ref: complete: ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.generated.q[1]\n\tx = data.a[__local0__]\n}\n\nq := [2, 3]\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0719.yaml": {
+      "sha256": "sha256:a75eb1f98cbcd9b888f5b38a81f40618d9c074927efe889154f9e3a4b841f316",
+      "cases": [
+        {
+          "note": "nestedreferences/vdoc ref: complete: no suffix",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.generated.q\n\t2 = data.a[__local0__]\n}\n\nq := 1\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-nestedreferences-0720.yaml": {
+      "sha256": "sha256:096a8e9a3025244c65388abfcf4fb712bec5aab5f31e35e8b8fc2000c0cd67ea",
+      "cases": [
+        {
+          "note": "nestedreferences/vdoc ref: partial object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.generated.q[_]\n\tx = data.a[__local0__]\n}\n\nq[k] := v if {\n\to = {\"a\": 2, \"b\": 3, \"c\": 100}\n\to[k] = v\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0721.yaml": {
+      "sha256": "sha256:dafbd2dc2e572ed7a8a10033c07bc946cb1e3406cd13fda29508bf0dc6eeafde",
+      "cases": [
+        {
+          "note": "nestedreferences/vdoc ref: partial object: ground",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.generated.q.b\n\tx = data.a[__local0__]\n}\n\nq[k] := v if {\n\to = {\"a\": 2, \"b\": 3, \"c\": 100}\n\to[k] = v\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0722.yaml": {
+      "sha256": "sha256:2d26d45a6fedd08a3d8318870a575a177dfe1cfc8d3533a4624c5255b734b122",
+      "cases": [
+        {
+          "note": "nestedreferences/vdoc ref: complete: nested bdoc ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.b[_]\n\t__local1__ = data.generated.q[__local0__]\n\tx = data.a[__local1__]\n}\n\nq := {\"hello\": 1, \"goodbye\": 3, \"deadbeef\": 1000}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0723.yaml": {
+      "sha256": "sha256:799d61a5e7e1e193f6c96feb511d4f942b2cabd95cc486df38b13554c2488a0a",
+      "cases": [
+        {
+          "note": "nestedreferences/vdoc ref: partial object: nested bdoc ref",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.b[_]\n\t__local1__ = data.generated.q[__local0__]\n\tx = data.a[__local1__]\n}\n\nq[k] := v if {\n\to = {\"deadbeef\": 1000, \"goodbye\": 3, \"hello\": 1}\n\to[k] = v\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0724.yaml": {
+      "sha256": "sha256:1ab83714507d2a037e82733a0300d649a8c6a7b62658efde807d2e04f1fff045",
+      "cases": [
+        {
+          "note": "nestedreferences/vdoc ref: partial object: nested bdoc ref-2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.d.e[_]\n\t__local1__ = data.generated.q[__local0__]\n\tx = data.a[__local1__]\n}\n\nq[k] := v if {\n\tdata.strings[k] = v\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "d": {
+              "e": [
+                "bar",
+                "baz"
+              ]
+            },
+            "strings": {
+              "bar": 2,
+              "baz": 3,
+              "foo": 1
+            }
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-nestedreferences-0725.yaml": {
+      "sha256": "sha256:1c7fa404204bdb2b1d9638080b3bb9ec4bc914dff27230433f2b0a4951855f7e",
+      "cases": [
+        {
+          "note": "nestedreferences/vdoc ref: multiple",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\t__local0__ = data.a[_]\n\t__local1__ = data.a[_]\n\t__local2__ = data.generated.r[__local1__]\n\tx = data.generated.q[__local0__].v[__local2__]\n}\n\nq := [{\"v\": {}}, {\"v\": [0, 0, 1, 2]}, {\"v\": [0, 0, 3, 4]}, {\"v\": [0, 0]}, {}]\n\nr := [1, 2, 3, 4]\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

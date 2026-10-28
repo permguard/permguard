@@ -1,0 +1,14 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The lab image's build context: only what cargo reads. Everything else — the lab's own script,
+# the examples, the documentation — is mounted at run time, so editing it never rebuilds.
+*
+!.cargo/config.toml
+!Cargo.toml
+!Cargo.lock
+!LICENSE
+!crates/
+!contracts/
+!assets/permguard-logo-mini.png
+crates/*/target/

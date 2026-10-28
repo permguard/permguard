@@ -11,7 +11,7 @@
 //! | Label | Receipt field        | What it binds                                                 |
 //! | ----- | -------------------- | ------------------------------------------------------------- |
 //! | 1     | `plan_id`            | 16 bytes, the plan                                            |
-//! | 2     | `operation`          | `grant.revoke`, `keys.revoke`, `membership.revoke`, `identity.reset` |
+//! | 2     | `operation`          | `grant.revoke`, `keys.revoke`, `membership.revoke`, `identity.reset`, `restore` |
 //! | 3     | `target`             | the exact resource                                            |
 //! | 4     | `revision`           | the target's revision or epoch the plan was made at           |
 //! | 5     | `principal`          | the planner, who alone runs it                                |
@@ -50,8 +50,22 @@ pub const KEYS_REVOKE: &str = "keys.revoke";
 pub const MEMBERSHIP_REVOKE: &str = "membership.revoke";
 /// The Host identity's reset.
 pub const IDENTITY_RESET: &str = "identity.reset";
+/// The restore of a snapshot onto the volume, offline (WP-7.9).
+pub const RESTORE: &str = "restore";
+/// An operator's run of the Control Plane's object sweep (WP-7.11b).
+pub const GC_OBJECTS: &str = "gc.objects";
+/// A subsystem's layout migration of a stopped server's volume, offline (TC-3).
+pub const MIGRATE: &str = "migrate";
 /// Every operation a receipt may name.
-pub const OPERATIONS: &[&str] = &[GRANT_REVOKE, KEYS_REVOKE, MEMBERSHIP_REVOKE, IDENTITY_RESET];
+pub const OPERATIONS: &[&str] = &[
+    GRANT_REVOKE,
+    KEYS_REVOKE,
+    MEMBERSHIP_REVOKE,
+    IDENTITY_RESET,
+    RESTORE,
+    GC_OBJECTS,
+    MIGRATE,
+];
 
 /// How long a plan that requires no approval may be run after it was made.
 pub const LIFETIME: Duration = Duration::from_secs(10 * 60);
@@ -65,7 +79,7 @@ type Result<T> = std::result::Result<T, RecordError>;
 /// How many approvals `operation` requires, with dual control in force or not (owner decision
 /// of 2026-10-11): one for an identity reset and a key revocation under it, none otherwise.
 pub fn approvals_required(operation: &str, dual_control: bool) -> u64 {
-    u64::from(dual_control && matches!(operation, IDENTITY_RESET | KEYS_REVOKE))
+    u64::from(dual_control && matches!(operation, IDENTITY_RESET | KEYS_REVOKE | RESTORE))
 }
 
 /// How long a plan requiring `approvals` lives.

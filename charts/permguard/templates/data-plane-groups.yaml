@@ -1,0 +1,346 @@
+{{/*
+Copyright (c) 2022 Nitro Agility S.r.l.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+{{/*
+The data plane, one group at a time (TD-1).
+
+Everything a group runs on is its own: a configuration, a membership manifest, a workload, its
+Services, a disruption budget, an autoscaler when it scales on load, a NetworkPolicy. Each selects
+the group's pods by the `permguard.com/group` label, so no object of one group ever selects another
+group's replicas; `checks.yaml` refuses the values that would make two groups serve the same
+resources.
+
+A group that keeps a volume is a StatefulSet: one claim per replica from one template, both kept
+when the group scales down and when the release goes, because a claim may hold evidence not yet
+shipped and deleting it is a separate, verified operation. A group without a volume is a
+Deployment, which `checks.yaml` allows only when it records no evidence and keeps no history.
+*/}}
+{{- /*
+The single-group chart's claim, on an upgrade from it. That chart rendered one claim,
+`<release>-data-plane`, which this chart no longer mounts; left out of the manifest, Helm would
+delete it with whatever evidence it holds. Rendered back, unchanged and kept, it outlives the
+upgrade and the release: its deletion is a separate verified operation, as for any claim.
+*/ -}}
+{{- with (lookup "v1" "PersistentVolumeClaim" .Release.Namespace (printf "%s-data-plane" (include "permguard.fullname" .))) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .metadata.name }}
+  labels:
+    {{- toYaml .metadata.labels | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+    permguard.com/retained: "the single-group data plane's volume, kept on upgrade and no longer mounted"
+spec:
+  {{- toYaml .spec | nindent 2 }}
+---
+{{- end }}
+{{- if .Values.dataPlane.enabled }}
+{{- $dp := .Values.dataPlane }}
+{{- $resolved := include "permguard.dataPlaneGroups" . | fromJson }}
+{{- range $g := $resolved.groups }}
+{{- $stateful := $g.persistence.enabled }}
+{{- $tls := include "permguard.publicTls" $dp.tls | fromYaml }}
+{{- /* The group's configuration: shared static values, the group's own, then what the chart owns. */ -}}
+{{- $config := dict
+      "development_mode" $.Values.developmentMode
+      "autogenerate" $.Values.autogenerate
+      "working_dir" "/var/lib/permguard/volume"
+      "log" (dict "level" $.Values.logging.level "format" $.Values.logging.format)
+      "host" (dict "addr" (printf "0.0.0.0:%d" (int $dp.ports.telemetry)))
+}}
+{{- $scheme := ternary "https" "http" (or (not (empty $dp.tls.secretName)) (eq (toString (dig "public" "http" "tls" "enabled" false $g.extraConfig)) "true")) }}
+{{- $advertised := $dp.advertisedUrl | default (printf "%s://%s:%d" $scheme $g.base (int $dp.ports.http)) | trimSuffix "/" }}
+{{- $http := dict "enabled" true "addr" (printf "0.0.0.0:%d" (int $dp.ports.http)) "advertised_url" $advertised }}
+{{- $grpc := dict "enabled" true "addr" (printf "0.0.0.0:%d" (int $dp.ports.grpc)) }}
+{{- if $tls }}
+{{- $_ := set $http "tls" $tls }}
+{{- $_ := set $grpc "tls" $tls }}
+{{- end }}
+{{- $_ := set $config "dataPlane" (dict "public" (dict "http" $http "grpc" $grpc)) }}
+{{- $merged := mergeOverwrite $config (deepCopy $g.extraConfig) }}
+{{- $merged = mergeOverwrite (include "permguard.hostControlsConfig" $ | fromYaml) $merged }}
+{{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" $g.assurance | fromYaml) }}
+{{- /* The Host listener (TD-2): memberships, shipping and the drain receipt need it. */ -}}
+{{- with (include "permguard.hostListenerConfig" (dict "listener" $dp.hostListener) | fromYaml) }}
+{{- $merged = mergeOverwrite $merged . }}
+{{- end }}
+{{- $_ := set $merged "shutdown" (dict "timeout" (printf "%ds" (int $g.shutdown.timeoutSeconds)) "drain_timeout" (printf "%ds" (int $g.shutdown.drainTimeoutSeconds))) }}
+{{- /* The evidence mode is the decision log's mode (WP-6.1): `required` or `disabled`. */ -}}
+{{- $log := dig "dataPlane" "decisions" "log" dict $merged }}
+{{- $_ := set $log "enabled" (ternary "false" "true" (eq $g.evidence "disabled")) }}
+{{- $_ := set $log "mode" $g.evidence }}
+{{- $decisions := dig "dataPlane" "decisions" dict $merged }}
+{{- $_ := set $decisions "log" $log }}
+{{- $_ := set $merged.dataPlane "decisions" $decisions }}
+{{- /*
+A data plane mirrors the `policy.mirror` tasks of its Host's memberships, never a URL (WP-7.7): each
+replica is enrolled with the control plane's Host (the `-membership` ConfigMap below states what it
+may be granted), and the signed manifest binds the coordinator, the scope and the ring.
+*/ -}}
+{{- $configText := toYaml $merged }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $g.base }}
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+data:
+  config.yml: |
+    {{- $configText | nindent 4 }}
+---
+{{- /*
+The membership its replicas are invited with: what `permguard host members invite create` takes
+(`--selector`, `--min-assurance`, `--tasks tasks.json`). The chart cannot enroll a Host; it states
+exactly what each replica of this group may be granted, and nothing wider.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $g.base }}-membership
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+data:
+  selector: {{ $g.selector | quote }}
+  min_assurance: {{ $g.assurance.profile | quote }}
+  tasks.json: |
+    {{- (include "permguard.groupTasks" $g | fromJson).tasks | toPrettyJson | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: {{ ternary "StatefulSet" "Deployment" $stateful }}
+metadata:
+  name: {{ $g.base }}
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+  annotations:
+    permguard.com/membership-selector: {{ $g.selector | quote }}
+    {{- with $.Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if not $g.autoscaling.enabled }}
+  replicas: {{ $g.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "permguard.groupSelectorLabels" (dict "root" $ "group" $g) | nindent 6 }}
+  {{- if $stateful }}
+  serviceName: {{ $g.base }}-headless
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  # The claims stay when the group scales down and when the release is deleted: a claim may hold
+  # evidence a replica did not ship, and only a verified operation deletes it.
+  persistentVolumeClaimRetentionPolicy:
+    whenScaled: {{ $g.persistence.whenScaled }}
+    whenDeleted: {{ $g.persistence.whenDeleted }}
+  {{- else }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 8 }}
+        permguard.com/assurance-profile: {{ $g.assurance.profile }}
+      annotations:
+        checksum/config: {{ $configText | sha256sum }}
+        {{- include "permguard.metricsAnnotations" (dict "root" $ "telemetryPort" $dp.ports.telemetry) | nindent 8 }}
+    spec:
+      {{- include "permguard.groupPodSpec" (dict "root" $ "group" $g "dp" $dp "stateful" $stateful "claim" "" "recover" false) | nindent 6 }}
+  {{- if $stateful }}
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+        labels:
+          {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 10 }}
+      spec:
+        accessModes:
+          {{- if $g.persistence.accessModes }}
+          {{- toYaml $g.persistence.accessModes | nindent 10 }}
+          {{- else if and (ne $g.assurance.profile "development") (semverCompare ">=1.29-0" $.Capabilities.KubeVersion.Version) }}
+          - ReadWriteOncePod
+          {{- else }}
+          - ReadWriteOnce
+          {{- end }}
+        {{- with $g.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $g.persistence.size }}
+  {{- end }}
+---
+{{- if $g.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $g.base }}
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+  {{- with $g.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $g.service.type }}
+  selector:
+    {{- include "permguard.groupSelectorLabels" (dict "root" $ "group" $g) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $dp.ports.http }}
+      targetPort: http
+      protocol: TCP
+    {{- if ne (int $dp.ports.grpc) (int $dp.ports.http) }}
+    - name: grpc
+      port: {{ $dp.ports.grpc }}
+      targetPort: grpc
+      protocol: TCP
+    {{- end }}
+---
+{{- end }}
+{{- if $stateful }}
+{{- /*
+The Service the StatefulSet is named after: each replica's own DNS name, resolvable while it is
+still recovering its volume, so an operator can reach the operations surface of the replica that
+owns a particular journal. Only that port: the public one is routed by the group's Service, to
+ready replicas alone.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $g.base }}-headless
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "permguard.groupSelectorLabels" (dict "root" $ "group" $g) | nindent 4 }}
+  ports:
+    - name: telemetry
+      port: {{ $dp.ports.telemetry }}
+      targetPort: telemetry
+      protocol: TCP
+    {{- if $dp.hostListener.enabled }}
+    # Each replica's Host listener, where an operator runs its `host members join`.
+    - name: host
+      port: {{ $dp.hostListener.port }}
+      targetPort: host
+      protocol: TCP
+    {{- end }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $g.base }}-telemetry
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+  annotations:
+    {{- include "permguard.metricsAnnotations" (dict "root" $ "telemetryPort" $dp.ports.telemetry) | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "permguard.groupSelectorLabels" (dict "root" $ "group" $g) | nindent 4 }}
+  ports:
+    - name: telemetry
+      port: {{ $dp.ports.telemetry }}
+      targetPort: telemetry
+      protocol: TCP
+---
+{{- if $g.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $g.base }}
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+spec:
+  {{ $g.podDisruptionBudget.budget }}: {{ $g.podDisruptionBudget.value }}
+  selector:
+    matchLabels:
+      {{- include "permguard.groupSelectorLabels" (dict "root" $ "group" $g) | nindent 6 }}
+---
+{{- end }}
+{{- if $g.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $g.base }}
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: {{ ternary "StatefulSet" "Deployment" $stateful }}
+    name: {{ $g.base }}
+  minReplicas: {{ $g.autoscaling.minReplicas }}
+  maxReplicas: {{ $g.autoscaling.maxReplicas }}
+  {{- if $stateful }}
+  # A replica removed keeps its claim for the drain controller; scaling down waits out a whole
+  # drain and its recovery Job before it removes the next (TD-2).
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ $g.autoscaling.scaleDownStabilizationSeconds }}
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: {{ $g.autoscaling.scaleDownStabilizationSeconds }}
+  {{- end }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $g.autoscaling.targetCPUUtilizationPercentage }}
+---
+{{- end }}
+{{- if $.Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $g.base }}
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "permguard.groupSelectorLabels" (dict "root" $ "group" $g) | nindent 6 }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - ports:
+        {{- range (list $dp.ports.http $dp.ports.grpc | uniq) }}
+        - port: {{ int . }}
+          protocol: TCP
+        {{- end }}
+      {{- with $g.networkPolicy.public }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    - ports:
+        - port: {{ int $dp.ports.telemetry }}
+          protocol: TCP
+      {{- with $g.networkPolicy.telemetry }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- if $dp.hostListener.enabled }}
+    - ports:
+        - port: {{ int $dp.hostListener.port }}
+          protocol: TCP
+      {{- with $g.networkPolicy.host }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+---
+{{- end }}
+{{- end }}
+{{- end }}

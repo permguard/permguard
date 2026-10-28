@@ -64,6 +64,14 @@ pub const MIRROR_AGE: Metric = Metric::gauge(
     "Seconds since the stalest mirror last synchronized.",
 );
 
+/// How many mirrors are past the deployment's staleness bound (`mirrors.stale_after`) at the end
+/// of a round, every held mirror measured, a coordinator that did not answer included (WP-7.2d,
+/// F-14): the number the staleness alarm is written against.
+pub const MIRRORS_STALE: Metric = Metric::gauge(
+    "permguard_sync_mirrors_stale",
+    "Mirrors past the deployment's staleness bound.",
+);
+
 /// How many mirrors this plane keeps, and how many zones they belong to.
 pub const MIRRORS_HELD: Metric =
     Metric::gauge("permguard_sync_mirrors", "Mirrors this plane holds.");

@@ -11,17 +11,22 @@
 //! done once per layout version and reviewed, never to make a failing test pass.
 //!
 //! The fixture is the v1 compatibility baseline: every later migration of this store must read it.
+//! Its archive (WP-6.1c) is one: drained as the legacy shipper would drain it, the fixture is
+//! carried into `data/decisions/legacy`, where the current spool reads the same three records.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use permguard_core::assurance::AssuranceProfile;
+use permguard_decisions::archive::{self, Standing};
 use permguard_decisions::record::{
     ActionRef, Body, Build, Commitments, DecisionBody, GENESIS, Inputs, MarkerBody, Party, Reason,
     Record, Sampling, StoreRef, Stream, VERSION, digest_of,
 };
 use permguard_decisions::spool::{Bounds, Spool};
+use permguard_host::storage::volume::Volume;
 
 const FIXTURE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -112,6 +117,10 @@ fn body(seq: u64) -> Body {
         context: None,
         latency_us: 143,
         event: None,
+        interface: None,
+        actor: None,
+        question: None,
+        descriptors: None,
     }))
 }
 
@@ -178,4 +187,93 @@ fn test_the_v1_decision_spool_fixture_is_read_by_the_current_code() {
         copy_dir(Path::new(FIXTURE), &work);
     }
     verify(&work);
+}
+
+#[test]
+fn test_the_v1_decision_spool_fixture_migrates_into_its_archive() {
+    let root = std::env::temp_dir().join(format!(
+        "permguard-legacy-decision-archive-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    let spool = root.join("data/decisions/spool");
+    copy_dir(Path::new(FIXTURE), &spool);
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("the volume");
+
+    // Its three records unshipped: never archived.
+    assert_eq!(
+        archive::standing(&volume, &spool).expect("read"),
+        Standing::Undrained
+    );
+    archive::archive(
+        &volume,
+        &spool,
+        AssuranceProfile::Development,
+        None,
+        1_800_000_000,
+    )
+    .expect_err("three records unshipped");
+
+    // Acknowledged through its head, as the legacy shipper leaves it.
+    {
+        let mut opened = Spool::open(&spool, Bounds::default()).expect("the fixture opens");
+        let head = opened.head().to_owned();
+        opened.acknowledge(3, head).expect("acknowledged");
+    }
+    assert_eq!(
+        archive::standing(&volume, &spool).expect("read"),
+        Standing::Drained
+    );
+    archive::archive(
+        &volume,
+        &spool,
+        AssuranceProfile::Development,
+        None,
+        1_800_000_000,
+    )
+    .expect("archived");
+
+    // Every file but the lock, byte for byte.
+    let archived = root.join(archive::TARGET);
+    let mut carried: Vec<String> = fs::read_dir(&archived)
+        .expect("the archive")
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    carried.sort();
+    assert_eq!(
+        carried,
+        ["RESERVE", "STATE", "seg-00000000000000000001.jsonl"]
+    );
+    for name in &carried {
+        assert_eq!(
+            fs::read(archived.join(name)).expect("archived"),
+            fs::read(spool.join(name)).expect("kept"),
+            "{name} carried unchanged"
+        );
+    }
+    drop(volume);
+
+    // The archive, copied aside, reads the same three records, every one acknowledged.
+    let aside = root.join("aside");
+    copy_dir(&archived, &aside);
+    let read = Spool::open(&aside, Bounds::default()).expect("the archive opens");
+    assert_eq!(read.seq(), 3);
+    assert_eq!(read.acked(), 3);
+    let records = read.read_from(0, 10).expect("the records read");
+    let typed: Vec<Record> = records
+        .iter()
+        .map(|value| serde_json::from_value(value.clone()).expect("a typed decision record"))
+        .collect();
+    assert!(matches!(typed[0].body, Body::Marker(_)));
+    assert_eq!(
+        read.head(),
+        digest_of(&records[2]).expect("the last record digests")
+    );
+    let _ = fs::remove_dir_all(root);
 }

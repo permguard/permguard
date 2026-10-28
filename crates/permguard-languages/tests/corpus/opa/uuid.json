@@ -1,0 +1,184 @@
+{
+  "folder": "uuid",
+  "files": {
+    "test-uuid-input-formats.yaml": {
+      "sha256": "sha256:9c6c22554f39504b6495329a4114a4b59fad8cd038fa565639c5c2962ce4a903",
+      "cases": [
+        {
+          "note": "uuid-parse/positive-v4-braces",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := uuid.parse(input.userid)\n"
+          ],
+          "data": {
+          },
+          "input": {
+            "userid": "{00000000-0000-4000-8000-000000000000}"
+          },
+          "want_result": [
+            {
+              "x": {
+                "variant": "RFC4122",
+                "version": 4
+              }
+            }
+          ]
+        },
+        {
+          "note": "uuid-parse/positive-v2-urn",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := uuid.parse(input.userid)\n"
+          ],
+          "data": {
+          },
+          "input": {
+            "userid": "urn:uuid:000003e8-48b9-21ee-b200-325096b39f47"
+          },
+          "want_result": [
+            {
+              "x": {
+                "clocksequence": 12800,
+                "domain": "Person",
+                "id": 1000,
+                "macvariables": "local:unicast",
+                "nodeid": "32-50-96-b3-9f-47",
+                "time": 1693566990121469600,
+                "variant": "RFC4122",
+                "version": 2
+              }
+            }
+          ]
+        },
+        {
+          "note": "uuid-parse/positive-v3-no-dashes",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := uuid.parse(input.userid)\n"
+          ],
+          "data": {
+          },
+          "input": {
+            "userid": "6bea8ef2d3d33cd184e09bab06a52ece"
+          },
+          "want_result": [
+            {
+              "x": {
+                "variant": "RFC4122",
+                "version": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-uuid-parse-rule.yaml": {
+      "sha256": "sha256:a1b9382bbf3ee746968bf165d0fef7c8bce03905499dd6419262f961ca0be081",
+      "cases": [
+        {
+          "note": "uuid-parse-rule/positive",
+          "query": "data.test.validuser = x",
+          "modules": [
+            "package test\n\nvaliduser if {\n\tis_string(input.userid)\n\tparsed_uuid := uuid.parse(input.userid)\n\tparsed_uuid.variant == \"RFC4122\"\n\tparsed_uuid.version == 4\n}\n"
+          ],
+          "data": {
+          },
+          "input": {
+            "userid": "00000000-0000-4000-8000-000000000000"
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-uuid-parse.yaml": {
+      "sha256": "sha256:25ffd858f9620094f8ee9ddbae2dc8d5d1253e5fab64f7e5306a6283f5ba51a4",
+      "cases": [
+        {
+          "note": "uuid-parse/positive-v4",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := uuid.parse(input.userid)\n"
+          ],
+          "data": {
+          },
+          "input": {
+            "userid": "00000000-0000-4000-8000-000000000000"
+          },
+          "want_result": [
+            {
+              "x": {
+                "variant": "RFC4122",
+                "version": 4
+              }
+            }
+          ]
+        },
+        {
+          "note": "uuid-parse/positive-v2",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := uuid.parse(input.userid)\n"
+          ],
+          "data": {
+          },
+          "input": {
+            "userid": "000003e8-48b9-21ee-b200-325096b39f47"
+          },
+          "want_result": [
+            {
+              "x": {
+                "clocksequence": 12800,
+                "domain": "Person",
+                "id": 1000,
+                "macvariables": "local:unicast",
+                "nodeid": "32-50-96-b3-9f-47",
+                "time": 1693566990121469600,
+                "variant": "RFC4122",
+                "version": 2
+              }
+            }
+          ]
+        },
+        {
+          "note": "uuid-parse/positive-v3",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := uuid.parse(input.userid)\n"
+          ],
+          "data": {
+          },
+          "input": {
+            "userid": "38074da4-0b00-388d-9c3c-362de965547a"
+          },
+          "want_result": [
+            {
+              "x": {
+                "variant": "RFC4122",
+                "version": 3
+              }
+            }
+          ]
+        },
+        {
+          "note": "uuid-parse/negative",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := uuid.parse(input.userid)\n"
+          ],
+          "data": {
+          },
+          "input": {
+            "userid": 123
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -86,6 +86,7 @@ fn zone(id: &str, name: &str) -> proto::Zone {
         name: name.into(),
         created_at: 1,
         updated_at: 1,
+        revision: 1,
     }
 }
 
@@ -98,6 +99,9 @@ fn ledger(id: &str, zone_id: &str, name: &str) -> proto::Ledger {
         created_at: 1,
         updated_at: 1,
         default_ref: "main".into(),
+        revision: 1,
+        state: "active".into(),
+        provenance: None,
     }
 }
 
@@ -107,8 +111,14 @@ impl ZoneCatalog for FakePlane {
         &self,
         request: Request<proto::CreateZoneRequest>,
     ) -> Result<Response<proto::ZoneResponse>, Status> {
+        let asked = request.into_inner();
+        if asked.request_id.len() != 32 {
+            return Err(Status::invalid_argument(
+                "a change names a fresh request id",
+            ));
+        }
         Ok(Response::new(proto::ZoneResponse {
-            zone: Some(zone("z-new", &request.into_inner().name)),
+            zone: Some(zone("z-new", &asked.name)),
         }))
     }
 
@@ -145,8 +155,14 @@ impl ZoneCatalog for FakePlane {
 
     async fn delete_zone(
         &self,
-        _request: Request<proto::DeleteZoneRequest>,
+        request: Request<proto::DeleteZoneRequest>,
     ) -> Result<Response<proto::ZoneResponse>, Status> {
+        let asked = request.into_inner();
+        if asked.request_id.len() != 32 || asked.expected_revision != 1 {
+            return Err(Status::invalid_argument(
+                "a delete names its request id and revision",
+            ));
+        }
         Ok(Response::new(proto::ZoneResponse {
             zone: Some(zone("z-1", "acme")),
         }))
@@ -190,9 +206,87 @@ impl ZoneCatalog for FakePlane {
         request: Request<proto::RenameLedgerRequest>,
     ) -> Result<Response<proto::LedgerResponse>, Status> {
         let asked = request.into_inner();
+        if asked.request_id.len() != 32 {
+            return Err(Status::invalid_argument(
+                "a change names a fresh request id",
+            ));
+        }
+        // The revision the client read, moved by one: what the server answers a rename with.
         Ok(Response::new(proto::LedgerResponse {
-            ledger: Some(ledger("l-1", &asked.zone, &asked.name)),
+            ledger: Some(proto::Ledger {
+                revision: asked.expected_revision + 1,
+                ..ledger("l-1", &asked.zone, &asked.name)
+            }),
         }))
+    }
+
+    async fn archive_ledger(
+        &self,
+        request: Request<proto::ArchiveLedgerRequest>,
+    ) -> Result<Response<proto::LedgerResponse>, Status> {
+        let asked = request.into_inner();
+        if asked.request_id.len() != 32 {
+            return Err(Status::invalid_argument(
+                "a change names a fresh request id",
+            ));
+        }
+        Ok(Response::new(proto::LedgerResponse {
+            ledger: Some(proto::Ledger {
+                revision: asked.expected_revision + 1,
+                state: "archived".into(),
+                ..ledger("l-1", &asked.zone, "main-ledger")
+            }),
+        }))
+    }
+
+    async fn restore_ledger(
+        &self,
+        request: Request<proto::RestoreLedgerRequest>,
+    ) -> Result<Response<proto::LedgerResponse>, Status> {
+        let asked = request.into_inner();
+        Ok(Response::new(proto::LedgerResponse {
+            // A server older than states sends none: it reads as active.
+            ledger: Some(proto::Ledger {
+                revision: asked.expected_revision + 1,
+                state: String::new(),
+                ..ledger("l-1", &asked.zone, "main-ledger")
+            }),
+        }))
+    }
+
+    async fn export_ledger(
+        &self,
+        request: Request<proto::ExportLedgerRequest>,
+    ) -> Result<Response<proto::ExportResponse>, Status> {
+        let asked = request.into_inner();
+        Ok(Response::new(proto::ExportResponse {
+            archive: vec![0xa0],
+            zone_id: asked.zone,
+            bundle_digest: format!("sha256:{}", "00".repeat(32)),
+            bundle_bytes: 1,
+            exported_at: 1_800_000_000,
+            ledgers: vec![proto::ExportedLedger {
+                id: "l-1".to_owned(),
+                name: asked.ledger,
+                refs: 1,
+                objects: 2,
+                statements: 1,
+            }],
+        }))
+    }
+
+    async fn export_zone(
+        &self,
+        _request: Request<proto::ExportZoneRequest>,
+    ) -> Result<Response<proto::ExportResponse>, Status> {
+        Err(Status::unimplemented("not in this fake"))
+    }
+
+    async fn import(
+        &self,
+        _request: Request<proto::ImportRequest>,
+    ) -> Result<Response<proto::ImportResponse>, Status> {
+        Err(Status::unimplemented("not in this fake"))
     }
 
     async fn delete_ledger(
@@ -218,6 +312,7 @@ impl GitLikeStore for FakePlane {
             head: Digest::compute(b"head").to_string(),
             counter: 4,
             statement: b"envelope".to_vec(),
+            ref_digest: Digest::compute(b"ref state").to_string(),
         }))
     }
 
@@ -230,6 +325,9 @@ impl GitLikeStore for FakePlane {
             max_batch_bytes: 8 * 1024 * 1024,
             max_batch_objects: 1000,
             compression: "deflate".into(),
+            transfer_id: vec![9; 16],
+            reservation: 3,
+            expiry: 1_800_000_000,
         }))
     }
 
@@ -243,6 +341,7 @@ impl GitLikeStore for FakePlane {
         }
         Ok(Response::new(proto::UploadObjectsResponse {
             received: vec![Digest::compute(b"1").to_string()],
+            remaining: 0,
         }))
     }
 
@@ -267,6 +366,9 @@ impl GitLikeStore for FakePlane {
             max_batch_bytes: 8 * 1024 * 1024,
             max_batch_objects: 1000,
             compression: "deflate".into(),
+            transfer_id: vec![9; 16],
+            ref_digest: Digest::compute(b"ref state").to_string(),
+            expiry: 1_800_000_000,
         }))
     }
 
@@ -277,6 +379,7 @@ impl GitLikeStore for FakePlane {
         Ok(Response::new(proto::FetchObjectsResponse {
             objects: vec![compress::deflate(b"object")],
             compression: "deflate".into(),
+            expiry: 1_800_000_000,
         }))
     }
 
@@ -373,11 +476,23 @@ fn the_catalog_answers_over_grpc() {
     assert_eq!(ledgers[0].default_ref, "main");
 
     let renamed = admin
-        .rename_ledger("z-1", "l-1", "renamed")
+        .rename_ledger("z-1", "l-1", "renamed", 3)
         .expect("a ledger is renamed");
     assert_eq!(renamed.name, "renamed");
+    assert_eq!(renamed.revision, 4, "the revision named reached the server");
+    let archived = admin
+        .archive_ledger("z-1", "l-1", 4)
+        .expect("a ledger is archived");
+    assert_eq!(
+        (archived.state.as_str(), archived.revision),
+        ("archived", 5)
+    );
+    let restored = admin
+        .restore_ledger("z-1", "l-1", 5)
+        .expect("a ledger is restored");
+    assert_eq!((restored.state.as_str(), restored.revision), ("active", 6));
 
-    assert!(admin.delete_zone("z-1").is_ok());
+    assert!(admin.delete_zone("z-1", 1).is_ok());
     assert!(admin.get_ledger("z-1", "l-1").is_ok());
 
     // A refusal keeps the server's words and lands in the shared taxonomy.
@@ -407,6 +522,10 @@ fn an_absent_ref_is_none_and_a_present_one_is_read() {
         .expect("the ref exists");
     assert_eq!(answered.counter, 4);
     assert_eq!(answered.statement, b"envelope");
+    assert_eq!(
+        answered.ref_digest,
+        Digest::compute(b"ref state").to_string()
+    );
 
     assert!(remote.get_ref("feature/none").expect("answers").is_none());
 }
@@ -421,21 +540,25 @@ fn a_push_negotiates_compression_and_the_upload_honours_it() {
         .negotiate_push(&NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: digest.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: vec![ObjectClaim {
                 digest: digest.clone(),
                 size: 3,
             }],
+            request_id: "push-1".into(),
         })
         .expect("the negotiation answers");
     assert_eq!(negotiated.missing, vec![digest]);
     assert_eq!(negotiated.compression.as_deref(), Some("deflate"));
+    assert_eq!(negotiated.transfer_id, [9; 16]);
+    assert_eq!(negotiated.reservation, 3);
 
     let payload = b"permit(principal, action, resource); // compressible".repeat(4);
     remote
         .upload(&UploadObjectsRequest {
             objects: vec![payload.clone()],
             compression: None,
+            transfer_id: negotiated.transfer_id,
         })
         .expect("the upload lands");
 
@@ -460,14 +583,17 @@ fn a_pull_undoes_what_the_plane_compressed() {
             r#ref: "main".into(),
             at: None,
             have: Vec::new(),
+            checkpoint: None,
         })
         .expect("the negotiation answers");
     assert_eq!(negotiated.counter, 1);
+    assert_eq!(negotiated.ref_digest, Digest::compute(b"ref state"));
 
     let fetched = remote
         .fetch(&FetchObjectsRequest {
             digests: vec![Digest::compute(b"object")],
             accept_compression: None,
+            transfer_id: negotiated.transfer_id,
         })
         .expect("the fetch answers");
     assert_eq!(
@@ -484,7 +610,12 @@ fn a_status_becomes_the_same_refusal_vocabulary_http_produces() {
         .commit_push(&CommitPushRequest {
             r#ref: "main".into(),
             new_head: Digest::compute(b"new"),
-            expected_old: Some(Digest::compute(b"old")),
+            expected_ref: Some(permguard_notp::ExpectedRef {
+                counter: 1,
+                digest: Digest::compute(b"old"),
+            }),
+            transfer_id: [9; 16],
+            request_id: "commit-1".into(),
         })
         .expect_err("the plane aborts the commit");
 
@@ -591,14 +722,16 @@ fn a_push_over_grpcs_carries_the_operators_token() {
         .negotiate_push(&NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: digest.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: vec![ObjectClaim { digest, size: 3 }],
+            request_id: "push-1".into(),
         })
         .expect("the negotiation answers over TLS");
     remote
         .upload(&UploadObjectsRequest {
             objects: vec![b"abc".to_vec()],
             compression: None,
+            transfer_id: [9; 16],
         })
         .expect("the upload lands");
     let seen = seen.lock().expect("recorded");

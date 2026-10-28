@@ -15,6 +15,8 @@
 //! ring or the audit trail must read them.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
+// The fixtures read the catalog and the key ring: a build without either has nothing to read.
+#![cfg(all(feature = "catalog", feature = "keys"))]
 
 use std::fs;
 use std::path::{Path, PathBuf};

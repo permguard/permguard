@@ -47,6 +47,7 @@ pub mod grpc;
 pub mod http;
 pub mod measure;
 pub mod quarantine;
+pub mod signing;
 pub mod snapshot;
 pub mod store;
 pub mod translate;
@@ -83,7 +84,21 @@ fn decision_budget(config: &permguard_core::Config) -> std::time::Duration {
 }
 
 pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
+    // The aliases every lookup under the configured root resolves through (WP-7.2d, F-17),
+    // assigned on every call rather than once, so the configuration asked about is the one in force.
+    store::assign_aliases(
+        &context.config().mirrors_directory(),
+        context
+            .config()
+            .mirror_aliases()
+            .iter()
+            .map(store::Alias::from_config)
+            .collect(),
+    );
     Arc::clone(DECIDER.get_or_init(|| {
+        // Where the decision path's refused network calls are counted (TS-4): published at zero,
+        // read by the serving gate off the release candidate.
+        permguard_core::egress::install(context.metrics().clone());
         let config = context.config();
         let root: PathBuf = config.mirrors_directory();
         let cache = Arc::new(
@@ -103,11 +118,39 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
                 config.authz_max_evaluations(),
             )
             .with_blocking(crate::blocking::shared(context))
+            .with_evaluation(crate::blocking::evaluation(context))
+            .with_evidence(crate::blocking::evidence(context))
             .with_audit(audit::decision_audit(context))
-            // The journal is opened once for the plane, not once per decider:
-            // there is one spool, and a second writer would share its sequence.
+            // The log is opened once for the plane, not once per decider: one process marks each
+            // run of a stream once and measures each stream once (WP-6.1).
+            // Signed responses on request, when the deployment offers them and the Host composes
+            // the `data.attest` ring that signs them (WP-6.6b).
+            .with_response_signing(
+                config
+                    .response_signing_enabled()
+                    .then(|| {
+                        let signer = crate::handles::response_signer(context);
+                        // Configured on with no ring to sign with: discovery says `disabled`, and
+                        // the operator hears why.
+                        if signer.is_none() {
+                            tracing::warn!(
+                                event.name = "authz.response_signing_unavailable",
+                                component = "data-plane",
+                                "response signing is enabled and this plane composes no \
+                                 `data.attest` ring: requests for a signed response are refused"
+                            );
+                        }
+                        signer
+                    })
+                    .flatten()
+                    .map(|signer| signing::ResponseSigning {
+                        signer: Arc::new(signer),
+                        validity: config.response_signing_validity(),
+                        clock_skew: config.response_signing_clock_skew(),
+                    }),
+            )
             .with_journal(
-                crate::decisions::journal(context),
+                crate::decisions::recorder(context),
                 crate::handles::zone_key(
                     context,
                     permguard_host::secrets::ZonePurpose::AuditPseudonym,
@@ -115,6 +158,7 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
                 config.log_include().clone(),
             )
             .with_expiry(config.mirrors_expire_after())
+            .with_staleness(config.mirrors_stale_after())
             // A little under the transport's own request timeout, so the work stops before the
             // answer is abandoned rather than after it — the gap is what makes the difference
             // between a plane that sheds load and one that accumulates it.
@@ -124,11 +168,59 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
             .with_profile(config.assurance().profile())
             // What this deployment has opted into. A ledger naming a provisional contract it has
             // not enabled is refused at load rather than served.
-            .with_enabled(permguard_languages::registry::Enabled::from_names(
-                config.experimental_enabled_names(),
-            )),
+            .with_enabled(enabled(config)),
         )
     }))
+}
+
+/// What this deployment serves: the experimental runtimes it opted into, and from `production` up
+/// only runtimes whose conformance gate passes (TL-6).
+pub fn enabled(config: &permguard_core::Config) -> permguard_languages::registry::Enabled {
+    let enabled =
+        permguard_languages::registry::Enabled::from_names(config.experimental_enabled_names());
+    let floor = permguard_core::assurance::AssuranceProfile::Production;
+    if config.assurance().profile().at_least(floor) {
+        enabled.requiring_conformance()
+    } else {
+        enabled
+    }
+}
+
+/// One runtime as the plane's discovery lists it (TL-6): `LanguageListing` in
+/// `contracts/openapi/discovery.json`, whose members are exactly these.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct LanguageListing {
+    pub name: &'static str,
+    pub descriptor_digest: &'static str,
+    pub experimental: bool,
+    pub served: bool,
+    pub conformance: permguard_languages::conformance::Summary,
+}
+
+/// The runtimes this build carries as the plane's discovery lists them (TL-6): each with its
+/// descriptor's digest, whether it is experimental, whether this deployment serves it, and its
+/// conformance gate's result.
+pub fn listings(config: &permguard_core::Config) -> Vec<LanguageListing> {
+    let enabled = enabled(config);
+    permguard_languages::languages()
+        .iter()
+        .map(|language| LanguageListing {
+            name: language.name(),
+            descriptor_digest: permguard_languages::descriptor::descriptor_digest(language.name())
+                .unwrap_or_default(),
+            experimental: language.experimental(),
+            served: enabled.serves(*language),
+            conformance: permguard_languages::conformance::summary(language.name()),
+        })
+        .collect()
+}
+
+/// [`listings`] as the plane's document carries them.
+pub fn languages(config: &permguard_core::Config) -> Vec<serde_json::Value> {
+    listings(config)
+        .into_iter()
+        .filter_map(|listing| serde_json::to_value(listing).ok())
+        .collect()
 }
 
 /// The base URL this plane publishes in its configuration document.

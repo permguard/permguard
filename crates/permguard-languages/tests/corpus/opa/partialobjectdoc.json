@@ -1,0 +1,348 @@
+{
+  "folder": "partialobjectdoc",
+  "files": {
+    "test-partialobjectdoc-0519.yaml": {
+      "sha256": "sha256:4c9ba52149a2fd110481d1c4516bf50f909f37a25576424b65586fbebfef00e6",
+      "cases": [
+        {
+          "note": "partialobjectdoc/identity",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[k] := v if {\n\tdata.b[k] = v\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "v1": "hello",
+                "v2": "goodbye"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-partialobjectdoc-0520.yaml": {
+      "sha256": "sha256:4c2b1f138da9d7661f08400edbff71a73c55bbaff5b0a54b1e8dfb71c0a66cd7",
+      "cases": [
+        {
+          "note": "partialobjectdoc/composites",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[k] := v if {\n\tdata.d[k] = v\n}\n"
+          ],
+          "data": {
+            "d": {
+              "e": [
+                "bar",
+                "baz"
+              ]
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "e": [
+                  "bar",
+                  "baz"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-partialobjectdoc-0521.yaml": {
+      "sha256": "sha256:603f439665a76eb987f915b011a84546e0702de1db9d9ecdac99fa6849a33ec8",
+      "cases": [
+        {
+          "note": "partialobjectdoc/body/join var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[k] := v if {\n\tdata.a[i] = v\n\tdata.g[k][i] = v\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "g": {
+              "a": [
+                "1",
+                "0",
+                "0",
+                "0"
+              ],
+              "b": [
+                "0",
+                "2",
+                "0",
+                "0"
+              ],
+              "c": [
+                "0",
+                "0",
+                "0",
+                "4"
+              ]
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": "1",
+                "b": "2",
+                "c": "4"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-partialobjectdoc-0522.yaml": {
+      "sha256": "sha256:fdbce7480d50e37938d77dfab99a66318bea71ce8ee9e68ed82ec6d53d0c8a9c",
+      "cases": [
+        {
+          "note": "partialobjectdoc/composite value",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[k] := [v1, {\"v2\": v2}] if {\n\tdata.g[k] = x\n\tx[v1] = v2\n\tv2 != 0\n}\n"
+          ],
+          "data": {
+            "g": {
+              "a": [
+                1,
+                0,
+                0,
+                0
+              ],
+              "b": [
+                0,
+                2,
+                0,
+                0
+              ],
+              "c": [
+                0,
+                0,
+                0,
+                4
+              ]
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": [
+                  0,
+                  {
+                    "v2": 1
+                  }
+                ],
+                "b": [
+                  1,
+                  {
+                    "v2": 2
+                  }
+                ],
+                "c": [
+                  3,
+                  {
+                    "v2": 4
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-partialobjectdoc-0523.yaml": {
+      "sha256": "sha256:0819371411ab53b0dc778157e021a81807b27b47c50b7aae7a661c5be9286db0",
+      "cases": [
+        {
+          "note": "partialobjectdoc/same key/value pair",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[k] := 1 if {\n\tks = [\"a\", \"b\", \"c\", \"a\"]\n\tks[_] = k\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "b": 1,
+                "c": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-partialobjectdoc-0524.yaml": {
+      "sha256": "sha256:0d8454e657afad65a8d6dcda69acaefa1848ff17f117bfd0f29315301ba68dab",
+      "cases": [
+        {
+          "note": "partialobjectdoc/non-string key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[k] := 1 if {\n\tks = [1, {}, null]\n\tks[_] = k\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "{}": 1,
+                "1": 1,
+                "null": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-partialobjectdoc-ref.yaml": {
+      "sha256": "sha256:fd6627d78b590b19766612300efc6e6c8fd82b6a5a1d807b55fdae6bb26bba39",
+      "cases": [
+        {
+          "note": "partialobjectdoc/ref",
+          "query": "data.generated.q = x",
+          "modules": [
+            "package generated\n\np.q[k] := v if {\n\tk := [\"foo\", \"bar\"][v]\n}\n\np.baz := 2\n\nq if {\n\tx := \"bar\"\n\ty := \"q\"\n\tp[y][x] == 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-wasm-cases.yaml": {
+      "sha256": "sha256:eeedf549dc32f0ec4f37ef2c74c462e9a68b0e9f6bfdd13b11854e2bb3f121bf",
+      "cases": [
+        {
+          "note": "wasm/additive",
+          "query": "data.x.q = x",
+          "modules": [
+            "package x\n\np[\"a\"] := 1\n\np[\"b\"] := 2\n\nq if {\n\tp == {\"a\": 1, \"b\": 2}\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "wasm/additive (negative)",
+          "query": "data.x.p = input",
+          "modules": [
+            "package x\n\np[\"a\"] := 1\n\np[\"b\"] := 2\n\np[\"c\"] := 3\n"
+          ],
+          "input": {
+            "a": 1,
+            "b": 2
+          },
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "wasm/input",
+          "query": "data.x.q = x",
+          "modules": [
+            "package x\n\np[\"a\"] := 1 if input.x = 1\n\np[\"b\"] := 2 if input.y = 2\n\nq if {\n\tp == {\"a\": 1, \"b\": 2}\n}\n"
+          ],
+          "input": {
+            "x": 1,
+            "y": 2
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "wasm/input (negative)",
+          "query": "data.x.q = x",
+          "modules": [
+            "package x\n\np[\"a\"] := 1 if input.x = 1\n\np[\"b\"] := 2 if input.y = 2\n\np[\"c\"] := 3 if input.z = 3\n\nq if {\n\tp == data.z\n}\n"
+          ],
+          "data": {
+            "z": {
+              "a": 1,
+              "b": 2
+            }
+          },
+          "input": {
+            "x": 1,
+            "y": 2
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "wasm/composites",
+          "query": "data.x.q = x",
+          "modules": [
+            "package x\n\np[x] := [y] if {\n\tx = \"a\"\n\ty = 1\n}\n\np[x] := [y] if {\n\tx = \"b\"\n\ty = 2\n}\n\nq if p == {\"a\": [1], \"b\": [2]}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "wasm/conflict error",
+          "query": "data.x.q = x",
+          "modules": [
+            "package x\n\np[\"x\"] := 1\n\np[\"x\"] := 2\n\nq if {\n\tp == data.z\n}\n"
+          ],
+          "data": {
+            "z": {
+              "a": 1
+            }
+          },
+          "want_error_code": "eval_conflict_error",
+          "want_error": "eval_conflict_error: complete rules must not produce multiple outputs"
+        },
+        {
+          "note": "wasm/object dereference",
+          "query": "data.x.q = x",
+          "modules": [
+            "package x\n\np[\"a\"] := {\"b\": 1}\n\nq if {\n\tp.a.b = 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "wasm/object dereference (negative)",
+          "query": "data.x.p.a.b = 1",
+          "modules": [
+            "package x\n\np[\"a\"] := {\"b\": 2}\n"
+          ],
+          "want_result": [
+
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,15 +1,63 @@
 {
   "artifact": "NOTP message bodies (application/vnd.permguard.notp.v1+cbor)",
-  "authority": "6-contracts/6-contract-ledger-notp.md#messages (today's subset); crates/permguard-notp/src/push.rs and pull.rs (each encode and decode), crates/permguard-control-plane/src/notp/http.rs (get_ref)",
+  "authority": "6-contracts/6-contract-ledger-notp.md#refs-and-head-statement and #messages (the target, WP-7.1); crates/permguard-objects/src/refstate.rs (RefState), crates/permguard-notp/src/push.rs, pull.rs, mirror.rs and codec.rs (each encode and decode)",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
+    "ref_state": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "head",
+          "type": "digest",
+          "occurs": "required"
+        },
+        {
+          "label": 2,
+          "name": "counter",
+          "type": "uint",
+          "occurs": "required",
+          "note": "1 or more"
+        },
+        {
+          "label": 3,
+          "name": "previous_ref_digest",
+          "type": "digest",
+          "occurs": "optional",
+          "note": "absent at a ref's first state"
+        }
+      ],
+      "grpc_message": null,
+      "grpc_note": "never on the wire: the bytes `ref_digest` is taken over, under `permguard.notp.ref-state.v1\\n`"
+    },
+    "expected_ref": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "counter",
+          "type": "uint",
+          "occurs": "required",
+          "grpc_field": "counter"
+        },
+        {
+          "label": 2,
+          "name": "digest",
+          "type": "digest",
+          "occurs": "required",
+          "note": "the `ref_digest` of the state",
+          "grpc_field": "digest"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.ExpectedRef"
+    },
     "ref_answer": {
       "keys": "int",
       "fields": [
         {
           "label": 1,
           "name": "head",
-          "type": "text",
+          "type": "digest",
           "occurs": "required",
           "note": "the head commit digest",
           "grpc_field": "head"
@@ -28,6 +76,14 @@
           "occurs": "required",
           "note": "the COSE_Sign1 of head-statement.json",
           "grpc_field": "statement"
+        },
+        {
+          "label": 4,
+          "name": "ref_digest",
+          "type": "digest",
+          "occurs": "required",
+          "note": "the digest of the ref state the statement binds",
+          "grpc_field": "ref_digest"
         }
       ],
       "grpc_message": "permguard.control.v1.GetRefResponse"
@@ -50,19 +106,27 @@
           "grpc_field": "new_head"
         },
         {
-          "label": 3,
-          "name": "expected_old",
-          "type": "digest",
-          "occurs": "optional",
-          "note": "absent when the push creates the ref",
-          "grpc_field": "expected_old"
-        },
-        {
           "label": 4,
           "name": "closure",
           "type": "array<map:closure_entry>",
           "occurs": "required",
           "grpc_field": "closure"
+        },
+        {
+          "label": 5,
+          "name": "expected_ref",
+          "type": "map:expected_ref",
+          "occurs": "optional",
+          "note": "absent when the push creates the ref; label 3, `expected_old`, is retired",
+          "grpc_field": "expected_ref"
+        },
+        {
+          "label": 6,
+          "name": "request_id",
+          "type": "text",
+          "occurs": "required",
+          "note": "printable, 1 to 128 bytes; a retry repeats it",
+          "grpc_field": "request_id"
         }
       ],
       "grpc_message": "permguard.control.v1.NegotiatePushRequest",
@@ -124,6 +188,30 @@
           "occurs": "optional",
           "note": "absent means uncompressed batches",
           "grpc_field": "compression"
+        },
+        {
+          "label": 5,
+          "name": "transfer_id",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "16 bytes; every later message of the session names it",
+          "grpc_field": "transfer_id"
+        },
+        {
+          "label": 6,
+          "name": "reservation",
+          "type": "uint",
+          "occurs": "required",
+          "note": "the bytes the session may land",
+          "grpc_field": "reservation"
+        },
+        {
+          "label": 7,
+          "name": "expiry",
+          "type": "uint",
+          "occurs": "required",
+          "note": "when the session closes, Unix seconds",
+          "grpc_field": "expiry"
         }
       ],
       "grpc_message": "permguard.control.v1.NegotiatePushResponse"
@@ -144,6 +232,13 @@
           "type": "text",
           "occurs": "optional",
           "grpc_field": "compression"
+        },
+        {
+          "label": 3,
+          "name": "transfer_id",
+          "type": "bytes",
+          "occurs": "required",
+          "grpc_field": "transfer_id"
         }
       ],
       "grpc_message": "permguard.control.v1.UploadObjectsRequest",
@@ -162,6 +257,14 @@
           "type": "array<digest>",
           "occurs": "required",
           "grpc_field": "received"
+        },
+        {
+          "label": 2,
+          "name": "remaining",
+          "type": "uint",
+          "occurs": "required",
+          "note": "what the session's reservation has left",
+          "grpc_field": "remaining"
         }
       ],
       "grpc_message": "permguard.control.v1.UploadObjectsResponse"
@@ -184,12 +287,27 @@
           "grpc_field": "new_head"
         },
         {
-          "label": 3,
-          "name": "expected_old",
-          "type": "digest",
+          "label": 4,
+          "name": "expected_ref",
+          "type": "map:expected_ref",
           "occurs": "optional",
-          "note": "absent when the push creates the ref",
-          "grpc_field": "expected_old"
+          "note": "absent when the push creates the ref; label 3, `expected_old`, is retired",
+          "grpc_field": "expected_ref"
+        },
+        {
+          "label": 5,
+          "name": "transfer_id",
+          "type": "bytes",
+          "occurs": "required",
+          "grpc_field": "transfer_id"
+        },
+        {
+          "label": 6,
+          "name": "request_id",
+          "type": "text",
+          "occurs": "required",
+          "note": "printable, 1 to 128 bytes; a retry repeats it",
+          "grpc_field": "request_id"
         }
       ],
       "grpc_message": "permguard.control.v1.CommitPushRequest",
@@ -223,6 +341,13 @@
           "occurs": "required",
           "note": "the COSE_Sign1 of head-statement.json",
           "grpc_field": "statement"
+        },
+        {
+          "label": 4,
+          "name": "ref_digest",
+          "type": "digest",
+          "occurs": "required",
+          "grpc_field": "ref_digest"
         }
       ],
       "grpc_message": "permguard.control.v1.CommitPushResponse"
@@ -251,6 +376,14 @@
           "type": "array<digest>",
           "occurs": "required",
           "grpc_field": "have"
+        },
+        {
+          "label": 4,
+          "name": "checkpoint",
+          "type": "map:expected_ref",
+          "occurs": "optional",
+          "note": "the ref state the client last verified",
+          "grpc_field": "checkpoint"
         }
       ],
       "grpc_message": "permguard.control.v1.NegotiatePullRequest",
@@ -312,6 +445,28 @@
           "type": "text",
           "occurs": "optional",
           "grpc_field": "compression"
+        },
+        {
+          "label": 8,
+          "name": "transfer_id",
+          "type": "bytes",
+          "occurs": "required",
+          "grpc_field": "transfer_id"
+        },
+        {
+          "label": 9,
+          "name": "ref_digest",
+          "type": "digest",
+          "occurs": "required",
+          "grpc_field": "ref_digest"
+        },
+        {
+          "label": 10,
+          "name": "expiry",
+          "type": "uint",
+          "occurs": "required",
+          "note": "when the session closes, Unix seconds",
+          "grpc_field": "expiry"
         }
       ],
       "grpc_message": "permguard.control.v1.NegotiatePullResponse"
@@ -332,6 +487,13 @@
           "type": "text",
           "occurs": "optional",
           "grpc_field": "accept_compression"
+        },
+        {
+          "label": 3,
+          "name": "transfer_id",
+          "type": "bytes",
+          "occurs": "required",
+          "grpc_field": "transfer_id"
         }
       ],
       "grpc_message": "permguard.control.v1.FetchObjectsRequest",
@@ -357,13 +519,75 @@
           "type": "text",
           "occurs": "optional",
           "grpc_field": "compression"
+        },
+        {
+          "label": 3,
+          "name": "expiry",
+          "type": "uint",
+          "occurs": "required",
+          "note": "when the session closes, Unix seconds",
+          "grpc_field": "expiry"
         }
       ],
       "grpc_message": "permguard.control.v1.FetchObjectsResponse"
+    },
+    "get_ref_request": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "ref",
+          "type": "text",
+          "occurs": "required",
+          "grpc_field": "ref"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.GetRefRequest",
+      "grpc_only": [
+        "zone",
+        "ledger"
+      ],
+      "grpc_note": "`zone` and `ledger` travel in the REST path or the `policy.mirror` message, and REST names the ref in the path too"
+    },
+    "mirror_request": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "operation",
+          "type": "uint",
+          "occurs": "required",
+          "note": "1 get_ref, 2 negotiate_pull, 3 fetch_objects, 4 key_ring"
+        },
+        {
+          "label": 2,
+          "name": "zone",
+          "type": "text",
+          "occurs": "required",
+          "note": "the zone id"
+        },
+        {
+          "label": 3,
+          "name": "ledger",
+          "type": "text",
+          "occurs": "required",
+          "note": "the ledger id"
+        },
+        {
+          "label": 4,
+          "name": "body",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "the operation's own NOTP message; empty for the key ring"
+        }
+      ],
+      "grpc_message": null,
+      "grpc_note": "a `policy.mirror` Host task message (WP-7.12): never on the public gRPC surface"
     }
   },
   "arrays": {},
   "root": [
+    "ref_state",
     "ref_answer",
     "negotiate_push_request",
     "negotiate_push_response",
@@ -374,6 +598,8 @@
     "negotiate_pull_request",
     "negotiate_pull_response",
     "fetch_objects_request",
-    "fetch_objects_response"
+    "fetch_objects_response",
+    "get_ref_request",
+    "mirror_request"
   ]
 }

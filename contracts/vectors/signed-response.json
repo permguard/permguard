@@ -1,0 +1,247 @@
+{
+  "description": "WP-6.6: signed native decision responses. The key is RFC 8032 section 7.1 test 1. A PEP verifies each `response` to its `request` under `key`, expecting `audience`, at `now`, with the advertised `validity_seconds` and `clock_skew_seconds`, the nonce outstanding, and the exact `policy`; `payload` is what the attestation's payload decodes to.",
+  "key": {
+    "kid": "data-attest-vector-1",
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "alg": "EdDSA",
+    "use": "sig",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+  },
+  "audience": "spiffe://acme/pep",
+  "now": 1790000010,
+  "validity_seconds": 300,
+  "clock_skew_seconds": 30,
+  "policy": {
+    "authority_host_id": "01937000-0000-7000-8000-00000000a0a0",
+    "zone_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c",
+    "ledger_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5d",
+    "ref": "main",
+    "commit": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "counter": "1",
+    "profile": "default"
+  },
+  "single": {
+    "request": {
+      "zone": "acme",
+      "ledger": "main-ledger",
+      "subject": {
+        "type": "user",
+        "id": "alice"
+      },
+      "resource": {
+        "type": "document",
+        "id": "budget"
+      },
+      "action": {
+        "name": "read"
+      },
+      "request_id": "r-1",
+      "request_nonce": "AAECAwQFBgcICQoLDA0ODw"
+    },
+    "response": {
+      "decision": true,
+      "request_id": "r-1",
+      "context": {
+        "id": "dec-1",
+        "reason_admin": {
+          "code": "200",
+          "message": "permitted"
+        },
+        "reason_user": {
+          "code": "200",
+          "message": "permitted"
+        },
+        "policies": [
+          "p-1"
+        ],
+        "evidence": {
+          "mode": "required",
+          "status": "durable",
+          "record_id": "dec-1",
+          "position": {
+            "host_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+            "run": "0102030405060708090a0b0c0d0e0f10",
+            "sequence": "7"
+          }
+        }
+      },
+      "attestation": {
+        "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRhdGEtYXR0ZXN0LXZlY3Rvci0xIiwidHlwIjoicGVybWd1YXJkLmRlY2lzaW9uLnJlc3BvbnNlLnYxIn0",
+        "payload": "eyJhdWRpZW5jZSI6InNwaWZmZTovL2FjbWUvcGVwIiwiZGVjaXNpb24iOnRydWUsImV2aWRlbmNlIjp7Im1vZGUiOiJyZXF1aXJlZCIsInBvc2l0aW9uIjp7Imhvc3RfaWQiOiIwMTkzYTFiMi1jM2Q0LTdlNWYtOGE5Yi0wYzFkMmUzZjRhNWIiLCJydW4iOiIwMTAyMDMwNDA1MDYwNzA4MDkwYTBiMGMwZDBlMGYxMCIsInNlcXVlbmNlIjoiNyJ9LCJyZWNvcmRfaWQiOiJkZWMtMSIsInN0YXR1cyI6ImR1cmFibGUifSwiZXhwaXJlc19hdCI6IjIwMjYtMDktMjFUMTQ6MTg6MjBaIiwiaW50ZXJmYWNlIjoicGVybWd1YXJkLmFwaS5wZHAubmF0aXZlLnYxIiwiaXNzdWVkX2F0IjoiMjAyNi0wOS0yMVQxNDoxMzoyMFoiLCJwb2xpY3kiOnsiYXV0aG9yaXR5X2hvc3RfaWQiOiIwMTkzNzAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMGEwYTAiLCJjb21taXQiOiJzaGEyNTY6YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYiIsImNvdW50ZXIiOiIxIiwibGVkZ2VyX2lkIjoiMDE5M2ExYjItYzNkNC03ZTVmLThhOWItMGMxZDJlM2Y0YTVkIiwicHJvZmlsZSI6ImRlZmF1bHQiLCJyZWYiOiJtYWluIiwiem9uZV9pZCI6IjAxOTNhMWIyLWMzZDQtN2U1Zi04YTliLTBjMWQyZTNmNGE1YyJ9LCJyZXF1ZXN0X2RpZ2VzdCI6InNoYTI1NjozNGRiNjkyMDAxOTE5ZGJkMDQ2YTNkMjliZjNmMDIwYWUyYjZkNjM3ZTRkZjIwMWY3MDdhMDU3NzNlNmNmMTg1IiwicmVxdWVzdF9pZHMiOlsici0xIl0sInJlcXVlc3Rfbm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3IiwicmVzcG9uc2VfZGlnZXN0Ijoic2hhMjU2OmJkNTUzZmRmNjA2Mjk3ZWNmZGE2MWM1NzdmMzAxMzcwYTJkNDdkNmM2MjdmNDYxNjg0MDhkMGY0MDU1OGY5NjkiLCJ2IjoxfQ",
+        "signature": "rHp-24m0ImIooRsrxKmaaxtr0wsCcgzLuYQ5dcJgyOZkzSn1VrHifhWycmlIw30GQKJYrVHk4ihdGqcE4js_CQ"
+      }
+    },
+    "payload": {
+      "v": 1,
+      "interface": "permguard.api.pdp.native.v1",
+      "request_digest": "sha256:34db692001919dbd046a3d29bf3f020ae2b6d637e4df201f707a05773e6cf185",
+      "request_nonce": "AAECAwQFBgcICQoLDA0ODw",
+      "request_ids": [
+        "r-1"
+      ],
+      "audience": "spiffe://acme/pep",
+      "policy": {
+        "authority_host_id": "01937000-0000-7000-8000-00000000a0a0",
+        "zone_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c",
+        "ledger_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5d",
+        "ref": "main",
+        "commit": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "counter": "1",
+        "profile": "default"
+      },
+      "decision": true,
+      "response_digest": "sha256:bd553fdf606297ecfda61c577f301370a2d47d6c627f46168408d0f40558f969",
+      "evidence": {
+        "mode": "required",
+        "status": "durable",
+        "record_id": "dec-1",
+        "position": {
+          "host_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+          "run": "0102030405060708090a0b0c0d0e0f10",
+          "sequence": "7"
+        }
+      },
+      "issued_at": "2026-09-21T14:13:20Z",
+      "expires_at": "2026-09-21T14:18:20Z"
+    }
+  },
+  "batch": {
+    "request": {
+      "zone": "acme",
+      "ledger": "main-ledger",
+      "subject": {
+        "type": "user",
+        "id": "alice"
+      },
+      "resource": {
+        "type": "document",
+        "id": "budget"
+      },
+      "action": {
+        "name": "read"
+      },
+      "evaluations": [
+        {
+          "request_id": "one"
+        },
+        {
+          "resource": {
+            "type": "document",
+            "id": "other"
+          }
+        }
+      ],
+      "request_nonce": "AAECAwQFBgcICQoLDA0ODw"
+    },
+    "response": {
+      "decision": true,
+      "context": {
+        "reason_admin": {
+          "code": "200",
+          "message": "every evaluation permitted"
+        },
+        "reason_user": {
+          "code": "200",
+          "message": "permitted"
+        }
+      },
+      "evaluations": [
+        {
+          "decision": true,
+          "request_id": "one",
+          "context": {
+            "id": "dec-2",
+            "reason_admin": {
+              "code": "200",
+              "message": "permitted"
+            },
+            "reason_user": {
+              "code": "200",
+              "message": "permitted"
+            },
+            "policies": [
+              "p-1"
+            ],
+            "evidence": {
+              "mode": "required",
+              "status": "durable",
+              "record_id": "dec-2",
+              "position": {
+                "host_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+                "run": "0102030405060708090a0b0c0d0e0f10",
+                "sequence": "8"
+              }
+            }
+          }
+        },
+        {
+          "decision": true,
+          "context": {
+            "id": "dec-3",
+            "reason_admin": {
+              "code": "200",
+              "message": "permitted"
+            },
+            "reason_user": {
+              "code": "200",
+              "message": "permitted"
+            },
+            "policies": [
+              "p-1"
+            ],
+            "evidence": {
+              "mode": "required",
+              "status": "durable",
+              "record_id": "dec-3",
+              "position": {
+                "host_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+                "run": "0102030405060708090a0b0c0d0e0f10",
+                "sequence": "9"
+              }
+            }
+          }
+        }
+      ],
+      "attestation": {
+        "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRhdGEtYXR0ZXN0LXZlY3Rvci0xIiwidHlwIjoicGVybWd1YXJkLmRlY2lzaW9uLnJlc3BvbnNlLnYxIn0",
+        "payload": "eyJhdWRpZW5jZSI6InNwaWZmZTovL2FjbWUvcGVwIiwiZGVjaXNpb24iOnRydWUsImV2aWRlbmNlIjp7Im1vZGUiOiJyZXF1aXJlZCIsInBvc2l0aW9uIjp7Imhvc3RfaWQiOiIwMTkzYTFiMi1jM2Q0LTdlNWYtOGE5Yi0wYzFkMmUzZjRhNWIiLCJydW4iOiIwMTAyMDMwNDA1MDYwNzA4MDkwYTBiMGMwZDBlMGYxMCIsInNlcXVlbmNlIjoiOSJ9LCJyZWNvcmRfaWQiOiJkZWMtMyIsInN0YXR1cyI6ImR1cmFibGUifSwiZXhwaXJlc19hdCI6IjIwMjYtMDktMjFUMTQ6MTg6MjBaIiwiaW50ZXJmYWNlIjoicGVybWd1YXJkLmFwaS5wZHAubmF0aXZlLnYxIiwiaXNzdWVkX2F0IjoiMjAyNi0wOS0yMVQxNDoxMzoyMFoiLCJwb2xpY3kiOnsiYXV0aG9yaXR5X2hvc3RfaWQiOiIwMTkzNzAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMGEwYTAiLCJjb21taXQiOiJzaGEyNTY6YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYiIsImNvdW50ZXIiOiIxIiwibGVkZ2VyX2lkIjoiMDE5M2ExYjItYzNkNC03ZTVmLThhOWItMGMxZDJlM2Y0YTVkIiwicHJvZmlsZSI6ImRlZmF1bHQiLCJyZWYiOiJtYWluIiwiem9uZV9pZCI6IjAxOTNhMWIyLWMzZDQtN2U1Zi04YTliLTBjMWQyZTNmNGE1YyJ9LCJyZXF1ZXN0X2RpZ2VzdCI6InNoYTI1Njo5MmMyNDc0OTJiYjZjOGZmMmExZDc1MGQ2Y2E0MDNhYzk1Mzk4NGNmZjg1NzUyYTI3ZTI1ZWFmZDA2N2Q5YjNlIiwicmVxdWVzdF9pZHMiOlsib25lIixudWxsXSwicmVxdWVzdF9ub25jZSI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHciLCJyZXNwb25zZV9kaWdlc3QiOiJzaGEyNTY6NzAyY2M3N2I5ZDRjZjBiMTNlZWYzMzQzYzk3ZDU3Mzc2M2FiZGMwMTI3NzM1ZjU3NjJkYTY4NDk4YWVkMDIyMCIsInYiOjF9",
+        "signature": "N9r-KZLx4B5gFoOB2Kyk2Cx6eokKxMflQLnXShLINV7Fn7hY9ECVrEX4g1BgYiQS2YU3A67-QVo4VlMpLuSCCw"
+      }
+    },
+    "payload": {
+      "v": 1,
+      "interface": "permguard.api.pdp.native.v1",
+      "request_digest": "sha256:92c247492bb6c8ff2a1d750d6ca403ac953984cff85752a27e25eafd067d9b3e",
+      "request_nonce": "AAECAwQFBgcICQoLDA0ODw",
+      "request_ids": [
+        "one",
+        null
+      ],
+      "audience": "spiffe://acme/pep",
+      "policy": {
+        "authority_host_id": "01937000-0000-7000-8000-00000000a0a0",
+        "zone_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c",
+        "ledger_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5d",
+        "ref": "main",
+        "commit": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "counter": "1",
+        "profile": "default"
+      },
+      "decision": true,
+      "response_digest": "sha256:702cc77b9d4cf0b13eef3343c97d573763abdc0127735f5762da68498aed0220",
+      "evidence": {
+        "mode": "required",
+        "status": "durable",
+        "record_id": "dec-3",
+        "position": {
+          "host_id": "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+          "run": "0102030405060708090a0b0c0d0e0f10",
+          "sequence": "9"
+        }
+      },
+      "issued_at": "2026-09-21T14:13:20Z",
+      "expires_at": "2026-09-21T14:18:20Z"
+    }
+  }
+}

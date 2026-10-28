@@ -17,10 +17,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Arc;
 
-/// A canned HTTP/1.1 answerer: method+path → (status, body). Unknown paths
-/// answer 404 with the structured refusal shape.
+/// A canned HTTP/1.1 answerer: method+path → (status, body), the query left out of the match.
+/// Unknown paths answer 404 with the structured refusal shape. Every request is kept, as
+/// `METHOD target body`, for a test that asserts what the CLI sent.
 struct Stub {
     address: String,
+    requests: Arc<std::sync::Mutex<Vec<String>>>,
     _server: std::thread::JoinHandle<()>,
 }
 
@@ -36,11 +38,14 @@ fn serve_owned(routes: HashMap<(String, String), (u16, String)>) -> Stub {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port is free");
     let address = format!("127.0.0.1:{}", listener.local_addr().unwrap().port());
     let routes = Arc::new(routes);
+    let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let kept = Arc::clone(&requests);
 
     let server = std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { break };
             let routes = Arc::clone(&routes);
+            let kept = Arc::clone(&kept);
             std::thread::spawn(move || {
                 // One exchange per connection: the client sends
                 // `Connection: close` and reads to EOF, so the stub answers
@@ -80,8 +85,13 @@ fn serve_owned(routes: HashMap<(String, String), (u16, String)>) -> Stub {
                         reader.read_exact(&mut body).expect("the body reads");
                     }
 
+                    kept.lock().expect("the log").push(format!(
+                        "{method} {path} {}",
+                        String::from_utf8_lossy(&body)
+                    ));
+                    let route = path.split('?').next().unwrap_or_default().to_owned();
                     let (status, answer) = routes
-                        .get(&(method.clone(), path.clone()))
+                        .get(&(method.clone(), route))
                         .cloned()
                         .unwrap_or((
                         404,
@@ -102,6 +112,7 @@ fn serve_owned(routes: HashMap<(String, String), (u16, String)>) -> Stub {
 
     Stub {
         address,
+        requests,
         _server: server,
     }
 }
@@ -137,7 +148,7 @@ fn stderr(output: &Output) -> String {
 }
 
 fn zone_json(id: &str, name: &str) -> String {
-    format!(r#"{{"id":"{id}","name":"{name}","created_at":1,"updated_at":1}}"#)
+    format!(r#"{{"id":"{id}","name":"{name}","created_at":1,"updated_at":1,"revision":1}}"#)
 }
 
 #[test]
@@ -160,6 +171,7 @@ fn zones_commands_speak_to_a_server_end_to_end() {
         ("PATCH", "/v1/zones/acme"),
         (200, zone_json("z-1", "renamed")),
     );
+    routes.insert(("GET", "/v1/zones/z-2"), (200, zone_json("z-2", "beta")));
     routes.insert(("DELETE", "/v1/zones/z-2"), (200, zone_json("z-2", "beta")));
     routes.insert(("GET", "/v1/zones/missing"), (
         404,
@@ -224,7 +236,7 @@ fn zones_commands_speak_to_a_server_end_to_end() {
 
 #[test]
 fn ledgers_commands_speak_to_a_server_end_to_end() {
-    let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1}"#;
+    let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":1,"state":"active"}"#;
     let mut routes = HashMap::new();
     routes.insert(
         ("GET", "/v1/zones/acme/ledgers"),
@@ -284,6 +296,184 @@ fn ledgers_commands_speak_to_a_server_end_to_end() {
             stdout(&output)
         );
     }
+}
+
+/// WP-7.3a, owner decision of 2026-10-20: a rename or a delete names the revision a read just
+/// before answered, or the one `--expected-revision` gave without reading; every change carries a
+/// fresh request id.
+#[test]
+fn the_cli_renames_with_the_revision_it_read() {
+    let zone = r#"{"id":"z-1","name":"acme","created_at":1,"updated_at":1,"revision":7}"#;
+    let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":4}"#;
+    let mut routes = HashMap::new();
+    routes.insert(("GET", "/v1/zones/acme"), (200, zone.to_owned()));
+    routes.insert(("PATCH", "/v1/zones/acme"), (200, zone.to_owned()));
+    routes.insert(("DELETE", "/v1/zones/acme"), (200, zone.to_owned()));
+    let path = "/v1/zones/acme/ledgers/main-ledger";
+    routes.insert(("GET", path), (200, ledger.to_owned()));
+    routes.insert(("PATCH", path), (200, ledger.to_owned()));
+    routes.insert(("DELETE", path), (200, ledger.to_owned()));
+    let stub = serve(routes);
+    let endpoint = format!("http://{}", stub.address);
+    let dir = scratch("revisions");
+    let sent = |args: &[&str]| {
+        stub.requests.lock().expect("the log").clear();
+        let mut full = vec!["--endpoint", endpoint.as_str(), "-o", "json"];
+        full.extend(args);
+        let output = run(&dir, &full);
+        assert!(output.status.success(), "{args:?}: {}", stderr(&output));
+        stub.requests.lock().expect("the log").clone()
+    };
+    let body = |request: &str| -> serde_json::Value {
+        serde_json::from_str(request.splitn(3, ' ').nth(2).expect("a body")).expect("JSON")
+    };
+
+    let read_first = sent(&["zones", "update", "acme", "--name", "renamed"]);
+    assert_eq!(read_first.len(), 2, "{read_first:?}");
+    assert!(read_first[0].starts_with("GET /v1/zones/acme "));
+    let rename = body(&read_first[1]);
+    assert_eq!(rename["expected_revision"], 7);
+    assert_eq!(rename["name"], "renamed");
+    let first_id = rename["request_id"]
+        .as_str()
+        .expect("a request id")
+        .to_owned();
+    assert_eq!(first_id.len(), 32);
+
+    let given = sent(&[
+        "zones",
+        "update",
+        "acme",
+        "--name",
+        "renamed",
+        "--expected-revision",
+        "3",
+    ]);
+    assert_eq!(given.len(), 1, "no read: {given:?}");
+    assert_eq!(body(&given[0])["expected_revision"], 3);
+    assert_ne!(
+        body(&given[0])["request_id"],
+        first_id.as_str(),
+        "a fresh id"
+    );
+
+    let delete = sent(&["zones", "delete", "acme"]);
+    assert!(
+        delete[1].starts_with("DELETE /v1/zones/acme?"),
+        "{delete:?}"
+    );
+    assert!(delete[1].contains("expected_revision=7"), "{delete:?}");
+    assert!(delete[1].contains("request_id="), "{delete:?}");
+
+    let ledger_rename = sent(&[
+        "ledgers",
+        "update",
+        "main-ledger",
+        "--zone",
+        "acme",
+        "--name",
+        "renamed",
+    ]);
+    assert_eq!(body(&ledger_rename[1])["expected_revision"], 4);
+    let ledger_delete = sent(&[
+        "ledgers",
+        "delete",
+        "main-ledger",
+        "--zone",
+        "acme",
+        "--expected-revision",
+        "9",
+    ]);
+    assert_eq!(ledger_delete.len(), 1, "{ledger_delete:?}");
+    assert!(
+        ledger_delete[0].contains("expected_revision=9"),
+        "{ledger_delete:?}"
+    );
+
+    // The revision is reported, what an operator gives back as `--expected-revision`.
+    let shown = run(
+        &dir,
+        &[
+            "--endpoint",
+            &endpoint,
+            "-o",
+            "json",
+            "zones",
+            "get",
+            "acme",
+        ],
+    );
+    let shown: serde_json::Value = serde_json::from_slice(&shown.stdout).expect("JSON");
+    assert_eq!(shown["revision"], 7);
+}
+
+/// WP-7.3b, owner decision of 2026-10-21: `ledgers archive` and `restore` post the revision a read
+/// just before answered, or the one `--expected-revision` gave, with a fresh request id; the
+/// report shows the state.
+#[test]
+fn the_cli_archives_and_restores_with_the_revision_it_read() {
+    let path = "/v1/zones/acme/ledgers/main-ledger";
+    let ledger = |state: &str, revision: u64| {
+        format!(
+            r#"{{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":{revision},"state":"{state}"}}"#
+        )
+    };
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("GET".to_owned(), path.to_owned()),
+        (200, ledger("active", 6)),
+    );
+    routes.insert(
+        ("POST".to_owned(), format!("{path}/archive")),
+        (200, ledger("archived", 7)),
+    );
+    routes.insert(
+        ("POST".to_owned(), format!("{path}/restore")),
+        (200, ledger("active", 8)),
+    );
+    let stub = serve_owned(routes);
+    let endpoint = format!("http://{}", stub.address);
+    let dir = scratch("archive");
+    let sent = |args: &[&str]| {
+        stub.requests.lock().expect("the log").clear();
+        let mut full = vec!["--endpoint", endpoint.as_str(), "-o", "json"];
+        full.extend(args);
+        let output = run(&dir, &full);
+        assert!(output.status.success(), "{args:?}: {}", stderr(&output));
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("JSON");
+        (stub.requests.lock().expect("the log").clone(), report)
+    };
+    let body = |request: &str| -> serde_json::Value {
+        serde_json::from_str(request.splitn(3, ' ').nth(2).expect("a body")).expect("JSON")
+    };
+
+    let (requests, report) = sent(&["ledgers", "archive", "main-ledger", "--zone", "acme"]);
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(requests[0].starts_with(&format!("GET {path} ")));
+    assert!(requests[1].starts_with(&format!("POST {path}/archive ")));
+    let archive = body(&requests[1]);
+    assert_eq!(archive["expected_revision"], 6);
+    assert_eq!(archive["request_id"].as_str().map(str::len), Some(32));
+    assert_eq!(
+        (report["action"].as_str(), report["state"].as_str()),
+        (Some("archived"), Some("archived"))
+    );
+
+    let (requests, report) = sent(&[
+        "ledgers",
+        "restore",
+        "main-ledger",
+        "--zone",
+        "acme",
+        "--expected-revision",
+        "7",
+    ]);
+    assert_eq!(requests.len(), 1, "no read: {requests:?}");
+    assert_eq!(body(&requests[0])["expected_revision"], 7);
+    assert_eq!(
+        (report["action"].as_str(), report["state"].as_str()),
+        (Some("restored"), Some("active"))
+    );
 }
 
 #[test]
@@ -390,6 +580,489 @@ fn inspect_reads_both_planes_and_gates_on_readiness() {
     assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
     let parsed: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("inspect JSON");
     assert_eq!(parsed["planes"].as_array().expect("planes").len(), 2);
+}
+
+/// The three layers of a discovery chain, each on a stub of its own: the interfaces' documents,
+/// the plane's (linking to them), and the process's (linking to the plane); the decision log's
+/// interface answers its header, the event store's is retired.
+struct Chain {
+    process: Stub,
+    plane: Stub,
+    _interfaces: Stub,
+}
+
+fn chain() -> Chain {
+    let decisions = "/.well-known/permguard-decisions-native-v1-configuration";
+    let events = "/.well-known/permguard-events-native-v1alpha1-configuration";
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("GET".to_owned(), decisions.to_owned()),
+        (
+            200,
+            r#"{"interface":"permguard.api.decisions.native.v1","version":"0.1.0","component":"control-plane","state":"serving","stage":"v1","limits":{"max_records":1000}}"#
+                .to_owned(),
+        ),
+    );
+    routes.insert(
+        ("GET".to_owned(), events.to_owned()),
+        (
+            400,
+            r#"{"class":"validation","code":"interface_retired","message":"retired"}"#.to_owned(),
+        ),
+    );
+    let interfaces = serve_owned(routes);
+    let at = |path: &str| format!("http://{}{path}", interfaces.address);
+    let plane_document = serde_json::json!({
+        "plane": "control-plane",
+        "state": "serving",
+        "jwks_uri": "http://x/keys",
+        "interfaces": {
+            "permguard.api.decisions.native.v1": {"configuration": at(decisions), "stage": "v1"},
+            "permguard.api.events.native.v1alpha1": {
+                "configuration": at(events),
+                "stage": "deprecated",
+                "sunset": "2027-06-30T00:00:00Z"
+            }
+        }
+    });
+    let mut routes = HashMap::new();
+    routes.insert(
+        (
+            "GET".to_owned(),
+            "/.well-known/server-configuration".to_owned(),
+        ),
+        (200, plane_document.to_string()),
+    );
+    let plane = serve_owned(routes);
+    let process_document = serde_json::json!({
+        "host_id": "01a00000-0000-7000-8000-000000000001",
+        "state": "serving",
+        "planes": {
+            "control-plane": {
+                "state": "ready",
+                "server_configuration": format!("http://{}/.well-known/server-configuration", plane.address)
+            },
+            "data-plane": {"state": "load", "grpc_endpoint": "grpc://127.0.0.1:7444"}
+        }
+    });
+    let mut routes = HashMap::new();
+    routes.insert(
+        (
+            "GET".to_owned(),
+            "/.well-known/server-configuration".to_owned(),
+        ),
+        (200, process_document.to_string()),
+    );
+    Chain {
+        process: serve_owned(routes),
+        plane,
+        _interfaces: interfaces,
+    }
+}
+
+/// WP-7.4b, owner decision of 2026-10-21: `discover` walks from the process document to each
+/// plane and each interface, the plane's own phase winning over the process's report of it; a
+/// retired interface is shown, not an error, and a deprecated one warned.
+#[test]
+fn discover_walks_the_chain_from_the_process_document() {
+    let chain = chain();
+    let dir = scratch("discover");
+    let url = format!("http://{}", chain.process.address);
+    let output = run(&dir, &["-o", "json", "discover", &url]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("JSON");
+    assert_eq!(
+        report["process"]["host_id"],
+        "01a00000-0000-7000-8000-000000000001"
+    );
+    assert_eq!(report["process"]["state"], "serving");
+    let control = &report["planes"][0];
+    assert_eq!(control["plane"], "control-plane");
+    assert_eq!(control["state"], "serving", "the plane's own document");
+    let decisions = &control["interfaces"][0];
+    assert_eq!(decisions["id"], "permguard.api.decisions.native.v1");
+    assert_eq!(decisions["header"]["stage"], "v1");
+    assert_eq!(decisions["header"]["limits"]["max_records"], 1000);
+    let events = &control["interfaces"][1];
+    assert_eq!(events["retired"], true);
+    assert_eq!(events["sunset"], "2027-06-30T00:00:00Z");
+    assert!(events.get("unreachable").is_none());
+    let data = &report["planes"][1];
+    assert_eq!(
+        (data["state"].as_str(), data["grpc_endpoint"].as_str()),
+        (Some("load"), Some("grpc://127.0.0.1:7444"))
+    );
+    assert_eq!(report["complete"], true);
+
+    let text = run(&dir, &["discover", &url]);
+    let text = stdout(&text);
+    assert!(
+        text.contains("deprecated, served until 2027-06-30T00:00:00Z"),
+        "{text}"
+    );
+    assert!(text.contains("retired"), "{text}");
+}
+
+/// WP-7.4b: from a plane's address the walk starts at that plane.
+#[test]
+fn discover_starts_from_a_plane_document() {
+    let chain = chain();
+    let dir = scratch("discover-plane");
+    let output = run(
+        &dir,
+        &[
+            "-o",
+            "json",
+            "discover",
+            &format!("http://{}", chain.plane.address),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("JSON");
+    assert!(report.get("process").is_none());
+    assert_eq!(report["planes"][0]["plane"], "control-plane");
+    assert_eq!(
+        report["planes"][0]["interfaces"].as_array().map(Vec::len),
+        Some(2)
+    );
+}
+
+/// WP-7.4b, owner decision of 2026-10-21: a link that does not answer is shown and makes the
+/// exit 69; an address that answers nothing is 69 too.
+#[test]
+fn discover_reports_a_link_that_does_not_answer() {
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("GET", "/.well-known/server-configuration"),
+        (
+            200,
+            r#"{"state":"serving","planes":{"control-plane":{"state":"ready","server_configuration":"http://127.0.0.1:1/.well-known/server-configuration"}}}"#
+                .to_owned(),
+        ),
+    );
+    let process = serve(routes);
+    let dir = scratch("discover-down");
+    let output = run(
+        &dir,
+        &[
+            "-o",
+            "json",
+            "discover",
+            &format!("http://{}", process.address),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(69), "{}", stderr(&output));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("JSON");
+    assert!(report["planes"][0]["unreachable"].is_string(), "{report}");
+    assert_eq!(report["complete"], false);
+
+    let nothing = run(&dir, &["discover", "http://127.0.0.1:1"]);
+    assert_eq!(nothing.status.code(), Some(69), "{}", stderr(&nothing));
+    let grpc = run(&dir, &["discover", "grpc://127.0.0.1:1"]);
+    assert_ne!(grpc.status.code(), Some(0), "only HTTP is walked");
+}
+
+/// WP-7.4b, after the review: every link the walk could not follow is a line of the report and
+/// makes the exit 69: an interface answering 404, one whose link names no configuration, a plane
+/// linked over a scheme the walk does not read. An address already read is not read again, and a
+/// control sequence a server sends reaches the terminal escaped.
+#[test]
+fn discover_reports_every_link_it_could_not_follow() {
+    let nothing = serve(HashMap::new());
+    let missing = format!("http://{}/missing", nothing.address);
+    let plane_document = serde_json::json!({
+        "plane": "control-plane",
+        "state": "serving",
+        "interfaces": {
+            "a.first": {"configuration": missing, "stage": "v1"},
+            "b.again": {"configuration": missing, "stage": "v1"},
+            "c.nowhere": {"stage": "v1"}
+        }
+    });
+    let mut routes = HashMap::new();
+    routes.insert(
+        (
+            "GET".to_owned(),
+            "/.well-known/server-configuration".to_owned(),
+        ),
+        (200, plane_document.to_string()),
+    );
+    let plane = serve_owned(routes);
+    let process_document = serde_json::json!({
+        "state": "serving",
+        "planes": {
+            "control-plane": {
+                "state": "ready",
+                "server_configuration": format!("http://{}/.well-known/server-configuration", plane.address)
+            },
+            "elsewhere\u{1b}[31m": {"state": "ready", "server_configuration": "ftp://127.0.0.1:1/x"}
+        }
+    });
+    let mut routes = HashMap::new();
+    routes.insert(
+        (
+            "GET".to_owned(),
+            "/.well-known/server-configuration".to_owned(),
+        ),
+        (200, process_document.to_string()),
+    );
+    let process = serve_owned(routes);
+    let dir = scratch("discover-links");
+    let url = format!("http://{}", process.address);
+
+    let output = run(&dir, &["-o", "json", "discover", &url]);
+    assert_eq!(output.status.code(), Some(69), "{}", stderr(&output));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("JSON");
+    let control = &report["planes"][0];
+    let interfaces = &control["interfaces"];
+    assert!(
+        interfaces[0]["unreachable"]
+            .as_str()
+            .is_some_and(|why| why.contains("answered 404")),
+        "{report}"
+    );
+    assert_eq!(interfaces[0]["retired"], serde_json::Value::Null);
+    assert_eq!(interfaces[1]["repeated"], true, "{report}");
+    assert!(interfaces[1].get("unreachable").is_none(), "{report}");
+    assert_eq!(
+        interfaces[2]["unreachable"],
+        "its link names no configuration"
+    );
+    let elsewhere = &report["planes"][1];
+    assert!(
+        elsewhere["unreachable"]
+            .as_str()
+            .is_some_and(|why| why.contains("not an HTTP or HTTPS address")),
+        "{report}"
+    );
+    assert_eq!(report["complete"], false);
+    // The 404 address is read once, though two interfaces link to it.
+    assert_eq!(
+        nothing.requests.lock().expect("the log").len(),
+        1,
+        "an address already read is not read again"
+    );
+
+    let yaml = run(&dir, &["-o", "yaml", "discover", &url]);
+    assert_eq!(yaml.status.code(), Some(69), "{}", stderr(&yaml));
+    assert!(
+        stdout(&yaml).contains("complete: false"),
+        "{}",
+        stdout(&yaml)
+    );
+
+    let text = run(&dir, &["discover", &url]);
+    let text = stdout(&text);
+    assert!(
+        !text.contains('\u{1b}'),
+        "a control sequence reached the terminal"
+    );
+    assert!(text.contains("elsewhere\\u{1b}[31m"), "{text}");
+    assert!(text.contains("already read in this walk"), "{text}");
+    assert!(text.contains("some links did not answer"), "{text}");
+
+    // From the plane's own address every plane answers: the interfaces alone leave the walk
+    // incomplete.
+    let output = run(
+        &dir,
+        &[
+            "-o",
+            "json",
+            "discover",
+            &format!("http://{}", plane.address),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(69), "{}", stderr(&output));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("JSON");
+    assert!(report["planes"][0].get("unreachable").is_none(), "{report}");
+    assert_eq!(report["complete"], false);
+}
+
+/// WP-7.4b, after the review: a document cannot hold the walk with links; the planes past 64 and
+/// the interfaces past 256 are counted, not followed.
+#[test]
+fn discover_follows_a_bounded_number_of_links() {
+    let interfaces: serde_json::Map<String, serde_json::Value> = (0..257)
+        .map(|n| (format!("i{n:03}"), serde_json::json!({"stage": "v1"})))
+        .collect();
+    let mut routes = HashMap::new();
+    routes.insert(
+        (
+            "GET".to_owned(),
+            "/.well-known/server-configuration".to_owned(),
+        ),
+        (
+            200,
+            serde_json::json!({"plane": "control-plane", "interfaces": interfaces}).to_string(),
+        ),
+    );
+    let plane = serve_owned(routes);
+    let mut planes = serde_json::Map::new();
+    planes.insert(
+        "control-plane".to_owned(),
+        serde_json::json!({
+            "server_configuration": format!("http://{}/.well-known/server-configuration", plane.address)
+        }),
+    );
+    for n in 0..64 {
+        planes.insert(format!("p{n:02}"), serde_json::json!({"state": "ready"}));
+    }
+    let mut routes = HashMap::new();
+    routes.insert(
+        (
+            "GET".to_owned(),
+            "/.well-known/server-configuration".to_owned(),
+        ),
+        (
+            200,
+            serde_json::json!({"state": "serving", "planes": planes}).to_string(),
+        ),
+    );
+    let process = serve_owned(routes);
+    let dir = scratch("discover-bounds");
+    let output = run(
+        &dir,
+        &[
+            "-o",
+            "json",
+            "discover",
+            &format!("http://{}", process.address),
+        ],
+    );
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("JSON");
+    assert_eq!(report["planes"].as_array().map(Vec::len), Some(64));
+    assert_eq!(report["not_followed"], 1);
+    let control = &report["planes"][0];
+    assert_eq!(control["plane"], "control-plane");
+    assert_eq!(control["interfaces"].as_array().map(Vec::len), Some(256));
+    assert_eq!(control["not_followed"], 1);
+}
+
+/// WP-7.4b, owner decision of 2026-10-21: discovery is unauthenticated, so the operator's token
+/// is never sent. A token handed to the client would be refused over plain HTTP; the walk
+/// completes because the token was left out.
+#[test]
+fn discover_never_sends_the_operators_token() {
+    let chain = chain();
+    let dir = scratch("discover-token");
+    let token = dir.join("token");
+    std::fs::write(&token, "secret-token").expect("the token is written");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&token, std::fs::Permissions::from_mode(0o600))
+            .expect("the token is owner-only");
+    }
+    let url = format!("http://{}", chain.process.address);
+    let token = token.to_string_lossy().into_owned();
+    let output = run(
+        &dir,
+        &["--token-file", &token, "-o", "json", "discover", &url],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let everything = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(!everything.contains("secret-token"));
+}
+
+/// WP-7.4b, after the review: an address the walk does not read is the operator's mistake, a
+/// usage error, exit 64; a trailing well-known path is the same address.
+#[test]
+fn discover_refuses_an_address_it_does_not_walk() {
+    let dir = scratch("discover-usage");
+    for address in ["grpc://127.0.0.1:1", "ftp://127.0.0.1:1", "127.0.0.1:1"] {
+        let output = run(&dir, &["discover", address]);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{address}: {}",
+            stderr(&output)
+        );
+    }
+    let chain = chain();
+    let output = run(
+        &dir,
+        &[
+            "-o",
+            "json",
+            "discover",
+            &format!(
+                "http://{}/.well-known/server-configuration/",
+                chain.plane.address
+            ),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("JSON");
+    assert_eq!(report["planes"][0]["plane"], "control-plane");
+}
+
+/// WP-7.4b, owner decision of 2026-10-21: `inspect` reports each plane's phase and the interfaces
+/// its document lists with their stage, a deprecated one warned with its sunset.
+#[test]
+fn inspect_reports_each_plane_state_and_its_interfaces() {
+    let plane = |name: &str, state: &str| {
+        let mut routes = HashMap::new();
+        routes.insert(
+            ("GET".to_owned(), "/version".to_owned()),
+            (
+                200,
+                format!(
+                    r#"{{"plane":"{name}","product":"Permguard","version":"0.1.0","commit":"abc"}}"#
+                ),
+            ),
+        );
+        routes.insert(
+            ("GET".to_owned(), "/health".to_owned()),
+            (
+                200,
+                format!(r#"{{"live":true,"ready":true,"state":"{state}"}}"#),
+            ),
+        );
+        routes.insert(
+            ("GET".to_owned(), "/.well-known/server-configuration".to_owned()),
+            (
+                200,
+                format!(
+                    r#"{{"plane":"{name}","state":"{state}","interfaces":{{"permguard.api.old.v1":{{"configuration":"http://x","stage":"deprecated","sunset":"2027-06-30T00:00:00Z"}}}}}}"#
+                ),
+            ),
+        );
+        serve_owned(routes)
+    };
+    let control = plane("control-plane", "serving");
+    let data = plane("data-plane", "ready");
+    let dir = scratch("inspect-state");
+    let args = |format: Option<&'static str>| {
+        let mut args = vec![
+            "--endpoint".to_owned(),
+            format!("http://{}", control.address),
+            "--data-endpoint".to_owned(),
+            format!("http://{}", data.address),
+        ];
+        if let Some(format) = format {
+            args.extend(["-o".to_owned(), format.to_owned()]);
+        }
+        args.push("inspect".to_owned());
+        args
+    };
+    let json = args(Some("json"));
+    let output = run(&dir, &json.iter().map(String::as_str).collect::<Vec<_>>());
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("JSON");
+    assert_eq!(report["planes"][0]["state"], "serving");
+    assert_eq!(report["planes"][1]["state"], "ready");
+    assert_eq!(
+        report["planes"][0]["interfaces"][0],
+        serde_json::json!({"id": "permguard.api.old.v1", "stage": "deprecated", "sunset": "2027-06-30T00:00:00Z"})
+    );
+    let text = args(None);
+    let output = run(&dir, &text.iter().map(String::as_str).collect::<Vec<_>>());
+    let text = stdout(&output);
+    assert!(text.contains("state:    serving"), "{text}");
+    assert!(
+        text.contains("permguard.api.old.v1 is deprecated, served until 2027-06-30T00:00:00Z"),
+        "{text}"
+    );
 }
 
 #[test]

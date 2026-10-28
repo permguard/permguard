@@ -17,12 +17,13 @@ use permguard_core::{ApiError, Disclosure, ErrorClass, codes};
 use permguard_host::api::audit::{AuditCheckpointQuery, AuditExportQuery, AuditQuery};
 use permguard_host::api::members::{
     AppraiseMember, ApproveMember, ChangeMember, CreateInvite, JoinMembership, PlanMemberRevoke,
-    RunMemberRevoke, SyncMembership,
+    RunMemberRevoke, SyncMembership, VerifyMember,
 };
 use permguard_host::api::reset::{PlanIdentityReset, RunIdentityReset};
+use permguard_host::api::streams::StreamQuery;
 use permguard_host::api::{
     CreateGrant, HostApi, KeyBundleQuery, PlanKeyRevoke, PlanRevoke, Refusal, RotateIdentity,
-    RotateRing, RunKeyRevoke, RunRevoke,
+    RotateRing, RunKeyRevoke, RunRevoke, VerifyIdentity,
 };
 use permguard_transport::ActorOf;
 
@@ -45,6 +46,7 @@ impl Served {
 pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
     Router::new()
         .route("/host/v1/identity", get(identity))
+        .route("/host/v1/identity/verify", post(verify_identity))
         .route("/host/v1/identity/rotate", post(rotate_identity))
         .route("/host/v1/identity/reset/plan", post(plan_identity_reset))
         .route("/host/v1/identity/reset/run", post(run_identity_reset))
@@ -68,6 +70,7 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/members/invites/{id}", delete(delete_invite))
         .route("/host/v1/members/enroll", post(enroll_over_rest))
         .route("/host/v1/members/{id}", get(get_member))
+        .route("/host/v1/members/{id}/verify", post(verify_member))
         .route("/host/v1/members/{id}/approve", post(approve_member))
         .route("/host/v1/members/{id}/reject", post(reject_member))
         .route("/host/v1/members/{id}/suspend", post(suspend_member))
@@ -89,11 +92,43 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/audit/{class}/records", get(audit_records))
         .route("/host/v1/audit/{class}/checkpoints", get(audit_checkpoints))
         .route("/host/v1/audit/{class}/export", get(audit_export))
+        // The stream reads (WP-5.7a); batches travel on the task transport (owner decision).
+        .route("/host/v1/streams", get(streams_list))
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/frontier",
+            get(stream_frontier),
+        )
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/records",
+            get(stream_records),
+        )
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/signers",
+            get(stream_signers),
+        )
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/subscriptions",
+            get(stream_subscriptions),
+        )
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/gaps",
+            get(stream_gaps),
+        )
+        .route(
+            "/host/v1/streams/{plane}/{stream_type}/anchors",
+            get(stream_anchors),
+        )
         .route("/host/v1/plans", get(list_plans))
         .route("/host/v1/plans/{id}/approve", post(approve_plan))
         .route("/host/v1/status", get(status))
         .route("/host/v1/config/effective", get(effective_config))
         .route("/host/v1/config/revisions", get(config_revisions))
+        .route("/host/v1/backup/prepare", post(prepare_backup))
+        .route("/host/v1/backup/finalize", post(finalize_backup))
+        .route("/host/v1/backup/abort", post(abort_backup))
+        .route("/host/v1/backups", get(list_backups))
+        .route("/host/v1/gc/{job}/plan", post(plan_gc))
+        .route("/host/v1/gc/{job}/run", post(run_gc))
         .with_state(Served { api, disclosure })
 }
 
@@ -156,6 +191,18 @@ async fn session_over_rest(State(served): State<Served>) -> Response {
 
 async fn identity(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
     answer(&served, StatusCode::OK, served.api.identity(&actor))
+}
+
+async fn verify_identity(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(verify): Closed<VerifyIdentity>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.verify_identity(&actor, verify).await,
+    )
 }
 
 async fn rotate_identity(
@@ -300,6 +347,125 @@ fn numbers<const N: usize>(
         }
     }
     read
+}
+
+async fn streams_list(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    answer(&served, StatusCode::OK, served.api.streams_list(&actor))
+}
+
+/// The query of a stream read: `resource`, and for `records` `producer`, `run`, `from` and
+/// `limit`.
+fn stream_query(query: Option<&str>) -> StreamQuery {
+    let [resource, producer, run, from, limit] = <[Option<String>; 5]>::try_from(query_members(
+        query,
+        &["resource", "producer", "run", "from", "limit"],
+    ))
+    .unwrap_or_default();
+    let mut malformed = None;
+    let [from, limit] = numbers(["from", "limit"], [from, limit], &mut malformed);
+    StreamQuery {
+        resource: resource.unwrap_or_default(),
+        producer,
+        run,
+        from,
+        // A limit beyond 32 bits is out of range, and refused as one.
+        limit: limit.map(|limit| u32::try_from(limit).unwrap_or(0)),
+        malformed,
+    }
+}
+
+async fn stream_frontier(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .stream_frontier(&actor, &plane, &stream_type, &query),
+    )
+}
+
+async fn stream_records(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .stream_records(&actor, &plane, &stream_type, &query),
+    )
+}
+
+async fn stream_signers(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .stream_signers(&actor, &plane, &stream_type, &query),
+    )
+}
+
+async fn stream_subscriptions(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .stream_subscriptions(&actor, &plane, &stream_type, &query),
+    )
+}
+
+async fn stream_gaps(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.stream_gaps(&actor, &plane, &stream_type, &query),
+    )
+}
+
+async fn stream_anchors(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((plane, stream_type)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = stream_query(query.as_deref());
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .stream_anchors(&actor, &plane, &stream_type, &query),
+    )
 }
 
 async fn audit_records(
@@ -512,6 +678,72 @@ async fn approve_plan(
     )
 }
 
+/// Runs `call` on the facade off the async workers (WP-7.8): the backup calls read the whole
+/// volume or wait on a prepare that does. A call that panicked is `internal`.
+async fn blocking<T: serde::Serialize + Send + 'static>(
+    served: &Served,
+    call: impl FnOnce(&HostApi) -> Result<T, Refusal> + Send + 'static,
+) -> Response {
+    let api = Arc::clone(&served.api);
+    match tokio::task::spawn_blocking(move || call(&api)).await {
+        Ok(answered) => answer(served, StatusCode::OK, answered),
+        Err(error) => served.refuse(&Refusal::new(
+            ErrorClass::Internal,
+            codes::common::INTERNAL,
+            format!("the call did not finish: {error}"),
+        )),
+    }
+}
+
+/// `POST /host/v1/backup/prepare` (WP-7.8).
+async fn prepare_backup(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(prepare): Closed<permguard_host::api::backups::PrepareBackup>,
+) -> Response {
+    blocking(&served, move |api| api.prepare_backup(&actor, prepare)).await
+}
+
+async fn finalize_backup(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(finalize): Closed<permguard_host::api::backups::FinalizeBackup>,
+) -> Response {
+    blocking(&served, move |api| api.finalize_backup(&actor, finalize)).await
+}
+
+async fn abort_backup(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(abort): Closed<permguard_host::api::backups::AbortBackup>,
+) -> Response {
+    blocking(&served, move |api| api.abort_backup(&actor, abort)).await
+}
+
+async fn list_backups(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    blocking(&served, move |api| api.list_backups(&actor)).await
+}
+
+/// `POST /host/v1/gc/{job}/plan` (WP-7.11b): the job's sweep is read off the async workers.
+async fn plan_gc(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(job): Path<String>,
+    Closed(plan): Closed<permguard_host::api::gc::PlanGc>,
+) -> Response {
+    blocking(&served, move |api| api.plan_gc(&actor, &job, plan)).await
+}
+
+/// `POST /host/v1/gc/{job}/run` (WP-7.11b).
+async fn run_gc(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(job): Path<String>,
+    Closed(run): Closed<permguard_host::api::gc::RunGc>,
+) -> Response {
+    blocking(&served, move |api| api.run_gc(&actor, &job, run)).await
+}
+
 async fn list_members(
     State(served): State<Served>,
     ActorOf(actor): ActorOf,
@@ -659,6 +891,19 @@ async fn sync_membership(
         &served,
         StatusCode::OK,
         served.api.sync_membership(&actor, &id, sync).await,
+    )
+}
+
+async fn verify_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(verify): Closed<VerifyMember>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.verify_member(&actor, &id, verify).await,
     )
 }
 

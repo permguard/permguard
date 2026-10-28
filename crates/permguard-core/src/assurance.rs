@@ -181,8 +181,12 @@ impl Control {
                 "the ledger load gate (`permguard_languages::registry::check_schema_floor`)"
             }
             Self::InterfacesExplicit => "the ledger load gate (manifest `interfaces`)",
-            Self::EngineBounded | Self::ProviderSupervised => {
+            Self::EngineBounded => {
                 "the evaluator choice (`permguard_languages::registry::isolation_required`)"
+            }
+            Self::ProviderSupervised => {
+                "the evaluator choice (`permguard_languages::registry::isolation_required`) and \
+                 the ledger load gate (`permguard_languages::registry::check_artifact_floor`)"
             }
             Self::RuntimeExperimentalGated | Self::RuntimeExperimentalForbidden => {
                 "Bootstrap (`Config::validate`) and the language gate"

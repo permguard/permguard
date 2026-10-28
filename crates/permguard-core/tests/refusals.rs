@@ -540,7 +540,9 @@ fn test_the_custody_rules_refuse_what_cannot_hold_a_key() {
             "{plane}"
         );
     }
-    // The identity and operations rings may be remote; data.attest stays local.
+    // The identity and operations rings may be remote while the Host records no decisions and no
+    // events (TS-4: `host.operations` signs a stream's run on the decision path); data.attest
+    // stays local.
     let mut split = vec![
         (SETTING_KEYS_CUSTODY, "file"),
         (SETTING_KEYS_IDENTITY_CUSTODY, "kms"),

@@ -25,6 +25,9 @@ fn config(settings: &[(&str, &str)]) -> Config {
         [
             "PERMGUARD_DATA_HTTP_TLS_MIN_VERSION",
             "PERMGUARD_DATA_HTTP_TLS_TERMINATED_UPSTREAM",
+            SETTING_DATA_GRPC_ADDR,
+            SETTING_DATA_GRPC_ENABLED,
+            SETTING_RUNTIME_PLANES,
         ],
         Layers::new().with_file(
             all.iter()
@@ -375,4 +378,73 @@ fn test_an_upstream_termination_is_a_relaxation_regulated_refuses() {
             vec![Relaxation::TlsTerminatedUpstream]
         );
     }
+}
+
+/// WP-7.5b, IFACE-06: the Data Plane's evaluation interfaces over gRPC are a published relaxation,
+/// `grpc.transport_parity_partial`, wherever its gRPC listener serves them; not while the listener
+/// is off or unset; and under `regulated`, which requires the strict decoder, they are not served,
+/// so nothing is relaxed and Bootstrap passes.
+#[test]
+fn grpc_evaluation_is_a_published_partial_parity_below_regulated_and_not_served_at_it() {
+    let served = config(&[(SETTING_DATA_GRPC_ADDR, "0.0.0.0:7443")]);
+    served.validate().expect("permitted under production");
+    assert!(served.grpc_evaluation_served());
+    assert!(
+        config(&[
+            (SETTING_DATA_GRPC_ADDR, "0.0.0.0:7443"),
+            (SETTING_RUNTIME_PLANES, "control, data"),
+        ])
+        .grpc_evaluation_served(),
+        "the data plane among the hosted ones"
+    );
+    assert_eq!(
+        served.relaxations_in_force(),
+        vec![Relaxation::GrpcTransportParityPartial]
+    );
+    assert_eq!(
+        served
+            .assurance()
+            .report(&served.relaxations_in_force())
+            .relaxations,
+        vec!["grpc.transport_parity_partial"]
+    );
+
+    for (case, settings) in [
+        ("no listener", vec![]),
+        (
+            "a listener switched off",
+            vec![
+                (SETTING_DATA_GRPC_ADDR, "0.0.0.0:7443"),
+                (SETTING_DATA_GRPC_ENABLED, "false"),
+            ],
+        ),
+        ("an empty address", vec![(SETTING_DATA_GRPC_ADDR, "  ")]),
+        (
+            "a process that does not host the data plane",
+            vec![
+                (SETTING_DATA_GRPC_ADDR, "0.0.0.0:7443"),
+                (SETTING_RUNTIME_PLANES, "control"),
+            ],
+        ),
+    ] {
+        let quiet = config(&settings);
+        assert!(!quiet.grpc_evaluation_served(), "{case}");
+        assert!(quiet.relaxations_in_force().is_empty(), "{case}");
+    }
+
+    let strict = regulated(&[(SETTING_DATA_GRPC_ADDR, "0.0.0.0:7443")]);
+    assert!(
+        !strict.grpc_evaluation_served(),
+        "the strict decoder is required and absent: not served"
+    );
+    assert!(
+        !strict
+            .relaxations_in_force()
+            .contains(&Relaxation::GrpcTransportParityPartial)
+    );
+    strict
+        .validate()
+        .expect("nothing regulated forbids is in force");
+    assert!(!strict.grpc_evaluation_permitted());
+    assert!(served.grpc_evaluation_permitted());
 }

@@ -107,6 +107,39 @@ gh attestation verify \
 In unattended environments, provide GitHub authentication through `GH_TOKEN` and authenticate the
 OCI registry before running the check.
 
+## Verify at deploy with the Helm chart
+
+The chart runs the same check before any Permguard container starts.
+With `imageVerification.enabled`, every Permguard Pod — the Control Plane, the all-in-one, each data plane group, the drain Job and the drain controller — starts with a `verify-image` init container that runs `gh attestation verify` on the digest the Pod runs.
+An image that fails it never starts, and its Pod never becomes Ready.
+
+| Value                                  | What it is                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `imageVerification.enabled`            | on in `values-production.yaml`; a `regulated` workload refuses to render without it         |
+| `imageVerification.verifier.image`     | an image whose entrypoint is `gh`, by digest; `docker/verifier/Dockerfile` builds one       |
+| `imageVerification.tokenSecret`        | the Secret and key holding the GitHub token the attestation API is read with                |
+| `imageVerification.repository`         | the source repository the provenance must name, `permguard/permguard`                       |
+| `imageVerification.signerWorkflow`     | the builder, `permguard/permguard/.github/workflows/release-build.yml`                      |
+| `imageVerification.sourceRef`          | the tag the image was built from; empty means `refs/tags/v<appVersion>`                     |
+| `<component>.digest`                   | each enabled component's image digest, `sha256:<hex>`, required while verification is on    |
+
+The components are `controlPlane`, `dataPlane`, `allInOne` and `dataPlane.drainController`.
+Take each digest from the release's `provenance-images.txt`, so the digest the Pod runs is the one the release attested.
+Build and push the verifier, then name it by its digest:
+
+```sh
+docker build -f docker/verifier/Dockerfile -t registry.example/permguard-verifier:2.98.0 docker/verifier
+docker push registry.example/permguard-verifier:2.98.0
+kubectl create secret generic permguard-image-verification --from-file=token=gh-token.txt
+```
+
+Release `0.1.5` was attested by `release-pipeline.yml`: deploy it with `imageVerification.signerWorkflow: permguard/permguard/.github/workflows/release-pipeline.yml` and `imageVerification.sourceRef: refs/tags/v0.1.5`.
+The images of `0.1.6` carry no attestation the check finds (the attestation API answers `404` for their digests), so `0.1.6` cannot run with verification on.
+No release has been built by `release-build.yml` yet, so the chart's defaults verify no published image today.
+
+The check runs at every Pod start — a restart after a node reboot, a scale-up, a drain Job — and needs api.github.com, Sigstore's trust root and the image registry, read anonymously, reachable from the Pods.
+Behind a default-deny egress policy, or during a GitHub outage, new Pods do not start: the check fails closed.
+
 ## Troubleshooting
 
 ### No attestations found

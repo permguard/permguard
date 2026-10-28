@@ -1,0 +1,49 @@
+{
+  "folder": "regexmatchtemplate",
+  "files": {
+    "test-regexmatchtemplate-0332.yaml": {
+      "sha256": "sha256:214ec1378216536f9328992a215aeddfd3fc22bfcccea40ad62aab239eb2f4d0",
+      "cases": [
+        {
+          "note": "regexmatchtemplate/matches wildcard with {}",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.template_match(\"urn:foo:{.*}\", \"urn:foo:bar:baz\", \"{\", \"}\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-regexmatchtemplate-0333.yaml": {
+      "sha256": "sha256:a999ad54fc355fe313ed376b06cbaa57b09264b9eef6c3aa0318b770c635636e",
+      "cases": [
+        {
+          "note": "regexmatchtemplate/matches wildcard with <>",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.template_match(\"urn:foo:<.*>\", \"urn:foo:bar:baz\", \"<\", \">\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                true
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,43 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Compose lab's Data Plane Host (TD-3): ONE static file for every data plane of every profile.
+# Two replicas started from it are two Hosts: each generates its own identity on its own volume, and
+# enrollment — not this file — gives it its coordinator, its tasks and the ledgers it serves. What
+# varies per container comes from the environment `permguard-lab serve` sets: the listeners'
+# certificates, issued by the lab's own authority to the service's DNS name.
+#
+# A lab, on its own network: the development profile and a test authority. Never a template for a
+# deployment.
+
+working_dir: /var/lib/permguard/volume
+development_mode: true
+autogenerate: true
+assurance: { profile: development }
+log: { level: info, format: json }
+
+# The Server Host: discovery, health and metrics, in the clear, for the lab's health checks.
+host: { addr: 0.0.0.0:5443 }
+
+# The Host listener: membership, grants and streams, mutual TLS under the lab's authority.
+admin: { addr: 0.0.0.0:5444 }
+
+operations:
+  keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }
+  secrets: { provider: directory, coordinator_root_ref: zone-root }
+  audit: { pseudonym: { enabled: true, key_ref: audit-pseudonym, key_version: "v1" } }
+  # The backups' recovery key (TS-5): generated here, as every lab secret is, and kept on the
+  # volume beside what it protects — a lab's concession; a deployment keeps it apart. Every snapshot
+  # manifest binds its fingerprint, and the restore drill restores only under it.
+  backup: { recovery_key: backup-recovery, encryption_profile: lab-volume-copy, retention: 30d, destruction: LAB-DESTROY }
+
+dataPlane:
+  # The decision interface, mutual TLS.
+  public:
+    http: { addr: 0.0.0.0:7443 }
+    grpc: { addr: 0.0.0.0:7443 }
+  # The ledgers the membership's `policy.mirror` task names, and nothing else.
+  mirrors: { enabled: "true", interval: 5s }
+  # Every answered decision has a durable record, shipped over the `decisions.ship` task.
+  decisions:
+    log: { enabled: "true", mode: required }

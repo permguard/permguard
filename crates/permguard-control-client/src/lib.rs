@@ -37,6 +37,7 @@
 /// tune a transfer.
 pub const MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 
+pub mod attestation;
 pub mod catalog;
 pub mod checkpoint;
 pub mod connect;
@@ -48,6 +49,7 @@ pub mod events;
 pub mod events_grpc;
 pub mod grpc;
 pub mod host;
+mod host_proto;
 /// The generated `permguard.host.v1` stubs (TC-1).
 pub mod host_v1;
 pub mod http;

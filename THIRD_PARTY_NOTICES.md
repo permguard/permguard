@@ -98,7 +98,7 @@ says so and its repository is the authority.
 | `crypto-common` | 0.2.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | `cryptoki` | 0.12.1 | Apache-2.0 | https://github.com/parallaxsecond/rust-cryptoki |
 | `cryptoki-sys` | 0.5.0 | Apache-2.0 | https://github.com/parallaxsecond/rust-cryptoki |
-| `ctutils` | 0.4.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
+| `ctutils` | 0.4.6 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
 | `darling` | 0.24.1 | MIT | https://github.com/TedDriggs/darling |
 | `darling_core` | 0.24.1 | MIT | https://github.com/TedDriggs/darling |
 | `darling_macro` | 0.24.1 | MIT | https://github.com/TedDriggs/darling |
@@ -282,7 +282,7 @@ says so and its repository is the authority.
 | `prost-derive` | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
 | `prost-types` | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
 | `psm` | 0.1.32 | MIT OR Apache-2.0 | https://github.com/rust-lang/stacker/ |
-| `pulldown-cmark` | 0.13.4 | MIT | https://github.com/raphlinus/pulldown-cmark |
+| `pulldown-cmark` | 0.13.5 | MIT | https://github.com/raphlinus/pulldown-cmark |
 | `pulldown-cmark-to-cmark` | 22.0.3 | Apache-2.0 | https://github.com/Byron/pulldown-cmark-to-cmark |
 | `quote` | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
 | `r-efi` | 5.3.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later | https://github.com/r-efi/r-efi |
@@ -312,10 +312,10 @@ says so and its repository is the authority.
 | `rustc-literal-escaper` | 0.0.7 | Apache-2.0 OR MIT | https://github.com/rust-lang/literal-escaper |
 | `rusticata-macros` | 4.1.0 | MIT/Apache-2.0 | https://github.com/rusticata/rusticata-macros.git |
 | `rustix` | 1.1.5 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/rustix |
-| `rustls` | 0.23.45 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
+| `rustls` | 0.23.46 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
 | `rustls-native-certs` | 0.8.4 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls-native-certs |
 | `rustls-pki-types` | 1.15.1 | MIT OR Apache-2.0 | https://github.com/rustls/pki-types |
-| `rustls-webpki` | 0.103.15 | ISC | https://github.com/rustls/webpki |
+| `rustls-webpki` | 0.103.16 | ISC | https://github.com/rustls/webpki |
 | `rustversion` | 1.0.23 | MIT OR Apache-2.0 | https://github.com/dtolnay/rustversion |
 | `ryu` | 1.0.23 | Apache-2.0 OR BSL-1.0 | https://github.com/dtolnay/ryu |
 | `same-file` | 1.0.6 | Unlicense/MIT | https://github.com/BurntSushi/same-file |
@@ -377,7 +377,7 @@ says so and its repository is the authority.
 | `tiny-keccak` | 2.0.2 | CC0-1.0 | — |
 | `tinystr` | 0.8.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | `tinyvec` | 1.13.3 | Zlib OR Apache-2.0 OR MIT | https://github.com/Lokathor/tinyvec |
-| `tokio` | 1.53.1 | MIT | https://github.com/tokio-rs/tokio |
+| `tokio` | 1.54.1 | MIT | https://github.com/tokio-rs/tokio |
 | `tokio-macros` | 2.7.2 | MIT | https://github.com/tokio-rs/tokio |
 | `tokio-rustls` | 0.26.6 | MIT OR Apache-2.0 | https://github.com/rustls/tokio-rustls |
 | `tokio-stream` | 0.1.19 | MIT | https://github.com/tokio-rs/tokio |

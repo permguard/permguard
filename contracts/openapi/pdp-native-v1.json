@@ -95,7 +95,7 @@
             }
           },
           "503": {
-            "description": "The ledger cannot be served, or the evaluation is indeterminate.",
+            "description": "The ledger cannot be served, the evaluation is indeterminate, or a requested signature cannot be made (`response_signing_unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -196,7 +196,7 @@
             }
           },
           "503": {
-            "description": "The ledger cannot be served, or the evaluation is indeterminate.",
+            "description": "The ledger cannot be served, the evaluation is indeterminate, or a requested signature cannot be made (`response_signing_unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -355,6 +355,14 @@
               "null"
             ],
             "x-grpc-field": "request_id"
+          },
+          "request_nonce": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Asks for a signed response: base64url without padding, decoding to 16 to 64 bytes. A plane that cannot sign answers `503` `response_signing_unavailable`, never an unsigned decision.",
+            "x-grpc-field": "request_nonce"
           }
         },
         "additionalProperties": false,
@@ -581,6 +589,10 @@
             },
             "description": "Present exactly when the request carried `evaluations[]`, in the same order.",
             "x-grpc-field": "evaluations"
+          },
+          "attestation": {
+            "$ref": "#/components/schemas/Attestation",
+            "x-grpc-field": "attestation"
           }
         },
         "required": [
@@ -641,6 +653,10 @@
               "type": "string"
             },
             "x-grpc-field": "absent_inputs"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/Evidence",
+            "x-grpc-field": "evidence"
           }
         },
         "additionalProperties": false,
@@ -674,6 +690,51 @@
             "type": "string",
             "x-grpc-field": "interface"
           },
+          "version": {
+            "type": "string",
+            "description": "The product version `/version` publishes; empty where the deployment does not disclose its build (WP-7.4a).",
+            "x-grpc-field": "version"
+          },
+          "component": {
+            "type": "string",
+            "enum": [
+              "control-plane",
+              "data-plane"
+            ],
+            "description": "The component serving the interface.",
+            "x-grpc-field": "component"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The serving component's lifecycle phase when the document was answered.",
+            "x-grpc-field": "state"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "v1alpha1",
+              "v1",
+              "deprecated"
+            ],
+            "description": "The interface's stage; a retired one has no document and is refused `interface_retired`.",
+            "x-grpc-field": "stage"
+          },
+          "sunset": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a deprecated interface stops being served; present only then.",
+            "x-grpc-field": "sunset"
+          },
           "pdp": {
             "type": "string",
             "x-grpc-field": "pdp"
@@ -692,6 +753,14 @@
           "store_scope": {
             "$ref": "#/components/schemas/StoreScope",
             "x-grpc-field": "store_scope"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/Limits",
+            "x-grpc-field": "limits"
+          },
+          "response_signing": {
+            "$ref": "#/components/schemas/ResponseSigning",
+            "x-grpc-field": "response_signing"
           }
         },
         "required": [
@@ -699,7 +768,13 @@
           "pdp",
           "endpoints",
           "capabilities",
-          "store_scope"
+          "store_scope",
+          "version",
+          "component",
+          "state",
+          "stage",
+          "limits",
+          "response_signing"
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.data.v1.GetConfigurationResponse"
@@ -756,6 +831,156 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.data.v1.StoreScope"
+      },
+      "Limits": {
+        "type": "object",
+        "description": "The ceilings of one request (WP-7.4a).",
+        "properties": {
+          "max_evaluations": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The most evaluations one boxcar request carries; more is `too_many_evaluations`."
+          }
+        },
+        "required": [
+          "max_evaluations"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC carries the ceilings as the `limits` map of GetConfigurationResponse, by name."
+      },
+      "Evidence": {
+        "type": "object",
+        "description": "What became of one decision's record: closed, every member present. A durable status names the record and its position and no other status names either; `required` answers only `durable`, `disabled` only `disabled`, and only a permit is `sampled_out`. Absent on a batch's own context, which no record is of.",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "required",
+              "best_effort",
+              "disabled"
+            ],
+            "x-grpc-field": "mode"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "durable",
+              "sampled_out",
+              "dropped",
+              "disabled"
+            ],
+            "x-grpc-field": "status"
+          },
+          "record_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-grpc-field": "record_id"
+          },
+          "position": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvidencePosition"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "position"
+          }
+        },
+        "required": [
+          "mode",
+          "status",
+          "record_id",
+          "position"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Evidence"
+      },
+      "EvidencePosition": {
+        "type": "object",
+        "description": "Where a durable record sits.",
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "x-grpc-field": "host_id",
+            "description": "A lowercase hyphenated UUID."
+          },
+          "run": {
+            "type": "string",
+            "x-grpc-field": "run",
+            "description": "32 lowercase hex digits."
+          },
+          "sequence": {
+            "type": "string",
+            "x-grpc-field": "sequence",
+            "description": "Unsigned decimal text, no leading zero."
+          }
+        },
+        "required": [
+          "host_id",
+          "run",
+          "sequence"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.EvidencePosition"
+      },
+      "Attestation": {
+        "type": "object",
+        "description": "A flattened JWS of `permguard.decision.response.v1` under `data.attest`, present exactly when `request_nonce` asked for a signature and it was made. Its protected header is the closed JCS `{alg, kid, typ}`; its payload binds the request and response digests, the authenticated audience, the exact policy state, the decision, its evidence and a lifetime.",
+        "properties": {
+          "protected": {
+            "type": "string",
+            "x-grpc-field": "protected"
+          },
+          "payload": {
+            "type": "string",
+            "x-grpc-field": "payload"
+          },
+          "signature": {
+            "type": "string",
+            "x-grpc-field": "signature"
+          }
+        },
+        "required": [
+          "protected",
+          "payload",
+          "signature"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Attestation"
+      },
+      "ResponseSigning": {
+        "type": "object",
+        "description": "Whether a request may ask for a signed response: `optional` with `validity_seconds`, the lifetime the server emits, and `clock_skew_seconds`, the skew a verifier allows, both positive whole seconds; or `disabled`, with neither number. The capability `urn:permguard:pdp:v1:signed-response` is listed exactly in the first case.",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "optional",
+              "disabled"
+            ],
+            "x-grpc-field": "state"
+          },
+          "validity_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "x-grpc-field": "validity_seconds"
+          },
+          "clock_skew_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "x-grpc-field": "clock_skew_seconds"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.ResponseSigning"
       }
     }
   },

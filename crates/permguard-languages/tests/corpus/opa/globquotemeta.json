@@ -1,0 +1,27 @@
+{
+  "folder": "globquotemeta",
+  "files": {
+    "test-globquotemeta-0159.yaml": {
+      "sha256": "sha256:8044cd3b5f273bfb7d1f28404225ffabcc68cfa1fc898cde3be2318e146075bc",
+      "cases": [
+        {
+          "note": "globquotemeta/glob quote meta",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tglob.quote_meta(\"*.github.com\", x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "\\*.github.com"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

@@ -82,6 +82,8 @@ fn hosting<'a>(side: &'a Side, connector: &'a dyn Connector) -> Member<'a> {
         connector,
         declared_assurance: permguard_core::assurance::AssuranceProfile::Production,
         time: &side.context.time,
+        streams: None,
+        shipping: None,
     }
 }
 
@@ -176,6 +178,7 @@ async fn zoned(c: &Side, m: &Side, task: Task) -> [u8; 16] {
 fn context(c: &Side, id: &[u8; 16], resource: &str, nonce: [u8; 32]) -> TaskContext {
     let held = c.host.store.membership(id).expect("held");
     TaskContext {
+        selector: permguard_core::authz::Selector::under(permguard_core::authz::Resource::host()),
         membership_id: *id,
         task_id: TASK.to_owned(),
         task_type: TaskType::ZoneSecrets,

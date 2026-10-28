@@ -7,7 +7,8 @@ use crate::membership::record::{Capability, ContractRole};
 
 /// WP-4.7: each of the six types has exactly one v1 contract, whose roles are the membership
 /// model's, whose sides each have one server, and the Host's own contracts are the ones it
-/// registers; only `zone.secrets` serves its bodies in this build.
+/// registers; `events.import` is the Control Plane's to provide and the Host's to consume
+/// (WP-6.2c1, owner decision of 2026-10-19).
 #[test]
 fn every_task_type_has_one_v1_contract_with_its_roles_and_server() {
     for task in TaskType::ALL {
@@ -30,12 +31,26 @@ fn every_task_type_has_one_v1_contract_with_its_roles_and_server() {
                 assert_ne!(provider, consumer, "{}", task.as_str());
                 assert!(!host_served(task));
             }
+            (Server::Plane("control"), Server::Host) if task == TaskType::EventsImport => {
+                assert!(!host_served(task));
+                assert!(host_side(task, ContractRole::Consumer));
+                assert!(!host_side(task, ContractRole::Provider));
+            }
             other => panic!(
                 "{}: one side the Host, the other a Plane: {other:?}",
                 task.as_str()
             ),
         }
-        assert_eq!(contract.served, task == TaskType::ZoneSecrets);
+        assert_eq!(
+            contract.served,
+            matches!(
+                task,
+                TaskType::ZoneSecrets
+                    | TaskType::PolicyMirror
+                    | TaskType::AuditCheckpoints
+                    | TaskType::EventsImport
+            )
+        );
     }
     let host: Vec<Capability> = Capabilities::host().list();
     let mut expected: Vec<Capability> = [TaskType::AuditCheckpoints, TaskType::ZoneSecrets]
@@ -48,9 +63,15 @@ fn every_task_type_has_one_v1_contract_with_its_roles_and_server() {
             })
         })
         .collect();
+    // The member's Host consumes `events.import` (WP-6.2c1).
+    expected.push(Capability {
+        task_type: TaskType::EventsImport,
+        version: 1,
+        role: ContractRole::Consumer,
+    });
     expected.sort();
     assert_eq!(
         host, expected,
-        "the Host registers its own contracts, both sides"
+        "the Host registers the sides it serves itself"
     );
 }

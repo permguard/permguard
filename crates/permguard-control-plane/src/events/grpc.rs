@@ -75,13 +75,21 @@ impl EventLog for EventFacade {
         &self,
         request: Request<ListRecordsRequest>,
     ) -> Result<Response<ListRecordsResponse>, Status> {
+        let actor = permguard_transport::actor_of(request.extensions());
         let asked = request.into_inner();
         let (scope, kind) =
             scope_of(&asked).map_err(|refused| status_of(&refused, self.disclosure))?;
-        // Same resolution as the HTTP list, so the two transports narrow to the same records.
-        let scope = match read::canonical(self.catalog.as_ref(), scope) {
+        // Same gate and resolution as the HTTP list, so the two transports narrow to the same
+        // records (WP-6.3c).
+        let scope = match self.gate(&actor, scope) {
             Ok(scope) => scope,
-            Err(error) => return Err(read_status(error, self.disclosure)),
+            Err(crate::evidence::Gated::Denied(denial)) => {
+                self.denied(kind);
+                return Err(crate::wire::grpc_denial(&denial));
+            }
+            Err(crate::evidence::Gated::Refused(error)) => {
+                return Err(read_status(error, self.disclosure));
+            }
         };
         let filters = filters_of(&asked);
         let window = permguard_stream::Window {
@@ -123,6 +131,7 @@ impl EventLog for EventFacade {
         &self,
         request: Request<GetRecordRequest>,
     ) -> Result<Response<GetRecordResponse>, Status> {
+        let actor = permguard_transport::actor_of(request.extensions());
         let asked = request.into_inner();
         if asked.zone.is_empty() || asked.ledger.is_empty() {
             return Err(status_of(
@@ -137,21 +146,27 @@ impl EventLog for EventFacade {
         // Resolved the same way the HTTP surface resolves it, so a reader gets one answer whichever
         // transport asked: a name and an identity address the same ledger, and a scope nobody holds
         // is a refusal rather than an empty answer.
-        let scope = match read::canonical(
-            self.catalog.as_ref(),
+        let scope = match self.gate(
+            &actor,
             Scope::Tenant {
                 zone: asked.zone,
                 ledger: asked.ledger,
             },
         ) {
             Ok(scope) => scope,
-            Err(error) => return Err(read_status(error, self.disclosure)),
+            Err(crate::evidence::Gated::Denied(denial)) => {
+                self.denied("record");
+                return Err(crate::wire::grpc_denial(&denial));
+            }
+            Err(crate::evidence::Gated::Refused(error)) => {
+                return Err(read_status(error, self.disclosure));
+            }
         };
 
         let facade = self.clone();
         let event_id = asked.event_id;
         let found = tokio::task::spawn_blocking(move || {
-            read::get(&facade.store, &scope, &event_id, &facade.cursor_key)
+            read::get(&facade.sources(), &scope, &event_id, &facade.cursor_key)
         })
         .await
         .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())));
@@ -281,8 +296,16 @@ impl EventLog for EventFacade {
         &self,
         _request: Request<GetEventConfigurationRequest>,
     ) -> Result<Response<GetEventConfigurationResponse>, Status> {
-        let document =
-            super::configuration::document(&self.base_url, &self.base_url, &self.accepted_types());
+        let header = self
+            .describer
+            .header(permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1)
+            .map_err(|refused| crate::wire::grpc_error(&refused, self.disclosure))?;
+        let document = super::configuration::document(
+            &self.base_url,
+            &self.base_url,
+            &self.accepted_types(),
+            header,
+        );
 
         Ok(Response::new(GetEventConfigurationResponse {
             r#interface: document.interface,
@@ -300,6 +323,18 @@ impl EventLog for EventFacade {
                 format: document.offsets.format,
                 editable: document.offsets.editable,
             }),
+            version: document.header.version,
+            component: document.header.component,
+            state: document.header.state,
+            stage: document.header.stage,
+            sunset: document.header.sunset,
+            limits: [
+                ("max_records".to_owned(), document.limits.max_records),
+                ("max_bytes".to_owned(), document.limits.max_bytes),
+                ("max_examined".to_owned(), document.limits.max_examined),
+            ]
+            .into_iter()
+            .collect(),
         }))
     }
 }
@@ -416,17 +451,21 @@ fn read_status(error: read::ReadError, disclosure: Disclosure) -> Status {
             status
         }
         read::ReadError::Offset(refused) => status_of(
-            &ApiError::new(
-                ErrorClass::Validation,
-                permguard_core::codes::stream::OFFSET_INVALID,
-                refused.to_string(),
-            ),
+            &ApiError::new(ErrorClass::Validation, refused.code(), refused.to_string()),
             disclosure,
         ),
         read::ReadError::Unknown(detail) => status_of(
             &ApiError::new(
                 ErrorClass::NotFound,
                 permguard_core::codes::stream::LEDGER_NOT_HELD,
+                detail,
+            ),
+            disclosure,
+        ),
+        read::ReadError::NotHeld(detail) => status_of(
+            &ApiError::new(
+                ErrorClass::NotFound,
+                permguard_core::codes::stream::STREAM_UNKNOWN,
                 detail,
             ),
             disclosure,
@@ -492,6 +531,35 @@ mod tests {
 
             let status = status_of(&refused, Disclosure::Minimal);
             assert_eq!(status.code(), tonic::Code::InvalidArgument);
+            assert_eq!(
+                status
+                    .metadata()
+                    .get(permguard_core::GRPC_ERROR_CODE)
+                    .and_then(|value| value.to_str().ok()),
+                Some(code)
+            );
+        }
+    }
+
+    /// WP-5.5: an offset of another read is `forged` and a malformed one `offset_invalid`, both
+    /// `INVALID_ARGUMENT`, as over REST.
+    #[test]
+    fn an_offset_of_another_read_is_forged_over_grpc() {
+        use permguard_stream::cursor::CursorError;
+
+        for (error, code) in [
+            (CursorError::Forged, permguard_core::codes::common::FORGED),
+            (
+                CursorError::WrongFilters,
+                permguard_core::codes::common::FORGED,
+            ),
+            (
+                CursorError::Malformed,
+                permguard_core::codes::stream::OFFSET_INVALID,
+            ),
+        ] {
+            let status = read_status(read::ReadError::Offset(error), Disclosure::Minimal);
+            assert_eq!(status.code(), tonic::Code::InvalidArgument, "{code}");
             assert_eq!(
                 status
                     .metadata()

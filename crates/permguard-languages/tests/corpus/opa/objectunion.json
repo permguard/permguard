@@ -1,0 +1,250 @@
+{
+  "folder": "objectunion",
+  "files": {
+    "test-objectunion-0268.yaml": {
+      "sha256": "sha256:f47aaaadb1536c0294c8c4d8fb2c46ee6f89142bcded79fb6c0480ee96d0a3d7",
+      "cases": [
+        {
+          "note": "objectunion/both empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.union({}, {}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectunion-0269.yaml": {
+      "sha256": "sha256:5e97ef255d786a3653d3e81093345289b0f040f8ab8b7c6e61f28efefe21b29a",
+      "cases": [
+        {
+          "note": "objectunion/left empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.union({}, {\"a\": 1}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectunion-0270.yaml": {
+      "sha256": "sha256:af947d4b93bd5832f7e81be6752de58f701c9f07de4687b45804c67cd15aa185",
+      "cases": [
+        {
+          "note": "objectunion/right empty",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.union({\"a\": 1}, {}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectunion-0271.yaml": {
+      "sha256": "sha256:763bc96e375144d1cf4dec6b8207d2ad1fc409c37d4eb70d7a8c336f26bb1d0b",
+      "cases": [
+        {
+          "note": "objectunion/base",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.union({\"a\": 1}, {\"b\": 2}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 1,
+                "b": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectunion-0272.yaml": {
+      "sha256": "sha256:fa561f704acfcca62983ed195995180acb09106b59cdc34937405f7445236b09",
+      "cases": [
+        {
+          "note": "objectunion/nested",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.union({\"a\": {\"b\": {\"c\": 1}}}, {\"b\": 2}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 1
+                  }
+                },
+                "b": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectunion-0273.yaml": {
+      "sha256": "sha256:312849c925ee4eef565b4e3451568b3d19cfc99e110d46b9919170f0ec3af843",
+      "cases": [
+        {
+          "note": "objectunion/nested reverse",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.union({\"b\": 2}, {\"a\": {\"b\": {\"c\": 1}}}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 1
+                  }
+                },
+                "b": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectunion-0274.yaml": {
+      "sha256": "sha256:225bacb2ac84b33c590f12e179821f081297107d195ac67976217dae1ecd4de2",
+      "cases": [
+        {
+          "note": "objectunion/conflict simple",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.union({\"a\": 1}, {\"a\": 2}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectunion-0275.yaml": {
+      "sha256": "sha256:24106f8f2a4076ab3fe208442e3bdbe3f1618b5ff0888d63db1f6b597cad823c",
+      "cases": [
+        {
+          "note": "objectunion/conflict nested and extra field",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.union({\"a\": 1}, {\"a\": {\"b\": {\"c\": 1}}, \"d\": 7}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "c": 1
+                  }
+                },
+                "d": 7
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectunion-0276.yaml": {
+      "sha256": "sha256:52de610a0f67bf95de7d80876c1e7a6d8ce4f82611091be5b1d21e8baf8e8dc8",
+      "cases": [
+        {
+          "note": "objectunion/conflict multiple",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.union({\"a\": {\"b\": {\"c\": 1}}, \"e\": 1}, {\"a\": {\"b\": \"foo\", \"b1\": \"bar\"}, \"d\": 7, \"e\": 17}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": "foo",
+                  "b1": "bar"
+                },
+                "d": 7,
+                "e": 17
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectunion-0277.yaml": {
+      "sha256": "sha256:38c2a05dc89544d9e857c617503a0d4323b5452f981503e273519b3e0279d69f",
+      "cases": [
+        {
+          "note": "objectunion/error wrong lhs type input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.a\n\tobject.union(__local2__, {\"b\": 2}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"a\": [1, 2, 3]}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.union: operand 1 must be object but got array",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-objectunion-0278.yaml": {
+      "sha256": "sha256:48cf14b5d91c01f4fbfd00ea98f47af9f47374a4c16fab4fe3a952b5b658a002",
+      "cases": [
+        {
+          "note": "objectunion/error wrong rhs type input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.b\n\tobject.union({\"a\": 1}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"b\": [1, 2, 3]}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.union: operand 2 must be object but got array",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

@@ -11,6 +11,7 @@
       "post": {
         "operationId": "pdpTemporalSubmit",
         "summary": "Submit one typed occurrence.",
+        "description": "Idempotency is local and convergent, never exactly-once. One plane answers a retry of the same `(source, event_id)` and bytes as the first submission, and one with other bytes as a conflict. Across planes, a shared history applies one logical occurrence once after convergence and keeps every position that recorded it; one recorded with different bytes by two origins is quarantined. A decision whose window holds it is refused with `history_conflicted` under `shared-bounded`, and decided without it under `shared-eventual`, which reports it in `history.quarantined`. An occurrence that is itself quarantined is refused with `history_conflicted` in either mode.",
         "parameters": [
           {
             "name": "x-request-id",
@@ -94,7 +95,7 @@
             }
           },
           "503": {
-            "description": "The ledger cannot be served, or the evaluation is indeterminate.",
+            "description": "The ledger cannot be served, the evaluation is indeterminate, or a bounded shared history is incomplete, stale or conflicted.",
             "content": {
               "application/json": {
                 "schema": {
@@ -451,6 +452,47 @@
             "minimum": 0,
             "description": "Omitted when zero.",
             "x-grpc-field": "gaps"
+          },
+          "frontier": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontierRun"
+            },
+            "description": "The exact vector frontier a shared decision observed; omitted for a local history.",
+            "x-grpc-field": "frontier"
+          },
+          "origin_set_revision": {
+            "type": "string",
+            "description": "The revision of the origin set defining the required origins, hex.",
+            "x-grpc-field": "origin_set_revision"
+          },
+          "max_staleness_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The freshness bound in force.",
+            "x-grpc-field": "max_staleness_seconds"
+          },
+          "degraded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The required origins a shared-eventual decision is degraded by.",
+            "x-grpc-field": "degraded"
+          },
+          "time": {
+            "type": "string",
+            "enum": [
+              "occurred_at"
+            ],
+            "description": "The time the runtime's windows range over; always sent by this build, an older plane omits it.",
+            "x-grpc-field": "time"
+          },
+          "quarantined": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many logical occurrences of the history a digest conflict quarantined; omitted at zero.",
+            "x-grpc-field": "quarantined"
           }
         },
         "required": [
@@ -487,6 +529,51 @@
             "type": "string",
             "x-grpc-field": "interface"
           },
+          "version": {
+            "type": "string",
+            "description": "The product version `/version` publishes; empty where the deployment does not disclose its build (WP-7.4a).",
+            "x-grpc-field": "version"
+          },
+          "component": {
+            "type": "string",
+            "enum": [
+              "control-plane",
+              "data-plane"
+            ],
+            "description": "The component serving the interface.",
+            "x-grpc-field": "component"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The serving component's lifecycle phase when the document was answered.",
+            "x-grpc-field": "state"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "v1alpha1",
+              "v1",
+              "deprecated"
+            ],
+            "description": "The interface's stage; a retired one has no document and is refused `interface_retired`.",
+            "x-grpc-field": "stage"
+          },
+          "sunset": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a deprecated interface stops being served; present only then.",
+            "x-grpc-field": "sunset"
+          },
           "pdp": {
             "type": "string",
             "x-grpc-field": "pdp"
@@ -512,6 +599,15 @@
           "store_scope": {
             "$ref": "#/components/schemas/StoreScope",
             "x-grpc-field": "store_scope"
+          },
+          "limits": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "The interface's ceilings, by name: none of its own today, `{}` (WP-7.4a).",
+            "x-grpc-field": "limits"
           }
         },
         "required": [
@@ -520,7 +616,12 @@
           "endpoints",
           "event_types",
           "capabilities",
-          "store_scope"
+          "store_scope",
+          "version",
+          "component",
+          "state",
+          "stage",
+          "limits"
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.data.v1.GetTemporalConfigurationResponse"
@@ -671,6 +772,66 @@
         "additionalProperties": false,
         "x-grpc-message": "permguard.data.v1.TemporalSignerSpan",
         "x-grpc-note": "`jwk` is a JSON object in REST and the same JWK serialised as JSON bytes in the gRPC `bytes jwk` field. `from` is the REST name of from_seq."
+      },
+      "FrontierRun": {
+        "type": "object",
+        "description": "One imported run of one origin, as a decision held it.",
+        "properties": {
+          "origin": {
+            "type": "string",
+            "x-grpc-field": "origin"
+          },
+          "run": {
+            "type": "string",
+            "x-grpc-field": "run"
+          },
+          "covered_through": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "covered_through"
+          },
+          "low_watermark": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "low_watermark"
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontierGap"
+            },
+            "x-grpc-field": "gaps"
+          }
+        },
+        "required": [
+          "origin",
+          "run",
+          "covered_through",
+          "low_watermark"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.FrontierRun"
+      },
+      "FrontierGap": {
+        "type": "object",
+        "description": "One recorded hole: the first sequence missing and, when known, the last.",
+        "properties": {
+          "from": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "from"
+          },
+          "through": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "through"
+          }
+        },
+        "required": [
+          "from"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.FrontierGap"
       }
     }
   }

@@ -2,7 +2,7 @@
 Copyright (c) 2022 Nitro Agility S.r.l.
 SPDX-License-Identifier: Apache-2.0
 */}}
-{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane }}
 {{- if $plane.enabled }}
 {{- $perReplica := include "permguard.perReplica" (dict "root" $ "plane" $plane) }}
 apiVersion: apps/v1
@@ -60,28 +60,39 @@ spec:
       # Long enough for readiness to go false, the load balancer to notice, and connections in
       # flight to finish. The process drains on SIGTERM; this is the time it is given to.
       terminationGracePeriodSeconds: 30
+      {{- $image := dict "root" $ "repository" $plane.repository "digest" $plane.digest }}
+      {{- $persists := include "permguard.persists" (dict "root" $ "plane" $plane) }}
+      {{- if or $persists $.Values.imageVerification.enabled }}
+      initContainers:
+        {{- with include "permguard.verifyImage" $image | trim }}{{ . | nindent 8 }}{{- end }}
+      {{- end }}
+      {{- if $persists }}
+        # The orchestrator's claim (WP-1.4), moved forward before every Pod's server opens the
+        # volume, as for a data plane group: from `production` a volume is served only under one.
+        - name: claim
+          image: {{ include "permguard.image" $image }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args: ["volume", "claim", "--volume", "/var/lib/permguard/volume", "--next", "--create"]
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $plane.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/permguard
+      {{- end }}
       containers:
         - name: {{ $component }}
-          image: {{ include "permguard.image" (dict "root" $ "repository" $plane.repository) }}
+          image: {{ include "permguard.image" $image }}
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           args: ["/etc/permguard/config.yml"]
+          # The decision and event streams are named by the Host's `host_id` and run (WP-6.1,
+          # WP-6.2): no producer name comes from the pod any more.
           env:
-            # `pdp_id` names the producer of every decision record this pod writes, and two
-            # producers sharing one name write two records at a single (stream, seq) — which closes
-            # the stream at the far end and ends the audit trail. It cannot come from a values file
-            # for a component with replicas, so it comes from the pod.
-            - name: PERMGUARD_DECISIONS_LOG_PDP_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            # The same rule, and a sharper consequence. An event producer id owns a hash chain
-            # *and* the history the plane's own policies read: two pods sharing one would each
-            # append to a stream the other also claims, and neither history could be verified
-            # afterwards. From the pod, for the same reason and with less room for error.
-            - name: PERMGUARD_EVENTS_PRODUCER_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
+            # The Host's volume is a directory inside the mount, which the server can own and keep
+            # private: a mounted volume's root belongs to root (TD-1, TD-2).
+            - name: PERMGUARD_WORKING_DIR
+              value: /var/lib/permguard/volume
             {{- with $plane.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -99,6 +110,11 @@ spec:
             - name: telemetry
               containerPort: {{ $plane.ports.telemetry }}
               protocol: TCP
+            {{- if $plane.hostListener.enabled }}
+            - name: host
+              containerPort: {{ $plane.hostListener.port }}
+              protocol: TCP
+            {{- end }}
           {{- include "permguard.probes" (dict "root" $) | nindent 10 }}
           resources:
             {{- toYaml $plane.resources | nindent 12 }}
@@ -116,10 +132,16 @@ spec:
               mountPath: /etc/permguard-tls
               readOnly: true
             {{- end }}
+            {{- if $plane.hostListener.enabled }}
+            - name: host-tls
+              mountPath: /etc/permguard-host-tls
+              readOnly: true
+            {{- end }}
             {{- with $plane.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        {{- with include "permguard.verifyImageVolume" $ | trim }}{{ . | nindent 8 }}{{- end }}
         - name: config
           configMap:
             name: {{ include "permguard.fullname" $ }}-{{ $component }}
@@ -146,6 +168,11 @@ spec:
         - name: public-tls
           secret:
             secretName: {{ $plane.tls.secretName }}
+        {{- end }}
+        {{- if $plane.hostListener.enabled }}
+        - name: host-tls
+          secret:
+            secretName: {{ $plane.hostListener.tls.secretName }}
         {{- end }}
         {{- with $plane.extraVolumes }}
         {{- toYaml . | nindent 8 }}
@@ -232,27 +259,37 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: 30
+      {{- $image := dict "root" . "repository" .Values.allInOne.repository "digest" .Values.allInOne.digest }}
+      {{- $persists := include "permguard.persists" (dict "root" . "plane" .Values.allInOne) }}
+      {{- if or $persists .Values.imageVerification.enabled }}
+      initContainers:
+        {{- with include "permguard.verifyImage" $image | trim }}{{ . | nindent 8 }}{{- end }}
+      {{- end }}
+      {{- if $persists }}
+        # The orchestrator's claim (WP-1.4), moved forward before every Pod's server opens the volume.
+        - name: claim
+          image: {{ include "permguard.image" $image }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["volume", "claim", "--volume", "/var/lib/permguard/volume", "--next", "--create"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.allInOne.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/permguard
+      {{- end }}
       containers:
         - name: all-in-one
-          image: {{ include "permguard.image" (dict "root" . "repository" .Values.allInOne.repository) }}
+          image: {{ include "permguard.image" $image }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["/etc/permguard/config.yml"]
           env:
+            # The Host's volume is a directory inside the mount, as for the standalone planes.
+            - name: PERMGUARD_WORKING_DIR
+              value: /var/lib/permguard/volume
             - name: PERMGUARD_RUNTIME_PLANES
               value: "control,data"
-            # See the note on the standalone planes: the producer of a decision record is the pod.
-            - name: PERMGUARD_DECISIONS_LOG_PDP_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            # The same rule, and a sharper consequence. An event producer id owns a hash chain
-            # *and* the history the plane's own policies read: two pods sharing one would each
-            # append to a stream the other also claims, and neither history could be verified
-            # afterwards. From the pod, for the same reason and with less room for error.
-            - name: PERMGUARD_EVENTS_PRODUCER_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
             {{- with .Values.allInOne.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -265,6 +302,10 @@ spec:
               containerPort: {{ .Values.allInOne.ports.dataHttp }}
             - name: telemetry
               containerPort: {{ .Values.allInOne.ports.telemetry }}
+            {{- if .Values.allInOne.hostListener.enabled }}
+            - name: host
+              containerPort: {{ .Values.allInOne.hostListener.port }}
+            {{- end }}
           {{- include "permguard.probes" (dict "root" .) | nindent 10 }}
           resources:
             {{- toYaml .Values.allInOne.resources | nindent 12 }}
@@ -281,10 +322,16 @@ spec:
               mountPath: /etc/permguard-tls
               readOnly: true
             {{- end }}
+            {{- if .Values.allInOne.hostListener.enabled }}
+            - name: host-tls
+              mountPath: /etc/permguard-host-tls
+              readOnly: true
+            {{- end }}
             {{- with .Values.allInOne.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        {{- with include "permguard.verifyImageVolume" . | trim }}{{ . | nindent 8 }}{{- end }}
         - name: config
           configMap:
             name: {{ include "permguard.fullname" . }}-all-in-one
@@ -301,6 +348,11 @@ spec:
         - name: public-tls
           secret:
             secretName: {{ .Values.allInOne.tls.secretName }}
+        {{- end }}
+        {{- if .Values.allInOne.hostListener.enabled }}
+        - name: host-tls
+          secret:
+            secretName: {{ .Values.allInOne.hostListener.tls.secretName }}
         {{- end }}
         {{- with .Values.allInOne.extraVolumes }}
         {{- toYaml . | nindent 8 }}

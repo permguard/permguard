@@ -97,6 +97,10 @@ pub struct PartitionSection {
     /// What a request may hand this partition, when it may hand it anything.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input: Option<InputSection>,
+    /// The interfaces this partition promises (WP-7.1); absent, they are inferred from the
+    /// profiles, which a profile from `production` up refuses (`interfaces.explicit`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interfaces: Vec<String>,
 }
 
 /// One artifact contract, by registered type.
@@ -239,9 +243,23 @@ fn to_model(file: &ManifestFile) -> Result<Manifest, String> {
                 );
             }
         }
+        let mut interfaces = partition.interfaces.clone();
+        interfaces.sort();
+        if interfaces.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(format!("partition `{name}` lists an interface twice"));
+        }
+        if let Some(unknown) = interfaces
+            .iter()
+            .find(|id| !permguard_objects::manifest::INTERFACE_IDS.contains(&id.as_str()))
+        {
+            return Err(format!(
+                "partition `{name}` lists `{unknown}`, which is not an interface"
+            ));
+        }
         manifest.partitions.insert(
             name.clone(),
             Partition {
+                interfaces,
                 runtime: partition.runtime.clone(),
                 media_types,
                 schema: partition.schema,
@@ -331,6 +349,7 @@ pub fn to_yaml(manifest: &Manifest) -> Result<String, String> {
                             r#type: input.r#type.clone(),
                             required: input.required,
                         }),
+                        interfaces: partition.interfaces.clone(),
                     },
                 )
             })
@@ -444,5 +463,55 @@ profiles:
             manifest,
             "what `pull` writes is what `apply` would read"
         );
+    }
+
+    /// WP-7.1: a partition names the interfaces it promises, read into the model and rendered
+    /// back; a duplicate or an id that is no interface is refused where the author wrote it.
+    /// WP-7.5: and only interfaces its runtime implements, so a Cedar partition promising the
+    /// temporal interface beside the native one is refused at load.
+    #[test]
+    fn a_partitions_interfaces_are_read_sorted_and_refused_when_wrong() {
+        let both = WELL_FORMED.replace(
+            "    schema: false\n",
+            "    schema: false\n    interfaces: [permguard.api.pdp.temporal.v1alpha1, permguard.api.pdp.native.v1]\n",
+        );
+        let refused = from_yaml(both.as_bytes()).expect_err("Cedar keeps no history");
+        assert!(refused.contains("does not implement"), "{refused}");
+
+        let listed = WELL_FORMED.replace(
+            "    schema: false\n",
+            "    schema: false\n    interfaces: [permguard.api.pdp.native.v1]\n",
+        );
+        let manifest = from_yaml(listed.as_bytes()).expect("it is well formed");
+        assert_eq!(
+            manifest.partitions["p"].interfaces,
+            vec!["permguard.api.pdp.native.v1".to_owned()]
+        );
+        let rendered = to_yaml(&manifest).expect("it renders");
+        assert_eq!(
+            from_yaml(rendered.as_bytes()).expect("and reads back"),
+            manifest
+        );
+
+        let twice = WELL_FORMED.replace(
+            "    schema: false\n",
+            "    schema: false\n    interfaces: [permguard.api.pdp.native.v1, permguard.api.pdp.native.v1]\n",
+        );
+        let refused = from_yaml(twice.as_bytes()).expect_err("a duplicate is refused");
+        assert!(refused.contains("twice"), "{refused}");
+
+        let unknown = WELL_FORMED.replace(
+            "    schema: false\n",
+            "    schema: false\n    interfaces: [permguard.api.pdp.native.v9]\n",
+        );
+        let refused = from_yaml(unknown.as_bytes()).expect_err("an unknown id is refused");
+        assert!(refused.contains("not an interface"), "{refused}");
+        // IFACE-08: no Trust Anchor interface to bind.
+        let trust_anchor = WELL_FORMED.replace(
+            "    schema: false\n",
+            "    schema: false\n    interfaces: [permguard.api.pdp.trust-anchor.v1]\n",
+        );
+        let refused = from_yaml(trust_anchor.as_bytes()).expect_err("not an interface");
+        assert!(refused.contains("not an interface"), "{refused}");
     }
 }

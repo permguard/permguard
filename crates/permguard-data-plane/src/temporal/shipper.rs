@@ -134,15 +134,16 @@ impl Shipper {
             Ok(state) => state,
             Err(error) => return Round::Deferred(error.to_string()),
         };
-        let pending =
-            match self
-                .streams
-                .read_from(zone, ledger, state.acked_through, MAX_BATCH_RECORDS)
-            {
-                Ok(pending) if pending.is_empty() => return Round::Idle,
-                Ok(pending) => pending,
-                Err(error) => return Round::Deferred(error.to_string()),
-            };
+        let pending = match self.streams.legacy_read_from(
+            zone,
+            ledger,
+            state.acked_through,
+            MAX_BATCH_RECORDS,
+        ) {
+            Ok(pending) if pending.is_empty() => return Round::Idle,
+            Ok(pending) => pending,
+            Err(error) => return Round::Deferred(error.to_string()),
+        };
         // Only what is durable: a record written and not yet flushed is not one this plane may ask
         // anybody else to hold, because a crash would leave the receiver holding what the producer
         // does not.

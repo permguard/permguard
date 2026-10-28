@@ -15,14 +15,13 @@ use permguard_core::decisions::{
     DecisionStoreSection, DecisionsSection, EventStoreSection, EventsSection, IncludeSection,
     LogDestination,
 };
-use permguard_core::mirrors::{MirrorSource, MirrorsSection};
+use permguard_core::mirrors::MirrorsSection;
 use permguard_core::storage::StorageSection;
 use permguard_core::{Config, TlsSettings, TlsVersion, Value};
 
 use super::{PlaneAddresses, PlaneService};
 
-/// Runtime setting key for the comma-separated list of planes to host in this process.
-pub const SETTING_RUNTIME_PLANES: &str = "PERMGUARD_RUNTIME_PLANES";
+pub use permguard_core::config::SETTING_RUNTIME_PLANES;
 
 /// The selected planes that do not gate readiness: every selected plane is required unless named
 /// here (P2, required versus optional).
@@ -73,8 +72,7 @@ pub const SETTING_DATA_HTTP_TLS_MIN_VERSION: &str = "PERMGUARD_DATA_HTTP_TLS_MIN
 pub const SETTING_DATA_HTTP_TLS_ALLOW: &str = "PERMGUARD_DATA_HTTP_TLS_ALLOW";
 pub const SETTING_DATA_HTTP_TLS_TERMINATED_UPSTREAM: &str =
     "PERMGUARD_DATA_HTTP_TLS_TERMINATED_UPSTREAM";
-pub const SETTING_DATA_GRPC_ENABLED: &str = "PERMGUARD_DATA_GRPC_ENABLED";
-pub const SETTING_DATA_GRPC_ADDR: &str = "PERMGUARD_DATA_GRPC_ADDR";
+pub use permguard_core::config::{SETTING_DATA_GRPC_ADDR, SETTING_DATA_GRPC_ENABLED};
 pub const SETTING_DATA_GRPC_TLS_ENABLED: &str = "PERMGUARD_DATA_GRPC_TLS_ENABLED";
 pub const SETTING_DATA_GRPC_TLS_CERT: &str = "PERMGUARD_DATA_GRPC_TLS_CERT";
 pub const SETTING_DATA_GRPC_TLS_KEY: &str = "PERMGUARD_DATA_GRPC_TLS_KEY";
@@ -474,19 +472,44 @@ fn push_tls_settings(settings: &mut Vec<(String, String)>, keys: PlaneTlsKeys, t
     }
 }
 
-/// The servers the data plane follows, out of its own section.
-///
-/// Structured, not flat: a list of servers with their patterns has no sensible
-/// single-variable form, so it arrives beside the layered settings rather than
-/// through them.
-pub fn mirror_sources(value: &Value) -> Result<Vec<MirrorSource>> {
+/// How the local task is narrowed (WP-7.7), from `mirrors.local`; a file still naming the retired
+/// `mirrors.servers` is refused, saying what replaces it.
+pub fn mirror_local(value: &Value) -> Result<Option<permguard_core::mirrors::MirrorLocal>> {
+    let section: PlaneSectionConfig =
+        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let Some(mirrors) = section.mirrors.as_ref() else {
+        return Ok(None);
+    };
+    if mirrors.names_servers() {
+        anyhow::bail!(permguard_core::mirrors::SERVERS_RETIRED);
+    }
+
+    Ok(mirrors.local())
+}
+
+/// The `policy.mirror` tasks this plane narrows (WP-7.2a), from the `mirrors.tasks` list.
+pub fn mirror_task_selections(
+    value: &Value,
+) -> Result<Vec<permguard_core::mirrors::MirrorTaskSelection>> {
     let section: PlaneSectionConfig =
         serde_norway::from_value(value.clone()).context("parsing a plane section")?;
 
     Ok(section
         .mirrors
         .as_ref()
-        .map(MirrorsSection::sources)
+        .map(MirrorsSection::task_selections)
+        .unwrap_or_default())
+}
+
+/// The aliases this plane assigns (WP-7.2d, F-17), as `dataPlane.mirrors.aliases` declares them.
+pub fn mirror_aliases(value: &Value) -> Result<Vec<permguard_core::mirrors::MirrorAlias>> {
+    let section: PlaneSectionConfig =
+        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+
+    Ok(section
+        .mirrors
+        .as_ref()
+        .map(MirrorsSection::aliases)
         .unwrap_or_default())
 }
 
@@ -562,11 +585,8 @@ pub fn producer_keys(
     Ok(decisions.producer_keys().to_vec())
 }
 
-/// The producers a control plane accepts *event* records from.
-///
-/// Read from `controlPlane.events.producer_keys`. Every entry binds key material to one exact
-/// producer and an allowed tenant scope; the unbound decision-log trust list is deliberately not
-/// reused for event ingestion.
+/// What `controlPlane.events.producer_keys` declares: retired (WP-6.2b), read only so the control
+/// plane's start can refuse a configuration that still names it.
 pub fn event_producer_keys(
     value: &Value,
 ) -> Result<Vec<permguard_core::decisions::EventProducerSource>> {
@@ -884,7 +904,7 @@ impl EndpointValue {
 
 /// The ledgers a data plane imports history from.
 ///
-/// Structured rather than a scalar for the same reason `mirrors.servers` is: a subscription is
+/// Structured rather than a scalar for the same reason `mirrors.tasks` is: a subscription is
 /// three facts that travel together, and a scalar form would be a string somebody has to parse —
 /// which is a place two spellings become two subscriptions.
 pub fn pull_ledgers(
@@ -916,6 +936,8 @@ pub fn pull_ledgers(
         .collect()
 }
 
+/// Read from `dataPlane.events.pull.producer_keys`, which is retired (WP-6.2c2b2): read only so
+/// the Data Plane refuses a configuration still naming it.
 pub fn pull_producer_keys(
     value: &Value,
 ) -> anyhow::Result<Vec<permguard_core::decisions::EventProducerSource>> {
@@ -1022,7 +1044,7 @@ mod tests {
 
     #[test]
     fn the_data_plane_mirrors_block_becomes_settings_and_the_control_plane_refuses_it() {
-        let block = "mirrors:\n  enabled: \"true\"\n  interval: \"15s\"\n  servers:\n    - url: \"http://127.0.0.1:6443\"\n";
+        let block = "mirrors:\n  enabled: \"true\"\n  interval: \"15s\"\n";
 
         assert_eq!(
             plane_settings(&value(block), PlaneSettingKeys::DATA).expect("the data plane mirrors"),
@@ -1072,24 +1094,141 @@ mod tests {
         );
     }
 
+    /// WP-7.7: the retired server list stops the start, saying what replaces it; the local task's
+    /// narrowing arrives as structured configuration.
     #[test]
-    fn the_servers_arrive_as_structured_configuration_with_their_trust_material() {
-        let sources = mirror_sources(&value(
-            "mirrors:\n  servers:\n    - url: \"grpcs://control:6443\"\n      zones: [\"acme-.*\"]\n      tls:\n        ca_file: tls/ca.pem\n",
+    fn the_server_list_is_refused_and_the_local_narrowing_arrives() {
+        let refused = mirror_local(&value(
+            "mirrors:\n  servers:\n    - url: \"grpcs://control:6443\"\n      zones: [\"acme-.*\"]\n",
         ))
-        .expect("the servers parse");
-
-        assert_eq!(sources.len(), 1);
-        assert_eq!(sources[0].url, "grpcs://control:6443");
-        assert_eq!(sources[0].zones, vec!["acme-.*".to_owned()]);
-        assert_eq!(sources[0].tls.ca_file.as_deref(), Some("tls/ca.pem"));
-
-        // A section with no `mirrors` block follows nothing, and says so plainly.
+        .expect_err("the server list is retired")
+        .to_string();
         assert!(
-            mirror_sources(&value("public:\n  http: 127.0.0.1:7443\n"))
-                .expect("a plane may mirror nothing")
+            refused.contains("is retired") && refused.contains("members join"),
+            "{refused}"
+        );
+
+        let local = mirror_local(&value("mirrors:\n  local:\n    zones: [\"acme-.*\"]\n"))
+            .expect("the local narrowing parses")
+            .expect("declared");
+        assert_eq!(local.zones, vec!["acme-.*".to_owned()]);
+        assert!(local.ledgers.is_empty());
+
+        // A section with no `mirrors` block narrows nothing.
+        assert!(
+            mirror_local(&value("public:\n  http: 127.0.0.1:7443\n"))
+                .expect("a plane may narrow nothing")
+                .is_none()
+        );
+    }
+
+    /// WP-7.2a: the tasks a plane narrows arrive as structured configuration, by membership and
+    /// task with their patterns and nothing else; a key the block does not define is refused, and
+    /// a task narrowed twice stops the start.
+    #[test]
+    fn the_mirrored_tasks_arrive_by_membership_and_task_with_their_patterns() {
+        let selections = mirror_task_selections(&value(
+            "mirrors:\n  tasks:\n    - membership: \"0193A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B\"\n      task: mirror\n      ledgers: [\"main\"]\n",
+        ))
+        .expect("the tasks parse");
+        assert_eq!(
+            selections,
+            vec![permguard_core::mirrors::MirrorTaskSelection {
+                membership: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+                task: "mirror".to_owned(),
+                zones: Vec::new(),
+                ledgers: vec!["main".to_owned()],
+            }]
+        );
+        assert!(
+            mirror_task_selections(&value(
+                "mirrors:\n  tasks:\n    - membership: m\n      task: t\n      url: \"https://x\"\n",
+            ))
+            .is_err(),
+            "a task names no URL: the membership binds it"
+        );
+        assert!(
+            mirror_task_selections(&value("public:\n  http: 127.0.0.1:7443\n"))
+                .expect("none")
                 .is_empty()
         );
+
+        let twice = vec![selections[0].clone(), selections[0].clone()];
+        let config = permguard_core::Config::from_layers(
+            permguard_core::config::BuildSettings::new(
+                "0.0.0-test",
+                "2022",
+                "Nitro Agility S.r.l.",
+            ),
+            Vec::<String>::new(),
+            permguard_core::config::Layers::new(),
+        )
+        .expect("a configuration");
+        assert!(config.clone().with_mirror_task_selections(twice).is_err());
+        let mut undashed = selections[0].clone();
+        undashed.membership = "0193a1b2c3d47e5f8a9b0c1d2e3f4a5b".to_owned();
+        assert!(
+            config
+                .clone()
+                .with_mirror_task_selections(vec![undashed])
+                .is_err(),
+            "a membership id is the dashed UUID `host members list` shows"
+        );
+        let mut nameless = selections[0].clone();
+        nameless.task = String::new();
+        assert!(
+            config
+                .clone()
+                .with_mirror_task_selections(vec![nameless])
+                .is_err()
+        );
+        assert!(config.with_mirror_task_selections(selections).is_ok());
+    }
+
+    /// WP-7.2d (F-17): the aliases come from the file, and one pair assigned twice, or an
+    /// authority that is not a dashed UUID, refuses the configuration.
+    #[test]
+    fn mirror_aliases_come_from_the_file_and_a_pair_is_assigned_once() {
+        let aliases = mirror_aliases(&value(
+            "mirrors:\n  aliases:\n    - zone: acme\n      ledger: main\n      authority: 0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b\n",
+        ))
+        .expect("the aliases parse");
+        assert_eq!(
+            aliases,
+            vec![permguard_core::mirrors::MirrorAlias {
+                zone: "acme".to_owned(),
+                ledger: "main".to_owned(),
+                authority: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+            }]
+        );
+        assert!(
+            mirror_aliases(&value("public:\n  http: 127.0.0.1:7443\n"))
+                .expect("none")
+                .is_empty()
+        );
+        let config = permguard_core::Config::from_layers(
+            permguard_core::config::BuildSettings::new(
+                "0.0.0-test",
+                "2022",
+                "Nitro Agility S.r.l.",
+            ),
+            Vec::<String>::new(),
+            permguard_core::config::Layers::new(),
+        )
+        .expect("a configuration");
+        let twice = vec![aliases[0].clone(), aliases[0].clone()];
+        let refused = config
+            .clone()
+            .with_mirror_aliases(twice)
+            .expect_err("one pair, two aliases");
+        assert!(refused.to_string().contains("assigned twice"), "{refused}");
+        let mut undashed = aliases[0].clone();
+        undashed.authority = "0193a1b2c3d47e5f8a9b0c1d2e3f4a5b".to_owned();
+        assert!(config.clone().with_mirror_aliases(vec![undashed]).is_err());
+        let held = config
+            .with_mirror_aliases(aliases.clone())
+            .expect("one alias");
+        assert_eq!(held.mirror_aliases(), aliases.as_slice());
     }
 
     #[test]

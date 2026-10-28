@@ -1,0 +1,24 @@
+{
+  "folder": "objectfilternonstringkey",
+  "files": {
+    "test-objectfilternonstringkey-0318.yaml": {
+      "sha256": "sha256:a42dd606f4966f53bc3805901c0f697f2c961ec64396def3562e65ec34d24fc8",
+      "cases": [
+        {
+          "note": "objectfilternonstringkey/non string root",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tobject.filter({\"a\": 1, [[7]]: 2}, {[[7]]}, __local1__)\n\t__local0__ = __local1__\n\t__local0__ = {[[7]]: 2}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

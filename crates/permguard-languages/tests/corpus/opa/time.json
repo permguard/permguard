@@ -1,0 +1,644 @@
+{
+  "folder": "time",
+  "files": {
+    "test-time-0947.yaml": {
+      "sha256": "sha256:85259b86b207fa0ebb61f1447a459bff7c91e4947360fb76594f2fc041b8ec4f",
+      "cases": [
+        {
+          "note": "time/time caching",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\ttime.now_ns(t0)\n\ttest.sleep(\"10ms\")\n\ttime.now_ns(t1)\n\tt0 == t1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0948.yaml": {
+      "sha256": "sha256:72b31b29231b85260bec1b00b8743a45bf3b3d880dbc1398795d66797859e855",
+      "cases": [
+        {
+          "note": "time/parse_nanos",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[case_id] := ns if {\n\tcase := input.cases[case_id]\n\ttime.parse_ns(case.layout, case.value, ns)\n}\n"
+          ],
+          "input": {
+            "cases": {
+              "1": {
+                "layout": "2006-01-02T15:04:05Z07:00",
+                "value": "2017-06-02T19:00:00-07:00"
+              },
+              "2": {
+                "layout": "2006-01-02T15:04:05Z07:00",
+                "value": "1677-09-21T00:12:43.145224192-00:00"
+              },
+              "3": {
+                "layout": "2006-01-02T15:04:05Z07:00",
+                "value": "2262-04-11T23:47:16.854775807-00:00"
+              },
+              "4": {
+                "layout": "01/02 03:04:05PM '06 -0700",
+                "value": "06/02 07:00:00PM '17 -0700"
+              },
+              "5": {
+                "layout": "02 Jan 06 15:04 -0700",
+                "value": "02 Jun 17 19:00 -0700"
+              },
+              "6": {
+                "layout": "RFC822Z",
+                "value": "02 Jun 17 19:00 -0700"
+              }
+            }
+          },
+          "want_result": [
+            {
+              "x": {
+                "1": 1496455200000000000,
+                "2": -9223372036854775808,
+                "3": 9223372036854775807,
+                "4": 1496455200000000000,
+                "5": 1496455200000000000,
+                "6": 1496455200000000000
+              }
+            }
+          ]
+        },
+        {
+          "note": "time/parse_nanos_too_small",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := ns if {\n\ttime.parse_ns(\"2006-01-02T15:04:05Z07:00\", \"1677-09-21T00:12:43.145224191-00:00\", ns)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "time outside of valid range",
+          "strict_error": true
+        },
+        {
+          "note": "time/parse_nanos_too_large",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := ns if {\n\ttime.parse_ns(\"2006-01-02T15:04:05Z07:00\", \"2262-04-11T23:47:16.854775808-00:00\", ns)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "time outside of valid range",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-time-0949.yaml": {
+      "sha256": "sha256:03853382e4eccb2a38f2cdcd4972085d359620f71de5664f190343be026a80e0",
+      "cases": [
+        {
+          "note": "time/parse_rfc3339_nanos",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np[t] := ns if {\n\tt = input.cases[_]\n\ttime.parse_rfc3339_ns(t, ns)\n}\n"
+          ],
+          "input": {
+            "cases": [
+              "1677-09-21T00:12:43.145224192-00:00",
+              "1970-01-01T00:00:00-00:00",
+              "2017-06-02T19:00:00-07:00",
+              "2262-04-11T23:47:16.854775807-00:00"
+            ]
+          },
+          "want_result": [
+            {
+              "x": {
+                "1677-09-21T00:12:43.145224192-00:00": -9223372036854775808,
+                "1970-01-01T00:00:00-00:00": 0,
+                "2017-06-02T19:00:00-07:00": 1496455200000000000,
+                "2262-04-11T23:47:16.854775807-00:00": 9223372036854775807
+              }
+            }
+          ]
+        },
+        {
+          "note": "time/parse_rfc3339_nanos_too_small",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := ns if {\n\ttime.parse_rfc3339_ns(\"1677-09-21T00:12:43.145224191-00:00\", ns)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "time outside of valid range",
+          "strict_error": true
+        },
+        {
+          "note": "time/parse_rfc3339_nanos_too_large",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := ns if {\n\ttime.parse_rfc3339_ns(\"2262-04-11T23:47:16.854775808-00:00\", ns)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "time outside of valid range",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-time-0950.yaml": {
+      "sha256": "sha256:88160a5f8faf367449911fbc075fb64eac5ebb56d786189ba60c63472a787dc6",
+      "cases": [
+        {
+          "note": "time/parse duration nanos",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := ns if {\n\ttime.parse_duration_ns(\"100ms\", ns)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 100000000
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0951.yaml": {
+      "sha256": "sha256:cd9810cdf234bcff80308c87bb5d9a4f5ac3cecdc38e96a19e8e079c27ad87c8",
+      "cases": [
+        {
+          "note": "time/date",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [__local0__, __local1__, __local2__] if {\n\t__local3__ = 1517814000 * 1000\n\t__local4__ = __local3__ * 1000\n\t__local5__ = __local4__ * 1000\n\ttime.date(__local5__, __local6__)\n\t[__local0__, __local1__, __local2__] = __local6__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2018,
+                2,
+                5
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0952.yaml": {
+      "sha256": "sha256:e78381b078617360bb9c884f6dd3b1aad1cbcc2b4195ea847328b68080c7926e",
+      "cases": [
+        {
+          "note": "time/date with LA tz",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [__local0__, __local1__, __local2__] if {\n\t__local3__ = 1517814000 * 1000\n\t__local4__ = __local3__ * 1000\n\t__local5__ = __local4__ * 1000\n\ttime.date([__local5__, \"America/Los_Angeles\"], __local6__)\n\t[__local0__, __local1__, __local2__] = __local6__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2018,
+                2,
+                4
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0953.yaml": {
+      "sha256": "sha256:66fa051c9fb3e0f71a28fa60c2915da6d477b561f643f94010f28a705ee32f06",
+      "cases": [
+        {
+          "note": "time/date with empty tz",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [__local0__, __local1__, __local2__] if {\n\t__local3__ = 1517832000 * 1000\n\t__local4__ = __local3__ * 1000\n\t__local5__ = __local4__ * 1000\n\ttime.date([__local5__, \"\"], __local6__)\n\t[__local0__, __local1__, __local2__] = __local6__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2018,
+                2,
+                5
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0954.yaml": {
+      "sha256": "sha256:beef18f993d0bfac1431d9a595040e9ac86ead7178a7d88381887de3feed5649",
+      "cases": [
+        {
+          "note": "time/date leap day",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [__local0__, __local1__, __local2__] if {\n\t__local3__ = 1582977600 * 1000\n\t__local4__ = __local3__ * 1000\n\t__local5__ = __local4__ * 1000\n\ttime.date(__local5__, __local6__)\n\t[__local0__, __local1__, __local2__] = __local6__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                2020,
+                2,
+                29
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0955.yaml": {
+      "sha256": "sha256:a112a0c02af05afd0cc94bb28012a1e5018241963b29f1269b115f6d62e778c7",
+      "cases": [
+        {
+          "note": "time/date too big",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [__local0__, __local1__, __local2__] if {\n\t__local3__ = 1582977600 * 1000\n\t__local4__ = __local3__ * 1000\n\t__local5__ = __local4__ * 1000\n\t__local6__ = __local5__ * 1000\n\ttime.date(__local6__, __local7__)\n\t[__local0__, __local1__, __local2__] = __local7__\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "timestamp too big",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-time-0956.yaml": {
+      "sha256": "sha256:abf0700eb18cb06a3172008a693b6f462df56e5358950791e275aa0b220a8a84",
+      "cases": [
+        {
+          "note": "time/clock",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [__local0__, __local1__, __local2__] if {\n\t__local3__ = 1517832000 * 1000\n\t__local4__ = __local3__ * 1000\n\t__local5__ = __local4__ * 1000\n\ttime.clock(__local5__, __local6__)\n\t[__local0__, __local1__, __local2__] = __local6__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                12,
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0957.yaml": {
+      "sha256": "sha256:2ba966587708ff518502b849d013339933e1c74df7bcdcbf319e1d770e0d378c",
+      "cases": [
+        {
+          "note": "time/clock with NY tz",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [__local0__, __local1__, __local2__] if {\n\t__local3__ = 1517832000 * 1000\n\t__local4__ = __local3__ * 1000\n\t__local5__ = __local4__ * 1000\n\ttime.clock([__local5__, \"America/New_York\"], __local6__)\n\t[__local0__, __local1__, __local2__] = __local6__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                7,
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0958.yaml": {
+      "sha256": "sha256:45db40e16c36716d56e6d2516e5d09a56ebe8661db32562c173314c100466d32",
+      "cases": [
+        {
+          "note": "time/clock leap day",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [__local0__, __local1__, __local2__] if {\n\t__local3__ = 1582977600 * 1000\n\t__local4__ = __local3__ * 1000\n\t__local5__ = __local4__ * 1000\n\ttime.clock(__local5__, __local6__)\n\t[__local0__, __local1__, __local2__] = __local6__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                12,
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0959.yaml": {
+      "sha256": "sha256:c3d5ca223ee1c62ca8462bb41bfa1c472fb9a6ae41a2b3a9c94187f9da11d95c",
+      "cases": [
+        {
+          "note": "time/clock too big",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [__local0__, __local1__, __local2__] if {\n\t__local3__ = 1582977600 * 1000\n\t__local4__ = __local3__ * 1000\n\t__local5__ = __local4__ * 1000\n\t__local6__ = __local5__ * 1000\n\ttime.clock(__local6__, __local7__)\n\t[__local0__, __local1__, __local2__] = __local7__\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "timestamp too big",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-time-0960.yaml": {
+      "sha256": "sha256:ad6c5d673953f056013acaf245b0f7a079b942615e0ccf649a757cde6d271689",
+      "cases": [
+        {
+          "note": "time/weekday",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\ttime.weekday(1517832000000000000, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "Monday"
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0961.yaml": {
+      "sha256": "sha256:b5daedf6d6dae1e32634515ed6d5f9de4c9af5e613e7e16f226b4196bd8f68a9",
+      "cases": [
+        {
+          "note": "time/weekday",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\ttime.weekday(1517918400000000000, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "Tuesday"
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0962.yaml": {
+      "sha256": "sha256:cbfde60f56316cca8a3996077a0bc9ac589f6f2c5e7d5d59c1e821ababe69669",
+      "cases": [
+        {
+          "note": "time/weekday",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\ttime.weekday(1518004800000000000, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "Wednesday"
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0963.yaml": {
+      "sha256": "sha256:400b31cb12bf1f5856c3d50c3f7d8055d508a922c8d8106d2b5fabfc0c7edadd",
+      "cases": [
+        {
+          "note": "time/weekday",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\ttime.weekday(1518091200000000000, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "Thursday"
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0964.yaml": {
+      "sha256": "sha256:9c81f14f0178ca63d7310956cfe3d36ee5a0559cc58cec949eb9254672a09156",
+      "cases": [
+        {
+          "note": "time/weekday",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\ttime.weekday(1518177600000000000, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "Friday"
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0965.yaml": {
+      "sha256": "sha256:138f9556fedbabe5d213ba7046cc7767973ce23c5fd92bb13f28621aae19f7ad",
+      "cases": [
+        {
+          "note": "time/weekday",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\ttime.weekday(1518264000000000000, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "Saturday"
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0966.yaml": {
+      "sha256": "sha256:7a6a460f2d656c9e2c1b8bed05e01dd9bdaec75479dfe79768e215425dcb2644",
+      "cases": [
+        {
+          "note": "time/weekday",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\ttime.weekday(1518350400000000000, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "Sunday"
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0967.yaml": {
+      "sha256": "sha256:5495cbefde1eb199b4c2b3eed5fb77b0a60d4de8ee8450717ed5c1c456b939c7",
+      "cases": [
+        {
+          "note": "time/weekday too big",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local1__ = 1582977600 * 1000\n\t__local2__ = __local1__ * 1000\n\t__local3__ = __local2__ * 1000\n\t__local4__ = __local3__ * 1000\n\ttime.weekday(__local4__, __local5__)\n\t__local0__ = __local5__\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "timestamp too big",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-time-0968.yaml": {
+      "sha256": "sha256:a8d76686df89dda58b1a3eef1cd2d1d32e8c34fb269555755917cf46f27078df",
+      "cases": [
+        {
+          "note": "time/add_date year month day",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\ttime.add_date(1585852421593912000, 3, 9, 12, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1705257221593912000
+            }
+          ]
+        },
+        {
+          "note": "time/add_date too large result",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := ns if {\n\ttime.add_date(0, 2262, 1, 1, ns)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "time outside of valid range",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-time-0969.yaml": {
+      "sha256": "sha256:1b8dd1ce05f09283154b66c054d9ab9ac5a50d190ef0f3de7ce6629c35914ed9",
+      "cases": [
+        {
+          "note": "time/add_date negative values",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\ttime.add_date(1585852421593912000, -1, -1, -1, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1551465221593912000
+            }
+          ]
+        },
+        {
+          "note": "time/add_date too small result",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := ns if {\n\ttime.add_date(-9223372036854775808, 0, 0, -1, ns)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "time outside of valid range",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-time-0970.yaml": {
+      "sha256": "sha256:197599dd2f93fb6658475e68cdd1969dedc068542d2c6d363b8e7774d5abc7aa",
+      "cases": [
+        {
+          "note": "time/diff",
+          "query": "data.test.a = minute_second; data.test.b = different_tz; data.test.c = leap_year; data.test.d = not_leap_year; data.test.e = leap_year_one_day\n",
+          "modules": [
+            "package test\n\nlayout := \"2006-01-02\"\n\na := minute_second if {\n\tminute_second := time.diff(time.now_ns() + (((61 * 1000) * 1000) * 1000), time.now_ns())\n}\n\nb := different_tz if {\n\tdifferent_tz := time.diff([time.now_ns() + (((60 * 1000) * 1000) * 1000), \"UTC\"], [time.now_ns(), \"Asia/Shanghai\"])\n}\n\nc := leap_year if {\n\tleap_year := time.diff(time.parse_ns(layout, \"2020-02-02\"), time.parse_ns(layout, \"2020-03-01\"))\n}\n\nd := not_leap_year if {\n\tnot_leap_year := time.diff(time.parse_ns(layout, \"2021-02-02\"), time.parse_ns(layout, \"2021-03-01\"))\n}\n\ne := leap_year_one_day if {\n\tleap_year_one_day := time.diff(time.parse_ns(layout, \"2004-02-29\"), time.parse_ns(layout, \"2005-03-01\"))\n}\n"
+          ],
+          "want_result": [
+            {
+              "different_tz": [
+                0,
+                0,
+                0,
+                0,
+                1,
+                0
+              ],
+              "leap_year": [
+                0,
+                0,
+                28,
+                0,
+                0,
+                0
+              ],
+              "leap_year_one_day": [
+                1,
+                0,
+                1,
+                0,
+                0,
+                0
+              ],
+              "minute_second": [
+                0,
+                0,
+                0,
+                0,
+                1,
+                1
+              ],
+              "not_leap_year": [
+                0,
+                0,
+                27,
+                0,
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-time-0971.yaml": {
+      "sha256": "sha256:11279fe01c90576af8c95aa06d27265bc10432f31035aefa787ead90daf90efd",
+      "cases": [
+        {
+          "note": "time/format",
+          "query": "data.test.a = no_timezone; data.test.b = with_timezone; data.test.c = with_layout; data.test.d = with_constant\n",
+          "modules": [
+            "package test\n\ntime_ns := 1670006453141828752\n\na := time.format(time_ns)\n\nb := time.format([time_ns, \"Asia/Kolkata\"])\n\nc := time.format([time_ns, \"Asia/Kolkata\", \"Mon Jan 02 15:04:05 -0700 2006\"])\n\nd := time.format([time_ns, \"Asia/Kolkata\", \"RFC1123Z\"])\n"
+          ],
+          "want_result": [
+            {
+              "no_timezone": "2022-12-02T18:40:53.141828752Z",
+              "with_constant": "Sat, 03 Dec 2022 00:10:53 +0530",
+              "with_layout": "Sat Dec 03 00:10:53 +0530 2022",
+              "with_timezone": "2022-12-03T00:10:53.141828752+05:30"
+            }
+          ]
+        },
+        {
+          "note": "time/format too big",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := time.format(1582977600 * 10e12)\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "timestamp too big",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

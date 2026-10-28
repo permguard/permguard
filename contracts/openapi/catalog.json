@@ -20,7 +20,7 @@
               "type": "integer",
               "minimum": 0
             },
-            "description": "Zero-based page; listing is whole without `page` and `size`. A malformed value is ignored today.",
+            "description": "Zero-based page; listing is whole without `page` and `size`. An unknown, repeated or malformed parameter is refused `invalid_argument`.",
             "x-grpc-field": "page"
           },
           {
@@ -29,9 +29,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "minimum": 1
+              "minimum": 0
             },
-            "description": "Page size. A malformed or zero value is ignored today.",
+            "description": "Page size; `0` is no size, as if absent. An unknown, repeated or malformed parameter is refused `invalid_argument`.",
             "x-grpc-field": "size"
           }
         ],
@@ -45,6 +45,16 @@
                   "items": {
                     "$ref": "#/components/schemas/Zone"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown, repeated or malformed query parameter (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
                 }
               }
             }
@@ -114,7 +124,7 @@
             }
           },
           "400": {
-            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "description": "The name breaks the naming rules (`invalid_name`); a body that is not a closed JSON `NameBody`, or one naming `expected_revision` (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -124,7 +134,7 @@
             }
           },
           "409": {
-            "description": "The name is taken (`name_taken`).",
+            "description": "The name is taken (`name_taken`); a request id already used for another change (`request_id_reused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -161,7 +171,17 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -173,7 +193,8 @@
         },
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/CreateZone",
         "x-grpc-body": {
-          "name": "name"
+          "name": "name",
+          "request_id": "request_id"
         }
       }
     },
@@ -279,7 +300,7 @@
             }
           },
           "400": {
-            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "description": "The name breaks the naming rules (`invalid_name`); a body that is not a closed JSON `NameBody`, or one without `expected_revision` (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -299,7 +320,7 @@
             }
           },
           "409": {
-            "description": "The name is taken (`name_taken`).",
+            "description": "The name is taken (`name_taken`); another revision than `expected_revision` (`revision_conflict`); a request id already used for another change (`request_id_reused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -336,7 +357,17 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -348,7 +379,9 @@
         },
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/RenameZone",
         "x-grpc-body": {
-          "name": "name"
+          "name": "name",
+          "request_id": "request_id",
+          "expected_revision": "expected_revision"
         }
       },
       "delete": {
@@ -356,7 +389,7 @@
         "summary": "Delete a zone",
         "responses": {
           "200": {
-            "description": "The zone deleted.",
+            "description": "The zone deleted: its tombstone keeps the id, never minted again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -376,7 +409,7 @@
             }
           },
           "409": {
-            "description": "The zone still holds ledgers (`zone_not_empty`).",
+            "description": "The zone still holds ledgers (`zone_not_empty`); another revision than `expected_revision` (`revision_conflict`); a request id already used for another change (`request_id_reused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -413,7 +446,27 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A missing, unknown, repeated or malformed query parameter (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -423,7 +476,31 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/DeleteZone"
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/DeleteZone",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The delete's request id, repeated by a retry (WP-7.3a).",
+            "x-grpc-field": "request_id"
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "The revision the zone was read at; another is `409 revision_conflict`.",
+            "x-grpc-field": "expected_revision"
+          }
+        ]
       }
     },
     "/v1/zones/{zone}/ledgers": {
@@ -451,7 +528,7 @@
               "type": "integer",
               "minimum": 0
             },
-            "description": "Zero-based page; listing is whole without `page` and `size`. A malformed value is ignored today.",
+            "description": "Zero-based page; listing is whole without `page` and `size`. An unknown, repeated or malformed parameter is refused `invalid_argument`.",
             "x-grpc-field": "page"
           },
           {
@@ -460,9 +537,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "minimum": 1
+              "minimum": 0
             },
-            "description": "Page size. A malformed or zero value is ignored today.",
+            "description": "Page size; `0` is no size, as if absent. An unknown, repeated or malformed parameter is refused `invalid_argument`.",
             "x-grpc-field": "size"
           }
         ],
@@ -476,6 +553,16 @@
                   "items": {
                     "$ref": "#/components/schemas/Ledger"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown, repeated or malformed query parameter (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
                 }
               }
             }
@@ -555,7 +642,7 @@
             }
           },
           "400": {
-            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "description": "The name breaks the naming rules (`invalid_name`); a body that is not a closed JSON `NameBody`, or one naming `expected_revision` (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -575,7 +662,7 @@
             }
           },
           "409": {
-            "description": "The name is taken in the zone (`name_taken`).",
+            "description": "The name is taken in the zone (`name_taken`); a request id already used for another change (`request_id_reused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -612,7 +699,17 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -624,7 +721,8 @@
         },
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/CreateLedger",
         "x-grpc-body": {
-          "name": "name"
+          "name": "name",
+          "request_id": "request_id"
         }
       }
     },
@@ -740,7 +838,7 @@
             }
           },
           "400": {
-            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "description": "The name breaks the naming rules (`invalid_name`); a body that is not a closed JSON `NameBody`, or one without `expected_revision` (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -760,7 +858,7 @@
             }
           },
           "409": {
-            "description": "The name is taken in the zone (`name_taken`).",
+            "description": "The name is taken in the zone (`name_taken`); another revision than `expected_revision` (`revision_conflict`); a request id already used for another change (`request_id_reused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -797,7 +895,17 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -809,7 +917,9 @@
         },
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/RenameLedger",
         "x-grpc-body": {
-          "name": "name"
+          "name": "name",
+          "request_id": "request_id",
+          "expected_revision": "expected_revision"
         }
       },
       "delete": {
@@ -817,7 +927,7 @@
         "summary": "Delete a ledger",
         "responses": {
           "200": {
-            "description": "The ledger deleted.",
+            "description": "The ledger deleted: its tombstone keeps the id, never minted again, and what it held stays on disk until the garbage collection.",
             "content": {
               "application/json": {
                 "schema": {
@@ -864,7 +974,37 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another revision than `expected_revision` (`revision_conflict`); a request id already used for another change (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A missing, unknown, repeated or malformed query parameter (`invalid_argument`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -874,7 +1014,653 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/DeleteLedger"
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/DeleteLedger",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The delete's request id, repeated by a retry (WP-7.3a).",
+            "x-grpc-field": "request_id"
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "The revision the ledger was read at; another is `409 revision_conflict`.",
+            "x-grpc-field": "expected_revision"
+          }
+        ]
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/archive": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        },
+        {
+          "name": "ledger",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A ledger by name or by id.",
+          "x-grpc-field": "ledger"
+        }
+      ],
+      "post": {
+        "operationId": "archiveLedger",
+        "summary": "Archive a ledger",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The ledger, archived: read, pulled and mirrored, refusing a push.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ledger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A body that is not a closed JSON `StateBody`, or a revision of 0 (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another revision than `expected_revision` (`revision_conflict`); a request id already used for another change (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ArchiveLedger",
+        "x-grpc-body": {
+          "request_id": "request_id",
+          "expected_revision": "expected_revision"
+        }
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/restore": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        },
+        {
+          "name": "ledger",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A ledger by name or by id.",
+          "x-grpc-field": "ledger"
+        }
+      ],
+      "post": {
+        "operationId": "restoreLedger",
+        "summary": "Restore an archived ledger",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The ledger, active again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ledger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A body that is not a closed JSON `StateBody`, or a revision of 0 (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another revision than `expected_revision` (`revision_conflict`); a request id already used for another change (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The change's outcome is unknown, the store having failed during it, or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/RestoreLedger",
+        "x-grpc-body": {
+          "request_id": "request_id",
+          "expected_revision": "expected_revision"
+        }
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/export": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        },
+        {
+          "name": "ledger",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A ledger by name or by id.",
+          "x-grpc-field": "ledger"
+        }
+      ],
+      "post": {
+        "operationId": "exportLedger",
+        "summary": "Export a ledger",
+        "description": "Under `catalog.read` on the ledger (WP-7.10): the archive of a zone holding that ledger alone, a canonical CBOR map {1 manifest, 2 bundle} whose manifest is the COSE_Sign1 `permguard.ledger.export.v1` the Host signs under `host.operations`, binding the source Host, the refs, the counts and the bundle's digest; the bundle carries every object a ref reaches and every head statement as stored. Audited `ledger.exported`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The archive, base64url, and what its manifest binds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A body that is not a closed JSON `ExportBody` (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A ledger's store could not be read (`internal`), or the export was made and its audit record could not be written (`mutation_unrecorded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The archive would pass what one message carries, or the Host composes no `host.operations` signer for this plane (`unavailable`): nothing was signed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ExportLedger",
+        "x-grpc-body": {}
+      }
+    },
+    "/v1/zones/{zone}/export": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        }
+      ],
+      "post": {
+        "operationId": "exportZone",
+        "summary": "Export a zone",
+        "description": "Under `catalog.read` on the zone (WP-7.10): the archive of every ledger of the zone, as `exportLedger` answers one. Audited `zone.exported`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The archive, base64url, and what its manifest binds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A body that is not a closed JSON `ExportBody` (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A ledger's store could not be read (`internal`), or the export was made and its audit record could not be written (`mutation_unrecorded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The archive would pass what one message carries, or the Host composes no `host.operations` signer for this plane (`unavailable`): nothing was signed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ExportZone",
+        "x-grpc-body": {}
+      }
+    },
+    "/v1/zones/{zone}/import": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        }
+      ],
+      "post": {
+        "operationId": "importArchive",
+        "summary": "Import an archive",
+        "description": "Under `catalog.write` and `policy.push` on the zone (WP-7.10): an archive another Host exported, verified whole from that Host's keys bundle and identity pin before anything is written. `archive` keeps it verbatim as foreign evidence under a name, never served; `re-home` creates a new ledger per source ledger, its provenance in its record, its objects landed and no ref: it serves once an operator pushes a head. Nothing an import writes replaces anything.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the import landed: the archive kept, or the ledgers created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A body that is not a closed JSON `ImportBody`, a mode that is neither `archive` nor `re-home`, a value that is not base64url, or an archive that does not verify or hold together (`invalid_argument`): nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the zone's name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The zone keeps an archive or holds a ledger of a name the import would take (`name_taken`), or a request id already used for another change (`request_id_reused`). A re-home of several ledgers that meets a name taken after its check, or a crash, stops after some, never replacing anything: the same `request_id` resumes it within the replay window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store could not be written (`internal`), or the import was made and its audit record could not be written (`mutation_unrecorded`): retry with the same `request_id`, which resumes a re-home stopped after some ledgers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This plane composes no transfer of ledgers, or the Host composes no mutation transaction (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/Import",
+        "x-grpc-body": {
+          "request_id": "request_id",
+          "mode": "mode",
+          "name": "name",
+          "archive": "archive",
+          "bundle_manifest": "bundle",
+          "bundle_items": "bundle",
+          "pin": "pin"
+        }
       }
     }
   },
@@ -886,15 +1672,26 @@
           "name": {
             "type": "string",
             "description": "The zone or ledger name: a-z, 0-9, `-`, `_`; letter first, alphanumeric last, 3 to 63 characters; a GUID-shaped name is refused with `invalid_name`."
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The change's request id, chosen by the caller and repeated by a retry: the same id with the same body learns the first answer, with another body is `request_id_reused` (WP-7.3a)."
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "On a rename only, required there: the revision the record was read at; another is `409 revision_conflict`. A create naming one is `invalid_argument`."
           }
         },
         "required": [
-          "name"
+          "name",
+          "request_id"
         ],
         "additionalProperties": false,
-        "description": "The body of a create or a rename. Closed by contract, although the Rust type does not deny unknown members yet.",
+        "description": "The body of a create or a rename, closed: an unknown or repeated member is `invalid_argument`.",
         "x-grpc-message": null,
-        "x-grpc-note": "The body of a create or rename: gRPC carries `name` as a field of each request (CreateZoneRequest, RenameZoneRequest, CreateLedgerRequest, RenameLedgerRequest), no standalone message."
+        "x-grpc-note": "The body of a create or rename: gRPC carries `name`, `request_id` and, on a rename, `expected_revision` as fields of each request (CreateZoneRequest, RenameZoneRequest, CreateLedgerRequest, RenameLedgerRequest), no standalone message."
       },
       "Zone": {
         "type": "object",
@@ -920,13 +1717,20 @@
             "minimum": 0,
             "description": "Seconds since the Unix epoch.",
             "x-grpc-field": "updated_at"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1 at creation, one more at each change: what a rename or a delete names as `expected_revision` (WP-7.3a).",
+            "x-grpc-field": "revision"
           }
         },
         "required": [
           "id",
           "name",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "revision"
         ],
         "additionalProperties": false,
         "description": "One zone.",
@@ -974,6 +1778,26 @@
             },
             "description": "On `GET …/ledgers/{ledger}` only: the members this Host coordinates whose `policy.mirror` task covers the ledger, with what it observed of them (WP-4.4). Assignment and observations, not a guarantee that a member serves now; absent from every other answer.",
             "x-grpc-field": "serving_members"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1 at creation, one more at each change: what a rename or a delete names as `expected_revision` (WP-7.3a).",
+            "x-grpc-field": "revision"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "description": "`archived` is read, pulled and mirrored and refuses a push (`409 ledger_archived`); `active` takes pushes (WP-7.3b).",
+            "x-grpc-field": "state"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance",
+            "description": "A re-homed ledger's provenance, set at its creation and never changed; absent on a ledger created here (WP-7.10).",
+            "x-grpc-field": "provenance"
           }
         },
         "required": [
@@ -982,7 +1806,9 @@
           "name",
           "default_ref",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "revision",
+          "state"
         ],
         "additionalProperties": false,
         "description": "One ledger, inside one zone.",
@@ -1193,6 +2019,398 @@
         "additionalProperties": false,
         "description": "A member's last report of a ledger, member-reported (WP-4.4).",
         "x-grpc-message": "permguard.control.v1.ServingProgress"
+      },
+      "StateBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The change's request id, repeated by a retry (WP-7.3a)."
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The revision the ledger was read at; another is `409 revision_conflict`."
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision"
+        ],
+        "additionalProperties": false,
+        "description": "The body of an archive or a restore, closed.",
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC carries `request_id` and `expected_revision` as fields of ArchiveLedgerRequest and RestoreLedgerRequest, no standalone message."
+      },
+      "ExportBody": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "The body of an export: nothing, closed, so a cross-site form cannot make one.",
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC carries the zone and the ledger as fields of ExportLedgerRequest and ExportZoneRequest, no standalone message."
+      },
+      "ExportedLedger": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ledger's id at the source.",
+            "x-grpc-field": "id"
+          },
+          "name": {
+            "type": "string",
+            "description": "Its name.",
+            "x-grpc-field": "name"
+          },
+          "refs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many refs the manifest binds.",
+            "x-grpc-field": "refs"
+          },
+          "objects": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many objects of its closure the bundle carries.",
+            "x-grpc-field": "objects"
+          },
+          "statements": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many head statements the bundle carries.",
+            "x-grpc-field": "statements"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "refs",
+          "objects",
+          "statements"
+        ],
+        "additionalProperties": false,
+        "description": "One ledger an export holds.",
+        "x-grpc-message": "permguard.control.v1.ExportedLedger"
+      },
+      "ExportView": {
+        "type": "object",
+        "properties": {
+          "archive": {
+            "type": "string",
+            "description": "The archive: a canonical CBOR map {1 manifest, 2 bundle}, base64url without padding; bytes on gRPC.",
+            "x-grpc-field": "archive"
+          },
+          "zone_id": {
+            "type": "string",
+            "description": "The zone's id at the source.",
+            "x-grpc-field": "zone_id"
+          },
+          "bundle_digest": {
+            "type": "string",
+            "description": "`sha256:` over `permguard.ledger.export.bundle.v1\\n` and the bundle, as the manifest binds it.",
+            "x-grpc-field": "bundle_digest"
+          },
+          "bundle_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The bundle's size.",
+            "x-grpc-field": "bundle_bytes"
+          },
+          "exported_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds since the Unix epoch.",
+            "x-grpc-field": "exported_at"
+          },
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportedLedger"
+            },
+            "description": "Every ledger the archive holds.",
+            "x-grpc-field": "ledgers"
+          }
+        },
+        "required": [
+          "archive",
+          "zone_id",
+          "bundle_digest",
+          "bundle_bytes",
+          "exported_at",
+          "ledgers"
+        ],
+        "additionalProperties": false,
+        "description": "An export.",
+        "x-grpc-message": "permguard.control.v1.ExportResponse"
+      },
+      "BundleBody": {
+        "type": "object",
+        "properties": {
+          "manifest": {
+            "type": "string",
+            "description": "The keys bundle's manifest, base64url."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its items, base64url, every page joined."
+          }
+        },
+        "required": [
+          "manifest",
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "The source Host's keys bundle, as the Host API's key bundle answers it.",
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC carries the manifest and the items as `bundle_manifest` and `bundle_items` of ImportRequest, bytes."
+      },
+      "ImportBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The import's request id, repeated by a retry."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "archive",
+              "re-home"
+            ],
+            "description": "`archive` keeps the archive as foreign evidence; `re-home` creates new ledgers."
+          },
+          "name": {
+            "type": "string",
+            "description": "The archive's name, or the one ledger's of a one-ledger archive re-homed."
+          },
+          "archive": {
+            "type": "string",
+            "description": "The archive an export answered, base64url."
+          },
+          "bundle": {
+            "$ref": "#/components/schemas/BundleBody"
+          },
+          "pin": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The source Host's identity pin."
+          }
+        },
+        "required": [
+          "request_id",
+          "mode",
+          "archive",
+          "bundle",
+          "pin"
+        ],
+        "additionalProperties": false,
+        "description": "The body of an import, closed.",
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC carries these as fields of ImportRequest, the archive and the bundle's manifest and items as bytes."
+      },
+      "ArchivedLedger": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ledger's id at the source.",
+            "x-grpc-field": "id"
+          },
+          "name": {
+            "type": "string",
+            "description": "Its name.",
+            "x-grpc-field": "name"
+          },
+          "refs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many refs the manifest binds.",
+            "x-grpc-field": "refs"
+          },
+          "objects": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many objects of its closure the bundle carries.",
+            "x-grpc-field": "objects"
+          },
+          "statements": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many head statements the bundle carries.",
+            "x-grpc-field": "statements"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "refs",
+          "objects",
+          "statements"
+        ],
+        "additionalProperties": false,
+        "description": "One ledger an archive kept as evidence holds, by its source identity.",
+        "x-grpc-message": "permguard.control.v1.ExportedLedger"
+      },
+      "ArchiveRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The archive's id in the zone.",
+            "x-grpc-field": "id"
+          },
+          "name": {
+            "type": "string",
+            "description": "Its name, unique among the zone's archives.",
+            "x-grpc-field": "name"
+          },
+          "imported_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds since the Unix epoch.",
+            "x-grpc-field": "imported_at"
+          },
+          "manifest_digest": {
+            "type": "string",
+            "description": "`sha256:` over the manifest's COSE_Sign1 bytes.",
+            "x-grpc-field": "manifest_digest"
+          },
+          "source_host_id": {
+            "type": "string",
+            "description": "The source Host, 32 lowercase hex characters.",
+            "x-grpc-field": "source_host_id"
+          },
+          "source_zone_id": {
+            "type": "string",
+            "description": "The zone's id at the source.",
+            "x-grpc-field": "source_zone_id"
+          },
+          "source_zone_name": {
+            "type": "string",
+            "description": "Its name at the source.",
+            "x-grpc-field": "source_zone_name"
+          },
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArchivedLedger"
+            },
+            "description": "Every ledger the archive holds.",
+            "x-grpc-field": "ledgers"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "imported_at",
+          "manifest_digest",
+          "source_host_id",
+          "source_zone_id",
+          "source_zone_name",
+          "ledgers"
+        ],
+        "additionalProperties": false,
+        "description": "An archive kept as foreign evidence: never a ledger, never served.",
+        "x-grpc-message": "permguard.control.v1.ArchiveRecord"
+      },
+      "ImportView": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "archive",
+              "re-home"
+            ],
+            "description": "The import's mode.",
+            "x-grpc-field": "mode"
+          },
+          "manifest_digest": {
+            "type": "string",
+            "description": "`sha256:` over the manifest's COSE_Sign1 bytes.",
+            "x-grpc-field": "manifest_digest"
+          },
+          "source_host_id": {
+            "type": "string",
+            "description": "The source Host.",
+            "x-grpc-field": "source_host_id"
+          },
+          "source_zone_id": {
+            "type": "string",
+            "description": "The zone's id at the source.",
+            "x-grpc-field": "source_zone_id"
+          },
+          "archive": {
+            "$ref": "#/components/schemas/ArchiveRecord",
+            "description": "For an `archive` import: the archive kept.",
+            "x-grpc-field": "archive"
+          },
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ledger"
+            },
+            "description": "For a `re-home` import: the ledgers created, each with its provenance.",
+            "x-grpc-field": "ledgers"
+          }
+        },
+        "required": [
+          "mode",
+          "manifest_digest",
+          "source_host_id",
+          "source_zone_id",
+          "ledgers"
+        ],
+        "additionalProperties": false,
+        "description": "An import.",
+        "x-grpc-message": "permguard.control.v1.ImportResponse"
+      },
+      "Provenance": {
+        "type": "object",
+        "properties": {
+          "manifest_digest": {
+            "type": "string",
+            "description": "`sha256:` over the export manifest's COSE_Sign1 bytes.",
+            "x-grpc-field": "manifest_digest"
+          },
+          "source_host_id": {
+            "type": "string",
+            "description": "The source Host, 32 lowercase hex characters.",
+            "x-grpc-field": "source_host_id"
+          },
+          "source_zone_id": {
+            "type": "string",
+            "description": "The zone's id at the source.",
+            "x-grpc-field": "source_zone_id"
+          },
+          "source_ledger_id": {
+            "type": "string",
+            "description": "The ledger's id at the source.",
+            "x-grpc-field": "source_ledger_id"
+          },
+          "exported_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "When the source exported it, seconds since the Unix epoch.",
+            "x-grpc-field": "exported_at"
+          }
+        },
+        "required": [
+          "manifest_digest",
+          "source_host_id",
+          "source_zone_id",
+          "source_ledger_id",
+          "exported_at"
+        ],
+        "additionalProperties": false,
+        "description": "The export a re-homed ledger was imported from (WP-7.10).",
+        "x-grpc-message": "permguard.control.v1.LedgerProvenance"
       }
     }
   },

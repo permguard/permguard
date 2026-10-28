@@ -1485,6 +1485,92 @@ fn test_a_mirror_cannot_expire_before_it_is_stale() {
     );
 }
 
+/// WP-7.2d: the reap grace defaults to an hour and may be `0s`; the revocation objective is
+/// absent by default, and one the polling bound `interval × (1 + jitter)` cannot meet is refused.
+#[test]
+fn test_the_reap_grace_and_the_revocation_objective() {
+    let default = config(&[], &[], &[]);
+    assert_eq!(
+        default.mirrors_reap_grace(),
+        std::time::Duration::from_secs(3600)
+    );
+    assert_eq!(default.mirrors_revocation_objective(), None);
+    let zero = config(&[("PERMGUARD_MIRRORS_REAP_GRACE", "0s")], &[], &[]);
+    assert_eq!(zero.mirrors_reap_grace(), std::time::Duration::ZERO);
+
+    // 30s with a jitter of 0.1 polls within 33s: met at 33s, refused at 32s.
+    let met = config(
+        &[
+            ("PERMGUARD_MIRRORS_INTERVAL", "30s"),
+            ("PERMGUARD_MIRRORS_JITTER", "0.1"),
+            ("PERMGUARD_MIRRORS_REVOCATION_OBJECTIVE", "33s"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(
+        met.mirrors_revocation_objective(),
+        Some(std::time::Duration::from_secs(33))
+    );
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_file(pairs(&[
+            ("PERMGUARD_MIRRORS_INTERVAL", "30s"),
+            ("PERMGUARD_MIRRORS_JITTER", "0.1"),
+            ("PERMGUARD_MIRRORS_REVOCATION_OBJECTIVE", "32s"),
+        ])),
+    )
+    .expect_err("polling cannot meet it");
+    assert!(
+        format!("{refused:#}").contains("PERMGUARD_MIRRORS_REVOCATION_OBJECTIVE"),
+        "{refused:#}"
+    );
+    let none = config(
+        &[("PERMGUARD_MIRRORS_REVOCATION_OBJECTIVE", "0s")],
+        &[],
+        &[],
+    );
+    assert_eq!(
+        none.mirrors_revocation_objective(),
+        None,
+        "0s declares none"
+    );
+}
+
+/// WP-7.8: the backup labels are absent by default, read trimmed from the file's
+/// `operations.backup` or the environment, and refused when not a label.
+#[test]
+fn test_the_backup_labels_are_read_and_bounded() {
+    let unset = config(&[], &[], &[]);
+    assert_eq!(unset.backup_recovery_key_id(), None);
+    assert_eq!(unset.backup_encryption_profile(), None);
+    let set = config(
+        &[
+            (
+                "PERMGUARD_BACKUP_RECOVERY_KEY_ID",
+                " kms:backups/recovery-1 ",
+            ),
+            ("PERMGUARD_BACKUP_ENCRYPTION_PROFILE", "aes-256-gcm"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(set.backup_recovery_key_id(), Some("kms:backups/recovery-1"));
+    assert_eq!(set.backup_encryption_profile(), Some("aes-256-gcm"));
+    for refused in ["a key with spaces", "k\u{e8}y", &"x".repeat(257)] {
+        assert!(
+            Config::from_layers(
+                build_settings(),
+                NO_DECLARED,
+                Layers::new().with_file(pairs(&[("PERMGUARD_BACKUP_RECOVERY_KEY_ID", refused)])),
+            )
+            .is_err(),
+            "`{refused}`"
+        );
+    }
+}
+
 /// Durations are read in the units the settings are actually written in.
 ///
 /// The `ms` case is the one that mattered: [`DEFAULT_EVENTS_GROUP_COMMIT_DELAY`] is five
@@ -1529,6 +1615,97 @@ fn the_group_commit_default_can_be_written_down() {
         DEFAULT_EVENTS_GROUP_COMMIT_DELAY,
         "writing the default explicitly must mean the same as leaving it out"
     );
+}
+
+/// TL-5: the warm-state budgets and the replay plan default to the owner's numbers, read what is
+/// written, and refuse a bound of nothing and a zone or partition bound above the Host's.
+#[test]
+fn the_warm_budgets_and_the_replay_plan_are_read_and_bounded() {
+    let defaulted = config(&[], &[], &[]);
+    assert_eq!(defaulted.events_warm_bytes(), DEFAULT_EVENTS_WARM_BYTES);
+    assert_eq!(
+        defaulted.events_warm_zone_bytes(),
+        DEFAULT_EVENTS_WARM_BYTES / 4,
+        "a quarter of the Host's"
+    );
+    assert_eq!(
+        defaulted.events_warm_partition_bytes(),
+        DEFAULT_EVENTS_WARM_PARTITION_BYTES
+    );
+    assert_eq!(
+        defaulted.events_replay_max_records(),
+        DEFAULT_EVENTS_REPLAY_MAX_RECORDS
+    );
+    assert_eq!(
+        defaulted.events_replay_max_bytes(),
+        DEFAULT_EVENTS_REPLAY_MAX_BYTES
+    );
+    assert_eq!(
+        defaulted.events_replay_timeout(),
+        DEFAULT_EVENTS_REPLAY_TIMEOUT
+    );
+    assert_eq!(
+        defaulted.events_replay_concurrency(),
+        DEFAULT_EVENTS_REPLAY_CONCURRENCY
+    );
+    assert_eq!(defaulted.events_replay_prewarm(), 0, "prewarm is off");
+
+    let written = config(
+        &[
+            (SETTING_EVENTS_WARM_BYTES, "1G"),
+            (SETTING_EVENTS_WARM_ZONE_BYTES, "100M"),
+            (SETTING_EVENTS_WARM_PARTITION_BYTES, "10M"),
+            (SETTING_EVENTS_REPLAY_MAX_RECORDS, "10"),
+            (SETTING_EVENTS_REPLAY_MAX_BYTES, "1M"),
+            (SETTING_EVENTS_REPLAY_TIMEOUT, "250ms"),
+            (SETTING_EVENTS_REPLAY_CONCURRENCY, "1"),
+            (SETTING_EVENTS_REPLAY_PREWARM, "32"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(written.events_warm_bytes(), 1024 * 1024 * 1024);
+    assert_eq!(written.events_warm_zone_bytes(), 100 * 1024 * 1024);
+    assert_eq!(written.events_warm_partition_bytes(), 10 * 1024 * 1024);
+    assert_eq!(written.events_replay_max_records(), 10);
+    assert_eq!(written.events_replay_max_bytes(), 1024 * 1024);
+    assert_eq!(written.events_replay_timeout(), Duration::from_millis(250));
+    assert_eq!(written.events_replay_concurrency(), 1);
+    assert_eq!(written.events_replay_prewarm(), 32);
+
+    let refused = |pairs_written: &[(&str, &str)]| {
+        format!(
+            "{:#}",
+            Config::from_layers(
+                build_settings(),
+                NO_DECLARED,
+                Layers::new().with_file(pairs(pairs_written)),
+            )
+            .expect_err("refused")
+        )
+    };
+    for key in [
+        SETTING_EVENTS_WARM_BYTES,
+        SETTING_EVENTS_WARM_ZONE_BYTES,
+        SETTING_EVENTS_WARM_PARTITION_BYTES,
+        SETTING_EVENTS_REPLAY_MAX_RECORDS,
+        SETTING_EVENTS_REPLAY_MAX_BYTES,
+        SETTING_EVENTS_REPLAY_TIMEOUT,
+        SETTING_EVENTS_REPLAY_CONCURRENCY,
+    ] {
+        let message = refused(&[(key, "0")]);
+        assert!(message.contains(key), "{key}: {message}");
+    }
+    for key in [
+        SETTING_EVENTS_WARM_ZONE_BYTES,
+        SETTING_EVENTS_WARM_PARTITION_BYTES,
+    ] {
+        let message = refused(&[(SETTING_EVENTS_WARM_BYTES, "64M"), (key, "128M")]);
+        assert!(
+            message.contains("larger than the Host's"),
+            "{key}: {message}"
+        );
+    }
 }
 
 /// `ms` is tested before `s`, so a millisecond value is never read as a broken second value.
@@ -1947,7 +2124,6 @@ fn test_key_versions_the_coordinator_root_and_the_retired_commitment_key() {
 
     let logging = [
         (SETTING_LOG_ENABLED, "true"),
-        (SETTING_LOG_PDP_ID, "pdp-1"),
         (SETTING_AUDIT_PSEUDONYM_ENABLED, "true"),
         (SETTING_AUDIT_PSEUDONYM_KEY_REF, "audit-pseudonym"),
     ];
@@ -1972,6 +2148,203 @@ fn test_key_versions_the_coordinator_root_and_the_retired_commitment_key() {
     );
 }
 
+/// WP-6.6b: response signing follows the data plane's signing ring unless set, and its lifetime
+/// and skew are whole seconds within their bounds.
+#[test]
+fn response_signing_follows_the_ring_and_its_lifetime_is_bounded() {
+    use permguard_core::config::{
+        SETTING_DATA_KEYS_ENABLED, SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
+        SETTING_RESPONSE_SIGNING_ENABLED, SETTING_RESPONSE_SIGNING_VALIDITY,
+    };
+    let built = |extra: &[(&'static str, &'static str)]| {
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_file(pairs(extra)),
+        )
+    };
+    let with_ring = built(&[(SETTING_DATA_KEYS_ENABLED, "true")]).expect("builds");
+    assert!(with_ring.response_signing_enabled(), "on with the ring");
+    assert_eq!(with_ring.response_signing_validity().as_secs(), 300);
+    assert_eq!(with_ring.response_signing_clock_skew().as_secs(), 30);
+    let without = built(&[(SETTING_DATA_KEYS_ENABLED, "false")]).expect("builds");
+    assert!(!without.response_signing_enabled(), "off without it");
+    let off = built(&[
+        (SETTING_DATA_KEYS_ENABLED, "true"),
+        (SETTING_RESPONSE_SIGNING_ENABLED, "false"),
+    ])
+    .expect("builds");
+    assert!(!off.response_signing_enabled(), "off when said");
+    let set = built(&[
+        (SETTING_RESPONSE_SIGNING_VALIDITY, "1h"),
+        (SETTING_RESPONSE_SIGNING_CLOCK_SKEW, "5m"),
+    ])
+    .expect("the bounds themselves");
+    assert_eq!(set.response_signing_validity().as_secs(), 3600);
+    assert_eq!(set.response_signing_clock_skew().as_secs(), 300);
+    for (key, value) in [
+        (SETTING_RESPONSE_SIGNING_VALIDITY, "0s"),
+        (SETTING_RESPONSE_SIGNING_VALIDITY, "3601s"),
+        (SETTING_RESPONSE_SIGNING_VALIDITY, "1500ms"),
+        (SETTING_RESPONSE_SIGNING_CLOCK_SKEW, "301s"),
+        (SETTING_RESPONSE_SIGNING_CLOCK_SKEW, "0s"),
+    ] {
+        let error = built(&[(key, value)]).expect_err("out of bounds");
+        assert!(
+            format!("{error:#}").contains(key),
+            "{key}={value}: {error:#}"
+        );
+    }
+}
+
+/// WP-6.6: `required` answers only what it recorded, so permit sampling below one is refused
+/// under it and accepted with no log.
+#[test]
+fn permit_sampling_below_one_is_refused_under_the_required_mode() {
+    let logging = [
+        (SETTING_AUDIT_PSEUDONYM_ENABLED, "true"),
+        (SETTING_AUDIT_PSEUDONYM_KEY_REF, "audit-pseudonym"),
+        (SETTING_SECRETS_COORDINATOR_ROOT_REF, "coordinator-root"),
+    ];
+    let built = |extra: &[(&'static str, &'static str)]| {
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_file(pairs(&[&logging[..], extra].concat())),
+        )
+    };
+    let error = built(&[
+        (SETTING_LOG_MODE, "required"),
+        (permguard_core::config::SETTING_LOG_SAMPLE_PERMITS, "0.5"),
+    ])
+    .expect_err("an answer with no record, under the mode that promises one");
+    assert!(
+        format!("{error:#}").contains(permguard_core::config::SETTING_LOG_SAMPLE_PERMITS),
+        "{error:#}"
+    );
+    built(&[
+        (SETTING_LOG_MODE, "required"),
+        (permguard_core::config::SETTING_LOG_SAMPLE_PERMITS, "1.0"),
+    ])
+    .expect("every permit recorded");
+    built(&[
+        (SETTING_LOG_MODE, "disabled"),
+        (permguard_core::config::SETTING_LOG_SAMPLE_PERMITS, "0.5"),
+    ])
+    .expect("no log, nothing promised");
+}
+
+/// WP-6.1: `log.mode` is `required` or `disabled`, following `log.enabled` when unset and
+/// refusing an explicit `log.enabled` that contradicts it; `best-effort`, `on_full: open` and the
+/// plane's own name are refused, each naming what replaces it.
+#[test]
+fn the_decision_log_mode_is_required_or_disabled_and_the_plane_names_no_stream() {
+    let logging = [
+        (SETTING_AUDIT_PSEUDONYM_ENABLED, "true"),
+        (SETTING_AUDIT_PSEUDONYM_KEY_REF, "audit-pseudonym"),
+        (SETTING_SECRETS_COORDINATOR_ROOT_REF, "coordinator-root"),
+    ];
+    let built = |extra: &[(&'static str, &'static str)]| {
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_file(pairs(&[&logging[..], extra].concat())),
+        )
+    };
+
+    assert_eq!(
+        built(&[]).expect("off by default").log_mode(),
+        DecisionLogMode::Disabled
+    );
+    let on = built(&[(SETTING_LOG_ENABLED, "true")]).expect("on");
+    assert_eq!(on.log_mode(), DecisionLogMode::Required, "required when on");
+    assert_eq!(
+        on.effective_settings()
+            .into_iter()
+            .find(|setting| setting.key == SETTING_LOG_MODE)
+            .and_then(|setting| setting.value)
+            .as_deref(),
+        Some("required"),
+        "published as it is in force"
+    );
+    let required = built(&[(SETTING_LOG_MODE, "required")]).expect("required");
+    assert!(required.log_enabled(), "the mode turns the log on");
+    let disabled = built(&[(SETTING_LOG_MODE, "disabled")]).expect("disabled");
+    assert!(!disabled.log_enabled());
+    built(&[
+        (SETTING_LOG_MODE, "required"),
+        (SETTING_LOG_ENABLED, "true"),
+    ])
+    .expect("an agreeing `enabled`");
+    built(&[
+        (SETTING_LOG_ON_FULL, "closed"),
+        (SETTING_LOG_ENABLED, "true"),
+    ])
+    .expect("`closed` changes nothing");
+
+    // Two layers saying the log is on and off are refused like one.
+    for (file, environment) in [
+        (
+            (SETTING_LOG_MODE, "required"),
+            (SETTING_LOG_ENABLED, "false"),
+        ),
+        (
+            (SETTING_LOG_ENABLED, "false"),
+            (SETTING_LOG_MODE, "required"),
+        ),
+    ] {
+        let error = Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new()
+                .with_file(pairs(&[&logging[..], &[file]].concat()))
+                .with_environment(vec![(environment.0.to_owned(), environment.1.to_owned())]),
+        )
+        .expect_err("refused");
+        assert!(
+            format!("{error:#}").contains(SETTING_LOG_ENABLED),
+            "{error:#}"
+        );
+    }
+    let overridden = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new()
+            .with_file(pairs(
+                &[&logging[..], &[(SETTING_LOG_MODE, "disabled")]].concat(),
+            ))
+            .with_environment(vec![(SETTING_LOG_MODE.to_owned(), "required".to_owned())]),
+    )
+    .expect("a later layer's mode wins over an earlier one's");
+    assert_eq!(overridden.log_mode(), DecisionLogMode::Required);
+
+    for (refused, names) in [
+        (vec![(SETTING_LOG_MODE, "best-effort")], "loss"),
+        (vec![(SETTING_LOG_MODE, "open")], "required"),
+        (
+            vec![
+                (SETTING_LOG_MODE, "required"),
+                (SETTING_LOG_ENABLED, "false"),
+            ],
+            SETTING_LOG_ENABLED,
+        ),
+        (
+            vec![
+                (SETTING_LOG_MODE, "disabled"),
+                (SETTING_LOG_ENABLED, "true"),
+            ],
+            SETTING_LOG_ENABLED,
+        ),
+        (vec![(SETTING_LOG_ON_FULL, "open")], SETTING_LOG_MODE),
+        (vec![(SETTING_LOG_ON_FULL, "sometimes")], "closed"),
+        (vec![(SETTING_LOG_PDP_ID, "pdp-1")], "host_id"),
+        (vec![(SETTING_EVENTS_PRODUCER_ID, "plane-1")], "host_id"),
+    ] {
+        let error = format!("{:#}", built(&refused).expect_err("refused"));
+        assert!(error.contains(names), "{refused:?}: {error}");
+    }
+}
+
 /// A sealed `security` audit day is kept for ever unless the deployment sets its own retention,
 /// apart from the `access` and `operations` one (WP-3.7, owner decision of 2026-10-11).
 #[test]
@@ -1985,4 +2358,265 @@ fn test_security_audit_days_are_kept_for_ever_unless_their_retention_is_set() {
         Some(Duration::from_secs(365 * 86_400))
     );
     assert_eq!(set.audit_retention(), Duration::from_secs(90 * 86_400));
+}
+
+/// WP-5.9: a checkpoint may wait two hours for its acknowledgement unless the deployment says
+/// otherwise, from the environment or `operations.audit.checkpoints.max_lag`; never zero.
+#[test]
+fn test_a_checkpoint_waits_two_hours_for_its_acknowledgement_unless_told() {
+    assert_eq!(
+        config(&[], &[], &[]).audit_checkpoints_max_lag(),
+        Duration::from_secs(2 * 3600)
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_AUDIT_CHECKPOINTS_MAX_LAG, "30m")], &[]).audit_checkpoints_max_lag(),
+        Duration::from_secs(30 * 60)
+    );
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_environment(pairs(&[(SETTING_AUDIT_CHECKPOINTS_MAX_LAG, "0s")])),
+    )
+    .expect_err("zero");
+    assert!(
+        format!("{refused:#}").contains(SETTING_AUDIT_CHECKPOINTS_MAX_LAG),
+        "{refused:#}"
+    );
+    let file = permguard_core::ConfigFile::parse(
+        "operations:\n  audit:\n    checkpoints:\n      max_lag: 45m\n",
+    )
+    .expect("parses");
+    assert!(file.settings().contains(&(
+        SETTING_AUDIT_CHECKPOINTS_MAX_LAG.to_owned(),
+        "45m".to_owned()
+    )));
+}
+
+/// WP-5.5: a read cursor is valid 24 hours after it is issued unless the deployment says
+/// otherwise, from the environment or `operations.streams.cursor_ttl`.
+#[test]
+fn test_a_read_cursor_is_valid_a_day_unless_told() {
+    assert_eq!(
+        config(&[], &[], &[]).stream_cursor_ttl(),
+        Duration::from_secs(24 * 3600)
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_STREAM_CURSOR_TTL, "2h")], &[]).stream_cursor_ttl(),
+        Duration::from_secs(2 * 3600)
+    );
+    let file = permguard_core::ConfigFile::parse("operations:\n  streams:\n    cursor_ttl: 6h\n")
+        .expect("parses");
+    assert!(
+        file.settings()
+            .contains(&(SETTING_STREAM_CURSOR_TTL.to_owned(), "6h".to_owned()))
+    );
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_environment(pairs(&[(SETTING_STREAM_CURSOR_TTL, "366d")])),
+    )
+    .expect_err("past a year");
+    assert!(
+        format!("{refused:#}").contains("longest a read cursor"),
+        "{refused:#}"
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_STREAM_CURSOR_TTL, "365d")], &[]).stream_cursor_ttl(),
+        Duration::from_secs(365 * 24 * 3600)
+    );
+}
+
+/// WP-7.9b: a producer deletes what every required coordinator acknowledged at once unless the
+/// deployment declares how long to keep it, from the environment or
+/// `operations.streams.acknowledged_retention`; a malformed value is refused.
+#[test]
+fn test_acknowledged_batches_are_kept_only_as_long_as_declared() {
+    assert_eq!(
+        config(&[], &[], &[]).stream_acknowledged_retention(),
+        Duration::ZERO
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_STREAM_ACKNOWLEDGED_RETENTION, "0s")], &[])
+            .stream_acknowledged_retention(),
+        Duration::ZERO
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_STREAM_ACKNOWLEDGED_RETENTION, "26h")], &[])
+            .stream_acknowledged_retention(),
+        Duration::from_secs(26 * 3600)
+    );
+    let file = permguard_core::ConfigFile::parse(
+        "operations:\n  streams:\n    acknowledged_retention: 2d\n",
+    )
+    .expect("parses");
+    assert!(file.settings().contains(&(
+        SETTING_STREAM_ACKNOWLEDGED_RETENTION.to_owned(),
+        "2d".to_owned()
+    )));
+    assert!(
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new()
+                .with_environment(pairs(&[(SETTING_STREAM_ACKNOWLEDGED_RETENTION, "soon")])),
+        )
+        .is_err()
+    );
+}
+
+/// WP-7.11: a sweep removes at most ten thousand objects unless the deployment says otherwise,
+/// from the environment or `controlPlane.storage.gc.max_removals`; zero is refused.
+#[test]
+fn test_a_sweep_removes_a_bounded_number_of_objects() {
+    assert_eq!(config(&[], &[], &[]).gc_max_removals(), 10_000);
+    assert_eq!(
+        config(&[], &[(SETTING_GC_MAX_REMOVALS, "250")], &[]).gc_max_removals(),
+        250
+    );
+    assert!(
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_environment(pairs(&[(SETTING_GC_MAX_REMOVALS, "0")])),
+        )
+        .is_err()
+    );
+}
+
+/// WP-7.12: a transfer session stays open fifteen minutes by default, and at most an hour.
+#[test]
+fn test_a_transfer_session_is_open_at_most_an_hour() {
+    assert_eq!(
+        config(&[], &[], &[]).notp_transfer_ttl(),
+        Duration::from_secs(15 * 60)
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_NOTP_TRANSFER_TTL, "1h")], &[]).notp_transfer_ttl(),
+        Duration::from_secs(60 * 60)
+    );
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_environment(pairs(&[(SETTING_NOTP_TRANSFER_TTL, "61m")])),
+    )
+    .expect_err("past an hour");
+    assert!(
+        format!("{refused:#}").contains("longest a transfer session"),
+        "{refused:#}"
+    );
+}
+
+/// TS-3: evaluation runs on a pool of its own, sized to the Host's cores unless a deployment sets
+/// it, with a bounded queue in front; the storage pool keeps `max_blocking`.
+#[test]
+fn test_the_evaluation_pool_defaults_to_the_cores_and_is_configured_apart_from_storage() {
+    let defaults = config(&[], &[], &[]);
+    assert_eq!(defaults.evaluation_concurrency(), host_cores());
+    assert_eq!(defaults.evaluation_queue(), default_max_blocking());
+    assert_eq!(defaults.max_blocking(), default_max_blocking());
+
+    let set = config(
+        &[(SETTING_EVALUATION_CONCURRENCY, "3")],
+        &[(SETTING_EVALUATION_QUEUE, "0")],
+        &[],
+    );
+    assert_eq!(
+        (set.evaluation_concurrency(), set.evaluation_queue()),
+        (3, 0)
+    );
+    let effective: std::collections::BTreeMap<String, Option<String>> = set
+        .effective_settings()
+        .into_iter()
+        .map(|setting| (setting.key, setting.value))
+        .collect();
+    assert_eq!(
+        effective[SETTING_EVALUATION_CONCURRENCY].as_deref(),
+        Some("3")
+    );
+    // Unset, the value in force is the cores, rendered — never an empty setting.
+    let effective: std::collections::BTreeMap<String, Option<String>> = defaults
+        .effective_settings()
+        .into_iter()
+        .map(|setting| (setting.key, setting.value))
+        .collect();
+    assert_eq!(
+        effective[SETTING_EVALUATION_CONCURRENCY].as_deref(),
+        Some(host_cores().to_string().as_str())
+    );
+}
+
+#[test]
+fn test_an_evaluation_pool_of_no_slots_is_refused() {
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_environment(pairs(&[(SETTING_EVALUATION_CONCURRENCY, "0")])),
+    );
+    let error = refused.expect_err("zero slots decide nothing").to_string();
+    assert!(error.contains(SETTING_EVALUATION_CONCURRENCY), "{error}");
+}
+
+/// The two pools draw on the runtime's blocking threads: asking for more than it lends would let
+/// one wait invisibly behind the other.
+#[test]
+fn test_pools_that_together_exceed_the_runtimes_blocking_threads_are_refused() {
+    let fits = config(
+        &[
+            (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+            (SETTING_ASSURANCE_PROFILE, "development"),
+            (SETTING_EVALUATION_CONCURRENCY, "256"),
+            (SETTING_MAX_BLOCKING, "128"),
+        ],
+        &[],
+        &[],
+    );
+    assert!(fits.validate().is_ok());
+    let over = config(
+        &[
+            (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+            (SETTING_ASSURANCE_PROFILE, "development"),
+            (SETTING_EVALUATION_CONCURRENCY, "257"),
+            (SETTING_MAX_BLOCKING, "128"),
+        ],
+        &[],
+        &[],
+    );
+    let error = over
+        .validate()
+        .expect_err("more than the runtime lends")
+        .to_string();
+    assert!(
+        error.contains(&RUNTIME_BLOCKING_THREADS.to_string()),
+        "{error}"
+    );
+}
+
+/// TS-4: `host.operations` opens a decision stream's run while the decision waits, and the
+/// no-network invariant keeps a remote KMS off that path: with the decision log on, a `kms`
+/// `host.operations` is refused at start; with it off, the same custody is accepted.
+#[test]
+fn test_a_kms_operations_ring_is_refused_where_decisions_are_recorded() {
+    let kms = [
+        (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+        (SETTING_ASSURANCE_PROFILE, "development"),
+        (SETTING_KEYS_OPERATIONS_CUSTODY, "kms"),
+        (SETTING_KEYS_KMS_ADDRESS, "https://vault:8200"),
+        (SETTING_KEYS_KMS_TOKEN_REF, "vault-token"),
+    ];
+    let recording = [
+        (SETTING_LOG_ENABLED, "true"),
+        (SETTING_SECRETS_COORDINATOR_ROOT_REF, "zone-root"),
+        (SETTING_AUDIT_PSEUDONYM_ENABLED, "true"),
+        (SETTING_AUDIT_PSEUDONYM_KEY_REF, "audit-pseudonym"),
+    ];
+    let refused = config(&[&kms[..], &recording[..]].concat(), &[], &[])
+        .validate()
+        .expect_err("a remote KMS on the decision path")
+        .to_string();
+    assert!(refused.contains("decision path"), "{refused}");
+    let accepted = config(&kms, &[], &[]).validate();
+    assert!(
+        accepted.is_ok(),
+        "off the decision path the KMS keeps the ring: {accepted:?}"
+    );
 }

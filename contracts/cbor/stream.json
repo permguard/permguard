@@ -1,6 +1,6 @@
 {
-  "artifact": "The Host stream engine's records (WP-5.1): a run statement, the payload of a COSE_Sign1 permguard.stream.run.v1 under the producer's host.operations key, its fence and the end of a run, the group of records a RECORDS frame holds, and a producer stream's STATE",
-  "authority": "1-architecture/6-architecture-server-host-streams.md#run-lifecycle-and-fencing and #crash-safety, owner decisions of 2026-10-13 (labels, the key, the layout); crates/permguard-stream/src/engine/run.rs, state.rs and producer.rs",
+  "artifact": "The Host stream engine's records (WP-5.1): a run statement, the payload of a COSE_Sign1 permguard.stream.run.v1 under the producer's host.operations key, its fence and the end of a run, the group of records a RECORDS frame holds, a producer stream's STATE, its signer spans and pending cutover (WP-5.2), the ingest's message, answer, consumer STATE and fork mark (WP-5.3), and a producer's subscription and pruned mark (WP-5.4), and STATE's unshipped mark (WP-5.8), STATE's base, a run's prefix anchor and a consumer's admission frame (WP-5.6b)",
+  "authority": "1-architecture/6-architecture-server-host-streams.md#run-lifecycle-and-fencing and #crash-safety, owner decisions of 2026-10-13 (labels, the key, the layout); crates/permguard-stream/src/engine/run.rs, state.rs, producer.rs, producer/seal.rs, consumer.rs, ingest.rs and producer/ship.rs; owner decisions of 2026-10-15 and 2026-10-17 (the anchor's labels, STATE's base, the admission frame): anchor.rs, state.rs and consumer.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "run_statement": {
@@ -53,10 +53,146 @@
         { "label": 6, "name": "acknowledged_seq", "type": "uint", "occurs": "required", "note": "at most signed_seq (WP-5.4)" },
         { "label": 7, "name": "oldest_retained_seq", "type": "uint", "occurs": "required", "note": "WP-5.6" },
         { "label": 8, "name": "pending_successor", "type": "bytes", "occurs": "optional", "note": "the signed statement of a rollover begun and not yet written" },
-        { "label": 9, "name": "forked_at_seq", "type": "uint", "occurs": "optional", "note": "the sequence a consumer reported a fork at" }
+        { "label": 9, "name": "forked_at_seq", "type": "uint", "occurs": "optional", "note": "the sequence a consumer reported a fork at" },
+        { "label": 10, "name": "unshipped", "type": "map:unshipped_mark", "occurs": "optional", "note": "WP-5.8: what an incomplete drain left" },
+        { "label": 11, "name": "base", "type": "map:stream_base", "occurs": "optional", "note": "WP-5.6b: what the frames below the journal's BASE gave its open" }
+      ]
+    },
+    "unshipped_mark": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "tail", "type": "uint", "occurs": "required", "note": "the last sequence of the newest run left behind (WP-5.8, owner decisions of 2026-10-15)" },
+        { "label": 2, "name": "truncate_safe", "type": "uint", "occurs": "required", "note": "that run's least required acknowledgement when marked; below tail" },
+        { "label": 3, "name": "run", "type": "bytes", "occurs": "required", "note": "16 bytes: that run; the mark goes once it is acknowledged through tail and every run before it through its end" }
+      ]
+    },
+    "stream_signers": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "runs", "type": "array<map:run_signers>", "occurs": "required", "note": "each run that sealed a batch, once, in run order; at most 1 MiB in all (`MAX_SIGNERS_BYTES`)" }
+      ]
+    },
+    "run_signers": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "run_id", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 2, "name": "spans", "type": "array<map:signer_span>", "occurs": "required", "note": "at least one, each starting after the one before; only ever appended" }
+      ]
+    },
+    "signer_span": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "from_seq", "type": "uint", "occurs": "required", "note": "at least 1: the first sequence of the run the key signs" },
+        { "label": 2, "name": "kid", "type": "text", "occurs": "required", "note": "the key's id in the descriptor's ring" },
+        { "label": 3, "name": "jwk", "type": "text", "occurs": "required", "note": "the public key's JWK as RFC 8785 canonical JSON naming `kid`: a batch verifies after its key left the ring" }
+      ]
+    },
+    "stream_cutover": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "stream", "type": "text", "occurs": "required", "note": "`<plane>/<type>/<sha256(resource) hex>/<run hex>`" },
+        { "label": 2, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "16 bytes: the membership fencing the run" },
+        { "label": 3, "name": "ring", "type": "text", "occurs": "required", "note": "the descriptor's ring" },
+        { "label": 4, "name": "kid", "type": "text", "occurs": "required", "note": "the new key, which seals nothing before the cutover is journaled" },
+        { "label": 5, "name": "from_seq", "type": "uint", "occurs": "required", "note": "the first sequence the new key seals" },
+        { "label": 6, "name": "confirmed", "type": "bool", "occurs": "required", "note": "whether the coordinator journaled it (WP-4.5); at most 4096 bytes in all (`MAX_CUTOVER_BYTES`)" }
+      ]
+    },
+    "ship_message": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "batch", "type": "bytes", "occurs": "required", "note": "the sealed batch file, byte for byte" },
+        { "label": 2, "name": "statement", "type": "bytes", "occurs": "required", "note": "the member's ring statement, the membership registry's `ring_statement`; at most 448 KiB in all (`MAX_BODY_BYTES`)" }
+      ]
+    },
+    "ingest_answer": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "outcome", "type": "text", "occurs": "required", "note": "`ok`, `out_of_order`, `fork`, `unverifiable`, `gone` or `closed`" },
+        { "label": 2, "name": "acked", "type": "uint", "occurs": "required", "note": "the highest contiguous sequence the consumer holds of the batch's run" },
+        { "label": 3, "name": "expected_seq", "type": "uint", "occurs": "optional", "note": "with `out_of_order` only: the sequence to resend from; at most 64 bytes in all" }
+      ]
+    },
+    "consumer_state": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "acked", "type": "uint", "occurs": "required", "note": "the highest contiguous sequence held; the records are its authority" },
+        { "label": 2, "name": "oldest_retained", "type": "uint", "occurs": "required", "note": "at least 1: below it a range is `gone` (WP-5.6)" },
+        { "label": 3, "name": "opened", "type": "uint", "occurs": "optional", "note": "microseconds since the epoch the consumer first admitted the run: the order the public reads follow a producer's runs in (WP-6.1b); absent in a STATE written before it" }
+      ]
+    },
+    "fork_mark": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "run", "type": "bytes", "occurs": "required", "note": "16 bytes: the run the fork was found in" },
+        { "label": 2, "name": "at_seq", "type": "uint", "occurs": "required", "note": "the first sequence that differed" }
+      ]
+    },
+    "subscription": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 2, "name": "task_id", "type": "text", "occurs": "required", "note": "the membership's ship task: lowercase letters, digits and inner hyphens" },
+        { "label": 3, "name": "required", "type": "bool", "occurs": "required", "note": "from the manifest's task: only a required subscription blocks deletion" },
+        { "label": 4, "name": "runs", "type": "array<map:subscription_run>", "occurs": "required", "note": "the acknowledgement per run, each run once" },
+        { "label": 5, "name": "state", "type": "uint", "occurs": "required", "note": "0 active, 1 paused on `unverifiable`, 2 stopped" },
+        { "label": 6, "name": "paused_epoch", "type": "uint", "occurs": "optional", "note": "with state 1 only: the membership epoch it paused at" },
+        { "label": 7, "name": "reason", "type": "text", "occurs": "optional", "note": "with state 2 only: `fork`, `gone`, `closed`, `ack_ahead`, `ack_behind`, `unshippable` or `producer_gap`; at most 64 KiB in all" }
+      ]
+    },
+    "subscription_run": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "run", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 2, "name": "acked", "type": "uint", "occurs": "required", "note": "the highest contiguous sequence the consumer acknowledged" },
+        { "label": 3, "name": "coordinator_boot_id", "type": "bytes", "occurs": "optional", "note": "16 bytes: the coordinator incarnation the acknowledgement was last answered under (WP-7.9b); absent on a run answered before" },
+        { "label": 4, "name": "points", "type": "array<map:acknowledgement_point>", "occurs": "optional", "note": "only under an acknowledged retention (WP-7.9b): when the acknowledgement reached each kept point, oldest first, both rising" }
+      ]
+    },
+    "acknowledgement_point": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "acked", "type": "uint", "occurs": "required", "note": "the acknowledgement at that point" },
+        { "label": 2, "name": "at", "type": "uint", "occurs": "required", "note": "when the producer recorded it, seconds since the epoch, UTC" }
+      ]
+    },
+    "pruned_mark": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "through", "type": "uint", "occurs": "required", "note": "the last sequence of a run's batch files deleted after every required subscription acknowledged them" }
+      ]
+    },
+    "stream_base": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "first_index", "type": "uint", "occurs": "required", "note": "the journal index the deleted prefix ends before; at least 1" },
+        { "label": 2, "name": "statement", "type": "bytes", "occurs": "required", "note": "the signed statement of the run open there, as its RUN_OPEN frame held it; at most 4096 bytes" },
+        { "label": 3, "name": "last_seq", "type": "uint", "occurs": "required", "note": "the last sequence that run reached below first_index, 0 for none" },
+        { "label": 4, "name": "last_digest", "type": "bytes", "occurs": "required", "note": "32 bytes: the record digest at last_seq, zeros for none" },
+        { "label": 5, "name": "ended", "type": "bool", "occurs": "required", "note": "whether that run had ended below first_index" }
+      ]
+    },
+    "stream_anchor": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "resource", "type": "text", "occurs": "required", "note": "the stream's canonical resource" },
+        { "label": 2, "name": "run", "type": "bytes", "occurs": "required", "note": "16 bytes: the run whose prefix went" },
+        { "label": 3, "name": "low_watermark", "type": "uint", "occurs": "required", "note": "the first sequence still kept: through + 1" },
+        { "label": 4, "name": "through", "type": "uint", "occurs": "required", "note": "the last sequence deleted, the end of a whole batch; at least 1" },
+        { "label": 5, "name": "terminal_head", "type": "digest", "occurs": "required", "note": "the record digest at through, as a batch envelope spells it" },
+        { "label": 6, "name": "covering", "type": "array<digest>", "occurs": "required", "note": "the SHA-256 of every deleted batch file's envelope, in sequence order, cumulative from sequence 1" },
+        { "label": 7, "name": "signers", "type": "array<map:signer_span>", "occurs": "required", "note": "the run's signer spans covering sequences 1 through through, the first from 1" },
+        { "label": 8, "name": "checkpoint", "type": "bytes", "occurs": "required", "note": "the producer-signed batch file ending at through, kept whole; the anchor is at most 32 MiB" }
+      ]
+    },
+    "admitted": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "through", "type": "uint", "occurs": "required", "note": "the run's acked sequence once the batch was admitted" },
+        { "label": 2, "name": "at", "type": "uint", "occurs": "required", "note": "the consumer's own time of the admission, in seconds: what its retention counts from" }
       ]
     }
   },
   "arrays": {},
-  "root": ["run_statement", "run_end", "records_group", "stream_state"]
+  "root": ["run_statement", "run_end", "records_group", "stream_state", "stream_signers", "stream_cutover", "ship_message", "ingest_answer", "consumer_state", "fork_mark", "subscription", "pruned_mark", "stream_anchor", "admitted"]
 }

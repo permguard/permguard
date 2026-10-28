@@ -49,6 +49,35 @@ fn strings(digests: Vec<Digest>) -> Vec<String> {
     digests.into_iter().map(|d| d.to_string()).collect()
 }
 
+/// The ref state a client names, from its proto shape.
+fn expected(
+    message: Option<&crate::v1::ExpectedRef>,
+) -> Result<Option<notp::ExpectedRef>, ApiError> {
+    message
+        .map(|expected| {
+            Ok(notp::ExpectedRef {
+                counter: expected.counter,
+                digest: digest(&expected.digest)?,
+            })
+        })
+        .transpose()
+}
+
+/// A transfer session id: exactly 16 bytes.
+fn transfer_id(bytes: &[u8]) -> Result<notp::TransferId, ApiError> {
+    bytes
+        .try_into()
+        .map_err(|_| bad("a transfer id is 16 bytes"))
+}
+
+/// A request id, under the grammar the CBOR codec enforces.
+fn request_id(text: &str) -> Result<String, ApiError> {
+    if !notp::is_request_id(text) {
+        return Err(bad("a request id is printable text of 1 to 128 bytes"));
+    }
+    Ok(text.to_owned())
+}
+
 /// gRPC carries an absent string as empty; the domain speaks `Option`.
 fn optional_text(value: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_owned())
@@ -67,9 +96,10 @@ impl GitLikeStore for NotpFacade {
             .await
         {
             Ok(answered) => Ok(Response::new(GetRefResponse {
-                head: answered.head,
+                head: answered.head.to_string(),
                 counter: answered.counter,
                 statement: answered.statement,
+                ref_digest: answered.ref_digest.to_string(),
             })),
             Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
         }
@@ -85,7 +115,7 @@ impl GitLikeStore for NotpFacade {
             let domain = notp::NegotiatePushRequest {
                 r#ref: message.r#ref.clone(),
                 new_head: digest(&message.new_head)?,
-                expected_old: optional_digest(&message.expected_old)?,
+                expected_ref: expected(message.expected_ref.as_ref())?,
                 closure: message
                     .closure
                     .iter()
@@ -96,6 +126,7 @@ impl GitLikeStore for NotpFacade {
                         })
                     })
                     .collect::<Result<Vec<_>, ApiError>>()?,
+                request_id: request_id(&message.request_id)?,
             };
             self.negotiate_push(&actor, &message.zone, &message.ledger, &domain)
                 .await
@@ -107,6 +138,9 @@ impl GitLikeStore for NotpFacade {
                 max_batch_bytes: response.max_batch_bytes,
                 max_batch_objects: response.max_batch_objects,
                 compression: response.compression.unwrap_or_default(),
+                transfer_id: response.transfer_id.to_vec(),
+                reservation: response.reservation,
+                expiry: response.expiry,
             })),
             Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
         }
@@ -118,16 +152,20 @@ impl GitLikeStore for NotpFacade {
     ) -> Result<Response<UploadObjectsResponse>, Status> {
         let actor = permguard_transport::actor_of(request.extensions());
         let message = request.into_inner();
-        let domain = notp::UploadObjectsRequest {
-            objects: message.objects,
-            compression: optional_text(&message.compression),
-        };
-        match self
-            .upload(&actor, &message.zone, &message.ledger, &domain)
-            .await
-        {
+        let outcome = async {
+            let domain = notp::UploadObjectsRequest {
+                transfer_id: transfer_id(&message.transfer_id)?,
+                objects: message.objects,
+                compression: optional_text(&message.compression),
+            };
+            self.upload(&actor, &message.zone, &message.ledger, &domain)
+                .await
+        }
+        .await;
+        match outcome {
             Ok(response) => Ok(Response::new(UploadObjectsResponse {
                 received: strings(response.received),
+                remaining: response.remaining,
             })),
             Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
         }
@@ -143,7 +181,9 @@ impl GitLikeStore for NotpFacade {
             let domain = notp::CommitPushRequest {
                 r#ref: message.r#ref.clone(),
                 new_head: digest(&message.new_head)?,
-                expected_old: optional_digest(&message.expected_old)?,
+                expected_ref: expected(message.expected_ref.as_ref())?,
+                transfer_id: transfer_id(&message.transfer_id)?,
+                request_id: request_id(&message.request_id)?,
             };
             self.commit_push(&actor, &message.zone, &message.ledger, &domain)
                 .await
@@ -154,6 +194,7 @@ impl GitLikeStore for NotpFacade {
                 head: response.head.to_string(),
                 counter: response.counter,
                 statement: response.statement,
+                ref_digest: response.ref_digest.to_string(),
             })),
             Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
         }
@@ -170,6 +211,7 @@ impl GitLikeStore for NotpFacade {
                 r#ref: message.r#ref.clone(),
                 at: optional_digest(&message.at)?,
                 have: digests(&message.have)?,
+                checkpoint: expected(message.checkpoint.as_ref())?,
             };
             self.negotiate_pull(&actor, &message.zone, &message.ledger, &domain)
                 .await
@@ -184,6 +226,9 @@ impl GitLikeStore for NotpFacade {
                 max_batch_bytes: response.max_batch_bytes,
                 max_batch_objects: response.max_batch_objects,
                 compression: response.compression.unwrap_or_default(),
+                transfer_id: response.transfer_id.to_vec(),
+                ref_digest: response.ref_digest.to_string(),
+                expiry: response.expiry,
             })),
             Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
         }
@@ -199,6 +244,7 @@ impl GitLikeStore for NotpFacade {
             let domain = notp::FetchObjectsRequest {
                 digests: digests(&message.digests)?,
                 accept_compression: optional_text(&message.accept_compression),
+                transfer_id: transfer_id(&message.transfer_id)?,
             };
             self.fetch(&actor, &message.zone, &message.ledger, &domain)
                 .await
@@ -208,6 +254,7 @@ impl GitLikeStore for NotpFacade {
             Ok(response) => Ok(Response::new(FetchObjectsResponse {
                 objects: response.objects,
                 compression: response.compression.unwrap_or_default(),
+                expiry: response.expiry,
             })),
             Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
         }
@@ -263,6 +310,7 @@ mod tests {
             Arc::new(FileCatalog::new(root.join("zones"))),
             root.join("zones"),
             keys,
+            [0x11; 16],
             EngineLimits {
                 max_batch_bytes: 8 * 1024 * 1024,
                 max_batch_objects: 1000,
@@ -270,6 +318,12 @@ mod tests {
                 max_push_bytes: 64 * 1024 * 1024,
                 ledger_quota_bytes: 256 * 1024 * 1024,
             },
+            crate::engine::TransferPolicy {
+                ttl: Duration::from_secs(900),
+                grace: Duration::from_secs(3600),
+            },
+            crate::handles::ref_mutations_for_tests(&root.join("volume")),
+            None,
             permguard_languages::registry::Enabled::everything(),
             true,
             None,
@@ -310,6 +364,7 @@ mod tests {
             r#ref: "main".to_owned(),
             at: String::new(),
             have: Vec::new(),
+            checkpoint: None,
         });
         request
             .extensions_mut()

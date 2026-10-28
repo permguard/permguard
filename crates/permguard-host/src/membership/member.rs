@@ -40,6 +40,22 @@ use crate::session::Refusal;
 use crate::session::record::Operation;
 use crate::time::TimeGuard;
 
+/// The progress state of a stream an incomplete drain left behind (WP-5.8).
+pub const UNSHIPPED: &str = "unshipped";
+/// The progress state of a stream whose drain mark went: its tail is shipped (WP-5.8).
+pub const SHIPPED: &str = "shipped";
+
+/// The progress reports this process sent: the coordinator numbers them per incarnation.
+static REPORT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The next progress report's number in this incarnation, shared by every task this process
+/// reports on (WP-7.2d).
+pub(crate) fn next_report_seq() -> u64 {
+    REPORT_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+}
+
+pub mod import;
+
 /// The coordinator a member reaches: where, and the pin it is accepted by.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
@@ -85,6 +101,14 @@ pub struct TaskOpened {
     pub channel: Box<dyn TaskChannel>,
 }
 
+/// A peer whose identity and connection-bound proof were verified on one live PeerChannel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProvedPeer {
+    pub host_id: [u8; 16],
+    pub epoch: u64,
+    pub fingerprint: String,
+}
+
 /// The connection of an open task session: one message, one answer, in order; closed when
 /// dropped.
 pub trait TaskChannel: Send {
@@ -97,6 +121,16 @@ pub trait TaskChannel: Send {
 
 /// Opens one session to a coordinator, sends one request, reads one answer.
 pub trait Connector: Send + Sync {
+    /// Opens a PeerChannel, completes both connection-bound proofs, then closes it without
+    /// sending a membership or task request.
+    fn prove(&self, target: Target) -> BoxFuture<'_, Result<ProvedPeer, Refusal>> {
+        let _ = target;
+        Box::pin(std::future::ready(Err(Refusal {
+            code: permguard_core::codes::host::PEER_CLIENT_UNCONFIGURED,
+            reason: "this connector proves no peer session".to_owned(),
+        })))
+    }
+
     fn exchange(
         &self,
         target: Target,
@@ -143,6 +177,11 @@ pub struct MemberTask {
 }
 
 impl MemberTask {
+    /// The coordinator as the session proved it.
+    pub fn peer(&self) -> &crate::identity::Verified {
+        &self.peer
+    }
+
     /// The session's connection, for tests that send what a member never would.
     #[cfg(test)]
     pub(crate) fn channel_for_tests(&mut self) -> &mut dyn TaskChannel {
@@ -275,6 +314,12 @@ pub struct Member<'a> {
     pub connector: &'a dyn Connector,
     pub declared_assurance: AssuranceProfile,
     pub time: &'a TimeGuard,
+    /// The streams this Host signs, as a re-pin cuts them over (WP-5.2); without an engine it
+    /// signs none.
+    pub streams: Option<&'a dyn crate::composition::StreamCutovers>,
+    /// The streams this Host ships, as its ship tasks deliver them (WP-5.4); without an engine
+    /// it ships none.
+    pub shipping: Option<&'a dyn crate::composition::StreamShipping>,
 }
 
 fn remote(refusal: Refusal) -> MembershipError {
@@ -311,11 +356,13 @@ impl Member<'_> {
     /// Joins a coordinator: enrolls on a session to it, then records the membership `pending`.
     pub async fn join(&self, initiator: Initiator, join: Join) -> Result<Held, MembershipError> {
         // A join retried after it was recorded answers what it recorded: the token is spent, and
-        // the coordinator would refuse it.
+        // the coordinator would refuse it. Only this identity's: after a reset the membership an
+        // old identity joined is never the new one's (WP-4.9).
         if let Some((_, held)) = self.store.memberships().into_iter().find(|(_, held)| {
             held.role == Role::Member
                 && held.request.invite_id == join.invite_id
                 && held.request.coordinator.host_id == join.coordinator.host_id
+                && held.request.member.host_id == self.identity.host_id()
         }) {
             let same = held.request.coordinator.fingerprint == join.coordinator.fingerprint
                 && held.request.coordinator_address.as_deref()
@@ -548,6 +595,7 @@ impl Member<'_> {
                 ));
             }
         }
+        self.subscribe_shipping();
         // The receipt of a revocation is the coordinator's manifest that ended the membership:
         // revoked, or rejected while it was pending, or expired.
         if action == Action::Revoke
@@ -628,7 +676,24 @@ impl Member<'_> {
                 )
                 .map_err(engine)?;
         }
+        self.subscribe_shipping();
         Ok(())
+    }
+
+    /// Registers the subscriptions of the manifests just accepted (TD-3): a manifest that made a
+    /// ship task live has its fence remembered now, so a record the plane writes before the next
+    /// pass opens its genesis run under that fence and is shipped, rather than landing in an
+    /// unfenced run the pass then ends with nothing to ship it. Logged, never refused: the pass
+    /// registers them again.
+    fn subscribe_shipping(&self) {
+        if let Err(error) = self.register_subscriptions() {
+            tracing::warn!(
+                event.name = "host.membership.subscribe_failed",
+                component = "host",
+                error = %error,
+                "the ship tasks of an accepted manifest could not be registered: the next pass does"
+            );
+        }
     }
 
     /// Re-pins this Host's `ring` on the membership of `task` (WP-4.5): the statement of the
@@ -732,8 +797,10 @@ impl Member<'_> {
     }
 
     /// Ends the grace of every ring of this Host that an active membership it is a member of keeps
-    /// retiring, once the ring activated its new key: a stream-less cutover, this Host signing no
-    /// stream before WP-5.x (owner decision, after the review). Answers how many were sent.
+    /// retiring, once the ring activated its new key: the cutover names each stream the
+    /// membership fences under the ring from the first sequence the new key seals, and is
+    /// stream-less only when this Host signs none (WP-5.2, owner decision). A stream engine that
+    /// cannot say which streams it signs sends nothing. Answers how many rings were cut over.
     pub async fn cutover_due(&self, initiator: Initiator) -> usize {
         let mut done = 0;
         for (id, held) in self.store.memberships() {
@@ -751,33 +818,67 @@ impl Member<'_> {
                 let retiring = manifest.ring_pins.iter().any(|other| {
                     other.owner == Role::Member && other.ring == pin.ring && other.retiring
                 });
+                let Some(ring) = self.rings.iter().find(|ring| ring.id() == pin.ring) else {
+                    continue;
+                };
                 // Activated: the ring holds no key waiting to take over.
-                let activated = self
-                    .rings
-                    .iter()
-                    .find(|ring| ring.id() == pin.ring)
-                    .and_then(|ring| ring.view().ok())
-                    .is_some_and(|view| {
-                        view.keys
-                            .iter()
-                            .all(|key| key.state != crate::keys::record::State::Prepublished)
-                    });
+                let activated = ring.view().ok().is_some_and(|view| {
+                    view.keys
+                        .iter()
+                        .all(|key| key.state != crate::keys::record::State::Prepublished)
+                });
                 if !retiring || !activated {
                     continue;
                 }
+                let streams = match self.due_streams(&id, ring) {
+                    Ok(streams) => streams,
+                    Err(error) => {
+                        tracing::warn!(
+                            event.name = "host.membership.cutover_failed",
+                            component = "host",
+                            membership_id = %uuid_text(&id),
+                            ring = %pin.ring,
+                            error = %error,
+                            "a ring's streams are unknown: no cutover is sent, the next pass tries again"
+                        );
+                        continue;
+                    }
+                };
                 let sent = async {
                     let mut session = self.any_session(&initiator, &id, &manifest.tasks).await?;
-                    session
-                        .cutover(&Cutover {
-                            ring: pin.ring.clone(),
-                            epoch: pin.epoch,
-                            streams: Vec::new(),
-                        })
-                        .await
+                    let mut chunks: Vec<&[(String, u64)]> =
+                        streams.1.chunks(super::record::MAX_STREAMS).collect();
+                    if chunks.is_empty() {
+                        chunks.push(&[]);
+                    }
+                    for chunk in chunks {
+                        session
+                            .cutover(&Cutover {
+                                ring: pin.ring.clone(),
+                                epoch: pin.epoch,
+                                streams: chunk.to_vec(),
+                            })
+                            .await?;
+                    }
+                    Ok::<_, MembershipError>(())
                 }
                 .await;
                 match sent {
-                    Ok(()) => done += 1,
+                    Ok(()) => {
+                        done += 1;
+                        if let (Some(engine), false) = (self.streams, streams.1.is_empty())
+                            && let Err(error) = engine.journaled(&pin.ring, &streams.0, &streams.1)
+                        {
+                            tracing::warn!(
+                                event.name = "host.membership.cutover_failed",
+                                component = "host",
+                                membership_id = %uuid_text(&id),
+                                ring = %pin.ring,
+                                error = %error,
+                                "a journaled cutover could not be recorded: the next pass sends it again"
+                            );
+                        }
+                    }
                     Err(error) => tracing::warn!(
                         event.name = "host.membership.cutover_failed",
                         component = "host",
@@ -790,6 +891,293 @@ impl Member<'_> {
             }
         }
         done
+    }
+
+    /// Ships what every active ship task of this Host's memberships has due (WP-5.4, owner
+    /// decision): per stream, a session on its resource, batches until the engine has none or an
+    /// answer stops it. A store the coordinator cannot reach now backs the subscription off.
+    /// Answers how many batches were answered.
+    /// Keeps a subscription for every ship task of every membership this Host is a member of
+    /// and that has not ended, without shipping (WP-5.8, after the review): what a drain judges
+    /// against, so a membership no pass reached yet is never taken as owed nothing.
+    pub fn register_subscriptions(&self) -> Result<(), String> {
+        let Some(engine) = self.shipping else {
+            return Ok(());
+        };
+        for (id, held) in self.store.memberships() {
+            if held.role != Role::Member
+                || matches!(
+                    held.status,
+                    Status::Revoked | Status::Rejected | Status::Expired | Status::Orphaned
+                )
+            {
+                continue;
+            }
+            let Some((manifest, ..)) = &held.manifest else {
+                continue;
+            };
+            for task in manifest.tasks.iter().filter(|task| {
+                matches!(
+                    task.task_type,
+                    super::record::TaskType::DecisionsShip | super::record::TaskType::EventsShip
+                )
+            }) {
+                engine.due(&crate::composition::Subscribed {
+                    membership_id: id,
+                    task_type: task.task_type,
+                    task_id: &task.task_id,
+                    required: task.required,
+                    epoch: manifest.epoch,
+                    selector: &task.selector,
+                    coordinator_boot_id: None,
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn ship_due(&self, initiator: Initiator) -> usize {
+        let Some(engine) = self.shipping else {
+            return 0;
+        };
+        let mut shipped = 0;
+        for (id, held) in self.store.memberships() {
+            if held.role != Role::Member {
+                continue;
+            }
+            // A membership that ended, a signed change, leaves its subscriptions: they stop
+            // blocking deletion (after the review). A suspended one keeps them, to resume.
+            if matches!(
+                held.status,
+                Status::Revoked | Status::Rejected | Status::Expired | Status::Orphaned
+            ) {
+                if let Err(error) = engine.retain(&id, &[]) {
+                    tracing::warn!(
+                        event.name = "host.membership.ship_failed",
+                        component = "host",
+                        membership_id = %uuid_text(&id),
+                        error = %error,
+                        "the subscriptions of an ended membership could not be dropped"
+                    );
+                }
+                continue;
+            }
+            if held.status != Status::Active {
+                continue;
+            }
+            let Some((manifest, ..)) = &held.manifest else {
+                continue;
+            };
+            let tasks: Vec<&super::record::Task> = manifest
+                .tasks
+                .iter()
+                .filter(|task| {
+                    matches!(
+                        task.task_type,
+                        super::record::TaskType::DecisionsShip
+                            | super::record::TaskType::EventsShip
+                    )
+                })
+                .collect();
+            let ids: Vec<String> = tasks.iter().map(|task| task.task_id.clone()).collect();
+            if let Err(error) = engine.retain(&id, &ids) {
+                tracing::warn!(
+                    event.name = "host.membership.ship_failed",
+                    component = "host",
+                    membership_id = %uuid_text(&id),
+                    error = %error,
+                    "the subscriptions of a membership could not be kept to its manifest"
+                );
+            }
+            for task in tasks {
+                let subscription = crate::composition::Subscribed {
+                    membership_id: id,
+                    task_type: task.task_type,
+                    task_id: &task.task_id,
+                    required: task.required,
+                    epoch: manifest.epoch,
+                    selector: &task.selector,
+                    coordinator_boot_id: None,
+                };
+                let resources = match engine.due(&subscription) {
+                    Ok(resources) => resources,
+                    Err(error) => {
+                        tracing::warn!(
+                            event.name = "host.membership.ship_failed",
+                            component = "host",
+                            membership_id = %uuid_text(&id),
+                            task = %task.task_id,
+                            error = %error,
+                            "a ship task's streams could not be read: the next pass tries again"
+                        );
+                        continue;
+                    }
+                };
+                for resource in resources {
+                    match self
+                        .ship_stream(&initiator, &subscription, &resource, engine)
+                        .await
+                    {
+                        Ok(count) => shipped += count,
+                        Err(error) => tracing::warn!(
+                            event.name = "host.membership.ship_failed",
+                            component = "host",
+                            membership_id = %uuid_text(&id),
+                            task = %task.task_id,
+                            error = %error,
+                            "a stream could not be shipped: the next pass tries again"
+                        ),
+                    }
+                }
+            }
+        }
+        shipped
+    }
+
+    /// Ships `resource`'s stream on one session of `subscription`'s task.
+    async fn ship_stream(
+        &self,
+        initiator: &Initiator,
+        subscription: &crate::composition::Subscribed<'_>,
+        resource: &str,
+        engine: &dyn crate::composition::StreamShipping,
+    ) -> Result<usize, MembershipError> {
+        let storage = MembershipError::Storage;
+        let mut session = self
+            .open_task(
+                initiator.clone(),
+                &subscription.membership_id,
+                subscription.task_id,
+                resource,
+                Vec::new(),
+            )
+            .await?;
+        let max_bytes = session.lease.limits.max_body_bytes;
+        // The lease's epoch: a revision the session took is the one a pause is set at (after the
+        // review); its coordinator boot id tells a restored coordinator (WP-7.9b).
+        let subscription = &crate::composition::Subscribed {
+            epoch: session.lease.epoch,
+            coordinator_boot_id: Some(session.lease.coordinator_boot_id),
+            ..*subscription
+        };
+        // A stream an incomplete drain left behind is reported to the coordinator (WP-5.8).
+        let marked = engine
+            .unshipped_on(subscription, resource)
+            .map_err(storage)?;
+        let mut count = 0;
+        let shipped = async {
+            while let Some(shipment) = engine
+                .next(subscription, resource, max_bytes)
+                .map_err(storage)?
+            {
+                match session
+                    .send(&shipment.request_id, shipment.body.clone())
+                    .await
+                {
+                    Ok(answer) => {
+                        count += 1;
+                        if !engine
+                            .answered(subscription, resource, &shipment, &answer)
+                            .map_err(storage)?
+                        {
+                            break;
+                        }
+                    }
+                    Err(MembershipError::Remote { code, .. })
+                        if code == permguard_core::codes::stream::STORE_UNAVAILABLE =>
+                    {
+                        engine.deferred(subscription, resource).map_err(storage)?;
+                        break;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(())
+        }
+        .await;
+        // Reported whatever ended the loop: a pass that shipped the tail and then lost its
+        // session still tries to say so before the mark goes (after the review).
+        if let Some(marked) = marked {
+            let remaining = engine
+                .unshipped_on(subscription, resource)
+                .map_err(storage)?;
+            self.report_unshipped(&mut session, subscription, &marked, remaining.as_ref())
+                .await;
+        }
+        shipped.map(|()| count)
+    }
+
+    /// Reports a marked stream on its ship task's session (WP-5.8, interpretation of
+    /// 2026-10-15): `unshipped` with its tail and what is acknowledged, or `shipped` once the
+    /// mark went. A report that fails is logged: the next pass reports again.
+    async fn report_unshipped(
+        &self,
+        session: &mut MemberTask,
+        subscription: &crate::composition::Subscribed<'_>,
+        marked: &crate::composition::Unshipped,
+        remaining: Option<&crate::composition::Unshipped>,
+    ) {
+        let resource = match remaining {
+            Some(remaining) => super::record::ProgressResource {
+                resource: remaining.resource.clone(),
+                state: UNSHIPPED.to_owned(),
+                frontier: Some(remaining.tail.to_string()),
+                checkpoint_digest: None,
+                verified_at: None,
+                reason: Some(format!("acknowledged through {}", remaining.truncate_safe)),
+            },
+            None => super::record::ProgressResource {
+                resource: marked.resource.clone(),
+                state: SHIPPED.to_owned(),
+                frontier: Some(marked.tail.to_string()),
+                checkpoint_digest: None,
+                verified_at: None,
+                reason: None,
+            },
+        };
+        let progress = TaskProgress {
+            membership_id: subscription.membership_id,
+            task_id: subscription.task_id.to_owned(),
+            manifest_epoch: session.lease.epoch,
+            member_boot_id: self.identity.boot_id(),
+            report_seq: next_report_seq(),
+            reported_at: self.time.now_secs(),
+            resources: vec![resource],
+        };
+        if let Err(error) = session.report(&progress).await {
+            tracing::warn!(
+                event.name = "host.membership.progress_failed",
+                component = "host",
+                membership_id = %uuid_text(&subscription.membership_id),
+                task = %subscription.task_id,
+                error = %error,
+                "an unshipped stream could not be reported: the next pass reports it again"
+            );
+        }
+    }
+
+    /// The active key of `ring` and the streams of membership `id` it cuts over, in order.
+    fn due_streams(
+        &self,
+        id: &[u8; 16],
+        ring: &Ring,
+    ) -> Result<(String, Vec<(String, u64)>), String> {
+        use permguard_core::keys::Sign as _;
+        let kid = ring
+            .active_key_id()
+            .map_err(|error| error.to_string())?
+            .as_str()
+            .to_owned();
+        let mut streams = match self.streams {
+            Some(engine) => engine.due(id, ring.id(), &kid)?,
+            None => Vec::new(),
+        };
+        streams.sort();
+        streams.dedup();
+        if streams.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+            return Err("a stream is due from two sequences".to_owned());
+        }
+        Ok((kid, streams))
     }
 
     /// Re-pins every ring of this Host that an active membership it is a member of pins at an
@@ -876,6 +1264,8 @@ impl Member<'_> {
         resource: &str,
         evidence: Vec<(String, Vec<u8>)>,
     ) -> Result<MemberTask, MembershipError> {
+        // A reset under way opens no task session under the identity it retires (WP-4.9).
+        self.store.unfenced()?;
         let held = self.store.membership(id).ok_or_else(|| {
             MembershipError::Unknown(format!("no membership `{}`", uuid_text(id)))
         })?;

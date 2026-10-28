@@ -36,11 +36,17 @@
 //! consumer stores and indexes the structural check found beside them. No other Plane code keeps
 //! a journal (`permguard-conformance` `stream_engines`).
 
+pub mod anchor;
+pub mod batch;
 pub(crate) mod codec;
 mod consumer;
+pub mod ingest;
 mod producer;
+pub mod reads;
+pub mod retention;
 pub mod run;
 pub mod state;
+pub mod verify;
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -58,15 +64,20 @@ use permguard_host::time::TimeGuard;
 use permguard_objects::cbor::Value;
 use sha2::{Digest as _, Sha256};
 
-pub use consumer::Consumer;
-pub use producer::{Producer, Receipt, decode_group, encode_group};
+pub use consumer::{Consumer, ConsumerState, ForkMark, MAX_VIEW_BYTES};
+pub use producer::{
+    Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, MAX_SUBSCRIPTION_BYTES, Position,
+    PressureBounds, Producer, Receipt, Restored, Sealing, Span, Spans, Subscription,
+    SubscriptionState, canonical_jwk, decode_group, encode_group,
+};
 pub use run::{Fence, RunEnd, RunStatement};
 pub use state::State;
 
 /// The Plane-side stream engines that predate this one, adopted by WP-6.1 and WP-6.2 (owner
 /// decision): the only Plane sources that may keep a journal, a STATE or a reserve of their own.
 pub const LEGACY_ENGINES: [&str; 11] = [
-    // The producers the owner's decision named.
+    // The producers the owner's decision named. The decision spool is only drained since WP-6.1,
+    // until its archive: the plane records on this engine.
     "crates/permguard-decisions/src/spool.rs",
     "crates/permguard-events/src/journal.rs",
     // The consumers and indexes found beside them.
@@ -408,6 +419,8 @@ pub struct Streams {
     operations: Arc<Ring>,
     time: Arc<TimeGuard>,
     registered: Mutex<BTreeSet<(String, String, u32, &'static str)>>,
+    /// The size past which a stream's journal segment rolls: where a prefix deletion can end.
+    segment_bytes: u64,
 }
 
 impl fmt::Debug for Streams {
@@ -441,7 +454,15 @@ impl Streams {
             operations,
             time,
             registered: Mutex::new(BTreeSet::new()),
+            segment_bytes: permguard_host::storage::journal::DEFAULT_SEGMENT_BYTES,
         })
+    }
+
+    /// The engine rolling its streams' journal segments past `bytes`, the granularity a prefix
+    /// deletion frees space at (WP-5.6b): smaller for a constrained volume, and for tests.
+    pub fn with_segment_bytes(mut self, bytes: u64) -> Self {
+        self.segment_bytes = bytes;
+        self
     }
 
     /// The directory of `descriptor` and `role`, after checking the descriptor and pinning its
@@ -501,6 +522,7 @@ impl Streams {
                 claim: self.claim,
                 operations: Arc::clone(&self.operations),
                 time: Arc::clone(&self.time),
+                segment_bytes: self.segment_bytes,
             },
             descriptor,
             codec,
@@ -514,16 +536,28 @@ impl Streams {
         codec: C,
     ) -> Result<Consumer<C>, StreamError> {
         let dir = self.register(&descriptor, "consumer")?;
-        Ok(Consumer::new(dir, self.claim, descriptor, codec))
+        Ok(
+            Consumer::new(dir, self.claim, descriptor, codec, Arc::clone(&self.time))
+                .with_segment_bytes(self.segment_bytes),
+        )
     }
 }
 
 /// The producers the engine serves, by the name a Plane declares its stream under: what the
-/// server hands the composition as its [`permguard_host::composition::StreamEngine`].
+/// server hands the composition as its [`permguard_host::composition::StreamEngine`], and the
+/// membership side as its [`permguard_host::composition::StreamCutovers`] (WP-5.2).
 #[derive(Default)]
 pub struct Served {
     producers:
         std::collections::BTreeMap<String, Arc<dyn permguard_host::composition::StreamAppender>>,
+    cutovers: Vec<Arc<dyn permguard_host::composition::StreamCutovers>>,
+    shipping: Vec<Arc<dyn permguard_host::composition::StreamShipping>>,
+    prunables: Vec<Arc<dyn retention::Prunable>>,
+    inspected: Vec<Arc<dyn reads::Inspect>>,
+    consumers: std::collections::BTreeMap<
+        String,
+        Arc<dyn permguard_host::composition::StreamConsumerReads>,
+    >,
 }
 
 impl fmt::Debug for Served {
@@ -533,13 +567,53 @@ impl fmt::Debug for Served {
 }
 
 impl Served {
+    /// The Host API's reads of these producers (WP-5.7a), with what else the server serves.
+    pub fn reads(&self) -> reads::Reads {
+        self.inspected
+            .iter()
+            .fold(reads::Reads::default(), |reads, handle| {
+                reads.with(Arc::clone(handle))
+            })
+    }
+
+    /// The producers the garbage collection runs (WP-5.6b).
+    pub fn prunables(&self) -> Vec<Arc<dyn retention::Prunable>> {
+        self.prunables.clone()
+    }
+
     /// These and `producer`, served as `name` (`<plane>/<type>`).
-    pub fn with(
-        mut self,
-        name: &str,
-        producer: Arc<dyn permguard_host::composition::StreamAppender>,
-    ) -> Self {
-        self.producers.insert(name.to_owned(), producer);
+    pub fn with<P>(mut self, name: &str, producer: Arc<P>) -> Self
+    where
+        P: permguard_host::composition::StreamAppender
+            + permguard_host::composition::StreamCutovers
+            + permguard_host::composition::StreamShipping
+            + retention::Prunable
+            + reads::Inspect
+            + 'static,
+    {
+        self.producers.insert(
+            name.to_owned(),
+            Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamAppender>,
+        );
+        self.cutovers
+            .push(Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamCutovers>);
+        self.prunables
+            .push(Arc::clone(&producer) as Arc<dyn retention::Prunable>);
+        self.inspected
+            .push(Arc::clone(&producer) as Arc<dyn reads::Inspect>);
+        self.shipping.push(producer);
+        self
+    }
+
+    /// These and `consumer`, read as `name` by the Planes that declare they read it (WP-6.1).
+    pub fn with_consumer<P>(mut self, name: &str, consumer: Arc<P>) -> Self
+    where
+        P: permguard_host::composition::StreamConsumerReads + 'static,
+    {
+        self.consumers.insert(
+            name.to_owned(),
+            consumer as Arc<dyn permguard_host::composition::StreamConsumerReads>,
+        );
         self
     }
 
@@ -555,6 +629,139 @@ impl permguard_host::composition::StreamEngine for Served {
         stream: &str,
     ) -> Option<Arc<dyn permguard_host::composition::StreamAppender>> {
         self.producers.get(stream).map(Arc::clone)
+    }
+
+    fn consumer(
+        &self,
+        stream: &str,
+    ) -> Option<Arc<dyn permguard_host::composition::StreamConsumerReads>> {
+        self.consumers.get(stream).map(Arc::clone)
+    }
+}
+
+impl permguard_host::composition::StreamCutovers for Served {
+    fn due(
+        &self,
+        membership_id: &[u8; 16],
+        ring: &str,
+        kid: &str,
+    ) -> Result<Vec<(String, u64)>, String> {
+        let mut due = Vec::new();
+        for producer in &self.cutovers {
+            due.extend(producer.due(membership_id, ring, kid)?);
+        }
+        Ok(due)
+    }
+
+    fn journaled(&self, ring: &str, kid: &str, streams: &[(String, u64)]) -> Result<(), String> {
+        for producer in &self.cutovers {
+            producer.journaled(ring, kid, streams)?;
+        }
+        Ok(())
+    }
+}
+
+impl permguard_host::composition::StreamShipping for Served {
+    fn due(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+    ) -> Result<Vec<String>, String> {
+        let mut due = Vec::new();
+        for producer in &self.shipping {
+            due.extend(producer.due(subscription)?);
+        }
+        Ok(due)
+    }
+
+    fn next(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+        resource: &str,
+        max_bytes: u64,
+    ) -> Result<Option<permguard_host::composition::Shipment>, String> {
+        for producer in &self.shipping {
+            if let Some(shipment) = producer.next(subscription, resource, max_bytes)? {
+                return Ok(Some(shipment));
+            }
+        }
+        Ok(None)
+    }
+
+    fn answered(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+        resource: &str,
+        shipment: &permguard_host::composition::Shipment,
+        answer: &[u8],
+    ) -> Result<bool, String> {
+        let mut go_on = false;
+        for producer in &self.shipping {
+            go_on |= producer.answered(subscription, resource, shipment, answer)?;
+        }
+        Ok(go_on)
+    }
+
+    fn deferred(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+        resource: &str,
+    ) -> Result<(), String> {
+        for producer in &self.shipping {
+            producer.deferred(subscription, resource)?;
+        }
+        Ok(())
+    }
+
+    fn retain(&self, membership_id: &[u8; 16], task_ids: &[String]) -> Result<(), String> {
+        for producer in &self.shipping {
+            producer.retain(membership_id, task_ids)?;
+        }
+        Ok(())
+    }
+
+    fn behind(&self) -> Result<Vec<permguard_host::composition::Unshipped>, String> {
+        let mut found = Vec::new();
+        for producer in &self.shipping {
+            found.extend(producer.behind()?);
+        }
+        Ok(found)
+    }
+
+    fn mark_unshipped(&self) -> Result<Vec<permguard_host::composition::Unshipped>, String> {
+        let mut marked = Vec::new();
+        for producer in &self.shipping {
+            marked.extend(producer.mark_unshipped()?);
+        }
+        Ok(marked)
+    }
+
+    fn unshipped_on(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+        resource: &str,
+    ) -> Result<Option<permguard_host::composition::Unshipped>, String> {
+        for producer in &self.shipping {
+            if let Some(mark) = producer.unshipped_on(subscription, resource)? {
+                return Ok(Some(mark));
+            }
+        }
+        Ok(None)
+    }
+
+    fn settle_unshipped(&self) -> Result<Vec<permguard_host::composition::Unshipped>, String> {
+        let mut remaining = Vec::new();
+        for producer in &self.shipping {
+            remaining.extend(producer.settle_unshipped()?);
+        }
+        Ok(remaining)
+    }
+
+    fn refused(&self) -> Result<Vec<permguard_host::composition::RefusedShipping>, String> {
+        let mut found = Vec::new();
+        for producer in &self.shipping {
+            found.extend(producer.refused()?);
+        }
+        Ok(found)
     }
 }
 

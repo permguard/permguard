@@ -15,8 +15,26 @@
 //!
 //! The segments are the authority: which segment is current, and the index of every frame,
 //! follow from their names and their frames, so there is no state file to fall out of step with
-//! them. The one other file a journal keeps is a failure record, [`FAILED`], present only between
-//! a failed write or flush and the recovery that follows it.
+//! them. A journal keeps two other files: a failure record, [`FAILED`], present only between a
+//! failed write or flush and the recovery that follows it, and [`BASE`], present once a prefix was
+//! deleted, naming the first frame still held.
+//!
+//! # Prefix deletion (WP-5.6a)
+//!
+//! [`Journal::drop_prefix`] removes the whole segments every frame of which is below an index,
+//! never the segment being written. `BASE`, a view holding the deterministic CBOR map
+//! `{1 first_index, 2 claim}`, names the first frame of the first segment kept and the claim
+//! generation of the writer that deleted the prefix; it is written and flushed before the first
+//! removal, and each removal is a tombstone deletion. A crash after `BASE` leaves segments below
+//! it, which opening removes; a crash before it leaves the journal as it was. Frame indexes are
+//! never reused: the frames kept keep theirs.
+//!
+//! Opening decides before it changes anything. No segment starting exactly at `BASE` (0 without
+//! one) means acknowledged frames are missing, since a deletion never removes the segment being
+//! written. Where segments below `BASE` remain, its claim generation is judged like a failure
+//! record's, so a superseded writer's unfinished deletion is refused rather than completed. Only
+//! then are the tombstones and the segments below `BASE` removed. A deletion a superseded writer
+//! finished with its own handle is the volume's `LOCK`'s to prevent, as its appends are.
 //!
 //! # Recovery, at open
 //!
@@ -36,6 +54,11 @@
 //! | another magic, a newer version, an unknown flag                       | [`StorageError::Unsupported`]                      |
 //! | a frame's claim generation below one before it                        | [`StorageError::StaleWriter`], nothing changed     |
 //! | a frame's claim generation above the volume's claim                   | [`StorageError::ClaimBehindData`], nothing changed |
+//! | no segment starting at the frame `BASE` names (0 without one)         | [`StorageError::Corruption`], nothing changed      |
+//! | a `BASE` that does not decode                                         | [`StorageError::Corruption`], nothing changed      |
+//! | segments below `BASE`, its generation below a frame kept              | [`StorageError::StaleWriter`], nothing changed     |
+//! | segments below `BASE`, its generation above the volume's claim        | [`StorageError::ClaimBehindData`], nothing changed |
+//! | segments below `BASE`, or tombstones, a deletion left                 | removed: the deletion finished                     |
 //!
 //! Opening is bounded: it reads the last segment whole, and of every earlier segment only the
 //! name, the header and the first frame. A gap between earlier segments, a torn or damaged frame
@@ -124,6 +147,8 @@ use std::io::{Seek as _, SeekFrom, Write as _};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use permguard_objects::cbor::{self, Value};
+
 use super::dir::Dir;
 use super::format::{self, CHECKSUM_LEN, HEADER_LEN};
 use super::write::{read_view, replace_view};
@@ -173,6 +198,94 @@ impl Default for Options {
 
 /// The failure record's name in a journal's directory.
 pub const FAILED: &str = "FAILED";
+
+/// The name of the view naming the first frame a journal still holds, once a prefix was deleted.
+pub const BASE: &str = "BASE";
+
+/// The body of `BASE`: the deterministic CBOR map `{1 first_index, 2 claim}`, the claim being the
+/// generation of the writer that deleted the prefix.
+pub fn encode_base(first_index: u64, claim: u64) -> Result<Vec<u8>> {
+    let signed = |value: u64| {
+        i64::try_from(value)
+            .map_err(|_| StorageError::TooLarge(format!("{value} is past the signed 64-bit range")))
+    };
+    cbor::encode(&Value::Map(vec![
+        (Value::Int(1), Value::Int(signed(first_index)?)),
+        (Value::Int(2), Value::Int(signed(claim)?)),
+    ]))
+    .map_err(|error| StorageError::TooLarge(error.to_string()))
+}
+
+/// The `(first frame index, claim generation)` a body of `BASE` names; anything but
+/// `{1 first_index, 2 claim}` is refused.
+pub fn decode_base(body: &[u8]) -> Result<(u64, u64)> {
+    let refused = |what: &str| StorageError::Corruption(format!("`{BASE}` {what}"));
+    let value = cbor::decode_canonical(body).map_err(|error| refused(&error.to_string()))?;
+    let Value::Map(pairs) = value else {
+        return Err(refused("is not a map"));
+    };
+    match pairs.as_slice() {
+        [
+            (Value::Int(1), Value::Int(first)),
+            (Value::Int(2), Value::Int(claim)),
+        ] => Ok((
+            u64::try_from(*first).map_err(|_| refused("names a negative frame index"))?,
+            u64::try_from(*claim).map_err(|_| refused("names a negative claim generation"))?,
+        )),
+        _ => Err(refused(
+            "holds other labels than 1, the first frame index, and 2, the claim generation",
+        )),
+    }
+}
+
+/// What `dir`'s `BASE` names, `(first index, claim generation)`; `None` without one.
+pub(crate) fn base_of(dir: &Dir) -> Result<Option<(u64, u64)>> {
+    read_view(dir, BASE, format::VIEW)?
+        .map(|body| {
+            decode_base(&body).map_err(|error| {
+                StorageError::Corruption(format!("in {}: {error}", dir.path().display()))
+            })
+        })
+        .transpose()
+}
+
+/// Judges the claim generation of a `BASE` whose deletion is unfinished, as a failure record's is
+/// judged, before anything below it is removed: above the volume's claim is a claim behind the
+/// data, and below a frame the journal keeps is a superseded writer's, whose deletion the new
+/// owner must not complete. Every kept segment is read whole, as for a record: this runs only
+/// after a crash interrupted a deletion. A segment that does not read is left to the open.
+fn judge_base(
+    dir: &Dir,
+    kept: &[(u64, String)],
+    base: u64,
+    generation: u64,
+    claim: u64,
+) -> Result<()> {
+    if generation > claim {
+        return Err(StorageError::ClaimBehindData {
+            journal: dir.path().display().to_string(),
+            index: base,
+            generation,
+            claim,
+        });
+    }
+    for (first, name) in kept {
+        let bytes = dir.read(name)?.unwrap_or_default();
+        let Ok(Scan::Whole { frames, .. } | Scan::Torn { frames, .. }) = scan(&bytes, *first, name)
+        else {
+            continue;
+        };
+        if let Some(frame) = frames.iter().find(|frame| frame.claim > generation) {
+            return Err(StorageError::StaleWriter {
+                journal: dir.path().display().to_string(),
+                index: base,
+                generation,
+                after: frame.claim,
+            });
+        }
+    }
+    Ok(())
+}
 
 /// The journals whose failure record could not be made durable, by directory identity: this
 /// process does not open them again.
@@ -229,6 +342,8 @@ pub struct Recovery {
     /// The first frame a failure record named as never acknowledged; it and everything after it
     /// were cut.
     pub cut_from: Option<u64>,
+    /// Segments below `BASE` a crash left during a prefix deletion, removed (WP-5.6a).
+    pub dropped_segments: Vec<String>,
 }
 
 /// An open journal.
@@ -436,12 +551,44 @@ impl Journal {
             swept_temporaries: dir.sweep_temps()?,
             ..Recovery::default()
         };
-        let mut segments: Vec<(u64, String)> = dir
-            .names()?
-            .into_iter()
-            .filter_map(|name| segment_first(&name).map(|first| first.map(|first| (first, name))))
-            .collect::<Result<_>>()?;
-        segments.sort();
+        // A prefix deletion a crash interrupted (WP-5.6a), decided before anything changes: a
+        // segment starts exactly at `BASE`, since a deletion never removes the segment being
+        // written, and the writer of `BASE` holds the claim, judged like a failure record's.
+        let (base, base_claim) = base_of(&dir)?.unwrap_or((0, crate::storage::volume::UNCLAIMED));
+        let mut segments = segment_names(&dir)?;
+        if (base > 0 || !segments.is_empty()) && !segments.iter().any(|(first, _)| *first == base) {
+            return Err(StorageError::Corruption(format!(
+                "no segment of {} starts at frame {base}, the first the journal holds: \
+                 acknowledged frames are missing",
+                dir.path().display()
+            )));
+        }
+        let below: Vec<String> = segments
+            .iter()
+            .take_while(|(first, _)| *first < base)
+            .map(|(_, name)| name.clone())
+            .collect();
+        if !below.is_empty() {
+            judge_base(
+                &dir,
+                &segments[below.len()..],
+                base,
+                base_claim,
+                options.claim,
+            )?;
+        }
+        // Then finished as it would have been: the tombstones it wrote, and the segments below
+        // `BASE` it had not reached, with one flush; `BASE` is durable, so no tombstone is needed.
+        super::tombstone::complete(&dir)?;
+        for name in &below {
+            dir.unlink(name)?;
+        }
+        if !below.is_empty() {
+            dir.sync()?;
+            point("prefix.recovered");
+        }
+        segments.drain(..below.len());
+        recovery.dropped_segments = below;
 
         // What a failure record names is cut before anything is judged: those bytes were never
         // acknowledged, whatever shape a failed write left them in.
@@ -460,7 +607,7 @@ impl Journal {
                 generation,
                 options.claim,
             )?;
-            cut_from(&dir, &mut segments, first_unacknowledged)?;
+            cut_from(&dir, &mut segments, first_unacknowledged, base)?;
             recovery.cut_from = Some(first_unacknowledged);
         }
 
@@ -484,7 +631,7 @@ impl Journal {
         // The last segment, the open tail, is read whole. A roll that crashed before its new
         // segment's header was durable leaves a last segment holding no frame; it is removed, once,
         // and the segment before it becomes the tail, read whole in turn.
-        let mut expected = 0u64;
+        let mut expected = base;
         let mut tail: Option<(u64, String, usize)> = None;
         let mut removable = record.is_none();
         while let Some((first, name)) = segments.last().cloned() {
@@ -589,6 +736,68 @@ impl Journal {
         self.next_index
     }
 
+    /// The index of the first frame the journal holds: 0 unless a prefix was deleted.
+    pub fn first_index(&self) -> u64 {
+        self.segments
+            .first()
+            .map_or(self.next_index, |(first, _)| *first)
+    }
+
+    /// Deletes the whole segments every frame of which is below `below`, never the segment being
+    /// written (WP-5.6a), and answers the first frame index the journal then holds.
+    ///
+    /// `BASE` is written and flushed first, then each segment goes through a tombstone, charged to
+    /// `maintenance` when given, the reserve garbage collection runs on (`BASE` itself replaces a
+    /// view and is not charged). A crash after `BASE` leaves segments below it, which the next open
+    /// removes; a crash before it leaves the journal as it was.
+    ///
+    /// A failed write or flush here does not give the handle up, unlike an append's: it touches no
+    /// acknowledged frame, and either outcome is one the next open accepts — `BASE` not durable and
+    /// nothing removed, or `BASE` durable and some segments below it left. The handle reads from
+    /// `BASE` once it is written, whether every removal followed or not.
+    pub fn drop_prefix(
+        &mut self,
+        below: u64,
+        maintenance: Option<&crate::storage::quota::Scope>,
+    ) -> Result<u64> {
+        if self.poisoned {
+            return Err(StorageError::Poisoned);
+        }
+        // A segment is wholly below `below` when the one after it starts at or below it: the
+        // segment being written has none after it, and is never removed.
+        let count = self
+            .segments
+            .windows(2)
+            .take_while(|pair| pair[1].0 <= below)
+            .count();
+        if count == 0 {
+            return Ok(self.first_index());
+        }
+        let base = self.segments[count].0;
+        replace_view(
+            &self.dir,
+            BASE,
+            format::VIEW,
+            &encode_base(base, self.options.claim)?,
+        )?;
+        point("prefix.base_written");
+        let dropped: Vec<String> = self.segments.drain(..count).map(|(_, name)| name).collect();
+        for name in &dropped {
+            match maintenance {
+                Some(scope) => super::tombstone::delete_in(scope, &self.dir, name)?,
+                None => super::tombstone::delete(&self.dir, name)?,
+            }
+        }
+        point("prefix.segments_removed");
+        Ok(base)
+    }
+
+    /// The first frame index of every segment, oldest first: where a prefix deletion can end
+    /// (WP-5.6b).
+    pub fn segment_starts(&self) -> Vec<u64> {
+        self.segments.iter().map(|(first, _)| *first).collect()
+    }
+
     /// The segments, oldest first.
     pub fn segments(&self) -> Vec<String> {
         self.segments.iter().map(|(_, name)| name.clone()).collect()
@@ -661,17 +870,34 @@ impl Journal {
         Ok(index)
     }
 
-    /// Every frame, oldest first. A handle given up answers nothing: what it would read is the
-    /// page cache, which may hold a frame that was never acknowledged.
+    /// Every frame the journal holds, oldest first: from `BASE` once a prefix was deleted. A handle
+    /// given up answers nothing: what it would read is the page cache, which may hold a frame that
+    /// was never acknowledged.
     pub fn frames(&self) -> Result<Vec<Frame>> {
+        self.frames_from(0)
+    }
+
+    /// The frames from `index` on, oldest first: a segment wholly before it is not read (WP-5.2).
+    /// Below the first frame the journal holds (see [`Journal::first_index`]) there is nothing to
+    /// read: the answer starts there.
+    pub fn frames_from(&self, index: u64) -> Result<Vec<Frame>> {
         if self.poisoned {
             return Err(StorageError::Poisoned);
         }
         let mut all = Vec::new();
-        for (first, name) in &self.segments {
+        for (at, (first, name)) in self.segments.iter().enumerate() {
+            if self
+                .segments
+                .get(at + 1)
+                .is_some_and(|(next, _)| *next <= index)
+            {
+                continue;
+            }
             let bytes = self.dir.read(name)?.unwrap_or_default();
             match scan(&bytes, *first, name)? {
-                Scan::Whole { frames, .. } => all.extend(frames),
+                Scan::Whole { frames, .. } => {
+                    all.extend(frames.into_iter().filter(|frame| frame.index >= index));
+                }
                 Scan::Torn { .. } => {
                     return Err(StorageError::Corruption(format!(
                         "segment `{name}` changed under an open journal"
@@ -770,6 +996,72 @@ fn failure_record(dir: &Dir) -> Result<Option<(u64, u64)>> {
             dir.path().display()
         ))),
     }
+}
+
+/// Every frame the journal in `dir` holds, from `BASE` on, read without opening it (WP-5.7c):
+/// nothing is repaired, swept or removed. A torn or headerless tail of the last segment ends the
+/// read, as it is an append under way; anything torn before it, or a first segment not at `BASE`,
+/// is corruption.
+pub fn read_frames(dir: &Dir) -> Result<Vec<Frame>> {
+    read_frames_and_tail(dir).map(|(frames, _)| frames)
+}
+
+/// [`read_frames`], and whether the last segment ended in a torn or headerless tail: what an
+/// append under way leaves, or damage to the last frame, which a reader comparing the frames with
+/// a commitment must not take for absence (after the review).
+pub fn read_frames_and_tail(dir: &Dir) -> Result<(Vec<Frame>, bool)> {
+    let base = base_of(dir)?.map_or(0, |(first, _)| first);
+    let segments: Vec<(u64, String)> = segment_names(dir)?
+        .into_iter()
+        .filter(|(first, _)| *first >= base)
+        .collect();
+    if let Some((first, name)) = segments.first()
+        && *first != base
+    {
+        return Err(StorageError::Corruption(format!(
+            "the first segment of {}, `{name}`, starts at frame {first}, and the journal holds \
+             every frame from {base}",
+            dir.path().display()
+        )));
+    }
+    let count = segments.len();
+    let mut all = Vec::new();
+    let mut torn = false;
+    let mut expected = base;
+    for (at, (first, name)) in segments.iter().enumerate() {
+        let last = at + 1 == count;
+        if *first != expected {
+            return Err(StorageError::Corruption(format!(
+                "segment `{name}` starts at frame {first}, after frame {expected}"
+            )));
+        }
+        let bytes = dir.read(name)?.unwrap_or_default();
+        if !head_is_whole(&bytes)? {
+            if last && bytes.len() <= SEGMENT_HEAD {
+                torn = !bytes.is_empty();
+                break;
+            }
+            return Err(StorageError::Corruption(format!(
+                "segment `{name}` has a damaged header"
+            )));
+        }
+        match scan(&bytes, *first, name)? {
+            Scan::Whole { frames, .. } => {
+                expected = first + frames.len() as u64;
+                all.extend(frames);
+            }
+            Scan::Torn { frames, .. } if last => {
+                torn = true;
+                all.extend(frames);
+            }
+            Scan::Torn { .. } => {
+                return Err(StorageError::Corruption(format!(
+                    "segment `{name}` holds a torn frame, and segments follow it"
+                )));
+            }
+        }
+    }
+    Ok((all, torn))
 }
 
 /// Every segment in `dir`, `(first frame index, name)`, in order.
@@ -935,7 +1227,7 @@ fn remember_unrecorded(identity: String) {
 /// with nothing changed. Then the segments whose first frame is at or after `index`, which never
 /// held an acknowledged frame, are removed and the directory flushed, and the segment holding
 /// `index` is truncated where that frame starts, and flushed.
-fn cut_from(dir: &Dir, segments: &mut Vec<(u64, String)>, index: u64) -> Result<()> {
+fn cut_from(dir: &Dir, segments: &mut Vec<(u64, String)>, index: u64, base: u64) -> Result<()> {
     let damaged = |what: &str| {
         StorageError::Corruption(format!(
             "the failure record in {} names frame {index} as the first never acknowledged, and \
@@ -948,10 +1240,10 @@ fn cut_from(dir: &Dir, segments: &mut Vec<(u64, String)>, index: u64) -> Result<
         .filter(|(first, _)| *first < index)
         .cloned()
         .collect();
-    if kept.is_empty() && index > 0 {
+    if kept.is_empty() && index > base {
         return Err(damaged("no segment holds the frames before it"));
     }
-    let mut expected = 0u64;
+    let mut expected = base;
     let mut truncate: Option<(String, usize, usize)> = None;
     for (position, (first, name)) in kept.iter().enumerate() {
         let bytes = dir.read(name)?.unwrap_or_default();
@@ -1267,6 +1559,49 @@ mod tests {
         );
         assert_eq!(&bytes[52..54], &7u16.to_be_bytes(), "its type");
         assert_eq!(&bytes[54..62], &0u64.to_be_bytes(), "its claim generation");
+    }
+
+    /// WP-5.2: the frames from an index are those `frames` answers from it, across segments, and a
+    /// segment wholly before it is not read.
+    #[test]
+    fn frames_from_an_index_skip_the_segments_before_it() {
+        let path = scratch("from");
+        let options = Options {
+            segment_bytes: 100,
+            ..Options::default()
+        };
+        let (mut journal, _) = open(&path, options);
+        for n in 0..12u8 {
+            journal.append(1, &[n; 40]).expect("appended");
+        }
+        assert!(journal.segments().len() > 3, "the segments rolled");
+        let all = journal.frames().expect("read");
+        for from in [0, 1, 5, 11, 12, 40] {
+            assert_eq!(
+                journal.frames_from(from).expect("read"),
+                all.iter()
+                    .filter(|frame| frame.index >= from)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                "from {from}"
+            );
+        }
+        // A segment wholly before the index is not read: removing it changes nothing from there.
+        std::fs::remove_file(path.join(segment_name(0))).expect("removed");
+        let later = journal.segments()[2].clone();
+        let first_later = all
+            .iter()
+            .map(|frame| frame.index)
+            .find(|index| segment_name(*index) == later)
+            .expect("the third segment's first frame");
+        assert_eq!(
+            journal.frames_from(first_later).expect("read").len() as u64,
+            12 - first_later
+        );
+        assert!(
+            journal.frames().expect("read").len() < all.len(),
+            "the whole journal reads the removed one"
+        );
     }
 
     #[test]
@@ -2130,6 +2465,357 @@ mod tests {
         assert!(matches!(
             journal.append(1, b"12345"),
             Err(StorageError::TooLarge(_))
+        ));
+    }
+    /// Two 40-byte frames per segment: 48 bytes of head and 86 per frame pass 200 at the second,
+    /// so the third rolls.
+    fn rolling() -> Options {
+        Options {
+            max_frame: 1024,
+            segment_bytes: 200,
+            ..Options::default()
+        }
+    }
+
+    /// `frames` frames, each its index repeated: segments start at 0, 2, 4 and so on.
+    fn filled(path: &std::path::Path, frames: u8) -> Journal {
+        let (mut journal, _) = open(path, rolling());
+        for index in 0..frames {
+            journal.append(1, &[index; 40]).expect("appended");
+        }
+        journal
+    }
+
+    fn firsts(journal: &Journal) -> Vec<u64> {
+        journal.segments.iter().map(|(first, _)| *first).collect()
+    }
+
+    /// WP-5.6a: a prefix deletion removes the segments every frame of which is below the index:
+    /// an index inside a segment keeps that segment, an index at a segment's start keeps it and
+    /// removes the one before. The frames kept keep their indexes and appends continue.
+    #[test]
+    fn a_dropped_prefix_keeps_every_later_frame_at_its_index() {
+        let path = scratch("drop");
+        let mut journal = filled(&path, 7);
+        assert_eq!(firsts(&journal), vec![0, 2, 4, 6]);
+        assert_eq!(
+            journal.drop_prefix(3, None).expect("dropped"),
+            2,
+            "inside [2, 3]"
+        );
+        assert_eq!(firsts(&journal), vec![2, 4, 6]);
+        assert_eq!(
+            journal.drop_prefix(4, None).expect("dropped"),
+            4,
+            "at the start of [4, 5]"
+        );
+        assert_eq!(firsts(&journal), vec![4, 6]);
+        assert_eq!(journal.first_index(), 4);
+        let frames = journal.frames().expect("read");
+        assert_eq!(
+            frames.iter().map(|frame| frame.index).collect::<Vec<_>>(),
+            vec![4, 5, 6]
+        );
+        assert!(
+            frames
+                .iter()
+                .all(|frame| frame.payload == [frame.index as u8; 40])
+        );
+        assert_eq!(
+            journal.frames_from(1).expect("read"),
+            frames,
+            "nothing below BASE"
+        );
+        assert_eq!(journal.append(1, &[7; 40]).expect("appended"), 7);
+        let names: Vec<String> = contents(&path).into_iter().map(|(name, _)| name).collect();
+        assert!(
+            !names.iter().any(|name| name.ends_with(".tomb")),
+            "{names:?}"
+        );
+        drop(journal);
+
+        let (journal, recovery) = open(&path, rolling());
+        assert_eq!(recovery, Recovery::default());
+        assert_eq!(journal.first_index(), 4);
+        assert_eq!(journal.frames().expect("read").len(), 4);
+        assert_eq!(
+            decode_base(
+                &read_view(&journal.dir, BASE, format::VIEW)
+                    .expect("read")
+                    .expect("BASE")
+            )
+            .expect("decoded"),
+            (4, crate::storage::volume::UNCLAIMED)
+        );
+    }
+
+    /// WP-5.6a: the segment being written is never removed, however far the index reaches, and an
+    /// index inside the first segment removes nothing and writes no `BASE`.
+    #[test]
+    fn a_prefix_deletion_never_removes_the_segment_being_written() {
+        let path = scratch("tail");
+        let mut journal = filled(&path, 5);
+        assert_eq!(journal.drop_prefix(1, None).expect("nothing"), 0);
+        assert!(
+            !journal.dir.exists(BASE).expect("asked"),
+            "nothing dropped, no BASE"
+        );
+        assert_eq!(journal.drop_prefix(u64::MAX, None).expect("dropped"), 4);
+        assert_eq!(firsts(&journal), vec![4]);
+        assert_eq!(journal.append(1, &[9; 40]).expect("appended"), 5);
+    }
+
+    /// WP-5.6a: what a crash left below `BASE` is removed at open, and listed.
+    #[test]
+    fn open_finishes_a_prefix_deletion() {
+        let path = scratch("crashed");
+        let journal = filled(&path, 7);
+        let names = journal.segments();
+        drop(journal);
+        // `BASE` written, nothing removed yet: the crash after its flush.
+        replace_view(
+            &Dir::open(&path).expect("opened"),
+            BASE,
+            format::VIEW,
+            &encode_base(4, 0).expect("encoded"),
+        )
+        .expect("written");
+        let (journal, recovery) = open(&path, rolling());
+        assert_eq!(recovery.dropped_segments, names[..2].to_vec());
+        assert_eq!(journal.first_index(), 4);
+        assert_eq!(journal.frames().expect("read").len(), 3);
+        assert!(!path.join(&names[0]).exists() && !path.join(&names[1]).exists());
+    }
+
+    /// WP-5.6a (after the review): no segment starting exactly at `BASE` is acknowledged frames
+    /// missing — whether `BASE` falls inside a segment, past every segment, or the segment at it
+    /// was removed — and the open refuses it having changed nothing.
+    #[test]
+    fn open_refuses_a_base_no_segment_starts_at_and_changes_nothing() {
+        for (case, base, remove) in [
+            ("inside a segment", 3, None),
+            ("past every segment", 100, None),
+            ("its segment removed", 4, Some(2)),
+        ] {
+            let path = scratch(&format!("missing-{base}"));
+            let journal = filled(&path, 7);
+            let names = journal.segments();
+            drop(journal);
+            replace_view(
+                &Dir::open(&path).expect("opened"),
+                BASE,
+                format::VIEW,
+                &encode_base(base, 0).expect("encoded"),
+            )
+            .expect("written");
+            if let Some(at) = remove {
+                std::fs::remove_file(path.join(&names[at])).expect("removed");
+            }
+            let before = contents(&path);
+            let refused =
+                Journal::open(Dir::open(&path).expect("opened"), rolling()).expect_err(case);
+            assert!(
+                matches!(refused, StorageError::Corruption(_)),
+                "{case}: {refused}"
+            );
+            assert_eq!(
+                contents(&path),
+                before,
+                "{case}: a refused open changes nothing"
+            );
+        }
+    }
+
+    /// WP-5.6a (owner decision after the review): an unfinished deletion whose `BASE` a superseded
+    /// writer wrote is refused, not completed; one above the volume's claim is a claim behind the
+    /// data. Neither changes anything. A deletion by an earlier owner, older than every frame kept,
+    /// is completed.
+    #[test]
+    fn an_unfinished_deletion_is_judged_by_the_claim_of_its_writer() {
+        for (case, base_claim, open_claim) in [
+            ("a superseded writer", 1, 2),
+            ("above the claim", 3, 2),
+            ("an earlier owner", 2, 3),
+        ] {
+            let path = scratch(&format!("claim-{base_claim}-{open_claim}"));
+            let (mut journal, _) = open(
+                &path,
+                Options {
+                    claim: 2,
+                    ..rolling()
+                },
+            );
+            for index in 0..7u8 {
+                journal.append(1, &[index; 40]).expect("appended");
+            }
+            drop(journal);
+            replace_view(
+                &Dir::open(&path).expect("opened"),
+                BASE,
+                format::VIEW,
+                &encode_base(4, base_claim).expect("encoded"),
+            )
+            .expect("written");
+            let before = contents(&path);
+            let opened = Journal::open(
+                Dir::open(&path).expect("opened"),
+                Options {
+                    claim: open_claim,
+                    ..rolling()
+                },
+            );
+            match case {
+                "a superseded writer" => {
+                    assert!(
+                        matches!(opened, Err(StorageError::StaleWriter { .. })),
+                        "{case}: {opened:?}"
+                    );
+                    assert_eq!(contents(&path), before, "{case}");
+                }
+                "above the claim" => {
+                    assert!(
+                        matches!(opened, Err(StorageError::ClaimBehindData { .. })),
+                        "{case}: {opened:?}"
+                    );
+                    assert_eq!(contents(&path), before, "{case}");
+                }
+                _ => {
+                    let (journal, recovery) = opened.expect("completed");
+                    assert_eq!(recovery.dropped_segments.len(), 2, "{case}");
+                    assert_eq!(journal.first_index(), 4, "{case}");
+                }
+            }
+        }
+    }
+
+    /// WP-5.6a: a segment missing at the start of a journal that never dropped a prefix is refused
+    /// at open, and `BASE` holds exactly `{1 first_index, 2 claim}`.
+    #[test]
+    fn base_is_two_labels_and_a_journal_without_it_starts_at_zero() {
+        let path = scratch("zero");
+        let journal = filled(&path, 3);
+        let first = journal.segments()[0].clone();
+        drop(journal);
+        std::fs::remove_file(path.join(&first)).expect("removed");
+        assert!(matches!(
+            Journal::open(Dir::open(&path).expect("opened"), rolling()),
+            Err(StorageError::Corruption(_))
+        ));
+
+        assert_eq!(
+            decode_base(&encode_base(42, 7).expect("encoded")).expect("read"),
+            (42, 7)
+        );
+        let map = |pairs: Vec<(i64, i64)>| {
+            cbor::encode(&Value::Map(
+                pairs
+                    .into_iter()
+                    .map(|(label, value)| (Value::Int(label), Value::Int(value)))
+                    .collect(),
+            ))
+            .expect("encoded")
+        };
+        for refused in [
+            map(vec![(1, 1)]),
+            map(vec![(1, 1), (2, 1), (3, 1)]),
+            map(vec![(1, -1), (2, 1)]),
+            map(vec![(1, 1), (2, -1)]),
+            cbor::encode(&Value::Int(1)).expect("encoded"),
+            vec![0xff],
+        ] {
+            assert!(decode_base(&refused).is_err(), "{refused:?}");
+        }
+    }
+
+    /// WP-5.6a: a failure record's cut counts from `BASE`: after a prefix deletion, a failed
+    /// append is cut at its index and appends continue there.
+    #[test]
+    fn a_failure_after_a_dropped_prefix_is_cut_from_base() {
+        let path = scratch("failure-base");
+        let mut journal = filled(&path, 6);
+        assert_eq!(journal.drop_prefix(4, None).expect("dropped"), 4);
+        drop(journal);
+        replace_view(
+            &Dir::open(&path).expect("opened"),
+            FAILED,
+            format::VIEW,
+            &[5u64.to_be_bytes(), 0u64.to_be_bytes()].concat(),
+        )
+        .expect("a record");
+        let (mut journal, recovery) = open(&path, rolling());
+        assert_eq!(recovery.cut_from, Some(5));
+        assert_eq!(journal.first_index(), 4);
+        assert_eq!(journal.append(1, &[9; 40]).expect("appended"), 5);
+    }
+
+    /// WP-5.6a: a failure record naming `BASE` itself cuts every frame the journal holds, and the
+    /// journal continues at `BASE`, never at 0; `BASE` keeps the claim of the writer that wrote it.
+    #[test]
+    fn a_failure_at_base_continues_at_base() {
+        let path = scratch("failure-at-base");
+        let (mut journal, _) = open(
+            &path,
+            Options {
+                claim: 2,
+                ..rolling()
+            },
+        );
+        for index in 0..6u8 {
+            journal.append(1, &[index; 40]).expect("appended");
+        }
+        assert_eq!(journal.drop_prefix(4, None).expect("dropped"), 4);
+        assert_eq!(
+            decode_base(
+                &read_view(&journal.dir, BASE, format::VIEW)
+                    .expect("read")
+                    .expect("BASE")
+            )
+            .expect("decoded"),
+            (4, 2),
+            "the writer's claim"
+        );
+        drop(journal);
+        replace_view(
+            &Dir::open(&path).expect("opened"),
+            FAILED,
+            format::VIEW,
+            &[4u64.to_be_bytes(), 2u64.to_be_bytes()].concat(),
+        )
+        .expect("a record");
+        let (mut journal, recovery) = open(
+            &path,
+            Options {
+                claim: 2,
+                ..rolling()
+            },
+        );
+        assert_eq!(recovery.cut_from, Some(4));
+        assert_eq!(journal.first_index(), 4);
+        assert_eq!(journal.segments(), vec![segment_name(4)]);
+        assert_eq!(journal.append(1, &[9; 40]).expect("appended"), 4);
+    }
+
+    /// WP-5.7c: the frames read without opening the journal are the frames it holds, from `BASE`
+    /// on, and reading them changes nothing, a torn tail included.
+    #[test]
+    fn frames_are_read_without_opening_the_journal() {
+        let path = scratch("read-frames");
+        let mut journal = filled(&path, 7);
+        assert_eq!(journal.drop_prefix(4, None).expect("dropped"), 4);
+        let held = journal.frames().expect("read");
+        drop(journal);
+        let dir = Dir::open(&path).expect("opened");
+        assert_eq!(read_frames(&dir).expect("read"), held);
+        // A torn tail ends the read, and stays as it is.
+        append_behind(&path, &[0x00, 0x00, 0x01]);
+        let before = contents(&path);
+        assert_eq!(read_frames(&dir).expect("read"), held);
+        assert_eq!(contents(&path), before, "nothing repaired");
+        // A segment missing at `BASE` is corruption.
+        std::fs::remove_file(path.join(segment_name(4))).expect("removed");
+        assert!(matches!(
+            read_frames(&dir),
+            Err(StorageError::Corruption(_))
         ));
     }
 }

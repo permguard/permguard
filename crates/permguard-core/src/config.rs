@@ -267,6 +267,11 @@ pub const SETTING_SHUTDOWN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_TIMEOUT";
 /// decision of 2026-10-06).
 pub const SETTING_SHUTDOWN_DRAIN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_DRAIN_TIMEOUT";
 
+/// Runtime setting key for a recovery drain run (TD-2): the process stops as soon as it has
+/// started — Load having resumed the streams a drain left — and a drain that completes prints its
+/// signed drain receipt and the Host's verification bundle. What the drain controller's Job sets.
+pub const SETTING_SHUTDOWN_RECOVER_DRAIN: &str = "PERMGUARD_SHUTDOWN_RECOVER_DRAIN";
+
 /// Runtime setting key for the largest backward step of the wall clock the Host tolerates: beyond
 /// it the clock is in anomaly, and new leases and time-sensitive signatures refuse until wall time
 /// passes the highest one observed (WP-2.12, owner decisions of 2026-10-07).
@@ -328,6 +333,32 @@ pub const SETTING_AUDIT_RETENTION: &str = "PERMGUARD_AUDIT_RETENTION";
 /// Runtime setting key for how long a sealed day of `security` audit records is kept; unset, for
 /// ever (WP-3.7, owner decision of 2026-10-11).
 pub const SETTING_AUDIT_RETENTION_SECURITY: &str = "PERMGUARD_AUDIT_RETENTION_SECURITY";
+/// Runtime setting key for how long a checkpoint may wait for a coordinator's acknowledgement
+/// before the Host is `degraded: audit_egress` from `production` up (WP-5.9, owner decision of
+/// 2026-10-16).
+pub const SETTING_AUDIT_CHECKPOINTS_MAX_LAG: &str = "PERMGUARD_AUDIT_CHECKPOINTS_MAX_LAG";
+/// Runtime setting key for how long a read cursor is valid after it is issued (WP-5.5, owner
+/// decision of 2026-10-16).
+pub const SETTING_STREAM_CURSOR_TTL: &str = "PERMGUARD_STREAM_CURSOR_TTL";
+/// Runtime setting key for how long a producer keeps a batch after every required coordinator
+/// acknowledged it (WP-7.9b): the coordinators' snapshot interval plus their recovery time, so a
+/// coordinator restored from a snapshot is resent what it lost. `0s` deletes at once.
+pub const SETTING_STREAM_ACKNOWLEDGED_RETENTION: &str = "PERMGUARD_STREAM_ACKNOWLEDGED_RETENTION";
+/// The non-secret id of the recovery key the deployment encrypts its backups under, bound in every
+/// snapshot manifest (WP-7.8, `8-architecture-storage-operations.md` permissions and encryption).
+/// Unset: the manifest names none.
+pub const SETTING_BACKUP_RECOVERY_KEY_ID: &str = "PERMGUARD_BACKUP_RECOVERY_KEY_ID";
+/// The encryption profile of the deployment's backups, bound in every snapshot manifest beside the
+/// recovery-key id (WP-7.8). Unset: the manifest names none.
+pub const SETTING_BACKUP_ENCRYPTION_PROFILE: &str = "PERMGUARD_BACKUP_ENCRYPTION_PROFILE";
+/// The secret reference of the recovery key backups are encrypted under (TS-5): its id is the key's
+/// fingerprint, which every snapshot manifest binds and a restore verifies before it writes.
+pub const SETTING_BACKUP_RECOVERY_KEY: &str = "PERMGUARD_BACKUP_RECOVERY_KEY";
+/// How long a backup is kept before it is destroyed (TS-5); required from `production`.
+pub const SETTING_BACKUP_RETENTION: &str = "PERMGUARD_BACKUP_RETENTION";
+/// The evidence id of the tested procedure that destroys an expired backup (TS-5); required from
+/// `production`.
+pub const SETTING_BACKUP_DESTRUCTION: &str = "PERMGUARD_BACKUP_DESTRUCTION";
 /// Whether refused operations are recorded in the audit trail as well as the log.
 ///
 /// Off by default: the trail records what changed the world, and a caller's mistakes change
@@ -361,6 +392,11 @@ pub const SETTING_NOTP_MAX_PUSH_BYTES: &str = "PERMGUARD_NOTP_MAX_PUSH_BYTES";
 /// the ceiling that keeps them from costing the volume.
 pub const SETTING_NOTP_LEDGER_QUOTA_BYTES: &str = "PERMGUARD_NOTP_LEDGER_QUOTA_BYTES";
 
+/// Runtime setting key for how long a NOTP transfer session stays open (WP-7.12): a push that
+/// has not committed by then is closed `expired` and its reservation released, its pins and
+/// answer kept for `storage.gc.grace`; a pull not fetched by then ends.
+pub const SETTING_NOTP_TRANSFER_TTL: &str = "PERMGUARD_NOTP_TRANSFER_TTL";
+
 /// Runtime setting keys for a mirroring plane's synchronization loop.
 ///
 /// The *servers* it follows are a structured record and come from the configuration file (see
@@ -383,8 +419,9 @@ pub const SETTING_MIRRORS_PARALLELISM: &str = "PERMGUARD_MIRRORS_PARALLELISM";
 
 /// The fraction of the interval spread randomly across ticks, `0.0`..=`0.5`.
 ///
-/// Each round waits `interval ± (interval × jitter) / 2`, drawn again every round — so `0.1` means
-/// ±5% of the interval, and a fleet that happens to align on its first tick does not stay aligned.
+/// Each round waits `interval × (1 + jitter × u)`, `u` drawn in `[-1, 1]` again every round (F-20)
+/// — so `0.1` means ±10% of the interval, and a fleet that happens to align on its first tick does
+/// not stay aligned.
 ///
 /// Without it, every replica of a plane wakes at the same instant and asks one control plane for
 /// everything at once — the thundering herd that turns a rollout into an incident.
@@ -406,6 +443,17 @@ pub const SETTING_MIRRORS_STALE_AFTER: &str = "PERMGUARD_MIRRORS_STALE_AFTER";
 /// "indefinitely" wrong, and a flaky link makes "minutes" wrong. Unset (or `0s`) means no bound.
 pub const SETTING_MIRRORS_EXPIRE_AFTER: &str = "PERMGUARD_MIRRORS_EXPIRE_AFTER";
 
+/// How long a membership mirror its task's complete listing no longer names is kept before it is
+/// reaped (WP-7.2d): the absence must be seen again, by a later complete listing at least this
+/// long after the first. `0s` still needs the two listings.
+pub const SETTING_MIRRORS_REAP_GRACE: &str = "PERMGUARD_MIRRORS_REAP_GRACE";
+
+/// The revocation propagation objective this deployment declares (WP-7.2d): how soon a revocation
+/// reaches this plane. With a watch it is the time a round takes to verify and checkpoint; without
+/// one — a watch can always be lost — the polling bound `interval × (1 + jitter)`, which must
+/// therefore not exceed it. Unset (or `0s`) declares none.
+pub const SETTING_MIRRORS_REVOCATION_OBJECTIVE: &str = "PERMGUARD_MIRRORS_REVOCATION_OBJECTIVE";
+
 /// Runtime setting keys for the store's own maintenance: reclaiming objects nothing references.
 ///
 /// A content-addressed store only ever adds. Objects are uploaded before the commit that references
@@ -424,6 +472,10 @@ pub const SETTING_GC_INTERVAL: &str = "PERMGUARD_STORAGE_GC_INTERVAL";
 /// upload of every push in flight. The window has to comfortably exceed the slowest legitimate
 /// push, which is why the default is a day and not a minute.
 pub const SETTING_GC_GRACE: &str = "PERMGUARD_STORAGE_GC_GRACE";
+
+/// How many objects one sweep removes at most (WP-7.11): a pass that reaches it stops, and the
+/// next resumes where it stopped, so the work of a tick stays bounded however much is due.
+pub const SETTING_GC_MAX_REMOVALS: &str = "PERMGUARD_STORAGE_GC_MAX_REMOVALS";
 
 /// Runtime setting keys for the decision path: what a data plane keeps in memory so an
 /// authorization check never touches a disk.
@@ -456,15 +508,31 @@ pub const SETTING_AUTHZ_CACHE_ZONE_BYTES: &str = "PERMGUARD_AUTHZ_CACHE_ZONE_BYT
 /// either way the answer is a refusal rather than a stalled worker.
 pub const SETTING_AUTHZ_MAX_EVALUATIONS: &str = "PERMGUARD_AUTHZ_MAX_EVALUATIONS";
 
-/// How many pieces of blocking work this plane may have in flight at once.
+/// How many pieces of storage work of each kind this plane may have in flight at once.
 ///
-/// Evaluating a policy and writing a decision record both wait — on a CPU that is not yielding, on
-/// a disk that has not finished — and neither may run on a runtime worker. They run on a pool, and
-/// this is its size: reached, the plane refuses immediately rather than queueing behind work it
-/// cannot bound. It is the number that decides whether a stalled disk or a provider that stopped
-/// returning shows up as refusals while the plane can still produce them, or as a plane that
-/// accumulates until memory decides, so it is worth being able to set.
+/// Loading a ledger, replaying temporal history and writing a decision record wait on a disk, and
+/// none of it may run on a runtime worker. Loads and replay run on one pool, decision records and
+/// the group flush they wait on on another, and this is the size of each: reached, the
+/// plane refuses immediately rather than queueing behind work it cannot bound. It is the number
+/// that decides whether a stalled disk shows up as refusals while the plane can still produce them,
+/// or as a plane that accumulates until memory decides, so it is worth being able to set. Policy
+/// evaluation runs on a pool of its own, [`SETTING_EVALUATION_CONCURRENCY`] (TS-3).
 pub const SETTING_MAX_BLOCKING: &str = "PERMGUARD_MAX_BLOCKING";
+
+/// How many policy evaluations run at once (TS-3, P5 separate pools).
+///
+/// Evaluation is CPU work that does not yield: more of it running at once than there are cores only
+/// makes each slower. It therefore runs on a pool of its own, apart from the disk work
+/// [`SETTING_MAX_BLOCKING`] bounds, so that a stalled disk cannot take the evaluation's capacity
+/// and a hung evaluation cannot take the disk's. Unset, it is the Host's logical cores, read at
+/// start: a number derived from the machine, never one measured elsewhere.
+pub const SETTING_EVALUATION_CONCURRENCY: &str = "PERMGUARD_EVALUATION_CONCURRENCY";
+
+/// How many evaluations may wait for one of the [`SETTING_EVALUATION_CONCURRENCY`] slots.
+///
+/// A burst wider than the cores waits here, each request no longer than its own deadline; past
+/// this many the plane refuses at once, typed, rather than queueing work it cannot bound.
+pub const SETTING_EVALUATION_QUEUE: &str = "PERMGUARD_EVALUATION_QUEUE";
 
 /// Runtime setting keys for the decision log: what a plane records about what it decided, and
 /// where it sends it.
@@ -473,12 +541,35 @@ pub const SETTING_MAX_BLOCKING: &str = "PERMGUARD_MAX_BLOCKING";
 /// time, and neither is something to switch on for a deployment that did not ask for it.
 pub const SETTING_LOG_ENABLED: &str = "PERMGUARD_DECISIONS_LOG_ENABLED";
 
-/// This plane's name in the log, and half of every stream identity.
-///
-/// Required when the log is on. A hostname fallback is convenient and wrong the first time two
-/// replicas run on one host: two producers sharing a `pdp.id` produce two records at one
-/// `(stream, seq)`, which closes a stream permanently at the far end.
+/// Retired (WP-6.1): the decision stream is named by the Host's `host_id` and run, so a
+/// configuration that still names the plane is refused.
 pub const SETTING_LOG_PDP_ID: &str = "PERMGUARD_DECISIONS_LOG_PDP_ID";
+
+/// What the decision log promises before an answer (WP-6.1): `required` (every answered decision
+/// has a durable record, and one that cannot be recorded is refused `unavailable`) or `disabled`.
+///
+/// Unset, it follows [`SETTING_LOG_ENABLED`]. `best-effort` is refused until its `loss` record is
+/// defined.
+pub const SETTING_LOG_MODE: &str = "PERMGUARD_DECISIONS_LOG_MODE";
+
+/// The decision log's assurance mode (WP-6.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecisionLogMode {
+    /// Every answered decision has a durable record; one that cannot be recorded is refused.
+    Required,
+    /// No record is promised.
+    Disabled,
+}
+
+impl DecisionLogMode {
+    /// The word configuration spells it with.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Required => "required",
+            Self::Disabled => "disabled",
+        }
+    }
+}
 
 /// Where the durable local record lives, under the working directory.
 ///
@@ -511,13 +602,8 @@ pub const SETTING_LOG_SPOOL_BYTES: &str = "PERMGUARD_DECISIONS_LOG_SPOOL_BYTES";
 /// somebody chose to run.
 pub const SETTING_EVENTS_ENABLED: &str = "PERMGUARD_EVENTS_ENABLED";
 
-/// This plane's name as an event producer, stable across restarts.
-///
-/// Required when the interface is on. Falling back to a hostname is convenient
-/// and wrong the first time two replicas share a host — and here it is worse
-/// than for the decision log, because a producer id names a hash chain: two
-/// planes sharing one would each be appending to a stream the other also
-/// claims.
+/// Retired (WP-6.2a): the event stream is named by the Host's `host_id` and run, so a
+/// configuration that still names the plane is refused.
 pub const SETTING_EVENTS_PRODUCER_ID: &str = "PERMGUARD_EVENTS_PRODUCER_ID";
 
 /// Where the journals live, under the volume.
@@ -551,6 +637,29 @@ pub const SETTING_EVENTS_CLOCK_SKEW: &str = "PERMGUARD_EVENTS_CLOCK_SKEW";
 /// A latency budget, never a durability one: a receipt is still withheld until the record is on
 /// disk. What this buys is that ten submissions arriving together cost one flush rather than ten.
 pub const SETTING_EVENTS_GROUP_COMMIT_DELAY: &str = "PERMGUARD_EVENTS_GROUP_COMMIT_MAX_DELAY";
+
+/// The bytes every warm temporal history of this Host may hold (`events.warm.bytes`, TL-5).
+///
+/// A warm history is an engine holding a lowered policy set and the events it observed: disposable
+/// derived state the journal rebuilds, bounded by bytes rather than by a count of histories.
+pub const SETTING_EVENTS_WARM_BYTES: &str = "PERMGUARD_EVENTS_WARM_BYTES";
+/// The bytes the warm histories of one zone may hold (`events.warm.zone_bytes`).
+pub const SETTING_EVENTS_WARM_ZONE_BYTES: &str = "PERMGUARD_EVENTS_WARM_ZONE_BYTES";
+/// The bytes the warm histories of one compiled partition may hold (`events.warm.partition_bytes`).
+pub const SETTING_EVENTS_WARM_PARTITION_BYTES: &str = "PERMGUARD_EVENTS_WARM_PARTITION_BYTES";
+/// The most records one cold history's replay may read (`events.replay.max_records`).
+pub const SETTING_EVENTS_REPLAY_MAX_RECORDS: &str = "PERMGUARD_EVENTS_REPLAY_MAX_RECORDS";
+/// The most bytes one cold history's replay may read (`events.replay.max_bytes`).
+pub const SETTING_EVENTS_REPLAY_MAX_BYTES: &str = "PERMGUARD_EVENTS_REPLAY_MAX_BYTES";
+/// How long one submission's replay may run before its partitions answer `E`
+/// (`events.replay.timeout`).
+pub const SETTING_EVENTS_REPLAY_TIMEOUT: &str = "PERMGUARD_EVENTS_REPLAY_TIMEOUT";
+/// How many cold replays may run at once before a submission needing another is turned away
+/// (`events.replay.concurrency`).
+pub const SETTING_EVENTS_REPLAY_CONCURRENCY: &str = "PERMGUARD_EVENTS_REPLAY_CONCURRENCY";
+/// How many recently used histories of each ledger are replayed in the background after load
+/// (`events.replay.prewarm`), under the replay plan and its concurrency; `0` turns prewarm off.
+pub const SETTING_EVENTS_REPLAY_PREWARM: &str = "PERMGUARD_EVENTS_REPLAY_PREWARM";
 
 /// Whether this deployment will serve Dogwood partitions.
 ///
@@ -617,17 +726,30 @@ pub const SETTING_LOG_BATCH_BYTES: &str = "PERMGUARD_DECISIONS_LOG_BATCH_BYTES";
 /// How long a batch may wait before it is shipped anyway.
 pub const SETTING_LOG_BATCH_INTERVAL: &str = "PERMGUARD_DECISIONS_LOG_BATCH_INTERVAL";
 
-/// What a full spool means: `open` keeps answering and ends the stream with a signed
-/// discontinuity; `closed` refuses to decide rather than decide unrecorded.
-///
-/// The one decision only a deployment can make, so it is stated rather than defaulted quietly.
+/// What a full spool means. Only `closed` is accepted (WP-6.1): the decision log refuses rather
+/// than decides unrecorded, which is [`SETTING_LOG_MODE`] `required`; `open` is refused.
 pub const SETTING_LOG_ON_FULL: &str = "PERMGUARD_DECISIONS_LOG_ON_FULL";
 
 /// The rate at which permits are recorded, between `0.0` and `1.0`.
 ///
 /// Denies and errors are never sampled, whatever this says: a log that drops refusals is not an
-/// audit trail.
+/// audit trail. Below `1.0` only under a mode that answers a decision it did not record, which
+/// `required` is not (WP-6.6): every answer it gives is durable.
 pub const SETTING_LOG_SAMPLE_PERMITS: &str = "PERMGUARD_DECISIONS_LOG_SAMPLE_PERMITS";
+
+/// Whether this plane signs a native decision response a request asks a signature for (WP-6.6b).
+/// Absent, it follows whether the plane composes its `data.attest` ring; on with no ring
+/// composed, discovery says `disabled` and a request for a signature is refused.
+pub const SETTING_RESPONSE_SIGNING_ENABLED: &str = "PERMGUARD_DECISIONS_RESPONSE_SIGNING_ENABLED";
+
+/// How long a signed decision response is valid: what discovery publishes as `validity_seconds`
+/// and the distance between `issued_at` and `expires_at`. Whole seconds, at most an hour.
+pub const SETTING_RESPONSE_SIGNING_VALIDITY: &str = "PERMGUARD_DECISIONS_RESPONSE_SIGNING_VALIDITY";
+
+/// The clock skew a verifier allows a signed decision response, published as
+/// `clock_skew_seconds`. Whole seconds, at most five minutes.
+pub const SETTING_RESPONSE_SIGNING_CLOCK_SKEW: &str =
+    "PERMGUARD_DECISIONS_RESPONSE_SIGNING_CLOCK_SKEW";
 
 /// Retired (WP-3.3): input tags are keyed by the per-ledger zone key derived from
 /// [`SETTING_SECRETS_COORDINATOR_ROOT_REF`]; a configuration that still sets this is refused.
@@ -693,6 +815,20 @@ pub const SETTING_DATA_KEYS_ENABLED: &str = "PERMGUARD_DATA_KEYS_ENABLED";
 
 /// Runtime setting key for where the data plane's signing ring lives.
 pub const SETTING_DATA_KEYS_DIRECTORY: &str = "PERMGUARD_DATA_KEYS_DIRECTORY";
+
+/// Runtime setting key for the comma-separated list of planes to host in this process; absent,
+/// every plane. Defined here because whether the data plane runs decides a published relaxation
+/// (WP-7.5b).
+pub const SETTING_RUNTIME_PLANES: &str = "PERMGUARD_RUNTIME_PLANES";
+
+/// Runtime setting key for whether the data plane's gRPC listener is on. Defined here, beside
+/// the address, because whether it serves the evaluation interfaces is a published relaxation
+/// (WP-7.5b).
+pub const SETTING_DATA_GRPC_ENABLED: &str = "PERMGUARD_DATA_GRPC_ENABLED";
+
+/// Runtime setting key for the data plane's gRPC listener address: the listener exists only
+/// when it is set.
+pub const SETTING_DATA_GRPC_ADDR: &str = "PERMGUARD_DATA_GRPC_ADDR";
 
 /// Runtime setting key for whether this deployment publishes signing keys at all.
 pub const SETTING_KEYS_ENABLED: &str = "PERMGUARD_KEYS_ENABLED";
@@ -854,6 +990,13 @@ const DEFAULT_KEYS_RETAIN: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 
 /// How long a day of audit records is kept when nothing says otherwise.
 const DEFAULT_AUDIT_RETENTION: Duration = Duration::from_secs(90 * 24 * 60 * 60);
+/// How long a checkpoint may wait for its acknowledgement: two sweeps (WP-5.9).
+const DEFAULT_AUDIT_CHECKPOINTS_MAX_LAG: Duration = Duration::from_secs(2 * 60 * 60);
+/// How long a read cursor is valid after it is issued (WP-5.5).
+const DEFAULT_STREAM_CURSOR_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+/// The longest a read cursor may be valid: a year, so its expiry stays an interoperable JSON
+/// integer (WP-5.5).
+const MAXIMUM_STREAM_CURSOR_TTL: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 
 /// NOTP transfer bounds: a batch comfortably above the 5 MB object ceiling, deltas sized for
 /// policy ledgers (hundreds of small objects), and a ledger quota an order above that.
@@ -867,6 +1010,7 @@ const DEFAULT_MIRRORS_INTERVAL: Duration = Duration::from_secs(30);
 const DEFAULT_MIRRORS_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULT_MIRRORS_PARALLELISM: usize = 4;
 const DEFAULT_MIRRORS_JITTER: f64 = 0.1;
+const DEFAULT_MIRRORS_REAP_GRACE: Duration = Duration::from_secs(3600);
 
 /// Maintenance defaults: sweep four times a day, and never touch anything younger than a day.
 /// The interval is about how promptly space returns; the grace period is about correctness, and it
@@ -880,6 +1024,7 @@ const MINIMUM_GC_GRACE: Duration = Duration::from_secs(15 * 60);
 const DEFAULT_GC_ENABLED: bool = true;
 const DEFAULT_GC_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 const DEFAULT_GC_GRACE: Duration = Duration::from_secs(24 * 60 * 60);
+const DEFAULT_GC_MAX_REMOVALS: u32 = 10_000;
 
 /// Decision-path defaults: enough compiled partitions for a plane that serves a handful of
 /// ledgers, and a memory bound a small container can hold. Both are meant to be raised by a
@@ -893,6 +1038,22 @@ const DEFAULT_AUTHZ_MAX_EVALUATIONS: usize = 256;
 /// High enough that a plane answering ordinary traffic never meets it, low enough that work which
 /// has stopped returning cannot take the process with it.
 const DEFAULT_MAX_BLOCKING: usize = 64;
+
+/// The default burst of evaluations that may wait for a core: as many as the storage pool may run,
+/// so the default plane admits as much evaluation work at once as it did before the pools were
+/// separated. A protective bound, not a capacity promise: a deployment sizes it from its own
+/// benchmark report.
+const DEFAULT_EVALUATION_QUEUE: usize = DEFAULT_MAX_BLOCKING;
+
+/// The most threads the runtime lends blocking work (Tokio's default). The two pools take theirs
+/// from it, so together they may not ask for more: a pool whose permits outnumber the threads
+/// would queue invisibly behind the other, which is the starvation the separation exists to end.
+pub const RUNTIME_BLOCKING_THREADS: usize = 512;
+
+/// The Host's logical cores, read once: the evaluation pool's default size.
+pub fn host_cores() -> usize {
+    std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+}
 
 /// The default bound, for a component built before a configuration is read.
 pub fn default_max_blocking() -> usize {
@@ -934,6 +1095,18 @@ pub const DEFAULT_EVENTS_ALLOWED_LATENESS: Duration = Duration::from_secs(5 * 60
 pub const DEFAULT_EVENTS_CLOCK_SKEW: Duration = Duration::from_secs(30);
 /// How long a group commit may wait to amortise an `fsync`.
 pub const DEFAULT_EVENTS_GROUP_COMMIT_DELAY: Duration = Duration::from_millis(5);
+/// The Host's bound on warm temporal state; a zone's defaults to a quarter of it.
+pub const DEFAULT_EVENTS_WARM_BYTES: u64 = 256 * 1024 * 1024;
+/// One compiled partition's bound on warm temporal state.
+pub const DEFAULT_EVENTS_WARM_PARTITION_BYTES: u64 = 64 * 1024 * 1024;
+/// The most records one cold history's replay reads.
+pub const DEFAULT_EVENTS_REPLAY_MAX_RECORDS: u64 = 100_000;
+/// The most bytes one cold history's replay reads.
+pub const DEFAULT_EVENTS_REPLAY_MAX_BYTES: u64 = 64 * 1024 * 1024;
+/// How long one submission's replay may run.
+pub const DEFAULT_EVENTS_REPLAY_TIMEOUT: Duration = Duration::from_secs(2);
+/// How many cold replays run at once.
+pub const DEFAULT_EVENTS_REPLAY_CONCURRENCY: usize = 4;
 /// How often the pull worker asks for more, when a deployment turns pull on.
 pub const DEFAULT_EVENTS_PULL_INTERVAL: Duration = Duration::from_secs(2);
 /// How stale imported history may be before `shared-bounded` fails decisions closed.
@@ -1003,6 +1176,10 @@ const DEFAULT_LOG_SPOOL_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 const DEFAULT_LOG_BATCH_BYTES: u64 = 256 * 1024;
 const DEFAULT_LOG_BATCH_INTERVAL: Duration = Duration::from_secs(1);
 const DEFAULT_LOG_SAMPLE_PERMITS: f64 = 1.0;
+const DEFAULT_RESPONSE_SIGNING_VALIDITY: Duration = Duration::from_secs(300);
+const MAX_RESPONSE_SIGNING_VALIDITY: Duration = Duration::from_secs(3600);
+const DEFAULT_RESPONSE_SIGNING_CLOCK_SKEW: Duration = Duration::from_secs(30);
+const MAX_RESPONSE_SIGNING_CLOCK_SKEW: Duration = Duration::from_secs(300);
 
 /// Ninety days: long enough for the investigation that starts a quarter late, short enough that
 /// nobody keeps personal data indefinitely by not choosing.
@@ -1017,6 +1194,10 @@ const DEFAULT_NOTP_MAX_BATCH_OBJECTS: u64 = 1_000;
 const DEFAULT_NOTP_MAX_PUSH_OBJECTS: u64 = 10_000;
 const DEFAULT_NOTP_MAX_PUSH_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_NOTP_LEDGER_QUOTA_BYTES: u64 = 1024 * 1024 * 1024;
+/// Fifteen minutes: a push that takes longer negotiates again (owner decision, 2026-10-14).
+const DEFAULT_NOTP_TRANSFER_TTL: Duration = Duration::from_secs(15 * 60);
+/// A session's expiry is bounded: one hour at most.
+const MAXIMUM_NOTP_TRANSFER_TTL: Duration = Duration::from_secs(60 * 60);
 
 /// Where the key ring lives inside the volume when nothing says otherwise.
 ///
@@ -1228,6 +1409,7 @@ pub struct Config {
     limits: Limits,
     shutdown_timeout: Duration,
     shutdown_drain_timeout: Duration,
+    shutdown_recover_drain: bool,
     time_max_clock_skew: Duration,
     assurance_profile: crate::assurance::AssuranceProfile,
     assurance_added: Vec<crate::assurance::Control>,
@@ -1245,18 +1427,24 @@ pub struct Config {
     gc_enabled: bool,
     gc_interval: Duration,
     gc_grace: Duration,
+    gc_max_removals: u32,
     authz_cache_partitions: usize,
     authz_cache_bytes: u64,
     authz_cache_zone_partitions: Option<usize>,
     authz_cache_zone_bytes: Option<u64>,
     authz_max_evaluations: usize,
     max_blocking: usize,
+    /// `None`: the Host's cores.
+    evaluation_concurrency: Option<usize>,
+    evaluation_queue: usize,
     log_enabled: bool,
-    log_pdp_id: String,
+    /// `log.enabled` and `log.mode` as some layer stated them, so a contradiction between two
+    /// layers is refused like one within a layer (WP-6.1).
+    log_enabled_stated: Option<bool>,
+    log_mode_stated: Option<bool>,
     log_spool_directory: String,
     log_spool_bytes: u64,
     events_enabled: bool,
-    events_producer_id: String,
     events_directory: String,
     events_max_bytes: u64,
     events_segment_bytes: u64,
@@ -1265,6 +1453,14 @@ pub struct Config {
     events_allowed_lateness: Duration,
     events_clock_skew: Duration,
     events_group_commit_delay: Duration,
+    events_warm_bytes: u64,
+    events_warm_zone_bytes: Option<u64>,
+    events_warm_partition_bytes: u64,
+    events_replay_max_records: u64,
+    events_replay_max_bytes: u64,
+    events_replay_timeout: Duration,
+    events_replay_concurrency: usize,
+    events_replay_prewarm: usize,
     events_pull_mode: Consistency,
     events_pull_interval: Duration,
     events_pull_max_staleness: Duration,
@@ -1279,8 +1475,10 @@ pub struct Config {
     log_spool_age: Duration,
     log_batch_bytes: u64,
     log_batch_interval: Duration,
-    log_on_full_open: bool,
     log_sample_permits: f64,
+    response_signing_enabled: Option<bool>,
+    response_signing_validity: Duration,
+    response_signing_clock_skew: Duration,
     log_destination: Option<crate::decisions::LogDestination>,
     events_destination: Option<crate::decisions::EventDestination>,
     log_include: crate::decisions::IncludeSection,
@@ -1305,7 +1503,13 @@ pub struct Config {
     mirrors_jitter: f64,
     mirrors_stale_after: Option<Duration>,
     mirrors_expire_after: Option<Duration>,
-    mirror_sources: Vec<crate::mirrors::MirrorSource>,
+    mirrors_reap_grace: Duration,
+    mirrors_revocation_objective: Option<Duration>,
+    mirror_local: Option<crate::mirrors::MirrorLocal>,
+    storage_report: Option<crate::volume::StorageReport>,
+    objectives_report: Option<crate::objectives::ObjectivesReport>,
+    mirror_task_selections: Vec<crate::mirrors::MirrorTaskSelection>,
+    mirror_aliases: Vec<crate::mirrors::MirrorAlias>,
     otel_enabled: bool,
     otel_endpoint: String,
     otel_sample_rate: f64,
@@ -1313,9 +1517,18 @@ pub struct Config {
     notp_max_push_objects: u64,
     notp_max_push_bytes: u64,
     notp_ledger_quota_bytes: u64,
+    notp_transfer_ttl: Duration,
     audit_directory: Option<String>,
     audit_retention: Duration,
     audit_retention_security: Option<Duration>,
+    audit_checkpoints_max_lag: Duration,
+    stream_cursor_ttl: Duration,
+    stream_acknowledged_retention: Duration,
+    backup_recovery_key_id: Option<String>,
+    backup_encryption_profile: Option<String>,
+    backup_recovery_key: Option<SecretRef>,
+    backup_retention: Option<Duration>,
+    backup_destruction: Option<String>,
     audit_pseudonym_enabled: bool,
     audit_pseudonym_key_ref: Option<SecretRef>,
     audit_pseudonym_key_version: String,
@@ -1419,6 +1632,7 @@ impl Default for Config {
             limits: Limits::default(),
             shutdown_timeout: DEFAULT_SHUTDOWN_TIMEOUT,
             shutdown_drain_timeout: DEFAULT_SHUTDOWN_DRAIN_TIMEOUT,
+            shutdown_recover_drain: false,
             time_max_clock_skew: DEFAULT_TIME_MAX_CLOCK_SKEW,
             assurance_profile: crate::assurance::AssuranceProfile::Production,
             assurance_added: Vec::new(),
@@ -1437,18 +1651,21 @@ impl Default for Config {
             gc_enabled: DEFAULT_GC_ENABLED,
             gc_interval: DEFAULT_GC_INTERVAL,
             gc_grace: DEFAULT_GC_GRACE,
+            gc_max_removals: DEFAULT_GC_MAX_REMOVALS,
             authz_cache_partitions: DEFAULT_AUTHZ_CACHE_PARTITIONS,
             authz_cache_bytes: DEFAULT_AUTHZ_CACHE_BYTES,
             authz_cache_zone_partitions: None,
             authz_cache_zone_bytes: None,
             authz_max_evaluations: DEFAULT_AUTHZ_MAX_EVALUATIONS,
             max_blocking: DEFAULT_MAX_BLOCKING,
+            evaluation_concurrency: None,
+            evaluation_queue: DEFAULT_EVALUATION_QUEUE,
             log_enabled: false,
-            log_pdp_id: String::new(),
+            log_enabled_stated: None,
+            log_mode_stated: None,
             log_spool_directory: DEFAULT_LOG_SPOOL_DIRECTORY.to_owned(),
             log_spool_bytes: DEFAULT_LOG_SPOOL_BYTES,
             events_enabled: false,
-            events_producer_id: String::new(),
             events_directory: DEFAULT_EVENTS_DIRECTORY.to_owned(),
             events_max_bytes: DEFAULT_EVENTS_MAX_BYTES,
             events_segment_bytes: DEFAULT_EVENTS_SEGMENT_BYTES,
@@ -1457,6 +1674,14 @@ impl Default for Config {
             events_allowed_lateness: DEFAULT_EVENTS_ALLOWED_LATENESS,
             events_clock_skew: DEFAULT_EVENTS_CLOCK_SKEW,
             events_group_commit_delay: DEFAULT_EVENTS_GROUP_COMMIT_DELAY,
+            events_warm_bytes: DEFAULT_EVENTS_WARM_BYTES,
+            events_warm_zone_bytes: None,
+            events_warm_partition_bytes: DEFAULT_EVENTS_WARM_PARTITION_BYTES,
+            events_replay_max_records: DEFAULT_EVENTS_REPLAY_MAX_RECORDS,
+            events_replay_max_bytes: DEFAULT_EVENTS_REPLAY_MAX_BYTES,
+            events_replay_timeout: DEFAULT_EVENTS_REPLAY_TIMEOUT,
+            events_replay_concurrency: DEFAULT_EVENTS_REPLAY_CONCURRENCY,
+            events_replay_prewarm: 0,
             events_pull_mode: Consistency::Local,
             events_pull_interval: DEFAULT_EVENTS_PULL_INTERVAL,
             events_pull_max_staleness: DEFAULT_EVENTS_PULL_MAX_STALENESS,
@@ -1466,8 +1691,10 @@ impl Default for Config {
             log_spool_age: DEFAULT_LOG_SPOOL_AGE,
             log_batch_bytes: DEFAULT_LOG_BATCH_BYTES,
             log_batch_interval: DEFAULT_LOG_BATCH_INTERVAL,
-            log_on_full_open: true,
             log_sample_permits: DEFAULT_LOG_SAMPLE_PERMITS,
+            response_signing_enabled: None,
+            response_signing_validity: DEFAULT_RESPONSE_SIGNING_VALIDITY,
+            response_signing_clock_skew: DEFAULT_RESPONSE_SIGNING_CLOCK_SKEW,
             log_destination: None,
             events_destination: None,
             log_include: crate::decisions::IncludeSection::default(),
@@ -1485,7 +1712,13 @@ impl Default for Config {
             mirrors_jitter: DEFAULT_MIRRORS_JITTER,
             mirrors_stale_after: None,
             mirrors_expire_after: None,
-            mirror_sources: Vec::new(),
+            mirrors_reap_grace: DEFAULT_MIRRORS_REAP_GRACE,
+            mirrors_revocation_objective: None,
+            mirror_local: None,
+            storage_report: None,
+            objectives_report: None,
+            mirror_task_selections: Vec::new(),
+            mirror_aliases: Vec::new(),
             otel_enabled: false,
             otel_endpoint: DEFAULT_OTEL_ENDPOINT.to_owned(),
             otel_sample_rate: DEFAULT_OTEL_SAMPLE_RATE,
@@ -1493,9 +1726,18 @@ impl Default for Config {
             notp_max_push_objects: DEFAULT_NOTP_MAX_PUSH_OBJECTS,
             notp_max_push_bytes: DEFAULT_NOTP_MAX_PUSH_BYTES,
             notp_ledger_quota_bytes: DEFAULT_NOTP_LEDGER_QUOTA_BYTES,
+            notp_transfer_ttl: DEFAULT_NOTP_TRANSFER_TTL,
             audit_directory: None,
             audit_retention: DEFAULT_AUDIT_RETENTION,
             audit_retention_security: None,
+            audit_checkpoints_max_lag: DEFAULT_AUDIT_CHECKPOINTS_MAX_LAG,
+            stream_cursor_ttl: DEFAULT_STREAM_CURSOR_TTL,
+            stream_acknowledged_retention: Duration::ZERO,
+            backup_recovery_key_id: None,
+            backup_encryption_profile: None,
+            backup_recovery_key: None,
+            backup_retention: None,
+            backup_destruction: None,
             audit_pseudonym_enabled: false,
             audit_pseudonym_key_ref: None,
             audit_pseudonym_key_version: DEFAULT_KEY_VERSION.to_owned(),
@@ -1599,6 +1841,16 @@ impl Config {
     /// The zone's cache bounds against the whole cache's, once every layer has applied: a file may
     /// set a small cache that the command line then raises, and only the result is the bound.
     fn check_cache_bounds(&self) -> anyhow::Result<()> {
+        if self.events_warm_zone_bytes() > self.events_warm_bytes
+            || self.events_warm_partition_bytes > self.events_warm_bytes
+        {
+            anyhow::bail!(
+                "a zone's or a partition's warm-state bound ({SETTING_EVENTS_WARM_ZONE_BYTES}, \
+                 {SETTING_EVENTS_WARM_PARTITION_BYTES}) is larger than the Host's \
+                 ({SETTING_EVENTS_WARM_BYTES}): it could never be reached, and the setting would \
+                 bound nothing"
+            );
+        }
         if self.authz_cache_zone_partitions() > self.authz_cache_partitions
             || self.authz_cache_zone_bytes() > self.authz_cache_bytes
         {
@@ -1613,18 +1865,78 @@ impl Config {
         Ok(())
     }
 
-    /// Attaches the servers this plane mirrors, as the configuration file declared them.
-    ///
-    /// Structured, so it comes from the file only — the same reason realms do. Each source is
-    /// checked for shape here, at startup: a URL that is not a URL should stop a deployment while
-    /// somebody is watching, not surprise a mirror an hour later.
-    pub fn with_mirror_sources(
+    /// Attaches where the volume stands, as Bootstrap qualified it (TS-5): what discovery
+    /// publishes of the storage.
+    pub fn with_storage_report(mut self, report: crate::volume::StorageReport) -> Self {
+        self.storage_report = Some(report);
+        self
+    }
+
+    /// Attaches the local task's narrowing (WP-7.7), as the file declared it: patterns are
+    /// compiled by the plane that mirrors, where a broken one is refused at startup.
+    pub fn with_mirror_local(mut self, local: Option<crate::mirrors::MirrorLocal>) -> Self {
+        self.mirror_local = local;
+        self
+    }
+
+    /// Attaches the `policy.mirror` tasks this plane narrows (WP-7.2a), as the file declared them:
+    /// each names a membership and a task, and a selection naming either twice is refused.
+    pub fn with_mirror_task_selections(
         mut self,
-        sources: impl IntoIterator<Item = crate::mirrors::MirrorSource>,
+        selections: impl IntoIterator<Item = crate::mirrors::MirrorTaskSelection>,
     ) -> Result<Self> {
-        self.mirror_sources = sources.into_iter().collect();
-        for source in &self.mirror_sources {
-            crate::mirrors::check_source(source)?;
+        self.mirror_task_selections = selections.into_iter().collect();
+        let mut seen = std::collections::BTreeSet::new();
+        for selection in &self.mirror_task_selections {
+            if selection.membership.is_empty() || selection.task.is_empty() {
+                anyhow::bail!("a mirrored task names its membership and its task");
+            }
+            let dashed = selection.membership.len() == 36
+                && selection
+                    .membership
+                    .char_indices()
+                    .all(|(at, held)| match at {
+                        8 | 13 | 18 | 23 => held == '-',
+                        _ => held.is_ascii_hexdigit(),
+                    });
+            if !dashed {
+                anyhow::bail!(
+                    "the mirrored task `{}` names the membership `{}`: write its id as `host \
+                     members list` shows it, a dashed UUID",
+                    selection.task,
+                    selection.membership
+                );
+            }
+            if !seen.insert((selection.membership.clone(), selection.task.clone())) {
+                anyhow::bail!(
+                    "the task `{}` of membership `{}` is narrowed twice",
+                    selection.task,
+                    selection.membership
+                );
+            }
+        }
+
+        Ok(self)
+    }
+
+    /// Attaches the aliases the file assigns (WP-7.2d, F-17): each pair of names resolves to one
+    /// authority, a dashed UUID; a pair assigned twice is refused, since no order may choose.
+    pub fn with_mirror_aliases(
+        mut self,
+        aliases: impl IntoIterator<Item = crate::mirrors::MirrorAlias>,
+    ) -> Result<Self> {
+        self.mirror_aliases = aliases.into_iter().collect();
+        let mut seen = std::collections::BTreeSet::new();
+        for alias in &self.mirror_aliases {
+            crate::mirrors::check_alias(alias)?;
+            if !seen.insert((alias.zone.clone(), alias.ledger.clone())) {
+                anyhow::bail!(
+                    "the alias `{}/{}` is assigned twice: an alias names one ledger, and no order \
+                     chooses between two",
+                    alias.zone,
+                    alias.ledger
+                );
+            }
         }
 
         Ok(self)
@@ -1914,6 +2226,7 @@ produce: use `EdDSA` or `ES256`"
 
         self.validate_development()?;
         self.validate_shutdown()?;
+        self.validate_pools()?;
         self.validate_admin_advertised_url()?;
         self.validate_host_identity()?;
         self.validate_admin_access()?;
@@ -2013,6 +2326,26 @@ produce: use `EdDSA` or `ES256`"
                 self.shutdown_drain_timeout,
                 MIN_SHUTDOWN_RELEASE,
                 self.shutdown_timeout
+            );
+        }
+        Ok(())
+    }
+
+    /// The blocking pools draw on one runtime's threads: together they may not ask for more than it
+    /// lends (TS-3). The evaluation pool's slots, and `max_blocking` twice — once for loads and
+    /// replay, once for decision records. Necessary, not sufficient: the runtime's other blocking
+    /// work (file reads, the mirror loop, audit sinks) takes threads too, so a configuration near
+    /// the ceiling can still wait on them.
+    fn validate_pools(&self) -> Result<()> {
+        let asked = self.evaluation_concurrency() + 2 * self.max_blocking;
+        if asked > RUNTIME_BLOCKING_THREADS {
+            bail!(
+                "{SETTING_EVALUATION_CONCURRENCY} ({}) and twice {SETTING_MAX_BLOCKING} ({}, for \
+                 loads and for decision records) together ask for {asked} blocking threads, more \
+                 than the runtime's {RUNTIME_BLOCKING_THREADS}: one pool would wait invisibly \
+                 behind another",
+                self.evaluation_concurrency(),
+                self.max_blocking
             );
         }
         Ok(())
@@ -2284,6 +2617,22 @@ produce: use `EdDSA` or `ES256`"
                 "`{ring}` signs while a request waits, and a remote KMS is not allowed there: \
                  keep it `file` or `pkcs11` ({SETTING_KEYS_CUSTODY}), and put `host.identity` or \
                  `host.operations` on `kms` alone"
+            );
+        }
+        // `host.operations` signs the statement that opens a stream's run, and a decision log or a
+        // temporal journal opens one on the first record it appends — while a decision waits.
+        // The no-network decision invariant keeps a remote KMS off that path, and the decision
+        // path now refuses the call (TS-4): refused here, at start, rather than on the first
+        // decision of every ledger.
+        if (self.log_enabled() || self.events_enabled())
+            && self.keys_custody_of("host.operations") == KeyCustody::Kms
+        {
+            bail!(
+                "`host.operations` signs the run a decision record or a temporal event opens, while \
+                 the decision waits, and a remote KMS is not allowed on the decision path: keep \
+                 `host.operations` `file` or `pkcs11` ({SETTING_KEYS_OPERATIONS_CUSTODY}, or \
+                 {SETTING_KEYS_CUSTODY} for every ring) where the decision log or temporal events \
+                 are on"
             );
         }
         if self.assurance_profile == crate::assurance::AssuranceProfile::Regulated {
@@ -3077,15 +3426,57 @@ produce: use `EdDSA` or `ES256`"
         if plaintext_ring || realm_rings {
             in_force.push(Relaxation::CustodyPlaintext);
         }
+        // The Data Plane's evaluation interfaces over gRPC (WP-7.5b, IFACE-06): served with the
+        // lossless scalar subset, by a protobuf decoder that cannot see an unknown field, so
+        // their parity with REST is partial. Where the strict decoder is required they are not
+        // served at all, and nothing is relaxed.
+        if self.grpc_evaluation_served() {
+            in_force.push(Relaxation::GrpcTransportParityPartial);
+        }
         // What the Host's own state imposes rather than any setting: the identity key's custody.
         in_force.extend(self.host_relaxations.iter().copied());
         in_force
+    }
+
+    /// Whether the Data Plane serves its evaluation interfaces over gRPC (WP-7.5b): the process
+    /// hosts the data plane, its gRPC listener has an address and is not switched off, and
+    /// [`Self::grpc_evaluation_permitted`]. An enabled value that is not a boolean counts as on,
+    /// erring toward publishing; the listener refuses it at Bootstrap anyway.
+    pub fn grpc_evaluation_served(&self) -> bool {
+        let hosted = self.setting(SETTING_RUNTIME_PLANES).is_none_or(|planes| {
+            planes
+                .split(',')
+                .map(str::trim)
+                .any(|plane| plane == "data")
+        });
+        let listening = self
+            .setting(SETTING_DATA_GRPC_ADDR)
+            .is_some_and(|address| !address.trim().is_empty())
+            && !self
+                .setting(SETTING_DATA_GRPC_ENABLED)
+                .is_some_and(|enabled| matches!(parse_bool(enabled), Ok(false)));
+        hosted && listening && self.grpc_evaluation_permitted()
+    }
+
+    /// Whether the evaluation interfaces may be served over gRPC at all: not where the assurance
+    /// in force requires the strict protobuf decoder this build does not have (`regulated`, or
+    /// the control added). The one predicate the Data Plane mounts its gRPC services by.
+    pub fn grpc_evaluation_permitted(&self) -> bool {
+        !self
+            .assurance()
+            .requires(crate::assurance::Control::GrpcStrictDecoder)
     }
 
     /// Returns how long the drain may take inside [`Config::shutdown_timeout`]: intake stopped,
     /// in-flight requests finished, every drain hook reported. Strictly shorter than the budget.
     pub fn shutdown_drain_timeout(&self) -> Duration {
         self.shutdown_drain_timeout
+    }
+
+    /// Whether this run is a recovery drain (TD-2): stop once started, and print the signed drain
+    /// receipt when the drain completes.
+    pub fn shutdown_recover_drain(&self) -> bool {
+        self.shutdown_recover_drain
     }
 
     /// Returns the largest backward step of the wall clock the Host tolerates before it declares
@@ -3215,6 +3606,55 @@ produce: use `EdDSA` or `ES256`"
         self.audit_retention_security
     }
 
+    /// Returns how long a checkpoint may wait for a coordinator's acknowledgement before the Host
+    /// is `degraded: audit_egress`, from `production` up (WP-5.9).
+    pub fn audit_checkpoints_max_lag(&self) -> Duration {
+        self.audit_checkpoints_max_lag
+    }
+
+    /// Returns how long a read cursor is valid after it is issued (WP-5.5).
+    pub fn stream_cursor_ttl(&self) -> Duration {
+        self.stream_cursor_ttl
+    }
+
+    /// Returns how long a producer keeps a batch after every required coordinator acknowledged
+    /// it (WP-7.9b); zero deletes at once.
+    pub fn stream_acknowledged_retention(&self) -> Duration {
+        self.stream_acknowledged_retention
+    }
+
+    /// The recovery-key id every snapshot manifest binds (WP-7.8). `None`: none declared.
+    pub fn backup_recovery_key_id(&self) -> Option<&str> {
+        self.backup_recovery_key_id.as_deref()
+    }
+
+    /// The backup encryption profile every snapshot manifest binds (WP-7.8). `None`: none.
+    pub fn backup_encryption_profile(&self) -> Option<&str> {
+        self.backup_encryption_profile.as_deref()
+    }
+
+    /// The recovery key backups are encrypted under, by reference (TS-5). `None`: none declared.
+    pub fn backup_recovery_key(&self) -> Option<&SecretRef> {
+        self.backup_recovery_key.as_ref()
+    }
+
+    /// How long a backup is kept before it is destroyed (TS-5). `None`: none declared.
+    pub fn backup_retention(&self) -> Option<Duration> {
+        self.backup_retention
+    }
+
+    /// The evidence id of the tested destruction procedure (TS-5). `None`: none declared.
+    pub fn backup_destruction(&self) -> Option<&str> {
+        self.backup_destruction.as_deref()
+    }
+
+    /// Binds the recovery-key id Bootstrap derived from the key itself (TS-5): what every snapshot
+    /// manifest names from then on.
+    pub fn with_backup_recovery_key_id(mut self, id: String) -> Self {
+        self.backup_recovery_key_id = Some(id);
+        self
+    }
+
     /// Returns the largest NOTP transfer batch, in bytes.
     pub fn notp_max_batch_bytes(&self) -> u64 {
         self.notp_max_batch_bytes
@@ -3245,14 +3685,23 @@ produce: use `EdDSA` or `ES256`"
         self.gc_grace
     }
 
+    /// How many objects one sweep removes at most (WP-7.11).
+    pub fn gc_max_removals(&self) -> u32 {
+        self.gc_max_removals
+    }
+
     /// Whether this plane records the decisions it answers.
     pub fn log_enabled(&self) -> bool {
         self.log_enabled
     }
 
-    /// This plane's name in the log — half of every stream identity.
-    pub fn log_pdp_id(&self) -> &str {
-        &self.log_pdp_id
+    /// What the decision log promises before an answer (WP-6.1).
+    pub fn log_mode(&self) -> DecisionLogMode {
+        if self.log_enabled {
+            DecisionLogMode::Required
+        } else {
+            DecisionLogMode::Disabled
+        }
     }
 
     /// Where the durable local record lives, under the working directory.
@@ -3283,11 +3732,6 @@ produce: use `EdDSA` or `ES256`"
     /// How long a tenant's events are kept before sealed segments are dropped.
     pub fn event_store_retention(&self) -> Duration {
         self.event_store_retention
-    }
-
-    /// This plane's name as an event producer — the identity its hash chains are owned by.
-    pub fn events_producer_id(&self) -> &str {
-        &self.events_producer_id
     }
 
     /// Where this plane keeps its event journals: `<volume>/data/events` unless told otherwise.
@@ -3328,6 +3772,49 @@ produce: use `EdDSA` or `ES256`"
     /// How long a group commit may wait to amortise an `fsync` across a batch.
     pub fn events_group_commit_delay(&self) -> Duration {
         self.events_group_commit_delay
+    }
+
+    /// The bytes every warm temporal history of this Host may hold.
+    pub fn events_warm_bytes(&self) -> u64 {
+        self.events_warm_bytes
+    }
+
+    /// The bytes the warm histories of one zone may hold: as configured, or a quarter of the
+    /// Host's.
+    pub fn events_warm_zone_bytes(&self) -> u64 {
+        self.events_warm_zone_bytes
+            .unwrap_or(self.events_warm_bytes / 4)
+            .max(1)
+    }
+
+    /// The bytes the warm histories of one compiled partition may hold.
+    pub fn events_warm_partition_bytes(&self) -> u64 {
+        self.events_warm_partition_bytes
+    }
+
+    /// The most records one cold history's replay reads.
+    pub fn events_replay_max_records(&self) -> u64 {
+        self.events_replay_max_records
+    }
+
+    /// The most bytes one cold history's replay reads.
+    pub fn events_replay_max_bytes(&self) -> u64 {
+        self.events_replay_max_bytes
+    }
+
+    /// How long one submission's replay may run.
+    pub fn events_replay_timeout(&self) -> Duration {
+        self.events_replay_timeout
+    }
+
+    /// How many cold replays run at once.
+    pub fn events_replay_concurrency(&self) -> usize {
+        self.events_replay_concurrency
+    }
+
+    /// How many recently used histories of each ledger are replayed after load; `0` is off.
+    pub fn events_replay_prewarm(&self) -> usize {
+        self.events_replay_prewarm
     }
 
     /// Which history this plane's decisions range over.
@@ -3386,6 +3873,12 @@ produce: use `EdDSA` or `ES256`"
         &self.events_pull_producer_keys
     }
 
+    /// Whether the configuration names any key file of the retired HTTP pull (WP-6.2c2b2): the
+    /// imported history arrives over `events.import`, verified under the membership's pins.
+    pub fn events_pull_producer_keys_declared(&self) -> bool {
+        !self.events_pull_producer_keys.is_empty()
+    }
+
     /// Records which ledgers this plane subscribes to.
     ///
     /// Structured, so it comes from the file rather than the layered pipeline — a list of
@@ -3420,14 +3913,26 @@ produce: use `EdDSA` or `ES256`"
         self.log_batch_interval
     }
 
-    /// Whether a full spool keeps answering (`open`) or refuses (`closed`).
-    pub fn log_on_full_open(&self) -> bool {
-        self.log_on_full_open
-    }
-
     /// The rate at which permits are recorded. Denies and errors always are.
     pub fn log_sample_permits(&self) -> f64 {
         self.log_sample_permits
+    }
+
+    /// Whether native decision responses are signed on request (WP-6.6b): as configured, else
+    /// whether the plane composes its signing ring.
+    pub fn response_signing_enabled(&self) -> bool {
+        self.response_signing_enabled
+            .unwrap_or_else(|| self.data_signing_keys_enabled())
+    }
+
+    /// How long a signed decision response is valid.
+    pub fn response_signing_validity(&self) -> Duration {
+        self.response_signing_validity
+    }
+
+    /// The clock skew a verifier allows a signed decision response.
+    pub fn response_signing_clock_skew(&self) -> Duration {
+        self.response_signing_clock_skew
     }
 
     /// Where records are shipped, when the file names a server.
@@ -3454,18 +3959,11 @@ produce: use `EdDSA` or `ES256`"
         destination: Option<crate::decisions::LogDestination>,
         include: crate::decisions::IncludeSection,
     ) -> Result<Self> {
-        // The same shape check a mirror source gets, for the same reason: a
-        // URL that is not a URL is a configuration mistake, and a deployment
+        // A URL that is not a URL is a configuration mistake, and a deployment
         // should hear about it before it starts deciding.
         if let Some(destination) = &destination {
-            crate::mirrors::check_source(&crate::mirrors::MirrorSource {
-                url: destination.url.clone(),
-                tls: destination.tls.clone(),
-                zones: Vec::new(),
-                ledgers: Vec::new(),
-                required: true,
-            })
-            .context("reading the decision log's server")?;
+            crate::mirrors::check_server(&destination.url, &destination.tls)
+                .context("reading the decision log's server")?;
         }
         self.log_destination = destination;
         self.log_include = include;
@@ -3479,14 +3977,8 @@ produce: use `EdDSA` or `ES256`"
         destination: Option<crate::decisions::EventDestination>,
     ) -> Result<Self> {
         if let Some(destination) = &destination {
-            crate::mirrors::check_source(&crate::mirrors::MirrorSource {
-                url: destination.url.clone(),
-                tls: destination.tls.clone(),
-                zones: Vec::new(),
-                ledgers: Vec::new(),
-                required: true,
-            })
-            .context("reading the event store's server")?;
+            crate::mirrors::check_server(&destination.url, &destination.tls)
+                .context("reading the event store's server")?;
 
             let scheme = destination
                 .url
@@ -3609,6 +4101,16 @@ produce: use `EdDSA` or `ES256`"
         self.max_blocking
     }
 
+    /// How many evaluations run at once — see [`SETTING_EVALUATION_CONCURRENCY`].
+    pub fn evaluation_concurrency(&self) -> usize {
+        self.evaluation_concurrency.unwrap_or_else(host_cores)
+    }
+
+    /// How many evaluations may wait for a slot — see [`SETTING_EVALUATION_QUEUE`].
+    pub fn evaluation_queue(&self) -> usize {
+        self.evaluation_queue
+    }
+
     /// How often the synchronization loop runs.
     pub fn mirrors_interval(&self) -> Duration {
         self.mirrors_interval
@@ -3640,10 +4142,48 @@ produce: use `EdDSA` or `ES256`"
         self.mirrors_expire_after
     }
 
-    /// The servers this plane follows, and the zone and ledger patterns of
-    /// each — as the configuration file declared them.
-    pub fn mirror_sources(&self) -> &[crate::mirrors::MirrorSource] {
-        &self.mirror_sources
+    /// How long a membership mirror no longer listed is kept before it is reaped (WP-7.2d).
+    pub fn mirrors_reap_grace(&self) -> Duration {
+        self.mirrors_reap_grace
+    }
+
+    /// The revocation propagation objective this deployment declares (WP-7.2d). `None`: none.
+    pub fn mirrors_revocation_objective(&self) -> Option<Duration> {
+        self.mirrors_revocation_objective
+    }
+
+    /// The aliases the configuration file assigns (WP-7.2d, F-17): each names the one authority a
+    /// pair of names resolves to.
+    pub fn mirror_aliases(&self) -> &[crate::mirrors::MirrorAlias] {
+        &self.mirror_aliases
+    }
+
+    /// The `policy.mirror` tasks this plane narrows, as the configuration file declared them
+    /// (WP-7.2a): empty, every task of this Host's memberships is followed whole.
+    pub fn mirror_task_selections(&self) -> &[crate::mirrors::MirrorTaskSelection] {
+        &self.mirror_task_selections
+    }
+
+    /// How the local task of a process hosting both Planes is narrowed (WP-7.7): `None`, it
+    /// follows every zone and ledger of its own Control Plane.
+    pub fn mirror_local(&self) -> Option<&crate::mirrors::MirrorLocal> {
+        self.mirror_local.as_ref()
+    }
+
+    /// Where the volume stands, once Bootstrap qualified it (TS-5); `None` before.
+    pub fn storage_report(&self) -> Option<&crate::volume::StorageReport> {
+        self.storage_report.as_ref()
+    }
+
+    /// The service objectives Bootstrap validated (TS-5); `None` before.
+    pub fn objectives_report(&self) -> Option<&crate::objectives::ObjectivesReport> {
+        self.objectives_report.as_ref()
+    }
+
+    /// Attaches the service objectives Bootstrap validated (TS-5): what discovery publishes.
+    pub fn with_objectives_report(mut self, report: crate::objectives::ObjectivesReport) -> Self {
+        self.objectives_report = Some(report);
+        self
     }
 
     /// Whether spans leave the process over OTLP.
@@ -3679,6 +4219,11 @@ produce: use `EdDSA` or `ES256`"
     /// Returns the storage quota of one ledger's objects, in bytes.
     pub fn notp_ledger_quota_bytes(&self) -> u64 {
         self.notp_ledger_quota_bytes
+    }
+
+    /// Returns how long a NOTP transfer session stays open.
+    pub fn notp_transfer_ttl(&self) -> Duration {
+        self.notp_transfer_ttl
     }
 
     /// Reports whether this deployment publishes signing keys.
@@ -4087,6 +4632,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_LIMITS_BODY_BYTES => n(self.limits.body_bytes()),
             SETTING_SHUTDOWN_TIMEOUT => d(self.shutdown_timeout),
             SETTING_SHUTDOWN_DRAIN_TIMEOUT => d(self.shutdown_drain_timeout),
+            SETTING_SHUTDOWN_RECOVER_DRAIN => Some(self.shutdown_recover_drain.to_string()),
             SETTING_TIME_MAX_CLOCK_SKEW => d(self.time_max_clock_skew),
             SETTING_ASSURANCE_PROFILE => Some(self.assurance_profile.as_str().to_owned()),
             SETTING_ASSURANCE_ADDED_CONTROLS => {
@@ -4116,12 +4662,24 @@ produce: use `EdDSA` or `ES256`"
             SETTING_AUDIT_DIRECTORY => Some(self.audit_directory().display().to_string()),
             SETTING_AUDIT_RETENTION => d(self.audit_retention),
             SETTING_AUDIT_RETENTION_SECURITY => self.audit_retention_security.and_then(d),
+            SETTING_AUDIT_CHECKPOINTS_MAX_LAG => d(self.audit_checkpoints_max_lag),
+            SETTING_STREAM_CURSOR_TTL => d(self.stream_cursor_ttl),
+            SETTING_STREAM_ACKNOWLEDGED_RETENTION => d(self.stream_acknowledged_retention),
+            SETTING_BACKUP_RECOVERY_KEY_ID => self.backup_recovery_key_id.clone(),
+            SETTING_BACKUP_ENCRYPTION_PROFILE => self.backup_encryption_profile.clone(),
+            SETTING_BACKUP_RECOVERY_KEY => self
+                .backup_recovery_key
+                .as_ref()
+                .map(|reference| reference.name().to_owned()),
+            SETTING_BACKUP_RETENTION => self.backup_retention.and_then(d),
+            SETTING_BACKUP_DESTRUCTION => self.backup_destruction.clone(),
             SETTING_AUDIT_REFUSALS => b(self.audit_refusals),
             SETTING_NOTP_MAX_BATCH_BYTES => n(self.notp_max_batch_bytes),
             SETTING_NOTP_MAX_BATCH_OBJECTS => n(self.notp_max_batch_objects),
             SETTING_NOTP_MAX_PUSH_OBJECTS => n(self.notp_max_push_objects),
             SETTING_NOTP_MAX_PUSH_BYTES => n(self.notp_max_push_bytes),
             SETTING_NOTP_LEDGER_QUOTA_BYTES => n(self.notp_ledger_quota_bytes),
+            SETTING_NOTP_TRANSFER_TTL => d(self.notp_transfer_ttl),
             SETTING_NOTP_COMPRESSION => b(self.notp_compression),
             SETTING_MIRRORS_ENABLED => b(self.mirrors_enabled),
             SETTING_MIRRORS_INTERVAL => d(self.mirrors_interval),
@@ -4130,33 +4688,33 @@ produce: use `EdDSA` or `ES256`"
             SETTING_MIRRORS_JITTER => n(self.mirrors_jitter),
             SETTING_MIRRORS_STALE_AFTER => self.mirrors_stale_after.and_then(d),
             SETTING_MIRRORS_EXPIRE_AFTER => self.mirrors_expire_after.and_then(d),
+            SETTING_MIRRORS_REAP_GRACE => d(self.mirrors_reap_grace),
+            SETTING_MIRRORS_REVOCATION_OBJECTIVE => self.mirrors_revocation_objective.and_then(d),
             SETTING_GC_ENABLED => b(self.gc_enabled),
             SETTING_GC_INTERVAL => d(self.gc_interval),
             SETTING_GC_GRACE => d(self.gc_grace),
+            SETTING_GC_MAX_REMOVALS => Some(self.gc_max_removals.to_string()),
             SETTING_AUTHZ_CACHE_PARTITIONS => n(self.authz_cache_partitions),
             SETTING_AUTHZ_CACHE_BYTES => n(self.authz_cache_bytes),
             SETTING_AUTHZ_CACHE_ZONE_PARTITIONS => n(self.authz_cache_zone_partitions()),
             SETTING_AUTHZ_CACHE_ZONE_BYTES => n(self.authz_cache_zone_bytes()),
             SETTING_AUTHZ_MAX_EVALUATIONS => n(self.authz_max_evaluations),
             SETTING_MAX_BLOCKING => n(self.max_blocking),
+            SETTING_EVALUATION_CONCURRENCY => n(self.evaluation_concurrency()),
+            SETTING_EVALUATION_QUEUE => n(self.evaluation_queue),
             SETTING_LOG_ENABLED => b(self.log_enabled),
-            SETTING_LOG_PDP_ID => Some(self.log_pdp_id.clone()),
+            SETTING_LOG_MODE => Some(self.log_mode().as_str().to_owned()),
             SETTING_LOG_SPOOL_DIRECTORY => Some(self.log_spool_directory.clone()),
             SETTING_LOG_SPOOL_BYTES => n(self.log_spool_bytes),
             SETTING_LOG_SPOOL_AGE => d(self.log_spool_age),
             SETTING_LOG_BATCH_BYTES => n(self.log_batch_bytes),
             SETTING_LOG_BATCH_INTERVAL => d(self.log_batch_interval),
-            SETTING_LOG_ON_FULL => Some(
-                if self.log_on_full_open {
-                    "open"
-                } else {
-                    "closed"
-                }
-                .to_owned(),
-            ),
+            SETTING_LOG_ON_FULL => Some("closed".to_owned()),
             SETTING_LOG_SAMPLE_PERMITS => n(self.log_sample_permits),
+            SETTING_RESPONSE_SIGNING_ENABLED => b(self.response_signing_enabled()),
+            SETTING_RESPONSE_SIGNING_VALIDITY => d(self.response_signing_validity),
+            SETTING_RESPONSE_SIGNING_CLOCK_SKEW => d(self.response_signing_clock_skew),
             SETTING_EVENTS_ENABLED => b(self.events_enabled),
-            SETTING_EVENTS_PRODUCER_ID => Some(self.events_producer_id.clone()),
             SETTING_EVENTS_DIRECTORY => Some(self.events_directory().display().to_string()),
             SETTING_EVENTS_MAX_BYTES => n(self.events_max_bytes),
             SETTING_EVENTS_SEGMENT_BYTES => n(self.events_segment_bytes),
@@ -4165,6 +4723,14 @@ produce: use `EdDSA` or `ES256`"
             SETTING_EVENTS_ALLOWED_LATENESS => d(self.events_allowed_lateness),
             SETTING_EVENTS_CLOCK_SKEW => d(self.events_clock_skew),
             SETTING_EVENTS_GROUP_COMMIT_DELAY => d(self.events_group_commit_delay),
+            SETTING_EVENTS_WARM_BYTES => n(self.events_warm_bytes),
+            SETTING_EVENTS_WARM_ZONE_BYTES => n(self.events_warm_zone_bytes()),
+            SETTING_EVENTS_WARM_PARTITION_BYTES => n(self.events_warm_partition_bytes),
+            SETTING_EVENTS_REPLAY_MAX_RECORDS => n(self.events_replay_max_records),
+            SETTING_EVENTS_REPLAY_MAX_BYTES => n(self.events_replay_max_bytes),
+            SETTING_EVENTS_REPLAY_TIMEOUT => d(self.events_replay_timeout),
+            SETTING_EVENTS_REPLAY_CONCURRENCY => n(self.events_replay_concurrency),
+            SETTING_EVENTS_REPLAY_PREWARM => n(self.events_replay_prewarm),
             SETTING_EVENTS_PULL_MODE => Some(self.events_pull_mode.as_str().to_owned()),
             SETTING_EVENTS_PULL_INTERVAL => d(self.events_pull_interval),
             SETTING_EVENTS_PULL_MAX_STALENESS => d(self.events_pull_max_staleness),
@@ -4629,6 +5195,11 @@ produce: use `EdDSA` or `ES256`"
                 .with_context(|| format!("reading {SETTING_SHUTDOWN_DRAIN_TIMEOUT}"))?;
         }
 
+        if let Some(value) = settings.get(SETTING_SHUTDOWN_RECOVER_DRAIN) {
+            self.shutdown_recover_drain = parse_bool(value)
+                .with_context(|| format!("reading {SETTING_SHUTDOWN_RECOVER_DRAIN}"))?;
+        }
+
         if let Some(value) = settings.get(SETTING_MEMBERSHIP_APPRAISAL_CONTROLS) {
             let mut controls = BTreeMap::new();
             for pair in value
@@ -4754,12 +5325,45 @@ produce: use `EdDSA` or `ES256`"
                 );
             }
         }
-        if let Some(value) = settings.get(SETTING_LOG_ENABLED) {
-            self.log_enabled =
-                parse_bool(value).with_context(|| format!("reading {SETTING_LOG_ENABLED}"))?;
+        if let Some(value) = settings.get(SETTING_GC_MAX_REMOVALS) {
+            // `parse_count` refuses zero: a sweep that may remove nothing is not a sweep.
+            self.gc_max_removals =
+                parse_count(value).with_context(|| format!("reading {SETTING_GC_MAX_REMOVALS}"))?;
         }
-        if let Some(value) = settings.get(SETTING_LOG_PDP_ID) {
-            self.log_pdp_id = value.trim().to_owned();
+        if let Some(value) = settings.get(SETTING_LOG_ENABLED) {
+            self.log_enabled_stated =
+                Some(parse_bool(value).with_context(|| format!("reading {SETTING_LOG_ENABLED}"))?);
+        }
+        // The mode decides when it is set (WP-6.1); an explicit `enabled` saying otherwise is a
+        // contradiction a deployment resolves, not one guessed here.
+        if let Some(value) = settings.get(SETTING_LOG_MODE) {
+            let required = match value.trim() {
+                "required" => true,
+                "disabled" => false,
+                "best-effort" => anyhow::bail!(
+                    "reading {SETTING_LOG_MODE}: `best-effort` is not available yet: its `loss` \
+                     record is not defined, so the log is `required` or `disabled`"
+                ),
+                other => anyhow::bail!(
+                    "reading {SETTING_LOG_MODE}: `{other}` is neither `required` (every answered \
+                     decision has a durable record) nor `disabled` (no record is promised)"
+                ),
+            };
+            self.log_mode_stated = Some(required);
+        }
+        // Whichever layers stated them: one saying the log is on and another off is refused.
+        if let (Some(enabled), Some(required)) = (self.log_enabled_stated, self.log_mode_stated)
+            && enabled != required
+        {
+            anyhow::bail!(
+                "{SETTING_LOG_MODE} is `{}` and {SETTING_LOG_ENABLED} says the log is {}: set one \
+                 of them",
+                if required { "required" } else { "disabled" },
+                if enabled { "on" } else { "off" }
+            );
+        }
+        if let Some(on) = self.log_mode_stated.or(self.log_enabled_stated) {
+            self.log_enabled = on;
         }
         if let Some(value) = settings.get(SETTING_LOG_SPOOL_DIRECTORY) {
             self.log_spool_directory = value.trim().to_owned();
@@ -4796,9 +5400,6 @@ produce: use `EdDSA` or `ES256`"
         if let Some(value) = settings.get(SETTING_EVENTS_ENABLED) {
             self.events_enabled =
                 parse_bool(value).with_context(|| format!("reading {SETTING_EVENTS_ENABLED}"))?;
-        }
-        if let Some(value) = settings.get(SETTING_EVENTS_PRODUCER_ID) {
-            self.events_producer_id = value.trim().to_owned();
         }
         if let Some(value) = settings.get(SETTING_EVENTS_DIRECTORY) {
             self.events_directory = value.trim().to_owned();
@@ -4875,6 +5476,60 @@ produce: use `EdDSA` or `ES256`"
             self.events_group_commit_delay = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_EVENTS_GROUP_COMMIT_DELAY}"))?;
         }
+        // The warm-state budgets and the replay plan (TL-5): every bound positive, since a bound
+        // of nothing holds or replays nothing and every temporal decision would answer `E`.
+        let positive_bytes = |key: &str| -> anyhow::Result<Option<u64>> {
+            let Some(value) = settings.get(key) else {
+                return Ok(None);
+            };
+            // `parse_bytes` refuses zero itself.
+            parse_bytes(value)
+                .map(Some)
+                .with_context(|| format!("reading {key}"))
+        };
+        let positive_count = |key: &str| -> anyhow::Result<Option<u64>> {
+            let Some(value) = settings.get(key) else {
+                return Ok(None);
+            };
+            let count: u64 = value.parse().with_context(|| format!("reading {key}"))?;
+            if count == 0 {
+                anyhow::bail!("reading {key}: a bound of nothing admits nothing");
+            }
+            Ok(Some(count))
+        };
+        if let Some(bytes) = positive_bytes(SETTING_EVENTS_WARM_BYTES)? {
+            self.events_warm_bytes = bytes;
+        }
+        if let Some(bytes) = positive_bytes(SETTING_EVENTS_WARM_ZONE_BYTES)? {
+            self.events_warm_zone_bytes = Some(bytes);
+        }
+        if let Some(bytes) = positive_bytes(SETTING_EVENTS_WARM_PARTITION_BYTES)? {
+            self.events_warm_partition_bytes = bytes;
+        }
+        if let Some(count) = positive_count(SETTING_EVENTS_REPLAY_MAX_RECORDS)? {
+            self.events_replay_max_records = count;
+        }
+        if let Some(bytes) = positive_bytes(SETTING_EVENTS_REPLAY_MAX_BYTES)? {
+            self.events_replay_max_bytes = bytes;
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_REPLAY_TIMEOUT) {
+            self.events_replay_timeout = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_REPLAY_TIMEOUT}"))?;
+            if self.events_replay_timeout.is_zero() {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_REPLAY_TIMEOUT}: a replay given no time replays \
+                     nothing"
+                );
+            }
+        }
+        if let Some(count) = positive_count(SETTING_EVENTS_REPLAY_CONCURRENCY)? {
+            self.events_replay_concurrency = usize::try_from(count).unwrap_or(usize::MAX);
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_REPLAY_PREWARM) {
+            self.events_replay_prewarm = value
+                .parse()
+                .with_context(|| format!("reading {SETTING_EVENTS_REPLAY_PREWARM}"))?;
+        }
         if let Some(value) = settings.get(SETTING_EVENTS_PULL_MODE) {
             self.events_pull_mode = Consistency::parse(value).ok_or_else(|| {
                 anyhow!(
@@ -4941,15 +5596,18 @@ produce: use `EdDSA` or `ES256`"
             }
         }
         if let Some(value) = settings.get(SETTING_LOG_ON_FULL) {
-            self.log_on_full_open = match value.trim() {
-                "open" => true,
-                "closed" => false,
-                other => anyhow::bail!(
-                    "reading {SETTING_LOG_ON_FULL}: `{other}` is neither `open` (keep answering, \
-                     end the stream with a signed discontinuity) nor `closed` (refuse to decide \
-                     rather than decide unrecorded)"
+            match value.trim() {
+                "closed" => {}
+                "open" => anyhow::bail!(
+                    "reading {SETTING_LOG_ON_FULL}: `open` is retired: a decision that cannot be \
+                     recorded is refused, which is {SETTING_LOG_MODE} `required`; set \
+                     {SETTING_LOG_MODE} `disabled` to keep no log"
                 ),
-            };
+                other => anyhow::bail!(
+                    "reading {SETTING_LOG_ON_FULL}: `{other}` is not `closed`, the only value it \
+                     takes"
+                ),
+            }
         }
         if let Some(value) = settings.get(SETTING_LOG_SAMPLE_PERMITS) {
             self.log_sample_permits = value
@@ -4961,6 +5619,48 @@ produce: use `EdDSA` or `ES256`"
                      1.0"
                 );
             }
+        }
+        if let Some(value) = settings.get(SETTING_RESPONSE_SIGNING_ENABLED) {
+            self.response_signing_enabled = Some(
+                parse_bool(value)
+                    .with_context(|| format!("reading {SETTING_RESPONSE_SIGNING_ENABLED}"))?,
+            );
+        }
+        // Whole seconds, positive and bounded (WP-6.6b): discovery publishes them as integers,
+        // and a lifetime the server does not actually emit would be an unenforced promise.
+        for (key, held, bound) in [
+            (
+                SETTING_RESPONSE_SIGNING_VALIDITY,
+                &mut self.response_signing_validity,
+                MAX_RESPONSE_SIGNING_VALIDITY,
+            ),
+            (
+                SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
+                &mut self.response_signing_clock_skew,
+                MAX_RESPONSE_SIGNING_CLOCK_SKEW,
+            ),
+        ] {
+            if let Some(value) = settings.get(key) {
+                let read = parse_duration(value).with_context(|| format!("reading {key}"))?;
+                if read.is_zero() || read.subsec_nanos() != 0 || read > bound {
+                    anyhow::bail!(
+                        "reading {key}: `{value}` is not a whole number of seconds between 1s \
+                         and {}s",
+                        bound.as_secs()
+                    );
+                }
+                *held = read;
+            }
+        }
+        // `required` answers only what is durable (WP-6.6): a permit sampled out would be an
+        // answer with no record, under the mode that promises one for each.
+        if self.log_enabled && self.log_sample_permits < 1.0 {
+            anyhow::bail!(
+                "{SETTING_LOG_SAMPLE_PERMITS} is `{}` and {SETTING_LOG_MODE} is `required`, which \
+                 records every decision it answers: permit sampling needs a mode that answers \
+                 decisions it did not record, and none is available yet. Set it to `1.0`",
+                self.log_sample_permits
+            );
         }
         // Retired (WP-3.3): input tags are keyed per ledger by the zone keys the coordinator root
         // derives. A configuration still naming its own commitment key is refused, so nothing
@@ -5001,13 +5701,19 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
-        // A stream is `(pdp.id, instance)`. Two replicas sharing a `pdp.id` write two records at
-        // one `(stream, seq)`, and that closes a stream permanently at the far end — so it is
-        // refused here, at startup, rather than discovered there.
-        if self.log_enabled && self.log_pdp_id.is_empty() {
+        // Retired (WP-6.1): the stream is the Host's `host_id` and run. A configuration still
+        // naming the plane is refused, so no deployment believes its records carry that name.
+        if settings.contains_key(SETTING_LOG_PDP_ID) {
             anyhow::bail!(
-                "the decision log is on but no {SETTING_LOG_PDP_ID} is set: a plane with no name \
-                 cannot be told from another replica of itself"
+                "{SETTING_LOG_PDP_ID} (`decisions.log.pdp_id`) is retired: decision records are \
+                 named by this Host's `host_id` and the run of its stream"
+            );
+        }
+        // Retired (WP-6.2a) the same way: the event stream is the Host's too.
+        if settings.contains_key(SETTING_EVENTS_PRODUCER_ID) {
+            anyhow::bail!(
+                "{SETTING_EVENTS_PRODUCER_ID} (`events.producer_id`) is retired: event records are \
+                 named by this Host's `host_id` and the run of its stream"
             );
         }
 
@@ -5088,6 +5794,23 @@ produce: use `EdDSA` or `ES256`"
                 );
             }
         }
+        if let Some(value) = settings.get(SETTING_EVALUATION_CONCURRENCY) {
+            let concurrency: usize = value
+                .parse()
+                .with_context(|| format!("reading {SETTING_EVALUATION_CONCURRENCY}"))?;
+            if concurrency == 0 {
+                anyhow::bail!(
+                    "reading {SETTING_EVALUATION_CONCURRENCY}: no evaluation slot means no request \
+                     can ever be decided"
+                );
+            }
+            self.evaluation_concurrency = Some(concurrency);
+        }
+        if let Some(value) = settings.get(SETTING_EVALUATION_QUEUE) {
+            self.evaluation_queue = value
+                .parse()
+                .with_context(|| format!("reading {SETTING_EVALUATION_QUEUE}"))?;
+        }
         if let Some(value) = settings.get(SETTING_AUTHZ_MAX_EVALUATIONS) {
             self.authz_max_evaluations = value
                 .parse()
@@ -5161,6 +5884,32 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
+        if let Some(value) = settings.get(SETTING_MIRRORS_REAP_GRACE) {
+            self.mirrors_reap_grace = parse_duration_allow_zero(value)
+                .with_context(|| format!("reading {SETTING_MIRRORS_REAP_GRACE}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_MIRRORS_REVOCATION_OBJECTIVE) {
+            let objective = parse_duration_allow_zero(value)
+                .with_context(|| format!("reading {SETTING_MIRRORS_REVOCATION_OBJECTIVE}"))?;
+            self.mirrors_revocation_objective = (!objective.is_zero()).then_some(objective);
+        }
+
+        // A watch can always be lost, and polling is then what bounds revocation: a declared
+        // objective the polling bound cannot meet is a promise this plane would not keep.
+        if let Some(objective) = self.mirrors_revocation_objective {
+            let polling = self.mirrors_interval.mul_f64(1.0 + self.mirrors_jitter);
+            if polling > objective {
+                anyhow::bail!(
+                    "reading {SETTING_MIRRORS_REVOCATION_OBJECTIVE}: the objective is {}s, and \
+                     polling — what a lost watch falls back to — may take {}s (`interval × (1 + \
+                     jitter)`): shorten the interval or declare the objective it can meet",
+                    objective.as_secs_f64(),
+                    polling.as_secs_f64()
+                );
+            }
+        }
+
         if let Some(value) = settings.get(SETTING_OTEL_ENABLED) {
             self.otel_enabled =
                 parse_bool(value).with_context(|| format!("reading {SETTING_OTEL_ENABLED}"))?;
@@ -5219,6 +5968,18 @@ produce: use `EdDSA` or `ES256`"
                 .with_context(|| format!("reading {SETTING_NOTP_LEDGER_QUOTA_BYTES}"))?;
         }
 
+        if let Some(value) = settings.get(SETTING_NOTP_TRANSFER_TTL) {
+            self.notp_transfer_ttl = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_NOTP_TRANSFER_TTL}"))?;
+            if self.notp_transfer_ttl > MAXIMUM_NOTP_TRANSFER_TTL {
+                bail!(
+                    "reading {SETTING_NOTP_TRANSFER_TTL}: `{value}` is longer than {}s, the \
+                     longest a transfer session may stay open",
+                    MAXIMUM_NOTP_TRANSFER_TTL.as_secs()
+                );
+            }
+        }
+
         if let Some(value) = settings.get(SETTING_AUDIT_RETENTION) {
             self.audit_retention = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_AUDIT_RETENTION}"))?;
@@ -5229,6 +5990,58 @@ produce: use `EdDSA` or `ES256`"
                 parse_duration(value)
                     .with_context(|| format!("reading {SETTING_AUDIT_RETENTION_SECURITY}"))?,
             );
+        }
+
+        for (key, held) in [
+            (
+                SETTING_BACKUP_RECOVERY_KEY_ID,
+                &mut self.backup_recovery_key_id,
+            ),
+            (
+                SETTING_BACKUP_ENCRYPTION_PROFILE,
+                &mut self.backup_encryption_profile,
+            ),
+            (SETTING_BACKUP_DESTRUCTION, &mut self.backup_destruction),
+        ] {
+            if let Some(value) = settings.get(key) {
+                *held = Some(backup_label(key, value)?);
+            }
+        }
+        if let Some(value) = settings.get(SETTING_BACKUP_RECOVERY_KEY) {
+            self.backup_recovery_key = Some(SecretRef::new(backup_label(
+                SETTING_BACKUP_RECOVERY_KEY,
+                value,
+            )?));
+        }
+        if let Some(value) = settings.get(SETTING_BACKUP_RETENTION) {
+            let retention = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_BACKUP_RETENTION}"))?;
+            if retention.is_zero() {
+                bail!("reading {SETTING_BACKUP_RETENTION}: a backup is kept for some time");
+            }
+            self.backup_retention = Some(retention);
+        }
+
+        if let Some(value) = settings.get(SETTING_STREAM_CURSOR_TTL) {
+            self.stream_cursor_ttl = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_STREAM_CURSOR_TTL}"))?;
+            if self.stream_cursor_ttl > MAXIMUM_STREAM_CURSOR_TTL {
+                bail!(
+                    "reading {SETTING_STREAM_CURSOR_TTL}: `{value}` is longer than {}s, the \
+                     longest a read cursor may stay valid",
+                    MAXIMUM_STREAM_CURSOR_TTL.as_secs()
+                );
+            }
+        }
+
+        if let Some(value) = settings.get(SETTING_STREAM_ACKNOWLEDGED_RETENTION) {
+            self.stream_acknowledged_retention = parse_duration_allow_zero(value)
+                .with_context(|| format!("reading {SETTING_STREAM_ACKNOWLEDGED_RETENTION}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_AUDIT_CHECKPOINTS_MAX_LAG) {
+            self.audit_checkpoints_max_lag = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_AUDIT_CHECKPOINTS_MAX_LAG}"))?;
         }
 
         if let Some(value) = settings.get(SETTING_CONTROL_KEYS_ENABLED) {
@@ -5486,6 +6299,20 @@ pub(crate) fn parse_duration(value: &str) -> Result<Duration> {
         .ok_or_else(|| anyhow!("`{value}` is longer than any deployment outlives"))
 }
 
+/// A non-secret backup label (WP-7.8): a recovery-key id or an encryption profile, as a manifest
+/// binds it — 1 to 256 bytes of letters, digits and `.`, `_`, `:`, `/`, `-`.
+fn backup_label(key: &str, value: &str) -> Result<String> {
+    let value = value.trim();
+    let allowed = |held: char| held.is_ascii_alphanumeric() || "._:/-".contains(held);
+    if value.is_empty() || value.len() > 256 || !value.chars().all(allowed) {
+        bail!(
+            "reading {key}: `{value}` is not a label of 1 to 256 letters, digits, `.`, `_`, `:`, \
+             `/` or `-`"
+        );
+    }
+    Ok(value.to_owned())
+}
+
 fn parse_duration_allow_zero(value: &str) -> Result<Duration> {
     let trimmed = value.trim();
     if matches!(
@@ -5635,6 +6462,14 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_AUDIT_REFUSALS,
     SETTING_AUDIT_RETENTION,
     SETTING_AUDIT_RETENTION_SECURITY,
+    SETTING_AUDIT_CHECKPOINTS_MAX_LAG,
+    SETTING_STREAM_CURSOR_TTL,
+    SETTING_STREAM_ACKNOWLEDGED_RETENTION,
+    SETTING_BACKUP_RECOVERY_KEY_ID,
+    SETTING_BACKUP_ENCRYPTION_PROFILE,
+    SETTING_BACKUP_RECOVERY_KEY,
+    SETTING_BACKUP_RETENTION,
+    SETTING_BACKUP_DESTRUCTION,
     SETTING_AUDIT_SINK,
     SETTING_AUTHZ_CACHE_BYTES,
     SETTING_AUTHZ_CACHE_PARTITIONS,
@@ -5659,18 +6494,26 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_EVENTS_GROUP_COMMIT_DELAY,
     SETTING_EVENTS_MAX_BYTES,
     SETTING_EVENTS_MAX_RECORD_BYTES,
-    SETTING_EVENTS_PRODUCER_ID,
     SETTING_EVENTS_PULL_INTERVAL,
     SETTING_EVENTS_PULL_MAX_STALENESS,
     SETTING_EVENTS_PULL_MODE,
+    SETTING_EVENTS_REPLAY_CONCURRENCY,
+    SETTING_EVENTS_REPLAY_MAX_BYTES,
+    SETTING_EVENTS_REPLAY_MAX_RECORDS,
+    SETTING_EVENTS_REPLAY_PREWARM,
+    SETTING_EVENTS_REPLAY_TIMEOUT,
     SETTING_EVENTS_RETENTION_MINIMUM,
     SETTING_EVENTS_SEGMENT_BYTES,
+    SETTING_EVENTS_WARM_BYTES,
+    SETTING_EVENTS_WARM_PARTITION_BYTES,
+    SETTING_EVENTS_WARM_ZONE_BYTES,
     SETTING_EVENT_STORE_DIRECTORY,
     SETTING_EVENT_STORE_ENABLED,
     SETTING_EVENT_STORE_RETENTION,
     SETTING_EXPERIMENTAL_DOGWOOD,
     SETTING_GC_ENABLED,
     SETTING_GC_GRACE,
+    SETTING_GC_MAX_REMOVALS,
     SETTING_GC_INTERVAL,
     SETTING_ISSUER,
     SETTING_KEYS_CUSTODY,
@@ -5710,13 +6553,18 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_LOG_ENABLED,
     SETTING_LOG_FORMAT,
     SETTING_LOG_LEVEL,
+    SETTING_LOG_MODE,
     SETTING_LOG_ON_FULL,
-    SETTING_LOG_PDP_ID,
     SETTING_LOG_SAMPLE_PERMITS,
     SETTING_LOG_SPOOL_AGE,
     SETTING_LOG_SPOOL_BYTES,
     SETTING_LOG_SPOOL_DIRECTORY,
     SETTING_MAX_BLOCKING,
+    SETTING_EVALUATION_CONCURRENCY,
+    SETTING_EVALUATION_QUEUE,
+    SETTING_RESPONSE_SIGNING_CLOCK_SKEW,
+    SETTING_RESPONSE_SIGNING_ENABLED,
+    SETTING_RESPONSE_SIGNING_VALIDITY,
     SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
     SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING,
     SETTING_MIRRORS_ENABLED,
@@ -5724,6 +6572,8 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_MIRRORS_INTERVAL,
     SETTING_MIRRORS_JITTER,
     SETTING_MIRRORS_PARALLELISM,
+    SETTING_MIRRORS_REAP_GRACE,
+    SETTING_MIRRORS_REVOCATION_OBJECTIVE,
     SETTING_MIRRORS_STALE_AFTER,
     SETTING_MIRRORS_TIMEOUT,
     SETTING_NOTP_COMPRESSION,
@@ -5732,6 +6582,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_NOTP_MAX_BATCH_OBJECTS,
     SETTING_NOTP_MAX_PUSH_BYTES,
     SETTING_NOTP_MAX_PUSH_OBJECTS,
+    SETTING_NOTP_TRANSFER_TTL,
     SETTING_OTEL_ENABLED,
     SETTING_OTEL_ENDPOINT,
     SETTING_OTEL_SAMPLE_RATE,
@@ -5755,6 +6606,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_SECRETS_ZONE_KEY_VERSION,
     SETTING_SECRETS_PROVIDER,
     SETTING_SHUTDOWN_DRAIN_TIMEOUT,
+    SETTING_SHUTDOWN_RECOVER_DRAIN,
     SETTING_SHUTDOWN_TIMEOUT,
     SETTING_TELEMETRY_ADDR,
     SETTING_TELEMETRY_ADVERTISED_URL,
@@ -5817,8 +6669,6 @@ const STARTUP_SETTINGS: &[&str] = &[
     SETTING_KEYS_KMS_CA,
     SETTING_KEYS_PKCS11_MODULE,
     SETTING_KEYS_PKCS11_PIN_REF,
-    SETTING_LOG_PDP_ID,
-    SETTING_EVENTS_PRODUCER_ID,
     SETTING_PUBLIC_TLS_CERT,
     SETTING_PUBLIC_TLS_KEY,
     SETTING_PUBLIC_TLS_CLIENT_CA,

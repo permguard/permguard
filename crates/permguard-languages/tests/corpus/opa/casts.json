@@ -1,0 +1,95 @@
+{
+  "folder": "casts",
+  "files": {
+    "test-casts-0824.yaml": {
+      "sha256": "sha256:7734c1c66e44c99970a50f2ab07b5930f66b21922a1e43f1d5d677df2dc2c54b",
+      "cases": [
+        {
+          "note": "casts/to_number",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [x, y, z, i, j] if {\n\tto_number(\"-42.0\", x)\n\tto_number(false, y)\n\tto_number(100.1, z)\n\tto_number(null, i)\n\tto_number(true, j)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                -42,
+                0,
+                100.1,
+                0,
+                1
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-casts-0825.yaml": {
+      "sha256": "sha256:3d3c1ec06f8636c0010b3705f1ccc7d5c1f9490d5b51058285b7d107501ef1e5",
+      "cases": [
+        {
+          "note": "casts/to_number ref dest",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.a[2]\n\tto_number(\"3\", __local0__)\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-casts-0826.yaml": {
+      "sha256": "sha256:4fc765b5459398192c298440a53ba0b9d8dc1640895f138cbb23e8d65e579fa8",
+      "cases": [
+        {
+          "note": "casts/to_number ref dest",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = data.a[2]\n\tnot to_number(\"-1\", __local0__)\n}\n"
+          ],
+          "data": {
+            "a": [
+              "1",
+              "2",
+              "3",
+              "4"
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-casts-0827.yaml": {
+      "sha256": "sha256:dce69fa91d39794c9131d49e9af341453f31c48de90d0dd4e443ca2e3cbd0f04",
+      "cases": [
+        {
+          "note": "casts/to_number: bad input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tto_number(\"broken\", x)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "invalid syntax",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

@@ -24,6 +24,42 @@
       "item": "touch_synced",
       "primitive": "write",
       "reason": "`SYNCED`, the mirror's freshness marker: its modification time is the datum and its content is empty, so an in-place write is the cheapest way to move the time and a torn one cannot exist (owner decision of 2026-10-07)"
+    },
+    {
+      "source": "crates/permguard-conformance/src/bench/probe.rs",
+      "item": "Process::begin",
+      "primitive": "write",
+      "reason": "writes `5` to `/proc/<pid>/clear_refs` to reset the measured server's peak resident set before a benchmark step: a kernel control file, not stored data"
+    },
+    {
+      "source": "crates/permguard-conformance/src/bench/probe.rs",
+      "item": "fsync",
+      "primitive": "flush",
+      "reason": "the release benchmark's storage probe (TS-3): it measures what a data flush costs on the volume's storage, so it must call the flush itself; the probe file is scratch, removed after"
+    },
+    {
+      "source": "crates/permguard-conformance/src/bench/server.rs",
+      "item": "copy_tree",
+      "primitive": "copy",
+      "reason": "copies the example workspace into the benchmark's scratch directory before the CLI applies it, so the repository's copy is never written: scratch input, not stored data"
+    },
+    {
+      "source": "crates/permguard-conformance/src/bench/server.rs",
+      "item": "start",
+      "primitive": "write",
+      "reason": "the configuration file of a server the benchmark starts in its own scratch directory: test input, written before the process that reads it exists"
+    },
+    {
+      "source": "crates/permguard-conformance/src/bin/permguard-bench.rs",
+      "item": "measure",
+      "primitive": "write",
+      "reason": "writes the benchmark report the run produced to the path its operator named: an output file of a tool, not Host state"
+    },
+    {
+      "source": "crates/permguard-conformance/src/bin/permguard-bench.rs",
+      "item": "serving_gate",
+      "primitive": "write",
+      "reason": "writes the serving gate's verdict to the path its operator named: an output file of a tool, not Host state"
     }
   ]
 }

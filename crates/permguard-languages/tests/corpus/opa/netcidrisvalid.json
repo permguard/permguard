@@ -1,0 +1,80 @@
+{
+  "folder": "netcidrisvalid",
+  "files": {
+    "test_netcidrisvalid-0001.yaml": {
+      "sha256": "sha256:e790ba0f5917a2ef54c3d18797a4faa8cbcc3a58fa9a4b79698b53ff15a0417a",
+      "cases": [
+        {
+          "note": "valid ipv4 cidr",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_is_valid(\"192.168.1.0/24\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "empty cidr",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_is_valid(\"\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "random string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_is_valid(\"there goes a string\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "valid ipv4 address",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_is_valid(\"192.168.1.2\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        },
+        {
+          "note": "valid ipv6 cidr",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tnet.cidr_is_valid(\"2002::1234:abcd:ffff:c0a8:101/64\", __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,529 @@
+{
+  "folder": "jsonremove",
+  "files": {
+    "test-jsonremove-0230.yaml": {
+      "sha256": "sha256:4d036439d311b0bf44bde98ce4cca3ab7517b60c72daa56ba12f204db771c81b",
+      "cases": [
+        {
+          "note": "jsonremove/base",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": {\"b\": {\"c\": 7, \"d\": 8}}, \"e\": 9}, {\"a/b/c\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "d": 8
+                  }
+                },
+                "e": 9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0231.yaml": {
+      "sha256": "sha256:f62bbb1ae465821871907c69cc9a6acc28e6c7b0a8a2d6af4f175ba335f5c004",
+      "cases": [
+        {
+          "note": "jsonremove/multiple roots",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": {\"b\": {\"c\": 7, \"d\": 8}}, \"e\": 9}, {\"a/b/c\", \"e\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "d": 8
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0232.yaml": {
+      "sha256": "sha256:6d1d9f60f3f6060d5c744559084eea1dcc82adde273ac97f936a23c9c8a20afd",
+      "cases": [
+        {
+          "note": "jsonremove/multiple roots array",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": {\"b\": {\"c\": 7, \"d\": 8}}, \"e\": 9}, [\"a/b/c\", \"e\"], __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "d": 8
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0233.yaml": {
+      "sha256": "sha256:28390d4c201485c447ab290b9b3d7dd92764994671bd5fe08c2c4ebcce4bec38",
+      "cases": [
+        {
+          "note": "jsonremove/shared roots",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": {\"b\": {\"c\": 7, \"d\": 8}, \"e\": 9}}, {\"a/b/c\", \"a/e\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "d": 8
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0234.yaml": {
+      "sha256": "sha256:b47bba6766a7cc1a34e81d0569f71c51b83b953446cb88e6a0f1f6911ba454f1",
+      "cases": [
+        {
+          "note": "jsonremove/conflict",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": {\"b\": 7}, \"c\": 1}, {\"a\", \"a/b\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "c": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0235.yaml": {
+      "sha256": "sha256:edb1bf03968e6ca2303ba858eb93aca06849a5aa6e6e11df90f42ee78c6de78c",
+      "cases": [
+        {
+          "note": "jsonremove/empty list",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": 7}, set(), __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 7
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0236.yaml": {
+      "sha256": "sha256:0803b3a3ff0f05da153e321397aa65a89c25fbd3442d94d41f69c16fa9a56f30",
+      "cases": [
+        {
+          "note": "jsonremove/empty object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({}, {\"a/b\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0237.yaml": {
+      "sha256": "sha256:2ebad6efc76665684aff464b9b4644359c2149b30435b0ac11facf8d71bad7d1",
+      "cases": [
+        {
+          "note": "jsonremove/delete all",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": {\"b\": 7}, \"c\": 1}, {\"a\", \"c\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0238.yaml": {
+      "sha256": "sha256:1595e0c23c9320da16372cecf860aad8a1c0feea797931d6005c19760433ff94",
+      "cases": [
+        {
+          "note": "jsonremove/delete last in object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": {\"b\": 7}, \"c\": 1}, {\"a/b\", \"c\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0239.yaml": {
+      "sha256": "sha256:1612b96b5934492fafaf993b8046dcf8d6b2df021896b66910636f739fabcc13",
+      "cases": [
+        {
+          "note": "jsonremove/arrays",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": [{\"b\": 7, \"c\": 8}, {\"d\": 9}]}, {\"a/0/b\", \"a/1\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": [
+                  {
+                    "c": 8
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0240.yaml": {
+      "sha256": "sha256:f55e4a0e604c7a64579334ea7e89fb3f9a909d6f41912efcc277565c6f28eeb4",
+      "cases": [
+        {
+          "note": "jsonremove/object with number keys",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": [{\"1\": [\"b\", \"c\", \"d\"]}, {\"x\": \"y\"}]}, {\"a/0/1/2\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": [
+                  {
+                    "1": [
+                      "b",
+                      "c"
+                    ]
+                  },
+                  {
+                    "x": "y"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0241.yaml": {
+      "sha256": "sha256:bb09bc21c41e5632280f641ad0b214e8b11e07ec43e42fb46f456399a12332db",
+      "cases": [
+        {
+          "note": "jsonremove/arrays of roots",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": {\"b\": {\"c\": 7, \"d\": 8}}, \"e\": 9}, {[\"a\", \"b\", \"c\"], [\"e\"]}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "d": 8
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0242.yaml": {
+      "sha256": "sha256:58aefea51b8c6b8cbfe55488ca79b50b9a1e3795f6388f6f1375469f9cb75ed2",
+      "cases": [
+        {
+          "note": "jsonremove/mixed root types",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tjson.remove({\"a\": {\"b\": {\"c\": 7, \"d\": 8, \"x\": 0}}, \"e\": 9}, {\"a/b/d\", [\"a\", \"b\", \"c\"]}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": {
+                    "x": 0
+                  }
+                },
+                "e": 9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-jsonremove-0243.yaml": {
+      "sha256": "sha256:ad268190230192db65e2d053d8df2e4f3d5161d364b6cb022398e87bc346ca36",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid target type string input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove(__local2__, {\"a/b/c\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": \"foo\"}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 1 must be object but got string",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0244.yaml": {
+      "sha256": "sha256:6ca5b246c507cba34a8d0bc81c775008a2effb0c66e60ab167b257dac51b7b32",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid target type number input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove(__local2__, {\"a/b/c\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": 22}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 1 must be object but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0245.yaml": {
+      "sha256": "sha256:a3dba262d0c3ea6408890afaafa9213550c8638a3511d4ceb72f4421cc24186e",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid target type boolean input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove(__local2__, {\"a/b/c\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": true}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 1 must be object but got boolean",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0246.yaml": {
+      "sha256": "sha256:e3090e24ebc44e9f39097885cb845cb8e251272053f50946fb7b2399356ff2cd",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid target type array input",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove(__local2__, {\"a/b/c\"}, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": [\"a\", \"b\", \"c\"]}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 1 must be object but got array",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0247.yaml": {
+      "sha256": "sha256:8f94d47a0736462b4eed282fb3b9eb9f2c7b67571aebf1350c475c793379c32a",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid paths type string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove({\"a\": {\"b\": {\"c\": 123}}}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": \"foo\"}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 2 must be one of {set, array} but got string",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0248.yaml": {
+      "sha256": "sha256:c10ab6dd574126cfcca8aa3c643e247543906244977cd3b99e2fa4cb5d12c39e",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid paths type number",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove({\"a\": {\"b\": {\"c\": 123}}}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": 22}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 2 must be one of {set, array} but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0249.yaml": {
+      "sha256": "sha256:1b13af2fc6d9375ac49e88f14ff3549776bbaad5037c50190458614de8d9cc44",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid paths type boolean",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove({\"a\": {\"b\": {\"c\": 123}}}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": true}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 2 must be one of {set, array} but got boolean",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0250.yaml": {
+      "sha256": "sha256:f73f2e5eafe8f5010465f7f2fd48ccca2e50b119fd8f77c9243135260158baa6",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid paths type object",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove({\"a\": {\"b\": {\"c\": 123}}}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": {\"y\": 123}}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 2 must be one of {set, array} but got object",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0251.yaml": {
+      "sha256": "sha256:01bc90eebd2f863445426a6ced4aad8496f0e7532503eb02be105ea8c6af7f6c",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid paths type set with numbers",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove({\"a\": {\"b\": {\"c\": 123}}}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": {1, 2, 3, \"a\"}}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 2 must be one of {set, array} containing string paths or array of path segments but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0252.yaml": {
+      "sha256": "sha256:ffe5faf0fcb6e9d671df3c4fb2d51c9da7a10943535e5420ec7ccdf896d05218",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid paths type set with objects",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove({\"a\": {\"b\": {\"c\": 123}}}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": {\"a\", {\"x\": 1}, {\"y\": 2}}}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 2 must be one of {set, array} containing string paths or array of path segments but got object",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0253.yaml": {
+      "sha256": "sha256:11a830b920d79dcb057d297e1dba70546a4375d36e3e4dc86e29c2321697a59b",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid paths type array with numbers",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove({\"a\": {\"b\": {\"c\": 123}}}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "input_term": "{\"x\": [\"a\", 1, 2, 3]}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 2 must be one of {set, array} containing string paths or array of path segments but got number",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-jsonremove-0254.yaml": {
+      "sha256": "sha256:389895890825a28de7c8c17b145f26a532c0aaf799d9f8acb3cec5b62073251a",
+      "cases": [
+        {
+          "note": "jsonremove/error invalid paths type array with objects",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\t__local2__ = input.x\n\tjson.remove({\"a\": {\"b\": {\"c\": 123}}}, __local2__, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"x\": [\"a\", {\"x\": 1}, {\"y\": 2}]}",
+          "want_error_code": "eval_type_error",
+          "want_error": "json.remove: operand 2 must be one of {set, array} containing string paths or array of path segments but got object",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

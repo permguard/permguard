@@ -1,0 +1,22 @@
+{
+  "folder": "rand",
+  "files": {
+    "test-rand.intn.yaml": {
+      "sha256": "sha256:3a341fde898d2c72ade4c0d8cb52ef6e195f6b660a786422ab947ee23b1112cd",
+      "cases": [
+        {
+          "note": "rand.intn/consistent values for same arguments",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := count(rands) if {\n\trands := {rand.intn(\"key\", 100) | numbers.range(1, 100)[_]}\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "artifact": "a ledger or zone export (WP-7.10): the archive, its bundle's entries, and the manifest the Host signs as the payload of a COSE_Sign1 permguard.ledger.export.v1 under host.operations",
+  "authority": "1-architecture/8-architecture-storage-operations.md#migration-and-upgrade, WP-7.10 decisions of 2026-10-24 (labels, types, cardinalities); crates/permguard-host/src/exports.rs, crates/permguard-control-plane/src/catalog/exports.rs",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "export_archive": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "manifest", "type": "bytes", "occurs": "required", "note": "the COSE_Sign1 permguard.ledger.export.v1 whose payload is an export_manifest" },
+        { "label": 2, "name": "bundle", "type": "bytes", "occurs": "required", "note": "a canonical CBOR array of bundle_entry" }
+      ]
+    },
+    "bundle_entry": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "ledger", "type": "uint", "occurs": "required", "note": "the index of the ledger in the manifest's ledgers" },
+        { "label": 2, "name": "kind", "type": "uint", "occurs": "required", "note": "1 an object, its canonical uncompressed bytes; 2 a head statement, the COSE_Sign1 as stored" },
+        { "label": 3, "name": "bytes", "type": "bytes", "occurs": "required", "note": "the object or the statement, byte for byte" },
+        { "label": 4, "name": "ref", "type": "text", "occurs": "optional", "note": "with kind 2 only: the ref the statement attests" }
+      ]
+    },
+    "export_manifest": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "v", "type": "uint", "occurs": "required", "note": "the record version, 1; another is refused" },
+        { "label": 2, "name": "host_id", "type": "bytes", "occurs": "required", "note": "16 bytes: the source authority, the Host that held the ledgers" },
+        { "label": 3, "name": "exported_at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 4, "name": "zone", "type": "map:export_zone", "occurs": "required", "note": "the zone the ledgers belong to at the source" },
+        { "label": 5, "name": "ledgers", "type": "array<map:exported_ledger>", "occurs": "required", "note": "each ledger once, by id and by name" },
+        { "label": 6, "name": "bundle_digest", "type": "digest", "occurs": "required", "note": "SHA-256 over permguard.ledger.export.bundle.v1 and a newline, then the bundle" },
+        { "label": 7, "name": "bundle_bytes", "type": "uint", "occurs": "required", "note": "the bundle's size; the manifest is at most 1 MiB" }
+      ]
+    },
+    "export_zone": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "id", "type": "text", "occurs": "required", "note": "the zone's id at the source, 1 to 1024 bytes" },
+        { "label": 2, "name": "name", "type": "text", "occurs": "required", "note": "its name, 1 to 1024 bytes" }
+      ]
+    },
+    "exported_ledger": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "id", "type": "text", "occurs": "required", "note": "the ledger's id at the source: the authority-qualified identifier" },
+        { "label": 2, "name": "name", "type": "text", "occurs": "required", "note": "its name" },
+        { "label": 3, "name": "default_ref", "type": "text", "occurs": "required", "note": "its default ref" },
+        { "label": 4, "name": "refs", "type": "array<map:exported_ref>", "occurs": "required", "note": "every ref, each once" },
+        { "label": 5, "name": "objects", "type": "uint", "occurs": "required", "note": "how many objects of its closure the bundle carries" },
+        { "label": 6, "name": "statements", "type": "uint", "occurs": "required", "note": "how many head statements the bundle carries" }
+      ]
+    },
+    "exported_ref": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "name", "type": "text", "occurs": "required", "note": "the ref's name" },
+        { "label": 2, "name": "counter", "type": "uint", "occurs": "required", "note": "its monotonic counter" },
+        { "label": 3, "name": "head", "type": "digest", "occurs": "required", "note": "its head" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["export_archive", "bundle_entry", "export_manifest"]
+}

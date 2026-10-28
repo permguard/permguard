@@ -1,0 +1,158 @@
+{
+  "folder": "jsonschema",
+  "files": {
+    "test-json-match_schema.yaml": {
+      "sha256": "sha256:425cf7d45c7b64a90dc773dde7f276e7d1122f5bdb2f8609f4955ed403bc7ab1",
+      "cases": [
+        {
+          "note": "json_match_schema/success",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndocument := {\"id\": 5}\n\nschema := {\n\t\"properties\": {\"id\": {\"type\": \"integer\"}},\n\t\"required\": [\"id\"],\n}\n\np := json.match_schema(document, schema)\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                true,
+                [
+
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "json_match_schema/success string document",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndocument := `{\"id\": 5}`\n\nschema := {\n\t\"properties\": {\"id\": {\"type\": \"integer\"}},\n\t\"required\": [\"id\"],\n}\n\np := json.match_schema(document, schema)\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                true,
+                [
+
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "json_match_schema/success string schema",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndocument := {\"id\": 5}\n\nschema := `{\n  \"properties\": {\n    \"id\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\"id\"]\n}`\n\np := json.match_schema(document, schema)\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                true,
+                [
+
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "json_match_schema/invalid document",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndocument := {\"id\": \"foo\"}\n\nschema := {\n\t\"properties\": {\"id\": {\"type\": \"integer\"}},\n\t\"required\": [\"id\"],\n}\n\np := json.match_schema(document, schema)\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                false,
+                [
+                  {
+                    "desc": "Invalid type. Expected: integer, given: string",
+                    "error": "id: Invalid type. Expected: integer, given: string",
+                    "field": "id",
+                    "type": "invalid_type"
+                  }
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "json_match_schema/invalid schema",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\ndocument := {\"id\": \"foo\"}\n\nschema := {\n\t\"properties\": {\"id\": {\"type\": \"unknown\"}},\n\t\"required\": [\"id\"],\n}\n\np := json.match_schema(document, schema)\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "json.match_schema: has a primitive type that is NOT VALID -- given: /unknown/ Expected valid values are:[array boolean integer number null object string]",
+          "strict_error": true
+        }
+      ]
+    },
+    "test-json-verify_schema.yaml": {
+      "sha256": "sha256:95e6f6d38e24a16ce9132a055509889f1e0b42e5a8461681649a3c5416a8cec1",
+      "cases": [
+        {
+          "note": "json_verify_schema/valid schema string",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nschema := `{\"type\": \"boolean\"}`\n\np := json.verify_schema(schema)\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                true,
+                null
+              ]
+            }
+          ]
+        },
+        {
+          "note": "json_verify_schema/valid schema object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nschema := {\"type\": \"boolean\"}\n\np := json.verify_schema(schema)\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                true,
+                null
+              ]
+            }
+          ]
+        },
+        {
+          "note": "json_verify_schema/invalid schema string",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nschema := `{\"type\": \"unknown_type\"}`\n\np := json.verify_schema(schema)\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                false,
+                "jsonschema: has a primitive type that is NOT VALID -- given: /unknown_type/ Expected valid values are:[array boolean integer number null object string]"
+              ]
+            }
+          ]
+        },
+        {
+          "note": "json_verify_schema/invalid schema object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nschema := {\"type\": \"unknown_type\"}\n\np := json.verify_schema(schema)\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                false,
+                "jsonschema: has a primitive type that is NOT VALID -- given: /unknown_type/ Expected valid values are:[array boolean integer number null object string]"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

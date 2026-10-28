@@ -10,6 +10,8 @@
 //! ├── journal.cborseq                    authoritative, hash-chained transitions
 //! ├── snapshot.cbor                      rebuildable summary, replaced atomically
 //! ├── invites/<sha256(token)>.cbor       the invitation; never the token
+//! ├── verifications/<membership_id>      a coordinator's pending proof request
+//! │   └── results/<operation_id>         immutable exact answers for recovery and replay
 //! └── manifests/<membership_id>/
 //!     ├── current.cose
 //!     └── history/<epoch>-<digest>.cose
@@ -34,6 +36,9 @@
 pub mod appraisal;
 pub mod contracts;
 pub mod dormancy;
+pub mod egress;
+pub mod import;
+pub mod local;
 pub mod member;
 pub mod progress;
 pub mod record;
@@ -50,6 +55,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 
 use ring::signature::{Ed25519KeyPair, KeyPair as _};
+use serde::{Serialize, de::DeserializeOwned};
 use sha2::{Digest as _, Sha256};
 
 use permguard_core::assurance::AssuranceProfile;
@@ -92,6 +98,10 @@ pub const CURRENT: &str = "current.cose";
 pub const HISTORY: &str = "history";
 /// The leases a member holds, one per task: `leases/<membership_id>/<task_id>.cose` (WP-4.3).
 pub const LEASES: &str = "leases";
+/// Durable coordinator requests for the next proven inbound session, by membership id (WP-4.8).
+pub const VERIFICATIONS: &str = "verifications";
+/// Immutable verification results by operation id, separate from consumable pending markers.
+pub const VERIFICATION_RESULTS: &str = "results";
 /// The layout version `FORMAT` holds.
 pub const LAYOUT_VERSION: u64 = 1;
 
@@ -111,6 +121,8 @@ pub const REVOKE_RUN: &str = "members.revoke.run";
 pub const REVOKE_PEER: &str = "members.revoke.peer";
 pub const JOIN: &str = "members.join";
 pub const SYNC: &str = "members.sync";
+/// An operator's durable request for the next live proof of a member.
+pub const VERIFY: &str = "members.verify";
 pub const ORPHAN: &str = "members.orphan";
 /// A membership this Host coordinates, ended by its identity reset.
 pub const END_ON_RESET: &str = "members.reset";
@@ -136,6 +148,7 @@ pub const AUDIT_REVOKE_PLANNED: &str = "host.membership.revoke_planned";
 pub const AUDIT_REVOKED: &str = "host.membership.revoked";
 pub const AUDIT_JOINED: &str = "host.membership.joined";
 pub const AUDIT_SYNCED: &str = "host.membership.synced";
+pub const AUDIT_VERIFIED: &str = "host.membership.verified";
 pub const AUDIT_ORPHANED: &str = "host.membership.orphaned";
 pub const AUDIT_APPRAISED: &str = "host.membership.appraised";
 /// One operator approval an approval or an appraisal took, inside its operation (WP-4.2).
@@ -293,17 +306,24 @@ impl Capabilities {
         self.0.iter().copied().collect()
     }
 
-    /// The contracts the Host itself serves, both sides at version 1 (WP-4.4, owner decision):
-    /// `audit.checkpoints` and `zone.secrets`, whose provider is no Plane.
+    /// The contract sides the Host itself serves at version 1 (WP-4.4, owner decision): both
+    /// sides of `audit.checkpoints` and `zone.secrets`, whose provider is no Plane, and the
+    /// consumer side of `events.import`, the member's Host (WP-6.2c1).
     pub fn host() -> Self {
         contracts::CONTRACTS
             .iter()
-            .filter(|contract| contracts::host_served(contract.task_type))
-            .map(|contract| contract.task_type)
-            .fold(Self::default(), |capabilities, task| {
-                capabilities
-                    .declare(task, Role::Coordinator)
-                    .declare(task, Role::Member)
+            .fold(Self::default(), |capabilities, contract| {
+                let task = contract.task_type;
+                let capabilities = if contracts::host_side(task, record::ContractRole::Provider) {
+                    capabilities.declare(task, task.provider())
+                } else {
+                    capabilities
+                };
+                if contracts::host_side(task, record::ContractRole::Consumer) {
+                    capabilities.declare(task, task.consumer())
+                } else {
+                    capabilities
+                }
             })
     }
 
@@ -708,6 +728,18 @@ pub fn verify_statement(
             statement.ring
         )));
     }
+    let digest = keys_digest(statement)?;
+    if digest != binding.key_set_digest {
+        return Err(MembershipError::Unverified(format!(
+            "the keys of `{}` do not digest to the set its binding names",
+            statement.ring
+        )));
+    }
+    Ok(binding)
+}
+
+/// The digest of the key set `statement` presents, each key's `kid` its thumbprint in the ring.
+fn keys_digest(statement: &RingStatement) -> Result<[u8; 32], MembershipError> {
     let mut thumbprints = Vec::with_capacity(statement.keys.len());
     for text in &statement.keys {
         let jwk: Jwk = serde_json::from_str(text).map_err(|error| {
@@ -729,16 +761,66 @@ pub fn verify_statement(
         thumbprints.push(thumbprint);
     }
     let refs: Vec<&str> = thumbprints.iter().map(String::as_str).collect();
-    let digest = KeySet::new(&statement.ring, statement.epoch, statement.suite, &refs)
+    KeySet::new(&statement.ring, statement.epoch, statement.suite, &refs)
         .and_then(|set| set.digest())
-        .map_err(|error| MembershipError::Unverified(error.to_string()))?;
-    if digest != binding.key_set_digest {
+        .map_err(|error| MembershipError::Unverified(error.to_string()))
+}
+
+/// Whether `statement` is the set `pin` fixes: the same ring, epoch and binding bytes, its keys
+/// digesting to the pinned set. What a stream consumer checks a batch's keys with (WP-5.3); the
+/// binding was verified when the pin was taken.
+pub fn statement_matches(statement: &RingStatement, pin: &RingPin) -> Result<(), MembershipError> {
+    if statement.ring != pin.ring
+        || statement.epoch != pin.epoch
+        || statement.binding != pin.binding
+    {
         return Err(MembershipError::Unverified(format!(
-            "the keys of `{}` do not digest to the set its binding names",
+            "the statement of `{}` at epoch {} is not the pinned one",
+            statement.ring, statement.epoch
+        )));
+    }
+    if keys_digest(statement)? != pin.key_set_digest {
+        return Err(MembershipError::Unverified(format!(
+            "the keys of `{}` do not digest to the pinned set",
             statement.ring
         )));
     }
-    Ok(binding)
+    Ok(())
+}
+
+/// The coordinator `control.attest` set a manifest pins and the held statement of it (WP-7.2b):
+/// the pin in force, never a retiring one, and the statement that matches it, whatever else is
+/// held beside it.
+pub fn pinned_control_attest<'a>(
+    pins: &'a [RingPin],
+    statements: &'a [RingStatement],
+) -> Option<(&'a RingPin, &'a RingStatement)> {
+    let pin = pins.iter().find(|pin| {
+        pin.owner == Role::Coordinator && pin.ring == CONTROL_ATTEST && !pin.retiring
+    })?;
+    let statement = statements
+        .iter()
+        .find(|statement| statement_matches(statement, pin).is_ok())?;
+    Some((pin, statement))
+}
+
+/// [`pinned_control_attest`], its binding verified under `coordinator`, the identity a session
+/// just proved (WP-7.2b): the set, epoch and keys a mirror's statements verify under, or `None`
+/// when the manifest pins none, its statement is not held, or the binding is not the
+/// coordinator's.
+pub fn verified_control_attest(
+    pins: &[RingPin],
+    statements: &[RingStatement],
+    coordinator: &identity::Verified,
+) -> Option<crate::composition::PinnedRing> {
+    let (pin, statement) = pinned_control_attest(pins, statements)?;
+    verify_statement(statement, coordinator, None).ok()?;
+    Some(crate::composition::PinnedRing {
+        epoch: pin.epoch,
+        key_set_digest: pin.key_set_digest,
+        binding: pin.binding.clone(),
+        keys: statement.keys.clone(),
+    })
 }
 
 /// The public key a JWK of `suite` holds.
@@ -1035,10 +1117,23 @@ impl Store {
     }
 
     /// Fences the store for an identity reset: what would create authority under the identity
-    /// being retired is refused from now on in this process.
+    /// being retired, a task session included, is refused from now on in this process.
     pub fn fence(&self) {
         let _writing = self.begin();
         self.fenced.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Lifts the fence of a reset refused before anything irreversible (WP-4.9): the identity is
+    /// unchanged, and serves as before.
+    pub fn unfence(&self) {
+        let _writing = self.begin();
+        self.fenced
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Whether an identity reset fenced the store.
+    pub fn is_fenced(&self) -> bool {
+        self.fenced.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn unfenced(&self) -> Result<(), MembershipError> {
@@ -1250,6 +1345,161 @@ impl Store {
 
     pub fn membership(&self, id: &[u8; 16]) -> Option<Held> {
         self.read().memberships.get(id).cloned()
+    }
+
+    /// Durably asks the member to prove itself on its next inbound peer session. An exact replay
+    /// preserves the first schedule time; the member side never schedules one locally.
+    pub fn schedule_verification(&self, id: &[u8; 16], now: u64) -> Result<u64, MembershipError> {
+        let held = self.held(id)?;
+        if held.role != Role::Coordinator || held.status.is_terminal() {
+            return Err(MembershipError::Invalid(
+                "only a coordinator schedules verification of a live membership".to_owned(),
+            ));
+        }
+        if let Some(scheduled) = self.verification_scheduled(id)? {
+            return Ok(scheduled);
+        }
+        let dir = self.dir.subdir(VERIFICATIONS, true)?;
+        replace_view(&dir, &hex(id), format::VIEW, &now.to_be_bytes())?;
+        Ok(now)
+    }
+
+    /// [`Self::schedule_verification`] inside the security-mutation transaction. The consumable
+    /// pending marker is deliberately separate from the operation's immutable exact result.
+    pub fn schedule_verification_mutation(
+        &self,
+        applying: &Applying<'_>,
+        id: &[u8; 16],
+        now: u64,
+    ) -> Result<u64, MembershipError> {
+        let held = self.held(id)?;
+        if held.role != Role::Coordinator || held.status.is_terminal() {
+            return Err(MembershipError::Invalid(
+                "only a coordinator schedules verification of a live membership".to_owned(),
+            ));
+        }
+        let scheduled = self.verification_scheduled(id)?.unwrap_or(now);
+        let _ = applying;
+        let dir = self.dir.subdir(VERIFICATIONS, true)?;
+        replace_view(&dir, &hex(id), format::VIEW, &scheduled.to_be_bytes())?;
+        Ok(scheduled)
+    }
+
+    /// Records one verification's exact answer as immutable domain state. Recovery observes this
+    /// record by operation id; consuming or replacing a coordinator's pending marker cannot alter
+    /// what the original request replays.
+    pub fn record_verification_result<T: Serialize>(
+        &self,
+        applying: &Applying<'_>,
+        id: &[u8; 16],
+        revision: u64,
+        result: &T,
+    ) -> Result<(), MembershipError> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&revision.to_be_bytes());
+        bytes.extend_from_slice(id);
+        bytes.extend_from_slice(&serde_json::to_vec(result).map_err(|error| {
+            MembershipError::Storage(format!("a verification result does not encode: {error}"))
+        })?);
+        let dir = self
+            .dir
+            .subdir(VERIFICATIONS, true)?
+            .subdir(VERIFICATION_RESULTS, true)?;
+        let name = hex(applying.operation_id().as_bytes());
+        if let Some(existing) = read_view(&dir, &name, format::VIEW)? {
+            if existing == bytes {
+                return Ok(());
+            }
+            return Err(MembershipError::Storage(
+                "an immutable verification result differs from its operation".to_owned(),
+            ));
+        }
+        replace_view(&dir, &name, format::VIEW, &bytes)?;
+        Ok(())
+    }
+
+    /// The exact answer an applied verification recorded for recovery.
+    pub fn verification_result<T: DeserializeOwned>(
+        &self,
+        operation_id: &OperationId,
+    ) -> Result<T, MembershipError> {
+        let bytes = self.verification_record(operation_id)?.ok_or_else(|| {
+            MembershipError::Storage("a verification result is absent".to_owned())
+        })?;
+        serde_json::from_slice(bytes.get(24..).unwrap_or_default()).map_err(|error| {
+            MembershipError::Storage(format!("a verification result does not decode: {error}"))
+        })
+    }
+
+    /// When the coordinator scheduled `id` for verification, across restarts.
+    pub fn verification_scheduled(&self, id: &[u8; 16]) -> Result<Option<u64>, MembershipError> {
+        if !self.dir.subdirs()?.iter().any(|name| name == VERIFICATIONS) {
+            return Ok(None);
+        }
+        let dir = self.dir.subdir(VERIFICATIONS, false)?;
+        let Some(bytes) = read_view(&dir, &hex(id), format::VIEW)? else {
+            return Ok(None);
+        };
+        let instant = match bytes.len() {
+            8 => bytes.get(..8),
+            33 if bytes.first() == Some(&0) => bytes.get(1..9),
+            _ => return Ok(None),
+        };
+        let bytes: [u8; 8] = instant
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(|| {
+                MembershipError::Storage("a verification schedule has no eight-byte instant".into())
+            })?;
+        Ok(Some(u64::from_be_bytes(bytes)))
+    }
+
+    fn verification_observed(&self, id: &[u8; 16], operation_id: &OperationId) -> Option<Observed> {
+        let bytes = self.verification_record(operation_id).ok()??;
+        if bytes.len() < 24 || bytes.get(8..24)? != id {
+            return None;
+        }
+        let revision = u64::from_be_bytes(bytes.get(..8)?.try_into().ok()?);
+        Some(Observed {
+            revision,
+            target: Some(uuid_text(id)),
+        })
+    }
+
+    fn verification_record(
+        &self,
+        operation_id: &OperationId,
+    ) -> Result<Option<Vec<u8>>, MembershipError> {
+        if !self.dir.subdirs()?.iter().any(|name| name == VERIFICATIONS) {
+            return Ok(None);
+        }
+        let verifications = self.dir.subdir(VERIFICATIONS, false)?;
+        if !verifications
+            .subdirs()?
+            .iter()
+            .any(|name| name == VERIFICATION_RESULTS)
+        {
+            return Ok(None);
+        }
+        let dir = verifications.subdir(VERIFICATION_RESULTS, false)?;
+        read_view(&dir, &hex(operation_id.as_bytes()), format::VIEW).map_err(Into::into)
+    }
+
+    /// Consumes a scheduled verification only after the exact member completed a proven session.
+    pub fn satisfy_verification(
+        &self,
+        id: &[u8; 16],
+        peer: &[u8; 16],
+    ) -> Result<bool, MembershipError> {
+        let Some(_) = self.verification_scheduled(id)? else {
+            return Ok(false);
+        };
+        let held = self.held(id)?;
+        if held.role != Role::Coordinator || &held.request.member.host_id != peer {
+            return Ok(false);
+        }
+        let dir = self.dir.subdir(VERIFICATIONS, false)?;
+        crate::storage::tombstone::delete(&dir, &hex(id))?;
+        Ok(true)
     }
 
     /// When `id` last entered `active`, from the journal's clock (WP-4.6).
@@ -2555,9 +2805,24 @@ impl Domain for Memberships<'_> {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
-        self.0.observe(operation_id)
+    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
+        self.0.observe(operation_id).or_else(|| {
+            let id = target.and_then(id_from_text)?;
+            self.0.verification_observed(&id, operation_id)
+        })
     }
+}
+
+fn id_from_text(text: &str) -> Option<[u8; 16]> {
+    let digits: String = text.chars().filter(|character| *character != '-').collect();
+    if text.len() != 36 || digits.len() != 32 || !text.is_ascii() {
+        return None;
+    }
+    let mut id = [0u8; 16];
+    for (at, byte) in id.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&digits[at * 2..at * 2 + 2], 16).ok()?;
+    }
+    (uuid_text(&id) == text).then_some(id)
 }
 
 /// A ring error, as a membership refusal.

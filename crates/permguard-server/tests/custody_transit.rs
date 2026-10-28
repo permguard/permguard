@@ -518,3 +518,27 @@ fn a_transit_kek_binds_its_context_and_a_wrong_token_is_refused() {
         .expect("a provider");
     assert!(keys.generate_addressed(Suite::Ed25519Sha256V1).is_err());
 }
+
+/// TS-4: a remote KMS is never reached from a decision. Inside the decision path's scope a Transit
+/// call is refused on the caller's thread, before the request reaches the client's own thread,
+/// where the scope would not follow; outside it the same key signs.
+#[test]
+fn a_decision_never_reaches_the_kms() {
+    let keys = transit(TOKEN)
+        .provider("host.operations", scratch("egress"))
+        .expect("a provider");
+    let (slot, _) = keys
+        .generate_addressed(Suite::Ed25519Sha256V1)
+        .expect("created");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .expect("a runtime");
+    let refused = runtime
+        .block_on(permguard_core::egress::decision(async {
+            keys.sign(&slot, Suite::Ed25519Sha256V1, b"m")
+        }))
+        .expect_err("refused on the decision path");
+    assert!(refused.to_string().contains("decision path"), "{refused}");
+    keys.sign(&slot, Suite::Ed25519Sha256V1, b"m")
+        .expect("outside a decision the same key signs");
+}

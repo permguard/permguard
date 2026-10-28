@@ -91,6 +91,70 @@ pub const EVALUATION_PATH: &str = "/access/v1/evaluation";
 /// Where many are, in one exchange.
 pub const EVALUATIONS_PATH: &str = "/access/v1/evaluations";
 
+/// The largest magnitude a number may have on either transport: 2^53, what the IEEE-754 double of
+/// `google.protobuf.Value` holds exactly (IFACE-06).
+pub const EXACT_INTEGER: u64 = 9_007_199_254_740_992;
+
+/// `value` in the scalar domain both transports carry exactly (IFACE-06), or the refusal.
+///
+/// REST carries JSON, which spells an integer of any size and `42.0` apart from `42`; gRPC
+/// carries a double, which holds neither distinction. So a number past ±2^53 is refused on REST
+/// as it is on gRPC, and a whole number is the integer it is: `42.0` reaches a policy as `42`
+/// over both, as the gRPC adapter already reads it. A decimal spelling with more digits than a
+/// double holds was already read as the nearest double, on both transports alike. Every other
+/// value is unchanged.
+pub fn lossless(value: Value) -> Result<Value, Malformed> {
+    let refuse = |number: &serde_json::Number| Malformed {
+        code: permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
+        message: format!(
+            "`{number}` is beyond the numbers both transports carry exactly: numbers travel \
+             only inside ±2^53, which is what an IEEE-754 double holds exactly; send anything \
+             larger as the string it is"
+        ),
+    };
+    Ok(match value {
+        Value::Number(number) => {
+            if let Some(integer) = number.as_i64() {
+                if integer.unsigned_abs() > EXACT_INTEGER {
+                    return Err(refuse(&number));
+                }
+                Value::Number(number)
+            } else if let Some(integer) = number.as_u64() {
+                if integer > EXACT_INTEGER {
+                    return Err(refuse(&number));
+                }
+                Value::Number(number)
+            } else {
+                let double = number.as_f64().ok_or_else(|| refuse(&number))?;
+                #[allow(clippy::cast_precision_loss)]
+                if !double.is_finite() || double.abs() > EXACT_INTEGER as f64 {
+                    return Err(refuse(&number));
+                }
+                if double.fract() == 0.0 {
+                    // Inside ±2^53, so the conversion is exact.
+                    #[allow(clippy::cast_possible_truncation)]
+                    Value::Number(serde_json::Number::from(double as i64))
+                } else {
+                    Value::Number(number)
+                }
+            }
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(lossless)
+                .collect::<Result<Vec<Value>, Malformed>>()?,
+        ),
+        Value::Object(members) => Value::Object(
+            members
+                .into_iter()
+                .map(|(name, value)| Ok((name, lossless(value)?)))
+                .collect::<Result<Map<String, Value>, Malformed>>()?,
+        ),
+        other => other,
+    })
+}
+
 /// What this interface offers, as a caller configures itself from it.
 ///
 /// # The rule for this list
@@ -669,6 +733,11 @@ pub struct CheckRequest {
     pub options: Option<OptionsBody>,
     #[serde(default)]
     pub request_id: Option<String>,
+    /// Asks for a signed response (WP-6.6): base64url without padding, 16 to 64 bytes, unique for
+    /// the verifier's replay window. Its presence is the request; a plane that cannot sign
+    /// refuses rather than answer unsigned.
+    #[serde(default)]
+    pub request_nonce: Option<String>,
 }
 
 /// The two audiences of one reason.
@@ -700,6 +769,10 @@ pub struct DecisionContext {
     /// "it could not have".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub absent_inputs: Vec<String>,
+    /// What became of this decision's record (WP-6.6): the exact mode and status, and where the
+    /// record sits when it is durable. Absent on a batch's own context, which no record is of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<crate::attestation::Evidence>,
 }
 
 /// One decision.
@@ -720,6 +793,7 @@ fn is_empty_context(context: &Option<DecisionContext>) -> bool {
                 && context.reason_admin.is_none()
                 && context.reason_user.is_none()
                 && context.policies.is_empty()
+                && context.evidence.is_none()
         }
     }
 }
@@ -736,6 +810,10 @@ pub struct CheckResponse {
     /// order.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evaluations: Option<Vec<Decision>>,
+    /// The signed response, present exactly when `request_nonce` asked for one and it was made
+    /// (WP-6.6b): a flattened JWS whose payload binds this answer's digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attestation: Option<crate::attestation::Attestation>,
 }
 
 /// What a request asks, once its defaults are applied and its required fields
@@ -905,6 +983,14 @@ impl CheckRequest {
         // caller who sent one is asking a question about a world this contract no longer accepts,
         // and every other complaint about their payload would be beside the point.
         self.removed()?;
+
+        // A nonce asks for a signed response, and one the contract does not define asks for
+        // nothing anybody could verify (WP-6.6).
+        if let Some(nonce) = &self.request_nonce {
+            crate::attestation::nonce_bytes(nonce).map_err(|message| {
+                malformed(permguard_core::codes::common::INVALID_ARGUMENT, message)
+            })?;
+        }
 
         if self.evaluations.len() > max_evaluations {
             return Err(malformed(
@@ -1097,7 +1183,7 @@ fn missing(what: &str, index: usize) -> Malformed {
 }
 
 /// A field that is present and not just whitespace.
-fn named(value: &Option<String>) -> Option<String> {
+pub(crate) fn named(value: &Option<String>) -> Option<String> {
     value
         .as_deref()
         .map(str::trim)
@@ -1110,6 +1196,46 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// IFACE-06: the scalar domain both transports carry exactly. Inside ±2^53 a number is kept,
+    /// a whole number as the integer it is at any depth; beyond it, as an integer or a double, it
+    /// is refused with `value_unrepresentable`, never rounded; everything else is unchanged.
+    #[test]
+    fn a_number_is_kept_only_where_both_transports_carry_it_exactly() {
+        let exact = i64::try_from(EXACT_INTEGER).expect("2^53 fits");
+        for kept in [
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(exact),
+            serde_json::json!(-exact),
+            serde_json::json!(1.5),
+            serde_json::json!("9007199254740993"),
+            serde_json::json!({"a": [true, null, "x"]}),
+        ] {
+            assert_eq!(lossless(kept.clone()).expect("kept"), kept);
+        }
+        assert_eq!(
+            lossless(serde_json::json!({"n": [42.0, -0.0, 9007199254740992.0]})).expect("kept"),
+            serde_json::json!({"n": [42, 0, exact]}),
+            "a whole number is the integer it is, as gRPC reads it"
+        );
+        for refused in [
+            serde_json::json!(exact + 1),
+            serde_json::json!(-exact - 1),
+            serde_json::json!(u64::MAX),
+            serde_json::json!(1_u64 << 63),
+            serde_json::json!(1e300),
+            serde_json::json!({"deep": [{"n": exact + 1}]}),
+        ] {
+            let why = lossless(refused.clone()).expect_err("refused");
+            assert_eq!(
+                why.code,
+                permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
+                "{refused}"
+            );
+            assert!(why.message.contains("2^53"), "{}", why.message);
+        }
+    }
 
     fn parse(text: &str) -> CheckRequest {
         serde_json::from_str(text).expect("the payload parses")
@@ -1319,6 +1445,7 @@ mod tests {
             request_id: None,
             context: Some(DecisionContext::default()),
             evaluations: None,
+            attestation: None,
         };
 
         assert_eq!(

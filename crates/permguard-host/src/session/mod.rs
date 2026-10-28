@@ -155,6 +155,12 @@ pub struct Session {
 /// What serves the one request of an `enroll` or `membership` session (WP-4.1): the
 /// memberships, composed by the server.
 pub trait Service: Send + Sync {
+    /// Observes a fully proven peer session before it serves any request. Implementations use
+    /// this for durable challenges whose answer is the proof itself (WP-4.8).
+    fn established(&self, _session: &Session) -> Result<(), Refusal> {
+        Ok(())
+    }
+
     /// Answers `request`, whose digest the session's transcript signed; `peer` is the verified
     /// identity of the initiator, `presentation` the bytes it was verified from and `exporter`
     /// the connection's RFC 9266 exporter.
@@ -296,6 +302,9 @@ impl Context {
                     peers::PeerRefusal::Storage(_) => Refusal::unavailable(error.to_string()),
                     _ => Refusal::session(error.to_string()),
                 })?;
+        }
+        if let Some(service) = &self.service {
+            service.established(session)?;
         }
         if let Some(audit) = &self.audit {
             let peer_subject = subject(&session.peer);

@@ -201,3 +201,85 @@ fn test_a_downstream_build_keeps_the_default_action() {
         vec![(SETTING_ADMIN_ADDR.to_owned(), "127.0.0.1:4".to_owned())]
     );
 }
+
+#[test]
+fn test_drain_defaults_to_the_containers_first_process_and_no_wait() {
+    assert_eq!(
+        action(&["permguard", "drain"]),
+        Action::Named(Command::Drain { pid: 1, wait: 0 })
+    );
+    assert_eq!(
+        action(&["permguard", "drain", "--pid", "7", "--wait", "45"]),
+        Action::Named(Command::Drain { pid: 7, wait: 45 })
+    );
+    // A wait of more than a day is a typo.
+    assert!(Cli::try_parse_from(["permguard", "drain", "--wait", "86401"]).is_err());
+}
+
+#[test]
+fn test_volume_claim_takes_a_generation_or_moves_to_the_next() {
+    use permguard_server::command::VolumeCommand;
+
+    let claim = |argv: &[&str]| match action(argv) {
+        Action::Named(Command::Volume {
+            what:
+                VolumeCommand::Claim {
+                    generation,
+                    next,
+                    create,
+                    ..
+                },
+        }) => (generation, next, create),
+        other => panic!("expected a claim, resolved {other:?}"),
+    };
+    assert_eq!(
+        claim(&[
+            "permguard",
+            "volume",
+            "claim",
+            "--volume",
+            "v",
+            "--generation",
+            "4"
+        ]),
+        (Some(4), false, false)
+    );
+    assert_eq!(
+        claim(&[
+            "permguard",
+            "volume",
+            "claim",
+            "--volume",
+            "v",
+            "--next",
+            "--create"
+        ]),
+        (None, true, true)
+    );
+    // One of the two, never both, never neither; `--create` only with `--next`.
+    for refused in [
+        &["permguard", "volume", "claim", "--volume", "v"][..],
+        &[
+            "permguard",
+            "volume",
+            "claim",
+            "--volume",
+            "v",
+            "--generation",
+            "4",
+            "--next",
+        ],
+        &[
+            "permguard",
+            "volume",
+            "claim",
+            "--volume",
+            "v",
+            "--generation",
+            "4",
+            "--create",
+        ],
+    ] {
+        assert!(Cli::try_parse_from(refused).is_err(), "{refused:?}");
+    }
+}

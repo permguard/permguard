@@ -1,0 +1,46 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Compose lab's temporal Data Plane Hosts (TD-3, `temporal-replicas`): `data-plane.yml` and the
+# durable history its Dogwood ledger decides against. ONE file for both replicas, rendered once by
+# `permguard-lab catalog`: the history each imports is subscribed by ledger id, which exists only
+# once the catalog made the ledger. `@ZONE_ID@` and `@LEDGER_ID@` are those ids.
+#
+# A lab, on its own network: the development profile and a test authority. Never a template for a
+# deployment.
+
+working_dir: /var/lib/permguard/volume
+development_mode: true
+autogenerate: true
+assurance: { profile: development }
+log: { level: info, format: json }
+
+# Dogwood's temporal interface is `v1alpha1`: on only where somebody chose it.
+experimental: { dogwood: { enabled: "true" } }
+
+host: { addr: 0.0.0.0:5443 }
+admin: { addr: 0.0.0.0:5444 }
+
+operations:
+  keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }
+  secrets: { provider: directory, coordinator_root_ref: zone-root }
+  audit: { pseudonym: { enabled: true, key_ref: audit-pseudonym, key_version: "v1" } }
+
+dataPlane:
+  public:
+    http: { addr: 0.0.0.0:7443 }
+    grpc: { addr: 0.0.0.0:7443 }
+  mirrors: { enabled: "true", interval: 5s }
+  decisions:
+    log: { enabled: "true", mode: required }
+  # What each replica recorded is shipped over `events.ship`; what the other recorded arrives over
+  # `events.import`, and a decision ranges over both, at the local watermark.
+  events:
+    enabled: "true"
+    directory: data/events
+    retention: { minimum: 48h, allowed_lateness: 5m, clock_skew: 30s }
+    # The import runs on the membership's pass, the ledger's whole history: no interval, no type filter.
+    pull:
+      mode: shared-eventual
+      ledgers:
+        - { zone: "@ZONE_ID@", ledger: "@LEDGER_ID@" }

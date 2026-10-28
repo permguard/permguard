@@ -6,10 +6,21 @@
 //! ```text
 //! <root>/zones.json                      what zones exist — the "database" of zones
 //! <root>/<zone-id>/ledgers.json          what ledgers that zone holds
-//! <root>/<zone-id>/ledgers/<ledger-id>/  the ledger's own directory, empty today on purpose:
-//!                                        it is where the ledger's contents will live when that
-//!                                        design is made, and its address is already stable
+//! <root>/<zone-id>/ledgers/<ledger-id>/  the ledger's own directory, where its objects and refs
+//!                                        live; a delete leaves it as it is (WP-7.3b)
+//! <root>/tombstones/zones/<zone-id>.json what a deleted zone left
+//! <root>/<zone-id>/tombstones/<ledger-id>.json
+//!                                        what a deleted ledger left
 //! ```
+//!
+//! # Deletion
+//!
+//! A delete writes the tombstone first and takes the record out of its index second, so every id
+//! that is gone has a tombstone; a tombstone whose id is still indexed is what an interrupted
+//! delete left, and the next delete of that record replaces it. A record is deleted when its index
+//! does not hold it. Nothing a deleted zone or ledger held is removed: its directory stays for
+//! the garbage collection to sweep after retention (WP-7.12), and an id that has a tombstone is
+//! never minted again.
 //!
 //! # How consistency is kept, and what is deliberately not locked
 //!
@@ -48,7 +59,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 
-use permguard_core::catalog::{Catalog, CatalogError, Ledger, Selector, Zone, validate_name};
+use permguard_core::catalog::{
+    Catalog, CatalogError, FIRST_REVISION, Ledger, LedgerState, Selector, Tombstone, Write, Zone,
+    is_guid_shaped, validate_name,
+};
 
 /// What the zone index file is called, beside the zone directories it describes.
 const ZONES_FILE: &str = "zones.json";
@@ -58,6 +72,12 @@ const LEDGERS_FILE: &str = "ledgers.json";
 
 /// Where a ledger's own contents will live, under its zone.
 const LEDGERS_DIRECTORY: &str = "ledgers";
+
+/// Where tombstones live, at the root for zones and in each zone for its ledgers.
+const TOMBSTONES_DIRECTORY: &str = "tombstones";
+
+/// How many ids a create mints before it gives up: one that has a tombstone is minted again.
+const MINT_ATTEMPTS: usize = 8;
 
 /// What these operations answer with.
 type Result<T> = std::result::Result<T, CatalogError>;
@@ -157,6 +177,42 @@ impl FileCatalog {
             .join(ledger_id)
     }
 
+    /// A deleted zone's tombstone; `None` for an id that is not one, which forms no path.
+    fn zone_tombstone_path(&self, zone_id: &str) -> Option<PathBuf> {
+        is_guid_shaped(zone_id).then(|| {
+            self.root
+                .join(TOMBSTONES_DIRECTORY)
+                .join("zones")
+                .join(format!("{zone_id}.json"))
+        })
+    }
+
+    /// A deleted ledger's tombstone; `None` for ids that are not ones.
+    fn ledger_tombstone_path(&self, zone_id: &str, ledger_id: &str) -> Option<PathBuf> {
+        (is_guid_shaped(zone_id) && is_guid_shaped(ledger_id)).then(|| {
+            self.zone_directory(zone_id)
+                .join(TOMBSTONES_DIRECTORY)
+                .join(format!("{ledger_id}.json"))
+        })
+    }
+
+    /// The tombstone at `path`, when there is one.
+    fn read_tombstone(path: Option<PathBuf>) -> Result<Option<Tombstone>> {
+        let Some(path) = path else {
+            return Ok(None);
+        };
+        match fs::read_to_string(&path) {
+            Ok(text) => serde_json::from_str(&text).map(Some).map_err(|error| {
+                CatalogError::backend(format!("{} is not a tombstone: {error}", path.display()))
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(CatalogError::backend(format!(
+                "reading {}: {error}",
+                path.display()
+            ))),
+        }
+    }
+
     /// Reads an index, treating an absent file as an empty one: a catalog nobody has written to is
     /// a catalog with nothing in it, not an error.
     fn read_index<T: Default + for<'de> Deserialize<'de>>(&self, path: &Path) -> Result<T> {
@@ -238,6 +294,23 @@ fn now() -> u64 {
         .map_or(0, |since| since.as_secs())
 }
 
+/// An id `mint` gives that `buried` does not hold: one that has a tombstone is minted again, at
+/// most [`MINT_ATTEMPTS`] times (WP-7.3b).
+fn fresh(
+    mut mint: impl FnMut() -> Result<String>,
+    buried: impl Fn(&str) -> Result<bool>,
+) -> Result<String> {
+    for _ in 0..MINT_ATTEMPTS {
+        let id = mint()?;
+        if !buried(&id)? {
+            return Ok(id);
+        }
+    }
+    Err(CatalogError::backend(
+        "every id minted has a tombstone: the random source is not random",
+    ))
+}
+
 /// Mints a UUIDv7: creation time first, so ids sort by age.
 fn guid() -> Result<String> {
     let millis = SystemTime::now()
@@ -275,7 +348,7 @@ impl Catalog for FileCatalog {
         "directory"
     }
 
-    fn create_zone(&self, name: &str) -> Result<Zone> {
+    fn create_zone_with(&self, name: &str, write: &Write<'_>) -> Result<Zone> {
         validate_name(name)?;
 
         let _guard = self
@@ -294,11 +367,16 @@ impl Catalog for FileCatalog {
         }
 
         let at = now();
+        let id = fresh(guid, |id| {
+            Ok(Self::read_tombstone(self.zone_tombstone_path(id))?.is_some())
+        })?;
         let zone = Zone {
-            id: guid()?,
+            id,
             name: name.to_owned(),
             created_at: at,
             updated_at: at,
+            revision: FIRST_REVISION,
+            operation: write.operation.map(str::to_owned),
         };
 
         // The zone's directory exists from birth, so everything that will live inside it — the
@@ -321,7 +399,7 @@ impl Catalog for FileCatalog {
         self.require_zone(zone)
     }
 
-    fn rename_zone(&self, zone: &Selector, name: &str) -> Result<Zone> {
+    fn rename_zone_with(&self, zone: &Selector, name: &str, write: &Write<'_>) -> Result<Zone> {
         validate_name(name)?;
 
         let _guard = self
@@ -330,6 +408,17 @@ impl Catalog for FileCatalog {
             .map_err(|_| CatalogError::backend("the zone lock is poisoned"))?;
 
         let mut index: ZoneIndex = self.read_index(&self.zones_path())?;
+        // The revision first, under the lock: a change that expected another one applies nothing
+        // (WP-7.3a).
+        if let Some(found) = Self::find_zone(&index, zone)
+            && !write.admits(found.revision)
+        {
+            return Err(CatalogError::RevisionConflict {
+                kind: "zone",
+                selector: zone.to_string(),
+                current: found.revision,
+            });
+        }
 
         if index.zones.iter().any(|candidate| {
             candidate.name == name && !matches!(zone, Selector::Id(id) if *id == candidate.id)
@@ -359,6 +448,8 @@ impl Catalog for FileCatalog {
 
         found.name = name.to_owned();
         found.updated_at = now();
+        found.revision += 1;
+        found.operation = write.operation.map(str::to_owned);
 
         let renamed = found.clone();
         self.write_index(&self.zones_path(), &index)?;
@@ -366,7 +457,7 @@ impl Catalog for FileCatalog {
         Ok(renamed)
     }
 
-    fn delete_zone(&self, zone: &Selector) -> Result<Zone> {
+    fn delete_zone_with(&self, zone: &Selector, write: &Write<'_>) -> Result<Zone> {
         let _zones = self
             .zones_lock
             .lock()
@@ -380,6 +471,13 @@ impl Catalog for FileCatalog {
                     kind: "zone",
                     selector: zone.to_string(),
                 })?;
+        if !write.admits(found.revision) {
+            return Err(CatalogError::RevisionConflict {
+                kind: "zone",
+                selector: zone.to_string(),
+                current: found.revision,
+            });
+        }
 
         // Zone lock first, this zone's ledger lock second — the same order everywhere, which is
         // what makes holding both deadlock-free. With both held, the emptiness check is a fact.
@@ -397,23 +495,27 @@ impl Catalog for FileCatalog {
             });
         }
 
+        // The tombstone first, the index second: every id that is gone has one. The directory
+        // stays, with whatever its deleted ledgers held (WP-7.3b).
+        let tombstone = Tombstone {
+            id: found.id.clone(),
+            zone_id: None,
+            name: found.name.clone(),
+            deleted_at: now(),
+            revision: found.revision,
+            operation: write.operation.map(str::to_owned),
+        };
+        let path = self
+            .zone_tombstone_path(&found.id)
+            .ok_or_else(|| CatalogError::backend("a zone id that is not a GUID"))?;
+        self.write_index(&path, &tombstone)?;
         index.zones.retain(|candidate| candidate.id != found.id);
         self.write_index(&self.zones_path(), &index)?;
-
-        // The directory goes last: if this fails the zone is already out of the index, and a
-        // leftover empty directory is debris, not a resurrection.
-        if let Err(error) = fs::remove_dir_all(self.zone_directory(&found.id))
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            return Err(CatalogError::backend(format!(
-                "removing the zone directory: {error}"
-            )));
-        }
 
         Ok(found)
     }
 
-    fn create_ledger(&self, zone: &Selector, name: &str) -> Result<Ledger> {
+    fn create_ledger_with(&self, zone: &Selector, name: &str, write: &Write<'_>) -> Result<Ledger> {
         validate_name(name)?;
 
         let owner = self.require_zone(zone)?;
@@ -437,13 +539,20 @@ impl Catalog for FileCatalog {
         }
 
         let at = now();
+        let id = fresh(guid, |id| {
+            Ok(Self::read_tombstone(self.ledger_tombstone_path(&owner.id, id))?.is_some())
+        })?;
         let ledger = Ledger {
-            id: guid()?,
+            id,
             zone_id: owner.id.clone(),
             name: name.to_owned(),
             default_ref: "main".to_owned(),
             created_at: at,
             updated_at: at,
+            revision: FIRST_REVISION,
+            operation: write.operation.map(str::to_owned),
+            state: LedgerState::Active,
+            provenance: write.provenance.cloned(),
         };
 
         // Born with its own directory: the address of whatever a ledger will hold is part of
@@ -478,7 +587,13 @@ impl Catalog for FileCatalog {
             })
     }
 
-    fn rename_ledger(&self, zone: &Selector, ledger: &Selector, name: &str) -> Result<Ledger> {
+    fn rename_ledger_with(
+        &self,
+        zone: &Selector,
+        ledger: &Selector,
+        name: &str,
+        write: &Write<'_>,
+    ) -> Result<Ledger> {
         validate_name(name)?;
 
         let owner = self.require_zone(zone)?;
@@ -488,6 +603,15 @@ impl Catalog for FileCatalog {
             .map_err(|_| CatalogError::backend("the ledger lock is poisoned"))?;
 
         let mut index: LedgerIndex = self.read_index(&self.ledgers_path(&owner.id))?;
+        if let Some(found) = Self::find_ledger(&index, ledger)
+            && !write.admits(found.revision)
+        {
+            return Err(CatalogError::RevisionConflict {
+                kind: "ledger",
+                selector: ledger.to_string(),
+                current: found.revision,
+            });
+        }
         let taken = index.ledgers.iter().any(|candidate| {
             candidate.name == name
                 && !matches!(ledger, Selector::Id(id) if *id == candidate.id)
@@ -515,6 +639,8 @@ impl Catalog for FileCatalog {
 
         found.name = name.to_owned();
         found.updated_at = now();
+        found.revision += 1;
+        found.operation = write.operation.map(str::to_owned);
 
         let renamed = found.clone();
         self.write_index(&self.ledgers_path(&owner.id), &index)?;
@@ -522,7 +648,12 @@ impl Catalog for FileCatalog {
         Ok(renamed)
     }
 
-    fn delete_ledger(&self, zone: &Selector, ledger: &Selector) -> Result<Ledger> {
+    fn delete_ledger_with(
+        &self,
+        zone: &Selector,
+        ledger: &Selector,
+        write: &Write<'_>,
+    ) -> Result<Ledger> {
         let owner = self.require_zone(zone)?;
         let lock = self.ledger_lock(&owner.id)?;
         let _guard = lock
@@ -537,23 +668,110 @@ impl Catalog for FileCatalog {
                     kind: "ledger",
                     selector: ledger.to_string(),
                 })?;
+        if !write.admits(found.revision) {
+            return Err(CatalogError::RevisionConflict {
+                kind: "ledger",
+                selector: ledger.to_string(),
+                current: found.revision,
+            });
+        }
 
+        // The tombstone first, the index second; the ledger's directory, its objects and refs,
+        // stays for the garbage collection (WP-7.3b).
+        let tombstone = Tombstone {
+            id: found.id.clone(),
+            zone_id: Some(owner.id.clone()),
+            name: found.name.clone(),
+            deleted_at: now(),
+            revision: found.revision,
+            operation: write.operation.map(str::to_owned),
+        };
+        let path = self
+            .ledger_tombstone_path(&owner.id, &found.id)
+            .ok_or_else(|| CatalogError::backend("a ledger id that is not a GUID"))?;
+        self.write_index(&path, &tombstone)?;
         index.ledgers.retain(|candidate| candidate.id != found.id);
         self.write_index(&self.ledgers_path(&owner.id), &index)?;
 
-        if let Err(error) = fs::remove_dir_all(self.ledger_directory(&owner.id, &found.id))
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            return Err(CatalogError::backend(format!(
-                "removing the ledger directory: {error}"
-            )));
+        Ok(found)
+    }
+
+    fn set_ledger_state_with(
+        &self,
+        zone: &Selector,
+        ledger: &Selector,
+        state: LedgerState,
+        write: &Write<'_>,
+    ) -> Result<Ledger> {
+        let owner = self.require_zone(zone)?;
+        let lock = self.ledger_lock(&owner.id)?;
+        let _guard = lock
+            .lock()
+            .map_err(|_| CatalogError::backend("the ledger lock is poisoned"))?;
+
+        let mut index: LedgerIndex = self.read_index(&self.ledgers_path(&owner.id))?;
+        let found = index
+            .ledgers
+            .iter_mut()
+            .find(|candidate| match ledger {
+                Selector::Id(id) => candidate.id == *id,
+                Selector::Name(name) => candidate.name == *name,
+            })
+            .ok_or_else(|| CatalogError::NotFound {
+                kind: "ledger",
+                selector: ledger.to_string(),
+            })?;
+        if !write.admits(found.revision) {
+            return Err(CatalogError::RevisionConflict {
+                kind: "ledger",
+                selector: ledger.to_string(),
+                current: found.revision,
+            });
         }
 
-        Ok(found)
+        found.state = state;
+        found.updated_at = now();
+        found.revision += 1;
+        found.operation = write.operation.map(str::to_owned);
+
+        let changed = found.clone();
+        self.write_index(&self.ledgers_path(&owner.id), &index)?;
+
+        Ok(changed)
+    }
+
+    fn zone_tombstone(&self, zone_id: &str) -> Result<Option<Tombstone>> {
+        Self::read_tombstone(self.zone_tombstone_path(zone_id))
+    }
+
+    fn ledger_tombstone(&self, zone_id: &str, ledger_id: &str) -> Result<Option<Tombstone>> {
+        Self::read_tombstone(self.ledger_tombstone_path(zone_id, ledger_id))
     }
 }
 
 /// A path as the storage library addresses it: its directory and its file name.
 fn split(path: &Path) -> Option<(&Path, &str)> {
     Some((path.parent()?, path.file_name()?.to_str()?))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// WP-7.3b, owner decision of 2026-10-21: a minted id that has a tombstone is never used; it is
+    /// minted again, and a source that keeps minting buried ids is a failure, never a reuse.
+    #[test]
+    fn a_minted_id_that_has_a_tombstone_is_never_used() {
+        let buried = "01a00000-0000-7000-8000-000000000001";
+        let born = "01a00000-0000-7000-8000-000000000002";
+        let mut minted = vec![born.to_owned(), buried.to_owned()];
+        let id =
+            fresh(|| Ok(minted.pop().expect("an id")), |id| Ok(id == buried)).expect("a fresh id");
+        assert_eq!(id, born);
+
+        let always = fresh(|| Ok(buried.to_owned()), |id| Ok(id == buried));
+        assert!(matches!(always, Err(CatalogError::Backend { .. })));
+    }
 }

@@ -1,0 +1,123 @@
+{
+  "folder": "union",
+  "files": {
+    "test-union-0357.yaml": {
+      "sha256": "sha256:6a65374b1191ba40164fbbc5c467db2a7d20576ed8fd70680591a6266e28a3e5",
+      "cases": [
+        {
+          "note": "union/union_0_sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tunion(set(), x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-union-0358.yaml": {
+      "sha256": "sha256:9e285ac4bce46a1bc76a3643e8c80e9bf8809f0e181aaf59a01aedebdab32b21",
+      "cases": [
+        {
+          "note": "union/union_2_sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tunion({set(), {1, 2}}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-union-0359.yaml": {
+      "sha256": "sha256:221b57833fead8add6badfbe39a04fc55c7196f50c99677b35894c02e390d893",
+      "cases": [
+        {
+          "note": "union/union_2_sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ts1 = {1, 2, 3}\n\ts2 = {2}\n\tunion({s1, s2}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-union-0360.yaml": {
+      "sha256": "sha256:9a756e19d5cf6d79f25d1ce13cf728c4ffc13c35abea87e52bcc422799253493",
+      "cases": [
+        {
+          "note": "union/union_3_sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ts1 = {1, 2, 3}\n\ts2 = {2, 3, 4}\n\ts3 = {4, 5, 6}\n\tunion({s1, s2, s3}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-union-0361.yaml": {
+      "sha256": "sha256:cb839eb3ebcdd5bf7b5c38c2079762d7ee6baa1e418327e3086f240e2a26a070",
+      "cases": [
+        {
+          "note": "union/union_4_sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\ts1 = {\"a\", \"b\", \"c\", \"d\"}\n\ts2 = {\"b\", \"c\", \"d\"}\n\ts3 = {\"c\", \"d\"}\n\ts4 = {\"d\"}\n\tunion({s1, s2, s3, s4}, x)\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "a",
+                "b",
+                "c",
+                "d"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

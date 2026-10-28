@@ -1,0 +1,227 @@
+{
+  "folder": "regexfindallstringsubmatch",
+  "files": {
+    "test-regexfindallstringsubmatch-0337.yaml": {
+      "sha256": "sha256:ce5d6a498534f2ac2c9ac02500cfb62275a1a981b757650b96002af6adf51b9d",
+      "cases": [
+        {
+          "note": "regexfindallstringsubmatch/finds no matches",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.find_all_string_submatch_n(\"a(x*)b\", \"-\", -1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-regexfindallstringsubmatch-0338.yaml": {
+      "sha256": "sha256:fcb0d6bb49e9348909915a935f418c60003b372180698a070970a3a978b6fb91",
+      "cases": [
+        {
+          "note": "regexfindallstringsubmatch/single match without captures",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.find_all_string_submatch_n(\"a(x*)b\", \"-ab-\", -1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+                    "ab",
+                    ""
+                  ]
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-regexfindallstringsubmatch-0339.yaml": {
+      "sha256": "sha256:7d99970dd965ba68a87026c06ddb5e45b5054c0e405ddaefa991bfe2e1eef500",
+      "cases": [
+        {
+          "note": "regexfindallstringsubmatch/single match with a capture",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.find_all_string_submatch_n(\"a(x*)b\", \"-axxb-\", -1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+                    "axxb",
+                    "xx"
+                  ]
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-regexfindallstringsubmatch-0340.yaml": {
+      "sha256": "sha256:bcf65d9f68ad111f5d0559a3ef3b02ae30d989ff708816840d31433c4351b2f3",
+      "cases": [
+        {
+          "note": "regexfindallstringsubmatch/multiple matches with captures-1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.find_all_string_submatch_n(\"a(x*)b\", \"-ab-axb-\", -1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+                    "ab",
+                    ""
+                  ],
+                  [
+                    "axb",
+                    "x"
+                  ]
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-regexfindallstringsubmatch-0341.yaml": {
+      "sha256": "sha256:41c94970d1ea023cc836afa1043bbaf2612d7ea1a2404c0cb2677a2b501e3b6c",
+      "cases": [
+        {
+          "note": "regexfindallstringsubmatch/multiple matches with captures-2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.find_all_string_submatch_n(\"a(x*)b\", \"-axxb-ab-\", -1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+                    "axxb",
+                    "xx"
+                  ],
+                  [
+                    "ab",
+                    ""
+                  ]
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-regexfindallstringsubmatch-0342.yaml": {
+      "sha256": "sha256:a1803da07215662cd767117461d710cb6db6146cb9f74440067368ad7e965b0a",
+      "cases": [
+        {
+          "note": "regexfindallstringsubmatch/multiple patterns, matches, and captures",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.find_all_string_submatch_n(\"[^aouiye]([aouiye])([^aouiye])?\", \"somestri\", -1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+                    "som",
+                    "o",
+                    "m"
+                  ],
+                  [
+                    "ri",
+                    "i",
+                    ""
+                  ]
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-regexfindallstringsubmatch-0343.yaml": {
+      "sha256": "sha256:9e43b5b451a16cff6421876cb57c681fa11a23a85024b280734a9da140b43671",
+      "cases": [
+        {
+          "note": "regexfindallstringsubmatch/multiple patterns, matches, and captures with specified number of matches",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tregex.find_all_string_submatch_n(\"[^aouiye]([aouiye])([^aouiye])?\", \"somestri\", 1, __local0__)\n\tx = __local0__\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                [
+                  [
+                    "som",
+                    "o",
+                    "m"
+                  ]
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-regexfindallstringsubmatch-large-input.yaml": {
+      "sha256": "sha256:1b86974fdb3249c4fdedc46cd4b336e10dca059b69476ba36174535e83e61644",
+      "cases": [
+        {
+          "note": "regexfindallstringsubmatch/large input",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np contains m if some m in regex.find_all_string_submatch_n(\"^.*$\", input.long, -1)\n"
+          ],
+          "input": {
+            "long": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabc"
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabc"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

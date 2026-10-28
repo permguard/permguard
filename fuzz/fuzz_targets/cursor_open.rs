@@ -20,4 +20,15 @@ fuzz_target!(|data: &[u8]| {
         "zone-a/ledger-a",
         "filters",
     );
+    // Either version (WP-5.5): a version 2 token is opened by its own rules, at any time.
+    for now in [0, 1_800_000_000, u64::MAX] {
+        let _ = Cursor::open_any(
+            token,
+            &key,
+            "permguard.fuzz.v1",
+            "zone-a/ledger-a",
+            "filters",
+            now,
+        );
+    }
 });

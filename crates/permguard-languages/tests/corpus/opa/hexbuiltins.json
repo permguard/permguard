@@ -1,0 +1,54 @@
+{
+  "folder": "hexbuiltins",
+  "files": {
+    "test-hexbuiltins-0939.yaml": {
+      "sha256": "sha256:51c72eeddae7a5c450d9b39633911b2c605cae95c0c0e5ed6878882ff18c88c7",
+      "cases": [
+        {
+          "note": "hexbuiltins/hex_encode with string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\thex.encode(\"lorem ipsum\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "6c6f72656d20697073756d"
+            }
+          ]
+        }
+      ]
+    },
+    "test-hexbuiltins-0940.yaml": {
+      "sha256": "sha256:f76273cdb5ce30adaf7d684dde4f7b426cf46d733713da1661226e55c5e6d01c",
+      "cases": [
+        {
+          "note": "hexbuiltins/hex_decode with string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\thex.decode(\"6c6f72656d20697073756d\", x)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": "lorem ipsum"
+            }
+          ]
+        }
+      ]
+    },
+    "test-hexbuiltins-0941.yaml": {
+      "sha256": "sha256:b1ff3b1f87f579987e2d64f671f1dd959717e6bca9e3b4e0cb4ef6afa6cfc763",
+      "cases": [
+        {
+          "note": "hexbuiltins/hex_decode with invalid hex encoded string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\thex.decode(\"fghijkl\", x)\n}\n"
+          ],
+          "want_error_code": "eval_builtin_error",
+          "want_error": "invalid byte: U+0067 'g'",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

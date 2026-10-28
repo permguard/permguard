@@ -786,9 +786,9 @@ dependencies = [
 
 [[package]]
 name = "ctutils"
-version = "0.4.2"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d5515a3834141de9eafb9717ad39eea8247b5674e6066c404e8c4b365d2a29e"
+checksum = "fe3e9d21d39e6f39ff46e03d5b621424f88ee23d8a1672c6bfc9ccc7f2da4f6a"
 dependencies = [
  "cmov",
 ]
@@ -2253,9 +2253,9 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-otlp"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9966929966d17620d7c316c643ba62631826e10021409357772d5eea84f62c35"
+checksum = "699a67345e21962a231955b9059a157e428b219fa5df8efe11f08346fb23a344"
 dependencies = [
  "http",
  "opentelemetry 0.32.0",
@@ -2270,9 +2270,9 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-proto"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56d658ba1faf63f7b9c492cfbe6e0ec365440a16132d3270c1065f7b33f1b638"
+checksum = "25da1ac11a0aeccf38d7f77ee0348715adaf8340f65ad46c94a02c6b20e2f65d"
 dependencies = [
  "opentelemetry 0.32.0",
  "opentelemetry_sdk 0.32.1",
@@ -2362,10 +2362,14 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 name = "permguard-all-in-one"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "permguard-control-plane",
  "permguard-core",
  "permguard-data-plane",
+ "permguard-host",
+ "permguard-languages",
  "permguard-server",
+ "serde_json",
  "tokio",
 ]
 
@@ -2405,11 +2409,18 @@ name = "permguard-conformance"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bytes",
+ "clap",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "permguard-control-client",
  "permguard-core",
  "permguard-decisions",
  "permguard-events",
  "permguard-host",
+ "permguard-languages",
  "permguard-notp",
  "permguard-objects",
  "permguard-stream",
@@ -2418,6 +2429,8 @@ dependencies = [
  "prost-types",
  "serde",
  "serde_json",
+ "serde_norway",
+ "sha2",
  "syn 2.0.119",
  "tokio",
  "tonic",
@@ -2508,6 +2521,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "axum",
+ "base64 0.23.1",
  "futures-core",
  "http",
  "http-body-util",
@@ -2519,6 +2533,7 @@ dependencies = [
  "permguard-events",
  "permguard-host",
  "permguard-languages",
+ "permguard-notp",
  "permguard-objects",
  "permguard-server",
  "permguard-std",
@@ -2595,6 +2610,7 @@ name = "permguard-languages"
 version = "0.1.0"
 dependencies = [
  "amzn-dogwood-language",
+ "base64 0.23.1",
  "cedar-policy",
  "jsonschema 0.56.0",
  "libc",
@@ -2618,6 +2634,8 @@ dependencies = [
  "permguard-core",
  "permguard-objects",
  "proptest",
+ "ring",
+ "serde_json",
 ]
 
 [[package]]
@@ -2665,6 +2683,7 @@ dependencies = [
  "prost",
  "rcgen",
  "ring",
+ "rustix",
  "rustls",
  "rustls-native-certs",
  "serde",
@@ -2715,6 +2734,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tracing",
 ]
 
 [[package]]
@@ -3062,9 +3082,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.13.4"
+version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+checksum = "278e9268c93b9e498a2da46c34d90ba93a3255eb99009646398f34bc73ab36eb"
 dependencies = [
  "bitflags 2.13.2",
  "memchr",
@@ -3423,9 +3443,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "log",
  "once_cell",
@@ -3459,9 +3479,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.15"
+version = "0.103.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -4055,9 +4075,9 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokio"
-version = "1.53.1"
+version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed"
+checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
 dependencies = [
  "bytes",
  "libc",

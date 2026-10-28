@@ -1,0 +1,259 @@
+{
+  "folder": "objectget",
+  "files": {
+    "test-objectget-0262.yaml": {
+      "sha256": "sha256:c46a581d2e26fc126fe52c9ed54f33bb00a919b456d6e5f34d1ba5bf2cb3ac6e",
+      "cases": [
+        {
+          "note": "objectget/basic case . found",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.get({\"a\": \"b\"}, \"a\", \"c\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "b"
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectget-0263.yaml": {
+      "sha256": "sha256:72c0f7fb8dcc049238f0f4f53765aaf89ba5a1b80f98ca5ddac87c2aa9de3843",
+      "cases": [
+        {
+          "note": "objectget/basic case . not found",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.get({\"a\": \"b\"}, \"c\", \"c\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "c"
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectget-0264.yaml": {
+      "sha256": "sha256:8c97f5f8ab215866e065680628e0256f42011f8382bb1d7894f198778fbe3427",
+      "cases": [
+        {
+          "note": "objectget/integer key found",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.get({1: 2}, 1, 3, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectget-0265.yaml": {
+      "sha256": "sha256:176b46bc35908a38d3107022c33599f6295672f7d4e7455e3d8b062b82919672",
+      "cases": [
+        {
+          "note": "objectget/integer key . not found",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.get({1: 2}, 2, 3, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": 3
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectget-0266.yaml": {
+      "sha256": "sha256:09a18e15a5626455738be7ec0b36946c82e721316785610601762a1b300031a7",
+      "cases": [
+        {
+          "note": "objectget/complex value . found",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.get({\"a\": {\"b\": \"c\"}}, \"a\", true, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "b": "c"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectget-0267.yaml": {
+      "sha256": "sha256:9e135f43999cff42ed47ce5e38b51aa03919b043e683f36546d35c7e4eeb77ce",
+      "cases": [
+        {
+          "note": "objectget/complex value . not found",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := __local0__ if {\n\tobject.get({\"a\": {\"b\": \"c\"}}, \"b\", true, __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-objectget-path.yaml": {
+      "sha256": "sha256:7da0c2cc345ffdeec993040abffc3717e2db6e99e5b522583c4522a88c646f79",
+      "cases": [
+        {
+          "note": "objectget/empty_path_returns_object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get({\"a\": 1}, [], 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "a": 1
+              }
+            }
+          ]
+        },
+        {
+          "note": "objectget/path_with_single_element",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get({\"a\": 1}, [\"a\"], 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "objectget/path_with_two_elements",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get({\"a\": {\"b\": 1}}, [\"a\", \"b\"], 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "objectget/path_with_three_elements",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get({\"a\": {\"b\": {\"c\": 1}}}, [\"a\", \"b\", \"c\"], 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "objectget/path_with_single_element_no_result",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get({\"a\": 1}, [\"b\"], 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "objectget/path_with_two_elements_no_result",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get({\"a\": {\"b\": 1}}, [\"b\", \"a\"], 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "objectget/path_with_three_elements_no_result",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get({\"a\": {\"b\": {\"c\": 1}}}, [\"a\", \"b\", \"a\"], 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "objectget/path_with_non_string_keys",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get({1: {\"b\": {[1, 2, 3]: 1}}}, [1, \"b\", [1, 2, 3]], 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "objectget/get_intermediate_non_object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get({\"a\": {\"b\": [1, 2, 3]}}, [\"a\", \"b\", \"a\"], 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "objectget/get_intermediate_array",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get({\"a\": {\"b\": [{\"c\": 1}]}}, [\"a\", \"b\", 0, \"c\"], 2)\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "objectget/get_for_non_object",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx := object.get(input.obj, [\"a\"], 2)\n}\n"
+          ],
+          "input_term": "{\"obj\":\"object\"}",
+          "want_error_code": "eval_type_error",
+          "want_error": "object.get: operand 1 must be object but got string",
+          "strict_error": true
+        }
+      ]
+    }
+  }
+}

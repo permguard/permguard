@@ -348,9 +348,13 @@ async fn test_the_json_format_prints_no_banner_at_all() {
 /// orchestrator before anything opens; a development machine says so and starts.
 #[tokio::test]
 async fn test_a_production_host_without_a_volume_claim_does_not_start() {
+    let storage = production_storage("50G");
+    let secrets = recovery_secrets();
     let path = config_file(
         "production-unclaimed",
-        &format!("assurance:\n  profile: production\n{SERVABLE}"),
+        &format!(
+            "assurance:\n  profile: production\n{storage}objectives:\n  data_loss: 0s\n  recovery_time: 1h\n  max_volume_size: 100G\n  membership_offline_grace: 24h\n  mirror_staleness: 1h\n  evidence_shipping_lag: 1d\n  spool_headroom: 20%\n  checkpoint_export_lag: 1d\n  backup_interval: 1d\n  restore_test_interval: 30d\n  key_recovery_owner: security-team\noperations:\n  secrets:\n    provider: directory\n    directory: {secrets}\n  backup:\n    recovery_key: backup-recovery\n    encryption_profile: aes-256-gcm\n    retention: 90d\n    destruction: DESTROY-2026-01\n{SERVABLE}"
+        ),
     );
     let refused = app()
         .dispatch_to(&serve_action(&path), &mut Vec::new())
@@ -1323,15 +1327,21 @@ async fn test_a_development_volume_provisions_its_identity_at_the_first_start_an
 
 #[tokio::test]
 async fn test_a_production_volume_without_an_identity_refuses_to_start_and_mints_nothing() {
+    let storage = production_storage("50G");
+    let secrets = recovery_secrets();
     let path = config_file(
         "identity-production-unprovisioned",
-        &format!("assurance:\n  profile: production\n{SERVABLE}"),
+        &format!(
+            "assurance:\n  profile: production\n{storage}objectives:\n  data_loss: 0s\n  recovery_time: 1h\n  max_volume_size: 100G\n  membership_offline_grace: 24h\n  mirror_staleness: 1h\n  evidence_shipping_lag: 1d\n  spool_headroom: 20%\n  checkpoint_export_lag: 1d\n  backup_interval: 1d\n  restore_test_interval: 30d\n  key_recovery_owner: security-team\noperations:\n  secrets:\n    provider: directory\n    directory: {secrets}\n  backup:\n    recovery_key: backup-recovery\n    encryption_profile: aes-256-gcm\n    retention: 90d\n    destruction: DESTROY-2026-01\n{SERVABLE}"
+        ),
     );
     let volume = volume_of(&path);
     let _ = fs::remove_dir_all(&volume);
     fs::create_dir_all(&volume).expect("the mount point");
+    // The volume directory is the process's own and private from `production` (TS-5).
+    owner_only(&volume);
     permguard_host::storage::volume::set_claim(&volume, 1).expect("claimed");
-    let refused = app()
+    let refused = production_app()
         .dispatch_to(&serve_action(&path), &mut Vec::new())
         .await
         .expect_err("production needs a provisioned identity");
@@ -1349,9 +1359,13 @@ async fn test_a_production_volume_without_an_identity_refuses_to_start_and_mints
 async fn test_a_production_volume_holds_no_plaintext_identity_key() {
     use permguard_host::identity::{self, Identity, Suite};
 
+    let storage = production_storage("50G");
+    let secrets = recovery_secrets();
     let path = config_file(
         "identity-production-plaintext",
-        &format!("assurance:\n  profile: production\n{SERVABLE}"),
+        &format!(
+            "assurance:\n  profile: production\n{storage}objectives:\n  data_loss: 0s\n  recovery_time: 1h\n  max_volume_size: 100G\n  membership_offline_grace: 24h\n  mirror_staleness: 1h\n  evidence_shipping_lag: 1d\n  spool_headroom: 20%\n  checkpoint_export_lag: 1d\n  backup_interval: 1d\n  restore_test_interval: 30d\n  key_recovery_owner: security-team\noperations:\n  secrets:\n    provider: directory\n    directory: {secrets}\n  backup:\n    recovery_key: backup-recovery\n    encryption_profile: aes-256-gcm\n    retention: 90d\n    destruction: DESTROY-2026-01\n{SERVABLE}"
+        ),
     );
     let volume = volume_of(&path);
     let _ = fs::remove_dir_all(&volume);
@@ -1373,16 +1387,18 @@ async fn test_a_production_volume_holds_no_plaintext_identity_key() {
         .witness()
     };
     permguard_host::storage::volume::set_claim(&volume, 1).expect("claimed");
+    let storage = production_storage("50G");
+    let secrets = recovery_secrets();
     let path = config_file(
         "identity-production-plaintext",
         &format!(
-            "assurance:\n  profile: production\nworking_dir: {}\nhost:\n  identity:\n    witness: {witness}\n{SERVABLE}",
+            "assurance:\n  profile: production\n{storage}objectives:\n  data_loss: 0s\n  recovery_time: 1h\n  max_volume_size: 100G\n  membership_offline_grace: 24h\n  mirror_staleness: 1h\n  evidence_shipping_lag: 1d\n  spool_headroom: 20%\n  checkpoint_export_lag: 1d\n  backup_interval: 1d\n  restore_test_interval: 30d\n  key_recovery_owner: security-team\noperations:\n  secrets:\n    provider: directory\n    directory: {secrets}\n  backup:\n    recovery_key: backup-recovery\n    encryption_profile: aes-256-gcm\n    retention: 90d\n    destruction: DESTROY-2026-01\nworking_dir: {}\nhost:\n  identity:\n    witness: {witness}\n{SERVABLE}",
             volume.display()
         ),
     );
     // WP-3.2: production defaults to the `file` custody, which seals the plaintext key under a
     // key-encryption key; without one it refuses and leaves the key as it was.
-    let refused = app()
+    let refused = production_app()
         .dispatch_to(&serve_action(&path), &mut Vec::new())
         .await
         .expect_err("no key-encryption key");
@@ -1396,14 +1412,16 @@ async fn test_a_production_volume_holds_no_plaintext_identity_key() {
     );
 
     // Stating the `development` custody is the plaintext relaxation, refused by name.
+    let storage = production_storage("50G");
+    let secrets = recovery_secrets();
     let path = config_file(
         "identity-production-plaintext",
         &format!(
-            "assurance:\n  profile: production\nworking_dir: {}\nhost:\n  identity:\n    witness: {witness}\noperations:\n  keys:\n    custody: development\n{SERVABLE}",
+            "assurance:\n  profile: production\n{storage}objectives:\n  data_loss: 0s\n  recovery_time: 1h\n  max_volume_size: 100G\n  membership_offline_grace: 24h\n  mirror_staleness: 1h\n  evidence_shipping_lag: 1d\n  spool_headroom: 20%\n  checkpoint_export_lag: 1d\n  backup_interval: 1d\n  restore_test_interval: 30d\n  key_recovery_owner: security-team\noperations:\n  secrets:\n    provider: directory\n    directory: {secrets}\n  backup:\n    recovery_key: backup-recovery\n    encryption_profile: aes-256-gcm\n    retention: 90d\n    destruction: DESTROY-2026-01\n  keys:\n    custody: development\nworking_dir: {}\nhost:\n  identity:\n    witness: {witness}\n{SERVABLE}",
             volume.display()
         ),
     );
-    let refused = app()
+    let refused = production_app()
         .dispatch_to(&serve_action(&path), &mut Vec::new())
         .await
         .expect_err("plaintext custody is not production's");
@@ -1510,4 +1528,296 @@ async fn test_the_file_custody_seals_the_identity_key_under_the_kek() {
         fs::read(volume.join("host/identity/keys/1.key")).expect("kept"),
         key
     );
+}
+
+/// WP-7.9: a volume restored for forensics is never served: the server refuses to start on it,
+/// naming why, and starts on one restored for disaster recovery.
+#[tokio::test]
+async fn test_a_forensic_volume_is_never_served() {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::Mutations;
+    use permguard_host::restore::{Marker, Mode, record};
+    use permguard_host::storage::volume::Volume;
+
+    let path = config_file("forensic", SERVABLE);
+    let config = fs::read_to_string(&path).expect("the file reads");
+    let volume_root = config
+        .lines()
+        .find_map(|line| line.strip_prefix("working_dir: "))
+        .expect("the fixture names its volume")
+        .to_owned();
+    let _ = fs::remove_dir_all(&volume_root);
+    let mark = |mode: Mode| {
+        let volume =
+            Volume::claim(Path::new(&volume_root), AssuranceProfile::Development).expect("claimed");
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal");
+        record(
+            &mutations,
+            &volume,
+            &Marker {
+                mode,
+                at: 1_800_000_000,
+                generation: volume.generation(),
+                previous_boot_id: [7; 16],
+                plan_id: [8; 16],
+            },
+            Initiator::System("test".to_owned()),
+        )
+        .expect("recorded");
+    };
+
+    mark(Mode::Forensic);
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("a forensic volume");
+    assert!(
+        format!("{refused:#}").contains("restored for forensics"),
+        "{refused:#}"
+    );
+
+    mark(Mode::Dr);
+    app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect("a volume restored for disaster recovery serves");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_drain_is_dispatched_without_a_configuration() {
+    // A server already gone: the command answers without reading any configuration file.
+    let mut server = std::process::Command::new("sh")
+        .args(["-c", "exit 0"])
+        .spawn()
+        .expect("the stand-in starts");
+    let pid = server.id();
+    server.wait().expect("it exits and is reaped");
+
+    let out = output_of(&app(), &Action::Named(Command::Drain { pid, wait: 0 })).await;
+
+    assert_eq!(
+        out,
+        format!("no server is running as process {pid}: nothing to drain\n")
+    );
+}
+
+/// Narrows a directory a test made to its owner, as an operator prepares a volume.
+fn owner_only(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).expect("owner-only");
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+}
+
+/// TS-5: from `production` a volume another user may reach stops Bootstrap before anything is
+/// read from it, with its registered code; nothing is minted on it.
+#[cfg(unix)]
+#[tokio::test]
+async fn test_a_production_volume_others_may_reach_refuses_to_start() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let storage = production_storage("50G");
+    let secrets = recovery_secrets();
+    let path = config_file(
+        "hardening-production-open",
+        &format!(
+            "assurance:\n  profile: production\n{storage}objectives:\n  data_loss: 0s\n  recovery_time: 1h\n  max_volume_size: 100G\n  membership_offline_grace: 24h\n  mirror_staleness: 1h\n  evidence_shipping_lag: 1d\n  spool_headroom: 20%\n  checkpoint_export_lag: 1d\n  backup_interval: 1d\n  restore_test_interval: 30d\n  key_recovery_owner: security-team\noperations:\n  secrets:\n    provider: directory\n    directory: {secrets}\n  backup:\n    recovery_key: backup-recovery\n    encryption_profile: aes-256-gcm\n    retention: 90d\n    destruction: DESTROY-2026-01\n{SERVABLE}"
+        ),
+    );
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    fs::create_dir_all(&volume).expect("the mount point");
+    permguard_host::storage::volume::set_claim(&volume, 1).expect("claimed");
+    fs::set_permissions(&volume, fs::Permissions::from_mode(0o755)).expect("opened up");
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("a volume others may reach is not served from production");
+    let said = format!("{refused:#}");
+    assert!(said.contains("storage_mode"), "{said}");
+    assert!(said.contains("mode 0755"), "{said}");
+    assert!(
+        !volume.join("host/identity").exists(),
+        "nothing minted: {said}"
+    );
+}
+
+/// TS-5: from `production` a volume whose tuple is not qualified, without the published
+/// compatibility mode, stops Bootstrap with `storage_unqualified`, naming the tuple the probe
+/// observed; nothing is minted on it.
+#[cfg(unix)]
+#[tokio::test]
+async fn test_a_production_volume_on_an_unqualified_tuple_refuses_to_start() {
+    let path = config_file(
+        "qualification-production-unqualified",
+        &format!("assurance:\n  profile: production\n{SERVABLE}"),
+    );
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    fs::create_dir_all(&volume).expect("the mount point");
+    owner_only(&volume);
+    permguard_host::storage::volume::set_claim(&volume, 1).expect("claimed");
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("an unqualified tuple is not served from production");
+    let said = format!("{refused:#}");
+    assert!(said.contains("storage_unqualified"), "{said}");
+    assert!(said.contains("storage class `undeclared`"), "{said}");
+    assert!(
+        !volume.join("host/identity").exists(),
+        "nothing minted: {said}"
+    );
+    assert!(
+        !volume
+            .join("host/state/fs-probe")
+            .read_dir()
+            .is_ok_and(|mut entries| entries.next().is_some()),
+        "the probe left nothing behind: {said}"
+    );
+}
+
+/// TS-5: from `production` a deployment that declares no backup policy — recovery key, encryption
+/// profile, retention, destruction — stops Bootstrap with `backup_policy_incomplete`, naming each.
+#[cfg(unix)]
+#[tokio::test]
+async fn test_a_production_deployment_without_a_backup_policy_refuses_to_start() {
+    let storage = production_storage("50G");
+    let path = config_file(
+        "backup-policy-production",
+        &format!(
+            "assurance:\n  profile: production\n{storage}objectives:\n  data_loss: 0s\n  recovery_time: 1h\n  max_volume_size: 100G\n  membership_offline_grace: 24h\n  mirror_staleness: 1h\n  evidence_shipping_lag: 1d\n  spool_headroom: 20%\n  checkpoint_export_lag: 1d\n  backup_interval: 1d\n  restore_test_interval: 30d\n  key_recovery_owner: security-team\noperations:\n  backup:\n    encryption_profile: aes-256-gcm\n{SERVABLE}"
+        ),
+    );
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    fs::create_dir_all(&volume).expect("the mount point");
+    owner_only(&volume);
+    permguard_host::storage::volume::set_claim(&volume, 1).expect("claimed");
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("no backup policy");
+    let said = format!("{refused:#}");
+    assert!(said.contains("backup_policy_incomplete"), "{said}");
+    for missing in ["recovery_key", "retention", "destruction"] {
+        assert!(said.contains(missing), "{missing}: {said}");
+    }
+    assert!(!said.contains("encryption_profile,"), "declared: {said}");
+    assert!(
+        !volume.join("host/identity").exists(),
+        "nothing minted: {said}"
+    );
+}
+
+/// The production configuration the objectives tests vary: everything else in order.
+fn production_with(storage_quota: &str, objectives: &str) -> String {
+    let storage = production_storage(storage_quota);
+    let secrets = recovery_secrets();
+    format!(
+        "assurance:\n  profile: production\n{storage}operations:\n  secrets:\n    provider: directory\n    directory: {secrets}\n  backup:\n    recovery_key: backup-recovery\n    encryption_profile: aes-256-gcm\n    retention: 90d\n    destruction: DESTROY-2026-01\nobjectives:\n{objectives}{SERVABLE}"
+    )
+}
+
+const OBJECTIVES_BUT_THE_OWNER: &str = "  data_loss: 0s\n  recovery_time: 1h\n  max_volume_size: 100G\n  membership_offline_grace: 24h\n  mirror_staleness: 1h\n  evidence_shipping_lag: 1d\n  spool_headroom: 20%\n  checkpoint_export_lag: 1d\n  backup_interval: 1d\n  restore_test_interval: 30d\n";
+
+async fn refused_with(tag: &str, text: &str) -> String {
+    let path = config_file(tag, text);
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    fs::create_dir_all(&volume).expect("the mount point");
+    owner_only(&volume);
+    permguard_host::storage::volume::set_claim(&volume, 1).expect("claimed");
+    let refused = production_app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("refused at Bootstrap");
+    assert!(!volume.join("host/identity").exists(), "nothing minted");
+    format!("{refused:#}")
+}
+
+/// TS-5: from `production` an objective left out stops Bootstrap, naming it.
+#[cfg(unix)]
+#[tokio::test]
+async fn test_a_production_deployment_missing_an_objective_refuses_to_start() {
+    let said = refused_with(
+        "objectives-missing",
+        &production_with("50G", OBJECTIVES_BUT_THE_OWNER),
+    )
+    .await;
+    assert!(said.contains("objectives_incomplete"), "{said}");
+    assert!(said.contains("key_recovery_owner"), "{said}");
+}
+
+/// TS-5: from `production` an objective a subsystem bound contradicts stops Bootstrap: a host
+/// quota above the volume size the recovery time was sized for.
+#[cfg(unix)]
+#[tokio::test]
+async fn test_a_production_deployment_with_an_inconsistent_objective_refuses_to_start() {
+    let said = refused_with(
+        "objectives-inconsistent",
+        &production_with(
+            "200G",
+            &format!("{OBJECTIVES_BUT_THE_OWNER}  key_recovery_owner: security-team\n"),
+        ),
+    )
+    .await;
+    assert!(said.contains("objectives_inconsistent"), "{said}");
+    assert!(said.contains("storage.quotas.host.bytes"), "{said}");
+}
+
+/// A `storage` section qualifying the filesystem these tests run on (TS-5): from `production` the
+/// Host runs only on a qualified tuple, so the tuple is the one the probe observes here, with a
+/// complete record, and `host_quota` as the Host's quota.
+fn production_storage(host_quota: &str) -> String {
+    static OBSERVED: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
+    let (filesystem, version) = OBSERVED.get_or_init(|| {
+        let root = std::env::temp_dir().join(format!("permguard-app-probe-{}", std::process::id()));
+        let dir = permguard_host::storage::Dir::create_root(&root).expect("a probe directory");
+        let report = permguard_host::storage::probe::probe(
+            &dir,
+            &permguard_host::storage::probe::Request::default(),
+        )
+        .expect("the test volume passes the probe");
+        let _ = fs::remove_dir_all(&root);
+        (report.identity.filesystem, report.identity.version)
+    });
+    format!(
+        "storage:\n  volume:\n    storage_class: test-class\n    driver: test.csi\n  qualified:\n    - storage_class: test-class\n      driver: test.csi\n      filesystem: {filesystem}\n      version: \"{version}\"\n      evidence: QUAL-TEST\n      encryption: test-encryption\n      revision: \"1\"\n      expires_at: \"2099-01-01T00:00:00Z\"\n  quotas:\n    host:\n      bytes: {host_quota}\n"
+    )
+}
+
+/// A secrets directory holding the backups' recovery key (TS-5): from `production` the key is
+/// named by reference and resolved, never a bare id.
+fn recovery_secrets() -> String {
+    static DIRECTORY: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    DIRECTORY
+        .get_or_init(|| {
+            let directory =
+                std::env::temp_dir().join(format!("permguard-app-secrets-{}", std::process::id()));
+            fs::create_dir_all(&directory).expect("the secrets directory");
+            let key = directory.join("backup-recovery");
+            fs::write(&key, "a recovery key of 32 bytes......").expect("the recovery key");
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt as _;
+                fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
+                    .expect("owner-only");
+                fs::set_permissions(&key, fs::Permissions::from_mode(0o600)).expect("owner-only");
+            }
+            directory
+        })
+        .display()
+        .to_string()
+}
+
+/// The server under a secret store that resolves every reference (TS-5): from `production` the
+/// backups' recovery key is resolved at Bootstrap, and these tests are about what comes after.
+fn production_app() -> App {
+    app().with_secrets(Box::new(StubSecrets))
 }

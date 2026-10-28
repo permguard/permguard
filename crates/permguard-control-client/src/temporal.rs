@@ -161,7 +161,7 @@ impl TemporalPdp for GrpcTemporal {
         let endpoints = answer.endpoints.unwrap_or_default();
         let scope = answer.store_scope.unwrap_or_default();
 
-        Ok(serde_json::json!({
+        let mut document = serde_json::json!({
             "interface": answer.r#interface,
             "pdp": answer.pdp,
             "endpoints": {"submission": endpoints.submission},
@@ -173,7 +173,17 @@ impl TemporalPdp for GrpcTemporal {
                 "ledger": scope.ledger,
                 "profile": scope.profile,
             },
-        }))
+        });
+        crate::grpc::header_json(
+            &mut document,
+            answer.version,
+            answer.component,
+            answer.state,
+            answer.stage,
+            answer.sunset,
+            answer.limits,
+        );
+        Ok(document)
     }
 }
 
@@ -354,6 +364,34 @@ fn from_proto(answer: proto::SubmitEventResponse) -> Result<Value, Failure> {
             watermark: (!history.watermark.is_empty()).then_some(history.watermark),
             staleness_seconds: history.staleness_seconds,
             gaps: history.gaps,
+            frontier: history
+                .frontier
+                .into_iter()
+                .map(|run| permguard_core::frontier::FrontierRun {
+                    origin: run.origin,
+                    run: run.run,
+                    covered_through: run.covered_through,
+                    low_watermark: run.low_watermark,
+                    gaps: run
+                        .gaps
+                        .into_iter()
+                        .map(|gap| permguard_core::frontier::FrontierGap {
+                            from: gap.from,
+                            through: gap.through,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            origin_set_revision: history.origin_set_revision,
+            max_staleness_seconds: history.max_staleness_seconds,
+            degraded: history.degraded,
+            // proto3 cannot tell an absent string from an empty one; an older plane sent none.
+            time: if history.time.is_empty() {
+                permguard_core::frontier::TIME_OCCURRED_AT.to_owned()
+            } else {
+                history.time
+            },
+            quarantined: history.quarantined,
         },
     };
     if matches!(response.outcome, Outcome::Decided) != response.decision.is_some() {
@@ -457,6 +495,21 @@ mod tests {
                 watermark: "import-1".to_owned(),
                 staleness_seconds,
                 gaps: 0,
+                frontier: vec![proto::FrontierRun {
+                    origin: "aa".to_owned(),
+                    run: "bb".to_owned(),
+                    covered_through: 7,
+                    low_watermark: 2,
+                    gaps: vec![proto::FrontierGap {
+                        from: 4,
+                        through: None,
+                    }],
+                }],
+                origin_set_revision: Some("cc".to_owned()),
+                max_staleness_seconds: Some(10),
+                degraded: vec!["aa".to_owned()],
+                time: String::new(),
+                quarantined: 2,
             }),
             evaluations: Vec::new(),
         }
@@ -480,6 +533,24 @@ mod tests {
         assert_eq!(answer["outcome"], "indeterminate");
         assert!(answer.get("decision").is_none(), "{answer}");
         assert_eq!(answer["decision_id"], "d-1");
+    }
+
+    /// WP-6.4a: what a shared decision cites crosses gRPC whole; an older plane that sent no time
+    /// reads as `occurred_at`, the only time a temporal runtime ranges over.
+    #[test]
+    fn grpc_carries_the_frontier_and_what_a_decision_cites() {
+        let answer = from_proto(accepted(Some(3))).expect("the answer converts");
+        let history = &answer["history"];
+
+        assert_eq!(
+            history["frontier"],
+            serde_json::json!([{"origin": "aa", "run": "bb", "covered_through": 7, "low_watermark": 2, "gaps": [{"from": 4}]}])
+        );
+        assert_eq!(history["origin_set_revision"], "cc");
+        assert_eq!(history["max_staleness_seconds"], 10);
+        assert_eq!(history["degraded"], serde_json::json!(["aa"]));
+        assert_eq!(history["time"], "occurred_at");
+        assert_eq!(history["quarantined"], 2);
     }
 
     #[test]

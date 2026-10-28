@@ -1,0 +1,16 @@
+{
+  "artifact": "The storage library journal's BASE (WP-5.6a): the view naming the first frame a journal still holds once a prefix was deleted",
+  "authority": "the journal-prefix proposal recorded in the implementation status and implemented under the owner's exception of 2026-10-16; crates/permguard-host/src/storage/journal.rs (encode_base, decode_base)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "base": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "first_index", "type": "uint", "occurs": "required", "note": "the first frame index of the first segment kept; absent BASE means 0" },
+        { "label": 2, "name": "claim", "type": "uint", "occurs": "required", "note": "the volume claim generation of the writer that deleted the prefix, judged at open like a failure record's" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": "base"
+}

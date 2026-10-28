@@ -1,0 +1,24 @@
+{
+  "folder": "jsonremoveidempotent",
+  "files": {
+    "test-jsonremoveidempotent-0255.yaml": {
+      "sha256": "sha256:20cdae96e272459fa1249a4c30f31926ff3f642e222bc8565c4e4ba8e7e0e303",
+      "cases": [
+        {
+          "note": "jsonremoveidempotent/TestBuiltinJSONRemoveIdempotent",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = {\"a\": {\"b\": 2, \"c\": 3}}\n\tjson.remove(__local0__, {\"a\"}, __local1__)\n\t__local1__ = {}\n\tjson.remove(__local0__, {\"a/b\"}, __local2__)\n\t__local2__ = {\"a\": {\"c\": 3}}\n\tjson.remove(__local0__, {\"a/c\"}, __local3__)\n\t__local3__ = {\"a\": {\"b\": 2}}\n\t__local0__ = {\"a\": {\"b\": 2, \"c\": 3}}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

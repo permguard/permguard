@@ -1,0 +1,66 @@
+{
+ "policies": "tests/decimal/policies_1.cedar",
+ "entities": "sample-data/sandbox_b/entities.json",
+ "schema": "sample-data/sandbox_b/schema_exts.cedarschema",
+ "shouldValidate": true,
+ "requests": [
+  {
+   "description": "alice should be able to view the photo given a confidence score of 0.8",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "confidence_score": {
+     "__extn": {
+      "fn": "decimal",
+      "arg": "0.8"
+     }
+    },
+    "source_ip": "123.123.123.123",
+    "authenticated": false
+   },
+   "decision": "allow",
+   "reason": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "description": "alice should not be allowed to view the photo when given a confidence score of 0.2345",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "confidence_score": {
+     "__extn": {
+      "fn": "decimal",
+      "arg": "0.2345"
+     }
+    },
+    "source_ip": "123.123.123.123",
+    "authenticated": true
+   },
+   "decision": "deny",
+   "reason": [],
+   "errors": []
+  }
+ ]
+}

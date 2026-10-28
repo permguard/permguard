@@ -61,10 +61,14 @@ mod tests {
                 permguard_host::composition::Authorization::permissive(),
             ),
             catalog: Arc::new(FileCatalog::new(&root)),
+            mutations: Some(crate::handles::catalog_mutations_for_tests(
+                &root.join("host"),
+            )),
             recorder: None,
             disclosure: Disclosure::Full,
             audit_refusals: false,
             metrics: Metrics::none(),
+            exports: None,
         }
     }
 
@@ -140,35 +144,55 @@ mod tests {
             ),
             (
                 "rename a zone",
-                outcome(catalog.rename_zone("billing", "finance")),
+                outcome(catalog.rename_zone("billing", "finance", 1)),
+            ),
+            (
+                "rename with a stale revision",
+                outcome(catalog.rename_zone("finance", "other", 1)),
             ),
             (
                 "rename to an invalid name",
-                outcome(catalog.rename_zone("finance", "Bad Name")),
+                outcome(catalog.rename_zone("finance", "Bad Name", 2)),
             ),
             (
                 "delete a zone that holds ledgers",
-                outcome(catalog.delete_zone("finance")),
+                outcome(catalog.delete_zone("finance", 2)),
             ),
             (
                 "rename a ledger",
-                outcome(catalog.rename_ledger("finance", "refunds", "returns")),
+                outcome(catalog.rename_ledger("finance", "refunds", "returns", 1)),
+            ),
+            (
+                "archive a ledger",
+                outcome(catalog.archive_ledger("finance", "returns", 2)),
+            ),
+            (
+                "archive with a stale revision",
+                outcome(catalog.archive_ledger("finance", "returns", 2)),
+            ),
+            (
+                "restore a ledger",
+                outcome(catalog.restore_ledger("finance", "returns", 3)),
+            ),
+            (
+                "delete a ledger with a stale revision",
+                outcome(catalog.delete_ledger("finance", "returns", 1)),
             ),
             (
                 "delete a ledger",
-                outcome(catalog.delete_ledger("finance", "invoices")),
+                outcome(catalog.delete_ledger("finance", "invoices", 1)),
             ),
             (
                 "delete an unknown ledger",
-                outcome(catalog.delete_ledger("finance", "invoices")),
+                outcome(catalog.delete_ledger("finance", "invoices", 1)),
             ),
             (
                 "delete the last ledger",
-                outcome(catalog.delete_ledger("finance", "returns")),
+                outcome(catalog.delete_ledger("finance", "returns", 4)),
             ),
             (
                 "delete the empty zone",
-                outcome(catalog.delete_zone("finance")),
+                outcome(catalog.delete_zone("finance", 2)),
             ),
             ("get the deleted zone", outcome(catalog.get_zone("finance"))),
         ]
@@ -240,6 +264,19 @@ mod tests {
         use crate::v1::zone_catalog_server::ZoneCatalog as _;
         use crate::wire::{GRPC_ERROR_CLASS, GRPC_ERROR_CODE};
 
+        /// A request id no other call of the run uses (WP-7.3a).
+        pub(super) fn fresh() -> String {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            format!("raw-{}", NEXT.fetch_add(1, Ordering::SeqCst))
+        }
+
+        /// A create body naming `name`, under a fresh request id.
+        pub(super) fn named(name: &str) -> String {
+            serde_json::json!({ "name": name, "request_id": fresh() }).to_string()
+        }
+
         /// `(status, class, code)` of one REST call.
         pub(super) async fn rest(
             facade: &CatalogFacade,
@@ -293,6 +330,7 @@ mod tests {
             facade
                 .create_zone(anonymous_request(v1::CreateZoneRequest {
                     name: name.to_owned(),
+                    request_id: fresh(),
                 }))
                 .await
                 .expect_err("the case is a refusal")
@@ -311,6 +349,8 @@ mod tests {
             facade
                 .delete_zone(anonymous_request(v1::DeleteZoneRequest {
                     zone: zone.to_owned(),
+                    request_id: fresh(),
+                    expected_revision: 1,
                 }))
                 .await
                 .expect_err("the case is a refusal")
@@ -325,6 +365,7 @@ mod tests {
                 .create_ledger(anonymous_request(v1::CreateLedgerRequest {
                     zone: zone.to_owned(),
                     name: name.to_owned(),
+                    request_id: fresh(),
                 }))
                 .await
                 .expect_err("the case is a refusal")
@@ -334,24 +375,24 @@ mod tests {
     #[tokio::test]
     async fn test_every_refusal_answers_the_status_its_class_maps_to_on_both_transports() {
         let facade = facade("raw");
-        raw::rest(&facade, "POST", "/v1/zones", Some(r#"{"name":"billing"}"#)).await;
+        raw::rest(&facade, "POST", "/v1/zones", Some(&raw::named("billing"))).await;
         raw::rest(
             &facade,
             "POST",
             "/v1/zones/billing/ledgers",
-            Some(r#"{"name":"invoices"}"#),
+            Some(&raw::named("invoices")),
         )
         .await;
 
         let cases = [
             (
                 "a taken name",
-                raw::rest(&facade, "POST", "/v1/zones", Some(r#"{"name":"billing"}"#)).await,
+                raw::rest(&facade, "POST", "/v1/zones", Some(&raw::named("billing"))).await,
                 raw::grpc(raw::create_zone(&facade, "billing").await),
             ),
             (
                 "an invalid name",
-                raw::rest(&facade, "POST", "/v1/zones", Some(r#"{"name":"Bad Name"}"#)).await,
+                raw::rest(&facade, "POST", "/v1/zones", Some(&raw::named("Bad Name"))).await,
                 raw::grpc(raw::create_zone(&facade, "Bad Name").await),
             ),
             (
@@ -361,7 +402,16 @@ mod tests {
             ),
             (
                 "a zone that holds ledgers",
-                raw::rest(&facade, "DELETE", "/v1/zones/billing", None).await,
+                raw::rest(
+                    &facade,
+                    "DELETE",
+                    &format!(
+                        "/v1/zones/billing?request_id={}&expected_revision=1",
+                        raw::fresh()
+                    ),
+                    None,
+                )
+                .await,
                 raw::grpc(raw::delete_zone(&facade, "billing").await),
             ),
             (
@@ -370,7 +420,7 @@ mod tests {
                     &facade,
                     "POST",
                     "/v1/zones/missing/ledgers",
-                    Some(r#"{"name":"x"}"#),
+                    Some(&raw::named("x")),
                 )
                 .await,
                 raw::grpc(raw::create_ledger(&facade, "missing", "x").await),

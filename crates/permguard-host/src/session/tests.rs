@@ -209,6 +209,39 @@ fn a_session_is_established_on_both_sides_and_the_peer_epoch_is_seen() {
     );
 }
 
+struct Established(std::sync::atomic::AtomicUsize);
+
+impl Service for Established {
+    fn established(&self, _session: &Session) -> Result<(), Refusal> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
+
+    fn serve(
+        &self,
+        _session: &Session,
+        _peer: &Verified,
+        _presentation: &[u8],
+        _exporter: &[u8; EXPORTER_BYTES],
+        _request: &[u8],
+    ) -> Result<Vec<u8>, Refusal> {
+        unreachable!("this task handshake carries no one-shot request")
+    }
+}
+
+#[test]
+fn the_service_observes_a_session_only_after_both_identity_proofs_verify() {
+    let pair = pair("established-hook");
+    let observed = Arc::new(Established(std::sync::atomic::AtomicUsize::new(0)));
+    let mut responder_context = context(&pair.b, &[&pair.a.identity], &pair.clocks.time);
+    responder_context.service = Some(observed.clone());
+    let mut responder = Responder::new(responder_context, EXPORTER);
+    let mut initiator = pair.initiator();
+
+    run(&mut initiator, &mut responder).expect("the proofs establish the session");
+    assert_eq!(observed.0.load(std::sync::atomic::Ordering::Relaxed), 1);
+}
+
 #[test]
 fn a_replayed_proof_fails_against_a_fresh_challenge() {
     let pair = pair("replay");
@@ -913,6 +946,66 @@ fn an_enrollment_moves_no_seen_epoch_of_the_host_it_claims() {
             .is_none(),
         "an enrollment's chain pins nothing and moves no seen epoch"
     );
+}
+
+#[test]
+fn copied_public_identity_documents_cannot_complete_a_live_proof_without_the_key() {
+    let pair = pair("copied-public-identity");
+    let thief = host(&scratch("copied-public-identity-thief"));
+    let mut initiator = scoped(
+        &pair,
+        Operation::Enroll,
+        None,
+        Some(membership_request_digest(b"")),
+    );
+    let mut responder = Responder::new(context(&thief, &[], &pair.clocks.time), EXPORTER);
+    let opening = initiator.start().expect("the proof starts");
+    responder
+        .receive(opening[0].clone())
+        .expect("the enrolling identity is held");
+    let answers = responder
+        .receive(opening[1].clone())
+        .expect("the attacker answers with its own challenge");
+    let copied = context(&pair.b, &[], &pair.clocks.time)
+        .presentation()
+        .expect("the copied public document");
+    initiator
+        .receive(Frame::Identity(copied))
+        .expect("the pinned public chain itself is valid");
+    let challenge = answers
+        .into_iter()
+        .find(|frame| matches!(frame, Frame::Challenge(_)))
+        .expect("a challenge");
+    let refused = initiator
+        .receive(challenge)
+        .expect_err("the copied chain's Host cannot sign the live transcript");
+    assert_eq!(refused.code, codes::host::SESSION_REFUSED);
+    assert!(initiator.session().is_none());
+}
+
+#[test]
+fn enrollment_proof_refuses_a_wrong_fingerprint_pin() {
+    let pair = pair("identity-proof-wrong-fingerprint");
+    let mut initiator = Initiator::new(
+        context(&pair.a, &[], &pair.clocks.time),
+        EXPORTER,
+        Request {
+            peer: pair.b.identity.host_id(),
+            operation: Operation::Enroll,
+            membership_id: None,
+            task: None,
+            request_digest: Some(membership_request_digest(b"")),
+            pin: Some((
+                pair.b.identity.host_id(),
+                "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                    .to_owned(),
+            )),
+        },
+    );
+    let mut responder = Responder::new(context(&pair.b, &[], &pair.clocks.time), EXPORTER);
+    let refused = run(&mut initiator, &mut responder).expect_err("the pin differs");
+    assert_eq!(refused.code, codes::host::SESSION_REFUSED);
+    assert!(initiator.session().is_none());
 }
 
 #[test]

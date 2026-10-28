@@ -1,0 +1,1603 @@
+{
+  "folder": "withkeyword",
+  "files": {
+    "test-with-and-ndbcache-issue.yaml": {
+      "sha256": "sha256:d42f68da4cd77a4dc8a6104804ab062133f4c88ab3522f5a5878d28c5e77e60b",
+      "cases": [
+        {
+          "note": "with: ndb_cache-issue",
+          "query": "data.rules = x",
+          "modules": [
+            "package rules\n\np if {\n\ttime.now_ns(now)\n}\n\nq if p with data.x as 7\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "p": true,
+                "q": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-with-builtin-mock.yaml": {
+      "sha256": "sha256:b28fc2b20d239da361d5eabf062494849e907fa5a4e1800f6d593be17d6482c9",
+      "cases": [
+        {
+          "note": "withkeyword/builtin: direct call, arity 0",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf := 1\n\np := y if {\n\ty = time.now_ns() with time.now_ns as f\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: direct call, arity 1",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 1\n\np := y if {\n\ty = count([1, 2, 3]) with count as f\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: indirect call, arity 1",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 1\n\np if {\n\tq with count as f\n}\n\nq if {\n\tcount([1, 2, 3]) == 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: indirect call, arity 0",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf := 1\n\np if {\n\tq with time.now_ns as f\n}\n\nq if {\n\ttime.now_ns() == 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: indirect call, arity 0, rule queried with and without mock",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf := 1\n\np if {\n\tq with time.now_ns as f\n\tnot q\n}\n\nq if {\n\ttime.now_ns() == 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: indirect call, arity 0, query package",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\nf := 1\n\np if {\n\tq with time.now_ns as f\n}\n\nq if {\n\ttime.now_ns() == 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "f": 1,
+                "p": true
+              }
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: http.send example",
+          "query": "data.test.test_allow = x",
+          "modules": [
+            "package test\n\npass_resp := {\"body\": {\"roles\": [\"admin\"]}}\n\ndeny_resp := {\"body\": {\"roles\": []}}\n\nmock_http_send(req) := pass_resp if {\n\treq.body.name == \"alice\"\n} else := deny_resp\n\ntest_allow if {\n\tallow with http.send as mock_http_send with input.name as \"alice\"\n}\n\nallow if {\n\t\"admin\" in http.send({\"method\": \"GET\", \"body\": input}).body.roles\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: nested, multiple mocks",
+          "query": "data.test.test_allow = x",
+          "modules": [
+            "package test\n\npass_resp := {\"body\": {\"jwt\": \"myjot\"}}\n\ndeny_resp := {\"body\"}\n\nmock_http_send(req) := pass_resp if {\n\treq.body.name == \"alice\"\n} else := deny_resp\n\nmock_decode_verify(\"myjot\", _) := [true, {}, {\"owner\": \"alice\"}]\n\ntest_allow if {\n\tallow with data.verification.cert as \"cert\"\n\t\twith input.name as \"alice\"\n\t\twith http.send as mock_http_send\n\t\twith io.jwt.decode_verify as mock_decode_verify\n}\n\nallow if {\n\tpayload.owner == input.name\n}\n\nclaims[k] := v if {\n\tresp := http.send({\"method\": \"GET\", \"body\": input}).body\n\tsome k, v in resp\n}\n\npayload := p if {\n\tsome p\n\t[true, _, p] = io.jwt.decode_verify(claims.jwt, {\"cert\": data.verification.cert, \"iss\": \"issuer\"})\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: indirect call through function",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf := 1\n\np if {\n\tq with time.now_ns as f\n}\n\nq if {\n\tvalid_time(1)\n}\n\nvalid_time(x) if time.now_ns() == x\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: indirect call through function, rule with and without mock",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf := 1\n\np if {\n\tq with time.now_ns as f\n\tnot q\n}\n\nq if {\n\tvalid_time(1)\n}\n\nvalid_time(x) if time.now_ns() == x\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: indirect call through function, query package",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\nf := 1\n\np if {\n\tq with time.now_ns as f\n}\n\nq if {\n\tvalid_time(1)\n}\n\nvalid_time(x) if time.now_ns() == x\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "f": 1,
+                "p": true
+              }
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: mock function calls original",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nmock_count(\"one\") := 1\n\nmock_count(x) := count(x) if {\n\tx != \"one\"\n}\n\nnumbers := {\"one\", \"two\", \"tree\"}\n\np := s if {\n\ts := {count(n) | some n in numbers} with count as mock_count\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                1,
+                3,
+                4
+              ]
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: mock function returns same result for both rule defs",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nmock_concat(\"one\", _) := [\"one\"]\n\nmock_concat(\"one\", x) := x\n\nnumbers := [\"one\", \"one\"]\n\np := s if {\n\ts := {concat(n, [n]) | some n in numbers} with concat as mock_concat\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                [
+                  "one"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: nested, mock function calls original",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nmock_concat(\"one\", _) := [\"one\"]\n\nmock_concat(\"one\", x) := x\n\ncount_four(4) := 4\n\ncount_four(x) := count(x)\n\nnumbers := {\"one\", \"two\", \"tree\"}\n\nq := s if {\n\ts := {concat(n, [n]) | some n in numbers} with concat as mock_concat\n\tr\n}\n\nr if {\n\tcount(input.four) == 4\n}\n\np := y if {\n\ty := q with concat as mock_concat\n\t\twith count as count_four\n\t\twith input.four as 4\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                [
+                  "one"
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: multiple with",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 1\n\ng(x) := count(x) # replaced with f by inner \"with\"\n\nq := y if {\n\ty = count([1, 2, 3]) with count as f\n}\n\np := y if {\n\ty = q with count as g\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: mock will not call other mock",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(x) := object.union_n(x) if {x: i | x := [\"a\", \"a\"][i]} # never called, runtime error\n\ng(x) := count(x)\n\np if {\n\tq with count as f\n}\n\nq if {\n\tr with object.union_n as g\n}\n\nr if {\n\tobject.union_n([{}])\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: nested scope handling",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(x) := object.union_n(x) # b1\n\ng(x) := 123 if {\n\tcount(x) # b2\n\ts with array.reverse as h\n}\n\nh(_) := [\"replaced\"]\n\np if q with object.union_n as f\n\nq if r with count as g\n\nr if {\n\tx := [{\"foo\": 4}, {\"baz\": 5}]\n\tcount(x) == 123\n\tobject.union_n(x) == {\"foo\": 4, \"baz\": 5}\n}\n\ns if {\n\tx := [{}]\n\tarray.reverse(x) == [\"replaced\"]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin-value: arity-0, captured output",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := y if {\n\ty = time.now_ns() with time.now_ns as 12300\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 12300
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin-value: arity-0, false",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\ttime.now_ns() with time.now_ns as false\n}\n"
+          ],
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "withkeyword/builtin-value: arity-0",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\ttime.now_ns() with time.now_ns as true\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin-value: arity-0, var",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tx := true\n\ttime.now_ns() with time.now_ns as x\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin-value: arity-1",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tcount([]) == 1 with count as 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin-value: arity-1, captured",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tcount([], 1) with count as 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin-value: arity-1, input must still be defined",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tcount(input) == 1 with count as 1\n}\n"
+          ],
+          "want_result": [
+
+          ]
+        },
+        {
+          "note": "withkeyword/builtin-builtin: arity 0",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx = time.now_ns() with time.now_ns as opa.runtime\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+              }
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin-builtin: arity 1, replacement is compound",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx = count([{}, {\"foo\": 3}]) with count as object.union_n\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "foo": 3
+              }
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin-builtin: arity 1, replacement is simple",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np := x if {\n\tx = object.union_n([{}, {\"foo\": 3}]) with object.union_n as count\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: direct call, arity 1, replacement is value that needs eval (array comprehension)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tcount([1, 2, 3]) == 1 with count as [1 | true][0]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: indirect call, arity 1, replacement is value that needs eval (array comprehension)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\np if {\n\tq with count as [1 | true][0]\n}\n\nq if {\n\tcount([1, 2, 3]) == 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-with-function-mock.yaml": {
+      "sha256": "sha256:fff9ce22de6530182481687cd7454af6bf0740e56c7c037b70a6dd8c53a7e8a7",
+      "cases": [
+        {
+          "note": "withkeyword/function: direct call, value replacement, arity 1",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 2\n\np := y if {\n\ty = f(true) with f as 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/function: direct call, function replacement, arity 1",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 2\n\ng(_) := 1\n\np := y if {\n\ty = f(true) with f as g\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/function: direct call, function replacement, arity 1, result captured",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 2\n\ng(_) := 1\n\np if {\n\tf(true, 1) with f as g\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/function: direct call, built-in replacement, arity 1",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 2\n\np := y if {\n\ty = f([1]) with f as count\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/function: direct call, built-in replacement, arity 1, result captured",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 2\n\np if {\n\tf([1], 1) with f as count\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/function: nested scope handling",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf1(x) := object.union_n(x)\n\nf2(x) := count(x)\n\nf3(x) := array.reverse(x)\n\nf(x) := f1(x)\n\ng(x) := 123 if {\n\tf2(x)\n\ts with f3 as h\n}\n\nh(_) := [\"replaced\"]\n\np if q with f1 as f\n\nq if r with f2 as g\n\nr if {\n\tx := [{\"foo\": 4}, {\"baz\": 5}]\n\tf2(x) == 123\n\tf1(x) == {\"foo\": 4, \"baz\": 5}\n}\n\ns if {\n\tx := [{}]\n\tf3(x) == [\"replaced\"]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/function: simple scope handling (no recursion here)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(x) := 2\n\ng(x) := f(x)\n\np := y if y := f(1) with f as g\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/function: rule indexing irrelevant",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 1 if {\n\tinput.x = \"x\"\n}\n\np := y if y := f(1) with f as 2\n"
+          ],
+          "want_result": [
+            {
+              "x": 2
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/function: direct call, arity 1, replacement is value that needs eval (array comprehension)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 1\n\np if {\n\tf([1, 2, 3]) == 1 with f as [1 | true][0]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/function: indirect call, arity 1, replacement is value that needs eval (array comprehension)",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 1\n\np if {\n\tq with f as [1 | true][0]\n}\n\nq if {\n\tf([1, 2, 3]) == 1\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-with-function-mocks-issue-5299.yaml": {
+      "sha256": "sha256:e6719c2a5db7af78225d356d7c029229eaee574fe74b359effc4c430ed6f0ca4",
+      "cases": [
+        {
+          "note": "withkeyword/function: direct call, rule replacement",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 2\n\nf0 := 1 # a rule\n\np := y if {\n\ty = f(true) with f as f0\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/function: captured result, rule replacement",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf(_) := 2\n\nf0 := 1 # a rule\n\np if {\n\tf(true, 1) with f as f0\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: direct call, arity 0, rule replacement",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf := 1 # a rule\n\np := y if {\n\ty = time.now_ns() with time.now_ns as f\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: direct call, arity 1, rule replacement",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf := 1 # a rule\n\np := y if {\n\ty = count([1, 2, 3]) with count as f\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/builtin: indirect call, arity 1, rule replacement",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\nf := 1 # a rule\n\ng(x) := count(x)\n\np := y if {\n\ty = g([1, 2, 3]) with count as f\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": 1
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1015.yaml": {
+      "sha256": "sha256:69ad10f56e222717a1a90bde04af1694ba74590d67e544c482c061e7e8d6fcaf",
+      "cases": [
+        {
+          "note": "withkeyword/with",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.ex.loopback with input as true\n\tdata.ex.loopback = false with input as false\n}\n",
+            "package ex\n\nloopback := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1016.yaml": {
+      "sha256": "sha256:6a8e9a98a1a4149a4e64f84e6231305375af0426b56fe672e774e3b66f323adb",
+      "cases": [
+        {
+          "note": "withkeyword/with not",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnot data.ex.loopback with input as false\n\tdata.ex.loopback with input as true\n}\n",
+            "package ex\n\nloopback := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1017.yaml": {
+      "sha256": "sha256:b40ee08fa36f2e01f61be87595733de4c9b4aacde5d2d5ee3ad0a85174d9a050",
+      "cases": [
+        {
+          "note": "withkeyword/with composite",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.ex.composite[x] with input.foo as [1, 2, 3, 4]\n}\n",
+            "package ex\n\ncomposite contains x if {\n\tinput.foo[_] = x\n\tx > 2\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1018.yaml": {
+      "sha256": "sha256:c2a3c3a3aad06952e27a61a0b43440ab68007c16c15ff27deef8814f809bccf9",
+      "cases": [
+        {
+          "note": "withkeyword/with vars",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tfoo = \"hello\"\n\tbar = \"world\"\n\tx = data.ex.vars with input.foo as foo with input.bar as bar\n}\n",
+            "package ex\n\nvars := x if {\n\ty = input.bar\n\tz = input.foo\n\tx = {\"bar\": y, \"foo\": z}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "bar": "world",
+                "foo": "hello"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1019.yaml": {
+      "sha256": "sha256:657409dad68369d08b5b9194832cc43cac1e6d0eefce0ace440134987531dfe1",
+      "cases": [
+        {
+          "note": "withkeyword/with conflict",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := x if {\n\tx := data.ex.loopback with input.foo as \"x\" with input.foo.bar as \"y\"\n}\n",
+            "package ex\n\nloopback := y if {\n\ttrue\n\ty = input\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "foo": {
+                  "bar": "y"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1020.yaml": {
+      "sha256": "sha256:dca89bf6461d3674028e2ea8426ab0711268351982043b44af176be29e6c88e1",
+      "cases": [
+        {
+          "note": "withkeyword/with stack",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nr := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n\nq := x if {\n\tdata.generated.r = x with input.a.c as 2\n}\n\np := x if {\n\tdata.generated.q = x with input.a.b as 1\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"a\": {\"d\": 3}, \"e\": 4}",
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": 1,
+                  "c": 2,
+                  "d": 3
+                },
+                "e": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1021.yaml": {
+      "sha256": "sha256:072ab2efdf511aca2ce703bbc5067fb61b86513df0dfcaf8ea944a88c2bcc9b9",
+      "cases": [
+        {
+          "note": "withkeyword/with not stack",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nr := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n\nq := x if {\n\tnot false with input as {}\n\tdata.generated.r = x with input.a.c as 2\n}\n\np := x if {\n\tdata.generated.q = x with input.a.b as 1\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"a\": {\"d\": 3}, \"e\": 4}",
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": 1,
+                  "c": 2,
+                  "d": 3
+                },
+                "e": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1022.yaml": {
+      "sha256": "sha256:08dd01cb229522adf64a580b6826acbc089baee58420b5509e1e81b67e571d56",
+      "cases": [
+        {
+          "note": "withkeyword/with stack (data)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nr := __local0__ if {\n\ttrue\n\t__local0__ = data.test\n}\n\nq := x if {\n\tdata.generated.r = x with data.test.a.c as 2\n}\n\np := x if {\n\tdata.generated.q = x with data.test.a.b as 1\n}\n",
+            "package test.a\n\nd := 3\n",
+            "package test\n\ne := 4\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": 1,
+                  "c": 2,
+                  "d": 3
+                },
+                "e": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1023.yaml": {
+      "sha256": "sha256:442a3e71a43ab16ed61454a2793921b72c8502fcc0cde39f7f3763e069243e1f",
+      "cases": [
+        {
+          "note": "withkeyword/with not stack (data)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package test.a\n\nd := 3\n",
+            "package test\n\ne := 4\n",
+            "package generated\n\nr := __local0__ if {\n\ttrue\n\t__local0__ = data.test\n}\n\nn1 if {\n\tdata.test.a.z = 7\n}\n\nn if {\n\tnot data.generated.n1\n}\n\nq := x if {\n\tnot data.generated.n with data.test.a.z as 7\n\tdata.generated.r = x with data.test.a.c as 2\n}\n\np := x if {\n\tdata.generated.q = x with data.test.a.b as 1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "b": 1,
+                  "c": 2,
+                  "d": 3
+                },
+                "e": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1024.yaml": {
+      "sha256": "sha256:1c6af672a2e4ef89038c817221fae2f5658f66fc86d0956230d8f351966ef5ab",
+      "cases": [
+        {
+          "note": "withkeyword/with stack overwrites",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nq := __local0__ if {\n\ttrue\n\t__local0__ = input\n}\n\np := x if {\n\tdata.generated.q = x with input.a as {\"d\": 3}\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{\"a\": {\"b\": 1, \"c\": 2}}",
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "d": 3
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1025.yaml": {
+      "sha256": "sha256:442b554ae62997354decdc3e941db8e2c87a5ffdf4936f52ca26edb0bb24f9ed",
+      "cases": [
+        {
+          "note": "withkeyword/with stack overwrites (data)",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nq := __local0__ if {\n\ttrue\n\t__local0__ = data.test\n}\n\np := x if {\n\tdata.generated.q = x with data.test.a as {\"d\": 3}\n}\n",
+            "package test\n\na := {\"b\": 1, \"c\": 2}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": {
+                  "d": 3
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1026.yaml": {
+      "sha256": "sha256:d4a0659dc9bd271ce286c36a609075b633cb3a2c52328b42cfddca974726b10d",
+      "cases": [
+        {
+          "note": "withkeyword/with invalidate",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.a[_] = x\n\tnot data.ex.input_eq with input.x as x\n}\n",
+            "package ex\n\ninput_eq if {\n\tinput.x = 1\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": [
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1027.yaml": {
+      "sha256": "sha256:1dd3ed03bbcbd01fe5193d9110bbdd9365e77ab006ee76e0927cc684da953518",
+      "cases": [
+        {
+          "note": "withkeyword/with invalidate input stack",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [x, y] if {\n\tx = input with input as \"a\"\n\ty = input\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "\"b\"",
+          "want_result": [
+            {
+              "x": [
+                "a",
+                "b"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1028.yaml": {
+      "sha256": "sha256:3cb4a47fdb803730b0346543798c895963a45220ee72ab8c7e8af61515d0584b",
+      "cases": [
+        {
+          "note": "withkeyword/with invalidate input stack iteration",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nq contains x if {\n\tinput[_] = x\n}\n\np contains [x, y] if {\n\tdata.generated.q[x] with input as [\"a\", \"b\"]\n\ty = input\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "\"c\"",
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a",
+                  "c"
+                ],
+                [
+                  "b",
+                  "c"
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1029.yaml": {
+      "sha256": "sha256:47c8877f01535bd7887c8480ca30090535168b0ef25806bb4549814d181c392d",
+      "cases": [
+        {
+          "note": "withkeyword/with invalidate virtual cache",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nq := \"a\" if {\n\tinput = x\n\tx = 1\n}\n\nq := \"b\" if {\n\tinput = x\n\tx = 2\n}\n\np := [x, y] if {\n\tdata.generated.q = x with input as 1\n\tdata.generated.q = y\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "2",
+          "want_result": [
+            {
+              "x": [
+                "a",
+                "b"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1030.yaml": {
+      "sha256": "sha256:79115df3ef69c3c7c491820a25c4d349c4593ec8f57a04702edb48c66244012c",
+      "cases": [
+        {
+          "note": "withkeyword/with invalidate data stack",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nq := \"b\"\n\np := [x, y] if {\n\tdata.generated.q = x with data.generated.q as \"a\"\n\tdata.generated.q = y\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "a",
+                "b"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1031.yaml": {
+      "sha256": "sha256:c9527766c55cb3213ac2983c416fa7b94d1c7ed5fbde8fb6ad74172978ce8e7b",
+      "cases": [
+        {
+          "note": "withkeyword/with invalidate data stack iteration",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nq contains \"c\"\n\np contains [x, y] if {\n\tdata.generated.q[x] with data.generated.q as {\"a\", \"b\"}\n\ty = data.generated.q\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "a",
+                  [
+                    "c"
+                  ]
+                ],
+                [
+                  "b",
+                  [
+                    "c"
+                  ]
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1032.yaml": {
+      "sha256": "sha256:8168911e314a45d619ecb475911ae5618acacbc5f3d121462303ded4de3a2d3b",
+      "cases": [
+        {
+          "note": "withkeyword/with basic data",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.ex.allow_basic = true with data.a as \"testdata\"\n}\n",
+            "package ex\n\nallow_basic if {\n\tdata.a = \"testdata\"\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1033.yaml": {
+      "sha256": "sha256:eebed9118ff39a4bf46f58e3b7b80b1e6dea11ae1081c2cddb662576c87faa69",
+      "cases": [
+        {
+          "note": "withkeyword/with map data overwrite",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.ex.allow_merge_1 = true with data.b.v2 as \"world\"\n}\n",
+            "package ex\n\nallow_merge_1 if {\n\tdata.b = {\"v1\": \"hello\", \"v2\": \"world\"}\n}\n"
+          ],
+          "data": {
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1034.yaml": {
+      "sha256": "sha256:e06b2dac72222013deec48f48664f0625915d591e9d4dbec7007278229e2a262",
+      "cases": [
+        {
+          "note": "withkeyword/with map data new key",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.ex.allow_merge_2 = true with data.b.v2 as \"world\" with data.b.v3 as \"again\"\n}\n",
+            "package ex\n\nallow_merge_2 if {\n\tdata.b = {\"v1\": \"hello\", \"v2\": \"world\", \"v3\": \"again\"}\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "b": {
+              "v1": "hello",
+              "v2": "goodbye"
+            }
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1035.yaml": {
+      "sha256": "sha256:eb6ae2c38577471359ad9ed191965c85d4dc00f5cf912976d569b33edb6c2bf9",
+      "cases": [
+        {
+          "note": "withkeyword/with data conflict",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\ndefault p := false\n\np if {\n\tdata.ex.allow_basic = true with data.a.b as 5\n}\n",
+            "package ex\n\nallow_basic if {\n\tdata.a = \"testdata\"\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": false
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1036.yaml": {
+      "sha256": "sha256:3bf3154a8cead4b6cc0296568261ddd6ad528c047b34f1471af18691c05e2e21",
+      "cases": [
+        {
+          "note": "withkeyword/with base doc exact value",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.a.b[x] = 1 with data.a.b as {\"c\": 1, \"d\": 2, \"e\": 1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "c",
+                "e"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1037.yaml": {
+      "sha256": "sha256:554df0047e81295bbeb6356a6aa5b5815cc9a012c6fe64fa842ab0d95192bd5a",
+      "cases": [
+        {
+          "note": "withkeyword/with base doc any index",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.a.b[x] with data.a.b as {\"c\": 1, \"d\": 2, \"e\": 1}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "c",
+                "d",
+                "e"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1038.yaml": {
+      "sha256": "sha256:5cb4eeb7faeff69c7ff6b2dd1d7f54231e9590c3f03b006294a63f2375cac6d5",
+      "cases": [
+        {
+          "note": "withkeyword/undefined_1",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.a.b.c with data.a.b as 1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1039.yaml": {
+      "sha256": "sha256:705b063f9f1896aee7c045a1e2868c9ae4fcd8d15760e02af72e04bf4bba48cd",
+      "cases": [
+        {
+          "note": "withkeyword/undefined_2",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.l.a with data.l as 1\n}\n"
+          ],
+          "data": {
+            "l": [
+              {
+                "a": "bob",
+                "b": -1,
+                "c": [
+                  1,
+                  2,
+                  3,
+                  4
+                ]
+              },
+              {
+                "a": "alice",
+                "b": 1,
+                "c": [
+                  2,
+                  3,
+                  4,
+                  5
+                ],
+                "d": null
+              }
+            ]
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1040.yaml": {
+      "sha256": "sha256:aa125a2dfc4297578647be240982710a0002916d974ec99a98097c88de9c87d2",
+      "cases": [
+        {
+          "note": "withkeyword/with virtual doc exact value",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.ex.virtual = x with data.a.b as {\"c\": 1, \"d\": 2, \"e\": 1}\n}\n",
+            "package ex\n\nvirtual contains x if {\n\tdata.a.b[x] = 1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                [
+                  "c",
+                  "e"
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1041.yaml": {
+      "sha256": "sha256:4df2e66a4a2be1a23a0149b93be36ccd787043c2fe212603c32381e757191fc0",
+      "cases": [
+        {
+          "note": "withkeyword/with virtual doc any index",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains x if {\n\tdata.ex.virtual[x] with data.a.b as {\"c\": 1, \"d\": 2, \"e\": 1}\n}\n",
+            "package ex\n\nvirtual contains x if {\n\tdata.a.b[x] = 1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "c",
+                "e"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1042.yaml": {
+      "sha256": "sha256:bf3737e1ab9174822e97e5a899403569017e3d9235388ef611453aa28bb23593",
+      "cases": [
+        {
+          "note": "withkeyword/with virtual doc specific index",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := y if {\n\ty = data.ex.virtual.c with data.a.b as {\"c\": 1, \"d\": 2, \"e\": 1}\n}\n",
+            "package ex\n\nvirtual contains x if {\n\tdata.a.b[x] = 1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": "c"
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1043.yaml": {
+      "sha256": "sha256:9d010fd95f1a5762e03d1435bfacc959fd04fef99abe1fb889ca2bfc1e5b33ba",
+      "cases": [
+        {
+          "note": "withkeyword/with virtual doc not specific index",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tnot data.ex.virtual.d with data.a.b as {\"c\": 1, \"d\": 2, \"e\": 1}\n}\n",
+            "package ex\n\nvirtual contains x if {\n\tdata.a.b[x] = 1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1044.yaml": {
+      "sha256": "sha256:9d5e642ca15dc8a89e2d6a71dbb87540ae88afe18349ea2e77815b3127a2e015",
+      "cases": [
+        {
+          "note": "withkeyword/with mock var",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := y if {\n\ty = data.ex.mock_var with data.ex.mock_var as {\"c\": 1, \"d\": 2}\n}\n",
+            "package ex\n\nmock_var := {\"a\": 0, \"b\": 0}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "c": 1,
+                "d": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1045.yaml": {
+      "sha256": "sha256:c13080a89e326cb9453ccc6f6bd9180d945d8d3b7cfe01572615eab592ff49ca",
+      "cases": [
+        {
+          "note": "withkeyword/with mock rule",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.ex.mock_rule with data.ex.mock_rule as true\n}\n",
+            "package ex\n\nmock_rule := false if {\n\t1 = 2\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1046.yaml": {
+      "sha256": "sha256:d714c8473d1fdae0eaf971f3de0ddb7286ba6a9b295f8e82c41aed11fdbe3c37",
+      "cases": [
+        {
+          "note": "withkeyword/with rule chain",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.ex.allow with data.label.b.c as [1, 2, 3]\n}\n",
+            "package ex\n\nallow1 if {\n\tdata.label.b.c = [1, 2, 3]\n}\n\nallow2 if {\n\tdata.label.b.c[x] = 2\n}\n\nallow3 if {\n\tdata.label.b[x] = 1\n}\n\nallow4 if {\n\tdata.label.b.c.d[x] = 1\n}\n\nallow if {\n\tdata.ex.allow1\n\tdata.ex.allow2\n\tnot data.ex.allow3\n\tnot data.ex.allow4\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1047.yaml": {
+      "sha256": "sha256:2aa195690fdbbf7874d16b0f878eace4943637ea971f82642386e88aa0785a21",
+      "cases": [
+        {
+          "note": "withkeyword/with mock iteration on sets",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nq contains 1\n\nq contains 2\n\np contains x if {\n\tdata.generated.q[x] with data.generated.q as {3, 4}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1048.yaml": {
+      "sha256": "sha256:100aa4ad9d2fd72ce6dc80a5aba062a71166a1ba723920c8892df87ff399dd42",
+      "cases": [
+        {
+          "note": "withkeyword/with mock iteration on objects",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nq[\"a\"] := 1\n\nq[\"b\"] := 2\n\np[x] := y if {\n\tdata.generated.q[x] = y with data.generated.q as {\"a\": 3, \"c\": 4}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": {
+                "a": 3,
+                "c": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1049.yaml": {
+      "sha256": "sha256:dca568daa123d74c1782f04b62f38f53fbd0d5d1632c3d30e32ee45fd05e15fc",
+      "cases": [
+        {
+          "note": "withkeyword/with mock iteration on arrays",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\nq contains 1\n\nq contains 2\n\np contains x if {\n\tdata.generated.q[_] = x with data.generated.q as [3, 4]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                3,
+                4
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1050.yaml": {
+      "sha256": "sha256:f95ff98b00d51e62ee6ae1d77d1e0bcbe54904b71c37ee2c7b7e95f542ed2625",
+      "cases": [
+        {
+          "note": "withkeyword/bug 1083",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.ex.input_eq with data.foo as 1\n}\n",
+            "package ex\n\ninput_eq if {\n\tinput.x = 1\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1051.yaml": {
+      "sha256": "sha256:8e404ab0f0fa5571a10d72d328f0696b15429a6195c4e6e799b3630e31b7a3ad",
+      "cases": [
+        {
+          "note": "withkeyword/bug 1100",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.ex.data_eq with input as {}\n}\n",
+            "package ex\n\ndata_eq if {\n\tdata.a = x\n}\n"
+          ],
+          "data": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1052.yaml": {
+      "sha256": "sha256:353f02a4ce25d04263fd03fe951de695209d47251ea4280daa0fdf5f25361895",
+      "cases": [
+        {
+          "note": "withkeyword/set lookup",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tdata.ex.setl[1] with data.foo as {1}\n}\n",
+            "package ex\n\nsetl contains x if {\n\tdata.foo[x]\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    },
+    "test-withkeyword-1053.yaml": {
+      "sha256": "sha256:4b023db2854740224996061bc88a5bd96bb0722fe856f34ed954133888fab9e5",
+      "cases": [
+        {
+          "note": "withkeyword/invalidate comprehension cache",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np := [x, y] if {\n\tx = data.ex.s with input as {\"a\": \"b\", \"c\": \"b\"}\n\ty = data.ex.s with input as {\"a\": \"b\"}\n}\n",
+            "package ex\n\ns contains x if {\n\tx = {v: ks |\n\t\tv = input[i]\n\t\tks = {k | v = input[k]}\n\t}\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": [
+                [
+                  {
+                    "b": [
+                      "a"
+                    ]
+                  }
+                ],
+                [
+                  {
+                    "b": [
+                      "a",
+                      "c"
+                    ]
+                  }
+                ]
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-withkeyword-1054.yaml": {
+      "sha256": "sha256:9c91a542833f2361257cefaa8dc5ac03a1fe0760f6aaed2743bb58534621b3fc",
+      "cases": [
+        {
+          "note": "withkeyword/rewrite declared variables in with value",
+          "query": "data.test.allow = x",
+          "modules": [
+            "package test\n\nallow if {\n\ta := {\"x\": 0}\n\n\tinput.x == 0 with input as a\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/rewrite declared variables nested in function call in with value",
+          "query": "data.test.allow = x",
+          "modules": [
+            "package test\n\nallow if {\n\ta := {\"x\": 0}\n\n\tinput.x == 1 with input as object.union(a, {\"x\": 1})\n\tinput.x == -1 with input as object.union(a, {\"x\": -1})\n\n\tinput.x == 2 with input as object.union(a, object.union(a, {\"x\": 2}))\n\tinput.x == -2 with input as object.union(a, object.union(a, {\"x\": -2}))\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/rewrite declared variables nested in array in with value",
+          "query": "data.test.allow = x",
+          "modules": [
+            "package test\n\nallow if {\n\ta := 1\n\tinput[0] == 1 with input as [a]\n\tinput[0][0] == 1 with input as [[a]]\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/rewrite declared variables nested in object in with value",
+          "query": "data.test.allow = x",
+          "modules": [
+            "package test\n\nallow if {\n\ta := 1\n\tinput.a == 1 with input as {\"a\": a}\n\tinput.nested.a == 1 with input as {\"nested\": {\"a\": a}}\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        },
+        {
+          "note": "withkeyword/rewrite declared variables nested in function/array/object in with value",
+          "query": "data.test.allow = x",
+          "modules": [
+            "package test\n\nallow if {\n\ta := 1\n\tb := 2\n\n\tinput.min == 1 with input as object.union({\"min\": 0}, {\"min\": min([a, b])})\n}\n"
+          ],
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

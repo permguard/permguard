@@ -28,7 +28,8 @@
 //! │   ├── audit/                            the trail, when it is kept here rather than in the log
 //! │   ├── keys/                             the ring that seals the trail, which maintains itself
 //! │   ├── secrets/audit-pseudonym           32 random bytes
-//! │   └── secrets/coordinator-root          32 random bytes, when the Host coordinates zones
+//! │   ├── secrets/coordinator-root          32 random bytes, when the Host coordinates zones
+//! │   └── secrets/<recovery key>            32 random bytes, when `operations.backup` names one
 //! ├── tls/ca.{pem,key}                      a local authority
 //! ├── tls/ca.crl                            its revocation list, revoking nothing yet
 //! ├── tls/server.{pem,key}                  for localhost, signed by it
@@ -197,6 +198,15 @@ fn prepare_secrets(config: &Config, volume: &Volume) -> Result<()> {
     // pseudonymisation one, and deliberately: they protect different things, and rotating one
     // to crypto-shred the Host's own pseudonyms must not silently change every zone's keys too.
     if let Some(reference) = config.secrets_coordinator_root_ref() {
+        generate_secret(
+            &volume.secrets(config).join(reference.name()),
+            reference.name(),
+        )?;
+    }
+
+    // The backups' recovery key (TS-5), when the configuration names one: a key of its own, which
+    // every snapshot manifest binds by its fingerprint and every restore resolves again.
+    if let Some(reference) = config.backup_recovery_key() {
         generate_secret(
             &volume.secrets(config).join(reference.name()),
             reference.name(),

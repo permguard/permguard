@@ -1,0 +1,54 @@
+{
+  "schema": "sample-data/sandbox_b/schema.cedarschema",
+  "policies": "tests/multi/policies_5.cedar",
+  "shouldValidate": true,
+  "entities": "sample-data/sandbox_b/entities.json",
+  "requests": [
+    {
+      "description": "stacey should be able to view photos in alice_vacation",
+      "principal": {
+        "type": "User",
+        "id": "stacey"
+      },
+      "resource": {
+        "type": "Photo",
+        "id": "vacation.jpg"
+      },
+      "action": {
+        "type": "Action",
+        "id": "view"
+      },
+      "context": {
+        "authenticated": true
+      },
+      "decision": "allow",
+      "reason": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "description": "giuseppe should be able to read any file",
+      "principal": {
+        "type": "User",
+        "id": "giuseppe"
+      },
+      "resource": {
+        "type": "Photo",
+        "id": "sales_projections.jpg"
+      },
+      "action": {
+        "type": "Action",
+        "id": "view"
+      },
+      "context": {
+        "authenticated": true
+      },
+      "decision": "allow",
+      "reason": [
+        "policy2"
+      ],
+      "errors": []
+    }
+  ]
+}

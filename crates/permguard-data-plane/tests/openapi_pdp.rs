@@ -47,6 +47,15 @@ fn context() -> DecisionContext {
         reason_user: Some(reason("not_permitted")),
         policies: vec!["policy-a".to_owned()],
         absent_inputs: vec!["guardrail".to_owned()],
+        evidence: Some(permguard_languages::attestation::Evidence::durable(
+            permguard_languages::attestation::EvidenceMode::Required,
+            "decision-1".to_owned(),
+            permguard_languages::attestation::Position {
+                host_id: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+                run: "0102030405060708090a0b0c0d0e0f10".to_owned(),
+                sequence: "7".to_owned(),
+            },
+        )),
     }
 }
 
@@ -94,6 +103,7 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
             evaluations_semantic: Some(Semantic::ExecuteAll),
         }),
         request_id: Some("req-1".to_owned()),
+        request_nonce: Some("AAECAwQFBgcICQoLDA0ODw".to_owned()),
     };
     doc.check("CheckRequest", &request);
     // The empty request is a request the plane refuses by name, not one the schema refuses.
@@ -133,6 +143,7 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
             request_id: None,
             context: None,
             evaluations: None,
+            attestation: None,
         },
     );
     doc.check(
@@ -142,13 +153,121 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
             request_id: Some("req-1".to_owned()),
             context: Some(context()),
             evaluations: Some(vec![decided]),
+            attestation: Some(permguard_languages::attestation::Attestation {
+                protected: "p".to_owned(),
+                payload: "q".to_owned(),
+                signature: "s".to_owned(),
+            }),
         },
     );
     doc.check("DecisionContext", &DecisionContext::default());
+    // The evidence object, every status (WP-6.6).
+    doc.check(
+        "Evidence",
+        &permguard_languages::attestation::Evidence::disabled(),
+    );
+    doc.check(
+        "Evidence",
+        &permguard_languages::attestation::Evidence::unrecorded(
+            permguard_languages::attestation::EvidenceMode::BestEffort,
+            permguard_languages::attestation::EvidenceStatus::SampledOut,
+        ),
+    );
+    doc.check(
+        "EvidencePosition",
+        &permguard_languages::attestation::Position {
+            host_id: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
+            run: "0102030405060708090a0b0c0d0e0f10".to_owned(),
+            sequence: "0".to_owned(),
+        },
+    );
 
     // The discovery document, as the handler serves it: a value of the real type.
-    let configuration = permguard_data_plane::authz::configuration::configuration("http://host/");
+    let configuration = permguard_data_plane::authz::configuration::configuration(
+        "http://host/",
+        permguard_core::stages::Describer::detached("data-plane")
+            .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+            .expect("served"),
+        100,
+        None,
+    );
     doc.check("Configuration", &configuration);
+    // Signing offered: the closed `optional` object and the capability (WP-6.6b).
+    struct Never;
+    impl permguard_data_plane::authz::signing::ResponseSigner for Never {
+        fn sign(&self, _: &[u8]) -> Result<permguard_languages::attestation::Attestation, String> {
+            Err("never".to_owned())
+        }
+        fn now(&self) -> i64 {
+            0
+        }
+    }
+    let signing = permguard_data_plane::authz::signing::ResponseSigning {
+        signer: std::sync::Arc::new(Never),
+        validity: std::time::Duration::from_secs(300),
+        clock_skew: std::time::Duration::from_secs(30),
+    };
+    let offered = permguard_data_plane::authz::configuration::configuration(
+        "http://host/",
+        permguard_core::stages::Describer::detached("data-plane")
+            .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+            .expect("served"),
+        100,
+        Some(&signing),
+    );
+    doc.check("Configuration", &offered);
+    doc.check("ResponseSigning", &offered.response_signing);
+    doc.check("ResponseSigning", &configuration.response_signing);
+    doc.check(
+        "Attestation",
+        &permguard_languages::attestation::Attestation {
+            protected: "p".to_owned(),
+            payload: "q".to_owned(),
+            signature: "s".to_owned(),
+        },
+    );
+    assert!(!doc.accepts_json("ResponseSigning", &json!({ "state": "sometimes" })));
+    assert_eq!(
+        serde_json::to_value(&configuration.response_signing).expect("JSON"),
+        json!({ "state": "disabled" }),
+        "no numbers when nothing is offered"
+    );
+    assert_eq!(
+        serde_json::to_value(&offered.response_signing).expect("JSON"),
+        json!({ "state": "optional", "validity_seconds": 300, "clock_skew_seconds": 30 })
+    );
+    assert!(
+        offered
+            .capabilities
+            .iter()
+            .any(|urn| urn == permguard_core::domains::capability::PDP_V1_SIGNED_RESPONSE)
+    );
+    assert!(
+        !configuration
+            .capabilities
+            .iter()
+            .any(|urn| urn == permguard_core::domains::capability::PDP_V1_SIGNED_RESPONSE)
+    );
+    // A deprecated interface's header, every member present (WP-7.4a).
+    doc.check(
+        "Configuration",
+        &permguard_data_plane::authz::configuration::configuration(
+            "http://host/",
+            permguard_core::stages::Header::of(
+                &permguard_core::stages::Registered {
+                    id: permguard_core::domains::interface::PDP_NATIVE_V1,
+                    stage: permguard_core::stages::Stage::Deprecated {
+                        sunset: "2027-06-30T00:00:00Z",
+                    },
+                },
+                "data-plane",
+                "0.1.0",
+                permguard_core::lifecycle::Phase::Serving,
+            ),
+            100,
+            None,
+        ),
+    );
 
     // Negative cases: the structural envelopes are closed, the dynamic containers are not.
     assert!(!doc.accepts_json("CheckRequest", &json!({ "zone": "z", "unknown": 1 })));
@@ -157,6 +276,21 @@ fn test_pdp_native_v1_document_describes_what_the_wire_types_serialise() {
     assert!(!doc.accepts_json("OptionsBody", &json!({ "evaluations_semantic": "all" })));
     assert!(!doc.accepts_json("CheckResponse", &json!({ "decision": true, "extra": 1 })));
     assert!(!doc.accepts_json("CheckResponse", &json!({})));
+    // Closed, every member present.
+    assert!(!doc.accepts_json(
+        "Evidence",
+        &json!({ "mode": "disabled", "status": "disabled", "record_id": null })
+    ));
+    assert!(!doc.accepts_json(
+        "Evidence",
+        &json!({ "mode": "disabled", "status": "disabled", "record_id": null,
+                 "position": null, "extra": 1 })
+    ));
+    assert!(!doc.accepts_json(
+        "Evidence",
+        &json!({ "mode": "sometimes", "status": "disabled",
+        "record_id": null, "position": null })
+    ));
     assert!(doc.accepts_json(
         "EntityBody",
         &json!({ "properties": { "anything": [1, null] } })
@@ -192,6 +326,29 @@ fn test_pdp_temporal_v1alpha1_document_describes_what_the_wire_types_serialise()
         watermark: Some("wm-1".to_owned()),
         staleness_seconds: Some(12),
         gaps: 3,
+        // What a shared decision cites (WP-6.4a): every member, a run with a closed and an open
+        // gap.
+        frontier: vec![permguard_core::frontier::FrontierRun {
+            origin: "0a".repeat(16),
+            run: "0b".repeat(16),
+            covered_through: 9,
+            low_watermark: 2,
+            gaps: vec![
+                permguard_core::frontier::FrontierGap {
+                    from: 4,
+                    through: Some(5),
+                },
+                permguard_core::frontier::FrontierGap {
+                    from: 8,
+                    through: None,
+                },
+            ],
+        }],
+        origin_set_revision: Some("0c".repeat(32)),
+        max_staleness_seconds: Some(10),
+        degraded: vec!["0a".repeat(16)],
+        time: permguard_core::frontier::TIME_OCCURRED_AT.to_owned(),
+        quarantined: 1,
     };
     for mode in ["local", "shared-eventual", "shared-bounded"] {
         doc.check(
@@ -258,9 +415,42 @@ fn test_pdp_temporal_v1alpha1_document_describes_what_the_wire_types_serialise()
     assert!(!doc.accepts_json("HistoryScope", &json!({ "mode": "shared-sometimes" })));
 
     // The discovery document, as the handler serves it.
-    let configuration =
-        permguard_data_plane::temporal::configuration::document("http://host/", "pdp-1");
+    let configuration = permguard_data_plane::temporal::configuration::document(
+        "http://host/",
+        "pdp-1",
+        permguard_core::stages::Describer::detached("data-plane")
+            .header(permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1)
+            .expect("served"),
+    );
     doc.check("Document", &configuration);
+    // The temporal interface neither reuses nor advertises the native signed response (WP-6.6b).
+    let temporal = serde_json::to_value(&configuration).expect("JSON");
+    assert!(temporal.get("response_signing").is_none(), "{temporal}");
+    assert!(
+        !temporal
+            .to_string()
+            .contains(permguard_core::domains::capability::PDP_V1_SIGNED_RESPONSE),
+        "{temporal}"
+    );
+    // A deprecated interface's header, every member present (WP-7.4a).
+    doc.check(
+        "Document",
+        &permguard_data_plane::temporal::configuration::document(
+            "http://host/",
+            "pdp-1",
+            permguard_core::stages::Header::of(
+                &permguard_core::stages::Registered {
+                    id: permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1,
+                    stage: permguard_core::stages::Stage::Deprecated {
+                        sunset: "2027-06-30T00:00:00Z",
+                    },
+                },
+                "data-plane",
+                "0.1.0",
+                permguard_core::lifecycle::Phase::Serving,
+            ),
+        ),
+    );
 
     // GET /events/v1alpha1/signers: the body is built with `json!` in the handler
     // (crates/permguard-data-plane/src/temporal/http.rs, `signers`), from the same types.

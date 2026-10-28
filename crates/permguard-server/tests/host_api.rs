@@ -82,6 +82,10 @@ const MINTED: &[&str] = &[
     "record",
     // And the `keys export` document of each facade's own operations ring.
     "verification_keys",
+    // The backups each facade prepared (WP-7.8): their operation, barrier and end.
+    "backup",
+    "expires_at",
+    "ended_at",
 ];
 
 fn scratch(tag: &str) -> PathBuf {
@@ -210,7 +214,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
     permguard_core::KeyManager::maintain(ring.as_ref()).expect("the ring is maintained");
     let keys = Arc::new(permguard_host::keys::registry::Registry::new(
         Some(Arc::clone(&identity)),
-        vec![ring],
+        vec![Arc::clone(&ring)],
     ));
     let members = permguard_host::membership::Store::open(&volume).expect("the memberships open");
     // Two `operations` records of the Host in the trail the audit routes read (WP-3.7): the
@@ -231,6 +235,8 @@ fn facade(tag: &str) -> Arc<HostApi> {
         )
         .expect("the audit engine opens"),
     );
+    // Sealed under the operations ring, as the server seals them: what a reset checkpoints.
+    audit.seal_with(ring as Arc<dyn permguard_host::audit::checkpoint::CheckpointSigner>);
     for _ in 0..2 {
         audit
             .append(
@@ -243,67 +249,296 @@ fn facade(tag: &str) -> Arc<HostApi> {
             .expect("an operations record");
     }
     // The volume stays claimed for the life of the test process: the store holds its directory.
+    // The volume's backups (WP-7.8), opened while the volume is claimed.
+    let backups =
+        permguard_host::operations::backup::Backups::open(&volume).expect("the backups open");
     std::mem::forget(volume);
-    Arc::new(HostApi::new(Composition {
-        authorization: Arc::new(Authorization::new(
-            Arc::clone(&store),
-            &[PublicGrant::new(
-                &[operations::KEYS_READ],
-                Selector::exactly(Resource::host()),
-            )],
-        )),
-        store: Some(store),
-        replay,
-        keys,
-        health: Health::new(),
-        assurance: Assurance::of(
-            &permguard_core::assurance::Assurance::new(
-                AssuranceProfile::Development,
-                [permguard_core::assurance::Control::Tls13Only],
-            )
-            .report(&[permguard_core::assurance::Relaxation::CustodyPlaintext]),
-        ),
-        effective: Effective {
-            revision: 0,
-            settings: Vec::new(),
-        },
-        trail: "recording".to_owned(),
-        mutations: Some(mutations),
-        identity: Some(identity),
-        time: Arc::new(permguard_host::time::TimeGuard::system(
-            std::time::Duration::from_secs(30),
-        )),
-        peer_sessions: permguard_host::api::sessions::PeerSessions::none(),
-        // A listener of each authentication shape, with and without a TLS minimum (WP-2.11).
-        listeners: vec![
-            permguard_core::ListenerReport::of(
-                "data-http",
-                permguard_core::ListenerClass::PlanePublic,
-                None,
-                true,
-                false,
+    let api = Arc::new(
+        HostApi::new(Composition {
+            authorization: Arc::new(Authorization::new(
+                Arc::clone(&store),
+                &[PublicGrant::new(
+                    &[operations::KEYS_READ],
+                    Selector::exactly(Resource::host()),
+                )],
+            )),
+            store: Some(store),
+            replay,
+            keys,
+            health: Health::new(),
+            assurance: Assurance::of(
+                &permguard_core::assurance::Assurance::new(
+                    AssuranceProfile::Development,
+                    [permguard_core::assurance::Control::Tls13Only],
+                )
+                .report(&[permguard_core::assurance::Relaxation::CustodyPlaintext]),
             ),
-            permguard_core::ListenerReport::of(
-                "host-api",
-                permguard_core::ListenerClass::Host,
-                Some(
-                    &permguard_core::TlsSettings::new("c", "k")
-                        .with_client_ca("ca")
-                        .with_min_version(permguard_core::TlsVersion::V1_2),
+            effective: Effective {
+                revision: 0,
+                settings: Vec::new(),
+            },
+            trail: "recording".to_owned(),
+            mutations: Some(mutations),
+            identity: Some(identity),
+            time: Arc::new(permguard_host::time::TimeGuard::system(
+                std::time::Duration::from_secs(30),
+            )),
+            peer_sessions: permguard_host::api::sessions::PeerSessions::none(),
+            // A listener of each authentication shape, with and without a TLS minimum (WP-2.11).
+            listeners: vec![
+                permguard_core::ListenerReport::of(
+                    "data-http",
+                    permguard_core::ListenerClass::PlanePublic,
+                    None,
+                    true,
+                    false,
                 ),
-                false,
-                true,
-            ),
-        ],
-        audit: Some(audit),
-        memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
-            store: members,
-            capabilities: permguard_host::membership::Capabilities::default(),
-            connector: None,
-            appraisal: permguard_host::membership::appraisal::Appraisal::default(),
-            live: Arc::default(),
-        })),
-    }))
+                permguard_core::ListenerReport::of(
+                    "host-api",
+                    permguard_core::ListenerClass::Host,
+                    Some(
+                        &permguard_core::TlsSettings::new("c", "k")
+                            .with_client_ca("ca")
+                            .with_min_version(permguard_core::TlsVersion::V1_2),
+                    ),
+                    false,
+                    true,
+                ),
+            ],
+            audit: Some(audit),
+            memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
+                store: members,
+                capabilities: permguard_host::membership::Capabilities::default(),
+                connector: None,
+                appraisal: permguard_host::membership::appraisal::Appraisal::default(),
+                live: Arc::default(),
+                streams: None,
+                shipping: None,
+                importing: None,
+            })),
+        })
+        .with_streams(Arc::new(FixedStreams))
+        .with_backups(Arc::new(backups), None, None),
+    );
+    // The object sweep a Control Plane provides (WP-7.11b), answering fixed reports.
+    api.gc_jobs()
+        .provide(
+            permguard_host::gc::OBJECTS,
+            "control",
+            Arc::new(FixedSweep) as Arc<dyn permguard_host::gc::GcJob>,
+        )
+        .expect("the object sweep is provided");
+    api
+}
+
+/// A sweep answering one ledger's fixed report (WP-7.11b).
+struct FixedSweep;
+
+impl permguard_host::gc::GcJob for FixedSweep {
+    fn plan(
+        &self,
+        scope: &permguard_core::authz::Resource,
+    ) -> Result<permguard_host::gc::Report, permguard_host::gc::GcError> {
+        Ok(fixed_report(scope, 0))
+    }
+
+    fn run(
+        &self,
+        scope: &permguard_core::authz::Resource,
+        _plan_id: &str,
+    ) -> Result<permguard_host::gc::Report, permguard_host::gc::GcError> {
+        Ok(fixed_report(scope, 1))
+    }
+}
+
+fn fixed_report(
+    scope: &permguard_core::authz::Resource,
+    removed: u64,
+) -> permguard_host::gc::Report {
+    permguard_host::gc::Report {
+        entries: vec![permguard_host::gc::Entry {
+            resource: format!("{scope}/zone/z/ledger/l"),
+            candidates: 1,
+            candidate_bytes: 64,
+            removed,
+            removed_bytes: removed * 64,
+            kept: vec![permguard_host::gc::Kept {
+                reason: "reachable".to_owned(),
+                count: 3,
+            }],
+        }],
+        resumes_at: None,
+        skipped: Vec::new(),
+        omitted: 0,
+    }
+}
+
+/// A stream engine answering one decision stream on `plane/data/zone/z/ledger/l`, its producer's
+/// prefix through 4 deleted (WP-5.7a).
+struct FixedStreams;
+
+const RUN: &str = "0123456789abcdef0123456789abcdef";
+const PRODUCER: &str = "fedcba9876543210fedcba9876543210";
+
+fn fixed_anchor() -> permguard_host::api::streams::AnchorView {
+    permguard_host::api::streams::AnchorView {
+        role: "producer".to_owned(),
+        producer: PRODUCER.to_owned(),
+        run: RUN.to_owned(),
+        through: 4,
+        low_watermark: 5,
+        terminal_head: format!("sha256:{}", "a".repeat(64)),
+        covering: 2,
+        anchor: "oQEC".to_owned(),
+    }
+}
+
+impl permguard_host::api::streams::StreamReads for FixedStreams {
+    fn list(&self) -> Result<Vec<permguard_host::api::streams::StreamView>, String> {
+        Ok(vec![permguard_host::api::streams::StreamView {
+            plane: "data".to_owned(),
+            stream_type: "decisions".to_owned(),
+            version: 1,
+            role: "producer".to_owned(),
+            retention: "evidence".to_owned(),
+            ring: "data.attest".to_owned(),
+            task: Some("decisions.ship".to_owned()),
+            resources: vec![permguard_host::api::streams::ResourceState {
+                resource: "plane/data/zone/z/ledger/l".to_owned(),
+                state: "open".to_owned(),
+            }],
+        }])
+    }
+
+    fn frontier(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        resource: &str,
+    ) -> Result<Option<permguard_host::api::streams::Frontier>, String> {
+        if (plane, stream_type) != ("data", "decisions") {
+            return Ok(None);
+        }
+        Ok(Some(permguard_host::api::streams::Frontier {
+            resource: resource.to_owned(),
+            producer: vec![permguard_host::api::streams::ProducerRun {
+                run: RUN.to_owned(),
+                ended: false,
+                last_seq: 8,
+                sealed: 8,
+                acknowledged: Some(6),
+                low_watermark: 5,
+            }],
+            consumer: vec![permguard_host::api::streams::ConsumerRun {
+                producer: PRODUCER.to_owned(),
+                run: RUN.to_owned(),
+                acked: 8,
+                oldest_retained: 1,
+            }],
+        }))
+    }
+
+    fn records(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        resource: &str,
+        _run: Option<(&[u8; 16], &[u8; 16])>,
+        from: u64,
+        limit: usize,
+    ) -> Result<Option<permguard_host::api::streams::RecordPage>, String> {
+        if (plane, stream_type) != ("data", "decisions") {
+            return Ok(None);
+        }
+        let first = from.max(5);
+        let records: Vec<_> = (first..=8)
+            .take(limit)
+            .map(|seq| permguard_host::api::streams::RecordView {
+                seq,
+                record: "cjE".to_owned(),
+                digest: format!("sha256:{}", "b".repeat(64)),
+            })
+            .collect();
+        Ok(Some(permguard_host::api::streams::RecordPage {
+            resource: resource.to_owned(),
+            run: RUN.to_owned(),
+            next: records
+                .last()
+                .map(|record| record.seq + 1)
+                .filter(|next| *next <= 8),
+            records,
+            gap: (from < 5).then(|| permguard_host::api::streams::GapView {
+                low_watermark: 5,
+                anchor: fixed_anchor(),
+            }),
+        }))
+    }
+
+    fn signers(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::RunSigners>>, String> {
+        Ok(((plane, stream_type) == ("data", "decisions")).then(|| {
+            vec![permguard_host::api::streams::RunSigners {
+                role: "producer".to_owned(),
+                producer: PRODUCER.to_owned(),
+                run: RUN.to_owned(),
+                spans: vec![permguard_host::api::streams::SpanView {
+                    from_seq: 1,
+                    kid: "kid-1".to_owned(),
+                    jwk: "{}".to_owned(),
+                }],
+            }]
+        }))
+    }
+
+    fn subscriptions(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::SubscriptionView>>, String> {
+        Ok(((plane, stream_type) == ("data", "decisions")).then(|| {
+            vec![permguard_host::api::streams::SubscriptionView {
+                membership: "0198f2aa-0000-7000-8000-000000000001".to_owned(),
+                task: "decisions".to_owned(),
+                required: true,
+                state: "active".to_owned(),
+                reason: None,
+                acked: vec![permguard_host::api::streams::RunAck {
+                    run: RUN.to_owned(),
+                    acked: 6,
+                }],
+            }]
+        }))
+    }
+
+    fn gaps(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::GapEntry>>, String> {
+        Ok(((plane, stream_type) == ("data", "decisions")).then(|| {
+            vec![permguard_host::api::streams::GapEntry {
+                role: "producer".to_owned(),
+                producer: PRODUCER.to_owned(),
+                run: RUN.to_owned(),
+                low_watermark: 5,
+            }]
+        }))
+    }
+
+    fn anchors(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        _: &str,
+    ) -> Result<Option<Vec<permguard_host::api::streams::AnchorView>>, String> {
+        Ok(((plane, stream_type) == ("data", "decisions")).then(|| vec![fixed_anchor()]))
+    }
 }
 
 /// The receipt a plan answered, base64url: REST answers it so, gRPC as bytes.
@@ -458,6 +693,129 @@ impl Transport {
         ))
         .await
         .expect("the gRPC endpoint answers")
+    }
+
+    /// A stream read `what` of `plane/stream_type` on `resource`; `query` adds the REST query
+    /// members of `records` (WP-5.7a).
+    async fn stream_read(
+        &self,
+        who: Option<&str>,
+        what: &str,
+        stream: &str,
+        resource: &str,
+        from: Option<u64>,
+        limit: Option<u32>,
+    ) -> Outcome {
+        let (plane, stream_type) = stream.split_once('/').unwrap_or((stream, ""));
+        match self {
+            Self::Rest(_) => {
+                let path = if what == "list" {
+                    "/host/v1/streams".to_owned()
+                } else {
+                    let mut path = format!(
+                        "/host/v1/streams/{plane}/{stream_type}/{what}?resource={resource}"
+                    );
+                    if let Some(from) = from {
+                        path.push_str(&format!("&from={from}"));
+                    }
+                    if let Some(limit) = limit {
+                        path.push_str(&format!("&limit={limit}"));
+                    }
+                    path
+                };
+                self.rest("GET", &path, who, None).await
+            }
+            Self::Grpc(_) => {
+                let mut client = self.evidence().await;
+                let (plane, stream_type, resource) = (
+                    plane.to_owned(),
+                    stream_type.to_owned(),
+                    resource.to_owned(),
+                );
+                match what {
+                    "list" => reduced_grpc(
+                        client
+                            .list_streams(Self::grpc_request(who, host_v1::ListStreamsRequest {}))
+                            .await,
+                    ),
+                    "frontier" => reduced_grpc(
+                        client
+                            .get_stream_frontier(Self::grpc_request(
+                                who,
+                                host_v1::GetStreamFrontierRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                },
+                            ))
+                            .await,
+                    ),
+                    "records" => reduced_grpc(
+                        client
+                            .list_stream_records(Self::grpc_request(
+                                who,
+                                host_v1::ListStreamRecordsRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                    from,
+                                    limit,
+                                    ..Default::default()
+                                },
+                            ))
+                            .await,
+                    ),
+                    "signers" => reduced_grpc(
+                        client
+                            .list_stream_signers(Self::grpc_request(
+                                who,
+                                host_v1::ListStreamSignersRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                },
+                            ))
+                            .await,
+                    ),
+                    "subscriptions" => reduced_grpc(
+                        client
+                            .list_stream_subscriptions(Self::grpc_request(
+                                who,
+                                host_v1::ListStreamSubscriptionsRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                },
+                            ))
+                            .await,
+                    ),
+                    "gaps" => reduced_grpc(
+                        client
+                            .list_stream_gaps(Self::grpc_request(
+                                who,
+                                host_v1::ListStreamGapsRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                },
+                            ))
+                            .await,
+                    ),
+                    _ => reduced_grpc(
+                        client
+                            .list_stream_anchors(Self::grpc_request(
+                                who,
+                                host_v1::ListStreamAnchorsRequest {
+                                    plane,
+                                    stream_type,
+                                    resource,
+                                },
+                            ))
+                            .await,
+                    ),
+                }
+            }
+        }
     }
 
     async fn audit_records(&self, who: Option<&str>, class: &str, resource: &str) -> Outcome {
@@ -1483,6 +1841,150 @@ impl Transport {
         }
     }
 
+    async fn plan_gc(&self, who: Option<&str>, job: &str, request_id: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/gc/{job}/plan"),
+                    who,
+                    Some(json!({"request_id": request_id})),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .plan_gc(Self::grpc_request(
+                        who,
+                        host_v1::PlanGcRequest {
+                            job: job.to_owned(),
+                            request_id: request_id.to_owned(),
+                            resource: String::new(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn run_gc(
+        &self,
+        who: Option<&str>,
+        job: &str,
+        request_id: &str,
+        receipt: &str,
+    ) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/gc/{job}/run"),
+                    who,
+                    Some(json!({"request_id": request_id, "receipt": receipt})),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .run_gc(Self::grpc_request(
+                        who,
+                        host_v1::RunGcRequest {
+                            job: job.to_owned(),
+                            request_id: request_id.to_owned(),
+                            receipt: receipt_bytes(receipt),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn prepare_backup(&self, who: Option<&str>) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest("POST", "/host/v1/backup/prepare", who, Some(json!({})))
+                    .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .prepare_backup(Self::grpc_request(
+                        who,
+                        host_v1::PrepareBackupRequest::default(),
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn finalize_backup(&self, who: Option<&str>, token: &str, snapshot_id: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    "/host/v1/backup/finalize",
+                    who,
+                    Some(json!({"token": token, "snapshot_id": snapshot_id})),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .finalize_backup(Self::grpc_request(
+                        who,
+                        host_v1::FinalizeBackupRequest {
+                            token: token.to_owned(),
+                            snapshot_id: snapshot_id.to_owned(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn abort_backup(&self, who: Option<&str>, token: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    "/host/v1/backup/abort",
+                    who,
+                    Some(json!({"token": token})),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .abort_backup(Self::grpc_request(
+                        who,
+                        host_v1::AbortBackupRequest {
+                            token: token.to_owned(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn list_backups(&self, who: Option<&str>) -> Outcome {
+        match self {
+            Self::Rest(_) => self.rest("GET", "/host/v1/backups", who, None).await,
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .list_backups(Self::grpc_request(
+                        who,
+                        host_v1::ListBackupsRequest::default(),
+                    ))
+                    .await,
+            ),
+        }
+    }
+
     async fn rotate_identity(
         &self,
         who: Option<&str>,
@@ -1782,6 +2284,79 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         "export the audit trail",
         transport.audit_export(admin, "operations").await,
     ));
+    // The stream reads (WP-5.7a), over a fixed engine.
+    let ledger = "plane/data/zone/z/ledger/l";
+    for (case, what) in [
+        ("list the streams", "list"),
+        ("read a stream's frontier", "frontier"),
+        ("read a stream's signers", "signers"),
+        ("read a stream's subscriptions", "subscriptions"),
+        ("read a stream's gaps", "gaps"),
+        ("read a stream's anchors", "anchors"),
+    ] {
+        steps.push((
+            case,
+            transport
+                .stream_read(admin, what, "data/decisions", ledger, None, None)
+                .await,
+        ));
+    }
+    steps.push((
+        "read a stream's records",
+        transport
+            .stream_read(admin, "records", "data/decisions", ledger, Some(5), Some(2))
+            .await,
+    ));
+    steps.push((
+        "read a stream's records below its low watermark",
+        transport
+            .stream_read(admin, "records", "data/decisions", ledger, Some(1), None)
+            .await,
+    ));
+    steps.push((
+        "read a stream's records with a limit out of range",
+        transport
+            .stream_read(admin, "records", "data/decisions", ledger, None, Some(1001))
+            .await,
+    ));
+    steps.push((
+        "read an unknown stream's frontier",
+        transport
+            .stream_read(admin, "frontier", "data/nothing", ledger, None, None)
+            .await,
+    ));
+    steps.push((
+        "read a stream's frontier as a stranger",
+        transport
+            .stream_read(
+                Some(STRANGER),
+                "frontier",
+                "data/decisions",
+                ledger,
+                None,
+                None,
+            )
+            .await,
+    ));
+    steps.push((
+        "read an unknown stream's frontier as a stranger",
+        transport
+            .stream_read(
+                Some(STRANGER),
+                "frontier",
+                "data/nothing",
+                ledger,
+                None,
+                None,
+            )
+            .await,
+    ));
+    steps.push((
+        "read a stream's frontier out of the grammar",
+        transport
+            .stream_read(admin, "frontier", "data/decisions", "zone:x", None, None)
+            .await,
+    ));
     steps.push(("read the status", transport.status(admin).await));
     steps.push((
         "read the status as a stranger",
@@ -1794,6 +2369,94 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
     steps.push((
         "read the configuration revisions",
         transport.config_revisions(admin).await,
+    ));
+    // The application-consistent snapshot (WP-7.8): a prepare, a mutation held, a token no
+    // backup answers to, the finalize, the list, a prepare aborted.
+    steps.push((
+        "list the backups as a stranger",
+        transport.list_backups(Some(STRANGER)).await,
+    ));
+    let prepared = transport.prepare_backup(admin).await;
+    let token = member(&prepared, &["token"]).to_owned();
+    // Masked in the parity comparison, so asserted here on each transport: a manifest that is a
+    // COSE_Sign1, and an RFC 3339 deadline.
+    let manifest = {
+        use base64::Engine as _;
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(member(&prepared, &["manifest"]))
+            .expect("a base64url manifest")
+    };
+    // An untagged COSE_Sign1: an array of four, its protected header a byte string first.
+    assert_eq!(manifest[0], 0x84, "a COSE_Sign1");
+    assert_eq!(manifest[1] & 0xe0, 0x40, "its protected header");
+    assert!(
+        chrono_like(member(&prepared, &["expires_at"])),
+        "an RFC 3339 deadline: {prepared:?}"
+    );
+    steps.push(("prepare a backup", prepared));
+    steps.push((
+        "prepare a second backup",
+        transport.prepare_backup(admin).await,
+    ));
+    steps.push((
+        "create a grant under the barrier",
+        transport
+            .create_grant(
+                admin,
+                "barrier",
+                "spiffe://acme/held",
+                operations::CATALOG_READ,
+                None,
+            )
+            .await,
+    ));
+    steps.push((
+        "finalize with another token",
+        transport
+            .finalize_backup(
+                admin,
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "snap-1",
+            )
+            .await,
+    ));
+    steps.push((
+        "finalize the backup",
+        transport.finalize_backup(admin, &token, "snap-1").await,
+    ));
+    let second = transport.prepare_backup(admin).await;
+    let second_token = member(&second, &["token"]).to_owned();
+    steps.push((
+        "abort a backup",
+        transport.abort_backup(admin, &second_token).await,
+    ));
+    steps.push(("list the backups", transport.list_backups(admin).await));
+    // An operator's object sweep (WP-7.11b): refused to a stranger and for a job nobody serves,
+    // granted on the Plane, planned, run, and its spent receipt refused.
+    steps.push((
+        "plan a sweep as a stranger",
+        transport.plan_gc(Some(STRANGER), "objects", "gc").await,
+    ));
+    steps.push((
+        "plan a sweep nobody serves",
+        transport.plan_gc(admin, "everything", "gc").await,
+    ));
+    steps.push((
+        "grant the object sweep",
+        transport
+            .create_grant(admin, "gc-grant", ADMIN, operations::GC_MANAGE, None)
+            .await,
+    ));
+    let planned = transport.plan_gc(admin, "objects", "gc").await;
+    let sweep = receipt_of(&planned);
+    steps.push(("plan the object sweep", planned));
+    steps.push((
+        "run the object sweep",
+        transport.run_gc(admin, "objects", "gc-run", &sweep).await,
+    ));
+    steps.push((
+        "run the spent object sweep",
+        transport.run_gc(admin, "objects", "gc-again", &sweep).await,
     ));
     steps.push((
         "read the identity",
@@ -2088,9 +2751,25 @@ fn schema_of(case: &str) -> &'static str {
         "read the audit records" => "AuditRecordPage",
         "read the audit checkpoints" => "AuditCheckpoints",
         "export the audit trail" => "AuditExportPage",
+        "list the streams" => "StreamList",
+        "read a stream's frontier" => "StreamFrontier",
+        "read a stream's records" | "read a stream's records below its low watermark" => {
+            "StreamRecordPage"
+        }
+        "read a stream's signers" => "StreamSignerList",
+        "read a stream's subscriptions" => "StreamSubscriptionList",
+        "read a stream's gaps" => "StreamGapList",
+        "read a stream's anchors" => "StreamAnchorList",
         "read the status" => "HostStatus",
         "read the effective configuration" => "EffectiveConfig",
         "read the configuration revisions" => "ConfigRevisions",
+        "prepare a backup" => "BackupPrepared",
+        "finalize the backup" => "BackupEnded",
+        "abort a backup" => "BackupAborted",
+        "list the backups" => "BackupList",
+        "grant the object sweep" => "GrantCreated",
+        "plan the object sweep" => "GcPlanned",
+        "run the object sweep" => "GcRan",
         "read the identity" | "read the identity after its rotation" => "HostIdentity",
         "rotate the identity" => "IdentityRotated",
         "read the ring bindings" => "RingBindings",
@@ -2291,6 +2970,33 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
     assert_eq!(
         refused("list the plans as a stranger"),
         (String::new(), common::FORBIDDEN.to_owned())
+    );
+    // The object sweep's refusals (WP-7.11b).
+    assert_eq!(
+        refused("plan a sweep as a stranger"),
+        (String::new(), common::FORBIDDEN.to_owned())
+    );
+    assert_eq!(
+        refused("plan a sweep nobody serves"),
+        ("not_found".to_owned(), common::NOT_FOUND.to_owned())
+    );
+    assert_eq!(refused("run the spent object sweep").1, host::PLAN_EXPIRED);
+    // The backup's refusals (WP-7.8).
+    assert_eq!(
+        refused("list the backups as a stranger"),
+        (String::new(), common::FORBIDDEN.to_owned())
+    );
+    assert_eq!(
+        refused("prepare a second backup"),
+        ("conflict".to_owned(), common::CONFLICT.to_owned())
+    );
+    assert_eq!(
+        refused("create a grant under the barrier"),
+        ("unavailable".to_owned(), common::UNAVAILABLE.to_owned())
+    );
+    assert_eq!(
+        refused("finalize with another token"),
+        ("not_found".to_owned(), common::NOT_FOUND.to_owned())
     );
     assert_eq!(
         refused("read the audit records of an unknown class"),
@@ -2838,4 +3544,20 @@ async fn the_listener_is_a_no_op_without_an_address_and_refuses_to_start_without
         .await
         .expect_err("plain TLS is for loopback development only");
     assert!(format!("{refused:#}").contains("client_ca"), "{refused:#}");
+}
+
+/// Whether `text` reads as an RFC 3339 UTC second, as every Host API time is written.
+fn chrono_like(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    text.len() == 20
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[10] == b'T'
+        && bytes[13] == b':'
+        && bytes[16] == b':'
+        && bytes[19] == b'Z'
+        && text
+            .chars()
+            .enumerate()
+            .all(|(at, held)| [4, 7, 10, 13, 16, 19].contains(&at) || held.is_ascii_digit())
 }

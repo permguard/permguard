@@ -46,9 +46,11 @@
 //! are `.dw` — the same extension as a policy — so the walk asks
 //! [`crate::artifact`] rather than guessing from a name.
 
+pub mod annotations;
 pub mod artifacts;
 pub(crate) mod compiled;
 pub mod occurrence;
+pub mod projection;
 pub mod value;
 
 use crate::artifact::ArtifactType;
@@ -97,8 +99,27 @@ impl Language for Dogwood {
             isolation: Isolation {
                 mode: IsolationMode::InProcess,
                 reason: "provider work is bounded by operation and data-size limits but not by \
-                         wall clock (LANG-08), and adopting the supervised worker is TL-5",
+                         wall clock, and upstream offers no cancellation (LANG-08): from \
+                         production upward a partition carrying providers is refused at load, and \
+                         one without them runs in-process",
             },
+        }
+    }
+
+    /// From `production` upward, the provider declarations and programs (DOGWOOD-01).
+    ///
+    /// A provider is Rhai code upstream bounds by operations and data size but not by wall clock,
+    /// and upstream exposes no cooperative cancellation. Of the blueprint's two answers — refuse
+    /// the bundle, or run the whole evaluation in a supervised worker — this build takes the first
+    /// (owner decision of 2026-10-21): under `development` providers run in-process.
+    fn refused_artifacts(
+        &self,
+        profile: permguard_core::assurance::AssuranceProfile,
+    ) -> &'static [&'static str] {
+        if profile.at_least(permguard_core::assurance::AssuranceProfile::Production) {
+            &[artifacts::PROVIDERS, artifacts::RHAI_PROVIDER]
+        } else {
+            &[]
         }
     }
 
@@ -134,10 +155,11 @@ impl Language for Dogwood {
             .map_err(|error| format!("dogwood: {error}"))
     }
 
-    /// The alias a Dogwood policy declares — Cedar's own `@id("…")` annotation, which Dogwood
-    /// inherits and which its own examples use as the policy's handle.
+    /// The alias a Dogwood policy file declares — Cedar's own `@id("…")` annotation, which Dogwood
+    /// inherits and which its own examples use as the policy's handle — read as upstream's grammar
+    /// reads it, decoded and held to the identity grammar (DOGWOOD-07).
     fn declared_alias(&self, source: &[u8]) -> Result<Option<String>, String> {
-        Ok(std::str::from_utf8(source).ok().and_then(alias_of))
+        annotations::alias(source_of(source, "a Dogwood policy")?)
     }
 
     fn authoring(&self) -> Option<&dyn Authoring> {
@@ -187,11 +209,15 @@ impl Language for Dogwood {
         // And the manifest's own claim about this partition's history, against what the schemas
         // turned out to say. Run here, where the author can still fix it, as well as at load.
         match compiled.temporal() {
-            Some(temporal) => crate::temporal::check_history_scope(
-                partition,
-                declared.history,
-                temporal.contract(),
-            ),
+            Some(temporal) => {
+                crate::temporal::check_history_scope(
+                    partition,
+                    declared.history,
+                    temporal.contract(),
+                )?;
+                // And its input: a version 2 partition declares its one-sided fields (TL-5c).
+                temporal.check_input(declared.input.as_ref().map(|input| input.r#type.as_str()))
+            }
             None => Ok(()),
         }
     }
@@ -204,37 +230,6 @@ impl Language for Dogwood {
     fn evaluating(&self) -> Option<&dyn crate::evaluate::Evaluating> {
         Some(self)
     }
-}
-
-/// The `@id("…")` annotation above a policy, when it carries one.
-///
-/// Read line by line rather than with a regular expression over the whole source: an `@id` inside
-/// a string literal in the body of a policy is not that policy's identity, and a scan that did not
-/// care where it looked would find it.
-fn alias_of(text: &str) -> Option<String> {
-    for line in text.lines() {
-        let line = line.trim();
-        if line.starts_with("//") {
-            continue;
-        }
-        let Some(rest) = line.strip_prefix("@id(") else {
-            // The annotation precedes the policy head; once the head starts, there is none.
-            if line.starts_with("permit") || line.starts_with("forbid") {
-                return None;
-            }
-
-            continue;
-        };
-        let inner = rest.strip_suffix(')')?.trim();
-        let alias = inner.strip_prefix('"')?.strip_suffix('"')?;
-        if alias.is_empty() {
-            return None;
-        }
-
-        return Some(alias.to_owned());
-    }
-
-    None
 }
 
 /// The bytes as Dogwood source, or the refusal.
@@ -260,7 +255,7 @@ impl Authoring for Dogwood {
         // partition means.
         Ok(vec![ExtractedPolicy {
             bytes: source.to_vec(),
-            alias: alias_of(text),
+            alias: annotations::alias(text)?,
         }])
     }
 }
@@ -293,16 +288,86 @@ when temporal {
     #[test]
     fn an_id_inside_a_comment_is_not_the_alias() {
         // The comment above the annotation names something else on purpose.
-        assert_eq!(alias_of(POLICY).as_deref(), Some("read_login_not_logout"));
+        assert_eq!(
+            Dogwood
+                .declared_alias(POLICY.as_bytes())
+                .expect("one alias")
+                .as_deref(),
+            Some("read_login_not_logout")
+        );
 
         let unannotated = "permit (principal, action, resource) when { true };\n";
-        assert_eq!(alias_of(unannotated), None);
+        assert_eq!(
+            Dogwood
+                .declared_alias(unannotated.as_bytes())
+                .expect("none"),
+            None
+        );
+        assert!(
+            Dogwood
+                .extract(b"@id(\"a\")\n@id(\"b\")\npermit (principal, action, resource);\n")
+                .is_err(),
+            "two aliases refuse the file at authoring too"
+        );
     }
 
     #[test]
     fn a_source_dogwood_cannot_parse_is_refused() {
         assert!(Dogwood.validate_policy(b"permit (principal").is_err());
         assert!(Dogwood.validate_policy(&[0xff, 0xfe]).is_err());
+    }
+
+    /// DOGWOOD-01: from `production` upward the providers are refused, whichever of the two a
+    /// partition carries; below it, and for a partition without them, nothing is.
+    #[test]
+    fn providers_are_refused_from_production_and_nothing_else_is() {
+        use crate::artifact::{ArtifactBlob, Artifacts, artifact_type};
+        use permguard_core::assurance::AssuranceProfile;
+
+        let carrying = |names: &[&str]| {
+            let mut bundle = Artifacts::default();
+            for name in names {
+                bundle.insert(
+                    artifact_type(name).expect("a registered artifact"),
+                    ArtifactBlob {
+                        name: (*name).to_owned(),
+                        media_type: String::new(),
+                        data: b"x".to_vec(),
+                    },
+                );
+            }
+            bundle
+        };
+        let floor = |profile, bundle: &Artifacts| {
+            crate::registry::check_artifact_floor(NAME, profile, bundle)
+        };
+
+        for profile in [AssuranceProfile::Production, AssuranceProfile::Regulated] {
+            for refused in [artifacts::PROVIDERS, artifacts::RHAI_PROVIDER] {
+                let why = floor(profile, &carrying(&[artifacts::ACTION_SCHEMA, refused]))
+                    .expect_err("a provider is refused");
+                assert!(why.contains(refused), "{why}");
+                assert!(why.contains(profile.as_str()), "{why}");
+            }
+            floor(
+                profile,
+                &carrying(&[artifacts::ACTION_SCHEMA, artifacts::EVENT_SCHEMA]),
+            )
+            .expect("a partition without providers serves");
+        }
+        floor(
+            AssuranceProfile::Development,
+            &carrying(&[artifacts::PROVIDERS, artifacts::RHAI_PROVIDER]),
+        )
+        .expect("below production providers run in-process");
+        assert!(
+            Dogwood
+                .engine()
+                .isolation
+                .reason
+                .contains("from production upward"),
+            "the descriptor says why"
+        );
     }
 
     #[test]

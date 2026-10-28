@@ -186,6 +186,33 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "410": {
             "description": "The offset fell behind retention.",
             "content": {
@@ -202,7 +229,8 @@
           "zone",
           "ledger"
         ],
-        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `zone`, `ledger`."
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `zone`, `ledger`.",
+        "description": "Under `evidence.read` on the ledger of the Host run `pdp` and `instance` name, or on `plane/control` whole for a legacy stream mixing tenants, authorized before any lookup (WP-6.3c)."
       }
     },
     "/zones/{zone}/ledgers/{ledger}/decisions/v1/records": {
@@ -315,6 +343,33 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "410": {
             "description": "The offset fell behind retention.",
             "content": {
@@ -331,7 +386,8 @@
           "pdp",
           "instance"
         ],
-        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `pdp`, `instance`."
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `pdp`, `instance`.",
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
       }
     },
     "/decisions/v1/signers": {
@@ -343,7 +399,7 @@
             "name": "pdp",
             "in": "query",
             "required": true,
-            "description": "The producer's `pdp_id`.",
+            "description": "The producer's `pdp_id`, or the `host_id` of a Host run in lowercase hex (WP-6.3b).",
             "schema": {
               "type": "string"
             },
@@ -353,7 +409,7 @@
             "name": "instance",
             "in": "query",
             "required": true,
-            "description": "The producer incarnation.",
+            "description": "The producer incarnation, or the Host run in lowercase hex (WP-6.3b).",
             "schema": {
               "type": "string"
             },
@@ -425,6 +481,26 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.DecisionLog/GetSigners"
+      }
+    },
+    "/.well-known/permguard-decisions-native-v1-configuration": {
+      "get": {
+        "operationId": "getDecisionConfiguration",
+        "summary": "What this plane offers of the decision log interface",
+        "responses": {
+          "200": {
+            "description": "The configuration document. Unauthenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigurationDocument"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "REST-only: the gRPC DecisionLog service names Ship, Read and GetSigners (WP-6.3b)."
       }
     }
   },
@@ -752,6 +828,41 @@
           "watermark": {
             "type": "string",
             "description": "The opaque import watermark the decision saw."
+          },
+          "frontier": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontierRun"
+            },
+            "description": "The exact vector frontier a shared decision observed (WP-6.4a); absent for a local one and from earlier records."
+          },
+          "origin_set_revision": {
+            "type": "string",
+            "description": "The revision of the origin set that defined the required origins, hex."
+          },
+          "max_staleness_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The freshness bound in force."
+          },
+          "degraded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The required origins a shared-eventual decision was degraded by."
+          },
+          "time": {
+            "type": "string",
+            "enum": [
+              "occurred_at"
+            ],
+            "description": "The time the runtime's windows ranged over."
+          },
+          "quarantined": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many logical occurrences of the history a digest conflict quarantined; omitted at zero."
           }
         },
         "required": [
@@ -861,6 +972,25 @@
           },
           "event": {
             "$ref": "#/components/schemas/EventRef"
+          },
+          "interface": {
+            "type": "string",
+            "description": "The exact evaluation interface id the question was asked through (IFACE-05). Added to version 1 as a member: a record written before carries none of `interface`, `actor`, `question` and `descriptors`."
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Party",
+            "description": "Who asked, as the transport authenticated them (IFACE-04): type `Actor`, the authorization principal pseudonymised. Never the request's `principal`, which is an unauthenticated assertion. Absent where no transport authenticated the request."
+          },
+          "question": {
+            "type": "string",
+            "description": "A keyed commitment (`hmac-sha256:<key version>:<hex>`, the input key) to the JCS of the interface, the store ids and profile, and the one evaluation asked."
+          },
+          "descriptors": {
+            "type": "object",
+            "description": "Each partition of the profile, mapped to the descriptor digest of the runtime that evaluated it.",
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -1117,7 +1247,75 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": null,
-        "x-grpc-note": "The signed envelope, carried as JSON bytes: the `signature` member of the batch in `batch` of permguard.control.v1.ShipRequest, and an element of `proof` of permguard.control.v1.ReadResponse."
+        "x-grpc-note": "The signed envelope, carried as JSON bytes: the `signature` member of the batch in `batch` of permguard.control.v1.ShipRequest, and inside an element of `proof` of permguard.control.v1.ReadResponse."
+      },
+      "Proof": {
+        "description": "One element of a read's `proof`, switched on `format` (WP-6.1b): a legacy store's batch JWS, or the batch the Host's engine sealed.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/LegacyProof"
+          },
+          {
+            "$ref": "#/components/schemas/HostProof"
+          }
+        ],
+        "x-grpc-message": null,
+        "x-grpc-note": "An element of `proof` of permguard.control.v1.ReadResponse, carried as JSON bytes."
+      },
+      "LegacyProof": {
+        "type": "object",
+        "description": "The legacy store's batch JWS, its members unchanged, naming its format.",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "legacy-jws-v1"
+            ]
+          },
+          "protected": {
+            "type": "string",
+            "description": "The protected header, base64url."
+          },
+          "payload": {
+            "type": "string",
+            "description": "The payload, base64url: the canonical envelope bytes."
+          },
+          "signature": {
+            "type": "string",
+            "description": "The signature over `protected || \".\" || payload`, base64url."
+          }
+        },
+        "required": [
+          "format",
+          "protected",
+          "payload",
+          "signature"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "An element of `proof` of permguard.control.v1.ReadResponse, carried as JSON bytes."
+      },
+      "HostProof": {
+        "type": "object",
+        "description": "The batch the producing Host's stream engine sealed: its flattened JWS over the batch envelope, whose Merkle root the inclusion paths reach.",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "host-batch-v1"
+            ]
+          },
+          "signature": {
+            "$ref": "#/components/schemas/Signed"
+          }
+        },
+        "required": [
+          "format",
+          "signature"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "An element of `proof` of permguard.control.v1.ReadResponse, carried as JSON bytes."
       },
       "Batch": {
         "type": "object",
@@ -1233,9 +1431,9 @@
           "proof": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Signed"
+              "$ref": "#/components/schemas/Proof"
             },
-            "description": "The signed envelopes covering these records, when `proof` was asked.",
+            "description": "The signed envelopes covering these records, when `proof` was asked, each naming its format.",
             "x-grpc-field": "proof"
           },
           "inclusion": {
@@ -1287,6 +1485,247 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.control.v1.GetDecisionSignersResponse"
+      },
+      "ConfigurationDocument": {
+        "type": "object",
+        "description": "What this plane publishes about permguard.api.decisions.native.v1 (WP-6.3b).",
+        "properties": {
+          "interface": {
+            "type": "string",
+            "const": "permguard.api.decisions.native.v1"
+          },
+          "version": {
+            "type": "string",
+            "description": "The product version `/version` publishes; empty where the deployment does not disclose its build (WP-7.4a)."
+          },
+          "component": {
+            "type": "string",
+            "enum": [
+              "control-plane",
+              "data-plane"
+            ],
+            "description": "The component serving the interface."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The serving component's lifecycle phase when the document was answered."
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "v1alpha1",
+              "v1",
+              "deprecated"
+            ],
+            "description": "The interface's stage; a retired one has no document and is refused `interface_retired`."
+          },
+          "sunset": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a deprecated interface stops being served; present only then."
+          },
+          "store": {
+            "type": "string",
+            "description": "This store's identifier."
+          },
+          "endpoints": {
+            "$ref": "#/components/schemas/ConfigurationEndpoints"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "atomic-batches",
+                "idempotent-ingest",
+                "attributed-records",
+                "authenticated-offsets",
+                "read-coverage",
+                "tenant-scoped-reads"
+              ]
+            }
+          },
+          "offsets": {
+            "$ref": "#/components/schemas/ConfigurationOffsets"
+          },
+          "read_parameters": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "zone",
+                "ledger",
+                "pdp",
+                "instance",
+                "from",
+                "until",
+                "limit_records",
+                "limit_bytes",
+                "proof"
+              ]
+            }
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ConfigurationLimits"
+          }
+        },
+        "required": [
+          "interface",
+          "store",
+          "endpoints",
+          "capabilities",
+          "offsets",
+          "read_parameters",
+          "limits",
+          "version",
+          "component",
+          "state",
+          "stage"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only."
+      },
+      "ConfigurationEndpoints": {
+        "type": "object",
+        "description": "Absolute URLs where batches are delivered, records read and signers answered.",
+        "properties": {
+          "batches": {
+            "type": "string"
+          },
+          "records": {
+            "type": "string",
+            "description": "One producer stream's records."
+          },
+          "tenant_records": {
+            "type": "string",
+            "description": "A template containing `{zone}` and `{ledger}`."
+          },
+          "signers": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "batches",
+          "records",
+          "tenant_records",
+          "signers"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only."
+      },
+      "ConfigurationOffsets": {
+        "type": "object",
+        "description": "How a reader's position is spelled.",
+        "properties": {
+          "api": {
+            "type": "string",
+            "description": "The API family an offset belongs to."
+          },
+          "format": {
+            "type": "string",
+            "description": "`opaque`."
+          },
+          "editable": {
+            "type": "boolean",
+            "description": "Whether an edited offset is accepted; never."
+          }
+        },
+        "required": [
+          "api",
+          "format",
+          "editable"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only."
+      },
+      "ConfigurationLimits": {
+        "type": "object",
+        "description": "The ceilings a read is clamped to.",
+        "properties": {
+          "max_records": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "max_records",
+          "max_bytes"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only."
+      },
+      "FrontierRun": {
+        "type": "object",
+        "description": "One imported run of one origin, as a decision held it.",
+        "properties": {
+          "origin": {
+            "type": "string"
+          },
+          "run": {
+            "type": "string"
+          },
+          "covered_through": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "low_watermark": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontierGap"
+            }
+          }
+        },
+        "required": [
+          "origin",
+          "run",
+          "covered_through",
+          "low_watermark"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "FrontierGap": {
+        "type": "object",
+        "description": "One recorded hole: the first sequence missing and, when known, the last.",
+        "properties": {
+          "from": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "through": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "from"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
       }
     }
   },

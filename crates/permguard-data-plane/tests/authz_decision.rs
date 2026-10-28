@@ -105,6 +105,12 @@ use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND};
 use permguard_objects::semver::Constraint;
 
+/// The authority every mirror of these tests lives under (WP-7.2a): a mirror in a configured URL's
+/// shape is never served since WP-7.7.
+const MIRROR_AUTHORITY: &str = "11111111111111111111111111111111";
+/// The task the mirrors of these tests were listed by: the local task.
+const MIRROR_TASK: &str = "00000000-0000-0000-0000-000000000000/local";
+
 /// One policy, as an author wrote it and the store keeps it.
 struct Policy {
     id: &'static str,
@@ -188,6 +194,7 @@ fn manifest(partitions: &[(&str, &str, bool)], engine_range: &str) -> Manifest {
         declared.insert(
             (*name).to_owned(),
             Partition {
+                interfaces: Vec::new(),
                 runtime: (*language).to_owned(),
                 media_types,
                 schema: *schema,
@@ -237,7 +244,10 @@ fn provision(
     manifest: &Manifest,
     contents: &[(&str, Vec<&Policy>, Option<&str>)],
 ) -> Mirror {
-    let path = root.join(uuid_of(zone)).join(uuid_of(ledger));
+    let path = root
+        .join(MIRROR_AUTHORITY)
+        .join(uuid_of(zone))
+        .join(uuid_of(ledger));
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);
 
@@ -315,11 +325,19 @@ fn provision(
         &permguard_control_client::checkpoint::Checkpoint {
             head: commit_digest.to_string(),
             counter: 1,
+            ref_digest: None,
+            // The Host and ref the head statement vouched for (WP-6.6b).
+            authority_host_id: Some(AUTHORITY.to_owned()),
+            reference: Some("main".to_owned()),
+            ring_epoch: None,
+            key_set_digest: None,
         },
     )
     .expect("the checkpoint is written");
 
     let identity = Identity {
+        task: Some(MIRROR_TASK.to_owned()),
+        authority: Some(MIRROR_AUTHORITY.to_owned()),
         zone_id: uuid_of(zone),
         zone_name: zone.to_owned(),
         ledger_id: uuid_of(ledger),
@@ -333,6 +351,9 @@ fn provision(
 
 /// A zone or ledger id as the catalog mints it, a UUIDv7, derived from `name` so a test can name
 /// it again: zone keys are keyed by ids of 16 bytes (WP-3.3).
+/// The Host whose head statement every provisioned ledger carries.
+const AUTHORITY: &str = "01937000-0000-7000-8000-00000000a0a0";
+
 fn uuid_of(name: &str) -> String {
     use std::hash::{Hash as _, Hasher as _};
     let mut bytes = [0u8; 16];
@@ -857,8 +878,49 @@ async fn a_schema_less_cedar_partition_serves_only_below_production() {
     );
 
     let typed_root = scratch("floor-typed").join("mirrors");
-    let typed = manifest(&[("app", "cedar", true)], ">=0.0.0");
     let schema = "entity user;\nentity document;\naction read appliesTo { principal: [user], resource: [document] };\n";
+
+    // A typed partition that names no interfaces relies on the inference, refused from
+    // `production` (`interfaces.explicit`, WP-7.1) and served below it.
+    let implicit_root = scratch("floor-implicit").join("mirrors");
+    provision(
+        &implicit_root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", true)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], Some(schema))],
+    );
+    let implicit = |profile| {
+        Decider::new(
+            implicit_root.clone(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_profile(profile)
+    };
+    let refused = implicit(AssuranceProfile::Production)
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect_err("the inference is refused under production");
+    assert!(
+        refused.to_string().contains("interfaces.explicit"),
+        "{refused:?}"
+    );
+    assert!(
+        implicit(AssuranceProfile::Development)
+            .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+            .await
+            .expect("development infers them")
+            .decision
+    );
+
+    let mut typed = manifest(&[("app", "cedar", true)], ">=0.0.0");
+    // From `production` a partition names its interfaces (`interfaces.explicit`, WP-7.1).
+    for partition in typed.partitions.values_mut() {
+        partition.interfaces = vec![permguard_objects::manifest::PROFILE_PDP_NATIVE_V1.to_owned()];
+    }
     provision(
         &typed_root,
         "acme",
@@ -1256,11 +1318,16 @@ async fn a_ledger_this_plane_does_not_mirror_is_not_found() {
 #[tokio::test]
 async fn a_ledger_with_no_history_is_unavailable_not_a_deny() {
     let root = scratch("empty").join("mirrors");
-    let path = root.join(uuid_of("acme")).join(uuid_of("main-ledger"));
+    let path = root
+        .join(MIRROR_AUTHORITY)
+        .join(uuid_of("acme"))
+        .join(uuid_of("main-ledger"));
     std::fs::create_dir_all(&path).expect("the directory exists");
     permguard_data_plane::authz::store::record(
         &path,
         &Identity {
+            task: Some(MIRROR_TASK.to_owned()),
+            authority: Some(MIRROR_AUTHORITY.to_owned()),
             zone_id: uuid_of("acme"),
             zone_name: "acme".to_owned(),
             ledger_id: uuid_of("main-ledger"),
@@ -1309,6 +1376,78 @@ async fn warming_compiles_every_partition_and_a_second_pass_compiles_nothing() {
     assert!(bytes > 0, "and the accounting knows what they weigh");
 }
 
+/// WP-7.5a, IFACE-03: what a warm compiled is what the first request finds. The warm keys each
+/// partition by the interfaces it promises, or its runtime's for a legacy partition promising
+/// none, and a decide by its profile's interface, the legacy spelling read as the native one:
+/// both sides name the same entry, so no request compiles again.
+#[tokio::test]
+async fn a_warmed_partition_is_what_the_first_request_finds() {
+    let root = scratch("warm-then-decide").join("mirrors");
+    let mut manifest = manifest(
+        &[("app", "cedar", false), ("gateway", "rego", false)],
+        ">=0.0.0",
+    );
+    // One partition promises its interface, the other is the legacy inference.
+    manifest
+        .partitions
+        .get_mut("gateway")
+        .expect("declared")
+        .interfaces = vec![permguard_objects::manifest::PROFILE_PDP_NATIVE_V1.to_owned()];
+    // And a profile spelled the legacy way, asking the same interface.
+    manifest.profiles.insert(
+        "legacy".to_owned(),
+        Profile {
+            r#type: permguard_objects::manifest::PROFILE_PDP_V1.to_owned(),
+            partitions: vec!["app".to_owned(), "gateway".to_owned()],
+        },
+    );
+    let mirror = provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[
+            ("app", vec![&CEDAR_READ], None),
+            ("gateway", vec![&REGO_READ], None),
+        ],
+    );
+    let registry = Arc::new(permguard_std::metrics::Registry::new());
+    let decider = Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::new(Arc::clone(&registry) as Arc<dyn Recorder>),
+        None,
+        256,
+    );
+    // The compilations the decision path made: a request that finds the warm's entry makes none.
+    let compiled = || -> f64 {
+        registry
+            .snapshot()
+            .into_iter()
+            .filter(|sample| sample.metric.name() == "permguard_authz_compilations_total")
+            .map(|sample| match sample.reading {
+                permguard_core::metrics::Reading::Value(value) => value,
+                permguard_core::metrics::Reading::Distribution { sum, .. } => sum,
+            })
+            .sum()
+    };
+    assert_eq!(decider.warm(&mirror), Warmed::Ready { compiled: 2 });
+    let warmed = compiled();
+
+    for profile in ["default", "legacy"] {
+        let mut request = ask("acme", "main-ledger", "alice", "read");
+        request.profile = Some(profile.to_owned());
+        decider.decide(&request, None).await.expect("decided");
+        assert_eq!(
+            compiled(),
+            warmed,
+            "`{profile}` found what the warm compiled, and compiled nothing of its own"
+        );
+    }
+    // Two partitions and the head the requests loaded: no partition kept twice.
+    assert_eq!(decider.cache().holdings().0, 3);
+}
+
 /// The HTTP surface, over the real router.
 mod surface {
     use super::*;
@@ -1319,6 +1458,7 @@ mod surface {
             decider: decider(root),
             disclosure: Disclosure::Full,
             base_url: "http://127.0.0.1:7443".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
         })
     }
 
@@ -1796,6 +1936,7 @@ mod grpc_socket {
             decider: decider(root),
             disclosure: Disclosure::Full,
             base_url: format!("http://{address}"),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
         };
 
         std::thread::spawn(move || {
@@ -1876,8 +2017,15 @@ mod grpc_socket {
         // The HTTP document the same plane would serve, built by the one function both call.
         let base = over_grpc["pdp"].as_str().expect("a pdp identifier");
         let over_http: Value = serde_json::from_str(
-            &permguard_data_plane::authz::configuration::document(base)
-                .expect("the configuration serializes"),
+            &permguard_data_plane::authz::configuration::document(
+                base,
+                permguard_core::stages::Describer::detached("data-plane")
+                    .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+                    .expect("served"),
+                256,
+                None,
+            )
+            .expect("the configuration serializes"),
         )
         .expect("it is JSON");
 
@@ -1956,6 +2104,65 @@ mod grpc_socket {
             over_http_states_none["decision"], over_grpc_states_none["decision"],
             "and both transports say so"
         );
+    }
+
+    /// WP-6.6a: the evidence object crosses gRPC as the REST answer writes it, and a nonce is
+    /// refused over both while nothing signs.
+    #[test]
+    fn the_evidence_and_the_nonce_refusal_are_the_same_over_both_transports() {
+        let root = scratch("grpc-evidence").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ], None)],
+        );
+        let url = serve(&root);
+        let client = permguard_control_client::pdp::client(
+            &url,
+            &permguard_control_client::tls::TlsOptions::default(),
+            Box::new(permguard_control_client::narrate::Silent),
+        )
+        .expect("the endpoint parses");
+        let body = json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+        });
+        let over_grpc = client.evaluate(&body).expect("the plane answers");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
+        let over_http = |body: Value| {
+            let root = root.clone();
+            runtime.block_on(async move {
+                crate::surface::post(&root, "/access/v1/evaluation", body).await
+            })
+        };
+        let (_, http_answer, _) = over_http(body.clone());
+        assert_eq!(
+            over_grpc["context"]["evidence"],
+            json!({"mode": "disabled", "status": "disabled", "record_id": null, "position": null})
+        );
+        assert_eq!(
+            over_grpc["context"]["evidence"], http_answer["context"]["evidence"],
+            "one object, whichever transport"
+        );
+
+        let mut signed = body;
+        signed["request_nonce"] = json!("AAECAwQFBgcICQoLDA0ODw");
+        let refused = client.evaluate(&signed).expect_err("nothing signs");
+        assert_eq!(
+            (refused.class.as_str(), refused.reason.as_str()),
+            ("unavailable", "response_signing_unavailable"),
+            "{refused}"
+        );
+        let (status, http_refused, _) = over_http(signed);
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(http_refused["code"], "response_signing_unavailable");
     }
 }
 
@@ -2121,12 +2328,14 @@ mod parity {
                 decider: decider.clone(),
                 disclosure: Disclosure::Full,
                 base_url: base_url.clone(),
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             }),
             tonic::service::Routes::new(served(PdpApi {
                 authorization: permissive(),
                 decider,
                 disclosure: Disclosure::Full,
                 base_url,
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             })),
         );
         let over_http = pdp(&served.http);
@@ -2166,6 +2375,167 @@ mod parity {
         assert!(refusals >= 3, "the refusals are exercised ({refusals})");
     }
 
+    /// WP-7.5b, IFACE-06: the adversarial payloads get the same answer or the same refusal over
+    /// REST and gRPC through the production client — numeric edges at and past ±2^53 (an integer
+    /// and a double), a whole number written as a decimal, an unknown member, a retired member
+    /// (the downgrade to a request shape this interface no longer reads), and a duplicated
+    /// member, which a JSON object can spell and a client value cannot (REST refuses it below).
+    #[test]
+    fn test_adversarial_payloads_get_the_same_answer_or_refusal_over_rest_and_grpc() {
+        let root = scratch("parity-adversarial").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+        );
+        let decider = decider(&root);
+        let base_url = "http://127.0.0.1:7443".to_owned();
+        let served = serve(
+            http::routes(http::Surface {
+                authorization: permissive(),
+                decider: decider.clone(),
+                disclosure: Disclosure::Full,
+                base_url: base_url.clone(),
+                describer: permguard_core::stages::Describer::detached("data-plane"),
+            }),
+            tonic::service::Routes::new(served(PdpApi {
+                authorization: permissive(),
+                decider,
+                disclosure: Disclosure::Full,
+                base_url,
+                describer: permguard_core::stages::Describer::detached("data-plane"),
+            })),
+        );
+        let over_http = pdp(&served.http);
+        let over_grpc = pdp(&served.grpc);
+        let with_context = |context: Value| {
+            let mut payload = ask("alice", "read");
+            payload["context"] = context;
+            payload
+        };
+        let exact = i64::try_from(permguard_languages::request::EXACT_INTEGER).expect("2^53");
+        let mut unknown = ask("alice", "read");
+        unknown["colour"] = json!("red");
+        let mut retired = ask("alice", "read");
+        retired["entities"] = json!([]);
+
+        let unrepresentable = Outcome::Refused {
+            class: "validation".to_owned(),
+            code: permguard_core::codes::notp::VALUE_UNREPRESENTABLE.to_owned(),
+        };
+        let cases = [
+            (
+                "an integer at 2^53",
+                with_context(json!({"n": exact})),
+                None,
+            ),
+            (
+                "an integer at -2^53",
+                with_context(json!({"n": -exact})),
+                None,
+            ),
+            (
+                "an integer past 2^53",
+                with_context(json!({"n": exact + 1})),
+                Some(unrepresentable.clone()),
+            ),
+            (
+                "an integer past -2^53, nested",
+                with_context(json!({"deep": [{"n": -exact - 1}]})),
+                Some(unrepresentable.clone()),
+            ),
+            (
+                "a double past 2^53",
+                with_context(json!({"n": 1e300})),
+                Some(unrepresentable),
+            ),
+            (
+                "a whole number written as a decimal",
+                with_context(json!({"n": 42.0})),
+                None,
+            ),
+            (
+                "an unknown member",
+                unknown,
+                Some(Outcome::Refused {
+                    class: "validation".to_owned(),
+                    code: permguard_core::codes::notp::PAYLOAD_MALFORMED.to_owned(),
+                }),
+            ),
+            (
+                "a retired member",
+                retired,
+                Some(Outcome::Refused {
+                    class: "validation".to_owned(),
+                    code: permguard_core::codes::pdp_native::FIELD_REMOVED.to_owned(),
+                }),
+            ),
+        ];
+        for (case, payload, expected) in cases {
+            let http = outcome(over_http.evaluate(&payload)).masked(&["id"]);
+            let grpc = outcome(over_grpc.evaluate(&payload)).masked(&["id"]);
+            match expected {
+                Some(refused) => assert_eq!(http, refused, "`{case}` over REST"),
+                None => assert!(
+                    matches!(&http, Outcome::Answered(answer) if answer["decision"] == json!(true)),
+                    "`{case}` is answered: {http:?}"
+                ),
+            }
+            assert_parity(case, http, grpc);
+        }
+
+        // A duplicated member has no single meaning: REST refuses it at every depth before any
+        // policy runs. A gRPC `Struct` is a map whose decoder keeps the last entry, the parity the
+        // published `grpc.transport_parity_partial` names.
+        let raw = reqwest_free_post(
+            &served.http,
+            r#"{"zone": "acme", "ledger": "main-ledger",
+                "subject": {"type": "user", "id": "alice"},
+                "resource": {"type": "document", "id": "budget"},
+                "action": {"name": "read"},
+                "context": {"n": 1, "n": 2}}"#,
+        );
+        assert_eq!(raw.0, 400, "{}", raw.1);
+        let refused: Value = serde_json::from_str(&raw.1).expect("a refusal body");
+        assert_eq!(
+            refused["code"],
+            json!(permguard_core::codes::notp::PAYLOAD_MALFORMED)
+        );
+    }
+
+    /// One raw POST to the evaluation path over a plain socket: the client cannot send a JSON
+    /// object with a duplicated member, so the bytes are written here.
+    fn reqwest_free_post(base: &str, body: &str) -> (u16, String) {
+        use std::io::{Read as _, Write as _};
+
+        let address = base.trim_start_matches("http://");
+        let mut stream = std::net::TcpStream::connect(address).expect("the plane listens");
+        write!(
+            stream,
+            "POST {} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n\
+             Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            permguard_languages::request::EVALUATION_PATH,
+            body.len()
+        )
+        .expect("the request is written");
+        let mut response = String::new();
+        stream
+            .read_to_string(&mut response)
+            .expect("the response is read");
+        let status = response
+            .split_whitespace()
+            .nth(1)
+            .and_then(|status| status.parse().ok())
+            .expect("a status line");
+        let body = response
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body.to_owned())
+            .unwrap_or_default();
+        (status, body)
+    }
+
     /// Below the client: each transport's raw status is the one its `{class, code}` maps to.
     #[tokio::test]
     async fn test_every_refusal_answers_the_status_its_class_maps_to_on_both_transports() {
@@ -2199,6 +2569,7 @@ mod parity {
             decider: decider(&root),
             disclosure: Disclosure::Full,
             base_url: "http://127.0.0.1:7443".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
         };
         for (case, request) in [
             (
@@ -2298,6 +2669,8 @@ mod adversarial_ids {
         permguard_data_plane::authz::store::record(
             &mirror.path,
             &Identity {
+                task: Some(MIRROR_TASK.to_owned()),
+                authority: Some(MIRROR_AUTHORITY.to_owned()),
                 zone_id: uuid_of("acme"),
                 zone_name: ZONE.to_owned(),
                 ledger_id: uuid_of("main"),
@@ -2573,12 +2946,14 @@ mod indeterminate {
                 decider: decider.clone(),
                 disclosure: Disclosure::Full,
                 base_url: base_url.clone(),
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             }),
             tonic::service::Routes::new(served(PdpApi {
                 authorization: permissive(),
                 decider,
                 disclosure: Disclosure::Full,
                 base_url,
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             })),
         );
         let pdp = |url: &str| {
@@ -2636,12 +3011,14 @@ mod indeterminate {
                 decider: decider.clone(),
                 disclosure: Disclosure::Full,
                 base_url: base_url.clone(),
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             }),
             tonic::service::Routes::new(served(PdpApi {
                 authorization: permissive(),
                 decider,
                 disclosure: Disclosure::Full,
                 base_url,
+                describer: permguard_core::stages::Describer::detached("data-plane"),
             })),
         );
         let pdp = |url: &str| {
@@ -2960,4 +3337,2274 @@ mod indeterminate {
             json!([permguard_core::codes::pdp_native::EVALUATION_FAILED])
         );
     }
+}
+
+/// The decision log on the Host's stream producer (WP-6.1): a volume with its identity, its
+/// `host.operations` and `data.attest` rings and the engine's decision producer.
+mod host_log {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use permguard_core::Metrics;
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_core::authz::{Resource, Selector};
+    use permguard_data_plane::decisions::host::Bounds;
+    use permguard_data_plane::decisions::journal::Epoch;
+    use permguard_data_plane::decisions::{Decided, HostLog, Written};
+    use permguard_decisions::record::{GENESIS, digest_of};
+    use permguard_decisions::stream::{Codec, STREAM};
+    use permguard_host::composition::{Declaration, Host, Subscribed};
+    use permguard_host::identity::{Identity, Suite, directories};
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::{DATA_ATTEST, HOST_OPERATIONS, Policy, Ring};
+    use permguard_host::membership::record::TaskType;
+    use permguard_host::storage::volume::Volume;
+    use permguard_host::time::TimeGuard;
+    use permguard_stream::engine::{Producer, Served, Streams};
+    use serde_json::{Value, json};
+
+    pub(super) struct HostStream {
+        volume: Volume,
+        identity: Arc<Identity>,
+        operations: Arc<Ring>,
+        attest: Arc<Ring>,
+        time: Arc<TimeGuard>,
+    }
+
+    impl HostStream {
+        pub(super) fn new(tag: &str) -> Self {
+            let root = super::scratch(tag);
+            std::fs::create_dir_all(&root).expect("a volume directory");
+            let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+            let time = Arc::new(TimeGuard::system(Duration::from_secs(30)));
+            let identity = Arc::new(
+                Identity::provision(
+                    &volume,
+                    Arc::new(FileKeyProvider::new(
+                        directories(&volume).expect("the identity directory").1,
+                    )),
+                    Suite::Ed25519Sha256V1,
+                    permguard_host::authz::store::now(),
+                    permguard_host::authz::store::now() * 1000,
+                )
+                .expect("provisioned"),
+            );
+            let ring = |id: &'static str| {
+                let ring = Arc::new(
+                    Ring::open(
+                        &volume,
+                        id,
+                        Suite::Ed25519Sha256V1,
+                        Policy {
+                            publish_ahead: Duration::from_secs(600),
+                            rotate_every: Duration::from_secs(3600),
+                            retain: Duration::from_secs(7200),
+                        },
+                        Arc::clone(&time),
+                    )
+                    .expect("the ring opens")
+                    .with_binder(identity.clone()),
+                );
+                permguard_core::KeyManager::maintain(ring.as_ref()).expect("the first key");
+                ring
+            };
+            let operations = ring(HOST_OPERATIONS);
+            let attest = ring(DATA_ATTEST);
+            Self {
+                volume,
+                identity,
+                operations,
+                attest,
+                time,
+            }
+        }
+
+        /// The engine's decision producer on this volume, sealing under `data.attest`.
+        pub(super) fn producer(&self) -> Arc<Producer<Codec>> {
+            Arc::new(
+                Streams::open(
+                    &self.volume,
+                    &self.identity,
+                    Arc::clone(&self.operations),
+                    Arc::clone(&self.time),
+                )
+                .expect("the engine opens")
+                .register_producer(permguard_decisions::stream::descriptor(), Codec)
+                .expect("registered")
+                .with_signer(Arc::clone(&self.attest))
+                .expect("the descriptor's ring"),
+            )
+        }
+
+        /// The log a data plane composed on this Host records with, appending to `producer`.
+        pub(super) fn log(&self, producer: &Arc<Producer<Codec>>, bounds: Bounds) -> HostLog {
+            let registration = Host::builder()
+                .streams(Arc::new(
+                    Served::default().with(STREAM, Arc::clone(producer)),
+                ))
+                .host_id(self.identity.host_id())
+                .build()
+                .register(Declaration::new("data").produces_stream(STREAM))
+                .expect("registers");
+            HostLog::new(
+                registration
+                    .stream_producer(STREAM)
+                    .expect("declared")
+                    .expect("composed"),
+                self.identity.host_id(),
+                Epoch {
+                    version: "0.1.0".to_owned(),
+                    build: None,
+                    engines: std::collections::BTreeMap::new(),
+                    sampling: "1.0".to_owned(),
+                },
+                permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+                bounds,
+                Metrics::none(),
+            )
+        }
+
+        /// The volume's root, for a fault scoped to it.
+        pub(super) fn root(&self) -> &std::path::Path {
+            self.volume.root()
+        }
+
+        /// The `data.attest` ring, which signs responses as it signs batches (WP-6.6b).
+        pub(super) fn attest(&self) -> Arc<Ring> {
+            Arc::clone(&self.attest)
+        }
+
+        pub(super) fn host_hex(&self) -> String {
+            hex(&self.identity.host_id())
+        }
+    }
+
+    pub(super) const LOOSE: Bounds = Bounds {
+        max_bytes: 1 << 30,
+        max_age_secs: 3600,
+    };
+
+    pub(super) fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+
+    pub(super) fn ledger(zone_id: &str, ledger_id: &str) -> Resource {
+        Resource::ledger("data", zone_id, ledger_id)
+    }
+
+    /// Every record of `resource`'s stream, in order, from sequence 1 of the current run.
+    pub(super) fn records(producer: &Producer<Codec>, resource: &Resource) -> Vec<(u64, Value)> {
+        producer
+            .read(resource, 1, 1000)
+            .expect("the stream reads")
+            .records
+    }
+
+    /// A subscription of a coordinator's `decisions.ship` task covering `selector`.
+    pub(super) fn shipping(selector: &Selector) -> Subscribed<'_> {
+        Subscribed {
+            membership_id: [7; 16],
+            task_type: TaskType::DecisionsShip,
+            task_id: "decisions",
+            required: true,
+            epoch: 1,
+            selector,
+            coordinator_boot_id: None,
+        }
+    }
+
+    fn decided(id: &str, permit: bool) -> Decided<'_> {
+        Decided {
+            id,
+            at: "2026-10-18T10:00:00Z".to_owned(),
+            zone: "acme",
+            ledger: "main-ledger",
+            zone_id: "zone-1",
+            ledger_id: "ledger-1",
+            scope: None,
+            commit: "sha256:ec1773bf",
+            counter: 3,
+            profile: "default",
+            subject: ("User".to_owned(), "v1:9f2c".to_owned()),
+            subject_properties: None,
+            resource: ("Document".to_owned(), "budget".to_owned()),
+            resource_properties: None,
+            included_context: None,
+            action: "read".to_owned(),
+            principal: None,
+            context: Some(json!({"ip": "10.0.0.1"})),
+            partition_inputs: None,
+            absent_inputs: Vec::new(),
+            permit,
+            outcome: if permit {
+                permguard_decisions::record::Outcome::Permit
+            } else {
+                permguard_decisions::record::Outcome::Deny
+            },
+            causes: Vec::new(),
+            policies: vec!["read".to_owned()],
+            reason: if permit { "permit" } else { "deny" }.to_owned(),
+            trace: None,
+            request_id: None,
+            latency_us: 12,
+            event: None,
+            interface: None,
+            actor: None,
+            question: None,
+            descriptors: Default::default(),
+        }
+    }
+
+    /// WP-6.1, F-06 and F-09: a record names the Host and its run, at the engine's sequence and
+    /// chained by the engine's digests; the first one this process writes to a run is preceded by
+    /// its marker, and the chain verifies as a version 1 stream.
+    #[test]
+    fn a_decision_names_the_host_and_its_run() {
+        let host = HostStream::new("host-log-names");
+        let producer = host.producer();
+        let log = host.log(&producer, LOOSE);
+        assert_eq!(
+            log.record(&decided("d-1", false)).expect("recorded"),
+            Written::Recorded { seq: 2 },
+            "after the marker governing it"
+        );
+        assert_eq!(
+            log.record(&decided("d-2", true)).expect("recorded"),
+            Written::Recorded { seq: 3 },
+            "one marker per run"
+        );
+        let resource = ledger("zone-1", "ledger-1");
+        let run = producer
+            .state(&resource)
+            .expect("state")
+            .expect("a run")
+            .run_id;
+        let records = records(&producer, &resource);
+        let values: Vec<Value> = records.iter().map(|(_, value)| value.clone()).collect();
+        assert_eq!(
+            records.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        for (seq, record) in &records {
+            assert_eq!(record["seq"], json!(seq), "the engine's sequence");
+            assert_eq!(
+                record["stream"]["id"],
+                json!(host.host_hex()),
+                "the host_id"
+            );
+            assert_eq!(record["stream"]["instance"], json!(hex(&run)), "the run");
+        }
+        assert_eq!(values[0]["kind"], json!("marker"));
+        assert_eq!(values[0]["commitments"]["key_version"], json!("v1"));
+        assert_eq!(values[0]["prev"], json!(GENESIS));
+        assert_eq!(values[1]["kind"], json!("decision"));
+        assert_eq!(values[1]["id"], json!("d-1"));
+        assert_eq!(
+            values[1]["store"]["zone"],
+            json!("acme"),
+            "the public names"
+        );
+        assert_eq!(
+            values[1]["prev"],
+            json!(digest_of(&values[0]).expect("a digest"))
+        );
+        assert_eq!(
+            values[2]["prev"],
+            json!(digest_of(&values[1]).expect("a digest"))
+        );
+        assert!(
+            values[1]["inputs"]["context"]
+                .as_str()
+                .is_some_and(|tag| !tag.contains("10.0.0.1")),
+            "the input is tagged, never kept"
+        );
+        let verified = permguard_decisions::chain::verify(&values, None).expect("the chain holds");
+        assert_eq!(verified.last_seq, 3);
+        assert!(
+            values.iter().all(|value| value.get("pdp_id").is_none()),
+            "no producer id"
+        );
+    }
+
+    /// WP-6.1: a run the engine rolls over to starts at sequence 1 with its own marker, and so
+    /// does the first decision a restarted process writes, in the run it resumes.
+    #[test]
+    fn a_marker_heads_every_run() {
+        let host = HostStream::new("host-log-runs");
+        let resource = ledger("zone-1", "ledger-1");
+        let producer = host.producer();
+        let log = host.log(&producer, LOOSE);
+        log.record(&decided("d-1", false)).expect("recorded");
+        let successor = producer.rollover(&resource, None).expect("rolled over");
+        assert_eq!(
+            log.record(&decided("d-2", false)).expect("recorded"),
+            Written::Recorded { seq: 2 }
+        );
+        let records = records(&producer, &resource);
+        assert_eq!(records[0].1["kind"], json!("marker"));
+        assert_eq!(records[0].1["prev"], json!(GENESIS));
+        assert_eq!(
+            records[0].1["stream"]["instance"],
+            json!(hex(&successor.run_id))
+        );
+        assert_eq!(records[1].1["id"], json!("d-2"));
+        // A restart: the same Host resumes the same run, its first record a marker.
+        drop(log);
+        drop(producer);
+        let producer = host.producer();
+        let log = host.log(&producer, LOOSE);
+        assert_eq!(
+            log.record(&decided("d-3", false)).expect("recorded"),
+            Written::Recorded { seq: 4 }
+        );
+        let records = super::host_log::records(&producer, &resource);
+        assert_eq!(records.len(), 4);
+        assert_eq!(records[2].1["kind"], json!("marker"));
+        assert_eq!(
+            records[3].1["stream"]["instance"],
+            json!(hex(&successor.run_id))
+        );
+        assert_eq!(records[3].1["stream"]["id"], json!(host.host_hex()));
+        permguard_decisions::chain::verify(
+            &records
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect::<Vec<_>>(),
+            None,
+        )
+        .expect("one chain across the restart");
+    }
+
+    /// WP-6.1: a stream holding past its bounds what its required subscription has not
+    /// acknowledged refuses its decisions, writing nothing; with no subscription nothing is owed
+    /// and no bound is ever reached; a denial is never sampled out.
+    #[test]
+    fn the_bounds_measure_only_what_a_required_subscription_owes() {
+        let host = HostStream::new("host-log-pressure");
+        let resource = ledger("zone-1", "ledger-1");
+        let producer = host.producer();
+        let tight = Bounds {
+            max_bytes: 1,
+            max_age_secs: 3600,
+        };
+        let log = host.log(&producer, tight);
+        for n in 0..5 {
+            assert!(matches!(
+                log.record(&decided(&format!("free-{n}"), false))
+                    .expect("recorded"),
+                Written::Recorded { .. }
+            ));
+            log.measure();
+        }
+        // A coordinator's required subscription attaches: the run is fenced by it, and what it has
+        // not acknowledged counts.
+        let covering = Selector::under(Resource::plane("data"));
+        permguard_host::composition::StreamShipping::due(producer.as_ref(), &shipping(&covering))
+            .expect("due");
+        assert!(matches!(
+            log.record(&decided("owed", false)).expect("recorded"),
+            Written::Recorded { .. }
+        ));
+        log.measure();
+        let before = producer.state(&resource).expect("state").expect("a run");
+        assert_eq!(
+            log.record(&decided("refused", false)).expect("answered"),
+            Written::Refused(permguard_core::codes::stream::SPOOL_FULL.to_owned())
+        );
+        let after = producer.state(&resource).expect("state").expect("a run");
+        assert_eq!(after.next_seq, before.next_seq, "nothing written");
+    }
+
+    /// An engine whose stream cannot say its pressure, or cannot append: what a damaged volume
+    /// answers.
+    struct Failing {
+        pressure: bool,
+    }
+
+    impl permguard_host::composition::StreamAppender for Failing {
+        fn append(
+            &self,
+            _: &Resource,
+            _: &[u8],
+        ) -> Result<permguard_host::composition::StreamReceipt, String> {
+            Err("the stream stopped".to_owned())
+        }
+
+        fn append_with(
+            &self,
+            _: &Resource,
+            _: permguard_host::composition::BuildRecords<'_>,
+        ) -> Result<permguard_host::composition::StreamReceipt, String> {
+            Err("the stream stopped".to_owned())
+        }
+
+        fn pressure(&self, _: &Resource, _: u64, _: u64) -> Result<Option<&'static str>, String> {
+            if self.pressure {
+                Err("the journal does not read".to_owned())
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    impl permguard_host::composition::StreamEngine for Failing {
+        fn producer(
+            &self,
+            _: &str,
+        ) -> Option<Arc<dyn permguard_host::composition::StreamAppender>> {
+            Some(Arc::new(Failing {
+                pressure: self.pressure,
+            }))
+        }
+    }
+
+    fn failing_log(pressure: bool) -> HostLog {
+        let registration = Host::builder()
+            .streams(Arc::new(Failing { pressure }))
+            .build()
+            .register(Declaration::new("data").produces_stream(STREAM))
+            .expect("registers");
+        HostLog::new(
+            registration
+                .stream_producer(STREAM)
+                .expect("declared")
+                .expect("composed"),
+            [1; 16],
+            Epoch {
+                version: "0.1.0".to_owned(),
+                build: None,
+                engines: std::collections::BTreeMap::new(),
+                sampling: "1.0".to_owned(),
+            },
+            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+            LOOSE,
+            Metrics::none(),
+        )
+    }
+
+    /// WP-6.1: fail closed: a stream whose pressure cannot be measured refuses its decisions, and
+    /// an append the engine refuses is an error, never a decision recorded.
+    #[test]
+    fn a_stream_that_cannot_be_measured_or_written_records_nothing() {
+        assert_eq!(
+            failing_log(true)
+                .record(&decided("unmeasured", false))
+                .expect("answered"),
+            Written::Refused(permguard_core::codes::stream::STORE_UNAVAILABLE.to_owned())
+        );
+        assert!(
+            failing_log(false)
+                .record(&decided("unwritten", false))
+                .is_err()
+        );
+        // A permit sampled out writes nothing and says so; a denial is never sampled.
+        let host = HostStream::new("host-log-sampling");
+        let producer = host.producer();
+        let registration = Host::builder()
+            .streams(Arc::new(
+                Served::default().with(STREAM, Arc::clone(&producer)),
+            ))
+            .build()
+            .register(Declaration::new("data").produces_stream(STREAM))
+            .expect("registers");
+        let never = HostLog::new(
+            registration
+                .stream_producer(STREAM)
+                .expect("declared")
+                .expect("composed"),
+            [1; 16],
+            Epoch {
+                version: "0.1.0".to_owned(),
+                build: None,
+                engines: std::collections::BTreeMap::new(),
+                sampling: "0.0".to_owned(),
+            },
+            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+            LOOSE,
+            Metrics::none(),
+        );
+        assert_eq!(
+            never.record(&decided("p", true)).expect("answered"),
+            Written::SampledOut
+        );
+        assert_eq!(
+            never.record(&decided("d", false)).expect("answered"),
+            Written::Recorded { seq: 2 }
+        );
+    }
+
+    /// WP-6.1, after the review: a record past the stream's bound is refused before it takes a
+    /// sequence, and leaves the run unmarked: the next record still follows its marker.
+    #[test]
+    fn a_refused_record_leaves_the_run_unmarked() {
+        let host = HostStream::new("host-log-oversize");
+        let producer = host.producer();
+        let log = host.log(&producer, LOOSE);
+        let mut oversize = decided("oversize", false);
+        oversize.included_context = Some(serde_json::Map::from_iter([(
+            "blob".to_owned(),
+            json!("x".repeat(300 * 1024)),
+        )]));
+        assert!(log.record(&oversize).is_err(), "past the stream's bound");
+        assert_eq!(
+            log.record(&decided("next", false)).expect("recorded"),
+            Written::Recorded { seq: 2 }
+        );
+        let records = records(&producer, &ledger("zone-1", "ledger-1"));
+        assert_eq!(records[0].1["kind"], json!("marker"));
+        assert_eq!(records[1].1["id"], json!("next"));
+    }
+
+    /// WP-6.1, F-12: under concurrent decisions, every one recorded is answered with its durable
+    /// sequence, each sequence once, and each is on disk after the stream is reopened.
+    #[test]
+    fn every_recorded_decision_is_durable_at_its_sequence() {
+        let host = HostStream::new("host-log-durable");
+        let resource = ledger("zone-1", "ledger-1");
+        let producer = host.producer();
+        let log = Arc::new(host.log(&producer, LOOSE));
+        let threads: Vec<_> = (0..8)
+            .map(|thread| {
+                let log = Arc::clone(&log);
+                std::thread::spawn(move || {
+                    (0..25)
+                        .map(|n| {
+                            let id = format!("{thread}-{n}");
+                            match log.record(&decided(&id, false)).expect("recorded") {
+                                Written::Recorded { seq } => (seq, id),
+                                other => panic!("{other:?}"),
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        let mut answered: Vec<(u64, String)> = threads
+            .into_iter()
+            .flat_map(|thread| thread.join().expect("the thread"))
+            .collect();
+        answered.sort();
+        drop(log);
+        drop(producer);
+        let producer = host.producer();
+        let records = records(&producer, &resource);
+        assert_eq!(records.len(), 201, "the marker and 200 decisions");
+        for (seq, id) in &answered {
+            let (held, record) = &records[(*seq - 1) as usize];
+            assert_eq!(held, seq);
+            assert_eq!(record["id"], json!(id), "answered at the sequence it holds");
+        }
+    }
+}
+
+/// WP-6.1, F-12: saturating a `required` log refuses decisions `unavailable` with
+/// `decision_unrecordable`, and every decision answered has its durable record.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_saturated_required_log_refuses_with_unavailable_and_every_answer_is_recorded() {
+    let root = scratch("host-log-saturated").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let host = host_log::HostStream::new("host-log-saturated-volume");
+    let producer = host.producer();
+    // The coordinator's required subscription fences the stream once it holds a run.
+    let covering =
+        permguard_core::authz::Selector::under(permguard_core::authz::Resource::plane("data"));
+    let log = Arc::new(host.log(
+        &producer,
+        permguard_data_plane::decisions::host::Bounds {
+            max_bytes: 16 * 1024,
+            max_age_secs: 3600,
+        },
+    ));
+    let decider = Arc::new(
+        Decider::new(
+            root.clone(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_journal(
+            Some(Arc::clone(&log) as Arc<dyn permguard_data_plane::decisions::DecisionRecorder>),
+            subjects(),
+            permguard_core::decisions::IncludeSection::default(),
+        ),
+    );
+    let resource = host_log::ledger(&uuid_of("acme"), &uuid_of("main-ledger"));
+    producer.open_run(&resource, None).expect("a genesis run");
+    permguard_host::composition::StreamShipping::due(
+        producer.as_ref(),
+        &host_log::shipping(&covering),
+    )
+    .expect("due");
+    let mut answered = 0usize;
+    let mut refused = 0usize;
+    for _ in 0..40 {
+        let calls: Vec<_> = (0..8)
+            .map(|_| {
+                let decider = Arc::clone(&decider);
+                tokio::spawn(async move {
+                    decider
+                        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+                        .await
+                })
+            })
+            .collect();
+        for call in calls {
+            match call.await.expect("the call") {
+                Ok(_) => answered += 1,
+                Err(error) => {
+                    assert_eq!(error.code(), "decision_unrecordable", "{error}");
+                    assert_eq!(error.class(), permguard_core::ErrorClass::Unavailable);
+                    refused += 1;
+                }
+            }
+        }
+        let measured = Arc::clone(&log);
+        tokio::task::spawn_blocking(move || measured.measure())
+            .await
+            .expect("measured");
+    }
+    assert!(answered > 0, "answered before the bound");
+    assert!(refused > 0, "refused past it");
+    drop(decider);
+    drop(log);
+    drop(producer);
+    let producer = host.producer();
+    let recorded = host_log::records(&producer, &resource)
+        .iter()
+        .filter(|(_, record)| record["kind"] == json!("decision"))
+        .count();
+    assert_eq!(
+        recorded, answered,
+        "every answer has its record, and nothing more"
+    );
+}
+
+/// WP-7.5c, IFACE-04 and IFACE-05: a record binds the interface, the authenticated actor apart
+/// from the principal the caller asserted, a keyed commitment to the question and the descriptor
+/// of each partition. Another actor is another actor and the same question; another assertion is
+/// another question from the same actor; neither identifier is in the record in clear; and a
+/// request no transport authenticated records no actor rather than the assertion as one.
+#[tokio::test]
+async fn a_record_binds_its_interface_its_actor_apart_from_the_asserted_principal_and_its_question()
+{
+    use permguard_data_plane::authz::decide::Asker;
+
+    let root = scratch("evidence-binding").join("mirrors");
+    let mut manifest = manifest(
+        &[("app", "cedar", false), ("gateway", "rego", false)],
+        ">=0.0.0",
+    );
+    // A profile built from one of the two partitions: its records name that one runtime only.
+    manifest.profiles.insert(
+        "narrow".to_owned(),
+        Profile {
+            r#type: permguard_objects::manifest::PROFILE_PDP_NATIVE_V1.to_owned(),
+            partitions: vec!["app".to_owned()],
+        },
+    );
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[
+            ("app", vec![&CEDAR_READ], None),
+            ("gateway", vec![&REGO_READ], None),
+        ],
+    );
+    let host = host_log::HostStream::new("evidence-binding-volume");
+    let producer = host.producer();
+    let log = Arc::new(host.log(&producer, host_log::LOOSE));
+    let decider = Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::none(),
+        None,
+        256,
+    )
+    .with_journal(
+        Some(Arc::clone(&log) as Arc<dyn permguard_data_plane::decisions::DecisionRecorder>),
+        subjects(),
+        permguard_core::decisions::IncludeSection::default(),
+    );
+    let about = |subject: &str, principal: &str| -> wire::CheckRequest {
+        serde_json::from_value(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": subject},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "principal": {"type": "user", "id": principal},
+        }))
+        .expect("a request")
+    };
+    let asserting = |principal: &str| about("alice", principal);
+    let acting = |actor: &str| Asker {
+        actor: Some(actor.to_owned()),
+        ..Asker::default()
+    };
+    for (request, asker) in [
+        (asserting("mallory"), acting("spiffe://acme/pep")),
+        (asserting("mallory"), acting("spiffe://acme/other-pep")),
+        (asserting("trent"), acting("spiffe://acme/pep")),
+        (asserting("mallory"), Asker::default()),
+        (about("carol", "mallory"), acting("spiffe://acme/pep")),
+        (
+            {
+                let mut narrow = asserting("mallory");
+                narrow.profile = Some("narrow".to_owned());
+                narrow
+            },
+            acting("spiffe://acme/pep"),
+        ),
+    ] {
+        decider
+            .decide_signed(&request, None, None, asker)
+            .await
+            .expect("decided");
+    }
+
+    let resource = host_log::ledger(&uuid_of("acme"), &uuid_of("main-ledger"));
+    let records: Vec<Value> = host_log::records(&producer, &resource)
+        .into_iter()
+        .map(|(_, record)| record)
+        .filter(|record| record["kind"] == json!("decision"))
+        .collect();
+    let [
+        pep,
+        other_pep,
+        other_assertion,
+        unauthenticated,
+        other_subject,
+        narrow,
+    ] = records.as_slice()
+    else {
+        panic!("six decisions, six records: {records:?}");
+    };
+    let digest = |language: &str| {
+        permguard_languages::descriptor::descriptor_digest(language).expect("carried")
+    };
+
+    for record in &records {
+        assert_eq!(
+            record["interface"],
+            json!(permguard_core::domains::interface::PDP_NATIVE_V1),
+            "{record}"
+        );
+        let profile = if record == narrow {
+            json!({"app": digest("cedar")})
+        } else {
+            json!({"app": digest("cedar"), "gateway": digest("rego")})
+        };
+        assert_eq!(
+            record["descriptors"], profile,
+            "each partition of the profile, and only those: {record}"
+        );
+        assert!(
+            record["question"]
+                .as_str()
+                .is_some_and(|question| question.starts_with("hmac-sha256:")
+                    && !question.ends_with(":unavailable")),
+            "a keyed commitment: {record}"
+        );
+        let rendered = record.to_string();
+        for clear in ["mallory", "trent", "carol", "spiffe://acme"] {
+            assert!(!rendered.contains(clear), "`{clear}` in clear: {record}");
+        }
+    }
+    assert_eq!(pep["actor"]["type"], json!("Actor"), "{pep}");
+    assert!(pep["actor"]["id"].is_string(), "{pep}");
+    assert_ne!(
+        pep["actor"]["id"], pep["principal"]["id"],
+        "the actor is never the assertion"
+    );
+    assert_ne!(pep["actor"], other_pep["actor"], "another actor");
+    assert_eq!(
+        pep["question"], other_pep["question"],
+        "the same question, whoever asked it"
+    );
+    assert_eq!(pep["actor"], other_assertion["actor"], "the same actor");
+    assert_ne!(
+        pep["question"], other_assertion["question"],
+        "another assertion is another question"
+    );
+    assert_ne!(pep["principal"], other_assertion["principal"]);
+    assert!(
+        unauthenticated.get("actor").is_none(),
+        "no transport authenticated it, and the assertion is not made the actor: {unauthenticated}"
+    );
+    assert_eq!(unauthenticated["principal"], pep["principal"]);
+    assert_eq!(
+        unauthenticated["question"], pep["question"],
+        "the question is what was asked, not who asked it"
+    );
+    assert_ne!(
+        other_subject["question"], pep["question"],
+        "another subject is another question"
+    );
+    assert_ne!(
+        narrow["question"], pep["question"],
+        "the same evaluation of another profile is another question"
+    );
+}
+
+/// WP-7.5c, IFACE-04: the transport hands on the principal it authorized the request as on every
+/// request, a signature asked for or not, the reserved anonymous one included, and nothing for a
+/// credential no rule maps; the body's `principal` never becomes it.
+#[test]
+fn the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_assertion() {
+    use permguard_core::authz::{Actor, ActorContext, Credential, Principal};
+    use permguard_data_plane::authz::signing::asker;
+
+    let mut asked = json!({
+        "zone": "acme", "ledger": "main-ledger",
+        "subject": {"type": "user", "id": "alice"},
+        "resource": {"type": "document", "id": "budget"},
+        "action": {"name": "read"},
+        "principal": {"type": "user", "id": "mallory"},
+    });
+    let plain: wire::CheckRequest = serde_json::from_value(asked.clone()).expect("a request");
+    asked["request_nonce"] = json!("AAECAwQFBgcICQoLDA0ODw");
+    let nonced: wire::CheckRequest = serde_json::from_value(asked).expect("a request");
+    let authenticated = Actor::Authenticated(ActorContext::new(
+        Principal::new("spiffe://acme/pep").expect("a principal"),
+        Credential::SanUri,
+        Some("the PEP".to_owned()),
+    ));
+
+    for request in [&plain, &nonced] {
+        let handed = asker(&authenticated, request, None).expect("handed on");
+        assert_eq!(handed.actor.as_deref(), Some("spiffe://acme/pep"));
+        let handed = asker(&Actor::Anonymous, request, None).expect("handed on");
+        assert_eq!(
+            handed.actor.as_deref(),
+            Some(Principal::anonymous().as_str())
+        );
+        let handed = asker(
+            &Actor::Unmapped {
+                reason: "an unknown certificate".to_owned(),
+            },
+            request,
+            None,
+        )
+        .expect("handed on");
+        assert_eq!(handed.actor, None, "no rule maps it: no actor");
+    }
+}
+
+/// WP-7.5d, IFACE-02: every interface goes through one pipeline. A native question is answered
+/// by the native handler; a credential no rule maps is denied before any mirror is read; and a
+/// question of an interface the surface does not serve is refused, never answered by another
+/// interface's handler.
+#[tokio::test]
+async fn one_pipeline_authorizes_then_answers_each_question_by_its_own_interface() {
+    use permguard_data_plane::evaluation::{
+        Answer, EvaluationRequest, Refused, Services, evaluate,
+    };
+
+    let root = scratch("one-pipeline").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let decider = decider(&root);
+    let authorization = permissive();
+    let services = Services {
+        authorization: &authorization,
+        decider: &decider,
+        submitter: None,
+    };
+
+    let answered = evaluate(
+        &services,
+        &permguard_core::authz::Actor::Anonymous,
+        EvaluationRequest::native(
+            ask("acme", "main-ledger", "alice", "read"),
+            Some("r-transport".to_owned()),
+            None,
+        ),
+    )
+    .await
+    .expect("answered");
+    let Answer::Native(answered) = answered else {
+        panic!("a native question is answered natively");
+    };
+    assert!(answered.decision, "the policy permits alice to read");
+    assert_eq!(
+        answered.request_id.as_deref(),
+        Some("r-transport"),
+        "the transport's id fills a body that carries none"
+    );
+
+    let denied = evaluate(
+        &services,
+        &permguard_core::authz::Actor::Unmapped {
+            reason: "an unknown certificate".to_owned(),
+        },
+        EvaluationRequest::native(ask("acme", "main-ledger", "alice", "read"), None, None),
+    )
+    .await
+    .expect_err("an unmapped credential is denied");
+    assert!(
+        matches!(denied, Refused::Denied(_)),
+        "denied by the gate, not failed by a handler: {denied:?}"
+    );
+
+    let refused = evaluate(
+        &services,
+        &permguard_core::authz::Actor::Anonymous,
+        EvaluationRequest::temporal(
+            serde_json::from_value(json!({
+                "store": {"zone": "acme", "ledger": "main-ledger"},
+            }))
+            .expect("a submission"),
+        ),
+    )
+    .await
+    .expect_err("this surface serves no temporal handler");
+    let Refused::Failed(refused) = refused else {
+        panic!("refused by the pipeline, not denied: {refused:?}");
+    };
+    assert_eq!(refused.code(), permguard_core::codes::common::UNAVAILABLE);
+    assert_eq!(refused.class(), permguard_core::ErrorClass::Unavailable);
+}
+
+/// WP-7.2a: a ledger two mirrors answer to — two coordinators' — is refused
+/// `unavailable`, naming the contest, never answered from whichever directory lists first and
+/// never mistaken for one this plane does not mirror.
+#[tokio::test]
+async fn a_ledger_two_mirrors_answer_to_is_refused_as_contested() {
+    fn copy(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).expect("the copy's directory");
+        for entry in std::fs::read_dir(from).expect("the source lists").flatten() {
+            let target = to.join(entry.file_name());
+            if entry.path().is_dir() {
+                copy(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), &target).expect("a file copies");
+            }
+        }
+    }
+
+    let root = scratch("contested-ledger").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let first = decider(&root);
+    first
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("one mirror answers");
+
+    // The same ledger under a second authority: two mirrors answer to one name.
+    let authority = "22222222222222222222222222222222";
+    copy(
+        &root
+            .join(MIRROR_AUTHORITY)
+            .join(uuid_of("acme"))
+            .join(uuid_of("main-ledger")),
+        &root
+            .join(authority)
+            .join(uuid_of("acme"))
+            .join(uuid_of("main-ledger")),
+    );
+    let refused = decider(&root)
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect_err("two mirrors answer");
+    assert_eq!(refused.class(), permguard_core::ErrorClass::Unavailable);
+    assert_eq!(refused.code(), permguard_core::codes::common::UNAVAILABLE);
+    assert!(
+        refused.to_string().contains("more than one mirror"),
+        "{refused}"
+    );
+}
+
+/// F-14 (WP-7.2d): every request checks the staleness bound; an answer from a mirror past it is
+/// still given, and counted, a fresh one is not.
+#[tokio::test]
+async fn every_request_from_a_stale_mirror_is_answered_and_counted() {
+    let root = scratch("stale-served").join("mirrors");
+    let mirror = provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    permguard_data_plane::authz::store::touch_synced(&mirror.path);
+    let registry = Arc::new(permguard_std::metrics::Registry::new());
+    let decider = Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::new(Arc::clone(&registry) as Arc<dyn Recorder>),
+        None,
+        256,
+    )
+    .with_staleness(Some(std::time::Duration::from_secs(3600)));
+    let counted = || -> f64 {
+        registry
+            .snapshot()
+            .into_iter()
+            .filter(|sample| sample.metric.name() == "permguard_authz_stale_served_total")
+            .map(|sample| match sample.reading {
+                permguard_core::metrics::Reading::Value(value) => value,
+                permguard_core::metrics::Reading::Distribution { sum, .. } => sum,
+            })
+            .sum()
+    };
+    let alice = ask("acme", "main-ledger", "alice", "read");
+
+    assert!(
+        decider
+            .decide(&alice, None)
+            .await
+            .expect("decided")
+            .decision
+    );
+    assert_eq!(counted(), 0.0, "fresh");
+    std::fs::File::options()
+        .write(true)
+        .open(
+            mirror
+                .path
+                .join(permguard_data_plane::authz::store::SYNCED_FILE),
+        )
+        .expect("the marker")
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3601))
+        .expect("aged");
+    for times in [1.0, 2.0] {
+        assert!(
+            decider
+                .decide(&alice, None)
+                .await
+                .expect("still decided")
+                .decision,
+            "stale is answered"
+        );
+        assert_eq!(counted(), times, "every request is counted");
+    }
+}
+
+/// F-17 (WP-7.2d): two coordinators serve a ledger under one name; both are mirrored, each under
+/// its authority, and the name is refused until an alias says which authority it means — then
+/// only that authority's policy decides, never the other's and never by order; an alias to an
+/// authority that holds nothing under the names serves nothing.
+#[tokio::test]
+async fn two_coordinators_with_one_name_are_refused_until_an_alias_names_one() {
+    use permguard_data_plane::authz::store::{self, Alias};
+
+    let staging = scratch("one-name-staging");
+    let root = scratch("one-name").join("mirrors");
+    let (permits, denies) = (
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    );
+    for (authority, policies) in [(permits, vec![&CEDAR_READ]), (denies, vec![&CEDAR_NOT_BOB])] {
+        let held = provision(
+            &staging.join(authority),
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", policies, None)],
+        );
+        let target = root
+            .join(authority)
+            .join(uuid_of("acme"))
+            .join(uuid_of("main-ledger"));
+        std::fs::create_dir_all(target.parent().expect("a zone")).expect("the zone");
+        std::fs::rename(&held.path, &target).expect("moved under its authority");
+        store::record(
+            &target,
+            &Identity {
+                authority: Some(authority.to_owned()),
+                task: Some(format!("membership/{authority}")),
+                server: format!("host:{authority}"),
+                ..held.identity
+            },
+        )
+        .expect("the identity");
+    }
+    let alice = ask("acme", "main-ledger", "alice", "read");
+
+    store::assign_aliases(&root, Vec::new());
+    let refused = decider(&root)
+        .decide(&alice, None)
+        .await
+        .expect_err("two authorities answer to one name");
+    assert_eq!(refused.code(), permguard_core::codes::common::UNAVAILABLE);
+    assert!(store::find(&root, "acme", "main-ledger").is_none());
+    assert_eq!(store::contested(&root, "acme", "main-ledger").len(), 2);
+    assert_eq!(
+        store::contests(&root).len(),
+        1,
+        "the round sees the contest"
+    );
+
+    let alias = |authority: &str| Alias {
+        zone: "acme".to_owned(),
+        ledger: "main-ledger".to_owned(),
+        authority: authority.to_owned(),
+    };
+    store::assign_aliases(&root, vec![alias(permits)]);
+    assert!(
+        decider(&root)
+            .decide(&alice, None)
+            .await
+            .expect("decided")
+            .decision,
+        "the permitting authority's policy decides"
+    );
+    assert!(
+        store::contests(&root).is_empty(),
+        "the alias settles the pair"
+    );
+    assert_eq!(
+        store::find(&root, "acme", "main-ledger")
+            .expect("one")
+            .identity
+            .authority
+            .as_deref(),
+        Some(permits)
+    );
+
+    store::assign_aliases(&root, vec![alias(denies)]);
+    assert!(
+        !decider(&root)
+            .decide(&alice, None)
+            .await
+            .expect("decided")
+            .decision,
+        "the other authority's policy decides, never the first by order"
+    );
+
+    store::assign_aliases(&root, vec![alias("cccccccccccccccccccccccccccccccc")]);
+    let refused = decider(&root)
+        .decide(&alice, None)
+        .await
+        .expect_err("the named authority holds nothing under the names");
+    assert_eq!(
+        refused.code(),
+        permguard_core::codes::pdp_native::LEDGER_NOT_SERVED
+    );
+    // The pair the alias does not assign is still contested.
+    store::assign_aliases(
+        &root,
+        vec![Alias {
+            ledger: "other-ledger".to_owned(),
+            ..alias(permits)
+        }],
+    );
+    assert_eq!(store::contested(&root, "acme", "main-ledger").len(), 2);
+    // Nor does one of another zone, for the same ledger name.
+    store::assign_aliases(
+        &root,
+        vec![Alias {
+            zone: "other-zone".to_owned(),
+            ..alias(permits)
+        }],
+    );
+    assert_eq!(store::contested(&root, "acme", "main-ledger").len(), 2);
+}
+
+/// WP-6.6a: every decision says what became of its record — `disabled` with no log, `durable`
+/// with the record's id and its Host position with one, on each boxcarred evaluation and never on
+/// the batch's own context — and a request for a signed response is refused before anything is
+/// decided or recorded while nothing signs one, a nonce the contract does not define refused as
+/// what it is.
+#[tokio::test]
+async fn every_decision_names_its_evidence_and_a_nonce_is_refused_until_something_signs() {
+    use permguard_languages::attestation::{Evidence, EvidenceMode, EvidenceStatus};
+
+    let root = scratch("evidence-object").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+
+    // No log: nothing promised, and the answer says so.
+    let unlogged = decider(&root)
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("decided");
+    let evidence = unlogged
+        .context
+        .as_ref()
+        .and_then(|context| context.evidence.clone())
+        .expect("the evidence");
+    assert_eq!(evidence, Evidence::disabled());
+    evidence
+        .check(unlogged.decision)
+        .expect("as the contract allows");
+
+    // On the Host's log: the record's id, and where it sits.
+    let host = host_log::HostStream::new("evidence-object-volume");
+    let producer = host.producer();
+    let log = Arc::new(host.log(&producer, host_log::LOOSE));
+    let logged = Arc::new(
+        Decider::new(
+            root.clone(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_journal(
+            Some(Arc::clone(&log) as Arc<dyn permguard_data_plane::decisions::DecisionRecorder>),
+            subjects(),
+            permguard_core::decisions::IncludeSection::default(),
+        ),
+    );
+    let answered = logged
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("decided");
+    let context = answered.context.expect("a context");
+    let evidence = context.evidence.expect("the evidence");
+    assert_eq!(
+        (evidence.mode, evidence.status),
+        (EvidenceMode::Required, EvidenceStatus::Durable)
+    );
+    assert_eq!(
+        evidence.record_id, context.id,
+        "one id, never a second authority"
+    );
+    evidence
+        .check(answered.decision)
+        .expect("as the contract allows");
+    let position = evidence.position.expect("a durable position");
+    let host_hex = host.host_hex();
+    assert_eq!(position.host_id.replace('-', ""), host_hex);
+    let resource = host_log::ledger(&uuid_of("acme"), &uuid_of("main-ledger"));
+    let records = host_log::records(&producer, &resource);
+    let (sequence, record) = records.last().expect("the record");
+    assert_eq!(position.sequence, sequence.to_string());
+    assert_eq!(
+        record["id"],
+        json!(context.id),
+        "the position holds that record"
+    );
+    assert_eq!(record["stream"]["instance"], json!(position.run));
+
+    // A batch: each evaluation its own record, the batch none.
+    let batch: wire::CheckRequest = serde_json::from_value(json!({
+        "zone": "acme", "ledger": "main-ledger",
+        "subject": {"type": "user", "id": "alice"},
+        "resource": {"type": "document", "id": "budget"},
+        "action": {"name": "read"},
+        "evaluations": [{"request_id": "one"}, {"request_id": "two"}],
+    }))
+    .expect("a batch");
+    let answered = logged.decide(&batch, None).await.expect("decided");
+    assert!(
+        answered
+            .context
+            .as_ref()
+            .is_some_and(|context| context.evidence.is_none()),
+        "no record is of the batch"
+    );
+    let records = host_log::records(&producer, &resource);
+    let evaluations = answered.evaluations.expect("each evaluation");
+    assert_eq!(evaluations.len(), 2);
+    for decision in evaluations {
+        let evidence = decision
+            .context
+            .as_ref()
+            .and_then(|context| context.evidence.clone())
+            .expect("its evidence");
+        evidence.check(decision.decision).expect("allowed");
+        let sequence: u64 = evidence
+            .position
+            .expect("durable")
+            .sequence
+            .parse()
+            .expect("decimal");
+        let (_, record) = records
+            .iter()
+            .find(|(held, _)| *held == sequence)
+            .expect("the record at that position");
+        // Each evaluation's evidence names its own record, never its sibling's.
+        assert_eq!(record["id"], json!(evidence.record_id), "{record}");
+        assert_eq!(
+            evidence.record_id,
+            decision.context.and_then(|context| context.id)
+        );
+    }
+
+    // A nonce: refused before anything is decided or recorded.
+    let before = host_log::records(&producer, &resource).len();
+    let mut signed = ask("acme", "main-ledger", "alice", "read");
+    signed.request_nonce = Some("AAECAwQFBgcICQoLDA0ODw".to_owned());
+    let refused = logged
+        .decide(&signed, None)
+        .await
+        .expect_err("nothing signs");
+    assert_eq!(refused.code(), "response_signing_unavailable");
+    assert_eq!(refused.class(), permguard_core::ErrorClass::Unavailable);
+    assert_eq!(
+        host_log::records(&producer, &resource).len(),
+        before,
+        "nothing recorded for an answer that was never given"
+    );
+    // One the contract does not define is not a request for anything.
+    signed.request_nonce = Some("AAECAwQFBgcICQoLDA0O".to_owned());
+    let refused = logged.decide(&signed, None).await.expect_err("15 bytes");
+    assert_eq!(refused.code(), "invalid_argument");
+    assert_eq!(refused.class(), permguard_core::ErrorClass::Validation);
+
+    // Over HTTP, the same refusal with its status.
+    let (status, body, _) = surface::post(
+        &root,
+        "/access/v1/evaluation",
+        json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "request_nonce": "AAECAwQFBgcICQoLDA0ODw",
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(body["code"], "response_signing_unavailable", "{body}");
+}
+
+/// WP-6.6b: a signed native response, end to end, under a real `data.attest` ring.
+mod signed_response {
+    use super::*;
+
+    use base64::Engine as _;
+    use permguard_data_plane::authz::signing::{ResponseSigner, ResponseSigning};
+    use permguard_languages::attestation::{Attestation, Payload};
+
+    pub(super) const AUDIENCE: &str = "spiffe://acme/pep";
+    pub(super) const NONCE: &str = "AAECAwQFBgcICQoLDA0ODw";
+    pub(super) const NOW: i64 = 1_790_000_000;
+
+    /// The Host's own signing of a response, at a fixed time so two transports sign alike.
+    pub(super) struct RingSigner {
+        pub(super) ring: Arc<permguard_host::keys::ring::Ring>,
+        pub(super) refuses: bool,
+    }
+
+    impl ResponseSigner for RingSigner {
+        fn sign(&self, payload: &[u8]) -> Result<Attestation, String> {
+            if self.refuses {
+                return Err("the ring is unavailable".to_owned());
+            }
+            let parts = permguard_host::composition::sign_jws::<
+                permguard_host::composition::DecisionResponseV1,
+            >(payload, self.ring.as_ref())
+            .map_err(|error| error.to_string())?;
+            Ok(Attestation {
+                protected: parts.protected,
+                payload: parts.payload,
+                signature: parts.signature,
+            })
+        }
+
+        fn now(&self) -> i64 {
+            NOW
+        }
+
+        fn ready(&self) -> Result<(), String> {
+            if self.refuses {
+                return Err("the ring is unavailable".to_owned());
+            }
+            Ok(())
+        }
+    }
+
+    pub(super) fn b64(part: &str) -> Vec<u8> {
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(part)
+            .expect("base64url")
+    }
+
+    /// Verifies `attestation` under `ring`'s published key, as a PEP would.
+    pub(super) fn verified(
+        attestation: &Attestation,
+        ring: &permguard_host::keys::ring::Ring,
+    ) -> Payload {
+        use permguard_core::keys::PublicSet as _;
+        let header: Value = serde_json::from_slice(&b64(&attestation.protected)).expect("JSON");
+        let kid = header["kid"].as_str().expect("a kid").to_owned();
+        assert_eq!(
+            String::from_utf8(b64(&attestation.protected)).expect("UTF-8"),
+            format!(r#"{{"alg":"EdDSA","kid":"{kid}","typ":"permguard.decision.response.v1"}}"#),
+            "the closed JCS header"
+        );
+        let key = ring
+            .public_keys()
+            .expect("published")
+            .into_iter()
+            .find(|key| key.kid == kid)
+            .expect("the key it names");
+        permguard_objects::crypto::suite::Suite::Ed25519Sha256V1
+            .verify(
+                &b64(&key.x),
+                format!("{}.{}", attestation.protected, attestation.payload).as_bytes(),
+                &b64(&attestation.signature),
+            )
+            .expect("the signature verifies");
+        let bytes = b64(&attestation.payload);
+        permguard_stream::jcs::decode_canonical(&bytes).expect("the payload is JCS");
+        let payload: Payload = serde_json::from_slice(&bytes).expect("the closed payload");
+        payload.check().expect("every form exact");
+        payload
+    }
+
+    pub(super) fn decider_signing(
+        root: &Path,
+        host: &host_log::HostStream,
+        refuses: bool,
+    ) -> Arc<Decider> {
+        decider_signing_on(root, host, &host.producer(), refuses)
+    }
+
+    /// [`decider_signing`], its log appending to `producer`: the one a test counts records on.
+    pub(super) fn decider_signing_on(
+        root: &Path,
+        host: &host_log::HostStream,
+        producer: &Arc<permguard_stream::engine::Producer<permguard_decisions::stream::Codec>>,
+        refuses: bool,
+    ) -> Arc<Decider> {
+        let log = Arc::new(host.log(producer, host_log::LOOSE));
+        Arc::new(
+            Decider::new(
+                root.to_path_buf(),
+                Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+                Metrics::none(),
+                None,
+                256,
+            )
+            .with_journal(
+                Some(log as Arc<dyn permguard_data_plane::decisions::DecisionRecorder>),
+                subjects(),
+                permguard_core::decisions::IncludeSection::default(),
+            )
+            .with_response_signing(Some(ResponseSigning {
+                signer: Arc::new(RingSigner {
+                    ring: host.attest(),
+                    refuses,
+                }),
+                validity: std::time::Duration::from_secs(300),
+                clock_skew: std::time::Duration::from_secs(30),
+            })),
+        )
+    }
+
+    /// The asker a transport hands on: the authenticated caller, the digest of what it sent.
+    fn asker(request: &wire::CheckRequest) -> permguard_data_plane::authz::decide::Asker {
+        permguard_data_plane::authz::decide::Asker::of(Some(AUDIENCE.to_owned()), request)
+    }
+
+    fn signed_ask(body: Value) -> wire::CheckRequest {
+        let mut body = body;
+        body["request_nonce"] = json!(NONCE);
+        serde_json::from_value(body).expect("a request")
+    }
+
+    #[tokio::test]
+    async fn a_signed_response_binds_the_request_the_answer_and_the_policy_state() {
+        let root = scratch("signed-response").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ], None)],
+        );
+        let host = host_log::HostStream::new("signed-response-volume");
+        let decider = decider_signing(&root, &host, false);
+        let request = signed_ask(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "request_id": "r-1",
+        }));
+        let response = decider
+            .decide_signed(&request, None, None, asker(&request))
+            .await
+            .expect("decided and signed");
+        let attestation = response.attestation.clone().expect("signed");
+        let payload = verified(&attestation, &host.attest());
+
+        assert_eq!(
+            payload.audience, AUDIENCE,
+            "the authenticated caller, exactly"
+        );
+        assert_eq!(payload.request_nonce, NONCE);
+        assert_eq!(payload.request_ids, vec![Some("r-1".to_owned())]);
+        assert_eq!(
+            payload.request_digest,
+            permguard_languages::attestation::request_digest(&request).expect("a digest")
+        );
+        assert_eq!(
+            payload.response_digest,
+            permguard_languages::attestation::response_digest(&response).expect("a digest"),
+            "the answer as sent, its attestation aside"
+        );
+        assert_eq!(payload.decision, response.decision);
+        assert_eq!(
+            Some(&payload.evidence),
+            response
+                .context
+                .as_ref()
+                .and_then(|context| context.evidence.as_ref())
+        );
+        assert_eq!(payload.policy.authority_host_id, AUTHORITY);
+        assert_eq!(payload.policy.zone_id, uuid_of("acme"));
+        assert_eq!(payload.policy.ledger_id, uuid_of("main-ledger"));
+        assert_eq!(payload.policy.reference, "main");
+        assert_eq!(payload.policy.counter, "1");
+        assert_eq!(payload.policy.profile, "default");
+        assert!(payload.policy.commit.starts_with("sha256:"));
+        assert_eq!(payload.issued_at, permguard_core::time::to_rfc3339(NOW));
+        assert_eq!(
+            payload.expires_at,
+            permguard_core::time::to_rfc3339(NOW + 300)
+        );
+
+        // A batch: one id per evaluation, in order; its evidence the last evaluation's.
+        let batch = signed_ask(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "evaluations": [{"request_id": "one"}, {}],
+        }));
+        let answered = decider
+            .decide_signed(&batch, None, None, asker(&batch))
+            .await
+            .expect("signed");
+        let payload = verified(
+            answered.attestation.as_ref().expect("signed"),
+            &host.attest(),
+        );
+        assert_eq!(payload.request_ids, vec![Some("one".to_owned()), None]);
+        assert_eq!(
+            Some(&payload.evidence),
+            answered
+                .evaluations
+                .as_ref()
+                .and_then(|evaluations| evaluations
+                    .last()
+                    .and_then(|decision| decision.context.as_ref())
+                    .and_then(|context| context.evidence.as_ref()))
+        );
+
+        // No nonce, no attestation.
+        let mut plain = request.clone();
+        plain.request_nonce = None;
+        let answered = decider
+            .decide_signed(&plain, None, None, asker(&plain))
+            .await
+            .expect("decided");
+        assert!(answered.attestation.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_signature_that_cannot_be_made_refuses_the_answer_and_never_downgrades() {
+        let root = scratch("signed-refusals").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ], None)],
+        );
+        let host = host_log::HostStream::new("signed-refusals-volume");
+        let resource = host_log::ledger(&uuid_of("acme"), &uuid_of("main-ledger"));
+        let request = signed_ask(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+        }));
+
+        // Nobody authenticated to address it to: refused before anything is recorded.
+        let producer = host.producer();
+        let decider = decider_signing_on(&root, &host, &producer, false);
+        // One decision recorded first, so a count that does not move means something.
+        let mut plain = request.clone();
+        plain.request_nonce = None;
+        decider
+            .decide_signed(&plain, None, None, Default::default())
+            .await
+            .expect("decided");
+        assert!(!host_log::records(&producer, &resource).is_empty());
+        let before = host_log::records(&producer, &resource).len();
+        let refused = decider
+            .decide_signed(
+                &request,
+                None,
+                None,
+                permguard_data_plane::authz::decide::Asker::default(),
+            )
+            .await
+            .expect_err("no audience");
+        assert_eq!(refused.code(), "response_signing_unavailable");
+        assert_eq!(host_log::records(&producer, &resource).len(), before);
+
+        // A ring that cannot sign now: refused before anything is recorded, never unsigned.
+        let failing = decider_signing_on(&root, &host, &producer, true);
+        let before = host_log::records(&producer, &resource).len();
+        let refused = failing
+            .decide_signed(&request, None, None, asker(&request))
+            .await
+            .expect_err("the ring refused");
+        assert_eq!(refused.code(), "response_signing_unavailable");
+        assert_eq!(refused.class(), permguard_core::ErrorClass::Unavailable);
+        assert_eq!(host_log::records(&producer, &resource).len(), before);
+        // No digest of what the caller sent: never recomputed from a body the transport touched.
+        let refused = decider
+            .decide_signed(
+                &request,
+                None,
+                None,
+                permguard_data_plane::authz::decide::Asker {
+                    audience: Some(AUDIENCE.to_owned()),
+                    request_digest: None,
+                    actor: None,
+                },
+            )
+            .await
+            .expect_err("no digest");
+        assert_eq!(refused.code(), "response_signing_unavailable");
+
+        // A mirror pulled before it kept its head's authority signs nothing, refused unrecorded.
+        let store = permguard_control_client::store::FsStore::new(
+            permguard_data_plane::authz::store::find(&root, "acme", "main-ledger")
+                .expect("located")
+                .path,
+        );
+        let held = permguard_control_client::checkpoint::read(&store, "refs/main")
+            .expect("reads")
+            .expect("held");
+        permguard_control_client::checkpoint::write(
+            &store,
+            "refs/main",
+            &permguard_control_client::checkpoint::Checkpoint {
+                authority_host_id: None,
+                reference: None,
+                ..held.clone()
+            },
+        )
+        .expect("written");
+        let older = decider_signing_on(&root, &host, &producer, false);
+        let before = host_log::records(&producer, &resource).len();
+        let refused = older
+            .decide_signed(&request, None, None, asker(&request))
+            .await
+            .expect_err("no authority kept");
+        assert_eq!(refused.code(), "response_signing_unavailable");
+        assert_eq!(
+            host_log::records(&producer, &resource).len(),
+            before,
+            "refused before anything is decided"
+        );
+
+        // An authority the payload could not name canonically: the payload is checked whole and
+        // the answer refused rather than signed with a malformed state.
+        permguard_control_client::checkpoint::write(
+            &store,
+            "refs/main",
+            &permguard_control_client::checkpoint::Checkpoint {
+                authority_host_id: Some("NOT-A-UUID".to_owned()),
+                reference: Some("main".to_owned()),
+                ..held.clone()
+            },
+        )
+        .expect("written");
+        let tampered = decider_signing_on(&root, &host, &producer, false);
+        let refused = tampered
+            .decide_signed(&request, None, None, asker(&request))
+            .await
+            .expect_err("not exact");
+        assert_eq!(refused.code(), "response_signing_unavailable");
+    }
+
+    fn authenticated() -> Arc<permguard_core::authz::Actor> {
+        Arc::new(permguard_core::authz::Actor::Authenticated(
+            permguard_core::authz::ActorContext::new(
+                permguard_core::authz::Principal::new(AUDIENCE).expect("a principal"),
+                permguard_core::authz::Credential::Oidc,
+                None,
+            ),
+        ))
+    }
+
+    fn authenticating(
+        mut request: tonic::Request<()>,
+    ) -> Result<tonic::Request<()>, tonic::Status> {
+        request.extensions_mut().insert(authenticated());
+        Ok(request)
+    }
+
+    /// Serves `decider` over gRPC on an ephemeral port, every caller authenticated as
+    /// [`AUDIENCE`].
+    fn serve_signed(decider: Arc<Decider>, boundary: Anonymising) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listener.local_addr().expect("the address");
+        listener.set_nonblocking(true).expect("non-blocking");
+        let api = permguard_data_plane::authz::grpc::PdpApi {
+            authorization: permissive(),
+            decider,
+            disclosure: Disclosure::Full,
+            base_url: format!("http://{address}"),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
+        };
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("a runtime");
+            runtime.block_on(async move {
+                let listener = tokio::net::TcpListener::from_std(listener).expect("adopted");
+                let incoming = async_stream::stream! {
+                    loop {
+                        match listener.accept().await {
+                            Ok((stream, _)) => yield Ok(stream),
+                            Err(error) => yield Err(error),
+                        }
+                    }
+                };
+                let _ = tonic::transport::Server::builder()
+                    .add_service(
+                        permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::with_interceptor(
+                            api, boundary,
+                        ),
+                    )
+                    .serve_with_incoming(incoming)
+                    .await;
+            });
+        });
+        format!("grpc://{address}")
+    }
+
+    async fn rest(
+        decider: Arc<Decider>,
+        actor: Arc<permguard_core::authz::Actor>,
+        body: Value,
+    ) -> (StatusCode, Value) {
+        // The bare routes: the actor is the one this request carries, as an authentication
+        // boundary would have attached it.
+        let router = permguard_data_plane::authz::http::routes(http::Surface {
+            authorization: permissive(),
+            decider,
+            disclosure: Disclosure::Full,
+            base_url: "http://127.0.0.1:7443".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
+        });
+        let request = Request::builder()
+            .method("POST")
+            .uri("/access/v1/evaluation")
+            .header("content-type", "application/json")
+            .header("x-request-id", "from-the-header")
+            .extension(actor)
+            .body(Body::from(body.to_string()))
+            .expect("the request builds");
+        let response = router.oneshot(request).await.expect("answers");
+        let status = response.status();
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("the body")
+            .to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
+    /// Over REST and gRPC alike: an authenticated caller gets an attestation a PEP recomputes from
+    /// what it sent and what it received — the header's request id never part of the request
+    /// digest — and an anonymous one is refused `401` where this plane signs.
+    #[test]
+    fn both_transports_sign_what_the_caller_can_recompute_and_refuse_nobody() {
+        let root = scratch("signed-transports").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ], None)],
+        );
+        let host = host_log::HostStream::new("signed-transports-volume");
+        let decider = decider_signing(&root, &host, false);
+        let body = json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "request_nonce": NONCE,
+        });
+        let sent: wire::CheckRequest = serde_json::from_value(body.clone()).expect("a request");
+        let request_digest =
+            permguard_languages::attestation::request_digest(&sent).expect("a digest");
+        let recompute = |answer: &Value| {
+            let mut unsigned = answer.clone();
+            let attestation: Attestation =
+                serde_json::from_value(unsigned["attestation"].clone()).expect("signed");
+            unsigned
+                .as_object_mut()
+                .expect("an object")
+                .remove("attestation");
+            let payload = verified(&attestation, &host.attest());
+            assert_eq!(
+                payload.request_digest, request_digest,
+                "what the caller sent"
+            );
+            assert_eq!(
+                payload.response_digest,
+                permguard_languages::attestation::response_value_digest(&unsigned)
+                    .expect("a digest"),
+                "what the caller received"
+            );
+            assert_eq!(payload.audience, AUDIENCE);
+            payload
+        };
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
+        let (status, over_rest) =
+            runtime.block_on(rest(Arc::clone(&decider), authenticated(), body.clone()));
+        assert_eq!(status, StatusCode::OK, "{over_rest}");
+        let payload = recompute(&over_rest);
+        assert_eq!(
+            payload.request_ids,
+            vec![Some("from-the-header".to_owned())],
+            "the id the answer echoes, even from the header"
+        );
+
+        let client = permguard_control_client::pdp::client(
+            &serve_signed(Arc::clone(&decider), authenticating as Anonymising),
+            &permguard_control_client::tls::TlsOptions::default(),
+            Box::new(permguard_control_client::narrate::Silent),
+        )
+        .expect("the endpoint parses");
+        let over_grpc = client.evaluate(&body).expect("signed");
+        recompute(&over_grpc);
+
+        // And the verifier a PEP runs, on what each transport actually delivered (WP-6.6c).
+        let keys = {
+            use permguard_core::keys::PublicSet as _;
+            host.attest().public_keys().expect("published")
+        };
+        let pep_verifies = |answer: &Value| {
+            let mut nonces = permguard_control_client::attestation::Outstanding::default();
+            nonces.issue(NONCE);
+            permguard_control_client::attestation::verify(
+                &serde_json::to_vec(&body).unwrap(),
+                &serde_json::to_vec(answer).unwrap(),
+                &keys,
+                &permguard_control_client::attestation::Expectation {
+                    audience: AUDIENCE,
+                    now: NOW + 10,
+                    validity_seconds: 300,
+                    clock_skew_seconds: 30,
+                    policy: None,
+                },
+                &mut nonces,
+            )
+            .unwrap_or_else(|refusal| panic!("{refusal}: {answer}"))
+        };
+        assert_eq!(pep_verifies(&over_rest).policy.authority_host_id, AUTHORITY);
+        assert_eq!(pep_verifies(&over_grpc).policy.authority_host_id, AUTHORITY);
+
+        // A batch over gRPC, a deny and a permit: what the client rebuilds still digests as signed.
+        let mut batch = body.clone();
+        batch["evaluations"] = json!([
+            {"request_id": "denied", "action": {"name": "purge"}},
+            {}
+        ]);
+        let sent_batch: wire::CheckRequest =
+            serde_json::from_value(batch.clone()).expect("a batch");
+        let over_grpc = client.evaluate(&batch).expect("signed");
+        let mut unsigned = over_grpc.clone();
+        let attestation: Attestation =
+            serde_json::from_value(unsigned["attestation"].clone()).expect("signed");
+        unsigned
+            .as_object_mut()
+            .expect("an object")
+            .remove("attestation");
+        let payload = verified(&attestation, &host.attest());
+        assert_eq!(
+            payload.request_digest,
+            permguard_languages::attestation::request_digest(&sent_batch).expect("a digest")
+        );
+        assert_eq!(
+            payload.response_digest,
+            permguard_languages::attestation::response_value_digest(&unsigned).expect("a digest")
+        );
+        assert_eq!(payload.request_ids, vec![Some("denied".to_owned()), None]);
+        assert_eq!(
+            over_grpc["evaluations"][0]["decision"],
+            json!(false),
+            "{over_grpc}"
+        );
+
+        // Nobody authenticated over gRPC: `UNAUTHENTICATED`, as REST answers `401`.
+        let anonymous = permguard_control_client::pdp::client(
+            &serve_signed(Arc::clone(&decider), anonymous_interceptor as Anonymising),
+            &permguard_control_client::tls::TlsOptions::default(),
+            Box::new(permguard_control_client::narrate::Silent),
+        )
+        .expect("the endpoint parses");
+        let refused = anonymous
+            .evaluate(&body)
+            .expect_err("nobody to address it to");
+        assert_eq!(refused.reason, "unauthenticated", "{refused}");
+
+        let (status, refused) = runtime.block_on(rest(
+            decider,
+            Arc::new(permguard_core::authz::Actor::Anonymous),
+            body,
+        ));
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{refused}");
+        assert_eq!(refused["code"], "unauthenticated", "{refused}");
+    }
+}
+
+/// Holds every slot of `pool` with work that runs until the returned sender drops.
+async fn hold_all(
+    pool: &permguard_data_plane::blocking::Blocking,
+) -> Vec<std::sync::mpsc::Sender<()>> {
+    let mut releases = Vec::new();
+    for _ in 0..pool.capacity() {
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let pool = pool.clone();
+        tokio::spawn(async move { pool.run(&[], move || held.recv().ok()).await });
+        releases.push(release);
+    }
+    for _ in 0..400 {
+        if pool.in_flight() == pool.capacity() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(pool.in_flight(), pool.capacity(), "every slot is held");
+    releases
+}
+
+/// TS-3, P5 separate pools: evaluation and storage are bounded apart. With every evaluation slot
+/// held, a decision is refused `evaluation_at_capacity` while the storage pool stays free; with every
+/// storage slot held, the load is refused `load_at_capacity` and the evaluation pool is untouched.
+/// Neither borrows the other's capacity, so neither can starve the other.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn evaluation_and_storage_are_bounded_apart() {
+    use permguard_data_plane::blocking::Blocking;
+
+    let root = scratch("pools").join("mirrors");
+    let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+    );
+    let evaluation = Blocking::evaluation(1, 0, Metrics::none());
+    let storage = Blocking::new(2, Metrics::none());
+    let decider = Arc::new(
+        Decider::new(
+            root.to_path_buf(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_blocking(storage.clone())
+        .with_evaluation(evaluation.clone()),
+    );
+    let request = ask("acme", "main-ledger", "alice", "read");
+    assert!(
+        decider
+            .decide(&request, None)
+            .await
+            .expect("both pools free")
+            .decision
+    );
+
+    let releases = hold_all(&evaluation).await;
+    let refused = decider
+        .decide(&request, None)
+        .await
+        .expect_err("no evaluation slot and no queue");
+    assert_eq!(refused.code(), "evaluation_at_capacity");
+    assert_eq!(
+        storage.in_flight(),
+        0,
+        "the load ran and returned its storage slot"
+    );
+    drop(releases);
+    for _ in 0..400 {
+        if evaluation.in_flight() == 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+
+    let releases = hold_all(&storage).await;
+    let refused = decider
+        .decide(&request, None)
+        .await
+        .expect_err("no storage slot for the load");
+    assert_eq!(refused.code(), "load_at_capacity");
+    assert_eq!(
+        evaluation.in_flight(),
+        0,
+        "the evaluation pool was not used"
+    );
+    drop(releases);
+}
+
+/// TS-3: decision records and the flush they wait on hold slots of their own. With every evidence
+/// slot held, a `required` plane refuses the decision unrecorded — never answers it — while the
+/// load and the evaluation it needed ran on their own pools and gave their slots back; a record
+/// waiting for its flush can therefore never refuse the next request's load.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn records_wait_for_their_flush_on_slots_of_their_own() {
+    use permguard_data_plane::blocking::Blocking;
+
+    let root = scratch("evidence-pool").join("mirrors");
+    let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+    );
+    let spool = scratch("evidence-pool-spool");
+    let journal = Journal::open(
+        &spool,
+        "plane",
+        Epoch {
+            version: "0.1.0".to_owned(),
+            build: None,
+            engines: BTreeMap::new(),
+            sampling: "1.0".to_owned(),
+        },
+        WhenFull::Closed,
+        Bounds {
+            bytes: 64 * 1024 * 1024,
+            age: std::time::Duration::from_secs(3600),
+            segment_bytes: 1024 * 1024,
+        },
+        permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+        Metrics::none(),
+    )
+    .expect("the journal opens");
+    let storage = Blocking::new(2, Metrics::none());
+    let evaluation = Blocking::evaluation(2, 0, Metrics::none());
+    let evidence = Blocking::evidence(1, Metrics::none());
+    let decider = Arc::new(
+        Decider::new(
+            root.to_path_buf(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_journal(
+            Some(Arc::new(journal)),
+            subjects(),
+            permguard_core::decisions::IncludeSection::default(),
+        )
+        .with_blocking(storage.clone())
+        .with_evaluation(evaluation.clone())
+        .with_evidence(evidence.clone()),
+    );
+    let request = ask("acme", "main-ledger", "alice", "read");
+    assert!(
+        decider
+            .decide(&request, None)
+            .await
+            .expect("every pool free: decided and recorded")
+            .decision
+    );
+
+    let releases = hold_all(&evidence).await;
+    let refused = decider
+        .decide(&request, None)
+        .await
+        .expect_err("no evidence slot: refused, never answered unrecorded");
+    assert_eq!(refused.code(), "decision_unrecordable");
+    assert_eq!(
+        (storage.in_flight(), evaluation.in_flight()),
+        (0, 0),
+        "the load and the evaluation ran on their own pools and gave their slots back"
+    );
+    drop(releases);
+}
+
+/// TS-4, storage latency: every flush of the Host's decision stream takes 50 ms. Sixteen decisions
+/// at once under `required` evidence, four evidence slots: each is answered only once its record
+/// is durable, or refused `decision_unrecordable` — none is answered unrecorded — and the answered
+/// ones are exactly the records the stream holds.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_slow_disk_delays_or_refuses_decisions_and_never_answers_one_unrecorded() {
+    use permguard_core::fault::{Fault, inject};
+    use permguard_data_plane::blocking::Blocking;
+
+    let host = host_log::HostStream::new("slow-disk");
+    let producer = host.producer();
+    let log = host.log(&producer, host_log::LOOSE);
+    let _slow = inject(
+        host.root(),
+        Fault::SlowFsync {
+            delay: std::time::Duration::from_millis(50),
+        },
+    );
+    let root = scratch("slow-disk-mirrors").join("mirrors");
+    let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+    );
+    let decider = Arc::new(
+        Decider::new(
+            root.to_path_buf(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_journal(
+            Some(Arc::new(log)),
+            subjects(),
+            permguard_core::decisions::IncludeSection::default(),
+        )
+        .with_evidence(Blocking::evidence(4, Metrics::none())),
+    );
+    let mut asked = Vec::new();
+    for _ in 0..16 {
+        let decider = Arc::clone(&decider);
+        asked.push(tokio::spawn(async move {
+            let request = ask("acme", "main-ledger", "alice", "read");
+            let started = std::time::Instant::now();
+            let answer = decider.decide(&request, None).await;
+            (answer, started.elapsed())
+        }));
+    }
+    let (mut answered, mut refused) = (0, 0);
+    for asked in asked {
+        let (answer, took) = asked.await.expect("joins");
+        match answer {
+            Ok(answer) => {
+                assert!(answer.decision);
+                assert!(
+                    took >= std::time::Duration::from_millis(50),
+                    "answered in {took:?}, before a 50 ms flush could have settled its record"
+                );
+                answered += 1;
+            }
+            Err(error) => {
+                assert_eq!(error.code(), "decision_unrecordable", "{error}");
+                refused += 1;
+            }
+        }
+    }
+    assert_eq!(answered + refused, 16);
+    assert!(
+        answered >= 4,
+        "the four evidence slots answered: {answered}"
+    );
+    let resource = host_log::ledger(&uuid_of("acme"), &uuid_of("main-ledger"));
+    let decisions = host_log::records(&producer, &resource)
+        .iter()
+        .filter(|(_, record)| record["kind"] == "decision")
+        .count();
+    assert_eq!(
+        decisions, answered,
+        "every answered decision has its record, and nothing refused left one"
+    );
+}
+
+/// TS-4: a decision's whole path runs inside the no-network scope — its record too, written on the
+/// evidence pool's thread. A recorder that looks finds itself on the decision path, so a network
+/// call it made would be refused.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_decision_records_its_evidence_on_the_decision_path() {
+    use permguard_data_plane::decisions::{Decided, DecisionRecorder, Written};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct Looking(Arc<AtomicBool>);
+    impl DecisionRecorder for Looking {
+        fn record(&self, _decided: &Decided<'_>) -> Result<Written, String> {
+            unreachable!("the decision path records located")
+        }
+        fn record_located(
+            &self,
+            _decided: &Decided<'_>,
+        ) -> Result<(Written, Option<permguard_languages::attestation::Position>), String> {
+            self.0
+                .store(permguard_core::egress::on_decision_path(), Ordering::SeqCst);
+            Ok((Written::Recorded { seq: 1 }, None))
+        }
+        fn refuses_unrecorded(&self) -> bool {
+            true
+        }
+    }
+
+    let root = scratch("egress-scope").join("mirrors");
+    let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+    );
+    let looked = Arc::new(AtomicBool::new(false));
+    let decider = Decider::new(
+        root.to_path_buf(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::none(),
+        None,
+        256,
+    )
+    .with_journal(
+        Some(Arc::new(Looking(Arc::clone(&looked)))),
+        subjects(),
+        permguard_core::decisions::IncludeSection::default(),
+    );
+    let answer = decider
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("decided and recorded");
+    assert!(answer.decision);
+    assert!(
+        looked.load(Ordering::SeqCst),
+        "the record was written outside the decision path's scope"
+    );
+    assert!(
+        !permguard_core::egress::on_decision_path(),
+        "and the scope ended with the decision"
+    );
 }

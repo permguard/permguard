@@ -126,6 +126,8 @@ pub struct CursorKeys {
 }
 
 struct Keys {
+    /// How long a cursor issued under these keys is valid (WP-5.5).
+    lifetime: std::time::Duration,
     issuing: zeroize::Zeroizing<Vec<u8>>,
     previous: Option<zeroize::Zeroizing<Vec<u8>>>,
     host_id: [u8; 16],
@@ -140,6 +142,34 @@ impl std::fmt::Debug for CursorKeys {
 }
 
 impl CursorKeys {
+    /// These keys, their cursors valid `lifetime` after issue (WP-5.5).
+    pub fn with_lifetime(self, lifetime: std::time::Duration) -> Self {
+        let inner = std::sync::Arc::try_unwrap(self.inner).unwrap_or_else(|shared| Keys {
+            lifetime,
+            issuing: shared.issuing.clone(),
+            previous: shared.previous.clone(),
+            host_id: shared.host_id,
+            api: shared.api.clone(),
+            derived: std::sync::Mutex::new(std::collections::BTreeMap::new()),
+        });
+        Self {
+            inner: std::sync::Arc::new(Keys { lifetime, ..inner }),
+        }
+    }
+
+    /// How long a cursor issued now is valid.
+    pub fn lifetime(&self) -> std::time::Duration {
+        self.inner.lifetime
+    }
+
+    /// Now, in seconds: what a cursor's expiry is measured against. A clock before the epoch
+    /// reads as the end of time, so every cursor is expired rather than none.
+    pub fn now(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(u64::MAX, |elapsed| elapsed.as_secs())
+    }
+
     /// The key cursors of `resource` are sealed and opened under.
     pub fn for_resource(&self, resource: &str) -> Result<CursorKey> {
         let mut derived = self
@@ -189,6 +219,7 @@ impl CursorKeys {
         }
         Ok(Self {
             inner: std::sync::Arc::new(Keys {
+                lifetime: permguard_stream::cursor::DEFAULT_LIFETIME,
                 issuing: zeroize::Zeroizing::new(root.to_vec()),
                 previous: None,
                 host_id,
@@ -204,6 +235,7 @@ pub fn load(directory: &Path, host_id: [u8; 16], api: &str) -> Result<CursorKeys
     let (issuing, previous) = load_root(directory)?;
     Ok(CursorKeys {
         inner: std::sync::Arc::new(Keys {
+            lifetime: permguard_stream::cursor::DEFAULT_LIFETIME,
             issuing: zeroize::Zeroizing::new(issuing),
             previous: previous.map(zeroize::Zeroizing::new),
             host_id,
@@ -432,5 +464,24 @@ mod tests {
         .expect("derived");
         let reference = CursorKey::new(&expected[..], &[]).expect("a key");
         assert!(Cursor::open(&token, &reference, "api", "acme/main", "f").is_ok());
+    }
+
+    /// WP-5.5: the lifetime the keys are given is the one a cursor sealed under them carries.
+    #[test]
+    fn a_cursor_lives_as_long_as_its_keys_say() {
+        let keys = CursorKeys::from_root(&[7; 32], HOST, "decisions")
+            .expect("the keys")
+            .with_lifetime(std::time::Duration::from_secs(10));
+        assert_eq!(keys.lifetime(), std::time::Duration::from_secs(10));
+        let key = keys.for_resource("acme/main").expect("a key");
+        let token = Cursor::beginning("api", "acme/main", "f", None)
+            .seal_v2(&key, 1_000, keys.lifetime())
+            .expect("it seals");
+        assert!(Cursor::open_any(&token, &key, "api", "acme/main", "f", 1_009).is_ok());
+        assert_eq!(
+            Cursor::open_any(&token, &key, "api", "acme/main", "f", 1_010),
+            Err(CursorError::Forged)
+        );
+        assert!(keys.now() > 1_000);
     }
 }

@@ -55,6 +55,9 @@ fn scratch(tag: &str) -> PathBuf {
     root
 }
 
+/// The principal the occurrences here are submitted as.
+const SOURCE: &str = "anonymous";
+
 fn bounds() -> Bounds {
     Bounds {
         retention_minimum: std::time::Duration::MAX,
@@ -67,8 +70,14 @@ fn bounds() -> Bounds {
 /// A plane's journals over one volume. Dropping it is the crash; calling this again is the restart.
 fn opened(root: &Path) -> Arc<Streams> {
     Arc::new(
-        Streams::new(root.to_path_buf(), PRODUCER.to_owned(), bounds())
-            .with_metrics(Metrics::none()),
+        Streams::new(
+            root.to_path_buf(),
+            root.join("planes"),
+            permguard_data_plane::temporal::testing::host_side(root),
+            bounds(),
+        )
+        .expect("the floor is registered")
+        .with_metrics(Metrics::none()),
     )
 }
 
@@ -101,6 +110,7 @@ fn record(id: &str) -> Record {
         prev: String::new(),
         event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
         event_id: id.to_owned(),
+        source: Some(SOURCE.to_owned()),
         occurrence_digest: permguard_events::occurrence_digest_of(&event).expect("it digests"),
         kind: "response".to_owned(),
         profile: "temporal".to_owned(),
@@ -174,7 +184,7 @@ fn a_durable_record_is_recognisable_as_itself_after_a_restart() {
     }
 
     let known = opened(&root)
-        .known(ZONE, LEDGER, "e-1")
+        .known(ZONE, LEDGER, SOURCE, "e-1")
         .expect("the index reads")
         .expect("the entry survived the restart");
     assert_eq!(known.seq, 1);
@@ -205,13 +215,13 @@ fn a_reserved_decision_identity_survives_and_is_not_minted_twice() {
             .append(ZONE, LEDGER, record("e-1"))
             .expect("the record is durable");
         streams
-            .decision_id(ZONE, LEDGER, "e-1")
+            .decision_id(ZONE, LEDGER, SOURCE, "e-1")
             .expect("an identity is reserved")
     };
     assert!(!reserved.is_empty());
 
     let after = opened(&root)
-        .decision_id(ZONE, LEDGER, "e-1")
+        .decision_id(ZONE, LEDGER, SOURCE, "e-1")
         .expect("the identity is read back");
     assert_eq!(
         after, reserved,
@@ -240,7 +250,7 @@ fn a_record_without_a_committed_answer_is_not_answered_and_not_duplicated() {
     let streams = opened(&root);
     assert!(
         streams
-            .outcome(ZONE, LEDGER, "e-1")
+            .outcome(ZONE, LEDGER, SOURCE, "e-1")
             .expect("the index reads")
             .is_none(),
         "an answer that was never committed is not invented on the way back"
@@ -272,20 +282,20 @@ fn a_committed_answer_is_reproduced_after_a_restart() {
             .append(ZONE, LEDGER, record("e-1"))
             .expect("the record is durable");
         streams
-            .record_outcome(ZONE, LEDGER, "e-1", routed(), &answer)
+            .record_outcome(ZONE, LEDGER, SOURCE, "e-1", routed(), &answer)
             .expect("the answer is durable");
     }
 
     let streams = opened(&root);
     assert_eq!(
         streams
-            .outcome(ZONE, LEDGER, "e-1")
+            .outcome(ZONE, LEDGER, SOURCE, "e-1")
             .expect("the index reads")
             .expect("the answer survived"),
         answer
     );
     let known = streams
-        .known(ZONE, LEDGER, "e-1")
+        .known(ZONE, LEDGER, SOURCE, "e-1")
         .expect("the index reads")
         .expect("the entry survived");
     assert_eq!(
@@ -473,6 +483,7 @@ fn an_unflushed_occurrence_entry_never_outlives_the_record_it_names() {
         journal
             .record_occurrence(&permguard_events::journal::KnownOccurrence {
                 event_id: "e-1".to_owned(),
+                source: None,
                 seq: 1,
                 occurrence_digest: permguard_events::occurrence_digest_of(&occurrence("e-1"))
                     .expect("it digests"),
@@ -615,17 +626,17 @@ fn an_unflushed_audit_record_is_not_answerable_after_a_restart() {
 #[test]
 fn a_ledger_keyed_both_ways_is_refused_rather_than_chosen_between() {
     let root = scratch("both-keys");
-    // A journal under the identifiers, and another under the display names.
+    // A legacy journal under the identifiers, and another under the display names: what an
+    // earlier release could leave.
     for (zone, ledger) in [(ZONE, LEDGER), ("acme", "agent-governance")] {
-        let streams = opened(&root);
-        streams
-            .append(zone, ledger, {
-                let mut held = record("e-1");
-                held.stream.zone = zone.to_owned();
-                held.stream.ledger = ledger.to_owned();
-                held
-            })
-            .expect("the record is durable");
+        let mut keyed = stream();
+        keyed.zone = zone.to_owned();
+        keyed.ledger = ledger.to_owned();
+        let mut journal =
+            Journal::open(root.join(zone).join(ledger), keyed.clone(), bounds()).expect("opens");
+        let mut held = line(&journal, "e-1");
+        held["stream"] = serde_json::to_value(&keyed).expect("the stream renders");
+        journal.append(&held).expect("the record is durable");
     }
 
     let streams = opened(&root);

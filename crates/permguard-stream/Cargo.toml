@@ -12,6 +12,10 @@ repository.workspace = true
 
 publish = false
 
+[features]
+# The storage library's named crash points, for the crash test of sealed batches (WP-5.2).
+crash-points = ["permguard-host/crash-points"]
+
 [dependencies]
 permguard-core.workspace = true
 # The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11).
@@ -25,6 +29,12 @@ serde_json.workspace = true
 base64.workspace = true
 sha2.workspace = true
 hmac.workspace = true
+# A fork found at ingest that its membership could not be suspended for is logged (WP-5.3).
+tracing.workspace = true
+
+[[test]]
+name = "stream_crash"
+required-features = ["crash-points"]
 
 [dev-dependencies]
 proptest.workspace = true

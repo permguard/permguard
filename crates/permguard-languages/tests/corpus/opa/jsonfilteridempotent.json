@@ -1,0 +1,24 @@
+{
+  "folder": "jsonfilteridempotent",
+  "files": {
+    "test-jsonfilteridempotent-0229.yaml": {
+      "sha256": "sha256:fe5d3b169bee63ac981b4bda7f5c8df4c85c53703955fdf50c35037dc7a7b7d6",
+      "cases": [
+        {
+          "note": "jsonfilteridempotent/TestBuiltinJSONFilterIdempotent",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\t__local0__ = {\"a\": {\"b\": 2, \"c\": 3}}\n\tjson.filter(__local0__, {\"a/b\"}, __local1__)\n\t__local1__ = {\"a\": {\"b\": 2}}\n\tjson.filter(__local0__, {\"a/c\"}, __local2__)\n\t__local2__ = {\"a\": {\"c\": 3}}\n\t__local0__ = {\"a\": {\"b\": 2, \"c\": 3}}\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

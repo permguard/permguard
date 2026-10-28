@@ -187,6 +187,7 @@ impl DecisionLog for DecisionFacade {
     }
 
     async fn read(&self, request: Request<ReadRequest>) -> Result<Response<ReadResponse>, Status> {
+        let actor = permguard_transport::actor_of(request.extensions());
         let asked = request.into_inner();
         let scope = if !asked.pdp.is_empty() && !asked.instance.is_empty() {
             Scope::Stream {
@@ -231,10 +232,27 @@ impl DecisionLog for DecisionFacade {
 
         // Off the runtime's threads, exactly as on HTTP.
         let page = {
-            let (store, scope, key) = (self.store.clone(), scope.clone(), self.cursor_key.clone());
-            tokio::task::spawn_blocking(move || read::read(&store, &scope, &key, &window))
+            let facade = self.clone();
+            let scope = scope.clone();
+            tokio::task::spawn_blocking(move || facade.read_as(&actor, scope, &window))
                 .await
-                .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+                .unwrap_or_else(|error| {
+                    Err(crate::evidence::Gated::Refused(
+                        read::ReadError::Unavailable(error.to_string()),
+                    ))
+                })
+        };
+        // Before anything else: a denial says nothing the caller may not learn (WP-6.3c).
+        let page = match page {
+            Ok(page) => Ok(page),
+            Err(crate::evidence::Gated::Denied(denial)) => {
+                self.metrics.count(
+                    &measure::READS,
+                    &[(labels::SCOPE, kind), (labels::OUTCOME, "denied")],
+                );
+                return Err(crate::wire::grpc_denial(&denial));
+            }
+            Err(crate::evidence::Gated::Refused(error)) => Err(error),
         };
         match page {
             Ok(page) => {
@@ -300,14 +318,7 @@ impl DecisionLog for DecisionFacade {
                     &[(labels::SCOPE, kind), (labels::OUTCOME, "refused")],
                 );
 
-                Err(api_status(
-                    &ApiError::new(
-                        ErrorClass::Validation,
-                        codes::stream::OFFSET_INVALID,
-                        error.to_string(),
-                    ),
-                    self.disclosure,
-                ))
+                Err(refused_read(&error, self.disclosure))
             }
         }
     }
@@ -369,6 +380,48 @@ fn api_error_of(refused: &Refused) -> ApiError {
     }
 }
 
+/// A refused read: an offset of another read is `forged`, any other one `offset_invalid`, both
+/// validation (WP-5.5); a store or consumer that could not answer is `unavailable` (WP-6.1b).
+fn refused_read(
+    error: &crate::decisions::read::ReadError,
+    disclosure: permguard_core::Disclosure,
+) -> Status {
+    let (class, code) = crate::decisions::read::refusal(error);
+    api_status(&ApiError::new(class, code, error.to_string()), disclosure)
+}
+
 fn api_status(failed: &ApiError, disclosure: permguard_core::Disclosure) -> Status {
     crate::wire::grpc_error(failed, disclosure)
+}
+
+#[cfg(test)]
+mod tests {
+    use permguard_stream::cursor::CursorError;
+
+    use super::*;
+    use crate::decisions::read::ReadError;
+
+    /// WP-5.5: over gRPC, an offset of another read is `forged` and a malformed one
+    /// `offset_invalid`, both `INVALID_ARGUMENT`, as over REST.
+    #[test]
+    fn an_offset_of_another_read_is_forged_over_grpc() {
+        for (error, code) in [
+            (CursorError::Forged, codes::common::FORGED),
+            (CursorError::WrongScope, codes::common::FORGED),
+            (CursorError::Malformed, codes::stream::OFFSET_INVALID),
+        ] {
+            let status = refused_read(
+                &ReadError::Offset(error),
+                permguard_core::Disclosure::Minimal,
+            );
+            assert_eq!(status.code(), tonic::Code::InvalidArgument, "{code}");
+            assert_eq!(
+                status
+                    .metadata()
+                    .get(permguard_core::GRPC_ERROR_CODE)
+                    .and_then(|value| value.to_str().ok()),
+                Some(code)
+            );
+        }
+    }
 }

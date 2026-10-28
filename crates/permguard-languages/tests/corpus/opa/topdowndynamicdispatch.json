@@ -1,0 +1,35 @@
+{
+  "folder": "topdowndynamicdispatch",
+  "files": {
+    "test-topdowndynamicdispatch-1068.yaml": {
+      "sha256": "sha256:2513698fa712433d8e98384de4c51967268dacc32d3977689f0c7df41745a123",
+      "cases": [
+        {
+          "note": "topdowndynamicdispatch/dynamic dispatch",
+          "query": "data = x",
+          "modules": [
+            "package animals\n\ndog := \"woof\"\n\ncat := \"meow\"\n",
+            "package dynamic\n\nsound := __local0__ if {\n\ttrue\n\t__local1__ = data.dynamic.animal\n\t__local0__ = data.animals[__local1__]\n}\n\nanimal := \"dog\" if {\n\t2 > 1\n}\n"
+          ],
+          "data": {
+          },
+          "input_term": "{}",
+          "want_result": [
+            {
+              "x": {
+                "animals": {
+                  "cat": "meow",
+                  "dog": "woof"
+                },
+                "dynamic": {
+                  "animal": "dog",
+                  "sound": "woof"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

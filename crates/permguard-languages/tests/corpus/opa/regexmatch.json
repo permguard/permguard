@@ -1,0 +1,24 @@
+{
+  "folder": "regexmatch",
+  "files": {
+    "test-regexmatch-0861.yaml": {
+      "sha256": "sha256:5423bbf18ae858218f2151421f1a1b7b48220736b1fafe6ceea1368051f59f18",
+      "cases": [
+        {
+          "note": "regexmatch/regex.match",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np if {\n\tregex.match(\"^[a-z]+\\\\[[0-9]+\\\\]$\", \"foo[1]\")\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

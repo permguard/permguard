@@ -53,8 +53,14 @@ pub struct Surface {
     pub disclosure: Disclosure,
     /// The base URL this plane is reached at, for the configuration document.
     pub base_url: String,
+    /// Who serves the interface, its build and its phase: the discovery document's common header
+    /// (WP-7.4a).
+    pub describer: permguard_core::stages::Describer,
     /// This PDP's identifier, as the document publishes it.
     pub pdp: String,
+    /// The Host's authorization: `event.submit` on the exact ledger, before anything is read or
+    /// written (WP-6.2a).
+    pub authorization: std::sync::Arc<permguard_host::composition::Authorization>,
 }
 
 /// The routes the temporal interface answers.
@@ -70,8 +76,9 @@ pub fn routes(surface: Surface) -> Router {
 
 async fn submit(
     State(surface): State<Surface>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     headers: HeaderMap,
-    body: Result<Json<SubmitRequest>, axum::extract::rejection::JsonRejection>,
+    body: Result<axum::body::Bytes, axum::extract::rejection::BytesRejection>,
 ) -> Response {
     // Bounded by the rule every surface applies: it is echoed and kept in the decision record.
     let request_id = headers
@@ -80,38 +87,66 @@ async fn submit(
         .and_then(permguard_core::correlation::admitted)
         .map(ToOwned::to_owned);
 
-    let Json(request) = match body {
-        Ok(body) => body,
-        Err(rejection) => {
-            return with_request_id(
-                error(
-                    &ApiError::new(
-                        ErrorClass::Validation,
-                        permguard_core::codes::notp::PAYLOAD_MALFORMED,
-                        format!("the request body is not a valid submission: {rejection}"),
-                    ),
-                    surface.disclosure,
-                ),
-                request_id.as_deref(),
-            );
+    // Read strictly (WP-7.5b, IFACE-06): one JSON value, no member named twice at any level, and
+    // the numbers in the domain the gRPC binding reads — past ±2^53 refused
+    // `value_unrepresentable`, a whole number the integer it is. What the runtime cannot
+    // represent stays its own contract's (`event_value_unrepresentable`).
+    const WHAT: &str = "the request body is not a valid submission";
+    let read = body
+        .map_err(|rejection| crate::body::malformed(format!("{WHAT}: {rejection}")))
+        .and_then(|bytes| crate::body::json(&headers, &bytes, WHAT))
+        .and_then(crate::body::lossless)
+        .and_then(|value| {
+            serde_json::from_value::<SubmitRequest>(value)
+                .map_err(|error| crate::body::malformed(format!("{WHAT}: {error}")))
+        });
+    let request = match read {
+        Ok(request) => request,
+        Err(failed) => {
+            return with_request_id(error(&failed, surface.disclosure), request_id.as_deref());
         }
     };
 
-    let response = match surface.submitter.submit(&request).await {
-        Ok(answered) => (
+    // The shared pipeline (WP-7.5d): authorization before anything is read or written, the
+    // source the occurrence is recorded under being the principal the gate authorized (WP-6.2a),
+    // then the temporal handler.
+    let services = crate::evaluation::Services {
+        authorization: &surface.authorization,
+        decider: surface.submitter.decider(),
+        submitter: Some(&surface.submitter),
+    };
+    let asked = crate::evaluation::EvaluationRequest::temporal(request);
+    let response = match crate::evaluation::evaluate(&services, &actor, asked).await {
+        Ok(crate::evaluation::Answer::Temporal(answered)) => (
             StatusCode::OK,
-            Json(super::submit::disclosed(answered, surface.disclosure)),
+            Json(super::submit::disclosed(*answered, surface.disclosure)),
         )
             .into_response(),
-        Err(failed) => error(&failed, surface.disclosure),
+        Ok(crate::evaluation::Answer::Native(_)) => error(
+            &crate::evaluation::mismatched("temporal HTTP"),
+            surface.disclosure,
+        ),
+        Err(crate::evaluation::Refused::Denied(denial)) => crate::authz::gate::http_denial(&denial),
+        Err(crate::evaluation::Refused::Failed(failed)) => error(&failed, surface.disclosure),
     };
 
     with_request_id(response, request_id.as_deref())
 }
 
 /// What this interface offers here.
-async fn document(State(surface): State<Surface>) -> Json<configuration::Document> {
-    Json(configuration::document(&surface.base_url, &surface.pdp))
+async fn document(State(surface): State<Surface>) -> Response {
+    match surface
+        .describer
+        .header(permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1)
+    {
+        Ok(header) => Json(configuration::document(
+            &surface.base_url,
+            &surface.pdp,
+            header,
+        ))
+        .into_response(),
+        Err(refused) => error(&refused, surface.disclosure),
+    }
 }
 
 /// The signers refusal for a ledger this plane keeps no journal for, the same on both bindings.

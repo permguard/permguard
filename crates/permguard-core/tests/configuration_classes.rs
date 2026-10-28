@@ -98,6 +98,11 @@ fn every_core_setting_renders_under_the_defaults() {
             SETTING_AUDIT_PSEUDONYM_KEY_REF,
             // Unset is the default: `security` days kept for ever (WP-3.7).
             SETTING_AUDIT_RETENTION_SECURITY,
+            SETTING_BACKUP_DESTRUCTION,
+            SETTING_BACKUP_ENCRYPTION_PROFILE,
+            SETTING_BACKUP_RECOVERY_KEY,
+            SETTING_BACKUP_RECOVERY_KEY_ID,
+            SETTING_BACKUP_RETENTION,
             SETTING_HOST_IDENTITY_SUITE,
             SETTING_HOST_IDENTITY_WITNESS,
             SETTING_HOST_PEERS,
@@ -115,6 +120,7 @@ fn every_core_setting_renders_under_the_defaults() {
             SETTING_LIMITS_PEER_EXEMPT,
             SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
             SETTING_MIRRORS_EXPIRE_AFTER,
+            SETTING_MIRRORS_REVOCATION_OBJECTIVE,
             SETTING_MIRRORS_STALE_AFTER,
             SETTING_PUBLIC_GRPC_ADDR,
             SETTING_PUBLIC_HTTP_ADDR,
@@ -144,8 +150,6 @@ fn binds_volume_paths_tls_bootstrap_references_and_instance_ids_are_startup_sett
         SETTING_AUDIT_DIRECTORY,
         SETTING_ADMIN_TLS_CERT,
         SETTING_AUDIT_PSEUDONYM_KEY_REF,
-        SETTING_LOG_PDP_ID,
-        SETTING_EVENTS_PRODUCER_ID,
         "PERMGUARD_CONTROL_HTTP_ADDR",
         "PERMGUARD_DATA_GRPC_TLS_KEY",
     ] {

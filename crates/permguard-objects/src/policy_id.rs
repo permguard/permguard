@@ -183,6 +183,28 @@ where
 mod tests {
     use super::*;
 
+    /// Golden vectors of rule 3, computed outside this code from the specification alone
+    /// (SHA-256 over the 22-byte prefix `permguard.policy.id.v1` and the authored bytes; bytes
+    /// 0-15, version 8, the RFC 9562 variant, lowercase 8-4-4-4-12): a change to the prefix, the
+    /// folding or the rendering changes every policy id there is, and fails here.
+    #[test]
+    fn the_derived_id_is_the_specified_bytes() {
+        for (authored, id) in [
+            ("", "3eac571b-05a9-8f74-81d8-3292ba77ec65"),
+            (
+                "permit(principal, action, resource);",
+                "da587aee-7158-8684-a313-5f471a279500",
+            ),
+            (
+                "forbid(principal, action, resource) when { principal.name == \"Zo\u{eb}\" };",
+                "826ceda2-e46c-85ef-995e-7a2742b407b9",
+            ),
+        ] {
+            assert_eq!(derive_policy_id(authored.as_bytes()), id, "{authored:?}");
+        }
+        assert_eq!(DOMAIN_PREFIX.len(), 22);
+    }
+
     #[test]
     fn derivation_is_deterministic_and_uuid_shaped() {
         let a = derive_policy_id(b"permit(principal, action, resource);");

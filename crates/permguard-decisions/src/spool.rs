@@ -83,9 +83,9 @@ use crate::record::{DigestError, GENESIS, digest_of};
 /// producer that cannot end its stream.
 pub const RESERVE_BYTES: u64 = 64 * 1024;
 
-const LOCK_FILE: &str = "LOCK";
-const STATE_FILE: &str = "STATE";
-const RESERVE_FILE: &str = "RESERVE";
+pub(crate) const LOCK_FILE: &str = "LOCK";
+pub(crate) const STATE_FILE: &str = "STATE";
+pub(crate) const RESERVE_FILE: &str = "RESERVE";
 const SEGMENT_PREFIX: &str = "seg-";
 const SEGMENT_SUFFIX: &str = ".jsonl";
 
@@ -577,18 +577,51 @@ impl Spool {
         Ok(total)
     }
 
-    /// Whether the spool has reached a bound and its stream must end.
+    /// Whether the spool has reached a bound and its stream must end: measured over the segments
+    /// holding a record the receiver has not acknowledged, so a spool that shipped everything is
+    /// neither full nor expired however long it idles (WP-5.4, owner decision).
     pub fn pressure(&self) -> Result<Option<&'static str>, SpoolError> {
-        if self.bytes()? >= self.bounds.bytes {
+        let unacknowledged = self.unacknowledged()?;
+        let mut bytes = 0;
+        let mut oldest: Option<SystemTime> = None;
+        for path in &unacknowledged {
+            let meta =
+                fs::metadata(path).map_err(|error| SpoolError::io("measuring a segment", error))?;
+            bytes += meta.len();
+            let modified = meta
+                .modified()
+                .map_err(|error| SpoolError::io("measuring a segment", error))?;
+            oldest = Some(oldest.map_or(modified, |held| held.min(modified)));
+        }
+        if !unacknowledged.is_empty() && bytes >= self.bounds.bytes {
             return Ok(Some(permguard_core::codes::stream::SPOOL_FULL));
         }
-        if let Some(oldest) = self.oldest_modified()?
+        if let Some(oldest) = oldest
             && oldest.elapsed().unwrap_or_default() >= self.bounds.age
         {
             return Ok(Some(permguard_core::codes::stream::AGE_EXPIRY));
         }
 
         Ok(None)
+    }
+
+    /// The segments holding a record past `acked`: none when everything written was
+    /// acknowledged.
+    fn unacknowledged(&self) -> Result<Vec<PathBuf>, SpoolError> {
+        if self.seq <= self.state.acked {
+            return Ok(Vec::new());
+        }
+        let segments = self.segments()?;
+        Ok(segments
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| match segments.get(index + 1) {
+                // A segment ends where the next starts.
+                Some((next, _)) => *next > self.state.acked + 1,
+                None => true,
+            })
+            .map(|(_, (_, path))| path.clone())
+            .collect())
     }
 
     /// Ends the live stream and starts its successor.
@@ -809,21 +842,6 @@ impl Spool {
 
         Ok(())
     }
-
-    fn oldest_modified(&self) -> Result<Option<SystemTime>, SpoolError> {
-        let mut oldest: Option<SystemTime> = None;
-        for (_, path) in self.segments()? {
-            let modified = fs::metadata(&path)
-                .and_then(|meta| meta.modified())
-                .map_err(|error| SpoolError::io("measuring a segment", error))?;
-            oldest = Some(match oldest {
-                Some(current) if current < modified => current,
-                _ => modified,
-            });
-        }
-
-        Ok(oldest)
-    }
 }
 
 /// Where a terminal record has to sit, and what it has to say.
@@ -959,6 +977,28 @@ impl std::fmt::Display for SpoolError {
 }
 
 impl std::error::Error for SpoolError {}
+
+/// The producer a version 1 spool at `directory` names, `stream.id` of its first record, read
+/// without opening it: `None` when it holds no record (WP-6.1). What a process composing the
+/// receiving store beside an upgraded plane binds that plane's ring to while the spool drains.
+pub fn producer_of(directory: &Path) -> Result<Option<String>, SpoolError> {
+    if !directory.is_dir() {
+        return Ok(None);
+    }
+    for (_, path) in segments_of(directory)? {
+        let text = fs::read_to_string(&path)
+            .map_err(|error| SpoolError::io("reading a segment", error))?;
+        // A torn last line is no record; the first complete one names the producer.
+        if let Some(id) = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find_map(|record| record["stream"]["id"].as_str().map(str::to_owned))
+        {
+            return Ok(Some(id));
+        }
+    }
+    Ok(None)
+}
 
 fn segments_of(directory: &Path) -> Result<Vec<(u64, PathBuf)>, SpoolError> {
     let mut found = Vec::new();
@@ -1113,7 +1153,7 @@ fn recover(
     Ok((seq, digest))
 }
 
-fn segment_seq(name: &str) -> Option<u64> {
+pub(crate) fn segment_seq(name: &str) -> Option<u64> {
     name.strip_prefix(SEGMENT_PREFIX)
         .and_then(|rest| rest.strip_suffix(SEGMENT_SUFFIX))
         .and_then(|digits| digits.parse().ok())

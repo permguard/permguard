@@ -1,0 +1,49 @@
+{
+  "folder": "trim",
+  "files": {
+    "test-trim-0362.yaml": {
+      "sha256": "sha256:c5d6774ff3809d537c857d87347d79966dbbfa0dc51e3732acc6b4f0408e755c",
+      "cases": [
+        {
+          "note": "trim/trims '!¡' from string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\ttrim(\"¡¡¡foo, bar!!!\", \"!¡\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "foo, bar"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    },
+    "test-trim-0363.yaml": {
+      "sha256": "sha256:0479033e2a091531e8a597351cc84bc43ba7618599213b1ae2710cf73ebbcdfe",
+      "cases": [
+        {
+          "note": "trim/trims nothing from string",
+          "query": "data.generated.p = x",
+          "modules": [
+            "package generated\n\np contains __local0__ if {\n\ttrim(\"¡¡¡foo, bar!!!\", \"i\", __local1__)\n\t__local0__ = __local1__\n}\n"
+          ],
+          "data": {
+          },
+          "want_result": [
+            {
+              "x": [
+                "¡¡¡foo, bar!!!"
+              ]
+            }
+          ],
+          "sort_bindings": true
+        }
+      ]
+    }
+  }
+}

@@ -65,26 +65,76 @@ pub struct StoreScope {
 pub struct Configuration {
     /// The contract and its version: `permguard.api.pdp.native.v1`.
     pub interface: &'static str,
+    /// The common header (WP-7.4a): `version`, `component`, `state`, `stage` and `sunset`.
+    #[serde(flatten)]
+    pub header: permguard_core::stages::Header,
     /// This PDP's identifier — the base URL the document was fetched from.
     pub pdp: String,
     pub endpoints: Endpoints,
     /// What this interface offers. Every entry is implemented and tested here.
     pub capabilities: Vec<String>,
     pub store_scope: StoreScope,
+    /// What one request is held to (WP-7.4a).
+    pub limits: Limits,
+    /// Whether a request may ask for a signed response (WP-6.6b).
+    pub response_signing: ResponseSigningState,
 }
 
-/// The configuration for a plane reached at `base_url`.
-pub fn configuration(base_url: &str) -> Configuration {
+/// The closed `response_signing` object: `optional` with the lifetime the server emits and the
+/// skew a verifier allows, or `disabled`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "lowercase")]
+pub enum ResponseSigningState {
+    Optional {
+        validity_seconds: u32,
+        clock_skew_seconds: u32,
+    },
+    Disabled,
+}
+
+impl ResponseSigningState {
+    /// The state of `signing`, as this plane offers it.
+    pub fn of(signing: Option<&super::signing::ResponseSigning>) -> Self {
+        match signing {
+            Some(signing) => Self::Optional {
+                validity_seconds: u32::try_from(signing.validity.as_secs()).unwrap_or(u32::MAX),
+                clock_skew_seconds: u32::try_from(signing.clock_skew.as_secs()).unwrap_or(u32::MAX),
+            },
+            None => Self::Disabled,
+        }
+    }
+}
+
+/// The ceilings of one request.
+#[derive(Debug, Clone, Serialize)]
+pub struct Limits {
+    /// The most evaluations one boxcar request carries; more is `too_many_evaluations`.
+    pub max_evaluations: u64,
+}
+
+/// The configuration for a plane reached at `base_url`, its requests held to `max_evaluations`.
+pub fn configuration(
+    base_url: &str,
+    header: permguard_core::stages::Header,
+    max_evaluations: usize,
+    signing: Option<&super::signing::ResponseSigning>,
+) -> Configuration {
     let base = base_url.trim_end_matches('/');
+    let mut capabilities: Vec<String> = CAPABILITIES.iter().map(|urn| (*urn).to_owned()).collect();
+    // Listed exactly when a request may ask for it: a capability listed and refused is a defect.
+    if signing.is_some() {
+        capabilities.push(permguard_core::domains::capability::PDP_V1_SIGNED_RESPONSE.to_owned());
+    }
 
     Configuration {
         interface: INTERFACE,
+        header,
         pdp: base.to_owned(),
         endpoints: Endpoints {
             evaluation: format!("{base}{EVALUATION_PATH}"),
             evaluations: format!("{base}{EVALUATIONS_PATH}"),
         },
-        capabilities: CAPABILITIES.iter().map(|urn| (*urn).to_owned()).collect(),
+        capabilities,
         store_scope: StoreScope {
             r#in: "payload",
             zone: "required",
@@ -92,6 +142,10 @@ pub fn configuration(base_url: &str) -> Configuration {
             // Absent means `default`, which is a profile every ledger declares or is refused for.
             profile: "optional",
         },
+        limits: Limits {
+            max_evaluations: max_evaluations as u64,
+        },
+        response_signing: ResponseSigningState::of(signing),
     }
 }
 
@@ -103,8 +157,13 @@ pub fn configuration(base_url: &str) -> Configuration {
 /// answered `200` with a configuration describing an interface that offers nothing — a caller
 /// would have configured itself from it and found no endpoints, with no error anywhere to explain
 /// why.
-pub fn document(base_url: &str) -> Result<String, serde_json::Error> {
-    serde_json::to_string_pretty(&configuration(base_url))
+pub fn document(
+    base_url: &str,
+    header: permguard_core::stages::Header,
+    max_evaluations: usize,
+    signing: Option<&super::signing::ResponseSigning>,
+) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(&configuration(base_url, header, max_evaluations, signing))
 }
 
 #[cfg(test)]
@@ -114,7 +173,41 @@ mod tests {
     use super::*;
 
     fn parsed(base: &str) -> serde_json::Value {
-        serde_json::from_str(&document(base).expect("it serializes")).expect("the document is JSON")
+        serde_json::from_str(
+            &document(
+                base,
+                permguard_core::stages::Describer::detached("data-plane")
+                    .header(permguard_core::domains::interface::PDP_NATIVE_V1)
+                    .expect("served"),
+                100,
+                None,
+            )
+            .expect("it serializes"),
+        )
+        .expect("the document is JSON")
+    }
+
+    /// WP-7.4a, after the review: the interface this plane serves here is one the stage registry
+    /// serves, or its link would vanish from the plane document and its own document refuse.
+    #[test]
+    fn the_served_interface_is_in_the_stage_registry() {
+        assert!(permguard_core::stages::served(permguard_languages::request::INTERFACE).is_ok());
+    }
+
+    /// WP-7.4a, owner decision of 2026-10-21: the document carries the common header and the
+    /// boxcar bound it enforces.
+    #[test]
+    fn every_interface_document_carries_the_common_header() {
+        let document = parsed("http://host");
+        assert_eq!(document["component"], "data-plane");
+        assert_eq!(document["state"], "bootstrap");
+        assert_eq!(document["stage"], "v1");
+        assert_eq!(document["version"], "");
+        assert!(
+            document.get("sunset").is_none(),
+            "only a deprecated interface has one"
+        );
+        assert_eq!(document["limits"]["max_evaluations"], 100);
     }
 
     #[test]

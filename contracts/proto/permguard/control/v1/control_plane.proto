@@ -83,6 +83,17 @@ service ZoneCatalog {
   rpc GetLedger(GetLedgerRequest) returns (LedgerResponse);
   rpc RenameLedger(RenameLedgerRequest) returns (LedgerResponse);
   rpc DeleteLedger(DeleteLedgerRequest) returns (LedgerResponse);
+  // An archived ledger stays readable, pulled and mirrored, and refuses a push (WP-7.3b).
+  rpc ArchiveLedger(ArchiveLedgerRequest) returns (LedgerResponse);
+  rpc RestoreLedger(RestoreLedgerRequest) returns (LedgerResponse);
+  // The signed archive of one ledger, or of every ledger of a zone, under `catalog.read`
+  // (WP-7.10): one message, refused `unavailable` past the transport's ceiling.
+  rpc ExportLedger(ExportLedgerRequest) returns (ExportResponse);
+  rpc ExportZone(ExportZoneRequest) returns (ExportResponse);
+  // An archive another Host exported, into an existing zone, under `catalog.write` and
+  // `policy.push` (WP-7.10): `archive` keeps it as foreign evidence, never served; `re-home`
+  // creates new ledgers with their provenance, serving once an operator pushes a head.
+  rpc Import(ImportRequest) returns (ImportResponse);
 }
 
 message Zone {
@@ -90,6 +101,8 @@ message Zone {
   string name = 2;
   uint64 created_at = 3;
   uint64 updated_at = 4;
+  // 1 at creation, one more at each change: what a change's `expected_revision` names (WP-7.3a).
+  uint64 revision = 5;
 }
 
 message Ledger {
@@ -104,6 +117,23 @@ message Ledger {
   // ledger, with what it observed of them; assignment and observations, not a guarantee that a
   // member serves now (WP-4.4).
   repeated ServingMember serving_members = 7;
+  // As Zone's (WP-7.3a).
+  uint64 revision = 8;
+  // `active` or `archived`, always present (WP-7.3b).
+  string state = 9;
+  // A re-homed ledger's provenance, set at its creation and never changed; absent on a ledger
+  // created here (WP-7.10).
+  LedgerProvenance provenance = 10;
+}
+
+// The export a re-homed ledger was imported from (WP-7.10): its genesis names the source, never
+// the source's authority.
+message LedgerProvenance {
+  string manifest_digest = 1;
+  string source_host_id = 2;
+  string source_zone_id = 3;
+  string source_ledger_id = 4;
+  uint64 exported_at = 5;
 }
 
 // One member assigned to serve a ledger (WP-4.4).
@@ -152,7 +182,9 @@ message ServingProgress {
   bool stale = 6;
 }
 
-message CreateZoneRequest { string name = 1; }
+// Every change names the `request_id` a retry repeats, and a change of a record the
+// `expected_revision` it read the record at, 0 being none (WP-7.3a).
+message CreateZoneRequest { string name = 1; string request_id = 2; }
 // A page of the listing: 0-based `page`, at most `size` per page. Both absent
 // means everything — the shape a synchronizing mirror wants, and what every
 // caller sent before pagination existed. The fields carry presence so that
@@ -164,13 +196,18 @@ message ListZonesRequest {
   optional uint32 size = 2;
 }
 message GetZoneRequest { string zone = 1; }
-message RenameZoneRequest { string zone = 1; string name = 2; }
-message DeleteZoneRequest { string zone = 1; }
+message RenameZoneRequest {
+  string zone = 1;
+  string name = 2;
+  string request_id = 3;
+  uint64 expected_revision = 4;
+}
+message DeleteZoneRequest { string zone = 1; string request_id = 2; uint64 expected_revision = 3; }
 
 message ZoneResponse { Zone zone = 1; }
 message ListZonesResponse { repeated Zone zones = 1; }
 
-message CreateLedgerRequest { string zone = 1; string name = 2; }
+message CreateLedgerRequest { string zone = 1; string name = 2; string request_id = 3; }
 message ListLedgersRequest {
   string zone = 1;
   // Same paging contract as ListZonesRequest.
@@ -178,8 +215,99 @@ message ListLedgersRequest {
   optional uint32 size = 3;
 }
 message GetLedgerRequest { string zone = 1; string ledger = 2; }
-message RenameLedgerRequest { string zone = 1; string ledger = 2; string name = 3; }
-message DeleteLedgerRequest { string zone = 1; string ledger = 2; }
+message RenameLedgerRequest {
+  string zone = 1;
+  string ledger = 2;
+  string name = 3;
+  string request_id = 4;
+  uint64 expected_revision = 5;
+}
+message DeleteLedgerRequest {
+  string zone = 1;
+  string ledger = 2;
+  string request_id = 3;
+  uint64 expected_revision = 4;
+}
+
+message ArchiveLedgerRequest {
+  string zone = 1;
+  string ledger = 2;
+  string request_id = 3;
+  uint64 expected_revision = 4;
+}
+
+message RestoreLedgerRequest {
+  string zone = 1;
+  string ledger = 2;
+  string request_id = 3;
+  uint64 expected_revision = 4;
+}
+
+message ExportLedgerRequest {
+  string zone = 1;
+  string ledger = 2;
+}
+
+message ExportZoneRequest { string zone = 1; }
+
+// One ledger an export holds.
+message ExportedLedger {
+  string id = 1;
+  string name = 2;
+  uint64 refs = 3;
+  uint64 objects = 4;
+  uint64 statements = 5;
+}
+
+// An export: the archive, a canonical CBOR map {1 manifest, 2 bundle} whose manifest is the
+// COSE_Sign1 `permguard.ledger.export.v1` under the Host's `host.operations`, and what it binds.
+message ExportResponse {
+  bytes archive = 1;
+  string zone_id = 2;
+  string bundle_digest = 3;
+  uint64 bundle_bytes = 4;
+  // Seconds since the Unix epoch.
+  uint64 exported_at = 5;
+  repeated ExportedLedger ledgers = 6;
+}
+
+message ImportRequest {
+  string zone = 1;
+  string request_id = 2;
+  // `archive` or `re-home`.
+  string mode = 3;
+  // The archive's name, or the one ledger's of a one-ledger archive re-homed; empty for none.
+  string name = 4;
+  bytes archive = 5;
+  // The source Host's keys bundle: its manifest and items, as the Host API answers them.
+  bytes bundle_manifest = 6;
+  repeated bytes bundle_items = 7;
+  // The source Host's identity pin.
+  string pin = 8;
+}
+
+// An archive kept as foreign evidence.
+message ArchiveRecord {
+  string id = 1;
+  string name = 2;
+  uint64 imported_at = 3;
+  string manifest_digest = 4;
+  string source_host_id = 5;
+  string source_zone_id = 6;
+  string source_zone_name = 7;
+  repeated ExportedLedger ledgers = 8;
+}
+
+message ImportResponse {
+  string mode = 1;
+  string manifest_digest = 2;
+  string source_host_id = 3;
+  string source_zone_id = 4;
+  // For an `archive` import.
+  ArchiveRecord archive = 5;
+  // For a `re-home` import: the ledgers created.
+  repeated Ledger ledgers = 6;
+}
 
 message LedgerResponse { Ledger ledger = 1; }
 message ListLedgersResponse { repeated Ledger ledgers = 1; }

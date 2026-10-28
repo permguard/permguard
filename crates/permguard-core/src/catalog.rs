@@ -39,6 +39,23 @@ pub struct Zone {
     pub created_at: u64,
     /// When it last changed.
     pub updated_at: u64,
+    /// The record's revision, 1 at creation and one more at each mutation: what a mutation's
+    /// `expected_revision` is compared with (WP-7.3a). A record written before reads as 1.
+    #[serde(default = "first_revision")]
+    pub revision: u64,
+    /// The WP-3.6 operation that last wrote the record, what recovery reads (WP-7.3a). Kept by
+    /// the store, never answered on the wire: see [`Zone::public`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
+}
+
+impl Zone {
+    /// The record as every interface answers it: without the operation that wrote it.
+    #[must_use]
+    pub fn public(mut self) -> Self {
+        self.operation = None;
+        self
+    }
 }
 
 /// One ledger, inside one zone.
@@ -63,6 +80,104 @@ pub struct Ledger {
     pub created_at: u64,
     /// When it last changed.
     pub updated_at: u64,
+    /// The record's revision, as [`Zone::revision`].
+    #[serde(default = "first_revision")]
+    pub revision: u64,
+    /// The WP-3.6 operation that last wrote the record, as [`Zone::operation`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
+    /// Whether the ledger takes pushes (WP-7.3b): a record written before reads as active.
+    #[serde(default)]
+    pub state: LedgerState,
+    /// Where a re-homed ledger came from (WP-7.10): the export it was imported from, recorded at
+    /// its creation and never changed. Absent on a ledger created here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Provenance>,
+}
+
+/// The export a re-homed ledger was imported from (WP-7.10): its genesis names the source, never
+/// the source's authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Provenance {
+    /// `sha256:` over the export manifest's COSE_Sign1 bytes.
+    pub manifest_digest: String,
+    /// The source Host, 32 lowercase hex characters.
+    pub source_host_id: String,
+    pub source_zone_id: String,
+    pub source_ledger_id: String,
+    /// When the source exported it, seconds since the Unix epoch.
+    pub exported_at: u64,
+}
+
+/// A ledger's state (WP-7.3b, owner decision of 2026-10-21): an archived ledger stays readable,
+/// pulled and mirrored, and refuses a push.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LedgerState {
+    #[default]
+    Active,
+    Archived,
+}
+
+impl LedgerState {
+    /// The name the wire carries.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Archived => "archived",
+        }
+    }
+}
+
+impl Ledger {
+    /// The record as every interface answers it: without the operation that wrote it.
+    #[must_use]
+    pub fn public(mut self) -> Self {
+        self.operation = None;
+        self
+    }
+}
+
+/// What a deleted zone or ledger leaves (WP-7.3b, owner decision of 2026-10-21): its id, never
+/// minted again, the name it had, when it went, the revision it was deleted at, and the WP-3.6
+/// operation that deleted it, for recovery. Never on the wire in 7.3b.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Tombstone {
+    pub id: String,
+    /// The zone a deleted ledger belonged to; absent for a zone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone_id: Option<String>,
+    pub name: String,
+    pub deleted_at: u64,
+    pub revision: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
+}
+
+/// The revision a record is born at, and one written before revisions existed reads as.
+pub const FIRST_REVISION: u64 = 1;
+
+fn first_revision() -> u64 {
+    FIRST_REVISION
+}
+
+/// What a mutation of the catalog is held to (WP-7.3a): the revision it expects the record at,
+/// refused as [`CatalogError::RevisionConflict`] otherwise, and the WP-3.6 operation that writes
+/// it, kept in the record for recovery. The default holds it to nothing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Write<'a> {
+    pub expected_revision: Option<u64>,
+    pub operation: Option<&'a str>,
+    /// For a create: the provenance of a re-homed ledger (WP-7.10).
+    pub provenance: Option<&'a Provenance>,
+}
+
+impl Write<'_> {
+    /// Whether a record at `revision` is the one this write expects.
+    pub fn admits(&self, revision: u64) -> bool {
+        self.expected_revision
+            .is_none_or(|expected| expected == revision)
+    }
 }
 
 /// The ref a ledger starts life pointing at.
@@ -176,7 +291,12 @@ pub trait Catalog: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Creates a zone. Fails with [`CatalogError::NameTaken`] when the name exists.
-    fn create_zone(&self, name: &str) -> Result<Zone, CatalogError>;
+    fn create_zone(&self, name: &str) -> Result<Zone, CatalogError> {
+        self.create_zone_with(name, &Write::default())
+    }
+
+    /// Creates a zone, held to `write` (WP-7.3a).
+    fn create_zone_with(&self, name: &str, write: &Write<'_>) -> Result<Zone, CatalogError>;
 
     /// Lists every zone, ordered by creation.
     fn list_zones(&self) -> Result<Vec<Zone>, CatalogError>;
@@ -185,14 +305,39 @@ pub trait Catalog: Send + Sync {
     fn get_zone(&self, zone: &Selector) -> Result<Zone, CatalogError>;
 
     /// Renames a zone. The id never changes; that is what it is for.
-    fn rename_zone(&self, zone: &Selector, name: &str) -> Result<Zone, CatalogError>;
+    fn rename_zone(&self, zone: &Selector, name: &str) -> Result<Zone, CatalogError> {
+        self.rename_zone_with(zone, name, &Write::default())
+    }
+
+    /// Renames a zone, held to `write` (WP-7.3a).
+    fn rename_zone_with(
+        &self,
+        zone: &Selector,
+        name: &str,
+        write: &Write<'_>,
+    ) -> Result<Zone, CatalogError>;
 
     /// Deletes a zone. Fails with [`CatalogError::NotEmpty`] while it still holds ledgers:
     /// deleting a tenant's containers should never be a side effect of a one-line command.
-    fn delete_zone(&self, zone: &Selector) -> Result<Zone, CatalogError>;
+    fn delete_zone(&self, zone: &Selector) -> Result<Zone, CatalogError> {
+        self.delete_zone_with(zone, &Write::default())
+    }
+
+    /// Deletes a zone, held to `write` (WP-7.3a).
+    fn delete_zone_with(&self, zone: &Selector, write: &Write<'_>) -> Result<Zone, CatalogError>;
 
     /// Creates a ledger inside a zone.
-    fn create_ledger(&self, zone: &Selector, name: &str) -> Result<Ledger, CatalogError>;
+    fn create_ledger(&self, zone: &Selector, name: &str) -> Result<Ledger, CatalogError> {
+        self.create_ledger_with(zone, name, &Write::default())
+    }
+
+    /// Creates a ledger inside a zone, held to `write` (WP-7.3a).
+    fn create_ledger_with(
+        &self,
+        zone: &Selector,
+        name: &str,
+        write: &Write<'_>,
+    ) -> Result<Ledger, CatalogError>;
 
     /// Lists a zone's ledgers, ordered by creation.
     fn list_ledgers(&self, zone: &Selector) -> Result<Vec<Ledger>, CatalogError>;
@@ -206,10 +351,58 @@ pub trait Catalog: Send + Sync {
         zone: &Selector,
         ledger: &Selector,
         name: &str,
+    ) -> Result<Ledger, CatalogError> {
+        self.rename_ledger_with(zone, ledger, name, &Write::default())
+    }
+
+    /// Renames a ledger within its zone, held to `write` (WP-7.3a).
+    fn rename_ledger_with(
+        &self,
+        zone: &Selector,
+        ledger: &Selector,
+        name: &str,
+        write: &Write<'_>,
     ) -> Result<Ledger, CatalogError>;
 
     /// Deletes a ledger.
-    fn delete_ledger(&self, zone: &Selector, ledger: &Selector) -> Result<Ledger, CatalogError>;
+    fn delete_ledger(&self, zone: &Selector, ledger: &Selector) -> Result<Ledger, CatalogError> {
+        self.delete_ledger_with(zone, ledger, &Write::default())
+    }
+
+    /// Deletes a ledger, held to `write` (WP-7.3a): its tombstone is written and the id is never
+    /// minted again, and what the ledger holds stays on disk (WP-7.3b).
+    fn delete_ledger_with(
+        &self,
+        zone: &Selector,
+        ledger: &Selector,
+        write: &Write<'_>,
+    ) -> Result<Ledger, CatalogError>;
+
+    /// The tombstone a deleted zone left, by its id (WP-7.3b); `None` for an id never deleted.
+    fn zone_tombstone(&self, zone_id: &str) -> Result<Option<Tombstone>, CatalogError> {
+        let _ = zone_id;
+        Ok(None)
+    }
+
+    /// The tombstone a deleted ledger left, by its ids (WP-7.3b).
+    fn ledger_tombstone(
+        &self,
+        zone_id: &str,
+        ledger_id: &str,
+    ) -> Result<Option<Tombstone>, CatalogError> {
+        let _ = (zone_id, ledger_id);
+        Ok(None)
+    }
+
+    /// Archives or restores a ledger, held to `write` (WP-7.3b): the revision moves whether or
+    /// not the state does.
+    fn set_ledger_state_with(
+        &self,
+        zone: &Selector,
+        ledger: &Selector,
+        state: LedgerState,
+        write: &Write<'_>,
+    ) -> Result<Ledger, CatalogError>;
 }
 
 /// Every way the catalog can refuse, each one an answer a caller can act on.
@@ -226,6 +419,13 @@ pub enum CatalogError {
     NotEmpty { zone: String, ledgers: usize },
     /// The name breaks the rules names keep.
     InvalidName { name: String, detail: String },
+    /// The record is at another revision than the mutation expected: nothing was applied
+    /// (WP-7.3a).
+    RevisionConflict {
+        kind: &'static str,
+        selector: String,
+        current: u64,
+    },
     /// The store itself failed.
     Backend { detail: String },
 }
@@ -255,6 +455,15 @@ impl fmt::Display for CatalogError {
             Self::InvalidName { name, detail } => {
                 write!(f, "`{name}` is not a name this catalog accepts: {detail}")
             }
+            Self::RevisionConflict {
+                kind,
+                selector,
+                current,
+            } => write!(
+                f,
+                "the {kind} `{selector}` is at revision {current}, not the one this change \
+                 expected: read it again and retry"
+            ),
             Self::Backend { detail } => write!(f, "the catalog store failed: {detail}"),
         }
     }

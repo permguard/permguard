@@ -17,6 +17,11 @@ use serde::{Deserialize, Serialize};
 use crate::endpoint::Endpoint;
 use crate::http::Client;
 
+/// The state a ledger answered before states existed is.
+fn active() -> String {
+    "active".to_owned()
+}
+
 /// One zone, as the server answers it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Zone {
@@ -24,6 +29,9 @@ pub struct Zone {
     pub name: String,
     pub created_at: u64,
     pub updated_at: u64,
+    /// The record's revision, what a rename or a delete names as expected (WP-7.3a).
+    #[serde(default)]
+    pub revision: u64,
 }
 
 /// One ledger, as the server answers it.
@@ -37,6 +45,73 @@ pub struct Ledger {
     pub default_ref: String,
     pub created_at: u64,
     pub updated_at: u64,
+    /// The record's revision, what a rename or a delete names as expected (WP-7.3a).
+    #[serde(default)]
+    pub revision: u64,
+    /// `active` or `archived` (WP-7.3b): an archived ledger is read and takes no push.
+    #[serde(default = "active")]
+    pub state: String,
+    /// A re-homed ledger's provenance (WP-7.10).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<permguard_core::Provenance>,
+    /// On `GetLedger` only: the members assigned to serve it and what was observed of them
+    /// (WP-4.4, TC-5); assignment and member-reported observations, not a guarantee.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub serving_members: Vec<ServingMember>,
+}
+
+/// One member assigned to serve a ledger, as both transports carry it (TC-5): what a member
+/// declared is never rendered as verified.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServingMember {
+    pub host_id: String,
+    pub membership_id: String,
+    pub task_id: String,
+    /// What the member declared, never verified by this answer.
+    pub declared_assurance: String,
+    /// The coordinator's appraisal of the binding, without its evidence.
+    #[serde(default, rename = "assurance_binding_status")]
+    pub assurance: Option<ServingAssurance>,
+    /// `live` while a session's lease runs, `none` otherwise.
+    pub lease_state: String,
+    #[serde(default)]
+    pub last_session_at: Option<String>,
+    /// The member's last report, member-reported; absent before the first.
+    #[serde(default)]
+    pub progress: Option<ServingProgress>,
+}
+
+/// An assurance binding's status (WP-4.4).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServingAssurance {
+    /// `accepted` or `revoked`.
+    pub verdict: String,
+    pub current: bool,
+    pub policy_revision: String,
+    #[serde(default)]
+    pub claims: Vec<ServingClaim>,
+    pub expires_at: String,
+}
+
+/// One accepted claim: the control, the class of evidence, and who vouches.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServingClaim {
+    pub control: String,
+    pub class: String,
+    pub by: String,
+}
+
+/// A member's last report of one ledger, member-reported (WP-4.4).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServingProgress {
+    pub report_seq: u64,
+    pub reported_at: String,
+    pub received_at: String,
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub checkpoint_digest: Option<String>,
+    pub stale: bool,
 }
 
 /// What the server says when it refuses: the shape every Permguard API shares.
@@ -124,14 +199,36 @@ pub(crate) fn call<T: for<'de> Deserialize<'de>>(
     }
 }
 
-/// The name in a request body, JSON-encoded properly rather than formatted into a string.
-fn name_body(name: &str) -> Result<String, Failure> {
+/// A fresh request id, what a retry of the same change repeats (WP-7.3a): 16 random bytes in hex,
+/// minted as the Host mints an operation's.
+pub fn request_id() -> Result<String, Failure> {
+    permguard_host::operations::journal::OperationId::mint()
+        .map(|id| id.to_string())
+        .ok_or_else(|| Failure {
+            class: "internal".to_owned(),
+            reason: permguard_core::codes::client::ENCODE_FAILED.to_owned(),
+            detail: "no randomness for a request id".to_owned(),
+            usage: false,
+        })
+}
+
+/// A create's or a rename's body (WP-7.3a): the name, a fresh request id and, for a rename, the
+/// revision the record was read at.
+fn name_body(name: &str, expected_revision: Option<u64>) -> Result<String, Failure> {
     #[derive(Serialize)]
     struct Body<'a> {
         name: &'a str,
+        request_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expected_revision: Option<u64>,
     }
 
-    serde_json::to_string(&Body { name }).map_err(|error| Failure {
+    serde_json::to_string(&Body {
+        name,
+        request_id: request_id()?,
+        expected_revision,
+    })
+    .map_err(|error| Failure {
         class: "internal".to_owned(),
         reason: permguard_core::codes::client::ENCODE_FAILED.to_owned(),
         detail: error.to_string(),
@@ -145,7 +242,7 @@ pub fn create_zone(client: &Client, endpoint: &Endpoint, name: &str) -> Result<Z
         endpoint,
         "POST",
         "/v1/zones",
-        Some(&name_body(name)?),
+        Some(&name_body(name, None)?),
     )
 }
 
@@ -190,22 +287,40 @@ pub fn rename_zone(
     endpoint: &Endpoint,
     zone: &str,
     name: &str,
+    expected_revision: u64,
 ) -> Result<Zone, Failure> {
     call(
         client,
         endpoint,
         "PATCH",
         &format!("/v1/zones/{}", crate::encode::value(zone)),
-        Some(&name_body(name)?),
+        Some(&name_body(name, Some(expected_revision))?),
     )
 }
 
-pub fn delete_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<Zone, Failure> {
+/// A delete's query (WP-7.3a): a fresh request id and the revision the record was read at.
+fn deletion(expected_revision: u64) -> Result<String, Failure> {
+    Ok(format!(
+        "request_id={}&expected_revision={expected_revision}",
+        request_id()?
+    ))
+}
+
+pub fn delete_zone(
+    client: &Client,
+    endpoint: &Endpoint,
+    zone: &str,
+    expected_revision: u64,
+) -> Result<Zone, Failure> {
     call(
         client,
         endpoint,
         "DELETE",
-        &format!("/v1/zones/{}", crate::encode::value(zone)),
+        &format!(
+            "/v1/zones/{}?{}",
+            crate::encode::value(zone),
+            deletion(expected_revision)?
+        ),
         None,
     )
 }
@@ -221,7 +336,7 @@ pub fn create_ledger(
         endpoint,
         "POST",
         &format!("/v1/zones/{}/ledgers", crate::encode::value(zone)),
-        Some(&name_body(name)?),
+        Some(&name_body(name, None)?),
     )
 }
 
@@ -270,6 +385,7 @@ pub fn rename_ledger(
     zone: &str,
     ledger: &str,
     name: &str,
+    expected_revision: u64,
 ) -> Result<Ledger, Failure> {
     call(
         client,
@@ -280,7 +396,45 @@ pub fn rename_ledger(
             crate::encode::value(zone),
             crate::encode::value(ledger)
         ),
-        Some(&name_body(name)?),
+        Some(&name_body(name, Some(expected_revision))?),
+    )
+}
+
+/// Archives or restores a ledger (WP-7.3b): `verb` is `archive` or `restore`.
+pub fn set_ledger_state(
+    client: &Client,
+    endpoint: &Endpoint,
+    zone: &str,
+    ledger: &str,
+    verb: &str,
+    expected_revision: u64,
+) -> Result<Ledger, Failure> {
+    #[derive(Serialize)]
+    struct Body {
+        request_id: String,
+        expected_revision: u64,
+    }
+
+    let body = serde_json::to_string(&Body {
+        request_id: request_id()?,
+        expected_revision,
+    })
+    .map_err(|error| Failure {
+        class: "internal".to_owned(),
+        reason: permguard_core::codes::client::ENCODE_FAILED.to_owned(),
+        detail: error.to_string(),
+        usage: false,
+    })?;
+    call(
+        client,
+        endpoint,
+        "POST",
+        &format!(
+            "/v1/zones/{}/ledgers/{}/{verb}",
+            crate::encode::value(zone),
+            crate::encode::value(ledger)
+        ),
+        Some(&body),
     )
 }
 
@@ -289,15 +443,17 @@ pub fn delete_ledger(
     endpoint: &Endpoint,
     zone: &str,
     ledger: &str,
+    expected_revision: u64,
 ) -> Result<Ledger, Failure> {
     call(
         client,
         endpoint,
         "DELETE",
         &format!(
-            "/v1/zones/{}/ledgers/{}",
+            "/v1/zones/{}/ledgers/{}?{}",
             crate::encode::value(zone),
-            crate::encode::value(ledger)
+            crate::encode::value(ledger),
+            deletion(expected_revision)?
         ),
         None,
     )
@@ -326,12 +482,200 @@ pub trait Catalog {
     ) -> Result<Vec<Ledger>, Failure>;
     fn get_ledger(&self, zone: &str, ledger: &str) -> Result<Ledger, Failure>;
 
+    /// The writes take a fresh request id each, and a change of a record the revision it was
+    /// read at (WP-7.3a): another one is refused `revision_conflict`.
     fn create_zone(&self, name: &str) -> Result<Zone, Failure>;
-    fn rename_zone(&self, zone: &str, name: &str) -> Result<Zone, Failure>;
-    fn delete_zone(&self, zone: &str) -> Result<Zone, Failure>;
+    fn rename_zone(&self, zone: &str, name: &str, expected_revision: u64) -> Result<Zone, Failure>;
+    fn delete_zone(&self, zone: &str, expected_revision: u64) -> Result<Zone, Failure>;
     fn create_ledger(&self, zone: &str, name: &str) -> Result<Ledger, Failure>;
-    fn rename_ledger(&self, zone: &str, ledger: &str, name: &str) -> Result<Ledger, Failure>;
-    fn delete_ledger(&self, zone: &str, ledger: &str) -> Result<Ledger, Failure>;
+    fn rename_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        name: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure>;
+    fn delete_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure>;
+    /// Archives a ledger (WP-7.3b): it is read and takes no push.
+    fn archive_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure>;
+    /// Restores an archived ledger: it takes pushes again.
+    fn restore_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure>;
+    /// Exports a ledger (WP-7.10): the signed archive of a zone holding it alone.
+    fn export_ledger(&self, zone: &str, ledger: &str) -> Result<Export, Failure>;
+    /// Exports every ledger of a zone (WP-7.10).
+    fn export_zone(&self, zone: &str) -> Result<Export, Failure>;
+    /// Imports an archive into `zone` (WP-7.10).
+    fn import(&self, zone: &str, request: &ImportRequest) -> Result<Imported, Failure>;
+}
+
+/// What an import hands the plane (WP-7.10).
+#[derive(Debug, Clone)]
+pub struct ImportRequest {
+    /// `archive` or `re-home`.
+    pub mode: String,
+    /// The archive's name, or the one ledger's of a one-ledger archive re-homed.
+    pub name: Option<String>,
+    pub archive: Vec<u8>,
+    /// The source Host's keys bundle: its manifest and items.
+    pub bundle_manifest: Vec<u8>,
+    pub bundle_items: Vec<Vec<u8>>,
+    /// The source Host's identity pin.
+    pub pin: String,
+}
+
+/// An archive kept as foreign evidence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchiveRecord {
+    pub id: String,
+    pub name: String,
+    pub imported_at: u64,
+    pub manifest_digest: String,
+    pub source_host_id: String,
+    pub source_zone_id: String,
+    pub source_zone_name: String,
+    pub ledgers: Vec<ExportedLedger>,
+}
+
+/// What an import landed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Imported {
+    pub mode: String,
+    pub manifest_digest: String,
+    pub source_host_id: String,
+    pub source_zone_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive: Option<ArchiveRecord>,
+    pub ledgers: Vec<Ledger>,
+}
+
+/// Imports an archive over HTTP.
+pub fn import(
+    client: &Client,
+    endpoint: &Endpoint,
+    zone: &str,
+    request: &ImportRequest,
+) -> Result<Imported, Failure> {
+    use base64::Engine as _;
+    let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+    let mut body = serde_json::json!({
+        "request_id": request_id()?,
+        "mode": request.mode,
+        "archive": b64(&request.archive),
+        "bundle": {
+            "manifest": b64(&request.bundle_manifest),
+            "items": request.bundle_items.iter().map(|item| b64(item)).collect::<Vec<_>>(),
+        },
+        "pin": request.pin,
+    });
+    if let Some(name) = &request.name {
+        body["name"] = serde_json::Value::String(name.clone());
+    }
+    call(
+        client,
+        endpoint,
+        "POST",
+        &format!("/v1/zones/{}/import", crate::encode::value(zone)),
+        Some(&body.to_string()),
+    )
+}
+
+/// An export (WP-7.10): the archive, a canonical CBOR map `{1 manifest, 2 bundle}` whose manifest
+/// the source Host signed under `host.operations`, and what it binds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Export {
+    #[serde(skip)]
+    pub archive: Vec<u8>,
+    pub zone_id: String,
+    pub bundle_digest: String,
+    pub bundle_bytes: u64,
+    /// Seconds since the Unix epoch.
+    pub exported_at: u64,
+    pub ledgers: Vec<ExportedLedger>,
+}
+
+/// One ledger an export holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportedLedger {
+    pub id: String,
+    pub name: String,
+    pub refs: u64,
+    pub objects: u64,
+    pub statements: u64,
+}
+
+/// An export as REST answers it: the archive base64url.
+#[derive(Deserialize)]
+struct ExportWire {
+    archive: String,
+    zone_id: String,
+    bundle_digest: String,
+    bundle_bytes: u64,
+    exported_at: u64,
+    ledgers: Vec<ExportedLedger>,
+}
+
+/// `POST <path>` with the closed empty body an export takes.
+fn export(client: &Client, endpoint: &Endpoint, path: &str) -> Result<Export, Failure> {
+    use base64::Engine as _;
+    let wire: ExportWire = call(client, endpoint, "POST", path, Some("{}"))?;
+    let archive = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(&wire.archive)
+        .map_err(|error| Failure {
+            class: "internal".to_owned(),
+            reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
+            detail: format!("the archive is not base64url: {error}"),
+            usage: false,
+        })?;
+    Ok(Export {
+        archive,
+        zone_id: wire.zone_id,
+        bundle_digest: wire.bundle_digest,
+        bundle_bytes: wire.bundle_bytes,
+        exported_at: wire.exported_at,
+        ledgers: wire.ledgers,
+    })
+}
+
+/// Exports a ledger over HTTP.
+pub fn export_ledger(
+    client: &Client,
+    endpoint: &Endpoint,
+    zone: &str,
+    ledger: &str,
+) -> Result<Export, Failure> {
+    export(
+        client,
+        endpoint,
+        &format!(
+            "/v1/zones/{}/ledgers/{}/export",
+            crate::encode::value(zone),
+            crate::encode::value(ledger)
+        ),
+    )
+}
+
+/// Exports a zone over HTTP.
+pub fn export_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<Export, Failure> {
+    export(
+        client,
+        endpoint,
+        &format!("/v1/zones/{}/export", crate::encode::value(zone)),
+    )
 }
 
 /// The catalog over HTTP.
@@ -366,24 +710,92 @@ impl Catalog for HttpCatalog {
         create_zone(&self.client, &self.endpoint, name)
     }
 
-    fn rename_zone(&self, zone: &str, name: &str) -> Result<Zone, Failure> {
-        rename_zone(&self.client, &self.endpoint, zone, name)
+    fn rename_zone(&self, zone: &str, name: &str, expected_revision: u64) -> Result<Zone, Failure> {
+        rename_zone(&self.client, &self.endpoint, zone, name, expected_revision)
     }
 
-    fn delete_zone(&self, zone: &str) -> Result<Zone, Failure> {
-        delete_zone(&self.client, &self.endpoint, zone)
+    fn delete_zone(&self, zone: &str, expected_revision: u64) -> Result<Zone, Failure> {
+        delete_zone(&self.client, &self.endpoint, zone, expected_revision)
     }
 
     fn create_ledger(&self, zone: &str, name: &str) -> Result<Ledger, Failure> {
         create_ledger(&self.client, &self.endpoint, zone, name)
     }
 
-    fn rename_ledger(&self, zone: &str, ledger: &str, name: &str) -> Result<Ledger, Failure> {
-        rename_ledger(&self.client, &self.endpoint, zone, ledger, name)
+    fn rename_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        name: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure> {
+        rename_ledger(
+            &self.client,
+            &self.endpoint,
+            zone,
+            ledger,
+            name,
+            expected_revision,
+        )
     }
 
-    fn delete_ledger(&self, zone: &str, ledger: &str) -> Result<Ledger, Failure> {
-        delete_ledger(&self.client, &self.endpoint, zone, ledger)
+    fn delete_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure> {
+        delete_ledger(
+            &self.client,
+            &self.endpoint,
+            zone,
+            ledger,
+            expected_revision,
+        )
+    }
+
+    fn archive_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure> {
+        set_ledger_state(
+            &self.client,
+            &self.endpoint,
+            zone,
+            ledger,
+            "archive",
+            expected_revision,
+        )
+    }
+
+    fn export_ledger(&self, zone: &str, ledger: &str) -> Result<Export, Failure> {
+        export_ledger(&self.client, &self.endpoint, zone, ledger)
+    }
+
+    fn export_zone(&self, zone: &str) -> Result<Export, Failure> {
+        export_zone(&self.client, &self.endpoint, zone)
+    }
+
+    fn import(&self, zone: &str, request: &ImportRequest) -> Result<Imported, Failure> {
+        import(&self.client, &self.endpoint, zone, request)
+    }
+
+    fn restore_ledger(
+        &self,
+        zone: &str,
+        ledger: &str,
+        expected_revision: u64,
+    ) -> Result<Ledger, Failure> {
+        set_ledger_state(
+            &self.client,
+            &self.endpoint,
+            zone,
+            ledger,
+            "restore",
+            expected_revision,
+        )
     }
 }
 

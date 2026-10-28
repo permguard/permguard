@@ -1,0 +1,99 @@
+{
+  "folder": "functionerrors",
+  "files": {
+    "test-conflicts.yaml": {
+      "sha256": "sha256:a8346c9372439292761ff51a26f31b8a9f9324aaa918169ae0edb1cbf8627c65",
+      "cases": [
+        {
+          "note": "functionerrors/conflict: plain false and true result, first round",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\no := [\"1\", \"2\"]\n\nf(x) := o[_] == x\n\np if f(\"1\")\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "functions must not produce multiple outputs for same inputs"
+        },
+        {
+          "note": "functionerrors/conflict: plain false and true result, second round",
+          "query": "data.test.p = x",
+          "modules": [
+            "package test\n\no := [\"1\", \"2\"]\n\nf(x) := o[_] == x\n\np if f(\"2\")\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "functions must not produce multiple outputs for same inputs"
+        }
+      ]
+    },
+    "test-functionerrors-1012.yaml": {
+      "sha256": "sha256:01c7f8092f4f96eb7c681161f91b536500af9a5a96bedc7992d08087ed52bbea",
+      "cases": [
+        {
+          "note": "functionerrors/function output conflict single",
+          "query": "data.test1.r = x",
+          "modules": [
+            "package test1\n\np(a) := y if {\n\ty = a[_]\n}\n\nr := y if {\n\tdata.test1.p([1, 2, 3], y)\n}\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "functions must not produce multiple outputs for same inputs"
+        },
+        {
+          "note": "functionerrors/function output conflict, used as boolean",
+          "query": "data.test.r = x",
+          "modules": [
+            "package test\n\nf(_) := true\n\nf(_) := false\n\nr if {\n\tdata.test.f(1)\n}\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "functions must not produce multiple outputs for same inputs"
+        }
+      ]
+    },
+    "test-functionerrors-1013.yaml": {
+      "sha256": "sha256:a98a9482f0f84eac5664f4d6dc8c99ff2322d4030a1d8c6ebeb9aadce4c50baa",
+      "cases": [
+        {
+          "note": "functionerrors/function input no match",
+          "query": "data.test2.r = x",
+          "modules": [
+            "package test2\n\np(1, a) := y if {\n\ty = a\n}\n\np(2, b) := y if {\n\ty = b + 1\n}\n\nr := y if {\n\tdata.test2.p(3, 0, y)\n}\n"
+          ],
+          "want_result": [
+
+          ]
+        }
+      ]
+    },
+    "test-functionerrors-1014.yaml": {
+      "sha256": "sha256:3c57fdff33b90bc342c4736cd137c5282dec454c9554c6a0b130e617c771edc7",
+      "cases": [
+        {
+          "note": "functionerrors/function output conflict multiple",
+          "query": "data.test3.r = x",
+          "modules": [
+            "package test3\n\np(1, a) := y if {\n\ty = a\n}\n\np(x, y) := z if {\n\tz = x\n}\n\nr := y if {\n\tdata.test3.p(1, 0, y)\n}\n"
+          ],
+          "want_error_code": "eval_conflict_error",
+          "want_error": "functions must not produce multiple outputs for same inputs"
+        }
+      ]
+    },
+    "test-functionerrors-undefined-builtin-result.yaml": {
+      "sha256": "sha256:929c97a6e457fcf32b03c943c5a72caf8f2611463d7b8173184318c40b77b5c7",
+      "cases": [
+        {
+          "note": "functionerrors/undefined builtin result",
+          "query": "data.test = x",
+          "modules": [
+            "package test\n\nfoo := units.parse_bytes(\"1KB\")\n\nbar := units.parse_bytes(\"foo\") # undefined\n"
+          ],
+          "want_result": [
+            {
+              "x": {
+                "foo": 1000
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

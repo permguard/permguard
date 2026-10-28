@@ -2,7 +2,7 @@
 Copyright (c) 2022 Nitro Agility S.r.l.
 SPDX-License-Identifier: Apache-2.0
 */}}
-{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane }}
 {{- if and $plane.enabled $plane.autoscaling.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

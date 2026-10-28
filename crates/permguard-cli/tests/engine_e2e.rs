@@ -26,6 +26,8 @@ struct EngineRemote {
     enabled: permguard_languages::registry::Enabled,
     /// The one ledger this remote serves — what `resolve` answers, whatever names it is asked.
     identity: LedgerIdentity,
+    /// The mutation transaction its ref updates run in (WP-7.12).
+    mutations: permguard_host::composition::MutationHandle,
 }
 
 impl EngineRemote {
@@ -39,7 +41,11 @@ impl EngineRemote {
         let _ = std::fs::remove_dir_all(&dir);
         let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
         Self {
-            store: FileObjectStore::new(dir),
+            store: FileObjectStore::new(dir.join("ledger")),
+            mutations: permguard_control_plane::store::testing::offline_ref_mutations(
+                &dir.join("volume"),
+            )
+            .expect("a mutation transaction opens"),
             key: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
             enabled: permguard_languages::registry::Enabled::everything(),
             identity: LedgerIdentity {
@@ -60,6 +66,15 @@ impl EngineRemote {
     fn engine(&self) -> Engine<'_> {
         Engine {
             store: &self.store,
+            authority: [0x11; 16],
+            // A test signer binds no ring: the engine names none.
+            ring: (0, permguard_objects::Digest::from_raw([0; 32])),
+            caller: "tester".into(),
+            mutations: &self.mutations,
+            transfer: permguard_control_plane::engine::TransferPolicy {
+                ttl: std::time::Duration::from_secs(900),
+                grace: std::time::Duration::from_secs(3600),
+            },
             identity: self.identity.clone(),
             limits: EngineLimits {
                 max_batch_bytes: 8 * 1024 * 1024,
@@ -111,6 +126,7 @@ impl Remote for EngineRemote {
                 head: state.head.to_string(),
                 counter: state.counter,
                 statement,
+                ref_digest: state.ref_digest().map_err(|e| e.to_string())?.to_string(),
             })),
             Err(EngineError::NotFound { .. }) => Ok(None),
             Err(error) => Err(error.to_string()),

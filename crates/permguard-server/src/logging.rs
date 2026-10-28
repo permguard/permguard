@@ -301,7 +301,7 @@ impl<P: opentelemetry_sdk::trace::SpanProcessor> opentelemetry_sdk::trace::SpanP
 
         let admitted = self
             .waiting
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |held| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |held| {
                 (held < self.capacity).then_some(held + 1)
             })
             .is_ok();
@@ -347,7 +347,7 @@ impl<E: opentelemetry_sdk::trace::SpanExporter> opentelemetry_sdk::trace::SpanEx
         let size = batch.len();
         let _ = self
             .waiting
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |held| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |held| {
                 Some(held.saturating_sub(size))
             });
         let exported = self.inner.export(batch);

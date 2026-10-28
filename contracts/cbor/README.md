@@ -68,24 +68,29 @@ Forward compatibility is carried by versions, never by silently ignored fields.
 
 ## Frozen registries
 
-| File                  | Artifact                                           | Roots                                                                                              |
-| --------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `objects.json`        | blob, tree and commit                              | `blob`, `tree`, `commit`                                                                           |
-| `manifest.json`       | ledger manifest blob payload                       | `manifest`                                                                                         |
-| `head-statement.json` | today's signed head statement                      | `cose_sign1`                                                                                       |
-| `notp.json`           | NOTP bodies and the `GET ref` answer               | one per message                                                                                    |
-| `sealed-key.json`     | sealed private key and its two sealing contexts    | `sealed_key`, `content_context`, `wrap_context`                                                    |
-| `key-set.json`        | key-set digest input                               | `key_set`                                                                                          |
-| `kdf.json`            | HKDF `info` tuples                                 | `host_local_info`, `zone_root_info`, `zone_use_info`                                               |
-| `grant.json`          | Host API grant record and its transitions          | `grant_record`, `transition`                                                                       |
-| `layout.json`         | layout manifest, migration intent and commit       | `layout_manifest`, `migration_intent`, `migration_commit`                                          |
-| `audit.json`          | audit record, trail metadata, checkpoint, anchor   | `audit_record`, `trail_meta`, `checkpoint`, `anchor`                                               |
-| `mutation.json`       | security mutation journal entries and snapshot     | `mutation_intent`, `mutation_commit`, `mutation_failed`, `mutation_projected`, `mutation_snapshot` |
-| `identity.json`       | Host identity document, succession, `INIT`, `BOOT` | `identity_document`, `succession_record`, `init`, `boot`                                           |
-| `keys.json`           | key ring journal entry, view and binding payload   | `journal_entry`, `ring_view`, `ring_binding`                                                       |
-| `operation-plan.json` | plan receipt, approval and the plan body           | `plan_receipt`, `plan_approval`, `plan_body`                                                       |
+| File                  | Artifact                                                       | Roots                                                                                              |
+| --------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `objects.json`        | blob, tree and commit                                          | `blob`, `tree`, `commit`                                                                           |
+| `manifest.json`       | ledger manifest blob payload                                   | `manifest`                                                                                         |
+| `head-statement.json` | the target signed head statement (WP-7.1)                      | `cose_sign1`                                                                                       |
+| `notp.json`           | NOTP bodies, the `GET ref` answer, the ref state               | `ref_state`, one per message, `get_ref_request`, `mirror_request`                                  |
+| `sealed-key.json`     | sealed private key and its two sealing contexts                | `sealed_key`, `content_context`, `wrap_context`                                                    |
+| `key-set.json`        | key-set digest input                                           | `key_set`                                                                                          |
+| `kdf.json`            | HKDF `info` tuples                                             | `host_local_info`, `zone_root_info`, `zone_use_info`                                               |
+| `grant.json`          | Host API grant record and its transitions                      | `grant_record`, `transition`                                                                       |
+| `layout.json`         | layout manifest, migration intent and commit                   | `layout_manifest`, `migration_intent`, `migration_commit`                                          |
+| `journal.json`        | a journal's `BASE`, once a prefix was deleted                  | `base`                                                                                             |
+| `audit.json`          | audit record, trail metadata, checkpoint, anchor               | `audit_record`, `trail_meta`, `checkpoint`, `anchor`                                               |
+| `mutation.json`       | security mutation journal entries and snapshot                 | `mutation_intent`, `mutation_commit`, `mutation_failed`, `mutation_projected`, `mutation_snapshot` |
+| `identity.json`       | Host identity document, succession, `INIT`, `BOOT`             | `identity_document`, `succession_record`, `init`, `boot`                                           |
+| `keys.json`           | key ring journal entry, view and binding payload               | `journal_entry`, `ring_view`, `ring_binding`                                                       |
+| `operation-plan.json` | plan receipt, approval and the plan body                       | `plan_receipt`, `plan_approval`, `plan_body`                                                       |
+| `ledger-export.json`  | a ledger or zone export's archive, bundle entries and manifest | `export_archive`, `bundle_entry`, `export_manifest`                                                |
+| `restore.json`        | the restore marker `host/RESTORE`                              | `restore_marker`                                                                                   |
 
-`notp.json` also registers `ref_answer`, the `GET …/refs/{name}` body that the control plane writes inline and the client reads with a private closed decoder.
+`notp.json` also registers `ref_answer`, the `GET …/refs/{name}` body, and `ref_state`, the bytes a `ref_digest` is taken over, which never travel.
+It registers `get_ref_request` and `mirror_request` too, the messages of the `policy.mirror` task that carry a pull over the Host task transport.
+Label 3 of `negotiate_push_request` and `commit_push_request`, today's `expected_old`, is retired by `expected_ref` and never reused.
 The `statement` members of the NOTP bodies are the COSE_Sign1 bytes that `head-statement.json` registers.
 
 ## Not frozen: blocked
@@ -104,6 +109,3 @@ Each one is owned by the phase that designs it, and WP-0.7 writes no golden vect
 | ledger export manifest                            | no byte shape                                                                                                                                                                        |
 | stream run                                        | no byte shape                                                                                                                                                                        |
 | audit checkpoint `permguard.audit.checkpoint.v1`  | member names only; no labels, types or cardinalities                                                                                                                                 |
-| target NOTP head statement                        | labels and types of the added `authority_host_id`, `ref_digest`, `ring_epoch` and `key_set_digest`, and whether the statement moves to a new content type                            |
-| `RefState`                                        | labels, types and cardinality of `head`, `counter` and `previous_ref_digest` inside `ref_digest`; today a ref is stored as JSON and has no CBOR form                                 |
-| manifest partition `interfaces`                   | the integer label of the new partition key and the type of its entries                                                                                                               |
