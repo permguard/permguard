@@ -31,11 +31,22 @@ updates:
           - "tower*"
           - "axum*"
           - "http*"
+      # The OpenTelemetry crates are one release train: `opentelemetry`, its SDK, the OTLP exporter
+      # and `tracing-opentelemetry` each pin the others' exact minor. Bumped one pull request at a
+      # time they left `main` red twice in a day — the lock kept the old SDK beside the new API and
+      # the server stopped compiling — so they arrive together, and `tracing*` below leaves the
+      # bridge to this group.
+      opentelemetry:
+        patterns:
+          - "opentelemetry*"
+          - "tracing-opentelemetry"
       lint-and-serde:
         patterns:
           - "serde*"
           - "clap*"
           - "tracing*"
+        exclude-patterns:
+          - "tracing-opentelemetry"
       # The RustCrypto stack moves as one generation or not at all. `hmac` 0.13 is built on
       # `digest` 0.11 and `sha2` 0.10 on `digest` 0.10; combining them does not fail at resolution,
       # it fails deep inside a trait bound — `Hmac<Sha256>` needs its hash to implement the *same*
