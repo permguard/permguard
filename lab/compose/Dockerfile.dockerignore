@@ -11,4 +11,6 @@
 !crates/
 !contracts/
 !assets/permguard-logo-mini.png
+# The binaries CI stages for `BINARY_SOURCE=prebuilt`; absent on a developer's machine.
+!prebuilt/
 crates/*/target/

@@ -2,6 +2,12 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 
+# Where the binary comes from: `builder` compiles it here, from this checkout; `prebuilt` takes it
+# from `prebuilt/linux_<arch>/<BIN>` in the context, the layout `scripts/build-cross.sh` stages.
+# CI builds the four binaries once, natively and cached, and makes every image from them; a build
+# with no argument still compiles, so `docker build .` keeps working on any machine.
+ARG BINARY_SOURCE=builder
+
 FROM rust:1.97-slim-trixie AS builder
 
 WORKDIR /src
@@ -54,13 +60,25 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
  && cargo build --release --locked --target "${TRIPLE}" -p "${PACKAGE}" --bin "${BIN}" \
  && cp "target/${TRIPLE}/release/${BIN}" /usr/local/bin/permguard
 
+RUN ldd /usr/local/bin/permguard 2>&1 | grep -qE "statically linked|not a dynamic executable" \
+ || (echo "the binary is dynamically linked and the runtime image has no libc" >&2 && exit 1)
+
+# The prebuilt binary, static already: `scripts/build-cross.sh` links it against musl, and the CI
+# job that stages it checks that before building any image.
+FROM scratch AS prebuilt
+ARG TARGETARCH
+ARG BIN=permguard-control-plane
+COPY prebuilt/linux_${TARGETARCH}/${BIN} /usr/local/bin/permguard
+
+FROM ${BINARY_SOURCE} AS binary
+
+# The user and the state directory, staged on a small Debian so that an image from a prebuilt
+# binary never pulls the Rust toolchain.
+FROM debian:trixie-slim AS staged
 RUN mkdir -p /staged/var/lib/permguard \
  && chown -R 65532:65532 /staged/var/lib/permguard \
  && printf 'nonroot:x:65532:65532:nonroot:/:/sbin/nologin\n' > /staged/passwd \
  && printf 'nonroot:x:65532:\n' > /staged/group
-
-RUN ldd /usr/local/bin/permguard 2>&1 | grep -qE "statically linked|not a dynamic executable" \
- || (echo "the binary is dynamically linked and the runtime image has no libc" >&2 && exit 1)
 
 FROM scratch AS runtime
 
@@ -69,9 +87,9 @@ LABEL org.opencontainers.image.title="Permguard" \
       org.opencontainers.image.source="https://github.com/permguard/permguard" \
       org.opencontainers.image.licenses="Apache-2.0"
 
-COPY --from=builder /staged/passwd /staged/group /etc/
-COPY --from=builder /usr/local/bin/permguard /usr/local/bin/permguard
-COPY --from=builder --chown=65532:65532 /staged/var/lib/permguard /var/lib/permguard
+COPY --from=staged /staged/passwd /staged/group /etc/
+COPY --from=binary /usr/local/bin/permguard /usr/local/bin/permguard
+COPY --from=staged --chown=65532:65532 /staged/var/lib/permguard /var/lib/permguard
 COPY LICENSE /usr/share/doc/permguard/
 
 USER 65532:65532

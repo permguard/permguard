@@ -83,8 +83,13 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # The chart's conformance tests render it with helm.
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
+        with:
+          tool: nextest
       - name: tests
-        run: cargo test --workspace --all-features --locked
+        run: |
+          cargo nextest run --workspace --all-features --locked
+          cargo test --workspace --all-features --locked --doc
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

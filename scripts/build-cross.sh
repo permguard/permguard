@@ -22,7 +22,9 @@ output="${1:?usage: scripts/build-cross.sh <output-directory> [target ...]}"
 # The targets named, or every one below. A release builds them one per job, in parallel;
 # the reproducible rebuild builds them all in one.
 only=("${@:2}")
-export PERMGUARD_BUILD_VERSION="${GITHUB_REF_NAME#v}"
+# The tag, unless the caller stamped a version already — CI stamps none, so the lab's binaries
+# report the workspace version as they always did.
+export PERMGUARD_BUILD_VERSION="${PERMGUARD_BUILD_VERSION-${GITHUB_REF_NAME#v}}"
 export PERMGUARD_BUILD_COMMIT="${GITHUB_SHA}"
 
 binaries=(permguard permguard-all-in-one permguard-control-plane permguard-data-plane)

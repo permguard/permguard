@@ -12,6 +12,11 @@
 # examples it applies are mounted at run time, so changing them never rebuilds the binaries.
 #
 #   docker build -f lab/compose/Dockerfile -t permguard/lab:local .
+#
+# `BINARY_SOURCE=prebuilt` takes the four binaries from `prebuilt/linux_<arch>/` in the context
+# instead of compiling them: CI builds them once, natively and cached, for every image it runs.
+
+ARG BINARY_SOURCE=builder
 
 FROM rust:1.97-slim-trixie AS builder
 
@@ -35,6 +40,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
  && cp target/release/permguard target/release/permguard-control-plane \
        target/release/permguard-data-plane target/release/permguard-all-in-one /out/
 
+FROM scratch AS prebuilt
+ARG TARGETARCH
+COPY prebuilt/linux_${TARGETARCH}/ /out/
+
+FROM ${BINARY_SOURCE} AS binaries
+
 FROM debian:trixie-slim AS lab
 
 RUN apt-get update \
@@ -46,7 +57,7 @@ RUN apt-get update \
  && chown 65532:65532 /var/lib/permguard /lab \
  && chmod 0700 /var/lib/permguard
 
-COPY --from=builder /out/ /usr/local/bin/
+COPY --from=binaries /out/ /usr/local/bin/
 COPY LICENSE /usr/share/doc/permguard/
 
 USER 65532:65532

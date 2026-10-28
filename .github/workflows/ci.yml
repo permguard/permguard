@@ -11,7 +11,9 @@ name: ci
 on:
   push:
     branches: [main, develop]
+    paths-ignore: ["docs/**", "website/**"]
   pull_request:
+    paths-ignore: ["docs/**", "website/**"]
 
 # A push to a pull request supersedes the run of the one before it; a push to a branch never cancels
 # anything, because `main`'s runs are the record. A tag runs nothing here: the release pipeline
@@ -86,10 +88,17 @@ jobs:
         run: |
           cargo check -p permguard-std --all-targets --no-default-features --locked
           cargo check -p permguard-std --all-targets --locked
+      # nextest runs the test binaries side by side, a process per test; `cargo test` runs the
+      # binaries one after another. The doctests are not nextest's, so they run after it.
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
+        with:
+          tool: nextest
       - name: tests
         # --all-features because `permguard-std` keeps `provision` outside its default set, and a
         # plain run would never compile the tests that cover it.
-        run: cargo test --workspace --all-features --locked
+        run: |
+          cargo nextest run --workspace --all-features --locked
+          cargo test --workspace --all-features --locked --doc
       # WP-7.13: what the traceability test checked, every section and finding of the blueprint to
       # the code and the tests above, kept with the run.
       - if: always()
@@ -390,6 +399,7 @@ jobs:
 
   chart-e2e:
     name: helm chart on a cluster
+    needs: images
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -403,8 +413,11 @@ jobs:
           curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
           echo "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  kind" | sha256sum --check
           sudo install -m 0755 kind /usr/local/bin/kind
-      - name: the data plane image
-        run: docker build --build-arg PACKAGE=permguard-data-plane --build-arg BIN=permguard-data-plane -t permguard/data-plane:e2e .
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: e2e-images
+      - name: the images, built once by the `images` job
+        run: gunzip -c e2e-images.tar.gz | docker load
       # A group scaled 3 → 1 and back: drained replicas, retained claims, the same identities, and
       # an upgrade from the single-group chart that keeps its claim (TD-1).
       - name: scale a group down and up
@@ -439,23 +452,76 @@ jobs:
   # The Compose lab's five profiles, each enrolled by the lab's own authority and checked — the same
   # script and the same assertions on Linux and on macOS (TD-3, F-24, F-25, F-26). The image is built
   # once, here, and the macOS job runs that very image.
-  compose-lab:
-    name: compose lab (linux)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
+  # The four binaries every cluster and lab job below runs, built once — natively, with the
+  # release's own cross toolchain, warm from the `release-linux_amd64` cache the release's Linux
+  # build shares — and the three e2e images and the lab image made from them in seconds. Before
+  # this, three jobs each compiled the workspace from scratch inside Docker, nine to twelve minutes
+  # apiece with nothing cached, and the macOS lab waited for the Linux lab to finish to get its image.
+  images:
+    name: the e2e and lab images
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: the lab image
-        run: docker build -f lab/compose/Dockerfile -t permguard/lab:local .
-      - name: every profile
-        run: NO_BUILD=1 ./scripts/compose-lab.sh
-      - name: the image, for the macOS job
-        run: docker save permguard/lab:local | gzip > lab-image.tar.gz
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08
+        with:
+          toolchain: "1.97"
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: release-linux_amd64
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+      - name: Install cargo-zigbuild
+        run: cargo install --locked cargo-zigbuild --version 0.23.4
+      - name: the binaries, as the release builds them
+        # No version stamp: the binaries report the workspace version, as the lab's always did.
+        env:
+          PERMGUARD_BUILD_VERSION: ""
+        run: |
+          set -euo pipefail
+          ./scripts/build-cross.sh prebuilt x86_64-unknown-linux-musl
+          for binary in prebuilt/linux_amd64/*; do
+            ldd "${binary}" 2>&1 | grep -qE "statically linked|not a dynamic executable" ||
+              { echo "${binary} is dynamically linked and the runtime image has no libc" >&2; exit 1; }
+          done
+      - name: the images, from the binaries
+        run: |
+          set -euo pipefail
+          docker build --build-arg BINARY_SOURCE=prebuilt --build-arg BIN=permguard-data-plane -t permguard/data-plane:e2e .
+          docker build --build-arg BINARY_SOURCE=prebuilt --build-arg BIN=permguard-control-plane -t permguard/control-plane:e2e .
+          docker build --build-arg BINARY_SOURCE=prebuilt --build-arg BIN=permguard -t permguard/cli:e2e .
+          docker build --build-arg BINARY_SOURCE=prebuilt -f lab/compose/Dockerfile -t permguard/lab:local .
+          docker save permguard/data-plane:e2e permguard/control-plane:e2e permguard/cli:e2e | gzip > e2e-images.tar.gz
+          docker save permguard/lab:local | gzip > lab-image.tar.gz
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-images
+          path: e2e-images.tar.gz
+          retention-days: 1
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compose-lab-image
           path: lab-image.tar.gz
           retention-days: 1
+
+  compose-lab:
+    name: compose lab (linux)
+    needs: images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: compose-lab-image
+      - name: the lab image, built once by the `images` job
+        run: gunzip -c lab-image.tar.gz | docker load
+      - name: every profile
+        run: NO_BUILD=1 ./scripts/compose-lab.sh
       - name: the logs of a failed profile
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -465,7 +531,8 @@ jobs:
 
   compose-lab-macos:
     name: compose lab (macos)
-    needs: compose-lab
+    # On the image, not on the Linux job: the two run the same profiles side by side.
+    needs: images
     # An Intel runner: the Docker engine runs in a virtual machine, which the Apple silicon runners
     # cannot nest. Both runners are amd64, so the Linux job's image runs here unchanged.
     runs-on: macos-15-intel
@@ -484,7 +551,7 @@ jobs:
           colima start --cpu 3 --memory 8 --disk 30
           docker version
           docker compose version
-      - name: the Linux job's image
+      - name: the lab image, built once by the `images` job
         run: gunzip -c lab-image.tar.gz | docker load
       - name: every profile
         run: NO_BUILD=1 ./scripts/compose-lab.sh
@@ -497,6 +564,7 @@ jobs:
 
   chart-drain:
     name: drain controller and storage takeover on a cluster
+    needs: images
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -507,12 +575,11 @@ jobs:
           curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
           echo "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  kind" | sha256sum --check
           sudo install -m 0755 kind /usr/local/bin/kind
-      - name: the images
-        run: |
-          set -euo pipefail
-          docker build --build-arg PACKAGE=permguard-data-plane --build-arg BIN=permguard-data-plane -t permguard/data-plane:e2e .
-          docker build --build-arg PACKAGE=permguard-control-plane --build-arg BIN=permguard-control-plane -t permguard/control-plane:e2e .
-          docker build --build-arg PACKAGE=permguard-cli --build-arg BIN=permguard -t permguard/cli:e2e .
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: e2e-images
+      - name: the images, built once by the `images` job
+        run: gunzip -c e2e-images.tar.gz | docker load
       # A forced timeout never deletes an evidence claim; the fenced drain Job prints its receipt
       # (TD-2).
       - name: the drain controller

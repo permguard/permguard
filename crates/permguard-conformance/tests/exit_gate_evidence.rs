@@ -115,7 +115,8 @@ fn the_verification_keeps_the_serving_gate_and_the_traceability_report() {
     // release waits for the slower, not for both — and the traceability report is theirs to keep.
     let tests = job(&release, "tests");
     assert!(
-        scripts(tests).contains("cargo test --workspace"),
+        scripts(tests).contains("cargo nextest run --workspace")
+            && scripts(tests).contains("cargo test --workspace --all-features --locked --doc"),
         "{}",
         scripts(tests)
     );
