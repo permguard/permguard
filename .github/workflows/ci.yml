@@ -484,9 +484,13 @@ jobs:
         run: |
           set -euo pipefail
           ./scripts/build-cross.sh prebuilt x86_64-unknown-linux-musl
+          # Static, with no program interpreter. musl links these static-pie, which `ldd` does not
+          # call "statically linked", so the ELF headers are asked instead.
           for binary in prebuilt/linux_amd64/*; do
-            ldd "${binary}" 2>&1 | grep -qE "statically linked|not a dynamic executable" ||
-              { echo "${binary} is dynamically linked and the runtime image has no libc" >&2; exit 1; }
+            if readelf --program-headers "${binary}" | grep -q 'Requesting program interpreter'; then
+              echo "${binary} needs a dynamic loader and the runtime image has no libc" >&2
+              exit 1
+            fi
           done
       - name: the images, from the binaries
         run: |
