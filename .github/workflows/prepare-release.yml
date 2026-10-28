@@ -50,7 +50,11 @@ jobs:
         with:
           toolchain: "1.97"
           components: clippy, rustfmt
+      # The same name as the `check` job of `ci.yml`: this restores `main`'s cache, and what it
+      # saves is what the release pipeline's `lint` and `tests` jobs restore minutes later.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: check
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}

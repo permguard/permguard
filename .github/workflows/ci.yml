@@ -11,8 +11,14 @@ name: ci
 on:
   push:
     branches: [main, develop]
-    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
   pull_request:
+
+# A push to a pull request supersedes the run of the one before it; a push to a branch never cancels
+# anything, because `main`'s runs are the record. A tag runs nothing here: the release pipeline
+# verifies the tagged commit itself, and the commit it points at ran here when it reached `main`.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Read-only: nothing here publishes, and a job that compiles must not hold a token that could.
 permissions:
@@ -37,7 +43,11 @@ jobs:
         with:
           toolchain: "1.97"
           components: clippy, rustfmt
+      # Named, so the release pipeline's `lint` and `tests` jobs restore what this job saved on
+      # `main`; by default the cache key carries the job's name and no other job can find it.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: check
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -120,7 +130,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08
         with:
           toolchain: "1.97"
+      # Named, so the release pipeline's `verify` job, which builds the same release binaries for
+      # the same gate, restores what this job saved on `main`.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: gate
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}

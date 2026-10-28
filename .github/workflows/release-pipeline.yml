@@ -27,6 +27,74 @@ jobs:
   # Everything that can say no, before anything is published. A tag is already public by the time
   # this runs, so the worst outcome here is a release that does not happen — which is recoverable,
   # and a released binary that was never tested is not.
+  # Three jobs rather than one, because none of them needs another's output and a release waits for
+  # the slowest, not for their sum. Each restores the Rust cache the `check` and `benchmark` jobs of
+  # `ci.yml` save on `main` under the same `shared-key`; a tag can read `main`'s caches and nobody
+  # can read a tag's, so nothing is saved here.
+  lint:
+    name: Lint and structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08
+        with:
+          toolchain: "1.97"
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: check
+          save-if: false
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: formatting
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: only the binary composes collaborators
+        run: ./scripts/check-composition-root.sh
+      - name: permguard-core keeps its dependency allowlist
+        run: ./scripts/check-core-dependencies.sh
+      - name: the build systems agree
+        run: ./scripts/check-build-systems.sh
+      - name: every source file carries the licence header
+        run: ./scripts/check-license-headers.sh
+
+  # The tests, and with them the traceability report the `traceability` test writes: kept for the
+  # evidence job, which attaches it to the release.
+  tests:
+    name: Test the tagged commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: check
+          save-if: false
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # The chart's conformance tests render it with helm.
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: tests
+        run: cargo test --workspace --all-features --locked
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: traceability
+          path: target/traceability.json
+          retention-days: 1
+          if-no-files-found: warn
+
+  # The serving gate (TS-4) on the release binaries of the tagged commit, and the chart's version:
+  # the two checks that are about this release rather than about the code.
   verify:
     name: Verify the tagged commit
     runs-on: ubuntu-latest
@@ -51,26 +119,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08
         with:
           toolchain: "1.97"
-          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: gate
+          save-if: false
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: formatting
-        run: cargo fmt --all -- --check
-      - name: clippy
-        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-      - name: only the binary composes collaborators
-        run: ./scripts/check-composition-root.sh
-      - name: permguard-core keeps its dependency allowlist
-        run: ./scripts/check-core-dependencies.sh
-      - name: the build systems agree
-        run: ./scripts/check-build-systems.sh
-      - name: every source file carries the licence header
-        run: ./scripts/check-license-headers.sh
-      - name: tests
-        run: cargo test --workspace --all-features --locked
       # TS-4: the candidate meets its published objective with its headroom, refuses typed within
       # bounds, and reaches no network from a decision — before anything is published.
       - name: the serving gate
@@ -79,15 +135,13 @@ jobs:
           target/release/permguard-bench gate \
             --server target/release/permguard-all-in-one --cli target/release/permguard \
             --directory "${RUNNER_TEMP}/permguard-gate" --out permguard-gate.json
-      # WP-7.13: the serving gate's verdict and the traceability report the tests wrote, kept for
-      # the evidence manifest the last job pins to the release.
+      # WP-7.13: the serving gate's verdict, kept for the evidence manifest the last job pins to
+      # the release.
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: verified
-          path: |
-            permguard-gate.json
-            target/traceability.json
+          path: permguard-gate.json
           retention-days: 1
           if-no-files-found: warn
 
@@ -107,7 +161,7 @@ jobs:
   # The permissions are the most it may use; inside, only the job that compiles nothing uses them.
   build:
     name: Build and publish
-    needs: [verify, supply-chain]
+    needs: [lint, tests, verify, supply-chain]
     permissions:
       contents: write
       id-token: write
@@ -306,7 +360,9 @@ jobs:
   # passed without a crash. Read-only: it compiles.
   fuzz:
     name: Fuzz the tagged source for the release budget (shard ${{ matrix.shard }})
-    needs: [verify]
+    # It waits for nothing: it compiles the tagged source with its own toolchain, reads nothing
+    # another job produces and may not write, so it starts with the verification rather than
+    # after it — the budget is the long pole of the run.
     runs-on: ubuntu-latest
     timeout-minutes: 150
     continue-on-error: true
@@ -530,7 +586,15 @@ jobs:
   evidence:
     name: Pin the release's evidence
     needs:
-      [verify, build, publish-benchmark, publish-drills, publish-fuzz, publish-reproducibility]
+      [
+        verify,
+        tests,
+        build,
+        publish-benchmark,
+        publish-drills,
+        publish-fuzz,
+        publish-reproducibility,
+      ]
     if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -541,10 +605,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The serving gate's verdict from `verify`, the traceability report from `tests`: either may
+      # be missing, and the manifest then says so.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
         with:
           name: verified
+          path: verified
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: traceability
           path: verified
       - name: Attach the serving gate and the traceability report
         env:
@@ -552,7 +623,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          [ -s verified/target/traceability.json ] && cp verified/target/traceability.json verified/
           for record in permguard-gate traceability; do
             if [ -s "verified/${record}.json" ]; then
               gh release upload "${GITHUB_REF_NAME}" "verified/${record}.json" --clobber

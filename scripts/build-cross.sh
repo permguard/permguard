@@ -4,7 +4,7 @@
 #
 # Builds the Linux and Windows release binaries and stages them for GoReleaser.
 #
-#   scripts/build-cross.sh <output-directory>
+#   scripts/build-cross.sh <output-directory> [target ...]
 #
 # Four binaries for four targets, cross-compiled with `cargo zigbuild` from one Linux runner, staged
 # as <output>/<os>_<arch>/<binary> — the layout `.goreleaser.yaml` imports as prebuilt. A Windows
@@ -18,7 +18,10 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-output="${1:?usage: scripts/build-cross.sh <output-directory>}"
+output="${1:?usage: scripts/build-cross.sh <output-directory> [target ...]}"
+# The targets named, or every one below. A release builds them one per job, in parallel;
+# the reproducible rebuild builds them all in one.
+only=("${@:2}")
 export PERMGUARD_BUILD_VERSION="${GITHUB_REF_NAME#v}"
 export PERMGUARD_BUILD_COMMIT="${GITHUB_SHA}"
 
@@ -27,6 +30,12 @@ packages=(--package permguard-cli --package permguard-all-in-one --package permg
 
 # target  os_arch  extension
 while read -r target staged extension; do
+    if [ "${#only[@]}" -gt 0 ]; then
+        case " ${only[*]} " in
+            *" ${target} "*) ;;
+            *) continue ;;
+        esac
+    fi
     cargo zigbuild --release --locked --target "${target}" "${packages[@]}"
     mkdir -p "${output}/${staged}"
     for binary in "${binaries[@]}"; do

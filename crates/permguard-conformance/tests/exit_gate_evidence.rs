@@ -4,11 +4,11 @@
 //! WP-7.13: every release carries the iteration exit gate's evidence, pinned and attested.
 //!
 //! The release pipeline is read as data. The tagged source is fuzzed for the release budget by a
-//! job that compiles and may not write; the serving gate's verdict and the traceability report are
-//! kept from the verification; and a last job, which compiles nothing, attaches them, writes the
-//! evidence manifest over the release as published, attests it and verifies it the way an auditor
-//! would. A step dropped from the chain fails here, not in a release that silently stopped
-//! carrying its evidence.
+//! job that compiles and may not write; the serving gate's verdict is kept from the verification
+//! and the traceability report from the tests; and a last job, which compiles nothing, attaches
+//! them, writes the evidence manifest over the release as published, attests it and verifies it
+//! the way an auditor would. A step dropped from the chain fails here, not in a release that
+//! silently stopped carrying its evidence.
 
 #![allow(clippy::expect_used, clippy::panic)]
 
@@ -67,6 +67,24 @@ fn permission(workflow: &Value, job: &Value, scope: &str) -> Option<String> {
     }
 }
 
+/// The paths a job's `actions/upload-artifact` steps keep, joined.
+fn kept(job: &Value) -> String {
+    using(job, "actions/upload-artifact")
+        .iter()
+        .filter_map(|step| step["with"].get("path").and_then(Value::as_str))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The artifacts a job's `actions/download-artifact` steps fetch by name.
+fn fetched(job: &Value) -> Vec<String> {
+    using(job, "actions/download-artifact")
+        .iter()
+        .filter_map(|step| step["with"].get("name").and_then(Value::as_str))
+        .map(str::to_owned)
+        .collect()
+}
+
 fn needs(job: &Value) -> Vec<String> {
     match &job["needs"] {
         Value::String(one) => vec![one.clone()],
@@ -88,22 +106,42 @@ fn the_verification_keeps_the_serving_gate_and_the_traceability_report() {
             && scripts(verify).contains("permguard-gate.json"),
         "the serving gate runs before anything is published"
     );
-    let kept: Vec<&str> = using(verify, "actions/upload-artifact")
-        .iter()
-        .filter_map(|step| step["with"].get("path").and_then(Value::as_str))
-        .collect();
-    let kept = kept.join("\n");
     assert!(
-        kept.contains("permguard-gate.json") && kept.contains("target/traceability.json"),
-        "{kept}"
+        kept(verify).contains("permguard-gate.json"),
+        "{}",
+        kept(verify)
     );
+    // The tests run beside the gate rather than before it — neither needs the other, and the
+    // release waits for the slower, not for both — and the traceability report is theirs to keep.
+    let tests = job(&release, "tests");
+    assert!(
+        scripts(tests).contains("cargo test --workspace"),
+        "{}",
+        scripts(tests)
+    );
+    assert!(
+        kept(tests).contains("target/traceability.json"),
+        "{}",
+        kept(tests)
+    );
+    // Both reach the job that attaches them.
+    let evidence = job(&release, "evidence");
+    let fetched = fetched(evidence);
+    for artifact in ["verified", "traceability"] {
+        assert!(
+            fetched.iter().any(|name| name == artifact),
+            "the evidence job fetches {artifact}: {fetched:?}"
+        );
+    }
 }
 
 #[test]
 fn the_tagged_source_is_fuzzed_for_the_release_budget() {
     let release = release();
     let fuzz = job(&release, "fuzz");
-    assert_eq!(needs(fuzz), ["verify"]);
+    // It waits for nothing: it compiles the tagged source with its own toolchain and reads nothing
+    // another job produces, and the budget is the long pole of the run, so it starts at once.
+    assert_eq!(needs(fuzz), Vec::<String>::new());
     // Every target ten minutes does not fit one job: the targets are dealt to six shards.
     let shards: Vec<u64> = fuzz["strategy"]["matrix"]["shard"]
         .as_sequence()
@@ -154,6 +192,7 @@ fn the_last_job_pins_attests_and_verifies_the_evidence_of_the_release() {
     let waited = needs(evidence);
     for before in [
         "verify",
+        "tests",
         "build",
         "publish-benchmark",
         "publish-drills",
