@@ -288,6 +288,12 @@ jobs:
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
 
+      # GoReleaser 2.19 leaves `digests.txt` empty for `dockers_v2`; the digests are read back from
+      # the registries for every image and tag the configuration names, so the attestation below
+      # always has its subjects. A file GoReleaser did fill is kept as it is.
+      - name: The digests of the pushed images
+        run: ./scripts/image-digests.sh "${GITHUB_REF_NAME}" dist/digests.txt .goreleaser.yaml
+
       # An image has a digest to attest only once it is in its registry, so images are attested and
       # verified right after the push. A failure here fails the release run and names the image.
       - name: Attest the container images
