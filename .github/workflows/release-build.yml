@@ -248,7 +248,7 @@ jobs:
       # Prepared, not published: archives, packages, checksums, SBOMs and the checksums signature are
       # written to `dist/`, and nothing leaves this runner — no release, no image, no cask.
       - name: Prepare the release
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser-pro
           # Major-pinned: `latest` made every release a different toolchain.
@@ -288,7 +288,7 @@ jobs:
       # this step: a broken image surfaces after the release and cask exist, as a failed run whose
       # release is complete except for that image, and is fixed by a new tag.
       - name: Publish the verified release
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser-pro
           version: "~> v2"
