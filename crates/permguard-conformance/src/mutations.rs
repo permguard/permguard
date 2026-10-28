@@ -378,7 +378,7 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
         if self.mentions(&block.self_ty) {
             let line = block.impl_token.span.start().line;
             match &block.trait_ {
-                Some((_, path, _))
+                Some((path, _))
                     if path.segments.last().is_some_and(|segment| {
                         matches!(
                             segment.ident.to_string().as_str(),
