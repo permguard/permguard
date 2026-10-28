@@ -328,6 +328,27 @@ jobs:
           cargo clippy --workspace --all-targets --all-features -- -D warnings
           cargo test --workspace --all-features
 
+  windows:
+    name: the Windows build
+    runs-on: ubuntu-latest
+    # Every release ships Windows binaries, built from Linux with the GNU target. Checked here on
+    # every change, so code that only compiles on Unix (a `rustix` call outside `#[cfg(unix)]`) is
+    # found by the pull request that adds it rather than by a release that cannot build.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08; the toolchain is chosen by `toolchain:`, not by the ref
+        with:
+          toolchain: "1.97"
+          targets: x86_64-pc-windows-gnu
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: the MinGW linker and C compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+      - name: check every crate for Windows
+        run: cargo check --workspace --all-targets --locked --target x86_64-pc-windows-gnu
+
   coverage:
     name: coverage
     runs-on: ubuntu-latest

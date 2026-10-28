@@ -26,7 +26,9 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{Result, StorageError};
+use super::Result;
+#[cfg(unix)]
+use super::StorageError;
 
 /// What makes an entry of the volume not private.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

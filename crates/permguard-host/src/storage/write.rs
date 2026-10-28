@@ -268,10 +268,7 @@ pub fn allocate(dir: &Dir, name: &str, bytes: u64) -> Result<bool> {
     };
     let path = dir.child_path(name);
     if let Err(error) = allocate_blocks(&file, bytes) {
-        if error.kind() == std::io::ErrorKind::Unsupported
-            || error.raw_os_error() == Some(rustix::io::Errno::OPNOTSUPP.raw_os_error())
-            || error.raw_os_error() == Some(rustix::io::Errno::NOSYS.raw_os_error())
-        {
+        if cannot_allocate(&error) {
             dir.sync()?;
             return Ok(false);
         }
@@ -285,6 +282,23 @@ pub fn allocate(dir: &Dir, name: &str, bytes: u64) -> Result<bool> {
     }
     dir.sync()?;
     Ok(true)
+}
+
+/// Whether `error` says the filesystem cannot allocate blocks at all, rather than that this
+/// allocation failed: no such operation, or none for this filesystem.
+fn cannot_allocate(error: &std::io::Error) -> bool {
+    if error.kind() == std::io::ErrorKind::Unsupported {
+        return true;
+    }
+    #[cfg(unix)]
+    {
+        error.raw_os_error() == Some(rustix::io::Errno::OPNOTSUPP.raw_os_error())
+            || error.raw_os_error() == Some(rustix::io::Errno::NOSYS.raw_os_error())
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
 }
 
 /// Releases the blocks of the file `name` below `dir` back to the filesystem, keeping the file:
