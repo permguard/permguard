@@ -160,7 +160,7 @@ says so and its repository is the authority.
 | `httparse` | 1.10.1 | MIT OR Apache-2.0 | https://github.com/seanmonstar/httparse |
 | `httpdate` | 1.0.3 | MIT OR Apache-2.0 | https://github.com/pyfisch/httpdate |
 | `hybrid-array` | 0.4.15 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hybrid-array |
-| `hyper` | 1.11.1 | MIT | https://github.com/hyperium/hyper |
+| `hyper` | 1.12.0 | MIT | https://github.com/hyperium/hyper |
 | `hyper-timeout` | 0.5.2 | MIT OR Apache-2.0 | https://github.com/hjr3/hyper-timeout |
 | `hyper-util` | 0.1.21 | MIT | https://github.com/hyperium/hyper-util |
 | `iana-time-zone` | 0.1.65 | MIT OR Apache-2.0 | https://github.com/strawlab/iana-time-zone |
@@ -313,7 +313,7 @@ says so and its repository is the authority.
 | `rusticata-macros` | 4.1.0 | MIT/Apache-2.0 | https://github.com/rusticata/rusticata-macros.git |
 | `rustix` | 1.1.5 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/rustix |
 | `rustls` | 0.23.46 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
-| `rustls-native-certs` | 0.8.4 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls-native-certs |
+| `rustls-native-certs` | 0.8.5 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls-native-certs |
 | `rustls-pki-types` | 1.15.1 | MIT OR Apache-2.0 | https://github.com/rustls/pki-types |
 | `rustls-webpki` | 0.103.16 | ISC | https://github.com/rustls/webpki |
 | `rustversion` | 1.0.23 | MIT OR Apache-2.0 | https://github.com/dtolnay/rustversion |
@@ -433,7 +433,7 @@ says so and its repository is the authority.
 | `vsimd` | 0.8.0 | MIT | https://github.com/Nugine/simd |
 | `vstd` | 0.0.0-2026-08-23-0033 | MIT | https://github.com/verus-lang/verus |
 | `walkdir` | 2.5.0 | Unlicense/MIT | https://github.com/BurntSushi/walkdir |
-| `want` | 0.3.1 | MIT | https://github.com/seanmonstar/want |
+| `want` | 0.3.2 | MIT | https://github.com/seanmonstar/want |
 | `wasi` | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi |
 | `wasip2` | 1.0.4+wasi-0.2.12 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi-rs |
 | `wasm-bindgen` | 0.2.129 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen |
