@@ -774,3 +774,78 @@ async fn the_plane_answers_its_own_signers_and_never_its_records() {
     let (status, _) = ask(&router, "POST", &path).await;
     assert_eq!(status, 405, "the signers are read, never written");
 }
+
+/// Observation follows the sequence. Submissions stamp `observed_at` when they arrive, before the
+/// journal sequences them, so two racing across a second boundary could be sequenced against
+/// their observation, and the later one would sort before the earlier one already applied
+/// (`event_out_of_order` for nothing it did). Appended, no record is observed before the one ahead
+/// of it by the width of that race, across appends and across a reopening; its event time is never
+/// touched, and a clock that moved further than a race could carries nothing forward.
+#[test]
+fn a_record_is_never_observed_before_the_one_sequenced_ahead_of_it() {
+    let host = HostVolume::new("observed-floor");
+    let producer = host.producer();
+    let streams = host.streams(&producer);
+    let observed = |record: &Record| {
+        permguard_events::index::epoch_seconds(&record.observed_at).expect("an instant")
+    };
+
+    let (_, first) = streams
+        .append(ZONE_ID, LEDGER_ID, occurrence(5, "alice"))
+        .expect("durable");
+    assert_eq!(observed(&first), 1_700_000_005);
+    // Stamped a second earlier, sequenced after: observed with the one ahead of it.
+    let (_, second) = streams
+        .append(ZONE_ID, LEDGER_ID, occurrence(4, "alice"))
+        .expect("durable");
+    assert_eq!(
+        observed(&second),
+        1_700_000_005,
+        "moved forward to the one ahead"
+    );
+    assert_eq!(
+        permguard_events::index::epoch_seconds(&second.occurred_at),
+        Some(1_700_000_004),
+        "the event time is the caller's and never moves"
+    );
+    // A later stamp is kept as it is.
+    let (_, third) = streams
+        .append(ZONE_ID, LEDGER_ID, occurrence(9, "alice"))
+        .expect("durable");
+    assert_eq!(observed(&third), 1_700_000_009);
+    drop(streams);
+    drop(producer);
+
+    // Reopened, the floor is the stream's stored tail.
+    let producer = host.producer();
+    let streams = host.streams(&producer);
+    let (written, fourth) = streams
+        .append(ZONE_ID, LEDGER_ID, occurrence(2, "alice"))
+        .expect("durable");
+    assert_eq!(
+        observed(&fourth),
+        1_700_000_009,
+        "the floor survives a reopening"
+    );
+    let Written::Appended { seq, .. } = written else {
+        panic!("a fresh occurrence is appended: {written:?}");
+    };
+    let stored = streams.record_at(ZONE_ID, LEDGER_ID, seq).expect("read");
+    assert_eq!(
+        stored["observed_at"],
+        fourth.observed_at.as_str(),
+        "what was stored"
+    );
+
+    // A record ahead by more than a race could be is a clock that moved: nothing is carried
+    // forward from it, and the submission keeps its own stamp.
+    let mut behind = occurrence(10, "alice");
+    behind.observed_at =
+        permguard_events::index::render_epoch_seconds(1_700_000_009 - 31).expect("an instant");
+    let (_, fifth) = streams.append(ZONE_ID, LEDGER_ID, behind).expect("durable");
+    assert_eq!(
+        observed(&fifth),
+        1_700_000_009 - 31,
+        "beyond a race, never moved"
+    );
+}

@@ -17,7 +17,11 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Concurrent temporal submissions are no longer refused out of order across a second boundary.**
+  A submission stamped its `observed_at` when it arrived, before the journal gave it a sequence, so two submissions racing across a second could be sequenced against their observation and the second refused `event_out_of_order`.
+  Under the ledger's lock, a record is now never observed before the one sequenced ahead of it, by up to 30 seconds; a record further ahead is a clock that moved, and carries nothing forward.
 
 ## [0.1.7] - 2026-10-27
 

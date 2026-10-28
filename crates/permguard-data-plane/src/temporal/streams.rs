@@ -68,6 +68,9 @@ struct Held {
     host: HostLedger,
     /// The stream's pressure as last measured, and when.
     pressure: Option<(Instant, Option<&'static str>)>,
+    /// The `observed_at` of the last record appended, in epoch seconds: no later record is
+    /// observed before it. Read from the stream's tail on the first append after opening.
+    last_observed: Option<i64>,
 }
 
 /// The largest number of records one flush covers.
@@ -401,6 +404,7 @@ impl Streams {
 
         Ok(Arc::clone(open.entry(key).or_insert_with(|| {
             Arc::new(Mutex::new(Held {
+                last_observed: None,
                 legacy,
                 host,
                 pressure: None,
@@ -633,12 +637,21 @@ impl Streams {
             return results;
         }
 
-        let (tickets, records): (Vec<u64>, Vec<Record>) = fresh.into_iter().unzip();
+        let (tickets, mut records): (Vec<u64>, Vec<Record>) = fresh.into_iter().unzip();
+        // Observation follows the sequence. Each submission stamped its `observed_at` when it
+        // arrived, before it had a sequence, so two of them racing across a second boundary could
+        // be sequenced in the opposite order of their observation, and the later one would sort
+        // before the earlier one already applied: refused out of order for nothing it did. Here,
+        // under the ledger's lock and in sequence order, no record is observed before the one
+        // ahead of it by the width of that race; an instant is only ever moved forward, to the
+        // instant of that record, and never across a clock that moved further than a race could.
+        let floor = observed_floor(&held, &mut records);
         let max_record_bytes = u32::try_from(self.bounds.max_record_bytes)
             .unwrap_or(u32::MAX)
             .min(permguard_events::stream::descriptor().max_record_bytes);
         match held.host.append(records, max_record_bytes) {
             Ok(placed) => {
+                held.last_observed = floor;
                 self.metrics.count(&super::measure::FLUSHES, &[]);
                 self.metrics
                     .observe(&super::measure::BATCH_RECORDS, &[], covered as f64);
@@ -1360,6 +1373,51 @@ fn children_holding(root: &Path, marker: &str) -> Vec<(String, String)> {
     found.sort();
 
     found
+}
+
+/// How far an `observed_at` is moved forward to follow the record sequenced ahead of it: the
+/// width of the race between a submission's stamp and its sequence, which is the time a request
+/// spends between arriving and joining a batch. A record ahead by more than this is not a race but
+/// a clock that moved, and nothing is carried forward from it: the submission keeps its own stamp
+/// and is judged against the history as it stands.
+const OBSERVED_LIFT_SECS: i64 = 30;
+
+/// Moves each record's `observed_at` forward to the latest one ahead of it where it is earlier by
+/// no more than [`OBSERVED_LIFT_SECS`], in the order the records are about to be sequenced, and
+/// answers the latest instant.
+///
+/// The floor starts at the last record this process appended, or, on the first append after
+/// opening, at the stream's tail as stored. An instant that cannot be read is left as it is: the
+/// record's own validation refuses it.
+fn observed_floor(held: &Held, records: &mut [Record]) -> Option<i64> {
+    let mut floor = held.last_observed.or_else(|| {
+        let tail = held.host.last();
+        (tail > 0)
+            .then(|| held.host.record_at(tail).ok().flatten())
+            .flatten()
+            .and_then(|record| {
+                record
+                    .get("observed_at")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(permguard_events::index::epoch_seconds)
+            })
+    });
+    for record in records.iter_mut() {
+        let Some(at) = permguard_events::index::epoch_seconds(&record.observed_at) else {
+            continue;
+        };
+        match floor {
+            Some(before) if at < before => {
+                if before - at <= OBSERVED_LIFT_SECS
+                    && let Some(moved) = permguard_events::index::render_epoch_seconds(before)
+                {
+                    record.observed_at = moved;
+                }
+            }
+            _ => floor = Some(at),
+        }
+    }
+    floor
 }
 
 #[cfg(test)]
