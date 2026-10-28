@@ -17,11 +17,18 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.8] - 2026-10-28
+
 ### Fixed
 
-- **Concurrent temporal submissions are no longer refused out of order across a second boundary.**
-  A submission stamped its `observed_at` when it arrived, before the journal gave it a sequence, so two submissions racing across a second could be sequenced against their observation and the second refused `event_out_of_order`.
-  Under the ledger's lock, a record is now never observed before the one sequenced ahead of it, by up to 30 seconds; a record further ahead is a clock that moved, and carries nothing forward.
+- **The container images of a release are attested.**
+  GoReleaser 2.19 leaves `digests.txt` empty for `dockers_v2`, so `v0.1.7` published its images without their build provenance.
+  The release now reads every pushed tag's digest back from its registry, attests it and verifies it, as it does for the files.
+
+- **`pulldown-cmark` 0.13.5 (RUSTSEC-2026-0414).**
+  The Markdown parser `prost-build` uses at build time, never shipped in a binary, is moved past the advisory.
 
 ## [0.1.7] - 2026-10-27
 
@@ -1126,6 +1133,10 @@ is cut.
 - An identity rotation destroys every retired private key past its grace that the custody still holds, so a key a previous rotation could not destroy is tried again; a key kept is reported as `host.identity_key_kept`, and the public keys and successions stay.
 
 ### Fixed
+
+- **Concurrent temporal submissions are no longer refused out of order across a second boundary.**
+  A submission stamped its `observed_at` when it arrived, before the journal gave it a sequence, so two submissions racing across a second could be sequenced against their observation and the second refused `event_out_of_order`.
+  Under the ledger's lock, a record is now never observed before the one sequenced ahead of it, by up to 30 seconds; a record further ahead is a clock that moved, and carries nothing forward.
 
 - **A backup whose roots could not be flushed is aborted, not left `prepared` (WP-7.13).**
   A prepare refused because a directory of a root could not be flushed left its operation listed `prepared` until the next restart, with no barrier behind it.
