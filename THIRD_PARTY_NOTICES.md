@@ -244,10 +244,10 @@ says so and its repository is the authority.
 | `once_cell` | 1.21.4 | MIT OR Apache-2.0 | https://github.com/matklad/once_cell |
 | `once_cell_polyfill` | 1.70.2 | MIT OR Apache-2.0 | https://github.com/polyfill-rs/once_cell_polyfill |
 | `openssl-probe` | 0.2.1 | MIT OR Apache-2.0 | https://github.com/rustls/openssl-probe |
-| `opentelemetry` | 0.33.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry |
-| `opentelemetry-otlp` | 0.33.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-otlp |
-| `opentelemetry-proto` | 0.33.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-proto |
-| `opentelemetry_sdk` | 0.33.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-sdk |
+| `opentelemetry` | 0.33.1 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry |
+| `opentelemetry-otlp` | 0.33.1 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-otlp |
+| `opentelemetry-proto` | 0.33.1 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-proto |
+| `opentelemetry_sdk` | 0.33.1 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-sdk |
 | `outref` | 0.5.2 | MIT | https://github.com/Nugine/outref |
 | `parking_lot` | 0.12.5 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | `parking_lot_core` | 0.9.12 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
