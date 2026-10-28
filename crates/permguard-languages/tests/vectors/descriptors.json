@@ -7,7 +7,7 @@
         "language_version": "4.11.0",
         "engine_name": "cedar-policy",
         "engine_version": "4.11.0",
-        "engine_build": "sha256:f40bb42e2737b15af6b2fa436e03f2063a0a31a57fc8d54fac9c1534912cc3a9",
+        "engine_build": "sha256:0e1b475e5f88fd760b3f99830f0d6462bdf3b1d0340b72247e27cbb06929c28f",
         "experimental": false,
         "evaluation_interfaces": [
           {
@@ -51,7 +51,7 @@
           "reason": "Cedar evaluation terminates by construction and holds no state between requests"
         }
       },
-      "digest": "sha256:925accc491bf725943af5252aa03b5d700bafaf498e5cacdd0266ef464b95bbb"
+      "digest": "sha256:4b3718efdaf962c60060d3ca5605267c8f99df918439847b2a7299f09526407a"
     },
     {
       "descriptor": {
@@ -59,7 +59,7 @@
         "language_version": "1.0.0",
         "engine_name": "amzn-dogwood-language",
         "engine_version": "1.0.0",
-        "engine_build": "sha256:427c7cd93b2bfa62f8fd7e9ebee524b9c21d40e75016963dc6ad30f6b49708f0",
+        "engine_build": "sha256:89df75b7ff0998a9c5ece4ae91fab0f03ca32c56ba7a8f57a51723c52ecfc0c4",
         "experimental": true,
         "evaluation_interfaces": [
           {
@@ -112,7 +112,7 @@
           "reason": "provider work is bounded by operation and data-size limits but not by wall clock, and upstream offers no cancellation (LANG-08): from production upward a partition carrying providers is refused at load, and one without them runs in-process"
         }
       },
-      "digest": "sha256:9bd54e6b70567d16c5f3de054195d52c1ffc327bd2c68608c167c053d41dafc4"
+      "digest": "sha256:70bbb0edd46d74682844c31c5ffb4cf9105a15cf41896244cf274e5665a382d1"
     },
     {
       "descriptor": {
