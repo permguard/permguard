@@ -189,11 +189,11 @@ says so and its repository is the authority.
 | `jiff-tzdb-platform` | 0.1.3 | Unlicense OR MIT | https://github.com/BurntSushi/jiff |
 | `js-sys` | 0.3.106 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys |
 | `jsonschema` | 0.49.9 | MIT | https://github.com/Stranger6667/jsonschema |
-| `jsonschema` | 0.56.0 | MIT | https://github.com/Stranger6667/jsonschema |
+| `jsonschema` | 0.59.0 | MIT | https://github.com/Stranger6667/jsonschema |
 | `jsonschema-regex` | 0.49.9 | MIT | https://github.com/Stranger6667/jsonschema |
-| `jsonschema-regex` | 0.56.0 | MIT | https://github.com/Stranger6667/jsonschema |
+| `jsonschema-regex` | 0.59.0 | MIT | https://github.com/Stranger6667/jsonschema |
 | `jsonschema-value` | 0.49.9 | MIT | https://github.com/Stranger6667/jsonschema |
-| `jsonschema-value` | 0.56.0 | MIT | https://github.com/Stranger6667/jsonschema |
+| `jsonschema-value` | 0.59.0 | MIT | https://github.com/Stranger6667/jsonschema |
 | `keccak` | 0.1.6 | Apache-2.0 OR MIT | https://github.com/RustCrypto/sponges/tree/master/keccak |
 | `lalrpop` | 0.22.2 | Apache-2.0 OR MIT | https://github.com/lalrpop/lalrpop |
 | `lalrpop-util` | 0.22.2 | Apache-2.0 OR MIT | https://github.com/lalrpop/lalrpop |
@@ -244,10 +244,10 @@ says so and its repository is the authority.
 | `once_cell` | 1.21.4 | MIT OR Apache-2.0 | https://github.com/matklad/once_cell |
 | `once_cell_polyfill` | 1.70.2 | MIT OR Apache-2.0 | https://github.com/polyfill-rs/once_cell_polyfill |
 | `openssl-probe` | 0.2.1 | MIT OR Apache-2.0 | https://github.com/rustls/openssl-probe |
-| `opentelemetry` | 0.32.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry |
-| `opentelemetry-otlp` | 0.32.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-otlp |
-| `opentelemetry-proto` | 0.32.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-proto |
-| `opentelemetry_sdk` | 0.32.1 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-sdk |
+| `opentelemetry` | 0.33.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry |
+| `opentelemetry-otlp` | 0.33.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-otlp |
+| `opentelemetry-proto` | 0.33.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-proto |
+| `opentelemetry_sdk` | 0.33.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-sdk |
 | `outref` | 0.5.2 | MIT | https://github.com/Nugine/outref |
 | `parking_lot` | 0.12.5 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | `parking_lot_core` | 0.9.12 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
@@ -300,7 +300,7 @@ says so and its repository is the authority.
 | `ref-cast` | 1.0.27 | MIT OR Apache-2.0 | https://github.com/dtolnay/ref-cast |
 | `ref-cast-impl` | 1.0.27 | MIT OR Apache-2.0 | https://github.com/dtolnay/ref-cast |
 | `referencing` | 0.49.9 | MIT | https://github.com/Stranger6667/jsonschema |
-| `referencing` | 0.56.0 | MIT | https://github.com/Stranger6667/jsonschema |
+| `referencing` | 0.59.0 | MIT | https://github.com/Stranger6667/jsonschema |
 | `regex` | 1.13.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | `regex-automata` | 0.4.18 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | `regex-syntax` | 0.8.11 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
@@ -330,7 +330,7 @@ says so and its repository is the authority.
 | `serde` | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | `serde_core` | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | `serde_derive` | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
-| `serde_json` | 1.0.151 | MIT OR Apache-2.0 | https://github.com/serde-rs/json |
+| `serde_json` | 1.0.154 | MIT OR Apache-2.0 | https://github.com/serde-rs/json |
 | `serde_norway` | 0.9.42 | MIT OR Apache-2.0 | https://github.com/cafkafk/serde-yaml |
 | `serde_path_to_error` | 0.1.20 | MIT OR Apache-2.0 | https://github.com/dtolnay/path-to-error |
 | `serde_spanned` | 1.1.1 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
@@ -400,7 +400,7 @@ says so and its repository is the authority.
 | `tracing-attributes` | 0.1.31 | MIT | https://github.com/tokio-rs/tracing |
 | `tracing-core` | 0.1.36 | MIT | https://github.com/tokio-rs/tracing |
 | `tracing-log` | 0.2.0 | MIT | https://github.com/tokio-rs/tracing |
-| `tracing-opentelemetry` | 0.33.0 | MIT | https://github.com/tokio-rs/tracing-opentelemetry |
+| `tracing-opentelemetry` | 0.34.0 | MIT | https://github.com/tokio-rs/tracing-opentelemetry |
 | `tracing-serde` | 0.2.0 | MIT | https://github.com/tokio-rs/tracing |
 | `tracing-subscriber` | 0.3.23 | MIT | https://github.com/tokio-rs/tracing |
 | `try-lock` | 0.2.5 | MIT | https://github.com/seanmonstar/try-lock |

@@ -7,7 +7,7 @@
         "language_version": "4.11.0",
         "engine_name": "cedar-policy",
         "engine_version": "4.11.0",
-        "engine_build": "sha256:a4c818cbfab25183d5765e897e5d1c00c6237d474a0bbef34311c0d50f3fe6e7",
+        "engine_build": "sha256:f40bb42e2737b15af6b2fa436e03f2063a0a31a57fc8d54fac9c1534912cc3a9",
         "experimental": false,
         "evaluation_interfaces": [
           {
@@ -51,7 +51,7 @@
           "reason": "Cedar evaluation terminates by construction and holds no state between requests"
         }
       },
-      "digest": "sha256:9912067a5cc4eb96bd06f910db6a339e4dcb71cce041b2c7bc46a768e152804c"
+      "digest": "sha256:925accc491bf725943af5252aa03b5d700bafaf498e5cacdd0266ef464b95bbb"
     },
     {
       "descriptor": {
@@ -59,7 +59,7 @@
         "language_version": "1.0.0",
         "engine_name": "amzn-dogwood-language",
         "engine_version": "1.0.0",
-        "engine_build": "sha256:084e7dcdb33b5c35a957b4ef36cdaa2a7fbb24462cc0c25f5291a5b01af02f35",
+        "engine_build": "sha256:427c7cd93b2bfa62f8fd7e9ebee524b9c21d40e75016963dc6ad30f6b49708f0",
         "experimental": true,
         "evaluation_interfaces": [
           {
@@ -112,7 +112,7 @@
           "reason": "provider work is bounded by operation and data-size limits but not by wall clock, and upstream offers no cancellation (LANG-08): from production upward a partition carrying providers is refused at load, and one without them runs in-process"
         }
       },
-      "digest": "sha256:8e4ce9f87ea90721699f193f520407e9a682688dd457e2849e591bdceb073606"
+      "digest": "sha256:9bd54e6b70567d16c5f3de054195d52c1ffc327bd2c68608c167c053d41dafc4"
     },
     {
       "descriptor": {
@@ -120,7 +120,7 @@
         "language_version": "1.0.0",
         "engine_name": "regorus",
         "engine_version": "0.12.0",
-        "engine_build": "sha256:845bc0a884dd07d51d08eedddb17485d83c880906a7372625f75ae47230ce9dd",
+        "engine_build": "sha256:787a9205d7cb31a3c71b9c2c7535c567b0a76373089d6c0955be46191b69a753",
         "experimental": false,
         "evaluation_interfaces": [
           {
@@ -184,7 +184,7 @@
           "reason": "one decreasing deadline bounds each partition's work; memory is not bounded in-process (LANG-04), so from production upward every partition compiles and evaluates in the supervised worker, or is refused"
         }
       },
-      "digest": "sha256:3b617cd13366bcf53eb7d81319d5006619a5ce8143bb956e804e8c7c53f23875"
+      "digest": "sha256:f0825a9b8c14d9d50fe858158f366f7ee19aadadf102e14a2476b69fd1d0b407"
     }
   ]
 }
