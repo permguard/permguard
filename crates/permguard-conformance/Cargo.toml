@@ -39,7 +39,7 @@ serde_json.workspace = true
 # wrapper around a flush or a rename is seen as what it is, where a text search is not.
 # Line numbers for what the inventory finds: spans carry them only with this feature.
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
-syn = { version = "2.0", features = ["full", "visit"] }
+syn = { version = "3.0", features = ["full", "visit"] }
 tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
 tonic.workspace = true
 tonic-prost.workspace = true

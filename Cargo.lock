@@ -2401,7 +2401,7 @@ dependencies = [
  "serde_json",
  "serde_norway",
  "sha2",
- "syn 2.0.119",
+ "syn 3.0.6",
  "tokio",
  "tonic",
  "tonic-prost",
