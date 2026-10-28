@@ -6,6 +6,7 @@
 //! | Script                       | Proven here                                                                          |
 //! | ---------------------------- | ------------------------------------------------------------------------------------ |
 //! | `scripts/verify-provenance.sh` | both phases pass on a complete release and name the builder; an empty, malformed or short listing fails; an image is verified once per digest; a slow attestation is retried, a missing one fails |
+//! | `scripts/image-digests.sh` | every image and tag of the configuration, both registries, `latest` included, as `<hex>  <image>:<tag>` — the form `actions/attest` reads; a `sha256:` prefix never reaches it |
 //! | `scripts/extract-shipped.sh` | the 16 published Linux and Windows archives become the layout the build stages; a stray file fails |
 //! | `scripts/compare-rebuild.sh` | identical builds read `reproducible: yes`; one altered byte reads `reproducible: no` and exits 3 |
 //! | `scripts/evidence-manifest.sh`, `scripts/verify-evidence.sh` | a complete release pins every file and verifies, its attestation first; a changed, missing or unnamed file and an incomplete gate are refused |
@@ -660,4 +661,64 @@ fn an_incomplete_gate_is_named_in_the_manifest_and_refused_by_the_verifier() {
         text(&refused)
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// `scripts/image-digests.sh` writes the file `actions/attest` reads as `subject-checksums`: the
+/// `sha256sum` form, a hex digest and the image reference, with no `sha256:` prefix — to the
+/// attestation the prefix is an invalid digest, and it failed a release at its last step. Every
+/// image and tag of `.goreleaser.yaml`, in both registries, `latest` included.
+#[test]
+fn test_the_image_digests_are_written_the_way_the_attestation_reads_them() {
+    if Command::new("yq").arg("--version").output().is_err() {
+        eprintln!("skipped: the script reads the configuration with yq, which this machine lacks");
+        return;
+    }
+    let root = scratch("image-digests");
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).expect("the bin directory is created");
+    // A stand-in `docker buildx imagetools inspect <ref> --format ...`: the registry answers the
+    // manifest's digest, prefixed the way a registry prefixes it, one per reference.
+    write_executable(
+        &bin.join("docker"),
+        r#"#!/bin/sh
+printf '{"digest":"sha256:%s"}\n' "$(printf '%s' "$4" | shasum -a 256 | cut -d' ' -f1)"
+"#,
+    );
+    let out = root.join("digests.txt");
+    let configuration = repository().join(".goreleaser.yaml");
+    let output = run(
+        "image-digests.sh",
+        &[
+            "v1.2.3",
+            out.to_str().expect("a path"),
+            configuration.to_str().expect("a path"),
+        ],
+        Some(&bin),
+    );
+    assert!(output.status.success(), "{}", text(&output));
+
+    let listing = std::fs::read_to_string(&out).expect("digests.txt is written");
+    let lines: Vec<&str> = listing.lines().collect();
+    for line in &lines {
+        let (digest, reference) = line
+            .split_once("  ")
+            .expect("a line is `<sha256>  <image>:<tag>`");
+        assert!(
+            digest.len() == 64 && digest.chars().all(|c| c.is_ascii_hexdigit()),
+            "hex only, no `sha256:` prefix: {line}"
+        );
+        assert!(!reference.contains(' '), "{line}");
+    }
+    // Four images in two registries, three tags each.
+    assert_eq!(lines.len(), 24, "{listing}");
+    for image in IMAGES {
+        for tag in ["1.2.3", "1.2", "latest"] {
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.ends_with(&format!("  {image}:{tag}"))),
+                "{image}:{tag} in:\n{listing}"
+            );
+        }
+    }
 }

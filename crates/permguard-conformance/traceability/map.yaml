@@ -4469,6 +4469,7 @@ findings:
     tests:
       - crates/permguard-conformance/tests/release_scripts.rs::test_both_provenance_phases_pass_on_a_complete_release_and_name_the_builder
       - crates/permguard-conformance/tests/release_scripts.rs::test_a_release_that_is_empty_malformed_or_short_is_not_verified
+      - crates/permguard-conformance/tests/release_scripts.rs::test_the_image_digests_are_written_the_way_the_attestation_reads_them
       - crates/permguard-conformance/tests/release_scripts.rs::test_published_archives_round_trip_into_a_reproducibility_verdict
     gaps:
       - "proven outside a Rust test: the SLSA builder verification and the independent rebuild run in the release workflow; the Rust tests run the scripts against fixtures"

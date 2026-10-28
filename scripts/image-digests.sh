@@ -2,7 +2,9 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Writes the digest of every image tag a release pushed, as `sha256:<digest>  <image>:<tag>`.
+# Writes the digest of every image tag a release pushed, as `<digest>  <image>:<tag>`: the
+# `sha256sum` form, hex only, which is the one `actions/attest` reads from `subject-checksums`.
+# A `sha256:` prefix on a line is an invalid digest to it, and failed a release at its last step.
 #
 #   scripts/image-digests.sh <version> <digests-file> [goreleaser-config]
 #
@@ -11,7 +13,8 @@
 # attestation had no subject. This reads the same list GoReleaser built from, every image and tag
 # of `dockers_v2` in the configuration, asks the registry for the digest each tag now names, and
 # writes the file only when GoReleaser left it empty. A tag the registry does not hold fails it:
-# an image that was not pushed is never attested by omission.
+# an image that was not pushed is never attested by omission. `scripts/verify-provenance.sh` reads
+# the same file, and accepts the digest with or without the prefix.
 set -euo pipefail
 
 version="${1:?usage: scripts/image-digests.sh <version> <digests-file> [goreleaser-config]}"
@@ -43,7 +46,7 @@ listing=""
 while IFS= read -r ref; do
     digest="$(docker buildx imagetools inspect "${ref}" --format '{{json .Manifest}}' | jq -r '.digest')"
     case "${digest}" in
-        sha256:*) listing+="${digest}  ${ref}"$'\n' ;;
+        sha256:*) listing+="${digest#sha256:}  ${ref}"$'\n' ;;
         *)
             echo "FAIL: the registry names no digest for ${ref}" >&2
             exit 1
