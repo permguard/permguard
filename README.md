@@ -167,7 +167,7 @@ The contract is documented under [Temporal Authorization](https://docs.permguard
 ## Install
 
 ```sh
-brew install permguard/tap/cli
+brew install permguard/tap/permguard-cli
 permguard --help
 ```
 

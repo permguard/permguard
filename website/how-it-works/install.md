@@ -51,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/permguard/permguard/main/install.sh
 Homebrew installs the macOS CLI release and keeps upgrades simple.
 
 ```sh
-brew install permguard/tap/cli
+brew install permguard/tap/permguard-cli
 permguard version
 ```
 

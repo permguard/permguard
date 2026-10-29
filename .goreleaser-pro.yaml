@@ -55,10 +55,12 @@ notarize:
         wait: true
         timeout: 20m
 
-# This is the Permguard CLI, so it owns the unqualified cask name. Versioned alternatives let a
-# caller pin the release line without exposing the implementation language in the package name.
+# The Permguard CLI is `permguard-cli`, as every Permguard cask is `permguard-<product>`
+# (`permguard-admin` beside it in the same tap). Versioned alternatives let a caller pin the
+# release line without exposing the implementation language in the package name. The tap's
+# cask_renames.json maps the former `cli` to this name, so an installed `cli` upgrades into it.
 homebrew_casks:
-  - name: cli
+  - name: permguard-cli
     binaries: ["permguard"]
     # A cask installs on macOS, so it carries the Apple build.
     ids: ["permguard_cli_darwin"]
@@ -67,8 +69,8 @@ homebrew_casks:
       name: homebrew-tap
       token: "{{ .Env.GITHUB_TOKEN }}"
     alternative_names:
-      - cli@{{ .Version }}
-      - cli@{{ .Major }}
+      - permguard-cli@{{ .Version }}
+      - permguard-cli@{{ .Major }}
     homepage: "https://docs.permguard.com/"
     description: "Permguard CLI"
     commit_author:

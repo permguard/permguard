@@ -17,7 +17,11 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **The Homebrew cask of the CLI is `permguard-cli`.**
+  Every Permguard cask is now `permguard-<product>`, beside `permguard-admin` in the same tap: install with `brew install permguard/tap/permguard-cli`, and pin with `permguard-cli@<version>` or `permguard-cli@<major>`.
+  An installed `cli` moves to the new name at its next `brew upgrade`, and `brew install permguard/tap/cli` keeps working; the versioned `cli@<version>` casks of earlier releases stay as they are.
 
 ## [0.1.11] - 2026-10-29
 
