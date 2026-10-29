@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.12] - 2026-10-29
+
 ### Changed
 
 - **The Homebrew cask of the CLI is `permguard-cli`.**
