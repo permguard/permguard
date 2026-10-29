@@ -22,6 +22,12 @@ is cut.
 - **The Homebrew cask of the CLI is `permguard-cli`.**
   Every Permguard cask is now `permguard-<product>`, beside `permguard-admin` in the same tap: install with `brew install permguard/tap/permguard-cli`, and pin with `permguard-cli@<version>` or `permguard-cli@<major>`.
   An installed `cli` moves to the new name at its next `brew upgrade`, and `brew install permguard/tap/cli` keeps working; the versioned `cli@<version>` casks of earlier releases stay as they are.
+  Homebrew 7 loads casks only from trusted taps: run `brew trust permguard/tap` once before the first install.
+- **Dogwood 1.1.0, from crates.io.**
+  The Dogwood runtime is upstream's published `dogwood-language` 1.1.0, pinned exactly, instead of a git revision before 1.0.0; no git source remains in the build, and `cargo deny` allows none.
+  The language descriptor names the engine as it is published: `engine_name` is `dogwood-language` and `engine_version` `1.1.0`, so the Dogwood `descriptor_digest` a data plane announces changes; Cedar's and Rego's do not.
+  Upstream now decodes an `@id` it lowers, and refuses an invalid escape such as `@id("bad\q")` that it used to accept; the alias Permguard derives is unchanged, since it already decoded the value and already refused that escape.
+  Cedar stays at 4.11: Dogwood 1.1.0 still links the Cedar schema generator of the 0.6 line, which requires `cedar-policy-core` 4.11.0 exactly.
 
 ## [0.1.11] - 2026-10-29
 

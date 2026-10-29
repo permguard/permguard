@@ -7,7 +7,7 @@
 //!
 //! Each vector is checked twice: against this build's reading, through the contract and the alias
 //! it derives, and against upstream, which enforces the window it parsed when it validates a policy
-//! and parses the annotations it lowers. The vectors name the upstream revision they were taken at,
+//! and parses the annotations it lowers. The vectors name the upstream version they were taken at,
 //! and a lock naming another fails here until they are rerun: an upgrade cannot drift silently.
 
 #![allow(clippy::expect_used)]
@@ -25,19 +25,19 @@ fn vectors(name: &str) -> Value {
     serde_json::from_str(&std::fs::read_to_string(path).expect("readable")).expect("JSON")
 }
 
-/// The revision the lock resolves upstream to.
-fn locked_revision() -> String {
+/// The version the lock resolves upstream to: a published crate, which cannot change under it.
+fn locked_version() -> String {
     let lock = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.lock"))
         .expect("the lock is readable");
     let entry = lock
         .split("[[package]]")
-        .find(|entry| entry.contains("name = \"amzn-dogwood-language\""))
+        .find(|entry| entry.contains("name = \"dogwood-language\""))
         .expect("the lock carries upstream");
     entry
-        .split('#')
-        .nth(1)
-        .and_then(|tail| tail.split('"').next())
-        .expect("a git source with a revision")
+        .lines()
+        .find_map(|line| line.strip_prefix("version = \""))
+        .and_then(|tail| tail.strip_suffix('"'))
+        .expect("a locked version")
         .to_owned()
 }
 
@@ -91,13 +91,13 @@ fn within(seconds: i64) -> String {
 }
 
 #[test]
-fn test_the_vectors_name_the_locked_upstream_revision() {
-    let locked = locked_revision();
+fn test_the_vectors_name_the_locked_upstream_version() {
+    let locked = locked_version();
     for name in ["dogwood_max_window.json", "dogwood_alias.json"] {
         assert_eq!(
-            vectors(name)["revision"].as_str(),
+            vectors(name)["version"].as_str(),
             Some(locked.as_str()),
-            "`{name}` was taken at another upstream revision: rerun it against this one"
+            "`{name}` was taken at another upstream version: rerun it against this one"
         );
     }
 }

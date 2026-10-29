@@ -39,29 +39,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
-name = "amzn-dogwood-language"
-version = "1.0.0"
-source = "git+https://github.com/dogwood-policy/dogwood?rev=c6237c88099b3f492ecc5fcee42df06a19224b97#c6237c88099b3f492ecc5fcee42df06a19224b97"
-dependencies = [
- "cedar-policy",
- "cedar-policy-core",
- "cedar-policy-mcp-schema-generator",
- "mcp-tools-sdk",
- "miette",
- "nonempty",
- "pest",
- "pest_derive",
- "regex",
- "rhai",
- "rust_decimal",
- "rustc-literal-escaper",
- "serde",
- "serde_json",
- "smol_str",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -919,6 +896,41 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "dogwood-language"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d806f46dea4d0261710b2fad54679ad4a57be81049e91cbfa7cf638ea2749790"
+dependencies = [
+ "cedar-policy",
+ "cedar-policy-core",
+ "cedar-policy-mcp-schema-generator",
+ "dogwood-syntax",
+ "mcp-tools-sdk",
+ "miette",
+ "nonempty",
+ "pest",
+ "pest_derive",
+ "regex",
+ "rhai",
+ "rust_decimal",
+ "rustc-literal-escaper",
+ "serde",
+ "serde_json",
+ "smol_str",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "dogwood-syntax"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19e9780ff1e99b171e6782df6527f359625cce0ee51b2fd2ce888f5c23fbec0f"
+dependencies = [
+ "pest",
+ "pest_derive",
 ]
 
 [[package]]
@@ -2579,9 +2591,9 @@ dependencies = [
 name = "permguard-languages"
 version = "0.1.0"
 dependencies = [
- "amzn-dogwood-language",
  "base64 0.23.1",
  "cedar-policy",
+ "dogwood-language",
  "jsonschema 0.59.0",
  "libc",
  "permguard-core",

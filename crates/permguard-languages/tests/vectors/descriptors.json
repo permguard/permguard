@@ -57,9 +57,9 @@
       "descriptor": {
         "name": "dogwood",
         "language_version": "1.0.0",
-        "engine_name": "amzn-dogwood-language",
-        "engine_version": "1.0.0",
-        "engine_build": "sha256:89df75b7ff0998a9c5ece4ae91fab0f03ca32c56ba7a8f57a51723c52ecfc0c4",
+        "engine_name": "dogwood-language",
+        "engine_version": "1.1.0",
+        "engine_build": "sha256:fbfb0d7a39c70f5edcdde103949b1075aa81f33f0e603c5bb6fad10534d1467b",
         "experimental": true,
         "evaluation_interfaces": [
           {
@@ -112,7 +112,7 @@
           "reason": "provider work is bounded by operation and data-size limits but not by wall clock, and upstream offers no cancellation (LANG-08): from production upward a partition carrying providers is refused at load, and one without them runs in-process"
         }
       },
-      "digest": "sha256:70bbb0edd46d74682844c31c5ffb4cf9105a15cf41896244cf274e5665a382d1"
+      "digest": "sha256:e047417bbfd5a92732fab4179a74b7bf06e5d03e7a86c4be9f3b59757989c010"
     },
     {
       "descriptor": {

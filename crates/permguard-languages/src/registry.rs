@@ -62,7 +62,7 @@ pub mod engine_features {
         "uuid",
         "yaml",
     ];
-    /// `amzn-dogwood-language`: none; `corpus` and `net` stay off.
+    /// `dogwood-language`: none; `corpus`, `net` and `experimental-arithmetic` stay off.
     pub const DOGWOOD: &[&str] = &[];
 }
 

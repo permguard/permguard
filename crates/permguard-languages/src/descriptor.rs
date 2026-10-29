@@ -65,9 +65,9 @@ pub mod locked {
         version: env!("PERMGUARD_LOCKED_REGO_VERSION"),
         build: env!("PERMGUARD_LOCKED_REGO_BUILD"),
     };
-    /// `amzn-dogwood-language`.
+    /// `dogwood-language`.
     pub const DOGWOOD: Locked = Locked {
-        name: "amzn-dogwood-language",
+        name: "dogwood-language",
         version: env!("PERMGUARD_LOCKED_DOGWOOD_VERSION"),
         build: env!("PERMGUARD_LOCKED_DOGWOOD_BUILD"),
     };

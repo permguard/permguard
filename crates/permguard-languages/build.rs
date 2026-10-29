@@ -30,7 +30,7 @@ use sha2::{Digest as _, Sha256};
 const ENGINES: &[(&str, &str, &[&str])] = &[
     ("cedar-policy", "CEDAR", &[]),
     ("regorus", "REGO", &["jsonschema"]),
-    ("amzn-dogwood-language", "DOGWOOD", &[]),
+    ("dogwood-language", "DOGWOOD", &[]),
 ];
 
 fn main() {

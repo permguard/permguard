@@ -45,7 +45,7 @@ fn test_every_engine_is_pinned_without_defaults_and_names_its_descriptor_feature
     for (name, expected) in [
         ("cedar-policy", engine_features::CEDAR),
         ("regorus", engine_features::REGO),
-        ("amzn-dogwood-language", engine_features::DOGWOOD),
+        ("dogwood-language", engine_features::DOGWOOD),
     ] {
         let declared = declaration(&manifest, name);
         assert!(
@@ -157,7 +157,7 @@ fn resolved_engine_features_are_the_descriptor_features(selection: &[&str]) {
     for (name, expected) in [
         ("cedar-policy", engine_features::CEDAR),
         ("regorus", engine_features::REGO),
-        ("amzn-dogwood-language", engine_features::DOGWOOD),
+        ("dogwood-language", engine_features::DOGWOOD),
     ] {
         let matching: Vec<_> = packages
             .iter()

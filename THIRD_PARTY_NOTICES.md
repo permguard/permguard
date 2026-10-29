@@ -19,7 +19,7 @@ says so and its repository is the authority.
 
 ## Packages
 
-455 packages.
+456 packages.
 
 | Package | Version | Licence | Source |
 | ------- | ------- | ------- | ------ |
@@ -27,7 +27,6 @@ says so and its repository is the authority.
 | `ahash` | 0.8.12 | MIT OR Apache-2.0 | https://github.com/tkaitchuck/ahash |
 | `aho-corasick` | 1.1.5 | Unlicense OR MIT | https://github.com/BurntSushi/aho-corasick |
 | `allocator-api2` | 0.2.21 | MIT OR Apache-2.0 | https://github.com/zakarumych/allocator-api2 |
-| `amzn-dogwood-language` | 1.0.0 | not declared | https://github.com/dogwood-policy/dogwood?rev=c6237c88099b3f492ecc5fcee42df06a19224b97 |
 | `android_system_properties` | 0.1.6 | MIT OR Apache-2.0 | https://github.com/nical/android_system_properties |
 | `anstream` | 1.0.0 | MIT OR Apache-2.0 | https://github.com/rust-cli/anstyle.git |
 | `anstyle` | 1.0.14 | MIT OR Apache-2.0 | https://github.com/rust-cli/anstyle.git |
@@ -111,6 +110,8 @@ says so and its repository is the authority.
 | `digest` | 0.10.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | `digest` | 0.11.3 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | `displaydoc` | 0.2.7 | MIT OR Apache-2.0 | https://github.com/yaahc/displaydoc |
+| `dogwood-language` | 1.1.0 | Apache-2.0 | https://github.com/dogwood-policy/dogwood |
+| `dogwood-syntax` | 1.1.0 | Apache-2.0 | https://github.com/dogwood-policy/dogwood |
 | `dyn-clone` | 1.0.20 | MIT OR Apache-2.0 | https://github.com/dtolnay/dyn-clone |
 | `educe` | 0.6.0 | MIT | https://github.com/magiclen/educe |
 | `either` | 1.18.0 | MIT OR Apache-2.0 | https://github.com/rayon-rs/either |
@@ -481,11 +482,7 @@ says so and its repository is the authority.
 
 ## Packages without a declared licence
 
-The packages below declare no SPDX expression in their manifest. That is an upstream metadata
-omission rather than an absence of licence: check the licence file in each source tree before a
-distribution that relies on this list.
-
-- `amzn-dogwood-language` 1.0.0 — https://github.com/dogwood-policy/dogwood?rev=c6237c88099b3f492ecc5fcee42df06a19224b97
+Every package above declares an SPDX licence expression.
 
 ## Full licence texts
 

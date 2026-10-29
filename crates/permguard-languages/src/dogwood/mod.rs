@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Dogwood, through Amazon's `amzn-dogwood-language` crate.
+//! Dogwood, through Amazon's `dogwood-language` crate.
 //!
 //! # What Dogwood adds, and what Permguard adds around it
 //!

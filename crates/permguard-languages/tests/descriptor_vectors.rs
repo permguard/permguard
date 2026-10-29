@@ -246,7 +246,7 @@ fn test_every_engine_is_the_one_cargo_lock_pins() {
     for (language, engine, also) in [
         ("cedar", "cedar-policy", &[][..]),
         ("rego", "regorus", &["jsonschema"][..]),
-        ("dogwood", "amzn-dogwood-language", &[][..]),
+        ("dogwood", "dogwood-language", &[][..]),
     ] {
         let held = descriptor(language).expect("carried");
         let (version, build) = lock.engine(engine, also);

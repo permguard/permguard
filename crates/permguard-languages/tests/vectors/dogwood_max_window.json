@@ -1,6 +1,6 @@
 {
-  "_comment": "TL-5b, DOGWOOD-06: the max_window directive as upstream reads it at the pinned revision. Each schema is the prefix below followed by the fixture's event declarations; `seconds` is the window upstream enforces, null where upstream refuses the schema. Rerun against upstream before changing the revision.",
-  "revision": "c6237c88099b3f492ecc5fcee42df06a19224b97",
+  "_comment": "TL-5b, DOGWOOD-06: the max_window directive as upstream reads it at the pinned version. Each schema is the prefix below followed by the fixture's event declarations; `seconds` is the window upstream enforces, null where upstream refuses the schema. Rerun against upstream before changing the revision.",
+  "version": "1.1.0",
   "cases": [
     {
       "prefix": "",

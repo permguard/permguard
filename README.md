@@ -115,11 +115,11 @@ What owning it buys is that the parts nobody else specifies are specified *here*
 
 ### Supported policy languages
 
-| Language                                                     | Runtime                             | Decides from                          | Status       |
-| ------------------------------------------------------------ | ----------------------------------- | ------------------------------------- | ------------ |
-| [Cedar](https://www.cedarpolicy.com)                         | `cedar` (`cedar-policy` 4.x)        | the request                           | stable       |
-| [Rego](https://www.openpolicyagent.org/docs/policy-language) | `rego` (`regorus`)                  | the request                           | stable       |
-| [Dogwood](https://github.com/dogwood-policy/dogwood)         | `dogwood` (`amzn-dogwood-language`) | the request **and** a durable history | experimental |
+| Language                                                     | Runtime                        | Decides from                          | Status       |
+| ------------------------------------------------------------ | ------------------------------ | ------------------------------------- | ------------ |
+| [Cedar](https://www.cedarpolicy.com)                         | `cedar` (`cedar-policy` 4.x)   | the request                           | stable       |
+| [Rego](https://www.openpolicyagent.org/docs/policy-language) | `rego` (`regorus`)             | the request                           | stable       |
+| [Dogwood](https://github.com/dogwood-policy/dogwood)         | `dogwood` (`dogwood-language`) | the request **and** a durable history | experimental |
 
 A language is a **build**, not a deployment action: all three are compiled in.
 What a deployment chooses is whether a ledger naming a runtime will be *served*, and the experimental one is gated.
@@ -167,6 +167,7 @@ The contract is documented under [Temporal Authorization](https://docs.permguard
 ## Install
 
 ```sh
+brew trust permguard/tap      # once: Homebrew 7 loads casks only from trusted taps
 brew install permguard/tap/permguard-cli
 permguard --help
 ```

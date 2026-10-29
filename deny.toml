@@ -35,7 +35,7 @@ ignore = [
     # own advice is to migrate to `compact_str` or `smol_str`.
     #
     # Not ours to migrate. It arrives through `rhai`, a non-optional dependency of
-    # `amzn-dogwood-language` and the sandbox Dogwood evaluates information providers in, so the
+    # `dogwood-language` and the sandbox Dogwood evaluates information providers in, so the
     # fix belongs upstream and has been reported there. There is no configuration of Dogwood that
     # omits it.
     #
@@ -88,16 +88,6 @@ allow = [
 ]
 confidence-threshold = 0.9
 
-# Dogwood's crate manifest carries no `license` field, so `cargo deny` cannot read one and reports
-# the crate as unlicensed. It is not: the repository is Apache-2.0, with the licence text at
-# `LICENSE` and the attribution at `NOTICE`, both reviewed at the pinned revision and reproduced in
-# this repository's `NOTICE.md`. Clarified here rather than ignored, so the claim is recorded with
-# the file it was read from.
-[[licenses.clarify]]
-crate = "amzn-dogwood-language"
-expression = "Apache-2.0"
-license-files = []
-
 [bans]
 # Two versions of the same crate in one binary is usually harmless and occasionally a security
 # problem: it means one copy is patched and the other is not.
@@ -122,13 +112,5 @@ skip = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# Dogwood is not on crates.io — it is published to an internal registry — so the reviewed upstream
-# repository is the only reproducible coordinate for it. Allowed by name and pinned in
-# `permguard-languages/Cargo.toml` to an immutable revision, never a branch: an allowed git source
-# that tracked a moving ref would mean the reviewed code and the built code are different things.
-#
-# TO REMOVE: the day `amzn-dogwood-language` is published to crates.io, replace the `git`/`rev`
-# dependency with a version requirement and delete this line. That retirement is independent of the
-# MPL-2.0 allowance above — `smartstring` arrives through Dogwood's own `rhai` dependency, not
-# through the way Dogwood itself is fetched, so publishing the crate does not retire it.
-allow-git = ["https://github.com/dogwood-policy/dogwood"]
+# Every crate comes from crates.io: no git source is allowed. Dogwood, the last one, is published
+# there as `dogwood-language` since 1.1.0.

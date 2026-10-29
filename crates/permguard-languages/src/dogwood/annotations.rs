@@ -26,7 +26,7 @@
 //! line-by-line search could not tell them apart. A value's escapes are decoded by Cedar's own
 //! parser — the grammar's string is Cedar's — and the alias is then held to the common identity
 //! grammar. Upstream's parse of the same source is the authority this mirrors: at compile, the
-//! lowered set's annotations must name the same raw values policy by policy ([`agrees_with`]).
+//! lowered set's annotations must name the same decoded values policy by policy ([`agrees_with`]).
 //!
 //! Two bodies are raw text upstream, `block_inner`: a `temporal { … }` block and a `def`'s body.
 //! Inside them only strings and balanced braces count, never a comment, and they are read so here.
@@ -134,15 +134,25 @@ pub fn decode(raw: &str) -> Result<String, String> {
         .ok_or_else(|| format!("dogwood: the `@{ID}` value `\"{raw}\"` does not decode"))
 }
 
-/// Whether the raw `@id` of each policy, as this reader read it, is what upstream's parse gave the
-/// lowered rule of the same index.
+/// Whether the `@id` of each policy, as this reader read it and Cedar decodes it, is what upstream's
+/// parse gave the lowered rule of the same index. Upstream lowers an annotation decoded, since
+/// `dogwood-language` 1.1.0 (`@id("a\u{2d}b")` lowers as `a-b`), so the comparison is of the decoded
+/// values, the alias itself; a raw value Cedar cannot decode is compared as it was read, and so
+/// cannot agree with a decoded one.
 pub fn agrees_with(read: &[Option<String>], lowered: &[Option<String>]) -> Result<(), String> {
-    if read == lowered {
+    let decoded: Vec<Option<String>> = read
+        .iter()
+        .map(|raw| {
+            raw.as_deref()
+                .map(|raw| decode(raw).unwrap_or_else(|_| raw.to_owned()))
+        })
+        .collect();
+    if decoded == lowered {
         return Ok(());
     }
 
     Err(format!(
-        "dogwood: the policies' `@{ID}` annotations read as {read:?} and upstream's parse lowered \
+        "dogwood: the policies' `@{ID}` annotations read as {decoded:?} and upstream's parse lowered \
          them as {lowered:?}; an alias is identity, so the two must agree"
     ))
 }
@@ -369,6 +379,10 @@ mod tests {
     fn the_reading_agrees_with_upstream_or_the_load_is_refused() {
         let read = [Some("a".to_owned()), None];
         assert!(agrees_with(&read, &read).is_ok());
+        // Upstream lowers decoded: an escape this reader keeps raw agrees with its decoding.
+        let escaped = [Some("a\\u{2d}b".to_owned())];
+        assert!(agrees_with(&escaped, &[Some("a-b".to_owned())]).is_ok());
+        assert!(agrees_with(&escaped, &[Some("a\\u{2d}b".to_owned())]).is_err());
         for lowered in [
             vec![Some("b".to_owned()), None],
             vec![Some("a".to_owned())],

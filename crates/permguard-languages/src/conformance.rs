@@ -279,7 +279,7 @@ const DOGWOOD: &[Record] = &[
     passing(
         Item::Differential,
         &[
-            "permguard-languages/tests/dogwood_parity.rs::test_the_vectors_name_the_locked_upstream_revision",
+            "permguard-languages/tests/dogwood_parity.rs::test_the_vectors_name_the_locked_upstream_version",
             "permguard-languages/tests/descriptor_vectors.rs::test_every_engine_is_the_one_cargo_lock_pins",
         ],
     ),

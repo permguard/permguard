@@ -2938,7 +2938,7 @@ sections:
       - crates/permguard-languages/src/dogwood/compiled.rs::the_contract_is_read_from_the_loaded_schemas
       - crates/permguard-languages/src/dogwood/compiled.rs::a_verdict_cites_the_permguard_policy_that_decided_it
       - crates/permguard-languages/tests/dogwood_parity.rs::test_the_max_window_this_build_reads_is_the_one_upstream_enforces
-      - crates/permguard-languages/tests/dogwood_parity.rs::test_the_vectors_name_the_locked_upstream_revision
+      - crates/permguard-languages/tests/dogwood_parity.rs::test_the_vectors_name_the_locked_upstream_version
       - crates/permguard-languages/src/dogwood/compiled.rs::the_parser_matches_the_grammar_it_mirrors
   "4-languages/3-language-dogwood.md#occurrence-boundary":
     paths:
@@ -4544,7 +4544,7 @@ findings:
   "LANG-11":
     tests:
       - crates/permguard-languages/tests/dogwood_parity.rs::test_the_max_window_this_build_reads_is_the_one_upstream_enforces
-      - crates/permguard-languages/tests/dogwood_parity.rs::test_the_vectors_name_the_locked_upstream_revision
+      - crates/permguard-languages/tests/dogwood_parity.rs::test_the_vectors_name_the_locked_upstream_version
   "LANG-12":
     tests:
       - crates/permguard-languages/src/registry.rs::every_collision_in_the_catalogue_is_a_startup_error
@@ -4627,7 +4627,7 @@ findings:
   "DOGWOOD-06":
     tests:
       - crates/permguard-languages/tests/dogwood_parity.rs::test_the_max_window_this_build_reads_is_the_one_upstream_enforces
-      - crates/permguard-languages/tests/dogwood_parity.rs::test_the_vectors_name_the_locked_upstream_revision
+      - crates/permguard-languages/tests/dogwood_parity.rs::test_the_vectors_name_the_locked_upstream_version
   "DOGWOOD-07":
     tests:
       - crates/permguard-languages/tests/dogwood_parity.rs::test_the_id_this_build_reads_is_the_one_upstream_parses
