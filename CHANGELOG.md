@@ -17,7 +17,11 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The Windows binaries are reproducible.**
+  The Windows linker stamps the build time into each binary, so the release's independent rebuild matched every Linux binary and no Windows one (v0.1.10).
+  The build now zeroes those timestamps, which nothing reads, in the binaries that ship and in the rebuild alike.
 
 ## [0.1.8] - 2026-10-28
 

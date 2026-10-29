@@ -43,6 +43,11 @@ while read -r target staged extension; do
     for binary in "${binaries[@]}"; do
         cp "target/${target}/release/${binary}${extension}" "${output}/${staged}/${binary}"
     done
+    # The Windows linker stamps the build time into the binary, and nothing else differs between
+    # two builds of one commit: zeroed here, so the independent rebuild can confirm what shipped.
+    if [ -n "${extension}" ]; then
+        python3 scripts/pe-epoch.py "${binaries[@]/#/${output}/${staged}/}"
+    fi
 done <<'TARGETS'
 x86_64-unknown-linux-musl linux_amd64
 aarch64-unknown-linux-musl linux_arm64

@@ -725,3 +725,78 @@ printf '{"digest":"sha256:%s"}\n' "$(printf '%s' "$4" | shasum -a 256 | cut -d' 
         }
     }
 }
+
+/// A minimal PE32+ image: one section holding a debug directory of two entries, every timestamp
+/// set to `stamp`, and a recognisable byte everywhere else that must survive.
+fn pe_image(stamp: u32) -> Vec<u8> {
+    let mut image = vec![0xA5_u8; 0x400];
+    image[..2].copy_from_slice(b"MZ");
+    let pe = 0x80_usize;
+    image[0x3C..0x40].copy_from_slice(&(pe as u32).to_le_bytes());
+    image[pe..pe + 4].copy_from_slice(b"PE\0\0");
+    let coff = pe + 4;
+    image[coff + 2..coff + 4].copy_from_slice(&1_u16.to_le_bytes()); // one section
+    image[coff + 4..coff + 8].copy_from_slice(&stamp.to_le_bytes());
+    image[coff + 16..coff + 18].copy_from_slice(&240_u16.to_le_bytes()); // optional header size
+    let optional = coff + 20;
+    image[optional..optional + 2].copy_from_slice(&0x20B_u16.to_le_bytes()); // PE32+
+    // Data directory 6, the debug directory: two entries at RVA 0x1000.
+    let debug = optional + 112 + 8 * 6;
+    image[debug..debug + 4].copy_from_slice(&0x1000_u32.to_le_bytes());
+    image[debug + 4..debug + 8].copy_from_slice(&56_u32.to_le_bytes());
+    // The section: virtual 0x1000 for 0x100 bytes, raw at 0x200.
+    let section = optional + 240;
+    image[section + 8..section + 12].copy_from_slice(&0x100_u32.to_le_bytes());
+    image[section + 12..section + 16].copy_from_slice(&0x1000_u32.to_le_bytes());
+    image[section + 16..section + 20].copy_from_slice(&0x100_u32.to_le_bytes());
+    image[section + 20..section + 24].copy_from_slice(&0x200_u32.to_le_bytes());
+    for entry in 0..2 {
+        let at = 0x200 + 28 * entry + 4;
+        image[at..at + 4].copy_from_slice(&stamp.to_le_bytes());
+    }
+    image
+}
+
+/// v0.1.10: the Windows linker stamps the build time into the COFF header and the debug directory,
+/// so no rebuild reproduced a Windows binary. `pe-epoch.py` zeroes exactly those fields, so two
+/// builds a second apart become the same bytes, and refuses a file that is not a PE image.
+#[test]
+fn the_build_timestamps_of_a_windows_binary_are_zeroed_and_nothing_else() {
+    let root = scratch("pe-epoch");
+    let first = root.join("first.exe");
+    let second = root.join("second.exe");
+    std::fs::write(&first, pe_image(1_793_228_865)).expect("written");
+    std::fs::write(&second, pe_image(1_793_228_866)).expect("written");
+    let zeroed = Command::new("python3")
+        .arg(repository().join("scripts/pe-epoch.py"))
+        .args([&first, &second])
+        .output()
+        .expect("the script runs");
+    assert!(zeroed.status.success(), "{}", text(&zeroed));
+    assert!(
+        text(&zeroed).contains("3 timestamps zeroed"),
+        "{}",
+        text(&zeroed)
+    );
+    let (first, second) = (
+        std::fs::read(&first).expect("read"),
+        std::fs::read(&second).expect("read"),
+    );
+    assert_eq!(first, second, "a second apart, the same bytes");
+    assert_eq!(first, pe_image(0), "only the timestamps changed");
+
+    let other = root.join("not-pe.exe");
+    std::fs::write(&other, b"#!/bin/sh\n").expect("written");
+    let refused = Command::new("python3")
+        .arg(repository().join("scripts/pe-epoch.py"))
+        .arg(&other)
+        .output()
+        .expect("the script runs");
+    assert!(!refused.status.success(), "{}", text(&refused));
+    assert_eq!(
+        std::fs::read(&other).expect("read"),
+        b"#!/bin/sh\n",
+        "a refused file is left as it was"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
