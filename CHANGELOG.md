@@ -29,6 +29,13 @@ is cut.
   Upstream now decodes an `@id` it lowers, and refuses an invalid escape such as `@id("bad\q")` that it used to accept; the alias Permguard derives is unchanged, since it already decoded the value and already refused that escape.
   Cedar stays at 4.11: Dogwood 1.1.0 still links the Cedar schema generator of the 0.6 line, which requires `cedar-policy-core` 4.11.0 exactly.
 
+### Fixed
+
+- **The all-in-one's Control Plane reads its own decisions and events.**
+  `permguard decisions list` and `permguard events list` against an all-in-one answered nothing: the Control Plane reads what the Data Planes ship to it, and an all-in-one has no membership with itself to ship over.
+  A Host running both Planes now ships its Data Plane's decisions and events to its own Control Plane in-process, every two seconds, as it already mirrors its own ledgers: no membership, no URL, no TLS, and each batch verified under the Host's own `data.attest` ring before it is kept.
+  The first start rolls each stream over to a run fenced for this local shipping; what the earlier, unfenced runs hold stays on the volume and is not shipped.
+
 ## [0.1.11] - 2026-10-29
 
 ### Fixed

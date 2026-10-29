@@ -57,6 +57,9 @@ permguard decisions list \
   --keys data-plane-keys.json
 ```
 
+The Control Plane answers these reads from what its Data Planes ship to it, as signed batches over each membership's `decisions.ship` and `events.ship` tasks.
+An all-in-one ships to its own Control Plane in-process, each batch verified under the Host's own `data.attest` ring, so its reads answer within seconds of the decision.
+
 <div class="pgx-note"><strong>No timestamp guessing.</strong><span>The response and record carry the same decision identity.</span></div>
 
 <nav class="pgx-pager" aria-label="Documentation pages">

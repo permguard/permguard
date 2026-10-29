@@ -2182,6 +2182,7 @@ impl App {
         let import_slot = Arc::new(permguard_host::membership::task::Deferred::default());
         let watch_hub = Arc::new(permguard_host::membership::watch::Hub::default());
         // The coordinator side of the re-pin pass, with the Host API's member side (WP-4.5).
+        let mut local_shipper: Option<Arc<permguard_host::membership::local::LocalShipping>> = None;
         let mut repinning_coordinator: Option<
             Arc<permguard_host::membership::service::Coordinating>,
         > = None;
@@ -2418,6 +2419,48 @@ impl App {
                 config.backup_recovery_key_id().map(str::to_owned),
                 config.backup_encryption_profile().map(str::to_owned),
             );
+            // A Host running both Planes ships its Data Plane's decisions and events to its own
+            // Control Plane through local tasks, verified under its own `data.attest`: what the
+            // Control Plane's public reads answer from, with no membership.
+            let both_planes = {
+                let selected: Vec<&'static str> = self
+                    .plane_declarations
+                    .iter()
+                    .filter_map(|declare| declare(config))
+                    .map(|(plane, _, _)| plane)
+                    .collect();
+                selected.contains(&"control") && selected.contains(&"data")
+            };
+            let local_shipping = match (both_planes, &streams, &ingests, &data_signing_keys) {
+                (true, Some(engine), Some((decisions, events)), Some(data_attest)) => {
+                    let pins = Arc::new(permguard_stream::engine::ingest::LocalPins {
+                        ring: Arc::clone(data_attest),
+                    });
+                    Some(Arc::new(
+                        permguard_host::membership::local::LocalShipping::new(
+                            Arc::clone(engine)
+                                as Arc<dyn permguard_host::composition::StreamShipping>,
+                            Arc::new(permguard_stream::engine::ingest::Ingest {
+                                consumer: Arc::clone(decisions),
+                                pins: Arc::clone(&pins)
+                                    as Arc<dyn permguard_stream::engine::ingest::StreamPins>,
+                            }),
+                            Arc::new(permguard_stream::engine::ingest::Ingest {
+                                consumer: Arc::clone(events),
+                                pins: pins as Arc<dyn permguard_stream::engine::ingest::StreamPins>,
+                            }),
+                            host_identity.host_id(),
+                            Arc::clone(data_attest),
+                        ),
+                    ))
+                }
+                _ => None,
+            };
+            let api = match local_shipping.clone() {
+                Some(local) => api.with_local_shipping(local),
+                None => api,
+            };
+            local_shipper = local_shipping;
             let api = Arc::new(api);
             serving = Some(Arc::clone(&api));
             context = context.with_host_handles(api);
@@ -2481,6 +2524,9 @@ impl App {
         if let Some(api) = serving.as_ref() {
             crate::shipping::resume(api, config.shutdown_drain_timeout()).await;
         }
+        // The local ship tasks run on their own short pass: the Control Plane reads what this
+        // Host decided within seconds, not at the next re-pin pass.
+        let _local_shipping = local_shipper.map(crate::shipping::drive_local);
         let _repinning = match (repinning_coordinator, serving.as_ref()) {
             (Some(coordinating), Some(api)) => Some(crate::repin::drive(
                 coordinating,

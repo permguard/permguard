@@ -276,6 +276,8 @@ pub struct HostApi {
     /// The volume this process claimed and the claim generation it holds, which a drain receipt
     /// names (TD-2).
     volume: Option<([u8; 16], u64)>,
+    /// The local ship tasks of a Host that runs both Planes, given once the server composed them.
+    local_shipping: Option<Arc<crate::membership::local::LocalShipping>>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -313,7 +315,18 @@ impl HostApi {
             gc: Arc::default(),
             gc_spending: std::sync::Mutex::new(()),
             volume: None,
+            local_shipping: None,
         }
+    }
+
+    /// This facade shipping its Data Plane's streams to its own Control Plane through `local`
+    /// on every ship pass.
+    pub fn with_local_shipping(
+        mut self,
+        local: Arc<crate::membership::local::LocalShipping>,
+    ) -> Self {
+        self.local_shipping = Some(local);
+        self
     }
 
     /// This facade serving the volume's backups (WP-7.8), binding `recovery_key_id` and

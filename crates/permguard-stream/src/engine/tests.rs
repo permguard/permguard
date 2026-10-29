@@ -7515,3 +7515,71 @@ fn acknowledgement_points_survive_a_clock_stepped_back_and_collapse_when_idle() 
     );
     assert!(!subscription.note_acked(run, 1_800_000_100 + 2001 + retention, retention));
 }
+
+// ---- The local ship tasks of a Host running both Planes ----
+
+/// A Host running both Planes ships its own streams to its own consumer, in-process, verified
+/// under its own `data.attest`: a run opened before the first pass carries no fence and is rolled
+/// over, its records left unshipped; what follows is shipped and acknowledged. The local pins
+/// answer the local membership only.
+#[test]
+fn a_host_ships_its_own_streams_to_itself_under_its_own_ring() {
+    use super::ingest::StreamPins as _;
+    use permguard_host::membership::local::{LOCAL_MEMBERSHIP, LOCAL_TASK, LocalShipping};
+
+    let host = Host::new("local-ship");
+    let consumer = Arc::new(consumer_on(&host));
+    let producer = Arc::new(host.sealer());
+    let unfenced = producer
+        .append(&ledger(1), &"before".to_owned())
+        .expect("appended")
+        .run_id;
+    let pins = Arc::new(super::ingest::LocalPins {
+        ring: Arc::clone(&host.attest),
+    });
+    let ingest = || {
+        Arc::new(super::ingest::Ingest {
+            consumer: Arc::clone(&consumer),
+            pins: Arc::clone(&pins) as Arc<dyn super::ingest::StreamPins>,
+        })
+    };
+    let local = LocalShipping::new(
+        Arc::clone(&producer) as Arc<dyn StreamShipping>,
+        ingest(),
+        ingest(),
+        host.identity.host_id(),
+        Arc::clone(&host.attest),
+    );
+    // The first pass fences the stream: the unfenced run ends, nothing of it ships.
+    assert_eq!(local.ship_due(), 0);
+    let fenced = producer
+        .append(&ledger(1), &"r1".to_owned())
+        .expect("appended")
+        .run_id;
+    producer
+        .append(&ledger(1), &"r2".to_owned())
+        .expect("appended");
+    assert_ne!(fenced, unfenced, "the stream rolled over to a fenced run");
+    assert!(local.ship_due() > 0);
+    let subscription = producer
+        .subscription(&ledger(1), &LOCAL_MEMBERSHIP, LOCAL_TASK)
+        .expect("read")
+        .expect("held");
+    assert_eq!(subscription.acked(&fenced), 2);
+    assert_eq!(subscription.acked(&unfenced), 0);
+    // Nothing left: the next pass ships nothing.
+    assert_eq!(local.ship_due(), 0);
+    // The local pins are this Host's own set, for the local membership alone.
+    assert_eq!(
+        pins.verifying_pins(&LOCAL_MEMBERSHIP, DATA_ATTEST, "any", 1),
+        vec![pin_of(&host)]
+    );
+    assert!(
+        pins.verifying_pins(&MEMBERSHIP, DATA_ATTEST, "any", 1)
+            .is_empty()
+    );
+    assert!(
+        pins.verifying_pins(&LOCAL_MEMBERSHIP, "control.attest", "any", 1)
+            .is_empty()
+    );
+}

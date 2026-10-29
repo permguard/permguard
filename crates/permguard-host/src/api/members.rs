@@ -2298,6 +2298,12 @@ impl HostApi {
             },
             Err(_) => 0,
         };
+        // The local ship tasks beside the memberships': no session, no coordinator to reach.
+        let shipped = shipped
+            + self
+                .local_shipping
+                .as_ref()
+                .map_or(0, |local| local.ship_due());
         // Whether or not this pass could reach a coordinator: what it refused earlier still
         // keeps those streams from shipping.
         self.report_refused();
@@ -2521,8 +2527,12 @@ impl HostApi {
     }
 
     /// Keeps a subscription for every ship task of every live membership, shipping nothing
-    /// (WP-5.8): a drain calls it before it judges. Nothing without a peer client.
+    /// (WP-5.8): a drain calls it before it judges. Nothing without a peer client, but the local
+    /// ship tasks' subscriptions.
     pub fn register_subscriptions(&self) -> Result<(), String> {
+        if let Some(local) = &self.local_shipping {
+            local.register()?;
+        }
         let Ok((memberships, connector)) = self.member_side() else {
             return Ok(());
         };

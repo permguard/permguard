@@ -203,6 +203,31 @@ impl StreamPins for Store {
     }
 }
 
+/// The pins of the local ship tasks (`permguard_host::membership::local`): this Host's own
+/// `ring`, for the local membership only. Any other membership is answered no pin, so this source
+/// never verifies a peer's batch.
+pub struct LocalPins {
+    pub ring: Arc<permguard_host::keys::ring::Ring>,
+}
+
+impl StreamPins for LocalPins {
+    fn verifying_pins(
+        &self,
+        membership_id: &[u8; 16],
+        ring: &str,
+        _stream: &str,
+        _seq: u64,
+    ) -> Vec<RingPin> {
+        if *membership_id != permguard_host::membership::local::LOCAL_MEMBERSHIP {
+            return Vec::new();
+        }
+        permguard_host::membership::local::local_pins(&self.ring)
+            .into_iter()
+            .filter(|pin| pin.ring == ring)
+            .collect()
+    }
+}
+
 /// The coordinator's handler of a ship task, `decisions.ship` or `events.ship` version 1: the
 /// consumer of the task's descriptor, and where the member's pins are read.
 pub struct Ingest<C> {

@@ -13,7 +13,11 @@
 //!
 //! The engine never truncates past an acknowledgement, so a stream left behind keeps every record
 //! the next process ships.
+//!
+//! A Host running both Planes also ships to itself (`permguard_host::membership::local`): a short
+//! pass, [`drive_local`], so its Control Plane reads its decisions and events within seconds.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
@@ -23,6 +27,9 @@ use permguard_host::api::HostApi;
 
 /// How long a drain waits before asking a coordinator again that took nothing.
 const RETRY: Duration = Duration::from_millis(250);
+
+/// How often the local ship tasks run.
+pub const LOCAL_PASS: Duration = Duration::from_secs(2);
 
 /// The component the drain and the recovery log as.
 const COMPONENT: &str = "host";
@@ -159,4 +166,41 @@ pub async fn resume(api: &HostApi, budget: Duration) {
             "the unshipped marks could not be settled: the periodic passes try again"
         ),
     }
+}
+
+/// The running local ship pass; dropping it stops it.
+pub struct LocalShipping(tokio::task::JoinHandle<()>);
+
+impl Drop for LocalShipping {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Runs the local ship tasks now and every [`LOCAL_PASS`] until the handle is dropped, each pass
+/// on the blocking pool: the ingest writes the consumer's files.
+pub fn drive_local(local: Arc<permguard_host::membership::local::LocalShipping>) -> LocalShipping {
+    LocalShipping(tokio::spawn(async move {
+        let mut interval = tokio::time::interval(LOCAL_PASS);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            let passing = Arc::clone(&local);
+            match tokio::task::spawn_blocking(move || passing.ship_due()).await {
+                Ok(0) => {}
+                Ok(shipped) => tracing::debug!(
+                    event.name = "host.local_shipped",
+                    component = COMPONENT,
+                    batches = shipped,
+                    "this Host's Control Plane took its Data Plane's batches"
+                ),
+                Err(error) => tracing::error!(
+                    event.name = "host.local_ship_failed",
+                    component = COMPONENT,
+                    error = %error,
+                    "the local ship pass stopped; the next pass tries again"
+                ),
+            }
+        }
+    }))
 }
