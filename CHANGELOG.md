@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.11] - 2026-10-29
+
 ### Fixed
 
 - **The Windows binaries are reproducible.**
