@@ -9,9 +9,10 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
 
-/// The version of the CLI this library is, the release it was built from: what a program that
+/// The version of the CLI this library is, as every Permguard binary reports it: the release tag
+/// stamped at build time, or the workspace version for a build nobody stamped. What a program that
 /// embeds it reports as the Permguard it runs.
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &str = permguard_core::build::VERSION;
 
 pub mod check;
 pub mod decisions;
