@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.13] - 2026-10-30
+
 ### Changed
 
 - **The CLI is a library as well as a binary.**
