@@ -22,27 +22,21 @@
 
 use std::process::ExitCode;
 
+use permguard_cli::decisions::{Filter, MAX_PAGES, Page, report, verify};
 use permguard_control_client::decisions::{self, DecisionLog, ReadError, ReadScope, ReadWindow};
 use permguard_core::Jwk;
 use permguard_decisions::envelope::Signed;
-use permguard_decisions::{chain, merkle, record};
 use serde_json::Value;
 
 use crate::args::{DecisionsAction, DecisionsQuery, Globals};
 use crate::decision_out::{
-    DecisionArchive, DecisionArchiveScope, DecisionArchiveSummary, DecisionLine, DecisionReport,
-    DecisionSignersReport, DecisionsReport, EventLine, Verified,
+    DecisionArchive, DecisionArchiveScope, DecisionArchiveSummary, DecisionReport,
+    DecisionSignersReport, DecisionsReport,
 };
 use crate::failure::{EXIT_READY, Failure};
 use crate::session::{open_store, render};
 use crate::target::{self, Asked};
 use crate::trace::Trace;
-
-/// How many pages `export` and `get` will walk before giving up.
-///
-/// A bound rather than a loop: a command that walks forever on a store that
-/// keeps growing is a command nobody can put in a script.
-const MAX_PAGES: usize = 10_000;
 
 /// Runs the command.
 pub fn decisions(globals: &Globals, action: &DecisionsAction) -> Result<ExitCode, Failure> {
@@ -74,62 +68,22 @@ fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<E
     let (reader, scope) = connect(globals, query, &trace)?;
     let keys = key_set(globals, query)?;
 
-    let mut read = Read {
-        records: Vec::new(),
-        proof: Vec::new(),
-        inclusion: Vec::new(),
-        next: String::new(),
-        more: false,
-    };
-    let mut window = ReadWindow {
-        from: query.from.clone(),
-        limit_records: query.limit,
-        proof: proofs_asked(query, everything),
-        ..ReadWindow::default()
-    };
-    let mut decisions_read = 0usize;
-    let mut walked = 0usize;
-    for page_number in 0..MAX_PAGES {
-        walked = page_number + 1;
-        let page = reader.read(&scope, &window).map_err(read_failure)?;
-        if everything && page_number == 0 {
-            // The snapshot this export is of. Every page after this one is bounded by it.
-            window.until = Some(page.high_watermark.clone());
+    let read = permguard_cli::decisions::read(
+        reader.as_ref(),
+        &scope,
+        query.from.clone(),
+        query.limit,
+        proofs_asked(query, everything),
+        everything,
+        |watermark| {
             trace.say(format!(
-                "exporting the snapshot at `{}`; records written after it belong to a later export",
-                page.high_watermark
+                "exporting the snapshot at `{watermark}`; records written after it belong to a \
+                 later export"
             ));
-        }
-        read.more = page.more;
-        read.next.clone_from(&page.next);
-        window.from = Some(page.next);
-        decisions_read += page
-            .records
-            .iter()
-            .filter(|record| record.get("kind").and_then(Value::as_str) == Some("decision"))
-            .count();
-        read.proof.extend(page.proof);
-        read.inclusion.extend(page.inclusion);
-        read.records.extend(page.records);
-        // An empty page is not the end: filtering and scan bounds mean a page may match nothing
-        // while still advancing. The export stops from `more` against its own bound, and nothing
-        // else.
-        if !read.more {
-            break;
-        }
-        if everything {
-            continue;
-        }
-        // A page is `--limit` decisions, not `--limit` records. The stream carries marker events
-        // beside the decisions, and a limit counted in records handed back one decision fewer
-        // than asked. So the read goes on until the decisions add up, asking each time only for
-        // what is still missing: the server bounds a page by records, so the last one cannot
-        // overshoot and leave `next` past decisions that were never shown.
-        if decisions_read >= query.limit {
-            break;
-        }
-        window.limit_records = query.limit - decisions_read;
-    }
+        },
+    )
+    .map_err(read_failure)?;
+    let (read, walked) = (read.page, read.walked);
 
     let truncated = export_truncated(everything, walked, read.more);
     let evidence = everything.then(|| {
@@ -144,7 +98,7 @@ fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<E
             },
         )
     });
-    let report = report(&scope, read, query, keys.as_deref());
+    let report = report(&scope, read, &filter_of(query), keys.as_deref());
     match evidence {
         Some((records, envelopes, inclusion, summary)) => {
             let unverified_report = unverified(&report);
@@ -182,6 +136,15 @@ fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<E
     }
 
     Ok(ExitCode::from(EXIT_READY))
+}
+
+/// What a report keeps and checks, as the arguments say.
+fn filter_of(query: &DecisionsQuery) -> Filter {
+    Filter {
+        since: query.since.clone(),
+        decision: query.decision.map(Into::into),
+        verify: query.verify,
+    }
 }
 
 /// Whether a read asks for envelopes and paths: an export always, being an offline-verifiable
@@ -416,14 +379,14 @@ fn verify_archive(
     };
     let mut report = report(
         &scope,
-        Read {
+        Page {
             records: archive.records,
             proof: Vec::new(),
             inclusion: Vec::new(),
             next: archive.summary.next,
             more: archive.summary.more,
         },
-        &query,
+        &filter_of(&query),
         Some(keys),
     );
     report.verified = Some(checked);
@@ -463,14 +426,14 @@ fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitC
         if !page.records.is_empty() {
             let report = report(
                 &scope,
-                Read {
+                Page {
                     records: page.records,
                     proof: page.proof,
                     inclusion: page.inclusion,
                     next: page.next,
                     more,
                 },
-                query,
+                &filter_of(query),
                 keys.as_deref(),
             );
             render(&report, globals.output, &trace)?;
@@ -669,417 +632,6 @@ fn read_keys(globals: &Globals, path: &str) -> Result<Vec<Jwk>, Failure> {
         .map_err(|error| Failure::usage(format!("{path} is not a JWKS: {error}")))
 }
 
-/// What one or more pages came back with.
-struct Read {
-    records: Vec<Value>,
-    proof: Vec<Value>,
-    inclusion: Vec<Value>,
-    next: String,
-    more: bool,
-}
-
-/// Turns records into the report, filtering and verifying as asked.
-fn report(
-    scope: &ReadScope,
-    page: Read,
-    query: &DecisionsQuery,
-    keys: Option<&[Jwk]>,
-) -> DecisionsReport {
-    let Read {
-        records,
-        proof,
-        inclusion,
-        next,
-        more,
-    } = page;
-    // Verification runs over everything that came back, before any filtering:
-    // a chain with a record removed from it is not a chain, and filtering
-    // first would make every filtered read look broken.
-    let verified = query
-        .verify
-        .then(|| verify(scope, &records, &proof, &inclusion, keys));
-
-    let mut decisions = Vec::new();
-    let mut events = Vec::new();
-    for record in records {
-        let kind = record
-            .get("kind")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned();
-        let seq = record
-            .get("seq")
-            .and_then(Value::as_u64)
-            .unwrap_or_default();
-        let at = string(&record, "at");
-        if kind != "decision" {
-            events.push(EventLine {
-                seq,
-                detail: describe(&kind, &record),
-                kind,
-            });
-            continue;
-        }
-        if let Some(since) = &query.since
-            && at.as_str() < since.as_str()
-        {
-            continue;
-        }
-        let permit = record
-            .get("decision")
-            .and_then(Value::as_bool)
-            .unwrap_or_default();
-        let outcome = crate::decision_out::outcome_of(&record);
-        if let Some(wanted) = query.decision
-            && !wanted.admits(&outcome)
-        {
-            continue;
-        }
-
-        decisions.push(DecisionLine {
-            seq,
-            at,
-            decision: permit,
-            outcome,
-            subject: party(&record, "subject"),
-            action: record
-                .get("action")
-                .and_then(|action| action.get("name"))
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned(),
-            resource: party(&record, "resource"),
-            commit: record
-                .get("store")
-                .and_then(|store| store.get("commit"))
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned(),
-            policies: record
-                .get("policies")
-                .and_then(Value::as_array)
-                .map(|policies| {
-                    policies
-                        .iter()
-                        .filter_map(|policy| policy.as_str().map(str::to_owned))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            absent_inputs: record
-                .get("inputs")
-                .and_then(|inputs| inputs.get("absent"))
-                .and_then(Value::as_array)
-                .map(|names| {
-                    names
-                        .iter()
-                        .filter_map(|name| name.as_str().map(str::to_owned))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            id: string(&record, "id"),
-            latency_us: record
-                .get("latency_us")
-                .and_then(Value::as_u64)
-                .unwrap_or_default(),
-        });
-    }
-
-    DecisionsReport {
-        scope: match scope {
-            ReadScope::Tenant { zone, ledger } => format!("{zone}/{ledger}"),
-            ReadScope::Stream { pdp_id, instance } => format!("{pdp_id} · {instance}"),
-        },
-        decisions,
-        events,
-        next,
-        more,
-        verified,
-    }
-}
-
-/// Re-computes what the records and the envelopes say about themselves.
-///
-/// Which proof applies is decided by the scope, not by preference:
-///
-/// ```text
-/// producer stream  →  a contiguous history      →  the chain proves it
-/// tenant view      →  a subsequence of one      →  the inclusion path does
-/// ```
-///
-/// Running the chain check over a tenant page would report a failure of
-/// arithmetic as a failure of integrity: the records in between belong to
-/// other tenants, and their absence is the design working, not a break.
-fn verify(
-    scope: &ReadScope,
-    records: &[Value],
-    proof: &[Value],
-    inclusion: &[Value],
-    keys: Option<&[Jwk]>,
-) -> Verified {
-    let (mut verified, mut failed) = (0, 0);
-    let mut roots: Vec<(String, bool)> = Vec::new();
-    // The batches the producing Hosts' engines sealed (WP-6.2b): their roots are attributed only
-    // when their signatures verify under the keys given.
-    let mut host_batches = Vec::new();
-    for entry in proof {
-        match super::host_proof::host_batch(
-            entry,
-            keys,
-            permguard_core::domains::protected::DECISION_BATCH,
-        ) {
-            Some(Ok(batch)) => {
-                verified += usize::from(keys.is_some());
-                roots.push((batch.merkle_root.clone(), keys.is_some()));
-                host_batches.push(batch);
-            }
-            Some(Err(())) => failed += usize::from(keys.is_some()),
-            None => {}
-        }
-    }
-    let legacy: Vec<&Value> = proof
-        .iter()
-        .filter(|entry| {
-            entry.get("format").and_then(Value::as_str) != Some(super::host_proof::HOST_FORMAT)
-        })
-        .collect();
-    if let Some(keys) = keys {
-        for &envelope in &legacy {
-            let signed = serde_json::from_value::<Signed>(envelope.clone())
-                .ok()
-                .map(|signed| signed.verify(keys));
-            match signed {
-                Some(Ok(attested)) => {
-                    verified += 1;
-                    roots.push((attested.merkle_root, true));
-                }
-                Some(Err(_)) | None => failed += 1,
-            }
-        }
-    } else {
-        // Without a key set the roots are still usable for the arithmetic —
-        // they simply are not *attributed*, and the report says so.
-        for &envelope in &legacy {
-            if let Ok(signed) = serde_json::from_value::<Signed>(envelope.clone())
-                && let Ok(attested) = signed.envelope()
-            {
-                roots.push((attested.merkle_root, false));
-            }
-        }
-    }
-
-    match scope {
-        ReadScope::Stream { .. } => {
-            let (chain_ok, detail) = match chain::verify(records, None) {
-                // An empty page is not a broken chain: there is nothing to check.
-                Err(chain::ChainError::Empty) => (true, None),
-                Err(error) => (false, Some(error.to_string())),
-                // A chain that holds is not yet a chain anybody *signed*. When
-                // a proof came back, bind its head to a head the producer
-                // attested — the whole point of reading a stream is to check it
-                // without trusting the server that served it. With no proof
-                // asked for, the chain result stands alone and the report says
-                // signatures were not checked.
-                Ok(_) if proof.is_empty() => (true, None),
-                Ok(verified) if attested(&verified, records, proof, &host_batches) => (true, None),
-                Ok(_) => (
-                    false,
-                    Some(
-                        "the records form a chain, and no envelope in the proof attests its head: \
-                         this run is well-formed and unattributed"
-                            .to_owned(),
-                    ),
-                ),
-            };
-
-            Verified {
-                proof: "chain",
-                chain: Some(chain_ok),
-                chain_detail: detail,
-                included: None,
-                not_included: None,
-                signatures: verified,
-                signatures_failed: failed,
-                signatures_checked: keys.is_some(),
-            }
-        }
-        ReadScope::Tenant { .. } => {
-            let (included, missing) = included(records, inclusion, &roots);
-
-            Verified {
-                proof: "inclusion",
-                chain: None,
-                chain_detail: None,
-                included: Some(included),
-                not_included: Some(missing),
-                signatures: verified,
-                signatures_failed: failed,
-                signatures_checked: keys.is_some(),
-            }
-        }
-    }
-}
-
-/// Whether the signed envelopes attest the run that was verified.
-///
-/// The chain proves the records follow one another; the envelope proves a
-/// producer said so. Checking one without the other leaves the case that
-/// matters: a store serving a well-formed history nobody signed — including a
-/// *replaced* one, internally perfect, presented beside the genuine envelopes.
-/// Range overlap alone would accept that, so the two are bound by digest:
-/// every batch boundary that falls inside the run must name a head the run
-/// actually digests to.
-///
-/// A run may still end mid-batch — a page boundary is not a batch boundary —
-/// and its final records are then bound by the *next* page's chain check
-/// rather than by a head of their own.
-fn attested(
-    verified: &permguard_decisions::Verified,
-    records: &[Value],
-    proof: &[Value],
-    host_batches: &[super::host_proof::HostBatch],
-) -> bool {
-    let digests: std::collections::BTreeMap<u64, String> = records
-        .iter()
-        .filter_map(|record| {
-            let seq = record.get("seq").and_then(Value::as_u64)?;
-
-            record::digest_of(record).ok().map(|digest| (seq, digest))
-        })
-        .collect();
-    // `(first, last, head)` of each batch of the verified stream: a legacy envelope naming it, or
-    // a Host batch naming its `host_id` and run.
-    let mut envelopes: Vec<(u64, u64, String)> = proof
-        .iter()
-        .filter_map(|signed| {
-            serde_json::from_value::<Signed>(signed.clone())
-                .ok()
-                .and_then(|signed| signed.envelope().ok())
-        })
-        .filter(|envelope| envelope.stream == verified.stream)
-        .map(|envelope| (envelope.first_seq, envelope.last_seq, envelope.head))
-        .collect();
-    envelopes.extend(
-        host_batches
-            .iter()
-            .filter(|batch| {
-                batch.producer == verified.stream.id && batch.run == verified.stream.instance
-            })
-            .map(|batch| (batch.first_seq, batch.last_seq, batch.head.clone())),
-    );
-
-    // Every attested head inside the run must be a digest the run reaches.
-    // One that is not means the records and the signatures describe two
-    // different histories, and "verified" must not be the answer.
-    for (_, last, head) in &envelopes {
-        if (verified.first_seq..=verified.last_seq).contains(last)
-            && digests.get(last) != Some(head)
-        {
-            return false;
-        }
-    }
-
-    // And the run's own head must be under some signature: attested exactly,
-    // or carried by a batch that extends past the page.
-    envelopes
-        .iter()
-        .any(|(first, last, _)| (*first..=*last).contains(&verified.last_seq))
-}
-
-/// How many records reach a root the producer attested, and how many do not.
-///
-/// A record is proven when its own digest, carried up its path, reaches a root
-/// that came from a signed envelope. Recomputing the leaf from the record
-/// itself is the part that matters: taking the leaf from the proof would prove
-/// that the proof is consistent with itself.
-fn included(records: &[Value], inclusion: &[Value], roots: &[(String, bool)]) -> (usize, usize) {
-    let mut proven = 0;
-    let mut missing = 0;
-    for record in records {
-        let seq = record
-            .get("seq")
-            .and_then(Value::as_u64)
-            .unwrap_or_default();
-        let Ok(leaf) = record::digest_of(record) else {
-            missing += 1;
-            continue;
-        };
-        // By its sequence and its leaf: a tenant page spans runs that each begin at 1, so a
-        // sequence alone would take another run's path (WP-6.3b, after the review).
-        let Some(path) = inclusion.iter().find(|entry| {
-            entry.get("seq").and_then(Value::as_u64) == Some(seq)
-                && entry.get("leaf").and_then(Value::as_str) == Some(leaf.as_str())
-        }) else {
-            missing += 1;
-            continue;
-        };
-        let steps: Vec<merkle::Step> = path
-            .get("path")
-            .cloned()
-            .and_then(|steps| serde_json::from_value(steps).ok())
-            .unwrap_or_default();
-        let reached = merkle::recompute(&leaf, &steps);
-        if roots.iter().any(|(root, _)| root == &reached) {
-            proven += 1;
-        } else {
-            missing += 1;
-        }
-    }
-
-    (proven, missing)
-}
-
-fn describe(kind: &str, record: &Value) -> String {
-    match kind {
-        "marker" => format!(
-            "sampling permits={}, build {}",
-            record
-                .get("sampling")
-                .and_then(|sampling| sampling.get("permits"))
-                .and_then(Value::as_str)
-                .unwrap_or("?"),
-            record
-                .get("pdp")
-                .and_then(|pdp| pdp.get("version"))
-                .and_then(Value::as_str)
-                .unwrap_or("?")
-        ),
-        "discontinuity" => format!(
-            "the stream ended ({}); {} record(s) lost, continues as {}",
-            string(record, "reason"),
-            record
-                .get("lost")
-                .and_then(|lost| lost.get("count_estimate"))
-                .and_then(Value::as_u64)
-                .unwrap_or_default(),
-            string(record, "successor")
-        ),
-        other => other.to_owned(),
-    }
-}
-
-fn party(record: &Value, member: &str) -> String {
-    let Some(party) = record.get(member) else {
-        return String::new();
-    };
-
-    format!(
-        "{}:{}",
-        party
-            .get("type")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-        party.get("id").and_then(Value::as_str).unwrap_or_default()
-    )
-}
-
-fn string(record: &Value, member: &str) -> String {
-    record
-        .get(member)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned()
-}
-
 fn read_failure(error: ReadError) -> Failure {
     match error {
         // The one refusal a consumer must act on rather than retry: it lost
@@ -1118,6 +670,7 @@ mod host_verify {
 
     use super::super::host_proof::testing::{Key, sealed};
     use super::*;
+    use permguard_decisions::{merkle, record};
 
     fn build() -> Build {
         Build {
@@ -1298,6 +851,7 @@ mod archive_verify {
 
     use super::super::host_proof::testing::{Key, sealed};
     use super::*;
+    use permguard_decisions::{merkle, record};
 
     /// Three markers of the run `run` of the producer `pdp`, each two hex digits repeated.
     fn records_by(pdp: &str, run: &str) -> Vec<Value> {

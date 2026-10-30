@@ -912,7 +912,7 @@ The Host never depends on a concrete plane.
 | `permguard-transport`      | support     | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown.                              |
 | `permguard-telemetry`      | support     | Liveness, readiness and metrics.                                                                    |
 | `permguard-std`            | support     | Default implementations behind feature flags.                                                       |
-| `permguard-cli`            | clients     | `permguard`, the command-line interface and authoring engine.                                       |
+| `permguard-cli`            | clients     | `permguard`, the command-line interface, and the library Permguard Admin embeds.                     |
 | `permguard-conformance`    | tests       | REST/gRPC parity, fault injection, the `kill -9` crash harness and the untrusted-boundary registry. |
 
 </details>

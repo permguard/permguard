@@ -7,6 +7,7 @@
 
 pub mod build;
 pub mod cases;
+pub mod clone;
 pub mod config;
 pub mod inventory;
 pub mod lock;

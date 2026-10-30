@@ -286,67 +286,11 @@ fn rooted_at(base: &std::path::Path, path: &std::path::Path) -> std::path::PathB
     }
 }
 
-/// The most a token file may hold: a token is a line, not a document.
-const TOKEN_FILE_MAX: u64 = 64 * 1024;
-
-/// Reads the bearer token from `path`: refused when it is not a regular file, when others than
-/// its owner may read it, when it is empty or larger than a token, or when it is not one printable
-/// word (TC-1, owner decision of 2026-10-10). The path is checked before it is opened, so a FIFO
-/// never blocks the command, and the handle is checked to be that same file.
+/// Reads the bearer token from `path`, by the library's rule (TC-1): a refusal is a usage error.
 pub fn read_token(
     path: &std::path::Path,
 ) -> Result<permguard_control_client::tls::Credential, Failure> {
-    use std::io::Read as _;
-
-    let refused = |why: &str| Failure::usage(format!("the token file {}: {why}", path.display()));
-    // A regular file before it is opened: opening a FIFO would wait for a writer forever.
-    let named =
-        std::fs::metadata(path).map_err(|error| refused(&format!("cannot be read: {error}")))?;
-    if !named.is_file() {
-        return Err(refused("is not a regular file"));
-    }
-    let file =
-        std::fs::File::open(path).map_err(|error| refused(&format!("cannot be read: {error}")))?;
-    let metadata = file
-        .metadata()
-        .map_err(|error| refused(&format!("cannot be read: {error}")))?;
-    // And the file opened is the file checked: a path swapped between the two is refused.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt as _;
-        if (named.dev(), named.ino()) != (metadata.dev(), metadata.ino()) {
-            return Err(refused("changed while it was being read"));
-        }
-    }
-    if !metadata.is_file() {
-        return Err(refused("is not a regular file"));
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        if metadata.permissions().mode() & 0o077 != 0 {
-            return Err(refused(
-                "is open to its group or to others: restrict it to its owner (chmod 600)",
-            ));
-        }
-    }
-    let mut text = String::new();
-    file.take(TOKEN_FILE_MAX + 1)
-        .read_to_string(&mut text)
-        .map_err(|error| refused(&format!("cannot be read: {error}")))?;
-    if text.len() as u64 > TOKEN_FILE_MAX {
-        return Err(refused("is larger than any token"));
-    }
-    let token = text.trim();
-    if token.is_empty() {
-        return Err(refused("is empty"));
-    }
-    if !token.bytes().all(|byte| (0x21..0x7f).contains(&byte)) {
-        return Err(refused("does not hold one printable word"));
-    }
-    Ok(permguard_control_client::tls::Credential::new(
-        token.as_bytes().to_vec(),
-    ))
+    permguard_cli::token::read(path).map_err(Failure::usage)
 }
 
 /// The one target class a command reaches (TC-1): a command names exactly one, and a flag naming

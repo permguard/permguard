@@ -43,6 +43,7 @@ use std::process::ExitCode;
 
 use serde_json::{Map, Value};
 
+use permguard_cli::check::{self, CheckReport};
 use permguard_cli::engine::{FsStore, Workspace};
 use permguard_control_client::pdp;
 
@@ -51,7 +52,6 @@ use crate::failure::{EXIT_READY, Failure};
 use crate::session::{open_store, render};
 use crate::target::{self, Asked};
 use crate::trace::Trace;
-use crate::workspace_out::CheckReport;
 
 /// Runs the command.
 pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
@@ -183,49 +183,28 @@ fn pair(value: Option<&str>, flag: &str, example: &str) -> Result<(String, Strin
 }
 
 /// Puts the resolved store into the payload, and refuses a request that names
-/// none — the same rule the server enforces, said before a round trip.
+/// none — the same rule the server enforces, said before a round trip. The rule is the library's;
+/// saying that the document named another store is the terminal's.
 fn apply_store(payload: &mut Value, target: &target::Target) -> Result<(), Failure> {
-    if target.names_store() {
-        let zone = target.zone.clone().unwrap_or_default();
-        let ledger = target.ledger.clone().unwrap_or_default();
+    let store = target.names_store().then(|| {
+        (
+            target.zone.as_deref().unwrap_or_default(),
+            target.ledger.as_deref().unwrap_or_default(),
+        )
+    });
+    let overridden = check::prepare(payload, store, None).map_err(Failure::usage)?;
+    if let (Some((stated_zone, stated_ledger)), Some((zone, ledger))) = (overridden, store) {
         // The precedence stands — the flags, then the workspace, then the document — and it is
         // documented. What is not acceptable is applying it in silence: a document that names
         // another store and gets an answer about this one has been answered about the wrong
         // ledger without anybody saying so.
-        let stated = |field: &str| {
-            payload
-                .get(field)
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_owned)
-        };
-        if let (Some(stated_zone), Some(stated_ledger)) = (stated("zone"), stated("ledger"))
-            && (stated_zone != zone || stated_ledger != ledger)
-        {
-            crate::trace::warn(format!(
-                "the document names `{stated_zone}/{stated_ledger}`; this check asks about \
-                 `{zone}/{ledger}` [{}]. Pass --ignore-workspace to send the document as written",
-                target.origin
-            ));
-        }
-        payload["zone"] = Value::String(zone);
-        payload["ledger"] = Value::String(ledger);
+        crate::trace::warn(format!(
+            "the document names `{stated_zone}/{stated_ledger}`; this check asks about \
+             `{zone}/{ledger}` [{}]. Pass --ignore-workspace to send the document as written",
+            target.origin
+        ));
     }
-    let named = |field: &str| {
-        payload
-            .get(field)
-            .and_then(Value::as_str)
-            .is_some_and(|value| !value.trim().is_empty())
-    };
-    if named("zone") && named("ledger") {
-        return Ok(());
-    }
-
-    Err(Failure::usage(
-        "this request names no zone and ledger: state them in the document, pass --zone and \
-         --ledger, or run inside a workspace that tracks a ledger",
-    ))
+    Ok(())
 }
 
 fn store_of(payload: &Value) -> String {

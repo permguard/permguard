@@ -3111,6 +3111,23 @@ sections:
       - crates/permguard-cli/tests/cli.rs::the_host_identity_members_and_grants_command_families_are_complete
     gaps:
       - "open (code): the commands blocked in ops/command-line.md (catalog holds and tombstones, host secrets, drain and maintenance, the non-object gc jobs, storage quota and probe, CLI streams verify)"
+  "5-command-line/1-command-line.md#library":
+    paths:
+      - crates/permguard-cli/src/lib.rs
+      - crates/permguard-cli/src/check.rs
+      - crates/permguard-cli/src/decisions.rs
+      - crates/permguard-cli/src/events.rs
+      - crates/permguard-cli/src/host_proof.rs
+      - crates/permguard-cli/src/token.rs
+      - crates/permguard-cli/src/engine/workspace/clone.rs
+    tests:
+      - crates/permguard-cli/tests/engine_e2e.rs::a_clone_is_a_workspace_bound_to_its_ledger_and_pulled
+      - crates/permguard-cli/src/check.rs::a_named_store_wins_and_the_one_it_replaced_is_said
+      - crates/permguard-cli/src/check.rs::a_report_names_the_policies_by_alias_and_keeps_their_identity
+      - crates/permguard-cli/src/token.rs::a_token_others_can_read_is_refused_without_its_value
+      - crates/permguard-cli/src/events.rs::each_event_version_is_read_by_its_own_contract
+      - crates/permguard-cli/src/commands/decisions.rs::a_tenant_page_of_host_records_is_included_under_its_sealing_key
+      - crates/permguard-cli/tests/cli.rs::the_token_file_is_refused_when_others_can_read_it_or_it_is_empty
   "5-command-line/1-command-line.md#current-implementation-and-target":
     paths:
       - crates/permguard-cli/src/args.rs

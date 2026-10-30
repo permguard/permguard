@@ -6,7 +6,7 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use permguard_stream::engine::batch::digest_string;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::testing::{Key, sealed};
 use super::*;

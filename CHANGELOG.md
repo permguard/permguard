@@ -17,7 +17,14 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **The CLI is a library as well as a binary.**
+  `permguard-cli` exposes what its commands do without a terminal: `engine` (with `clone` and the tracked ledger a pull reads), `check`, `decisions`, `events`, `host_proof` and `token`.
+  The `permguard` binary is that library plus its arguments and its output, and Permguard Admin embeds it, so the application runs the same code with no CLI to install.
+  Nothing a person or a script sees changes: the output of `clone`, `pull`, `check`, `decisions list` and `events list`/`get` is byte for byte what it was, and so are the exit statuses.
+- **`clone` connects before it creates the destination folder.**
+  A remote that cannot be reached no longer leaves an empty folder behind.
 
 ## [0.1.12] - 2026-10-29
 

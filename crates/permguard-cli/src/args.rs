@@ -838,14 +838,12 @@ pub enum Decision {
     Indeterminate,
 }
 
-impl Decision {
-    /// Whether a record of this outcome — `permit`, `deny`, `deny_by_default` or
-    /// `indeterminate` — is one this filter keeps.
-    pub fn admits(self, outcome: &str) -> bool {
-        match self {
-            Self::Permit => outcome == "permit",
-            Self::Deny => outcome == "deny" || outcome == "deny_by_default",
-            Self::Indeterminate => outcome == "indeterminate",
+impl From<Decision> for permguard_cli::decisions::Outcome {
+    fn from(decision: Decision) -> Self {
+        match decision {
+            Decision::Permit => Self::Permit,
+            Decision::Deny => Self::Deny,
+            Decision::Indeterminate => Self::Indeterminate,
         }
     }
 }

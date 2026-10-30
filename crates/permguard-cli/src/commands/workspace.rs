@@ -524,21 +524,16 @@ pub fn workspace_command(
         AnyRemote::connect(url, &tls, narrator::for_run(globals.verbose)).map_err(usage)
     };
 
-    // Connects to the remote the workspace tracks, pre-bound to its GUIDs.
+    // Connects to the remote the workspace tracks, pre-bound to its GUIDs; a remote the workspace
+    // names no URL for falls back to the CLI's own configuration.
     let tracked_remote = |trace: &Trace| -> Result<AnyRemote, Failure> {
-        let config = ws.config().map_err(usage)?;
-        let ledger = config
-            .ledger
-            .clone()
-            .ok_or_else(|| Failure::usage("no tracked ledger: run `permguard checkout` first"))?;
-        let url = match config.remotes.get(&ledger.remote) {
-            Some(remote) => remote.url.clone(),
+        let tracked = ws.tracked().map_err(usage)?;
+        let url = match &tracked.url {
+            Some(url) => url.clone(),
             None => fallback_url(trace)?,
         };
         let remote = connect(&url)?;
-        if !ledger.zone_id.is_empty() {
-            remote.bind(&ledger.zone_id, &ledger.ledger_id);
-        }
+        tracked.bind(&remote);
         Ok(remote)
     };
 
@@ -701,46 +696,11 @@ pub fn workspace_command(
             let (base, zone, ledger) = reference::parse_clone_url(&url).map_err(usage)?;
             let target = directory.unwrap_or_else(|| PathBuf::from(&ledger));
             let target = globals.workdir.join(target);
-            // Like git: cloning into an existing, non-empty directory is
-            // refused rather than silently merged into.
-            if target.exists()
-                && std::fs::read_dir(&target)
-                    .map(|mut entries| entries.next().is_some())
-                    .unwrap_or(false)
-            {
-                return Err(Failure::usage(format!(
-                    "destination `{}` already exists and is not empty",
-                    target.display()
-                )));
-            }
-            std::fs::create_dir_all(&target).map_err(|error| {
-                Failure::usage(format!("creating {}: {error}", target.display()))
-            })?;
-            let store = FsStore::new(&target);
-            let ws = Workspace::open(&store);
-            let mut config = permguard_cli::engine::workspace::config::WorkspaceConfig::new();
-            config.remotes.insert(
-                "origin".to_owned(),
-                permguard_cli::engine::workspace::config::RemoteConfig {
-                    url: base.clone(),
-                    tls_ca_file: None,
-                },
-            );
-            ws.save_config(&config).map_err(usage)?;
-            // The same neighbours `init` excuses, so a clone that grows a README or a `tests/`
-            // folder is not dirty from its first commit.
-            if !permguard_cli::engine::Store::exists(&store, ".permguardignore") {
-                permguard_cli::engine::Store::write(
-                    &store,
-                    ".permguardignore",
-                    permguard_cli::engine::workspace::DEFAULT_IGNORES.as_bytes(),
-                )
-                .map_err(usage)?;
-            }
             let remote = connect(&base)?;
-            let pulled = ws
-                .checkout(&remote, "origin", &zone, &ledger, "main")
-                .map_err(usage)?;
+            let pulled = permguard_cli::engine::workspace::clone::clone(
+                &target, &base, &zone, &ledger, &remote,
+            )
+            .map_err(usage)?;
             render(
                 &PullReport {
                     action: "clone",

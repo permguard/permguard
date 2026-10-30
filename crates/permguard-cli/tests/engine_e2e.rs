@@ -1281,3 +1281,64 @@ fn a_plane_that_has_not_enabled_dogwood_refuses_the_push() {
         "the refusal names the setting that would allow it: {message}"
     );
 }
+
+/// `clone` is a new workspace bound to the ledger and pulled whole: the remote named `origin` at
+/// the URL given, the ignore file `init` writes, every policy materialised, and a binding a later
+/// pull finds through `tracked`.
+#[test]
+fn a_clone_is_a_workspace_bound_to_its_ledger_and_pulled() {
+    use permguard_cli::engine::workspace::clone::{ORIGIN, clone};
+
+    let remote = EngineRemote::new("clone");
+    let dir_a = scratch("clone-author");
+    let store_a = FsStore::new(&dir_a);
+    let ws_a = Workspace::open(&store_a);
+    ws_a.init("acme-authz", &["cedar"]).unwrap();
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    let mut config = ws_a.config().unwrap();
+    config.remotes.insert(
+        "origin".into(),
+        permguard_cli::engine::workspace::config::RemoteConfig {
+            url: "test://".into(),
+            tls_ca_file: None,
+        },
+    );
+    ws_a.save_config(&config).unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "alice@acme.com", "first")
+            .unwrap()
+            .counter,
+        1
+    );
+
+    let target = scratch("clone-target").join("main-ledger");
+    let pulled = clone(&target, "test://", "delivery", "main-ledger", &remote).unwrap();
+    assert_eq!(pulled.counter, 1);
+    assert!(
+        pulled
+            .materialized
+            .iter()
+            .any(|path| path == "manifest.yml")
+    );
+    assert!(
+        pulled
+            .materialized
+            .iter()
+            .any(|path| path.starts_with("cedar/billing-ro"))
+    );
+    assert!(target.join(".permguardignore").is_file());
+
+    let store_b = FsStore::new(&target);
+    let tracked = Workspace::open(&store_b).tracked().unwrap();
+    assert_eq!(tracked.remote, ORIGIN);
+    assert_eq!(tracked.url.as_deref(), Some("test://"));
+    assert!(!tracked.zone_id.is_empty() && !tracked.ledger_id.is_empty());
+
+    // A second clone into the same folder is refused, and the first is left as it was.
+    let refused = clone(&target, "test://", "delivery", "main-ledger", &remote).unwrap_err();
+    assert!(refused.to_string().contains("is not empty"), "{refused}");
+    assert!(target.join("manifest.yml").is_file());
+}

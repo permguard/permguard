@@ -17,6 +17,9 @@ use std::io::{self, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use permguard_cli::decisions::INDETERMINATE;
+pub use permguard_cli::decisions::{DecisionsReport, outcome_of};
+
 use crate::output::Report;
 use crate::style;
 
@@ -64,129 +67,6 @@ impl Report for DecisionArchive {
                 self.format
             ),
         }
-    }
-}
-
-/// A page of decisions, and what checking them concluded.
-#[derive(Debug, Clone, Serialize)]
-pub struct DecisionsReport {
-    /// What was read: `acme/main-ledger`, or a producer stream.
-    pub scope: String,
-    /// One line per decision.
-    pub decisions: Vec<DecisionLine>,
-    /// Records that are not decisions — the epochs and the endings.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub events: Vec<EventLine>,
-    /// The offset to resume from, which belongs to the caller.
-    pub next: String,
-    /// Whether the store holds more right now.
-    pub more: bool,
-    /// What verification concluded, when it was asked for.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub verified: Option<Verified>,
-}
-
-/// One decision, as a reader sees it.
-#[derive(Debug, Clone, Serialize)]
-pub struct DecisionLine {
-    /// Where it sits in its producer's history.
-    pub seq: u64,
-    /// When it was answered.
-    pub at: String,
-    /// The answer.
-    pub decision: bool,
-    /// Which of the algebra's results it was: `permit`, `deny`, `deny_by_default` or
-    /// `indeterminate` — an evaluation that failed, which is not a deny.
-    pub outcome: String,
-    /// Who asked, as recorded — pseudonymised at the source.
-    pub subject: String,
-    /// What was asked for.
-    pub action: String,
-    /// What it was about.
-    pub resource: String,
-    /// The exact policy state that produced the answer.
-    pub commit: String,
-    /// Which policies decided.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub policies: Vec<String>,
-    /// The partitions that declared an input and were addressed with none: they decided against
-    /// an empty one.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub absent_inputs: Vec<String>,
-    /// The decision's own identifier.
-    pub id: String,
-    /// How long the plane took.
-    pub latency_us: u64,
-}
-
-/// The `outcome` of an indeterminate decision.
-const INDETERMINATE: &str = "indeterminate";
-
-/// Which of the algebra's results a decision record holds: its `outcome`, or — for a record
-/// written before the member existed — what its `decision` says, `permit` or `deny`.
-pub fn outcome_of(record: &Value) -> String {
-    if let Some(outcome) = record.get("outcome").and_then(Value::as_str) {
-        return outcome.to_owned();
-    }
-    let permit = record
-        .get("decision")
-        .and_then(Value::as_bool)
-        .unwrap_or_default();
-
-    if permit { "permit" } else { "deny" }.to_owned()
-}
-
-/// A record that is not a decision: an epoch, or an ending.
-#[derive(Debug, Clone, Serialize)]
-pub struct EventLine {
-    /// Where it sits.
-    pub seq: u64,
-    /// `marker` or `discontinuity`.
-    pub kind: String,
-    /// What it says, in one line.
-    pub detail: String,
-}
-
-/// What `--verify` established, and what it did not.
-///
-/// Which of the two proofs applies is decided by the scope, not by preference.
-/// A **producer stream** is a contiguous history, so the chain is what proves
-/// it. A **tenant view** is a subsequence — the records in between belong to
-/// other tenants and must not be disclosed — so the chain cannot be checked
-/// across it, and the inclusion path is what proves each record instead.
-/// Reporting a chain result for a tenant page would be reporting a failure of
-/// arithmetic as a failure of integrity.
-#[derive(Debug, Clone, Serialize)]
-pub struct Verified {
-    /// Which proof applies here: `chain` or `inclusion`.
-    pub proof: &'static str,
-    /// Whether the records are a contiguous, unaltered chain. Stream scope only.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub chain: Option<bool>,
-    /// What broke it, when something did.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub chain_detail: Option<String>,
-    /// How many records proved to be in a batch this producer signed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub included: Option<usize>,
-    /// How many did not — each one is a record the store cannot account for.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub not_included: Option<usize>,
-    /// How many batch signatures verified against the given key set.
-    pub signatures: usize,
-    /// How many did not.
-    pub signatures_failed: usize,
-    /// Stated rather than implied: without a key set, signatures are not checked.
-    pub signatures_checked: bool,
-}
-
-impl Verified {
-    /// Whether everything checked held: the chain unbroken, every record in a signed batch, and
-    /// no signature refused (TC-1).
-    pub fn holds(&self) -> bool {
-        self.chain != Some(false)
-            && self.not_included.unwrap_or(0) == 0
-            && self.signatures_failed == 0
     }
 }
 
@@ -531,6 +411,8 @@ mod tests {
         plain
     }
 
+    use permguard_cli::decisions::DecisionLine;
+
     fn line(seq: u64, decision: bool, outcome: &str) -> DecisionLine {
         DecisionLine {
             seq,
@@ -565,6 +447,10 @@ mod tests {
     #[test]
     fn the_filter_never_counts_an_indeterminate_decision_as_a_deny() {
         use crate::args::Decision;
+        use permguard_cli::decisions::Outcome;
+
+        // The flag's value, as the command hands it to the library.
+        let admits = |decision: Decision, outcome: &str| Outcome::from(decision).admits(outcome);
 
         for (outcome, permit, deny, indeterminate) in [
             ("permit", true, false, false),
@@ -572,10 +458,10 @@ mod tests {
             ("deny_by_default", false, true, false),
             ("indeterminate", false, false, true),
         ] {
-            assert_eq!(Decision::Permit.admits(outcome), permit, "{outcome}");
-            assert_eq!(Decision::Deny.admits(outcome), deny, "{outcome}");
+            assert_eq!(admits(Decision::Permit, outcome), permit, "{outcome}");
+            assert_eq!(admits(Decision::Deny, outcome), deny, "{outcome}");
             assert_eq!(
-                Decision::Indeterminate.admits(outcome),
+                admits(Decision::Indeterminate, outcome),
                 indeterminate,
                 "{outcome}"
             );

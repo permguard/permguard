@@ -28,34 +28,19 @@
 
 use std::process::ExitCode;
 
+use permguard_cli::events::{MAX_PAGES, Read, Shape, check, report};
 use permguard_control_client::events::{
     self, EventLog, ReadError, ReadFilters, ReadScope, ReadWindow,
 };
 use permguard_core::Jwk;
-use permguard_events::envelope::Signed;
-use permguard_events::{chain, merkle_of, record};
 use serde_json::Value;
 
 use crate::args::{EventsAction, EventsQuery, Globals};
-use crate::event_out::{
-    ArchiveScope, Coverage, EventArchive, EventLine, EventReport, EventsReport, History,
-    SignersReport, Verified,
-};
+use crate::event_out::{ArchiveScope, EventArchive, EventReport, SignersReport};
 use crate::failure::{EXIT_READY, Failure};
 use crate::session::{open_store, render};
 use crate::target::{self, Asked};
 use crate::trace::Trace;
-
-/// How many pages `export`, `get` and `verify` will walk before giving up.
-///
-/// A bound rather than a loop: a command that walks for ever on a store that keeps growing is a
-/// command nobody can put in a script.
-///
-/// Reaching it is **not** a successful export. It used to be: the loop ran out, whatever had been
-/// read was printed, and the command exited `0` — so a snapshot that stopped a third of the way
-/// through was indistinguishable, to a script, from one that finished. What the bound protects
-/// against is an endless command; it must not turn a partial answer into a complete-looking one.
-const MAX_PAGES: usize = 10_000;
 
 /// Runs the command.
 pub fn events(globals: &Globals, action: &EventsAction) -> Result<ExitCode, Failure> {
@@ -83,33 +68,20 @@ fn list(globals: &Globals, query: &EventsQuery, everything: bool) -> Result<Exit
     let (reader, scope) = connect(globals, query, &trace)?;
     let keys = key_set(globals, query)?;
 
-    let mut read = Read::default();
-    let mut window = window_of(query);
-    if everything {
-        // An export is an offline-verifiable artifact, not a long `list`. Always carry the signed
-        // envelopes and inclusion paths; `--verify` controls whether this command also checks them
-        // before writing, not whether the exported file contains its evidence.
-        window.proof = true;
-    }
     let pages = if everything { MAX_PAGES } else { 1 };
-    let mut walked = 0;
-    for page_number in 0..pages {
-        let page = reader.read(&scope, &window).map_err(read_failure)?;
-        if everything && page_number == 0 {
-            window.until = Some(page.high_watermark.clone());
+    let (read, walked) = permguard_cli::events::read(
+        reader.as_ref(),
+        &scope,
+        window_of(query),
+        everything,
+        |watermark| {
             trace.say(format!(
-                "exporting the snapshot at `{}`; events written after it belong to a later export",
-                page.high_watermark
+                "exporting the snapshot at `{watermark}`; events written after it belong to a \
+                 later export"
             ));
-        }
-        read.absorb(page, &mut window);
-        walked = page_number + 1;
-        // An empty page is not the end: filtering and scan bounds mean a page may match nothing
-        // while still advancing. The export stops from `more` against its own bound.
-        if !everything || !read.more {
-            break;
-        }
-    }
+        },
+    )
+    .map_err(read_failure)?;
     // Stopped by this command's own bound rather than by the snapshot ending. Only an export can
     // be truncated this way: a single page was asked to read one page and did.
     let truncated = everything && walked == pages && read.more;
@@ -122,7 +94,7 @@ fn list(globals: &Globals, query: &EventsQuery, everything: bool) -> Result<Exit
             read.inclusion.clone(),
         )
     });
-    let mut answer = report(&scope, read, query, keys.as_deref());
+    let mut answer = report(&scope, read, &shape_of(query), keys.as_deref());
     answer.truncated = truncated;
     let unverified = unverified(&answer);
     if let Some((records, envelopes, inclusion)) = evidence {
@@ -186,7 +158,7 @@ fn tail(globals: &Globals, query: &EventsQuery, follow: bool) -> Result<ExitCode
         if !page.records.is_empty() {
             let mut read = Read::default();
             read.absorb(page, &mut ReadWindow::default());
-            let answer = report(&scope, read, query, keys.as_deref());
+            let answer = report(&scope, read, &shape_of(query), keys.as_deref());
             render(&answer, globals.output, &trace)?;
             // A followed tail stops at the first page that does not verify: what follows a
             // record the store cannot account for is not read as if it were.
@@ -306,7 +278,7 @@ fn verify(globals: &Globals, query: &EventsQuery) -> Result<ExitCode, Failure> {
 
     let checked = check(&scope, &read, Some(&keys));
     let holds = checked.holds();
-    let mut report = report(&scope, read, query, Some(&keys));
+    let mut report = report(&scope, read, &shape_of(query), Some(&keys));
     report.truncated = truncated;
     report.verified = Some(checked);
     render(&report, globals.output, &trace)?;
@@ -388,7 +360,7 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
     };
     let checked = check(&scope, &read, Some(&keys));
     let holds = checked.holds();
-    let mut answer = report(&scope, read, query, Some(&keys));
+    let mut answer = report(&scope, read, &shape_of(query), Some(&keys));
     answer.truncated = archive.summary.truncated;
     answer.verified = Some(checked);
     render(&answer, globals.output, &trace)?;
@@ -411,38 +383,11 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
     Ok(ExitCode::from(EXIT_READY))
 }
 
-/// What the pages accumulated.
-#[derive(Clone, Default)]
-struct Read {
-    records: Vec<Value>,
-    proof: Vec<Value>,
-    inclusion: Vec<Value>,
-    next: String,
-    oldest_available: String,
-    high_watermark: String,
-    more: bool,
-    examined: u64,
-    scan_bounded: bool,
-}
-
-impl Read {
-    fn absorb(&mut self, page: events::Page, window: &mut ReadWindow) {
-        self.more = page.more;
-        self.next.clone_from(&page.next);
-        if self.oldest_available.is_empty() {
-            self.oldest_available = page.oldest_available;
-        }
-        self.high_watermark = page.high_watermark;
-        self.examined += page.coverage.examined;
-        self.scan_bounded |= page.coverage.scan_bounded;
-        self.records.extend(page.records);
-        for envelope in page.proof {
-            if !self.proof.contains(&envelope) {
-                self.proof.push(envelope);
-            }
-        }
-        self.inclusion.extend(page.inclusion);
-        window.from = Some(page.next);
+/// What the report states besides its lines, as the arguments say.
+fn shape_of(query: &EventsQuery) -> Shape {
+    Shape {
+        verify: query.verify,
+        by_type: !query.event_types.is_empty(),
     }
 }
 
@@ -633,292 +578,6 @@ fn verification_keys(globals: &Globals, query: &EventsQuery) -> Result<Vec<Jwk>,
     })
 }
 
-/// The page, as the report prints it.
-fn report(
-    scope: &ReadScope,
-    read: Read,
-    query: &EventsQuery,
-    keys: Option<&[Jwk]>,
-) -> EventsReport {
-    let verified = query.verify.then(|| check(scope, &read, keys));
-
-    EventsReport {
-        scope: match scope {
-            ReadScope::Tenant { zone, ledger } => format!("{zone}/{ledger}"),
-            ReadScope::Stream {
-                zone,
-                ledger,
-                producer,
-                instance,
-                ..
-            } => format!("{zone}/{ledger} · {producer}/{instance}"),
-        },
-        events: read.records.iter().map(line).collect(),
-        next: read.next,
-        oldest_available: read.oldest_available,
-        high_watermark: read.high_watermark,
-        more: read.more,
-        // Set by the caller, which is the only place that knows whether its own page bound was
-        // what stopped it.
-        truncated: false,
-        coverage: Coverage {
-            contiguous: matches!(scope, ReadScope::Stream { .. }) && query.event_types.is_empty(),
-            examined: read.examined,
-            scan_bounded: read.scan_bounded,
-        },
-        verified,
-    }
-}
-
-/// One record, as a line.
-fn line(record: &Value) -> EventLine {
-    let text = |path: &[&str]| -> String {
-        let mut held = record;
-        for segment in path {
-            let Some(next) = held.get(*segment) else {
-                return String::new();
-            };
-            held = next;
-        }
-
-        held.as_str().unwrap_or_default().to_owned()
-    };
-
-    EventLine {
-        seq: record
-            .get("seq")
-            .and_then(Value::as_u64)
-            .unwrap_or_default(),
-        event_id: text(&["event_id"]),
-        event_type: text(&["event_type"]),
-        kind: text(&["kind"]),
-        occurred_at: text(&["occurred_at"]),
-        observed_at: text(&["observed_at"]),
-        profile: text(&["profile"]),
-        policy_partitions: record
-            .get("policy_partitions")
-            .and_then(Value::as_array)
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(ToOwned::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default(),
-        commit: text(&["commit"]),
-        producer: text(&["stream", "producer", "id"]),
-        instance: text(&["stream", "producer", "instance"]),
-        history: record.get("history_key").and_then(|held| {
-            Some(History {
-                pins: strings(held.get("pins")?),
-                values: strings(held.get("values")?),
-                digest: held.get("digest")?.as_str()?.to_owned(),
-            })
-        }),
-    }
-}
-
-fn strings(value: &Value) -> Vec<String> {
-    value
-        .as_array()
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToOwned::to_owned)
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// Checks what was read, as far as the scope allows.
-fn check(scope: &ReadScope, read: &Read, keys: Option<&[Jwk]>) -> Verified {
-    // A producer stream is a contiguous history, so the chain is what proves it. A tenant view is
-    // a subsequence, so it is not — and reporting a chain result for one would be reporting a
-    // failure of arithmetic as a failure of integrity.
-    let (proof, chain, chain_detail) = match scope {
-        ReadScope::Stream { .. } => match chain::verify(&read.records, None) {
-            Ok(_) => ("chain".to_owned(), Some(true), None),
-            Err(error) => ("chain".to_owned(), Some(false), Some(error.to_string())),
-        },
-        ReadScope::Tenant { .. } => ("inclusion".to_owned(), None, None),
-    };
-
-    // Decode and shape-check every envelope even when no key set was supplied. With keys, retain
-    // only envelopes whose signature verifies. A Merkle path is evidence only when its root is one
-    // of these envelopes' roots and both the envelope and record belong to the requested scope.
-    let mut envelopes = Vec::new();
-    let mut signatures = 0;
-    let mut signatures_failed = 0;
-    let mut malformed_envelopes = 0;
-    // The batches the producing Hosts' engines sealed (WP-6.2b): verified the same way, under the
-    // keys given, their records bound by their inclusion paths to the batch's Merkle root.
-    let mut host_batches = Vec::new();
-    for value in &read.proof {
-        if let Some(held) = super::host_proof::host_batch(
-            value,
-            keys,
-            permguard_core::domains::protected::EVENT_BATCH,
-        ) {
-            match held {
-                Ok(batch) => {
-                    signatures += usize::from(keys.is_some());
-                    host_batches.push(batch);
-                }
-                Err(()) if keys.is_some() => signatures_failed += 1,
-                Err(()) => malformed_envelopes += 1,
-            }
-            continue;
-        }
-        let Ok(signed) = serde_json::from_value::<Signed>(value.clone()) else {
-            signatures_failed += usize::from(keys.is_some());
-            malformed_envelopes += 1;
-            continue;
-        };
-        let decoded = match keys {
-            Some(keys) => match signed.verify(keys) {
-                Ok(envelope) => {
-                    signatures += 1;
-                    Some(envelope)
-                }
-                Err(_) => {
-                    signatures_failed += 1;
-                    None
-                }
-            },
-            None => {
-                let protected = signed.protected().ok().filter(|header| {
-                    header.alg == permguard_events::envelope::ALGORITHM
-                        && header.typ == permguard_events::envelope::BATCH_TYPE
-                });
-                protected.and_then(|_| {
-                    signed
-                        .envelope()
-                        .ok()
-                        .filter(|envelope| envelope.check_shape().is_ok())
-                })
-            }
-        };
-        if let Some(envelope) = decoded {
-            envelopes.push(envelope);
-        } else if keys.is_none() {
-            malformed_envelopes += 1;
-        }
-    }
-
-    let mut included = 0;
-    let mut not_included = 0;
-    for (record, path) in read.records.iter().zip(&read.inclusion) {
-        let parsed = record::validate(record).ok().filter(valid_occurrence);
-        let record_stream = parsed.as_ref().map(|record| &record.stream);
-        let root = path.get("root").and_then(Value::as_str);
-        let covered = match (record_stream, root) {
-            (Some(stream), Some(root)) => {
-                let seq = record.get("seq").and_then(Value::as_u64);
-                scope_contains(scope, stream)
-                    && (envelopes.iter().any(|envelope| {
-                        envelope.stream == *stream
-                            && envelope.merkle_root == root
-                            && seq.is_some_and(|seq| {
-                                (envelope.first_seq..=envelope.last_seq).contains(&seq)
-                            })
-                    }) || (stream.producer.class
-                        == permguard_events::PRODUCER_CLASS_DATA_PLANE
-                        && host_batches
-                            .iter()
-                            .any(|batch: &super::host_proof::HostBatch| {
-                                batch.merkle_root == root
-                                    && seq.is_some_and(|seq| {
-                                        batch.covers(
-                                            &stream.producer.id,
-                                            &stream.producer.instance,
-                                            seq,
-                                        )
-                                    })
-                            })))
-            }
-            _ => false,
-        };
-        if covered && accounts_for(record, path) {
-            included += 1;
-        } else {
-            not_included += 1;
-        }
-    }
-    // A record with no path at all is a record the store could not account for, which is the same
-    // answer as a path that does not check out.
-    not_included += read.records.len().saturating_sub(read.inclusion.len());
-    // An export containing an envelope that is not even a well-formed event-batch attestation is
-    // not wholly verified merely because another envelope happened to cover all returned records.
-    not_included += malformed_envelopes;
-
-    Verified {
-        proof,
-        chain,
-        chain_detail,
-        included,
-        not_included,
-        signatures,
-        signatures_failed,
-        signatures_checked: keys.is_some(),
-    }
-}
-
-/// Whether the registered payload agrees with the record fields used for filtering and display.
-fn valid_occurrence(record: &record::Record) -> bool {
-    let Ok(occurrence) = permguard_languages::event::read_typed(&record.event_type, &record.event)
-    else {
-        return false;
-    };
-
-    occurrence.event_id == record.event_id
-        && occurrence.kind == record.kind
-        && occurrence.occurred_at == record.occurred_at
-}
-
-fn scope_contains(scope: &ReadScope, stream: &permguard_events::Stream) -> bool {
-    match scope {
-        ReadScope::Tenant { zone, ledger } => stream.zone == *zone && stream.ledger == *ledger,
-        ReadScope::Stream {
-            zone,
-            ledger,
-            class,
-            producer,
-            instance,
-        } => {
-            stream.zone == *zone
-                && stream.ledger == *ledger
-                && stream.producer.class == *class
-                && stream.producer.id == *producer
-                && stream.producer.instance == *instance
-        }
-    }
-}
-
-/// Whether an inclusion path accounts for its record.
-fn accounts_for(record: &Value, path: &Value) -> bool {
-    let Ok(digest) = record::digest_of(record) else {
-        return false;
-    };
-    let Some(leaf) = path.get("leaf").and_then(Value::as_str) else {
-        return false;
-    };
-    if leaf != digest {
-        return false;
-    }
-    let Some(root) = path.get("root").and_then(Value::as_str) else {
-        return false;
-    };
-    let Some(steps) = path.get("path").cloned().and_then(|held| {
-        serde_json::from_value::<Vec<permguard_decisions::merkle::Step>>(held).ok()
-    }) else {
-        return false;
-    };
-
-    merkle_of(leaf, &steps) == root
-}
-
 /// Turns a read refusal into the answer a person can act on.
 fn read_failure(error: ReadError) -> Failure {
     match error {
@@ -969,6 +628,7 @@ mod host_verify {
 
     use super::super::host_proof::testing::{Key, sealed};
     use super::*;
+    use permguard_events::record;
 
     const ZONE: &str = "acme";
     const LEDGER: &str = "main";
@@ -1128,67 +788,5 @@ mod host_verify {
         let verified = check(&scope, &page(&key), Some(&[key.jwk()]));
         assert_eq!(verified.chain, Some(true), "{:?}", verified.chain_detail);
         assert_eq!(verified.included, 2);
-    }
-}
-
-#[cfg(test)]
-mod event_versions {
-    //! TL-5c: `events` reads each registered event version by its own contract.
-
-    #![allow(clippy::expect_used)]
-
-    use permguard_events::record::{RECORD_TYPE, Record, VERSION, occurrence_digest_of};
-    use permguard_events::{GENESIS, Producer, Stream};
-    use serde_json::json;
-
-    fn record(event_type: &str, member: &str) -> Record {
-        let mut event = json!({
-            "event_id": "evt-1",
-            "kind": "request",
-            "action": "Drupe::Action::Login",
-            "principal": "Drupe::OAuthUser::\"alice\"",
-            "resource": "Drupe::Gateway::\"gw1\"",
-            "occurred_at": "2026-08-28T10:15:30Z",
-        });
-        event[member] = json!({"input": {"user": "alice"}});
-        Record {
-            v: VERSION,
-            record_type: RECORD_TYPE.to_owned(),
-            stream: Stream::new(Producer::data_plane("plane-a", "inst-1"), "acme", "gov"),
-            seq: 1,
-            prev: GENESIS.to_owned(),
-            event_type: event_type.to_owned(),
-            event_id: "evt-1".to_owned(),
-            source: None,
-            occurrence_digest: occurrence_digest_of(&event).expect("it digests"),
-            kind: "request".to_owned(),
-            profile: "temporal".to_owned(),
-            policy_partitions: vec!["governance".to_owned()],
-            commit: "sha256:commit".to_owned(),
-            history_key: None,
-            occurred_at: "2026-08-28T10:15:30Z".to_owned(),
-            observed_at: "2026-08-28T10:15:31Z".to_owned(),
-            event,
-        }
-    }
-
-    #[test]
-    fn each_event_version_is_read_by_its_own_contract() {
-        assert!(super::valid_occurrence(&record(
-            permguard_languages::event::EVENT_TYPE,
-            "logged"
-        )));
-        assert!(super::valid_occurrence(&record(
-            permguard_languages::event::EVENT_TYPE_V2,
-            "fields"
-        )));
-        assert!(!super::valid_occurrence(&record(
-            permguard_languages::event::EVENT_TYPE_V2,
-            "logged"
-        )));
-        assert!(!super::valid_occurrence(&record(
-            "permguard.dogwood.event.v3",
-            "fields"
-        )));
     }
 }
