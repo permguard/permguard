@@ -439,8 +439,10 @@ fn appends(path: &Path, name: &str) -> bool {
 }
 
 /// Every regular file below the roots of the volume at `root`, as `(path below the volume, where
-/// it is, its name)`: `host/backups/` and temporaries left out, no symbolic link followed, a name
-/// that is not UTF-8 refused rather than bound under another.
+/// it is, its name)`: `host/backups/`, temporaries and `LOCK` files left out, no symbolic link
+/// followed, a name that is not UTF-8 refused rather than bound under another. A `LOCK` file says
+/// which process holds a volume, a journal or a spool, not what they hold, and a Windows lock is
+/// mandatory: the running Host cannot read its own (8-architecture-storage-operations, Backup).
 fn files(root: &Path) -> Result<Vec<(String, PathBuf, String)>, String> {
     let mut found = Vec::new();
     for name in ROOTS {
@@ -475,6 +477,9 @@ fn walk(
         }
         let path = entry.path();
         let child = format!("{relative}/{name}");
+        if name == crate::storage::volume::LOCK && !path.is_dir() {
+            continue;
+        }
         let metadata =
             std::fs::symlink_metadata(&path).map_err(|error| format!("{child}: {error}"))?;
         if metadata.is_dir() {
@@ -1651,6 +1656,29 @@ pub fn verify(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
+
+    #[test]
+    fn the_lock_files_are_held_not_backed_up() {
+        let root = std::env::temp_dir().join(format!("pg-backup-locks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (path, bytes) in [
+            ("host/LOCK", ""),
+            ("host/VOLUME_ID", "id"),
+            ("data/events/LOCK", ""),
+            ("data/events/journal", "records"),
+        ] {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().expect("a parent")).expect("a folder");
+            std::fs::write(file, bytes).expect("written");
+        }
+        let bound: Vec<String> = files(&root)
+            .expect("the files")
+            .into_iter()
+            .map(|(path, _, _)| path)
+            .collect();
+        assert_eq!(bound, ["data/events/journal", "host/VOLUME_ID"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     use permguard_core::assurance::AssuranceProfile;
 

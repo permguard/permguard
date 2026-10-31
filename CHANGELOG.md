@@ -22,6 +22,9 @@ is cut.
 - **A volume migrates on Windows.**
   A migration's preflight needs room for a second generation, and Windows cannot report free space, so every migration failed there with `measuring <volume>: unsupported`, a legacy audit chain's included: a server upgraded on Windows did not start.
   Where free space cannot be read, the bound is now reported as not measured and the migration proceeds; it builds beside the old generation and switches only after verifying the new one, so a full disk fails the build and leaves the old generation as it was.
+- **A backup is taken on Windows.**
+  The inventory bound every file of the volume, its `LOCK` files included, and Windows locks are mandatory: the running Host could not read the lock it holds, and `host backup prepare` failed with `another process has locked a portion of the file`.
+  `LOCK` files say which process holds a volume, a journal or a spool, not what they hold, and are no longer bound; a backup made before still verifies.
 
 ## [0.1.14] - 2026-10-31
 
