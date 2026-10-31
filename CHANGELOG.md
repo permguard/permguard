@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.14] - 2026-10-31
+
 ### Changed
 
 - **A policy has one identity on every platform.**
