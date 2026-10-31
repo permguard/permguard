@@ -64,7 +64,8 @@ jobs:
   # `main` builds none of these targets.
   macos-binaries:
     name: Build the macOS binaries (${{ matrix.staged }})
-    runs-on: macos-14
+    # macos-14 is retired on 2026-11-02; its brownouts cancel a job before it starts.
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:

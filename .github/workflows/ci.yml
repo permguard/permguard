@@ -113,7 +113,8 @@ jobs:
   # another architecture than the `check` job — against the same expected bytes.
   languages-macos:
     name: languages on macOS
-    runs-on: macos-14
+    # macos-14 is retired on 2026-11-02; its brownouts cancel a job before it starts.
+    runs-on: macos-15
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
