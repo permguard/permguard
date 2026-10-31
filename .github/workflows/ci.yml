@@ -405,8 +405,9 @@ jobs:
             echo "::error::these files were checked out with CRLF: ${crlf}"
             exit 1
           fi
+      # Every test binary, not the first that fails: one run reports all that Windows breaks.
       - name: every test, on Windows
-        run: cargo test --workspace --all-features --locked
+        run: cargo test --workspace --all-features --locked --no-fail-fast
 
   coverage:
     name: coverage

@@ -447,15 +447,31 @@ impl<'a> Layout<'a> {
         let root = self.root()?;
         let old = walk(&root, &manifest.active.directory, false)?;
         let (old_digests, old_bytes) = digest_tree(&old)?;
-        // The filesystem's figure, and the fault shim's where a test filled the disk.
-        let free = root.free_space()?.bytes;
-        let free =
-            permguard_core::fault::free_bytes(root.path()).map_or(free, |left| left.min(free));
-        if free < old_bytes.saturating_mul(2) {
-            return Err(StorageError::Refused(format!(
-                "{free} bytes free, a generation of {old_bytes} bytes needs twice that beside the \
-                 old one"
-            )));
+        // The filesystem's figure, and the fault shim's where a test filled the disk. A
+        // compatibility mode (Windows) cannot read it: the bound is not measured, and the build
+        // beside the old generation is what a full disk fails, leaving the old one as it was
+        // (8-architecture-storage-operations, Migration and upgrade).
+        let free = match measured_free(root.free_space())? {
+            Some(free) => Some(
+                permguard_core::fault::free_bytes(root.path()).map_or(free, |left| left.min(free)),
+            ),
+            None => permguard_core::fault::free_bytes(root.path()),
+        };
+        match free {
+            Some(free) if free < old_bytes.saturating_mul(2) => {
+                return Err(StorageError::Refused(format!(
+                    "{free} bytes free, a generation of {old_bytes} bytes needs twice that beside \
+                     the old one"
+                )));
+            }
+            Some(_) => {}
+            None => tracing::warn!(
+                event.name = "storage.migration_space_unmeasured",
+                subsystem = %self.subsystem,
+                bytes = old_bytes,
+                "free space cannot be read on this platform: the migration's free-space bound is \
+                 not measured"
+            ),
         }
         let to = preflight.to_directory.as_str();
         let active = manifest.active.directory.as_str();
@@ -1362,6 +1378,20 @@ pub mod testing {
     }
 }
 
+/// Free bytes where the platform can measure them; `None` in a compatibility mode, where reading
+/// them answers `Unsupported`. Any other failure is a failure.
+fn measured_free(space: Result<super::dir::FreeSpace>) -> Result<Option<u64>> {
+    match space {
+        Ok(space) => Ok(Some(space.bytes)),
+        Err(StorageError::Io { source, .. })
+            if source.kind() == std::io::ErrorKind::Unsupported =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -1867,6 +1897,29 @@ mod tests {
         assert_eq!(
             MigrationCommit::decode(&commit.encode().expect("encodes")).expect("decodes"),
             commit
+        );
+    }
+
+    #[test]
+    fn free_space_a_platform_cannot_read_is_not_measured_and_nothing_else_is_forgiven() {
+        let unsupported = |kind| {
+            Err(StorageError::Io {
+                what: "measuring the volume".to_owned(),
+                source: std::io::Error::from(kind),
+            })
+        };
+        assert_eq!(
+            measured_free(unsupported(std::io::ErrorKind::Unsupported)).expect("not measured"),
+            None
+        );
+        assert!(measured_free(unsupported(std::io::ErrorKind::PermissionDenied)).is_err());
+        assert_eq!(
+            measured_free(Ok(super::super::dir::FreeSpace {
+                bytes: 7,
+                inodes: None
+            }))
+            .expect("measured"),
+            Some(7)
         );
     }
 }

@@ -17,7 +17,11 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A volume migrates on Windows.**
+  A migration's preflight needs room for a second generation, and Windows cannot report free space, so every migration failed there with `measuring <volume>: unsupported`, a legacy audit chain's included: a server upgraded on Windows did not start.
+  Where free space cannot be read, the bound is now reported as not measured and the migration proceeds; it builds beside the old generation and switches only after verifying the new one, so a full disk fails the build and leaves the old generation as it was.
 
 ## [0.1.14] - 2026-10-31
 
