@@ -372,6 +372,41 @@ jobs:
       - name: check every crate for Windows
         run: cargo check --workspace --all-targets --locked --target x86_64-pc-windows-gnu
 
+  windows-tests:
+    name: the tests, on Windows
+    runs-on: windows-latest
+    timeout-minutes: 120
+    # The `windows` job proves the crates compile for Windows; this one runs their tests there, where
+    # the release's Windows binaries run. It checks out the way git does on Windows, CRLF by default,
+    # so `.gitattributes` is what keeps the fixtures and vectors the bytes that were committed
+    # (knowledge/rust/2-verification). Allowed to fail while the first runs find what only Windows
+    # breaks; it becomes required once it is green.
+    continue-on-error: true
+    steps:
+      # Some fixtures' paths pass the 260 characters Windows allows by default.
+      - name: long paths
+        run: git config --global core.longpaths true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-08; the toolchain is chosen by `toolchain:`, not by the ref
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # The chart's conformance tests render it with helm, as the `check` job does.
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: no file changed its line endings in the checkout
+        shell: bash
+        run: |
+          crlf="$(git ls-files --eol | grep 'w/crlf' || true)"
+          if [ -n "${crlf}" ]; then
+            echo "::error::these files were checked out with CRLF: ${crlf}"
+            exit 1
+          fi
+      - name: every test, on Windows
+        run: cargo test --workspace --all-features --locked
+
   coverage:
     name: coverage
     runs-on: ubuntu-latest

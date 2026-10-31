@@ -17,7 +17,19 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **A policy has one identity on every platform.**
+  The CLI makes every `\r\n` of a policy or schema file `\n` where it reads the workspace, before it hashes or stores anything, so a Windows checkout, where git writes CRLF by default, derives the ids and digests a Linux or macOS checkout of the same commit does.
+  A file with LF is unchanged: same bytes, same id. A policy pushed with CRLF before this release carries its LF form on its next push: a new blob, and a new derived id unless an alias or its path carries it.
+- **The token file reads as Windows writes it.**
+  A leading UTF-8 byte order mark is dropped; a UTF-16 file, what Windows PowerShell 5 writes with `>`, is refused with how to save it as UTF-8, instead of `cannot be read`.
+
+### Added
+
+- **The tests run on Windows in CI.**
+  A `windows-tests` job checks out as git does on Windows, fails when any file came out with CRLF, and runs every test there; it is allowed to fail until it is first green.
+  `.gitattributes` keeps every text file LF on every checkout, so fixtures and vectors are the bytes that were committed.
 
 ## [0.1.13] - 2026-10-30
 

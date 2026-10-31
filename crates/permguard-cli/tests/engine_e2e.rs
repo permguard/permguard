@@ -992,6 +992,68 @@ fn duplicates_are_ambiguity() {
     );
 }
 
+/// A Windows checkout writes CRLF where git stores LF (6-contract-ledger-notp, Policy identity):
+/// the same policies and schema with either line ending build the same snapshot, ids, digests and
+/// root, so a team on Linux, macOS and Windows shares one identity per policy.
+#[test]
+fn a_windows_checkout_builds_the_snapshot_a_linux_one_does() {
+    let build = |tag: &str, crlf: bool| {
+        let dir = scratch(tag);
+        let store = FsStore::new(&dir);
+        let ws = Workspace::open(&store);
+        ws.init("eol", &["cedar", "rego"]).unwrap();
+        let manifest = String::from_utf8(store.read("manifest.yml").unwrap().unwrap()).unwrap();
+        let manifest = manifest.replace(
+            "cedar: { runtime: cedar, schema: false }",
+            "cedar: { runtime: cedar, schema: true }",
+        );
+        store.write("manifest.yml", manifest.as_bytes()).unwrap();
+        let written = |text: &str| {
+            if crlf {
+                text.replace('\n', "\r\n")
+            } else {
+                text.to_owned()
+            }
+        };
+        // No alias: the id is derived from the bytes, which is what the line endings could change.
+        let unnamed = "permit (\n    principal in Group::\"finance\",\n    action == Action::\"read\",\n    resource\n);\n";
+        store
+            .write("cedar/billing.cedar", written(unnamed).as_bytes())
+            .unwrap();
+        store
+            .write(
+                "cedar/model.cedarschema",
+                written("entity Group;\nentity User in [Group];\nentity Document;\naction read appliesTo { principal: [User], resource: [Document] };\n").as_bytes(),
+            )
+            .unwrap();
+        store
+            .write("rego/routes.rego", written(REGO).as_bytes())
+            .unwrap();
+        ws.refresh().unwrap()
+    };
+    let linux = build("eol-lf", false);
+    let windows = build("eol-crlf", true);
+    let identities = |snapshot: &permguard_cli::engine::workspace::Snapshot| {
+        let mut ids: Vec<(String, String, String)> = snapshot
+            .policies
+            .iter()
+            .map(|p| (p.source.clone(), p.id.clone(), p.digest.to_string()))
+            .collect();
+        ids.sort();
+        ids
+    };
+    assert_eq!(identities(&windows), identities(&linux));
+    assert_eq!(windows.root, linux.root);
+    assert_eq!(windows.manifest, linux.manifest);
+    assert!(
+        windows
+            .objects
+            .values()
+            .all(|bytes| !bytes.windows(2).any(|pair| pair == b"\r\n")),
+        "no stored object carries a CRLF"
+    );
+}
+
 #[test]
 fn both_manifest_extensions_reject() {
     let dir = scratch("two-manifests");

@@ -36,6 +36,26 @@ pub struct Snapshot {
     pub policies: Vec<PolicyRecord>,
 }
 
+/// The authored bytes of a workspace file (6-contract-ledger-notp, Policy identity): every `\r\n`
+/// made `\n`, and nothing else changed. Read here, before anything is extracted, hashed or stored,
+/// so the blob, its digest and the derived id come from the same bytes, and a Windows checkout,
+/// where git writes CRLF by default, derives what a Linux or macOS one does. Every registered
+/// artifact type is text, so artifacts are read the same way.
+pub(crate) fn authored(bytes: Vec<u8>) -> Vec<u8> {
+    if !bytes.windows(2).any(|pair| pair == b"\r\n") {
+        return bytes;
+    }
+    let mut normalised = Vec::with_capacity(bytes.len());
+    let mut rest = bytes.iter().peekable();
+    while let Some(&byte) = rest.next() {
+        if byte == b'\r' && rest.peek() == Some(&&b'\n') {
+            continue;
+        }
+        normalised.push(byte);
+    }
+    normalised
+}
+
 /// Builds the snapshot of the working tree.
 pub(crate) fn build_snapshot(store: &dyn Store, manifest: &Manifest) -> Result<Snapshot> {
     let ignores = read_ignores(store)?;
@@ -392,11 +412,13 @@ fn build_directory(
             }
             continue;
         }
-        let source = context
-            .store
-            .read(&child_fs)
-            .map_err(err)?
-            .ok_or_else(|| err(format!("{child_fs} vanished mid-read")))?;
+        let source = authored(
+            context
+                .store
+                .read(&child_fs)
+                .map_err(err)?
+                .ok_or_else(|| err(format!("{child_fs} vanished mid-read")))?,
+        );
 
         if let Some(artifact) = artifact {
             if let Err(error) = permguard_languages::registry::validate_artifact(artifact, &source)
@@ -678,5 +700,20 @@ mod ignore_tests {
         assert!(ignored(&ignores, "README.md", false));
         assert!(!ignored(&ignores, "README.md.bak", false));
         assert!(!ignored(&ignores, "cedar/documents.cedar", false));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::authored;
+
+    #[test]
+    fn only_crlf_becomes_lf() {
+        assert_eq!(authored(b"a\r\nb\r\n".to_vec()), b"a\nb\n");
+        // A lone carriage return, white space and every other byte stay as written.
+        assert_eq!(authored(b"a\rb \t\n".to_vec()), b"a\rb \t\n");
+        assert_eq!(authored(b"a\r\r\nb".to_vec()), b"a\r\nb");
+        let lf = b"permit(principal, action, resource);\n".to_vec();
+        assert_eq!(authored(lf.clone()), lf);
     }
 }

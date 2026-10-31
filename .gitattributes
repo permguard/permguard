@@ -1,6 +1,11 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 
+# Every text file is LF on every checkout. Fixtures, golden vectors and embedded vectors are hashed
+# and compared byte for byte, and git on Windows checks text out with CRLF by default: without this
+# line a Windows checkout hands the tests other bytes than were committed.
+* text=auto eol=lf
+
 # Captured legacy volumes are bytes the current code wrote, read back by offset and by digest: an
 # index points into a segment by byte offset, and a blob is named by the hash of its content. A
 # checkout that converted line endings would hand the reader a volume no release ever wrote.
