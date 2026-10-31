@@ -123,6 +123,20 @@ fn refused(values: &str, why: &str) {
     }
 }
 
+/// Asserts the render fails because the schema does not know `key`. Helm 3 and Helm 4 word the
+/// same refusal differently, so the assertion names the key, not one Helm's sentence.
+fn refused_as_unknown(values: &str, key: &str) {
+    let helm4 = format!("additional properties '{key}' not allowed");
+    let helm3 = format!("Additional property {key} is not allowed");
+    match render_with(values, &[]) {
+        Ok(_) => panic!("the chart rendered a key it does not know ({key}):\n{values}"),
+        Err(error) => assert!(
+            error.contains(&helm4) || error.contains(&helm3),
+            "refused, but not as an unknown `{key}`: {error}"
+        ),
+    }
+}
+
 impl Rendered {
     fn all(&self, kind: &str) -> Vec<&Value> {
         self.0.iter().filter(|doc| doc["kind"] == kind).collect()
@@ -1645,7 +1659,7 @@ dataPlane:
 
 #[test]
 fn a_key_a_group_does_not_know_is_refused() {
-    refused(
+    refused_as_unknown(
         "\
 dataPlane:
   groups:
@@ -1653,9 +1667,9 @@ dataPlane:
       selector: plane/data/*
       replica: 3
 ",
-        "additional properties 'replica' not allowed",
+        "replica",
     );
-    refused(
+    refused_as_unknown(
         "\
 dataPlane:
   groups:
@@ -1663,7 +1677,7 @@ dataPlane:
       selector: plane/data/*
       persistence: { retainOnScaledown: true }
 ",
-        "additional properties 'retainOnScaledown' not allowed",
+        "retainOnScaledown",
     );
 }
 
