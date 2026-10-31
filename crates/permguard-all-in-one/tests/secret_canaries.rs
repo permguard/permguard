@@ -280,15 +280,21 @@ impl Drop for Canaried {
 }
 
 fn stop(mut child: Child) {
-    let _ = Command::new("kill")
-        .args(["-TERM", &child.id().to_string()])
-        .status();
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while Instant::now() < deadline {
-        if let Ok(Some(_)) = child.try_wait() {
-            return;
+    // SIGTERM, then the wait, as an orchestrator stops it. Off Unix there is no SIGTERM: a Windows
+    // shell's `kill` knows none of its process ids and the wait would only time out, so the child
+    // is ended at once (knowledge/rust § 7).
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            if let Ok(Some(_)) = child.try_wait() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
         }
-        std::thread::sleep(Duration::from_millis(100));
     }
     let _ = child.kill();
     let _ = child.wait();
