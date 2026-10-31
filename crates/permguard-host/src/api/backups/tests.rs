@@ -244,7 +244,9 @@ async fn a_prepared_backup_holds_mutations_until_it_is_finalized() {
 /// aborted by the Host itself at the next call; an abort with its token ends one at once.
 #[tokio::test]
 async fn an_abandoned_backup_aborts_when_its_barrier_expires() {
-    let (api, _root, trail) = backed("backup-expiry", Some(Duration::from_secs(2)));
+    // Short enough to watch it expire, long enough that a prepare on a loaded machine (the whole
+    // workspace's tests at once) is not itself outlasted by it: at 2 s it was, now and then.
+    let (api, _root, trail) = backed("backup-expiry", Some(Duration::from_secs(5)));
     let prepared = api
         .prepare_backup(&admin(), PrepareBackup {})
         .expect("prepared");
@@ -252,7 +254,7 @@ async fn an_abandoned_backup_aborts_when_its_barrier_expires() {
         code(&grant(&api, "held").await.expect_err("held")),
         codes::common::UNAVAILABLE
     );
-    std::thread::sleep(Duration::from_millis(2200));
+    std::thread::sleep(Duration::from_millis(5200));
     grant(&api, "expired")
         .await
         .expect("past its lifetime the barrier holds nothing");

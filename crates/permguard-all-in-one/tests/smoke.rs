@@ -228,18 +228,3 @@ fn a_zero_plane_deployment_serves_the_host_surface_and_nothing_else() {
         body.unwrap_or_else(|| panic!("the well-known document answers at {address:?}: {seen}"));
     assert!(body.contains("\"planes\":{}"), "{body}");
 }
-
-#[test]
-fn the_underscore_alias_binary_is_the_same_program() {
-    // The Go-compatible name ships too; it must answer exactly like the canonical one.
-    let output = Command::new(env!("CARGO_BIN_EXE_permguard_all_in_one"))
-        .arg("--version")
-        .output()
-        .expect("the alias binary runs");
-
-    assert!(output.status.success(), "{output:?}");
-    assert!(
-        String::from_utf8_lossy(&output.stdout).contains(env!("CARGO_PKG_VERSION")),
-        "{output:?}"
-    );
-}

@@ -25,6 +25,12 @@ is cut.
 - **The token file reads as Windows writes it.**
   A leading UTF-8 byte order mark is dropped; a UTF-16 file, what Windows PowerShell 5 writes with `>`, is refused with how to save it as UTF-8, instead of `cannot be read`.
 
+### Removed
+
+- **The underscore alias binaries.**
+  `permguard_all_in_one`, `permguard_control_plane` and `permguard_data_plane` were a second `[[bin]]` of the same entry point, built by Cargo and shipped by no archive or image.
+  With MSVC both spellings link to one `.exe`, so a Windows build failed; each program is now one binary with its dashed name, `permguard-all-in-one`, `permguard-control-plane`, `permguard-data-plane`, as every release already shipped it.
+
 ### Added
 
 - **The tests run on Windows in CI.**
