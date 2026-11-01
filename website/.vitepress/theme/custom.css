@@ -207,14 +207,11 @@
     height: 46px;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(232, 121, 249, 0.18);
-    border-radius: 14px;
-    background:
-      radial-gradient(circle at 72% 12%, rgba(217, 70, 239, 0.22), transparent 48%),
-      rgba(48, 30, 67, 0.72);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.06),
-      0 10px 26px rgba(0, 0, 0, 0.22);
+    /* As the permguard.com toggle: square corners, one 1px rule, three lines turning into an X. */
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.055);
+    box-shadow: none;
     transition:
       border-color 0.22s ease,
       box-shadow 0.22s ease;
@@ -224,26 +221,9 @@
     transition: transform 0.52s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .VPNavBar .VPNavBarHamburger[aria-expanded="false"] .container {
-    width: 18px;
-    height: 18px;
-    overflow: visible;
-    background-image: radial-gradient(circle, currentcolor 1.35px, transparent 1.6px);
-    background-position: 3px 3px;
-    background-size: 6px 6px;
-    color: rgba(244, 244, 245, 0.88);
-  }
-
-  .VPNavBar .VPNavBarHamburger[aria-expanded="false"] .line,
-  .VPNavBar .VPNavBarHamburger[aria-expanded="false"] .top,
-  .VPNavBar .VPNavBarHamburger[aria-expanded="false"] .middle,
-  .VPNavBar .VPNavBarHamburger[aria-expanded="false"] .bottom {
-    opacity: 0;
-  }
-
-  .VPNavBar .VPNavBarHamburger[aria-expanded="true"] .container {
-    width: 16px;
-    height: 14px;
+  .VPNavBar .VPNavBarHamburger[aria-expanded="true"] {
+    border-color: rgba(217, 70, 239, 0.55);
+    background: rgba(217, 70, 239, 0.1);
   }
 
   .VPNavScreen {
@@ -255,14 +235,8 @@
 
 @media (max-width: 79.999rem) and (hover: hover) and (pointer: fine) {
   .VPNavBar .VPNavBarHamburger[aria-expanded="false"]:hover {
-    border-color: rgba(232, 121, 249, 0.5);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.09),
-      0 0 24px rgba(217, 70, 239, 0.24);
-  }
-
-  .VPNavBar .VPNavBarHamburger[aria-expanded="false"]:hover .container {
-    transform: rotate(90deg) scale(1.08);
+    border-color: rgba(217, 70, 239, 0.48);
+    background: rgba(217, 70, 239, 0.09);
   }
 }
 
@@ -1496,4 +1470,69 @@
 
 .dark {
   --vp-nav-divider-color: rgba(255, 255, 255, .06);
+}
+
+/*
+  The planes in the navigation carry the icons of the permguard.com menu: the same glyphs, white,
+  in a small tile, before each link of the bar and of the mobile screen.
+*/
+.VPNavBarMenuLink[href*="command-line"],
+.VPNavBarMenuLink[href*="control-plane"],
+.VPNavBarMenuLink[href*="data-plane"],
+.VPNavBarMenuLink[href*="trust-plane"],
+.VPNavScreenMenuLink[href*="command-line"],
+.VPNavScreenMenuLink[href*="control-plane"],
+.VPNavScreenMenuLink[href*="data-plane"],
+.VPNavScreenMenuLink[href*="trust-plane"] {
+  --pg-nav-icon: none;
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.VPNavBarMenuLink[href*="command-line"]::before,
+.VPNavBarMenuLink[href*="control-plane"]::before,
+.VPNavBarMenuLink[href*="data-plane"]::before,
+.VPNavBarMenuLink[href*="trust-plane"]::before,
+.VPNavScreenMenuLink[href*="command-line"]::before,
+.VPNavScreenMenuLink[href*="control-plane"]::before,
+.VPNavScreenMenuLink[href*="data-plane"]::before,
+.VPNavScreenMenuLink[href*="trust-plane"]::before {
+  background: rgb(217 70 239 / 0.1) var(--pg-nav-icon) center / 22px 22px no-repeat;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 4px;
+  content: "";
+  flex: 0 0 auto;
+  height: 26px;
+  width: 26px;
+}
+
+.VPNavBarMenuLink[href*="command-line"],
+.VPNavScreenMenuLink[href*="command-line"] { --pg-nav-icon: url("/permguard/icons/command_line.svg"); }
+.VPNavBarMenuLink[href*="control-plane"],
+.VPNavScreenMenuLink[href*="control-plane"] { --pg-nav-icon: url("/permguard/icons/control_plane.svg"); }
+.VPNavBarMenuLink[href*="data-plane"],
+.VPNavScreenMenuLink[href*="data-plane"] { --pg-nav-icon: url("/permguard/icons/data_plane.svg"); }
+.VPNavBarMenuLink[href*="trust-plane"],
+.VPNavScreenMenuLink[href*="trust-plane"] { --pg-nav-icon: url("/permguard/icons/trust_plane.svg"); }
+
+.VPNavBarMenuLink[href*="-plane"]:hover::before,
+.VPNavBarMenuLink[href*="command-line"]:hover::before,
+.VPNavBarMenuLink.active[href*="-plane"]::before,
+.VPNavBarMenuLink.active[href*="command-line"]::before {
+  border-color: rgb(217 70 239 / 0.55);
+}
+
+/* A link of the mobile screen keeps the full width, so its rule runs across. */
+.VPNavScreenMenuLink[href*="command-line"],
+.VPNavScreenMenuLink[href*="-plane"] {
+  display: flex;
+}
+
+/* On the light theme the white glyphs sit on a dark tile. */
+html:not(.dark) .VPNavBarMenuLink[href*="command-line"]::before,
+html:not(.dark) .VPNavBarMenuLink[href*="-plane"]::before,
+html:not(.dark) .VPNavScreenMenuLink[href*="command-line"]::before,
+html:not(.dark) .VPNavScreenMenuLink[href*="-plane"]::before {
+  background-color: #2a2433;
 }
