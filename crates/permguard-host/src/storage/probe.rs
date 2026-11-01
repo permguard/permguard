@@ -729,7 +729,13 @@ mod tests {
             },
         )
         .expect("a small reservation is made");
-        expected.insert(7, Reason::Reservation);
+        // Checked right after the torn append, before the floors, on every platform.
+        let after_torn_append = expected
+            .iter()
+            .position(|reason| *reason == Reason::TornAppend)
+            .expect("checked everywhere")
+            + 1;
+        expected.insert(after_torn_append, Reason::Reservation);
         assert_eq!(reserved.checked, expected);
         assert_eq!(tree(&path), before);
     }
