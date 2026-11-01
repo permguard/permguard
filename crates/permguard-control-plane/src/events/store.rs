@@ -690,10 +690,13 @@ impl EventStore {
     pub fn archive_key(&self, key: &Jwk) -> Result<()> {
         let rendered = serde_json::to_vec(key).context("rendering a verification key")?;
         let fingerprint = permguard_events::record::digest_hex(&rendered);
-        let path = self
-            .root
-            .join(KEYS_DIRECTORY)
-            .join(format!("{}-{fingerprint}.json", safe(&key.kid)?));
+        let directory = self.root.join(KEYS_DIRECTORY);
+        let kid = safe(&key.kid)?;
+        let path = directory.join(format!("{}-{fingerprint}.json", portable_name(&kid)));
+        let path = match unencoded_key_path(&directory, &kid, &fingerprint) {
+            Some(unencoded) if unencoded.exists() => unencoded,
+            _ => path,
+        };
         // A key id is a producer-local label, not a digest and not a globally unique name. The
         // content fingerprint makes two producers reusing one label two archive entries, while
         // the exact same key remains idempotent.
@@ -1113,6 +1116,42 @@ fn discover_streams(root: &Path) -> Result<StreamIndex> {
 /// harmless: a producer whose id contained `../` would write outside its own directory. Refused
 /// rather than sanitized, because a sanitized name is a different name and two producers could
 /// then sanitize to one.
+/// `label` as a file name every platform takes: what Windows refuses in a name (`< > : " / \\ | ? *`,
+/// a control character, a trailing dot or space) and `%` itself are written as `%` and two hex
+/// digits, everything else as it is (8-architecture-storage-operations). A key id is
+/// `<ring>:<thumbprint>`, and its `:` made the name illegal on Windows.
+pub(crate) fn portable_name(label: &str) -> String {
+    let mut name = String::with_capacity(label.len());
+    let last = label.chars().count().saturating_sub(1);
+    for (index, character) in label.chars().enumerate() {
+        let refused = matches!(
+            character,
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' | '%'
+        ) || character.is_control()
+            || (index == last && matches!(character, '.' | ' '));
+        if refused {
+            let mut bytes = [0u8; 4];
+            for byte in character.encode_utf8(&mut bytes).bytes() {
+                name.push_str(&format!("%{byte:02X}"));
+            }
+        } else {
+            name.push(character);
+        }
+    }
+    name
+}
+
+/// Where a key archived before [`portable_name`] sits, on a platform whose names took it as it was:
+/// found, so it is never archived twice. Windows never held one.
+pub(crate) fn unencoded_key_path(
+    directory: &Path,
+    kid: &str,
+    fingerprint: &str,
+) -> Option<PathBuf> {
+    (cfg!(unix) && portable_name(kid) != kid)
+        .then(|| directory.join(format!("{kid}-{fingerprint}.json")))
+}
+
 fn safe(name: &str) -> Result<String> {
     if name.is_empty()
         || name == "."
@@ -1773,7 +1812,27 @@ pub fn read_line(path: &Path, line: u64) -> Result<Option<Value>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{slug, unslug};
+    use super::{portable_name, slug, unslug};
+
+    #[test]
+    fn a_key_id_becomes_a_name_every_platform_takes() {
+        assert_eq!(
+            portable_name("data.attest:auJ8F3trV7"),
+            "data.attest%3AauJ8F3trV7"
+        );
+        assert_eq!(portable_name("plain-kid_1.2"), "plain-kid_1.2");
+        assert_eq!(
+            portable_name(r#"a<b>c"d/e\f|g?h*i%j"#),
+            "a%3Cb%3Ec%22d%2Fe%5Cf%7Cg%3Fh%2Ai%25j"
+        );
+        assert_eq!(
+            portable_name("ends."),
+            "ends%2E",
+            "Windows drops a trailing dot"
+        );
+        assert_eq!(portable_name("ends "), "ends%20", "and a trailing space");
+        assert_eq!(portable_name("tab\there"), "tab%09here");
+    }
 
     #[test]
     fn event_type_file_names_are_reversible_and_collision_free() {

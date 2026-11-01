@@ -367,10 +367,15 @@ impl DecisionStore {
         // (Per-stream substitution — one stream, one name, two keys — is the signer manifest's
         // refusal, where the scope is right.)
         let fingerprint = fingerprint_hex(&rendered);
-        let path = self
-            .root
-            .join(KEYS_DIRECTORY)
-            .join(format!("{name}-{fingerprint}.json"));
+        let directory = self.root.join(KEYS_DIRECTORY);
+        let path = directory.join(format!(
+            "{}-{fingerprint}.json",
+            crate::events::store::portable_name(&name)
+        ));
+        let path = match crate::events::store::unencoded_key_path(&directory, &name, &fingerprint) {
+            Some(unencoded) if unencoded.exists() => unencoded,
+            _ => path,
+        };
         // An existing file is still read, never trusted by its name: a file that mismatches its
         // own fingerprint or no longer parses is evidence this archive cannot stand behind, and
         // it fails closed rather than shrugging.

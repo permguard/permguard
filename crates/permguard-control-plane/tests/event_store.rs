@@ -1048,6 +1048,62 @@ fn a_producer_name_that_is_not_a_directory_name_is_refused() {
     );
 }
 
+/// A key id is `<ring>:<thumbprint>`, and Windows takes no `:` in a file name: the archive names it
+/// portably and reads it back, and a key a Unix volume archived under its plain name before is
+/// found there, never archived twice (8-architecture-storage-operations).
+#[test]
+fn a_key_id_with_a_colon_is_archived_under_a_portable_name() {
+    let store = EventStore::open(scratch("kid-colon")).expect("the store opens");
+    let mut key = published(&ring("kid-colon"))
+        .into_iter()
+        .next()
+        .expect("a published key");
+    key.kid = "data.attest:auJ8F3trV7".to_owned();
+    store.archive_key(&key).expect("archived on every platform");
+    store.archive_key(&key).expect("idempotent");
+    let directory = store
+        .root()
+        .join(permguard_control_plane::events::store::KEYS_DIRECTORY);
+    let names: Vec<String> = std::fs::read_dir(&directory)
+        .expect("listed")
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+    assert!(
+        names[0].starts_with("data.attest%3AauJ8F3trV7-"),
+        "{names:?}"
+    );
+    assert_eq!(store.archived_keys().expect("read"), vec![key.clone()]);
+
+    #[cfg(unix)]
+    {
+        // A key archived under its plain name before the rule: found, not written again.
+        let store = EventStore::open(scratch("kid-colon-unencoded")).expect("the store opens");
+        store.archive_key(&key).expect("archived");
+        let directory = store
+            .root()
+            .join(permguard_control_plane::events::store::KEYS_DIRECTORY);
+        let encoded = std::fs::read_dir(&directory)
+            .expect("listed")
+            .flatten()
+            .next()
+            .expect("one file")
+            .path();
+        let plain = directory.join(
+            encoded
+                .file_name()
+                .expect("a name")
+                .to_string_lossy()
+                .replace("%3A", ":"),
+        );
+        std::fs::rename(&encoded, &plain).expect("as an earlier release named it");
+        store.archive_key(&key).expect("found under its plain name");
+        assert_eq!(std::fs::read_dir(&directory).expect("listed").count(), 1);
+        assert_eq!(store.archived_keys().expect("read"), vec![key]);
+    }
+}
+
 /// A key id is a producer-local label, not a globally unique key identity.
 ///
 /// Archiving keeps the key a batch was signed under, so that batch still verifies after the

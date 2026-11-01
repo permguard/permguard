@@ -35,6 +35,9 @@ is cut.
 - **The help names `permguard` on Windows.**
   `-h` printed `Usage: permguard.exe` where `permguard help` printed `permguard`; the servers named themselves after their executable the same way.
 - **The benchmark measures CPU and memory on Windows,** through PowerShell's `Get-Process`, which has no `ps`, read in the invariant culture.
+- **Evidence ships to a Windows control plane.**
+  A verification key's id is `<ring>:<thumbprint>`, and the event and decision stores named its archive file after it: Windows takes no `:` in a file name, so no key could be archived and no history or decision was ever accepted there. Store file names derived from a label are now written portably (`:` as `%3A`); a key archived under its plain name on Unix is still found, never archived twice.
+- **The probe reserves space on Windows** by extending a file, which NTFS allocates as `fallocate` does.
 - **A Windows server stops in order.**
   It drained on Ctrl-C alone, and any other stop ended it where it stood, its history unshipped and its trails unsealed. It now drains on Ctrl-C, Ctrl-Break, its console being closed and the system shutting down, the stops Windows has instead of SIGTERM.
 
