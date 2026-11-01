@@ -60,7 +60,7 @@ is cut.
 ### Added
 
 - **The tests run on Windows in CI.**
-  A `windows-tests` job checks out as git does on Windows, fails when any file came out with CRLF, and runs every test there; it is allowed to fail until it is first green.
+  A `windows-tests` job checks out as git does on Windows, fails when any file came out with CRLF, and runs every test there; it is required, as every other job.
   `.gitattributes` keeps every text file LF on every checkout, so fixtures and vectors are the bytes that were committed.
 
 ## [0.1.13] - 2026-10-30
