@@ -319,7 +319,7 @@ fn a_hold_change_is_an_operation_of_the_transaction_and_names_no_free_text() {
     let mut files = Vec::new();
     walk(volume.host().path(), &mut files);
     for path in files {
-        let bytes = std::fs::read(&path).expect("reads");
+        let bytes = crate::storage::testing::read_held(&path).expect("reads");
         let text = String::from_utf8_lossy(&bytes);
         assert!(
             !text.contains("legal@acme") && !text.contains("litigation"),

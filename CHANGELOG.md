@@ -25,6 +25,16 @@ is cut.
 - **A backup is taken on Windows.**
   The inventory bound every file of the volume, its `LOCK` files included, and Windows locks are mandatory: the running Host could not read the lock it holds, and `host backup prepare` failed with `another process has locked a portion of the file`.
   `LOCK` files say which process holds a volume, a journal or a spool, not what they hold, and are no longer bound; a backup made before still verifies.
+- **Policies evaluate on Windows.**
+  Cedar declines to evaluate with less than 100 KiB of stack left, and the stack headroom Permguard guarantees was left to each caller: a direct use of an evaluator skipped it, and on Windows, whose first thread has a megabyte, ordinary requests were refused with `recursion limit reached`.
+  Every engine now guarantees its own headroom on evaluation and input check, whichever thread enters it.
+- **The quota opens on Windows.**
+  It measured the volume's free space at open, and Windows cannot report it: the Host could not account for a write. Where free space cannot be read, the floors are not measured, readiness does not depend on them, writes stay bounded by their accounts' limits, and usage reports the free space as not measured.
+- **A directory lock holds on Windows.**
+  It always succeeded there, so a probe could take a running probe's directory for a crash's leftover. It is now a handle that denies others the right to delete the directory.
+- **The help names `permguard` on Windows.**
+  `-h` printed `Usage: permguard.exe` where `permguard help` printed `permguard`; the servers named themselves after their executable the same way.
+- **The benchmark measures CPU and memory on Windows,** through PowerShell's `Get-Process`, which has no `ps`, read in the invariant culture.
 
 ## [0.1.14] - 2026-10-31
 

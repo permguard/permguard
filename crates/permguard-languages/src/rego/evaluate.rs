@@ -250,93 +250,96 @@ fn footprint(policy_bytes: usize, schema_bytes: usize) -> usize {
 
 impl Evaluator for RegoEvaluator {
     fn evaluate(&self, query: &Query) -> Verdict {
-        // The partition's budget starts here: building and checking the input spend from it too.
-        let started = std::time::Instant::now();
-        let document = input_document(query);
-        // The whole input against v2 before any rule: a misspelled common field is refused, not
-        // read as `undefined` by a rule that then says "no".
-        if let Some(validator) = &self.input_validator
-            && let Err(error) = validator.validate(&document)
-        {
-            return Verdict::input_rejected(format!(
-                "rego: the input does not satisfy this partition's whole-input schema: {error} \
-                 (at {})",
-                error.instance_path()
-            ));
-        }
-        let input = match value_of(&document) {
-            Ok(input) => input,
-            Err(error) => return Verdict::input_rejected(error),
-        };
-        // One prepared engine, cloned per request: the modules are already parsed, and an
-        // evaluation must never mutate what the next one reads. Nothing is added to `data` here —
-        // the request rides on `input`, where a schema can describe it and where one request
-        // cannot leave anything behind for the next.
-        let mut engine = self.engine.clone();
+        // The stack an engine needs is its own to guarantee: see crate::headroom.
+        crate::headroom::with(|| {
+            // The partition's budget starts here: building and checking the input spend from it too.
+            let started = std::time::Instant::now();
+            let document = input_document(query);
+            // The whole input against v2 before any rule: a misspelled common field is refused, not
+            // read as `undefined` by a rule that then says "no".
+            if let Some(validator) = &self.input_validator
+                && let Err(error) = validator.validate(&document)
+            {
+                return Verdict::input_rejected(format!(
+                    "rego: the input does not satisfy this partition's whole-input schema: {error} \
+                     (at {})",
+                    error.instance_path()
+                ));
+            }
+            let input = match value_of(&document) {
+                Ok(input) => input,
+                Err(error) => return Verdict::input_rejected(error),
+            };
+            // One prepared engine, cloned per request: the modules are already parsed, and an
+            // evaluation must never mutate what the next one reads. Nothing is added to `data` here —
+            // the request rides on `input`, where a schema can describe it and where one request
+            // cannot leave anything behind for the next.
+            let mut engine = self.engine.clone();
 
-        // The partition's one budget: the request's own deadline when it is nearer, the partition
-        // budget otherwise. It decreases as rules run and is handed to the interpreter before
-        // each one, so no rule can outlive what the partition has left.
-        let budget = query
-            .remaining()
-            .map_or(PARTITION_BUDGET, |left| left.min(PARTITION_BUDGET));
-        engine.set_input(input);
+            // The partition's one budget: the request's own deadline when it is nearer, the partition
+            // budget otherwise. It decreases as rules run and is handed to the interpreter before
+            // each one, so no rule can outlive what the partition has left.
+            let budget = query
+                .remaining()
+                .map_or(PARTITION_BUDGET, |left| left.min(PARTITION_BUDGET));
+            engine.set_input(input);
 
-        // Every module is evaluated, both rules, in order: what a rule answers is independent of
-        // the others, and a failure anywhere is reported whatever else held. An interpreter
-        // error, a conflict or a rule that is not a boolean is a failure; undefined and `false`
-        // are an answer: no. Only the deadline ends the asking early — past it, nothing a rule
-        // could still answer is wanted, and the failure that stopped is the lateness.
-        let mut permitted = Vec::new();
-        let mut denied = Vec::new();
-        let mut failure: Option<Verdict> = None;
-        'modules: for module in &self.modules {
-            for (rule, answers) in [
-                (module.deny.as_deref(), &mut denied),
-                (module.allow.as_deref(), &mut permitted),
-            ] {
-                let Some(rule) = rule else { continue };
-                let left = budget.saturating_sub(started.elapsed());
-                if left.is_zero() {
-                    failure.get_or_insert(Verdict::deadline_exceeded(
-                        "the partition spent its budget before every rule was asked",
-                    ));
-                    break 'modules;
-                }
-                engine.set_execution_timer_config(ExecutionTimerConfig {
-                    limit: left,
-                    check_interval: NonZeroU32::new(BUDGET_CHECK_INTERVAL)
-                        .unwrap_or(NonZeroU32::MIN),
-                });
-                match asked(&mut engine, rule) {
-                    Ok(true) => answers.push(module.id.clone()),
-                    Ok(false) => {}
-                    Err(error) if query.expired() || started.elapsed() >= budget => {
-                        failure.get_or_insert(Verdict::deadline_exceeded(error));
+            // Every module is evaluated, both rules, in order: what a rule answers is independent of
+            // the others, and a failure anywhere is reported whatever else held. An interpreter
+            // error, a conflict or a rule that is not a boolean is a failure; undefined and `false`
+            // are an answer: no. Only the deadline ends the asking early — past it, nothing a rule
+            // could still answer is wanted, and the failure that stopped is the lateness.
+            let mut permitted = Vec::new();
+            let mut denied = Vec::new();
+            let mut failure: Option<Verdict> = None;
+            'modules: for module in &self.modules {
+                for (rule, answers) in [
+                    (module.deny.as_deref(), &mut denied),
+                    (module.allow.as_deref(), &mut permitted),
+                ] {
+                    let Some(rule) = rule else { continue };
+                    let left = budget.saturating_sub(started.elapsed());
+                    if left.is_zero() {
+                        failure.get_or_insert(Verdict::deadline_exceeded(
+                            "the partition spent its budget before every rule was asked",
+                        ));
                         break 'modules;
                     }
-                    Err(error) => {
-                        failure.get_or_insert(Verdict::engine_failed(error));
+                    engine.set_execution_timer_config(ExecutionTimerConfig {
+                        limit: left,
+                        check_interval: NonZeroU32::new(BUDGET_CHECK_INTERVAL)
+                            .unwrap_or(NonZeroU32::MIN),
+                    });
+                    match asked(&mut engine, rule) {
+                        Ok(true) => answers.push(module.id.clone()),
+                        Ok(false) => {}
+                        Err(error) if query.expired() || started.elapsed() >= budget => {
+                            failure.get_or_insert(Verdict::deadline_exceeded(error));
+                            break 'modules;
+                        }
+                        Err(error) => {
+                            failure.get_or_insert(Verdict::engine_failed(error));
+                        }
                     }
                 }
             }
-        }
 
-        // Deny overrides; absent means no rule matched: an abstain, which the profile resolves
-        // to a deny by default unless another partition permits.
-        let answered = if !denied.is_empty() {
-            Verdict::deny(denied)
-        } else if !permitted.is_empty() {
-            Verdict::permit(permitted)
-        } else {
-            Verdict::abstain()
-        };
-        // A deny a rule determined stands beside a failure, the failure kept; a permit or
-        // silence beside one is the failure: `E`.
-        match failure {
-            Some(failure) => answered.despite(failure),
-            None => answered,
-        }
+            // Deny overrides; absent means no rule matched: an abstain, which the profile resolves
+            // to a deny by default unless another partition permits.
+            let answered = if !denied.is_empty() {
+                Verdict::deny(denied)
+            } else if !permitted.is_empty() {
+                Verdict::permit(permitted)
+            } else {
+                Verdict::abstain()
+            };
+            // A deny a rule determined stands beside a failure, the failure kept; a permit or
+            // silence beside one is the failure: `E`.
+            match failure {
+                Some(failure) => answered.despite(failure),
+                None => answered,
+            }
+        })
     }
 
     /// `input.partition` against this partition's own JSON Schema, before any rule runs.
@@ -344,17 +347,20 @@ impl Evaluator for RegoEvaluator {
     /// Fail-closed: a document the schema refuses never reaches a rule, and never becomes a
     /// silent `undefined` that reads as "the guardrail did not fire".
     fn check_input(&self, input: &crate::input::PartitionData) -> Result<(), String> {
-        let Some(validator) = &self.validator else {
-            return Ok(());
-        };
-        let empty = serde_json::Map::new();
-        let document = Value::Object(input.rego_data().cloned().unwrap_or(empty));
+        // The stack an engine needs is its own to guarantee: see crate::headroom.
+        crate::headroom::with(|| {
+            let Some(validator) = &self.validator else {
+                return Ok(());
+            };
+            let empty = serde_json::Map::new();
+            let document = Value::Object(input.rego_data().cloned().unwrap_or(empty));
 
-        validator.validate(&document).map_err(|error| {
-            format!(
-                "rego: the document does not satisfy this partition's schema: {error} (at {})",
-                error.instance_path()
-            )
+            validator.validate(&document).map_err(|error| {
+                format!(
+                    "rego: the document does not satisfy this partition's schema: {error} (at {})",
+                    error.instance_path()
+                )
+            })
         })
     }
 

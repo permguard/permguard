@@ -575,6 +575,8 @@ fn remove(root: &Dir, dir: &Dir, name: &str) -> Result<(), StorageError> {
     for file in PROBE_FILES {
         dir.unlink(file)?;
     }
+    // A held lock denies the removal on Windows: released first, the directory empty by now.
+    dir.unlock()?;
     root.remove_subdir(name)?;
     root.sync()
 }
@@ -686,10 +688,16 @@ mod tests {
             Reason::Identity,
             Reason::HardLink,
             Reason::TornAppend,
-            Reason::FreeBytes,
         ];
-        if state.free_space().expect("measured").inodes.is_some() {
-            expected.push(Reason::FreeInodes);
+        // The floors are checked where free space can be measured; a compatibility mode (Windows)
+        // reports them as not measured (8-architecture-storage-operations).
+        if let Some(free) = state.free_space_measured().expect("read") {
+            expected.push(Reason::FreeBytes);
+            if free.inodes.is_some() {
+                expected.push(Reason::FreeInodes);
+            }
+        } else {
+            assert!(report.free.is_none(), "not measured, never a number");
         }
         assert_eq!(report.checked, expected, "every guarantee was checked");
         assert_eq!(
@@ -774,7 +782,19 @@ mod tests {
 
     /// Makes the directory at `path` look as old as a crash's leftover.
     fn age(path: &std::path::Path) {
-        std::fs::File::open(path)
+        // Windows opens a directory only with backup semantics, and changes its times only through
+        // a handle that may write its attributes.
+        #[cfg(windows)]
+        let directory = {
+            use std::os::windows::fs::OpenOptionsExt as _;
+            std::fs::OpenOptions::new()
+                .access_mode(0x0100) // FILE_WRITE_ATTRIBUTES
+                .custom_flags(0x0200_0000) // FILE_FLAG_BACKUP_SEMANTICS
+                .open(path)
+        };
+        #[cfg(not(windows))]
+        let directory = std::fs::File::open(path);
+        directory
             .expect("opened")
             .set_modified(std::time::SystemTime::now() - LEFTOVER_AGE * 2)
             .expect("aged");

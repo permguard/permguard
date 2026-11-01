@@ -353,7 +353,7 @@ async fn an_invitation_shows_its_token_once_lists_by_hash_and_keeps_it_in_no_fil
         hex(&token).into_bytes(),
     ];
     for path in files(&root) {
-        let bytes = std::fs::read(&path).expect("readable");
+        let bytes = crate::storage::testing::read_held(&path).expect("readable");
         for spelling in &spellings {
             assert!(
                 !bytes

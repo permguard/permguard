@@ -147,3 +147,100 @@ pub fn torn_tail_contract(path: &Path) {
 pub fn is_corruption(error: &StorageError) -> bool {
     matches!(error, StorageError::Corruption(_))
 }
+
+/// Every regular file below `root`, at any depth.
+pub fn files_below(root: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir).expect("listed").flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                found.push(path);
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// The bytes of `path`, read as a test reads a volume its Host is holding.
+///
+/// A `LOCK` file (the volume's, a journal's, a spool's) is empty by construction, and on Windows,
+/// where locks are mandatory, the process holding it cannot read it either. Its length, which the
+/// metadata gives without reading, proves it holds nothing, so a held empty `LOCK` reads as empty.
+/// Every other failure is the failure it is.
+pub fn read_held(path: &Path) -> std::io::Result<Vec<u8>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(bytes),
+        Err(_)
+            if path
+                .file_name()
+                .is_some_and(|name| name == super::volume::LOCK)
+                && std::fs::metadata(path).is_ok_and(|metadata| metadata.len() == 0) =>
+        {
+            Ok(Vec::new())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Copies the directory `from` as `cp -Rp from to` does: into `to/<name of from>` when `to` is a
+/// directory already, to `to` otherwise, with every directory's permissions. A `LOCK` file is
+/// created empty rather than read: it is empty by construction, and a Windows process cannot read
+/// one that is held.
+pub fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    let to = if to.is_dir() {
+        to.join(from.file_name().unwrap_or_default())
+    } else {
+        to.to_path_buf()
+    };
+    copy_into(from, &to)
+}
+
+fn copy_into(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let source = entry.path();
+        let target = to.join(entry.file_name());
+        let metadata = std::fs::symlink_metadata(&source)?;
+        if metadata.is_dir() {
+            copy_into(&source, &target)?;
+        } else if entry.file_name() == super::volume::LOCK && metadata.len() == 0 {
+            std::fs::File::create(&target)?;
+        } else if metadata.is_file() {
+            std::fs::copy(&source, &target)?;
+        }
+    }
+    std::fs::set_permissions(to, std::fs::metadata(from)?.permissions())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tree_is_copied_with_its_locks_empty_and_its_files_whole() {
+        let root = std::env::temp_dir().join(format!("pg-copy-tree-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let from = root.join("volume");
+        std::fs::create_dir_all(from.join("host/keys")).expect("folders");
+        std::fs::write(from.join("host/LOCK"), b"").expect("a lock");
+        std::fs::write(from.join("host/keys/1.key"), b"key bytes").expect("a key");
+        std::fs::create_dir_all(root.join("into")).expect("a target");
+
+        copy_tree(&from, &root.join("into")).expect("copied");
+        let copied = root.join("into/volume");
+        assert_eq!(read_held(&copied.join("host/LOCK")).expect("read"), b"");
+        assert_eq!(
+            read_held(&copied.join("host/keys/1.key")).expect("read"),
+            b"key bytes"
+        );
+        assert_eq!(files_below(&copied).len(), 2);
+        assert!(read_held(&copied.join("absent")).is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+}

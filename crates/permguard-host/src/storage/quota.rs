@@ -114,9 +114,10 @@ pub struct ScopeUsage {
 pub struct Usage {
     pub scopes: Vec<ScopeUsage>,
     pub floors: Floors,
-    /// Free bytes as the floor judges them: the filesystem's, less every pending reservation.
-    pub free_bytes: u64,
-    /// Free inodes the same way, where the filesystem limits them.
+    /// Free bytes as the floor judges them: the filesystem's, less every pending reservation;
+    /// `None` where the platform cannot measure free space, and the floors are not measured.
+    pub free_bytes: Option<u64>,
+    /// Free inodes the same way, where the filesystem limits them and free space is measured.
     pub free_inodes: Option<u64>,
     pub ready: bool,
 }
@@ -233,7 +234,10 @@ impl Quota {
     /// Every account, the floors and the free space, for `storage quota show`.
     pub fn usage(&self) -> Result<Usage> {
         let state = self.state();
-        let (free_bytes, free_inodes) = self.free(&state)?;
+        let (free_bytes, free_inodes) = match self.free(&state)? {
+            Some((bytes, inodes)) => (Some(bytes), inodes),
+            None => (None, None),
+        };
         let scopes = state
             .accounts
             .iter()
@@ -265,27 +269,34 @@ impl Quota {
     }
 
     /// Free bytes and inodes as the floor judges them: the filesystem's figure — no more than a
-    /// test's disk-full fault leaves — less every pending reservation.
-    fn free(&self, state: &State) -> Result<(u64, Option<u64>)> {
-        let space = self.0.root.free_space()?;
-        let bytes = match permguard_core::fault::free_bytes(self.0.root.path()) {
-            Some(left) => space.bytes.min(left),
-            None => space.bytes,
+    /// test's disk-full fault leaves — less every pending reservation. `None` where the platform
+    /// cannot measure free space and no fault gives a figure: the floors are not measured.
+    fn free(&self, state: &State) -> Result<Option<(u64, Option<u64>)>> {
+        let space = self.0.root.free_space_measured()?;
+        let fault = permguard_core::fault::free_bytes(self.0.root.path());
+        let (bytes, inodes) = match (space, fault) {
+            (Some(space), Some(left)) => (space.bytes.min(left), space.inodes),
+            (Some(space), None) => (space.bytes, space.inodes),
+            (None, Some(left)) => (left, None),
+            (None, None) => return Ok(None),
         };
-        Ok((
+        Ok(Some((
             bytes.saturating_sub(state.reserved_bytes),
-            space
-                .inodes
-                .map(|inodes| inodes.saturating_sub(state.reserved_files)),
-        ))
+            inodes.map(|inodes| inodes.saturating_sub(state.reserved_files)),
+        )))
     }
 
     fn judge(&self, state: &State) -> Result<bool> {
-        let (bytes, inodes) = self.free(state)?;
         let floors = &self.0.floors;
-        // One largest write of bytes, and one inode — a journal's roll — above the floor.
-        let ready = bytes >= floors.free_bytes.saturating_add(state.largest_write)
-            && inodes.is_none_or(|inodes| inodes >= floors.free_inodes.saturating_add(1));
+        // One largest write of bytes, and one inode — a journal's roll — above the floor; floors
+        // that cannot be measured do not hold readiness down.
+        let ready = match self.free(state)? {
+            Some((bytes, inodes)) => {
+                bytes >= floors.free_bytes.saturating_add(state.largest_write)
+                    && inodes.is_none_or(|inodes| inodes >= floors.free_inodes.saturating_add(1))
+            }
+            None => true,
+        };
         self.0.readiness.set(ready);
 
         Ok(ready)
@@ -417,34 +428,35 @@ impl Scope {
             }
         }
 
-        let (free_bytes, free_inodes) = self.quota.free(&state)?;
-        let floors = &self.quota.0.floors;
-        let (keep_bytes, keep_inodes) = match self.class {
-            Class::Ordinary => (floors.free_bytes, floors.free_inodes),
-            Class::Maintenance => (floors.maintenance_bytes, floors.maintenance_inodes),
-        };
-        if free_bytes < bytes.saturating_add(keep_bytes)
-            || free_inodes.is_some_and(|inodes| inodes < files.saturating_add(keep_inodes))
-        {
-            let refused = StorageError::BelowFloor(format!(
-                "{bytes} bytes and {files} files would leave {} bytes and {} inodes free, below \
-                 the {} bytes and {} inodes a {} writer must leave",
-                free_bytes.saturating_sub(bytes),
-                free_inodes.map_or_else(
-                    || "unlimited".to_owned(),
-                    |inodes| inodes.saturating_sub(files).to_string()
-                ),
-                keep_bytes,
-                keep_inodes,
-                match self.class {
-                    Class::Ordinary => "required",
-                    Class::Maintenance => "maintenance",
-                }
-            ));
-            self.quota.judge(&state)?;
-            return Err(refused);
+        // Floors that cannot be measured bound nothing: the accounts' limits above still did.
+        if let Some((free_bytes, free_inodes)) = self.quota.free(&state)? {
+            let floors = &self.quota.0.floors;
+            let (keep_bytes, keep_inodes) = match self.class {
+                Class::Ordinary => (floors.free_bytes, floors.free_inodes),
+                Class::Maintenance => (floors.maintenance_bytes, floors.maintenance_inodes),
+            };
+            if free_bytes < bytes.saturating_add(keep_bytes)
+                || free_inodes.is_some_and(|inodes| inodes < files.saturating_add(keep_inodes))
+            {
+                let refused = StorageError::BelowFloor(format!(
+                    "{bytes} bytes and {files} files would leave {} bytes and {} inodes free, below \
+                     the {} bytes and {} inodes a {} writer must leave",
+                    free_bytes.saturating_sub(bytes),
+                    free_inodes.map_or_else(
+                        || "unlimited".to_owned(),
+                        |inodes| inodes.saturating_sub(files).to_string()
+                    ),
+                    keep_bytes,
+                    keep_inodes,
+                    match self.class {
+                        Class::Ordinary => "required",
+                        Class::Maintenance => "maintenance",
+                    }
+                ));
+                self.quota.judge(&state)?;
+                return Err(refused);
+            }
         }
-
         state.reserved_bytes += bytes;
         state.reserved_files += files;
         for depth in 0..=self.path.len() {
@@ -593,6 +605,42 @@ mod tests {
             maintenance_bytes: 1024,
             maintenance_inodes: 1,
         }
+    }
+
+    /// Where free space cannot be read (Windows, a compatibility mode), the quota still opens and
+    /// accounts: the floors are not measured and hold nothing, and an account's limit still holds.
+    #[test]
+    fn unmeasured_floors_hold_nothing_and_an_account_limit_still_holds() {
+        let root = scratch("unmeasured");
+        let _windows = permguard_core::fault::inject(
+            root.path(),
+            permguard_core::fault::Fault::FreeSpaceUnmeasurable,
+        );
+        let plane = root.subdir("control", true).expect("plane");
+        let quota = Quota::open(again(&root), small_floors(), Limit::default()).expect("opens");
+        let usage = quota.usage().expect("usage");
+        assert_eq!(usage.free_bytes, None, "not measured, never a number");
+        assert_eq!(usage.free_inodes, None);
+        assert!(
+            usage.ready,
+            "floors that cannot be measured do not hold readiness down"
+        );
+
+        let plane = quota
+            .host(Class::Ordinary)
+            .child(
+                "control",
+                &plane,
+                Limit {
+                    bytes: Some(1000),
+                    inodes: None,
+                },
+            )
+            .expect("account");
+        let held = plane.reserve(600, 1).expect("within the account's limit");
+        let refused = plane.reserve(600, 1).expect_err("past the account's limit");
+        assert!(!matches!(refused, StorageError::BelowFloor(_)), "{refused}");
+        drop(held);
     }
 
     #[test]

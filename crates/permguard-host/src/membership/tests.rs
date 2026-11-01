@@ -109,13 +109,7 @@ impl Host {
             std::thread::current().id()
         ));
         let _ = std::fs::remove_dir_all(&root);
-        let status = std::process::Command::new("cp")
-            .arg("-Rp")
-            .arg(&self.root)
-            .arg(&root)
-            .status()
-            .expect("cp runs");
-        assert!(status.success(), "the volume is copied");
+        crate::storage::testing::copy_tree(&self.root, &root).expect("the volume is copied");
         let volume = Volume::claim(
             &root,
             permguard_core::assurance::AssuranceProfile::Development,
@@ -704,7 +698,7 @@ fn a_token_enrolls_once_and_its_proof_binds_the_connection() {
 
     // The token never reaches the volume.
     for entry in walk(&c.root) {
-        let bytes = std::fs::read(&entry).expect("reads");
+        let bytes = crate::storage::testing::read_held(&entry).expect("reads");
         assert!(
             !bytes.windows(token.len()).any(|window| window == token),
             "{} holds the token",

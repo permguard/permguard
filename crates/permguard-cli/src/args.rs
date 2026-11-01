@@ -72,7 +72,9 @@ fn rfc3339_instant(text: &str) -> Result<String, String> {
 /// edition is two contracts. Both spell the same help, on every command in the
 /// tree, and the flag says so: "Print help".
 pub fn command() -> clap::Command {
-    one_help(Cli::command())
+    // The program is `permguard` on every platform: clap otherwise names it after `argv[0]`,
+    // `permguard.exe` on Windows, in some help and not in the rest.
+    one_help(Cli::command().bin_name("permguard"))
 }
 
 /// `-h` and `--help` print the same help — the compact one, with the banner
@@ -1308,6 +1310,25 @@ pub struct CheckArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Windows starts the program as `permguard.exe`; the help clap renders still names it
+    /// `permguard`, as the `help` command does (tests/cli.rs compares every spelling).
+    #[test]
+    fn the_help_names_the_program_whatever_the_executable_is_called() {
+        for argv in [
+            vec!["permguard.exe", "-h"],
+            vec!["permguard.exe", "--help"],
+            vec!["permguard.exe", "zones", "-h"],
+            vec!["permguard.exe", "zones", "create", "--help"],
+        ] {
+            let Err(error) = command().try_get_matches_from(&argv) else {
+                panic!("{argv:?}: help is answered as an early exit");
+            };
+            let help = error.render().to_string();
+            assert!(!help.contains("permguard.exe"), "{argv:?}: {help}");
+            assert!(help.contains("Usage: permguard"), "{argv:?}: {help}");
+        }
+    }
 
     /// The tree as a command line actually sees it: `global = true` arguments reach the commands
     /// that inherit them only once clap has built it, and it is the built tree that answers `-h`.

@@ -104,13 +104,7 @@ fn a_copied_volume_is_the_same_host_with_a_new_boot_id() {
         let (_volume, identity) = provisioned(&root);
         (identity.host_id(), identity.boot_id())
     };
-    let status = std::process::Command::new("cp")
-        .args(["-Rp"])
-        .arg(&root)
-        .arg(&copy)
-        .status()
-        .expect("cp runs");
-    assert!(status.success());
+    crate::storage::testing::copy_tree(&root, &copy).expect("the volume is copied");
     let volume = Volume::claim(&copy, AssuranceProfile::Development).expect("claimed");
     let identity = Identity::open(&volume, provider(&volume)).expect("opens");
     assert_eq!(identity.host_id(), host_id);
@@ -217,13 +211,8 @@ fn init_of_another_volume_is_refused() {
         let _ = Volume::claim(&other, AssuranceProfile::Development).expect("claimed");
     }
     let from = root.join("host").join(DIRECTORY);
-    let status = std::process::Command::new("cp")
-        .args(["-Rp"])
-        .arg(&from)
-        .arg(other.join("host").join(DIRECTORY))
-        .status()
-        .expect("cp runs");
-    assert!(status.success());
+    crate::storage::testing::copy_tree(&from, &other.join("host").join(DIRECTORY))
+        .expect("the identity is copied");
     let volume = Volume::claim(&other, AssuranceProfile::Development).expect("claimed");
     let refused = Identity::open(&volume, provider(&volume)).expect_err("another volume");
     assert!(refused.to_string().contains("another volume"), "{refused}");

@@ -45,6 +45,19 @@ fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
+/// Whether `text` reports a path that does not exist, in the words of the platform that reported
+/// it: Unix's `No such file or directory`, Windows' `cannot find the file` and `cannot find the
+/// path` (os errors 2 and 3). An assertion on one platform's words alone checks nothing elsewhere.
+fn not_found(text: &str) -> bool {
+    [
+        "No such file",
+        "cannot find the file",
+        "cannot find the path",
+    ]
+    .iter()
+    .any(|words| text.contains(words))
+}
+
 /// A small authorable workspace: one Cedar partition, two policies.
 fn write_sources(dir: &Path) {
     std::fs::write(
@@ -907,7 +920,7 @@ fn every_path_a_flag_names_is_read_from_the_working_directory() {
         "l",
     ]);
     assert!(
-        !stderr(&output).contains("No such file"),
+        !not_found(&stderr(&output)),
         "the request was looked for outside the working directory: {}",
         stderr(&output)
     );
@@ -926,7 +939,7 @@ fn every_path_a_flag_names_is_read_from_the_working_directory() {
         "l",
     ]);
     assert!(
-        stderr(&output).contains("No such file"),
+        not_found(&stderr(&output)),
         "a path relative to the terminal must not resolve: {}",
         stderr(&output)
     );
@@ -948,7 +961,7 @@ fn every_path_a_flag_names_is_read_from_the_working_directory() {
         "http://127.0.0.1:1",
     ]);
     assert!(
-        !stderr(&output).contains("No such file"),
+        !not_found(&stderr(&output)),
         "the key set was looked for outside the working directory: {}",
         stderr(&output)
     );

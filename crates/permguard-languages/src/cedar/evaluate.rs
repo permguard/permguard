@@ -115,57 +115,60 @@ fn footprint(policy_bytes: usize, schema_bytes: usize) -> usize {
 
 impl Evaluator for CedarEvaluator {
     fn evaluate(&self, query: &Query) -> Verdict {
-        // Cedar terminates by construction — no loops, no recursion, no unbounded traversal — so
-        // there is nothing to interrupt mid-evaluation and nothing that needs interrupting. What
-        // is worth checking is whether to start at all: a partition reached after the decision ran
-        // out of time answers nothing anybody is still waiting for.
-        if query.expired() {
-            return Verdict::deadline_exceeded(
-                "the decision ran out of time before this partition",
-            );
-        }
+        // The stack an engine needs is its own to guarantee: see crate::headroom.
+        crate::headroom::with(|| {
+            // Cedar terminates by construction — no loops, no recursion, no unbounded traversal — so
+            // there is nothing to interrupt mid-evaluation and nothing that needs interrupting. What
+            // is worth checking is whether to start at all: a partition reached after the decision ran
+            // out of time answers nothing anybody is still waiting for.
+            if query.expired() {
+                return Verdict::deadline_exceeded(
+                    "the decision ran out of time before this partition",
+                );
+            }
 
-        // A request or an entity store this partition cannot represent is not a question its
-        // policies can answer: `E`, not a deny they never expressed.
-        let request = match self.request(query) {
-            Ok(request) => request,
-            Err(error) => return Verdict::input_rejected(error),
-        };
-        let entities = match self.entities(query) {
-            Ok(entities) => entities,
-            Err(error) => return Verdict::input_rejected(error),
-        };
-
-        let response = Authorizer::new().is_authorized(&request, &self.set, &entities);
-        let determining: Vec<String> = response
-            .diagnostics()
-            .reason()
-            .map(ToString::to_string)
-            .collect();
-        // The diagnostics before any permit is read. Cedar answers `Allow` when one policy
-        // permits and another failed to evaluate — a permit released after a policy failed is not
-        // defensible, so an error beside an `Allow` is `E`. A `forbid` that fired is different:
-        // nothing the failed policy could return turns it into a permit, so it is `D`, with the
-        // failure kept beside it. A deny no `forbid` decided is the failure: `E`.
-        let errors: Vec<String> = response
-            .diagnostics()
-            .errors()
-            .map(ToString::to_string)
-            .collect();
-        if !errors.is_empty() {
-            let message = format!("cedar: {}", errors.join("; "));
-            return match response.decision() {
-                Decision::Allow => Verdict::engine_failed(message),
-                Decision::Deny => Verdict::deny_despite_failure(determining, message),
+            // A request or an entity store this partition cannot represent is not a question its
+            // policies can answer: `E`, not a deny they never expressed.
+            let request = match self.request(query) {
+                Ok(request) => request,
+                Err(error) => return Verdict::input_rejected(error),
             };
-        }
+            let entities = match self.entities(query) {
+                Ok(entities) => entities,
+                Err(error) => return Verdict::input_rejected(error),
+            };
 
-        match response.decision() {
-            Decision::Allow => Verdict::permit(determining),
-            // A `forbid` that fired is a deny; a deny nothing fired is Cedar's default, which the
-            // algebra calls an abstain. `Verdict::deny` tells the two apart by the list.
-            Decision::Deny => Verdict::deny(determining),
-        }
+            let response = Authorizer::new().is_authorized(&request, &self.set, &entities);
+            let determining: Vec<String> = response
+                .diagnostics()
+                .reason()
+                .map(ToString::to_string)
+                .collect();
+            // The diagnostics before any permit is read. Cedar answers `Allow` when one policy
+            // permits and another failed to evaluate — a permit released after a policy failed is not
+            // defensible, so an error beside an `Allow` is `E`. A `forbid` that fired is different:
+            // nothing the failed policy could return turns it into a permit, so it is `D`, with the
+            // failure kept beside it. A deny no `forbid` decided is the failure: `E`.
+            let errors: Vec<String> = response
+                .diagnostics()
+                .errors()
+                .map(ToString::to_string)
+                .collect();
+            if !errors.is_empty() {
+                let message = format!("cedar: {}", errors.join("; "));
+                return match response.decision() {
+                    Decision::Allow => Verdict::engine_failed(message),
+                    Decision::Deny => Verdict::deny_despite_failure(determining, message),
+                };
+            }
+
+            match response.decision() {
+                Decision::Allow => Verdict::permit(determining),
+                // A `forbid` that fired is a deny; a deny nothing fired is Cedar's default, which the
+                // algebra calls an abstain. `Verdict::deny` tells the two apart by the list.
+                Decision::Deny => Verdict::deny(determining),
+            }
+        })
     }
 
     /// The entity store, against this partition's own schema, before any policy runs.
@@ -174,9 +177,12 @@ impl Evaluator for CedarEvaluator {
     /// matters to whoever has to fix it: `deny` sends them reading policies, and this sends them
     /// to the entity they mistyped.
     fn check_input(&self, input: &crate::input::PartitionData) -> Result<(), String> {
-        build_entities(input.cedar_entities().to_vec(), self.schema.as_ref())
-            .map(|_| ())
-            .map_err(|error| format!("cedar: the entity store is not legal here: {error}"))
+        // The stack an engine needs is its own to guarantee: see crate::headroom.
+        crate::headroom::with(|| {
+            build_entities(input.cedar_entities().to_vec(), self.schema.as_ref())
+                .map(|_| ())
+                .map_err(|error| format!("cedar: the entity store is not legal here: {error}"))
+        })
     }
 
     fn footprint(&self) -> usize {
@@ -408,6 +414,41 @@ mod tests {
 
     fn store(items: Vec<Value>) -> crate::input::PartitionData {
         crate::input::PartitionData::CedarEntities(std::sync::Arc::new(items))
+    }
+
+    /// The evaluator guarantees its own stack (crate::headroom), so a caller on a thread with
+    /// almost none left gets an answer, not Cedar's "recursion limit reached". This is the Windows
+    /// case: a first thread of one megabyte and large debug frames left Cedar under its 100 KiB
+    /// guard for ordinary requests entered without the headroom.
+    #[test]
+    fn an_evaluator_entered_on_a_starved_thread_still_answers() {
+        let compiled = Cedar
+            .compile(
+                &[stored(
+                    "01a0-read",
+                    r#"permit (principal, action == Action::"read", resource);"#,
+                )],
+                &crate::artifact::Artifacts::default(),
+            )
+            .expect("the policies compile");
+        let compiled = std::sync::Arc::new(compiled);
+        let verdict = std::thread::Builder::new()
+            .stack_size(96 * 1024)
+            .spawn({
+                let compiled = std::sync::Arc::clone(&compiled);
+                move || {
+                    let asked = query("alice", "read", "budget");
+                    (
+                        compiled.check_input(&asked.input),
+                        compiled.evaluate(&asked),
+                    )
+                }
+            })
+            .expect("a thread")
+            .join()
+            .expect("it answered");
+        assert_eq!(verdict.0, Ok(()));
+        assert!(verdict.1.permitted(), "{:?}", verdict.1);
     }
 
     #[test]

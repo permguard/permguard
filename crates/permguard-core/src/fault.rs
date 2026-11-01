@@ -23,6 +23,7 @@
 //! | [`Fault::WriteFails`]   | every write under the scope fails with an I/O error, writing nothing |
 //! | [`Fault::DiskFull`]     | writes under the scope succeed until the quota is spent, then fail with `StorageFull`, writing nothing |
 //! | [`Fault::SlowFsync`]    | every flush under the scope succeeds, after the delay: a slow disk (TS-4) |
+//! | [`Fault::FreeSpaceUnmeasurable`] | free space under the scope cannot be read, as on Windows, a compatibility mode |
 //!
 //! A fault is scoped to a directory and every path below it — or, with [`inject_exact`], to one
 //! path alone, which is how a test fails a directory's flush without failing the flushes of the
@@ -52,6 +53,9 @@ pub enum Fault {
     /// Every flush succeeds, after `delay`: a disk slow to make data durable. Several rules
     /// covering a path wait the longest of them, once.
     SlowFsync { delay: std::time::Duration },
+    /// Free space cannot be read, as on a platform this build cannot ask (Windows): how a test on
+    /// any platform proves what a compatibility mode does without the measurement.
+    FreeSpaceUnmeasurable,
 }
 
 struct Rule {
@@ -173,6 +177,18 @@ pub fn free_bytes(path: &Path) -> Option<u64> {
             _ => None,
         })
         .min()
+}
+
+/// Whether a test made free space at or below `path` unmeasurable, as a compatibility mode is.
+pub fn free_space_unmeasurable(path: &Path) -> bool {
+    if ARMED.load(Ordering::Acquire) == 0 {
+        return false;
+    }
+    RULES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .any(|rule| rule.covers(path) && rule.fault == Fault::FreeSpaceUnmeasurable)
 }
 
 /// Runs `flush`, which flushes a file or directory at or below `path`, unless an fsync fault is

@@ -603,8 +603,15 @@ mod tests {
             std::fs::write(&file, name.as_bytes()).expect("object");
         }
         std::fs::write(path.join("bb/three"), b"not three").expect("corrupted");
-        let check =
-            |relative: &Path, bytes: &[u8]| Some(relative.to_string_lossy().as_bytes() == bytes);
+        // The name, by its components, as an owner's check reads it: `\\` on Windows, `/` elsewhere.
+        let check = |relative: &Path, bytes: &[u8]| {
+            let name = relative
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
+            Some(name.as_bytes() == bytes)
+        };
         let mut report = Report::new();
         objects(
             &path,

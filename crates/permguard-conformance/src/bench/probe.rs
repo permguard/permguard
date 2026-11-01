@@ -6,8 +6,11 @@
 //! The server is measured as a separate process, so nothing here needs the server's cooperation —
 //! and the product gains neither unsafe code nor a dependency to report on itself. On Linux the
 //! numbers are the kernel's own: `/proc/<pid>/stat` for CPU time and `VmHWM` for the peak resident
-//! set, reset before each step through `clear_refs`. Elsewhere `ps` is sampled while the step runs
-//! and the highest sample is the peak; the report names which method produced its numbers.
+//! set, reset before each step through `clear_refs`. On Windows, which has no `ps`, PowerShell's
+//! `Get-Process` gives the CPU time and the process's peak working set, which is its peak since it
+//! started: never lower than the step's, so the report overstates and never understates. Elsewhere
+//! `ps` is sampled while the step runs and the highest sample is the peak; the report names which
+//! method produced its numbers.
 
 use std::io::Write as _;
 use std::path::Path;
@@ -77,6 +80,8 @@ pub fn fsync(directory: &Path, samples: usize) -> std::io::Result<FsyncProbe> {
 pub fn method() -> &'static str {
     if cfg!(target_os = "linux") {
         "procfs"
+    } else if cfg!(windows) {
+        "get-process"
     } else {
         "ps-sampled"
     }
@@ -111,11 +116,14 @@ impl Process {
     pub fn begin(&self) -> Measuring {
         let peak = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
-        let sampler = if cfg!(target_os = "linux") {
+        let sampler = if cfg!(target_os = "linux") || cfg!(windows) {
             // `5` resets the peak resident set to the current one (Linux 4.0 and later). When the
             // write is refused the peak is the process's since it started, which is never lower
             // than the step's: the report then overstates, never understates.
-            let _ = std::fs::write(format!("/proc/{}/clear_refs", self.pid), "5");
+            // Windows reads the process's own peak at the end, sampling nothing.
+            if cfg!(target_os = "linux") {
+                let _ = std::fs::write(format!("/proc/{}/clear_refs", self.pid), "5");
+            }
             None
         } else {
             let (pid, peak, stop) = (self.pid, Arc::clone(&peak), Arc::clone(&stop));
@@ -152,6 +160,8 @@ impl Process {
                 .and_then(|text| field(&text, "VmHWM"))
                 .and_then(|kib| kib.trim_end_matches(" kB").trim().parse::<u64>().ok())
                 .map(|kib| kib * 1024)
+        } else if cfg!(windows) {
+            get_process(self.pid).map(|(_, peak)| peak)
         } else {
             Some(measuring.peak.load(Ordering::Acquire)).filter(|peak| *peak > 0)
         };
@@ -169,6 +179,8 @@ impl Process {
             let utime: f64 = fields.get(11)?.parse().ok()?;
             let stime: f64 = fields.get(12)?.parse().ok()?;
             Some((utime + stime) / self.ticks_per_second)
+        } else if cfg!(windows) {
+            get_process(self.pid).map(|(cpu, _)| cpu)
         } else {
             ps(self.pid).map(|(_, cpu)| cpu)
         }
@@ -181,6 +193,28 @@ fn ps(pid: u32) -> Option<(u64, f64)> {
     let mut parts = text.split_whitespace();
     let rss_kib: u64 = parts.next()?.parse().ok()?;
     Some((rss_kib * 1024, cpu_time(parts.next()?)?))
+}
+
+/// PowerShell's `Get-Process` view of `pid` on Windows: its CPU seconds and its peak working set
+/// (bytes), printed in the invariant culture so a European locale's decimal comma never reaches the
+/// parser.
+fn get_process(pid: u32) -> Option<(f64, u64)> {
+    let script = format!(
+        "$p = Get-Process -Id {pid}; [string]::Format([cultureinfo]::InvariantCulture, '{{0}} {{1}}', \
+         $p.TotalProcessorTime.TotalSeconds, $p.PeakWorkingSet64)"
+    );
+    get_process_line(&output(
+        "powershell",
+        &["-NoProfile", "-NonInteractive", "-Command", &script],
+    )?)
+}
+
+/// `<cpu seconds> <peak bytes>`, as [`get_process`] has PowerShell print it.
+fn get_process_line(text: &str) -> Option<(f64, u64)> {
+    let mut parts = text.split_whitespace();
+    let cpu: f64 = parts.next()?.parse().ok()?;
+    let peak: u64 = parts.next()?.parse().ok()?;
+    parts.next().is_none().then_some((cpu, peak))
 }
 
 /// `ps`'s `[[dd-]hh:]mm:ss[.ss]`, in seconds.
@@ -252,6 +286,18 @@ mod tests {
         let (cpu, peak) = process.end(measuring);
         assert!(cpu.expect("CPU time") > 0.0, "{cpu:?}");
         assert!(peak.expect("a peak") > 1024 * 1024, "{peak:?}");
+    }
+
+    #[test]
+    fn test_get_process_lines_are_read_in_the_invariant_culture_only() {
+        assert_eq!(
+            get_process_line("0.140625 52326400"),
+            Some((0.140625, 52_326_400))
+        );
+        // A culture's decimal comma would be a misread, not a number.
+        assert_eq!(get_process_line("0,140625 52326400"), None);
+        assert_eq!(get_process_line(""), None);
+        assert_eq!(get_process_line("1.5 2 extra"), None);
     }
 
     #[test]

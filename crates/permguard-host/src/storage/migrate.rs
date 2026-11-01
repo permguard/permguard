@@ -451,7 +451,7 @@ impl<'a> Layout<'a> {
         // compatibility mode (Windows) cannot read it: the bound is not measured, and the build
         // beside the old generation is what a full disk fails, leaving the old one as it was
         // (8-architecture-storage-operations, Migration and upgrade).
-        let free = match measured_free(root.free_space())? {
+        let free = match root.free_space_measured()?.map(|space| space.bytes) {
             Some(free) => Some(
                 permguard_core::fault::free_bytes(root.path()).map_or(free, |left| left.min(free)),
             ),
@@ -1378,20 +1378,6 @@ pub mod testing {
     }
 }
 
-/// Free bytes where the platform can measure them; `None` in a compatibility mode, where reading
-/// them answers `Unsupported`. Any other failure is a failure.
-fn measured_free(space: Result<super::dir::FreeSpace>) -> Result<Option<u64>> {
-    match space {
-        Ok(space) => Ok(Some(space.bytes)),
-        Err(StorageError::Io { source, .. })
-            if source.kind() == std::io::ErrorKind::Unsupported =>
-        {
-            Ok(None)
-        }
-        Err(error) => Err(error),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -1900,6 +1886,36 @@ mod tests {
         );
     }
 
+    /// Where free space cannot be read (Windows), the bound is not measured and the migration
+    /// still builds, verifies, switches and commits; before, every such migration was refused.
+    #[test]
+    fn a_volume_whose_free_space_cannot_be_read_still_migrates() {
+        let (root, volume) = laid_out("unmeasured");
+        let _windows = permguard_core::fault::inject(
+            &root,
+            permguard_core::fault::Fault::FreeSpaceUnmeasurable,
+        );
+        let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+        let commit = layout
+            .migrate(
+                &NotesV2 {
+                    tamper: false,
+                    write_old: false,
+                    omit: false,
+                },
+                preflight(),
+            )
+            .expect("migrates without the measurement");
+        assert_eq!(commit.to.version, 2);
+        let status = layout.status().expect("status").expect("laid out");
+        assert_eq!(status.phase, Phase::Committed);
+        assert!(
+            root.join("data/notes/g1/alpha").is_file(),
+            "the old generation stays"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     #[test]
     fn free_space_a_platform_cannot_read_is_not_measured_and_nothing_else_is_forgiven() {
         let unsupported = |kind| {
@@ -1909,16 +1925,20 @@ mod tests {
             })
         };
         assert_eq!(
-            measured_free(unsupported(std::io::ErrorKind::Unsupported)).expect("not measured"),
+            super::super::dir::measured(unsupported(std::io::ErrorKind::Unsupported))
+                .expect("not measured"),
             None
         );
-        assert!(measured_free(unsupported(std::io::ErrorKind::PermissionDenied)).is_err());
+        assert!(
+            super::super::dir::measured(unsupported(std::io::ErrorKind::PermissionDenied)).is_err()
+        );
         assert_eq!(
-            measured_free(Ok(super::super::dir::FreeSpace {
+            super::super::dir::measured(Ok(super::super::dir::FreeSpace {
                 bytes: 7,
                 inodes: None
             }))
-            .expect("measured"),
+            .expect("measured")
+            .map(|space| space.bytes),
             Some(7)
         );
     }

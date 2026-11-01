@@ -43,7 +43,7 @@ fn provisioned(root: &std::path::Path) -> (Volume, Identity) {
     (volume, identity)
 }
 
-/// Every file below `root`, relative.
+/// Every file below `root`, relative, its components joined by `/` on every platform.
 fn files(root: &std::path::Path) -> Vec<String> {
     let mut found = Vec::new();
     let mut pending = vec![root.to_path_buf()];
@@ -56,8 +56,10 @@ fn files(root: &std::path::Path) -> Vec<String> {
                 found.push(
                     path.strip_prefix(root)
                         .expect("below")
-                        .display()
-                        .to_string(),
+                        .components()
+                        .map(|part| part.as_os_str().to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join("/"),
                 );
             }
         }

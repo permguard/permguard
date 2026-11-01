@@ -756,8 +756,11 @@ impl App {
     /// A build that defines its own parser calls this so its usage text, description, and `--version`
     /// match the product it actually is.
     pub fn decorate(&self, command: ClapCommand) -> ClapCommand {
+        // `bin_name` too: clap otherwise names the program after `argv[0]`, `<name>.exe` on
+        // Windows, in some help and not in the rest.
         command
             .name(self.identity.binary_name())
+            .bin_name(self.identity.binary_name())
             .about(self.identity.about())
             .version(self.build_settings.version())
     }

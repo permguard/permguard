@@ -49,6 +49,9 @@ pub struct Dir {
     path: PathBuf,
     #[cfg(unix)]
     fd: rustix::fd::OwnedFd,
+    /// The handle holding this directory's lock, off Unix: see [`Dir::try_lock`].
+    #[cfg(not(unix))]
+    held: std::sync::Mutex<Option<File>>,
 }
 
 /// Refuses anything that is not exactly one path component.
@@ -165,7 +168,21 @@ impl Dir {
 
     /// The space left on the filesystem holding this directory, for an unprivileged writer.
     pub fn free_space(&self) -> Result<FreeSpace> {
+        // A test makes this platform one that cannot measure, as Windows is.
+        if permguard_core::fault::free_space_unmeasurable(&self.path) {
+            return Err(StorageError::Io {
+                what: format!("measuring {}", self.path.display()),
+                source: std::io::Error::from(std::io::ErrorKind::Unsupported),
+            });
+        }
         self.free_space_raw()
+    }
+
+    /// The space left, where the platform can measure it; `None` in a compatibility mode
+    /// (Windows), whose filesystem this build cannot ask. Any other failure is a failure
+    /// (8-architecture-storage-operations).
+    pub fn free_space_measured(&self) -> Result<Option<FreeSpace>> {
+        measured(self.free_space())
     }
 
     /// The type of the filesystem holding this directory, as the platform names it: `ext4`, `xfs`,
@@ -231,6 +248,19 @@ impl Dir {
             self.sync()?;
         }
         Ok(swept)
+    }
+}
+
+/// A free-space reading, with `Unsupported` (the platform cannot measure) read as `None`.
+pub(crate) fn measured(space: Result<FreeSpace>) -> Result<Option<FreeSpace>> {
+    match space {
+        Ok(space) => Ok(Some(space)),
+        Err(StorageError::Io { source, .. })
+            if source.kind() == std::io::ErrorKind::Unsupported =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -587,6 +617,16 @@ mod platform {
             }
         }
 
+        /// Releases the lock [`Dir::try_lock`] took; a directory not locked is left as it is.
+        pub fn unlock(&self) -> Result<()> {
+            rustix::fs::flock(&self.fd, rustix::fs::FlockOperation::Unlock).map_err(|error| {
+                StorageError::Io {
+                    what: format!("unlocking {}", self.path.display()),
+                    source: os(error),
+                }
+            })
+        }
+
         /// Removes the empty subdirectory `name`; `false` when it was already gone.
         pub fn remove_subdir(&self, name: &str) -> Result<bool> {
             let name = component(name)?;
@@ -730,6 +770,7 @@ mod platform {
             }
             Ok(Self {
                 path: path.to_path_buf(),
+                held: std::sync::Mutex::new(None),
             })
         }
 
@@ -882,10 +923,51 @@ mod platform {
                 .map_err(io(format!("resolving {}", self.path.display())))
         }
 
-        /// No directory locks here: the platform is a compatibility mode, and one Host per volume
-        /// is the operator's to ensure.
+        /// Takes an exclusive lock on this directory, without waiting: `false` when another
+        /// handle holds it. Windows locks no directory with `LockFileEx`; the lock is a handle on
+        /// the directory that asks for the right to delete it and denies that right to everybody
+        /// else, so a second lock and a removal fail with a sharing violation while reading the
+        /// directory and writing in it do not (8-architecture-storage-operations). Released by
+        /// [`Dir::unlock`] or when this `Dir` is dropped.
         pub fn try_lock(&self) -> Result<bool> {
-            Ok(true)
+            use std::os::windows::fs::OpenOptionsExt as _;
+            const DELETE: u32 = 0x0001_0000;
+            const FILE_SHARE_READ: u32 = 0x1;
+            const FILE_SHARE_WRITE: u32 = 0x2;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            const ERROR_SHARING_VIOLATION: i32 = 32;
+            let mut held = self
+                .held
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if held.is_some() {
+                return Ok(true);
+            }
+            match std::fs::OpenOptions::new()
+                .access_mode(DELETE)
+                .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(&self.path)
+            {
+                Ok(handle) => {
+                    *held = Some(handle);
+                    Ok(true)
+                }
+                Err(error) if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => Ok(false),
+                Err(error) => Err(StorageError::Io {
+                    what: format!("locking {}", self.path.display()),
+                    source: error,
+                }),
+            }
+        }
+
+        /// Releases the lock [`Dir::try_lock`] took, if it holds one.
+        pub fn unlock(&self) -> Result<()> {
+            self.held
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+            Ok(())
         }
 
         /// Removes the empty subdirectory `name`; `false` when it was already gone.

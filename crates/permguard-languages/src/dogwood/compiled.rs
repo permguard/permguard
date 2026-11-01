@@ -880,15 +880,18 @@ impl Evaluator for CompiledDogwood {
     /// it would return it as an ordinary permit or deny, indistinguishable from one the policies
     /// meant. The request is one this runtime cannot take on this interface.
     fn evaluate(&self, query: &Query) -> Verdict {
-        let _ = query;
+        // The stack an engine needs is its own to guarantee: see crate::headroom.
+        crate::headroom::with(|| {
+            let _ = query;
 
-        Verdict::input_rejected(
-            "this is a Dogwood partition, and a Dogwood policy decides against history. Submit \
-             the request as an event to the temporal interface \
-             (`permguard.api.pdp.temporal.v1alpha1`); the stateless interface has no history to \
-             decide it against"
-                .to_owned(),
-        )
+            Verdict::input_rejected(
+                "this is a Dogwood partition, and a Dogwood policy decides against history. Submit \
+                 the request as an event to the temporal interface \
+                 (`permguard.api.pdp.temporal.v1alpha1`); the stateless interface has no history to \
+                 decide it against"
+                    .to_owned(),
+            )
+        })
     }
 
     fn footprint(&self) -> usize {

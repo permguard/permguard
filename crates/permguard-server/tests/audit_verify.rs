@@ -335,7 +335,12 @@ async fn a_migrated_legacy_trail_and_the_host_trails_verify_together() {
     std::fs::write(&keys, document.to_string()).expect("written");
     let report = verify(&root, Some(&keys)).await.expect("both verify");
     assert!(report.contains("2 trails verified, 0 failed"), "{report}");
-    assert!(report.contains("host/audit/legacy ok"), "{report}");
+    // The report names the chain's directory as the platform writes paths.
+    let legacy_dir = std::path::Path::new("host").join("audit").join("legacy");
+    assert!(
+        report.contains(&format!("{} ok", legacy_dir.display())),
+        "{report}"
+    );
     // A day of the migrated chain edited: the whole verification fails.
     let day = root.join("host/audit/legacy/audit-2026-10-02.jsonl");
     let text = std::fs::read_to_string(&day).expect("read");

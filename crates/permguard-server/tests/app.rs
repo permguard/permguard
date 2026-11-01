@@ -344,6 +344,18 @@ async fn test_the_json_format_prints_no_banner_at_all() {
     );
 }
 
+/// Whether a `production` start was refused for `reason`. Off Unix the `production` profile never
+/// serves: Windows is a compatibility mode below it (8-architecture-storage-operations), and the
+/// process cannot even be verified private, so the refusal names that, before any reason a Unix
+/// start reaches. On Unix the reason itself is required, as it always was.
+fn refused_for(message: &str, reason: &str) -> bool {
+    if cfg!(unix) {
+        message.contains(reason)
+    } else {
+        message.contains("the `production` profile does not serve this process and volume")
+    }
+}
+
 /// Checked at start (WP-2.8): `production`, the default, wants the volume claimed by the
 /// orchestrator before anything opens; a development machine says so and starts.
 #[tokio::test]
@@ -361,7 +373,7 @@ async fn test_a_production_host_without_a_volume_claim_does_not_start() {
         .await
         .expect_err("production wants a claimed volume");
     assert!(
-        format!("{refused:#}").contains("VOLUME-CLAIM"),
+        refused_for(&format!("{refused:#}"), "VOLUME-CLAIM"),
         "{refused:#}"
     );
 
@@ -1346,7 +1358,7 @@ async fn test_a_production_volume_without_an_identity_refuses_to_start_and_mints
         .await
         .expect_err("production needs a provisioned identity");
     assert!(
-        format!("{refused:#}").contains("permguard host identity provision"),
+        refused_for(&format!("{refused:#}"), "permguard host identity provision"),
         "{refused:#}"
     );
     assert!(
@@ -1403,7 +1415,7 @@ async fn test_a_production_volume_holds_no_plaintext_identity_key() {
         .await
         .expect_err("no key-encryption key");
     let message = format!("{refused:#}");
-    assert!(message.contains("key-encryption key"), "{message}");
+    assert!(refused_for(&message, "key-encryption key"), "{message}");
     let key = fs::read(volume.join("host/identity/keys/1.key")).expect("the key is kept");
     assert_eq!(
         key.first(),
@@ -1426,7 +1438,7 @@ async fn test_a_production_volume_holds_no_plaintext_identity_key() {
         .await
         .expect_err("plaintext custody is not production's");
     let message = format!("{refused:#}");
-    assert!(message.contains("custody.plaintext"), "{message}");
+    assert!(refused_for(&message, "custody.plaintext"), "{message}");
 }
 
 #[tokio::test]
