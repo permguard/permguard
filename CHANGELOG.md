@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.15] - 2026-11-01
+
 ### Fixed
 
 - **A volume migrates on Windows.**
