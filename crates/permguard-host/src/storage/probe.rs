@@ -680,15 +680,28 @@ mod tests {
         assert!(!report.identity.device.is_empty());
         #[cfg(unix)]
         assert!(report.free.is_some_and(|free| free.bytes > 0));
-        let mut expected = vec![
-            Reason::Flush,
-            Reason::Permissions,
-            Reason::Lock,
-            Reason::Rename,
-            Reason::Identity,
-            Reason::HardLink,
-            Reason::TornAppend,
-        ];
+        // Windows has no Unix permissions, and the standard library reads a file's identity there
+        // only through an unstable interface: the probe checks the rest
+        // (8-architecture-storage-operations).
+        let mut expected = if cfg!(unix) {
+            vec![
+                Reason::Flush,
+                Reason::Permissions,
+                Reason::Lock,
+                Reason::Rename,
+                Reason::Identity,
+                Reason::HardLink,
+                Reason::TornAppend,
+            ]
+        } else {
+            vec![
+                Reason::Flush,
+                Reason::Lock,
+                Reason::Rename,
+                Reason::HardLink,
+                Reason::TornAppend,
+            ]
+        };
         // The floors are checked where free space can be measured; a compatibility mode (Windows)
         // reports them as not measured (8-architecture-storage-operations).
         if let Some(free) = state.free_space_measured().expect("read") {

@@ -57,6 +57,13 @@ fn examples() -> PathBuf {
 /// The binary, without the `PERMGUARD_*` variables of the shell that runs the tests.
 fn binary() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_permguard-all-in-one"));
+    // Its own process group on Windows, so a test can send it Ctrl-Break: the stop Windows has.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        command.creation_flags(CREATE_NEW_PROCESS_GROUP);
+    }
     for (name, _) in std::env::vars_os() {
         if name.to_string_lossy().starts_with("PERMGUARD_") {
             command.env_remove(name);
@@ -274,21 +281,20 @@ struct Server {
 
 impl Server {
     fn stop(mut self) {
-        // SIGTERM, then the wait, as an orchestrator stops it. Off Unix there is no SIGTERM: a Windows
-        // shell's `kill` knows none of its process ids and the wait would only time out, so the child
-        // is ended at once (knowledge/rust § 7).
+        // Asked to stop as its platform asks, then the wait, then the hard kill: SIGTERM on Unix, as an
+        // orchestrator sends it; Ctrl-Break on Windows, which has no SIGTERM (1-architecture-server).
         #[cfg(unix)]
-        {
-            let _ = Command::new("kill")
-                .args(["-TERM", &self.child.id().to_string()])
-                .status();
-            let deadline = Instant::now() + Duration::from_secs(30);
-            while Instant::now() < deadline {
-                if let Ok(Some(_)) = self.child.try_wait() {
-                    return;
-                }
-                std::thread::sleep(Duration::from_millis(100));
+        let _ = Command::new("kill")
+            .args(["-TERM", &self.child.id().to_string()])
+            .status();
+        #[cfg(windows)]
+        ctrl_break(self.child.id());
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            if let Ok(Some(_)) = self.child.try_wait() {
+                return;
             }
+            std::thread::sleep(Duration::from_millis(100));
         }
         let _ = self.child.kill();
         let _ = self.child.wait();
@@ -624,4 +630,17 @@ fn test_the_baseline_volume_recovers_through_every_migration() {
     let server = upgrade.start().expect("the migrated server starts again");
     answers_as_the_baseline(&upgrade);
     server.stop();
+}
+
+/// Sends Ctrl-Break to the process group `pid` leads, the stop a Windows console process is asked
+/// for: [`binary`] starts every server in a group of its own.
+#[cfg(windows)]
+fn ctrl_break(pid: u32) {
+    unsafe extern "system" {
+        fn GenerateConsoleCtrlEvent(event: u32, process_group: u32) -> i32;
+    }
+    const CTRL_BREAK_EVENT: u32 = 1;
+    // SAFETY: a kernel32 call with two integers and no pointer; it reaches only the process group
+    // `pid` leads, which shares this test's console, and a group already gone is a failed call.
+    let _ = unsafe { GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid) };
 }

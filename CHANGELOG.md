@@ -35,6 +35,8 @@ is cut.
 - **The help names `permguard` on Windows.**
   `-h` printed `Usage: permguard.exe` where `permguard help` printed `permguard`; the servers named themselves after their executable the same way.
 - **The benchmark measures CPU and memory on Windows,** through PowerShell's `Get-Process`, which has no `ps`, read in the invariant culture.
+- **A Windows server stops in order.**
+  It drained on Ctrl-C alone, and any other stop ended it where it stood, its history unshipped and its trails unsealed. It now drains on Ctrl-C, Ctrl-Break, its console being closed and the system shutting down, the stops Windows has instead of SIGTERM.
 
 ## [0.1.14] - 2026-10-31
 

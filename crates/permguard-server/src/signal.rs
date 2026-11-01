@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use tokio::task::JoinHandle;
 use tracing::info;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use tracing::warn;
 
 use permguard_core::BoxFuture;
@@ -149,9 +149,76 @@ fn listen(
     }
 }
 
+/// Windows has no SIGTERM: a process is asked to stop by Ctrl-C, by Ctrl-Break (what a service
+/// wrapper or a parent sends a console process group), by its console being closed and by the
+/// system shutting down. Each is registered here, now, as the Unix signals are; one that cannot be
+/// registered is said once and the others still stop the server (1-architecture-server).
+#[cfg(windows)]
+fn listen_for_shutdown() -> BoxFuture<'static, &'static str> {
+    use tokio::signal::windows;
+
+    let interrupt = registered(windows::ctrl_c(), "CTRL_C");
+    let broken = registered(windows::ctrl_break(), "CTRL_BREAK");
+    let closed = registered(windows::ctrl_close(), "CTRL_CLOSE");
+    let shutdown = registered(windows::ctrl_shutdown(), "CTRL_SHUTDOWN");
+
+    Box::pin(async move {
+        // A listener that could not be registered never resolves: the others still can, and with
+        // none the server cannot be asked to stop, which waiting says honestly.
+        let interrupt = async move {
+            match interrupt {
+                Some(mut listener) => listener.recv().await,
+                None => std::future::pending().await,
+            }
+        };
+        let broken = async move {
+            match broken {
+                Some(mut listener) => listener.recv().await,
+                None => std::future::pending().await,
+            }
+        };
+        let closed = async move {
+            match closed {
+                Some(mut listener) => listener.recv().await,
+                None => std::future::pending().await,
+            }
+        };
+        let shutdown = async move {
+            match shutdown {
+                Some(mut listener) => listener.recv().await,
+                None => std::future::pending().await,
+            }
+        };
+        tokio::select! {
+            _ = interrupt => "CTRL_C",
+            _ = broken => "CTRL_BREAK",
+            _ = closed => "CTRL_CLOSE",
+            _ = shutdown => "CTRL_SHUTDOWN",
+        }
+    })
+}
+
+/// A Windows console event listener, or why it could not be registered.
+#[cfg(windows)]
+fn registered<T>(listener: std::io::Result<T>, name: &'static str) -> Option<T> {
+    match listener {
+        Ok(listener) => Some(listener),
+        Err(error) => {
+            warn!(
+                event.name = "server.signal_unavailable",
+                signal = name,
+                error = %error,
+                "this process cannot be asked to stop with this console event"
+            );
+
+            None
+        }
+    }
+}
+
 /// Registers nothing ahead of time, on a platform where there is nothing to register ahead of time:
 /// `ctrl_c` installs its handler on the first poll and there is no earlier hook to use.
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn listen_for_shutdown() -> BoxFuture<'static, &'static str> {
     Box::pin(async {
         let _ = tokio::signal::ctrl_c().await;
