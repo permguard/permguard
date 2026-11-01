@@ -481,9 +481,11 @@ fn reserve(file: &std::fs::File, bytes: u64) -> std::io::Result<()> {
     rustix::fs::fallocate(file, rustix::fs::FallocateFlags::empty(), 0, bytes).map_err(Into::into)
 }
 
+/// Extending a file allocates it on NTFS, as `fallocate` does on Linux: a disk without the room
+/// fails the extension (8-architecture-storage-operations).
 #[cfg(not(unix))]
-fn reserve(_file: &std::fs::File, _bytes: u64) -> std::io::Result<()> {
-    Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+fn reserve(file: &std::fs::File, bytes: u64) -> std::io::Result<()> {
+    file.set_len(bytes)
 }
 
 #[cfg(unix)]

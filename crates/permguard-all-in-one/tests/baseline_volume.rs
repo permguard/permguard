@@ -185,6 +185,13 @@ operations:
     /// The operator's step the archive asks for: the baseline kept the Control Plane's event store
     /// inside the legacy event history, which `migrate finalize` removes whole, so the store moves
     /// out of it, and the configuration with it.
+    /// The last lines of the server's log: what a failure on a machine nobody can log into shows.
+    fn log_tail(&self) -> String {
+        let log = std::fs::read_to_string(self.dir.join("server.log")).unwrap_or_default();
+        let lines: Vec<&str> = log.lines().collect();
+        lines[lines.len().saturating_sub(40)..].join("\n")
+    }
+
     fn move_the_event_store_out(&self) {
         std::fs::rename(
             self.volume.join("data/events/store"),
@@ -549,7 +556,13 @@ fn test_the_baseline_volume_recovers_through_every_migration() {
         }
         archived = archive();
     }
-    assert!(moved, "the store inside the history was never refused");
+    assert!(
+        moved,
+        "the store inside the history was never refused; the archive said: {}\nthe server's log \
+         ends with:\n{}",
+        text(&archived),
+        upgrade.log_tail()
+    );
     assert!(archived.status.success(), "{}", text(&archived));
 
     let status = upgrade.offline(&["migrate", "status", "--volume", upgrade.volume()]);
