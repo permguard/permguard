@@ -43,8 +43,8 @@ use std::process::ExitCode;
 
 use serde_json::{Map, Value};
 
-use permguard_cli::check::{self, CheckReport};
-use permguard_cli::engine::{FsStore, Workspace};
+use crate::check::{self, CheckReport};
+use crate::engine::{FsStore, Workspace};
 use permguard_control_client::pdp;
 
 use crate::args::{CheckArgs, Globals};

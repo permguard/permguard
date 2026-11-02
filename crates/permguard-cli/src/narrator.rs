@@ -12,9 +12,12 @@ use permguard_control_client::narrate::{Narrator, Silent};
 
 use crate::style;
 
-/// Prints one dim line per exchange, on stderr so it never pollutes a report
-/// a script is parsing.
-pub struct Verbose;
+/// Prints one dim line per exchange, on the diagnostics so it never pollutes
+/// a report a script is parsing. It keeps the capture of the run that made it:
+/// the transports may narrate from another thread.
+pub struct Verbose {
+    capture: Option<crate::streams::Capture>,
+}
 
 impl Narrator for Verbose {
     fn exchange(&self, verb: &str, target: &str, sent: usize, outcome: &str, received: usize) {
@@ -23,14 +26,20 @@ impl Narrator for Verbose {
         } else {
             format!("[verbose] {verb} {target} ({sent}b) -> {outcome} ({received}b)")
         };
-        eprintln!("{}", style::dim(&line));
+        let line = format!("{}\n", style::dim(&line));
+        let _ = match &self.capture {
+            Some(capture) => capture.err(|out| out.write_all(line.as_bytes())),
+            None => crate::streams::err(|out| out.write_all(line.as_bytes())),
+        };
     }
 }
 
 /// The narrator a run asks for: verbose or silent.
 pub fn for_run(verbose: bool) -> Box<dyn Narrator> {
     if verbose {
-        Box::new(Verbose)
+        Box::new(Verbose {
+            capture: crate::streams::current(),
+        })
     } else {
         Box::new(Silent)
     }

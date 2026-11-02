@@ -16,7 +16,7 @@ use std::io::{self, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use permguard_cli::events::{EventReport, EventsReport};
+pub use crate::events::{EventReport, EventsReport};
 
 use crate::output::Report;
 use crate::style;

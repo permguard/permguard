@@ -22,7 +22,7 @@
 
 use std::process::ExitCode;
 
-use permguard_cli::decisions::{Filter, MAX_PAGES, Page, report, verify};
+use crate::decisions::{Filter, MAX_PAGES, Page, report, verify};
 use permguard_control_client::decisions::{self, DecisionLog, ReadError, ReadScope, ReadWindow};
 use permguard_core::Jwk;
 use permguard_decisions::envelope::Signed;
@@ -68,7 +68,7 @@ fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<E
     let (reader, scope) = connect(globals, query, &trace)?;
     let keys = key_set(globals, query)?;
 
-    let read = permguard_cli::decisions::read(
+    let read = crate::decisions::read(
         reader.as_ref(),
         &scope,
         query.from.clone(),

@@ -56,8 +56,29 @@ pub(crate) fn authored(bytes: Vec<u8>) -> Vec<u8> {
     normalised
 }
 
+/// Where the second of a file's policies begins, 1-based: searched after the first, as the
+/// splitter keeps each policy's bytes verbatim; the file's start when it cannot be found.
+fn place_of(source: &[u8], first: &[u8], second: &[u8]) -> (usize, usize) {
+    let text = String::from_utf8_lossy(source);
+    let first = String::from_utf8_lossy(first);
+    let second = String::from_utf8_lossy(second);
+    let after = text
+        .find(first.trim())
+        .map_or(0, |at| at + first.trim().len());
+    let at = text[after..]
+        .find(second.trim())
+        .map_or(0, |found| after + found);
+    let line = text[..at].matches('\n').count() + 1;
+    let column = at - text[..at].rfind('\n').map_or(0, |newline| newline + 1) + 1;
+    (line, column)
+}
+
 /// Builds the snapshot of the working tree.
-pub(crate) fn build_snapshot(store: &dyn Store, manifest: &Manifest) -> Result<Snapshot> {
+pub(crate) fn build_snapshot(
+    store: &dyn Store,
+    manifest: &Manifest,
+    one_policy_per_file: bool,
+) -> Result<Snapshot> {
     let ignores = read_ignores(store)?;
 
     // The previous snapshot's hooks, for the identity cascade: entry path →
@@ -117,6 +138,7 @@ pub(crate) fn build_snapshot(store: &dyn Store, manifest: &Manifest) -> Result<S
             policy_sources: Vec::new(),
             artifacts: BTreeMap::new(),
             problems: &mut problems,
+            one_policy_per_file,
         };
         let digest = build_directory(&mut context, partition_name, partition_name, 1)?;
         // Cardinality and requirement, from the registry rather than from a rule written here: an
@@ -259,6 +281,8 @@ struct PartitionContext<'a> {
     policy_sources: Vec<(String, Vec<u8>)>,
     /// The bundle the set-level check is run against.
     artifacts: BTreeMap<String, Vec<u8>>,
+    /// Whether a policy file must hold one policy (`workspace.one_policy_per_file`).
+    one_policy_per_file: bool,
     /// Everything wrong so far, named by its file.
     ///
     /// Collected rather than thrown: a validation that stops at the first
@@ -461,6 +485,18 @@ fn build_directory(
                 continue;
             }
         };
+        // A team that keeps one policy per file asks for it: the file is refused whole, where the
+        // second policy begins, rather than split.
+        if context.one_policy_per_file && extracted.len() > 1 {
+            let (line, column) = place_of(&source, &extracted[0].bytes, &extracted[1].bytes);
+            context.problems.push(format!(
+                "{child_fs}: holds {} policies, the second at line {line} column {column}: a policy \
+                 file holds one policy when workspace.one_policy_per_file is on; move each other \
+                 policy to a file of its own",
+                extracted.len()
+            ));
+            continue;
+        }
         for (position, policy) in extracted.into_iter().enumerate() {
             // Named uniquely even within one file — a file may hold several
             // policies, and the set-level check names each one on its own.
@@ -508,9 +544,13 @@ fn build_directory(
             let id = resolved.id().to_owned();
 
             if let Some(other) = context.ids_seen.insert(id.clone(), child_fs.clone()) {
-                context.problems.push(format!(
-                    "the same policy ({id}) appears in both {other} and {child_fs}: one policy, one place"
-                ));
+                context.problems.push(if other == child_fs {
+                    format!("{child_fs}: the same policy ({id}) appears twice in it: one policy, one place")
+                } else {
+                    format!(
+                        "the same policy ({id}) appears in both {other} and {child_fs}: one policy, one place"
+                    )
+                });
                 continue;
             }
             if let Some(alias) = &policy.alias

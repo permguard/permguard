@@ -162,6 +162,14 @@ pub const SETTINGS: &[Setting] = &[
         write: |file, value| file.tls.server_name = value,
     },
     Setting {
+        key: "workspace.one_policy_per_file",
+        description: "Whether validate refuses a policy file that holds more than one policy (true or false)",
+        env: "PERMGUARD_WORKSPACE_ONE_POLICY_PER_FILE",
+        default: "false",
+        read: |file| file.workspace.one_policy_per_file.as_deref(),
+        write: |file, value| file.workspace.one_policy_per_file = value,
+    },
+    Setting {
         key: "auth.token_file",
         description: "A file holding the operator's bearer token, readable by its owner only",
         env: "PERMGUARD_TOKEN_FILE",
@@ -252,6 +260,22 @@ pub struct ConfigFile {
     tls: TlsSection,
     #[serde(skip_serializing_if = "AuthSection::is_empty")]
     auth: AuthSection,
+    #[serde(skip_serializing_if = "WorkspaceSection::is_empty")]
+    workspace: WorkspaceSection,
+}
+
+/// How the workspaces this CLI builds are kept: a team's own rules over what the format allows.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+struct WorkspaceSection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    one_policy_per_file: Option<String>,
+}
+
+impl WorkspaceSection {
+    fn is_empty(&self) -> bool {
+        self.one_policy_per_file.is_none()
+    }
 }
 
 /// The operator's TLS material, by path or, for the key, by reference (TC-1).

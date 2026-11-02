@@ -742,14 +742,12 @@ pub fn run(
     let mut kept = false;
     for (claim, outcome) in &outcomes {
         kept |= matches!(outcome, Outcome::Kept(_));
-        println!(
-            "{}",
-            serde_json::json!({
-                "claim": claim,
-                "outcome": outcome.label(),
-                "detail": outcome.detail(),
-            })
-        );
+        let line = serde_json::json!({
+            "claim": claim,
+            "outcome": outcome.label(),
+            "detail": outcome.detail(),
+        });
+        let _ = crate::streams::out(|out| writeln!(out, "{line}"));
     }
     // Keeping a claim is the answer when the proof is missing, not a failure of this run.
     let _ = kept;

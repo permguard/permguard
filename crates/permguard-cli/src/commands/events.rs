@@ -28,7 +28,7 @@
 
 use std::process::ExitCode;
 
-use permguard_cli::events::{MAX_PAGES, Read, Shape, check, report};
+use crate::events::{MAX_PAGES, Read, Shape, check, report};
 use permguard_control_client::events::{
     self, EventLog, ReadError, ReadFilters, ReadScope, ReadWindow,
 };
@@ -69,7 +69,7 @@ fn list(globals: &Globals, query: &EventsQuery, everything: bool) -> Result<Exit
     let keys = key_set(globals, query)?;
 
     let pages = if everything { MAX_PAGES } else { 1 };
-    let (read, walked) = permguard_cli::events::read(
+    let (read, walked) = crate::events::read(
         reader.as_ref(),
         &scope,
         window_of(query),

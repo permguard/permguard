@@ -9,7 +9,6 @@
 //! CLI is for.
 
 use std::fmt::Display;
-use std::io::Write;
 
 /// Whether the CLI narrates what it does.
 #[derive(Copy, Clone, Debug)]
@@ -28,13 +27,11 @@ impl Trace {
             return;
         }
 
-        let mut err = std::io::stderr().lock();
-        let _ = writeln!(err, "· {message}");
+        let _ = crate::streams::err(|err| writeln!(err, "· {message}"));
     }
 }
 
 /// Says something the operator needs to see whether they asked for narration or not.
 pub fn warn(message: impl Display) {
-    let mut err = std::io::stderr().lock();
-    let _ = writeln!(err, "warning: {message}");
+    let _ = crate::streams::err(|err| writeln!(err, "warning: {message}"));
 }

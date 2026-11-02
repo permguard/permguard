@@ -17,7 +17,17 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A team can keep one policy per file.**
+  The CLI setting `workspace.one_policy_per_file` (`PERMGUARD_WORKSPACE_ONE_POLICY_PER_FILE`), `true` or `false`, default `false`.
+  When it is `true`, `refresh`, `validate`, `test`, `plan`, `apply` and `status` refuse a policy file that holds more than one policy, naming the file and the line where the second policy begins.
+  When it is `false`, nothing changes: a file of several policies is split as before.
+
+### Changed
+
+- **The same policy twice in one file is named once.**
+  `validate` said `appears in both <file> and <file>` with the same file twice; it now says `<file>: the same policy (<id>) appears twice in it`.
 
 ## [0.1.15] - 2026-11-01
 

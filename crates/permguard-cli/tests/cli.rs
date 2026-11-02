@@ -282,6 +282,103 @@ fn a_duplicate_alias_is_refused_naming_both_declarations() {
     assert!(text.contains("readers"), "{text}");
 }
 
+/// A file of two policies builds by default; with `workspace.one_policy_per_file` on, `validate`
+/// refuses it, naming the file and where the second policy begins, and `config set` takes only a
+/// switch's two values.
+#[test]
+fn one_policy_per_file_is_a_teams_choice_and_validate_honours_it() {
+    let dir = scratch("one-policy");
+    write_sources(&dir);
+    std::fs::write(
+        dir.join("app/two.cedar"),
+        "@alias(\"first\")\npermit(principal, action == Action::\"a\", resource);\n\n@alias(\"second\")\npermit(principal, action == Action::\"b\", resource);\n",
+    )
+    .expect("the file of two policies writes");
+    assert!(run(&dir, &["init", "cli-test"]).status.success());
+    // The test's own configuration file sits in the workspace: excused, as any neighbour is.
+    let ignores = std::fs::read_to_string(dir.join(".permguardignore")).expect("init wrote it");
+    std::fs::write(
+        dir.join(".permguardignore"),
+        format!("{ignores}cli-config.yml\n"),
+    )
+    .expect("the configuration is excused");
+
+    let by_default = run(&dir, &["validate"]);
+    assert!(by_default.status.success(), "{}", stderr(&by_default));
+
+    let refused_value = run(
+        &dir,
+        &["config", "set", "workspace.one_policy_per_file", "yes"],
+    );
+    assert_eq!(
+        refused_value.status.code(),
+        Some(64),
+        "{}",
+        stderr(&refused_value)
+    );
+    let set = run(
+        &dir,
+        &["config", "set", "workspace.one_policy_per_file", "true"],
+    );
+    assert!(set.status.success(), "{}", stderr(&set));
+
+    let refused = run(&dir, &["validate"]);
+    assert_eq!(refused.status.code(), Some(64), "{}", stderr(&refused));
+    let said = stderr(&refused);
+    assert!(
+        said.contains("app/two.cedar: holds 2 policies, the second at line 4 column 1"),
+        "{said}"
+    );
+
+    let off = run(
+        &dir,
+        &["config", "set", "workspace.one_policy_per_file", "false"],
+    );
+    assert!(off.status.success(), "{}", stderr(&off));
+    let valid = run(&dir, &["validate"]);
+    assert!(valid.status.success(), "{}", stderr(&valid));
+
+    // The environment states it too, over the file.
+    let from_environment = Command::new(env!("CARGO_BIN_EXE_permguard"))
+        .arg("-w")
+        .arg(&dir)
+        .arg("validate")
+        .env("PERMGUARD_CONFIG", dir.join("cli-config.yml"))
+        .env("PERMGUARD_WORKSPACE_ONE_POLICY_PER_FILE", "true")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("the binary runs");
+    assert_eq!(
+        from_environment.status.code(),
+        Some(64),
+        "{}",
+        stderr(&from_environment)
+    );
+}
+
+/// The same policy twice in one file is named once, as one file's problem.
+#[test]
+fn the_same_policy_twice_in_a_file_is_named_once() {
+    let dir = scratch("twice");
+    write_sources(&dir);
+    std::fs::write(
+        dir.join("app/twice.cedar"),
+        "permit(principal, action == Action::\"c\", resource);\npermit(principal, action == Action::\"c\", resource);\n",
+    )
+    .expect("the file writes");
+    assert!(run(&dir, &["init", "cli-test"]).status.success());
+
+    let output = run(&dir, &["validate"]);
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    let said = stderr(&output);
+    assert!(
+        said.contains("app/twice.cedar: the same policy ("),
+        "{said}"
+    );
+    assert!(said.contains("appears twice in it"), "{said}");
+    assert!(!said.contains("appears in both"), "{said}");
+}
+
 // ---- the guards ------------------------------------------------------------------------------
 
 #[test]

@@ -18,9 +18,9 @@ use crate::session::{open_store, render, resolve_endpoint};
 use crate::trace::{self, Trace};
 use permguard_control_client::AnyRemote;
 
+use crate::engine::workspace::cases;
 use crate::reference;
 use crate::workspace_out;
-use permguard_cli::engine::workspace::cases;
 
 /// Where an answer comes from: these sources, or a plane serving the ledger they track.
 enum Decider {
@@ -54,7 +54,7 @@ impl Decider {
         &self,
         store: &dyn permguard_control_client::Store,
         located: &cases::Located,
-    ) -> Result<cases::Outcome, permguard_cli::engine::workspace::WorkspaceError> {
+    ) -> Result<cases::Outcome, crate::engine::workspace::WorkspaceError> {
         match self {
             Decider::Local(compiled) => cases::run(compiled, store, located),
             Decider::Remote(plane) => plane.decide(store, located),
@@ -68,7 +68,7 @@ impl Plane {
         &self,
         store: &dyn permguard_control_client::Store,
         located: &cases::Located,
-    ) -> Result<cases::Outcome, permguard_cli::engine::workspace::WorkspaceError> {
+    ) -> Result<cases::Outcome, crate::engine::workspace::WorkspaceError> {
         let (mut payload, profile) = cases::request_of(store, located)?;
 
         // Validated before it is sent, with the same `CheckRequest` the plane deserializes: a
@@ -336,7 +336,7 @@ fn remote_plane(
     trace: &Trace,
     zone: Option<String>,
     ledger: Option<String>,
-    snapshot: &permguard_cli::engine::workspace::Snapshot,
+    snapshot: &crate::engine::workspace::Snapshot,
 ) -> Result<Plane, Failure> {
     let settings = crate::session::open_store(globals, trace)?;
     let target = crate::target::resolve(
@@ -467,14 +467,48 @@ pub fn workspace_command(
     op: WorkspaceOp,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
-    use std::io::Write as _;
-
-    use permguard_cli::engine::workspace::PlanAction;
-    use permguard_cli::engine::{FsStore, Store as _, Workspace};
+    use crate::engine::workspace::PlanAction;
+    use crate::engine::{FsStore, Store as _, Workspace};
     use workspace_out::*;
 
     let store = FsStore::new(&globals.workdir);
-    let ws = Workspace::open(&store);
+    // A team's own rule over the format: one policy per file, when its configuration asks for it.
+    // Read by the commands that build the sources for the author; the others never read the file.
+    let builds = matches!(
+        op,
+        WorkspaceOp::Refresh
+            | WorkspaceOp::Validate
+            | WorkspaceOp::Test { .. }
+            | WorkspaceOp::Plan
+            | WorkspaceOp::Apply { .. }
+            | WorkspaceOp::Status
+    );
+    let one_policy_per_file = builds && {
+        let settings = crate::session::open_store(globals, trace)?;
+        let setting = crate::settings::setting("workspace.one_policy_per_file")
+            .ok_or_else(|| Failure::internal("`workspace.one_policy_per_file` is not a setting"))?;
+        let resolved = crate::settings::resolve(
+            setting,
+            settings.file(),
+            None,
+            &crate::settings::environment,
+        );
+        trace.say(format!(
+            "workspace.one_policy_per_file = {} [{}]",
+            resolved.value, resolved.origin
+        ));
+        match resolved.value.as_str() {
+            "true" => true,
+            "false" => false,
+            other => {
+                return Err(Failure::usage(format!(
+                    "workspace.one_policy_per_file is true or false, not `{other}` (from the {})",
+                    resolved.origin
+                )));
+            }
+        }
+    };
+    let ws = Workspace::open(&store).with_one_policy_per_file(one_policy_per_file);
     let format = globals.output;
 
     // One mutating command at a time per workspace — the git `index.lock`
@@ -492,7 +526,7 @@ pub fn workspace_command(
     );
     let _workspace_lock = if mutating && store.exists(".permguard") {
         Some(
-            permguard_cli::engine::lock::LockGuard::acquire(&store, &lock_holder())
+            crate::engine::lock::LockGuard::acquire(&store, &lock_holder())
                 .map_err(Failure::usage)?,
         )
     } else {
@@ -576,7 +610,7 @@ pub fn workspace_command(
     // What a plan changes that no policy names: the manifest, and a
     // partition's schema. They are commit content like everything else, so
     // they belong in the report rather than in a surprise.
-    let shape_lines = |plan: &permguard_cli::engine::workspace::Plan| -> Vec<PlanLine> {
+    let shape_lines = |plan: &crate::engine::workspace::Plan| -> Vec<PlanLine> {
         let mut lines = Vec::new();
         if plan.manifest_changed {
             lines.push(PlanLine {
@@ -634,7 +668,7 @@ pub fn workspace_command(
                 remote.verify_discovery().map_err(usage)?;
                 config.remotes.insert(
                     name.clone(),
-                    permguard_cli::engine::workspace::config::RemoteConfig {
+                    crate::engine::workspace::config::RemoteConfig {
                         url: url.clone(),
                         tls_ca_file: None,
                     },
@@ -697,10 +731,9 @@ pub fn workspace_command(
             let target = directory.unwrap_or_else(|| PathBuf::from(&ledger));
             let target = globals.workdir.join(target);
             let remote = connect(&base)?;
-            let pulled = permguard_cli::engine::workspace::clone::clone(
-                &target, &base, &zone, &ledger, &remote,
-            )
-            .map_err(usage)?;
+            let pulled =
+                crate::engine::workspace::clone::clone(&target, &base, &zone, &ledger, &remote)
+                    .map_err(usage)?;
             render(
                 &PullReport {
                     action: "clone",
@@ -731,7 +764,7 @@ pub fn workspace_command(
                     let url = fallback_url(trace)?;
                     config.remotes.insert(
                         remote_name.clone(),
-                        permguard_cli::engine::workspace::config::RemoteConfig {
+                        crate::engine::workspace::config::RemoteConfig {
                             url: url.clone(),
                             tls_ca_file: None,
                         },
@@ -916,7 +949,7 @@ pub fn workspace_command(
         }
         WorkspaceOp::Objects(action) => match action {
             ObjectsAction::List { tracked, staged } => {
-                let objects = permguard_cli::engine::workspace::inventory::inventory(&store)
+                let objects = crate::engine::workspace::inventory::inventory(&store)
                     .map_err(usage)?
                     .into_iter()
                     .filter(|record| {
@@ -935,8 +968,8 @@ pub fn workspace_command(
                 render(&ObjectsReport { objects }, format, trace)?;
             }
             ObjectsAction::Prune { dry_run } => {
-                let pruned = permguard_cli::engine::workspace::prune::prune(&store, !dry_run)
-                    .map_err(usage)?;
+                let pruned =
+                    crate::engine::workspace::prune::prune(&store, !dry_run).map_err(usage)?;
                 render(
                     &workspace_out::PruneReport {
                         applied: pruned.applied,
@@ -965,12 +998,12 @@ pub fn workspace_command(
             } => {
                 use permguard_objects::object::{self, Object};
                 let digest = permguard_objects::digest::Digest::parse(&digest).map_err(usage)?;
-                let bytes = permguard_cli::engine::workspace::inventory::get(&store, &digest)
+                let bytes = crate::engine::workspace::inventory::get(&store, &digest)
                     .map_err(usage)?
                     .ok_or_else(|| Failure::usage("no such local object"))?;
                 if raw {
                     // The exact stored bytes, no banner: this view exists to be piped.
-                    let _ = std::io::stdout().write_all(&bytes);
+                    let _ = crate::streams::out(|out| out.write_all(&bytes));
                     return Ok(ExitCode::SUCCESS);
                 }
                 let decoded = object::decode(&bytes)
@@ -983,7 +1016,7 @@ pub fn workspace_command(
                     // The default for a blob is its content; asking for it
                     // explicitly on anything else is an error, not a guess.
                     (Object::Blob(blob), _, false) if !human => {
-                        let _ = std::io::stdout().write_all(&blob.data);
+                        let _ = crate::streams::out(|out| out.write_all(&blob.data));
                     }
                     (_, true, _) => {
                         return Err(Failure::usage(format!(
@@ -992,8 +1025,7 @@ pub fn workspace_command(
                     }
                     _ => {
                         // The human reading, also the default for trees and commits.
-                        let mut out = std::io::stdout();
-                        let _ = write_human(&mut out, &digest, &decoded);
+                        let _ = crate::streams::out(|out| write_human(out, &digest, &decoded));
                     }
                 }
             }

@@ -15,7 +15,7 @@ use serde::Serialize;
 
 use permguard_control_client::catalog::{Ledger, Zone};
 
-use permguard_cli::check::CheckReport;
+use crate::check::CheckReport;
 
 use crate::output::Report;
 use crate::style;

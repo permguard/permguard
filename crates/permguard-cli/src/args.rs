@@ -840,7 +840,7 @@ pub enum Decision {
     Indeterminate,
 }
 
-impl From<Decision> for permguard_cli::decisions::Outcome {
+impl From<Decision> for crate::decisions::Outcome {
     fn from(decision: Decision) -> Self {
         match decision {
             Decision::Permit => Self::Permit,

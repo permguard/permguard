@@ -17,8 +17,8 @@ use std::io::{self, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use permguard_cli::decisions::INDETERMINATE;
-pub use permguard_cli::decisions::{DecisionsReport, outcome_of};
+use crate::decisions::INDETERMINATE;
+pub use crate::decisions::{DecisionsReport, outcome_of};
 
 use crate::output::Report;
 use crate::style;
@@ -411,7 +411,7 @@ mod tests {
         plain
     }
 
-    use permguard_cli::decisions::DecisionLine;
+    use crate::decisions::DecisionLine;
 
     fn line(seq: u64, decision: bool, outcome: &str) -> DecisionLine {
         DecisionLine {
@@ -447,7 +447,7 @@ mod tests {
     #[test]
     fn the_filter_never_counts_an_indeterminate_decision_as_a_deny() {
         use crate::args::Decision;
-        use permguard_cli::decisions::Outcome;
+        use crate::decisions::Outcome;
 
         // The flag's value, as the command hands it to the library.
         let admits = |decision: Decision, outcome: &str| Outcome::from(decision).admits(outcome);

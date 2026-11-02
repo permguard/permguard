@@ -30,11 +30,11 @@
 use permguard_control_client::TlsOptions;
 
 use crate::args::Globals;
+use crate::engine::{FsStore, Workspace};
 use crate::failure::Failure;
 use crate::session;
 use crate::settings::Store;
 use crate::trace::Trace;
-use permguard_cli::engine::{FsStore, Workspace};
 
 /// What a command was told, before the workspace and the settings are read.
 #[derive(Debug, Default, Clone)]
@@ -290,7 +290,7 @@ fn rooted_at(base: &std::path::Path, path: &std::path::Path) -> std::path::PathB
 pub fn read_token(
     path: &std::path::Path,
 ) -> Result<permguard_control_client::tls::Credential, Failure> {
-    permguard_cli::token::read(path).map_err(Failure::usage)
+    crate::token::read(path).map_err(Failure::usage)
 }
 
 /// The one target class a command reaches (TC-1): a command names exactly one, and a flag naming

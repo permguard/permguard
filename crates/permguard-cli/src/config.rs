@@ -202,6 +202,14 @@ fn validate(setting: &Setting, value: &str) -> Result<(), Error> {
         });
     }
 
+    // A switch is `true` or `false`: anything else would read as off and hide the mistake.
+    if setting.key == "workspace.one_policy_per_file" && !matches!(value, "true" | "false") {
+        return Err(Error::InvalidValue {
+            key: setting.key.to_owned(),
+            detail: "the value is true or false".to_owned(),
+        });
+    }
+
     Ok(())
 }
 

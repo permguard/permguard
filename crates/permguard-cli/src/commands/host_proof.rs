@@ -4,7 +4,7 @@
 //! The `host-batch-v1` entries of a read's `proof[]`: the library's, re-exported for the commands
 //! and their tests, with the batch a test seals beside them.
 
-pub use permguard_cli::host_proof::*;
+pub use crate::host_proof::*;
 
 #[cfg(test)]
 pub(crate) mod testing;

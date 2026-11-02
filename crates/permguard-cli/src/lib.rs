@@ -14,9 +14,36 @@
 /// embeds it reports as the Permguard it runs.
 pub const VERSION: &str = permguard_core::build::VERSION;
 
+mod args;
+mod banner;
+mod commands;
+mod config;
+mod confirm;
+mod decision_out;
+mod discover;
+mod event_out;
+mod failure;
+mod inspect;
+mod narrator;
+mod output;
+mod reference;
+mod session;
+mod settings;
+mod style;
+mod target;
+mod trace;
+mod version;
+mod workspace_out;
+
 pub mod check;
 pub mod decisions;
 pub mod engine;
 pub mod events;
 pub mod host_proof;
+pub mod shell;
+
+pub use crate::failure::{
+    EXIT_NOT_READY, EXIT_READY, EXIT_SOFTWARE, EXIT_UNAVAILABLE, EXIT_UNREACHABLE, EXIT_USAGE,
+};
+mod streams;
 pub mod token;

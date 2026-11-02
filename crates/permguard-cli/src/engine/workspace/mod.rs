@@ -151,12 +151,25 @@ pub(crate) type Result<T> = std::result::Result<T, WorkspaceError>;
 /// One workspace, over whatever storage the caller brought.
 pub struct Workspace<'a> {
     pub(crate) store: &'a dyn Store,
+    /// Whether a policy file must hold one policy (`workspace.one_policy_per_file`); off, the
+    /// format's own rule, a file splits into as many policies as it holds.
+    one_policy_per_file: bool,
 }
 
 impl<'a> Workspace<'a> {
     /// Opens a workspace over a store. Nothing is read until asked.
     pub fn open(store: &'a dyn Store) -> Self {
-        Self { store }
+        Self {
+            store,
+            one_policy_per_file: false,
+        }
+    }
+
+    /// The same workspace, built with a policy file refused when it holds more than one policy.
+    #[must_use]
+    pub fn with_one_policy_per_file(mut self, on: bool) -> Self {
+        self.one_policy_per_file = on;
+        self
     }
 
     /// Initializes a new workspace: the manifest (mandatory from birth),
@@ -276,7 +289,7 @@ impl<'a> Workspace<'a> {
     /// checks happens here — building *is* validating, one code path.
     pub fn refresh(&self) -> Result<Snapshot> {
         let manifest = self.manifest()?;
-        build::build_snapshot(self.store, &manifest)
+        build::build_snapshot(self.store, &manifest, self.one_policy_per_file)
     }
 
     /// The plan: refresh, then diff against the tracked remote head.

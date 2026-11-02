@@ -67,12 +67,11 @@ pub trait Report: Serialize {
     }
 }
 
-/// Renders a report in the requested format, to stdout.
+/// Renders a report in the requested format, to the run's output.
 pub fn emit<R: Report>(report: &R, format: OutputFormat) -> Result<()> {
-    let mut out = io::stdout().lock();
-
-    render(report, format, &mut out)?;
-    out.flush()?;
+    let mut rendered = Vec::new();
+    render(report, format, &mut rendered)?;
+    crate::streams::out(|out| out.write_all(&rendered))?;
 
     Ok(())
 }

@@ -67,8 +67,17 @@ pub(crate) fn depth_from(
     Depth::Basic
 }
 
-/// The colour decision for this process, read once.
+/// Whether the output of this run may carry colour.
+pub(crate) fn coloured() -> bool {
+    depth() != Depth::None
+}
+
+/// The colour decision for this run: a captured run's own, else this process's, read once.
 pub(crate) fn depth() -> Depth {
+    if let Some(capture) = crate::streams::current() {
+        return capture.depth();
+    }
+
     static DEPTH: OnceLock<Depth> = OnceLock::new();
     *DEPTH.get_or_init(|| {
         depth_from(

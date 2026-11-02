@@ -8,8 +8,6 @@
 //! the tests — so they live beside the type that carries them rather than
 //! being scattered across the commands.
 
-use std::process::ExitCode;
-
 use crate::output::OutputFormat;
 /// Every plane it asked about is ready.
 pub const EXIT_READY: u8 = 0;
@@ -113,36 +111,38 @@ impl Failure {
 }
 
 impl Failure {
-    /// Writes this refusal to standard error in the shape the caller asked
-    /// for, and answers with the exit status it carries.
+    /// Writes this refusal to the run's diagnostics in the shape the caller
+    /// asked for, and answers with the exit status it carries.
     ///
     /// Here rather than in `main` because the wording, the structure and the
     /// status are one contract: a script reads all three, and they must be
     /// decided in one place.
-    pub fn report(&self, format: OutputFormat) -> ExitCode {
-        match format {
+    pub fn report(&self, format: OutputFormat) -> u8 {
+        let text = match format {
             OutputFormat::Terminal => match self.code.as_str() {
                 // The generic codes say nothing the sentence does not; the
                 // specific ones are what a person greps the docs for.
-                "usage" | "unavailable" | "internal" => eprintln!("error: {}", self.message),
-                code => eprintln!("error: {} ({code})", self.message),
+                "usage" | "unavailable" | "internal" => format!("error: {}\n", self.message),
+                code => format!("error: {} ({code})\n", self.message),
             },
-            OutputFormat::Json => eprintln!(
-                "{}",
+            OutputFormat::Json => format!(
+                "{}\n",
                 serde_json::json!({
                     "class": self.class,
                     "code": self.code,
                     "message": self.message,
                 })
             ),
-            OutputFormat::Yaml => {
-                eprintln!("class: {}", self.class);
-                eprintln!("code: {}", self.code);
-                eprintln!("message: {}", serde_json::json!(self.message));
-            }
-        }
+            OutputFormat::Yaml => format!(
+                "class: {}\ncode: {}\nmessage: {}\n",
+                self.class,
+                self.code,
+                serde_json::json!(self.message)
+            ),
+        };
+        let _ = crate::streams::err(|out| out.write_all(text.as_bytes()));
 
-        ExitCode::from(self.status)
+        self.status
     }
 }
 
