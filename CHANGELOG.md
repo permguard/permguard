@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.16] - 2026-11-04
+
 ### Added
 
 - **A team can keep one policy per file.**
