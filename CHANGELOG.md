@@ -45,6 +45,12 @@ Nothing yet.
   The local pass now journals the cutover itself, as that Host is the member and the coordinator, and logs `host.local_cutover`.
   A Host already stopped resumes at its first pass after the upgrade and ships what it held on the volume, within the decision spool's bounds (`PERMGUARD_DECISIONS_LOG_SPOOL_AGE`, 24 hours, and `PERMGUARD_DECISIONS_LOG_SPOOL_BYTES`, 512 MiB, by default): a stream those bounds ended carries its discontinuity, as any spool overflow does.
 
+### Security
+
+- **`pulldown-cmark` 0.13.6 (RUSTSEC-2026-0433).**
+  The quadratic parsing of nested wikilinks reached the build only: `prost-build` reads the comments of Permguard's own protocol files with it, every option on, while the gRPC code is generated; it never parses untrusted Markdown, and no Permguard binary contains it.
+  The lockfile takes the fixed release, so the advisory gate passes again.
+
 ## [0.1.15] - 2026-11-01
 
 ### Fixed
