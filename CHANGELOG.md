@@ -19,7 +19,9 @@ is cut.
 
 Nothing yet.
 
-## [0.1.16] - 2026-11-04
+## [0.1.17] - 2026-11-04
+
+`v0.1.16` was tagged and never published: the advisory gate refused it for RUSTSEC-2026-0433, published the same day. 0.1.17 is that release with the fixed lockfile.
 
 ### Added
 
