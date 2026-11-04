@@ -13,7 +13,9 @@
 #
 # It needs docker with Compose v2.24 or later. The lab image is built first (cached; NO_BUILD=1
 # skips it, PERMGUARD_LAB_IMAGE names another). KEEP=1 leaves the last profile running; the logs
-# of a failed profile are written under ARTIFACTS (default `target/compose-lab`).
+# of a failed profile are written under ARTIFACTS (default `target/compose-lab`). ROTATION=1 runs
+# the all-in-one with keys replaced every two minutes (`docker-compose.lab.rotation.yml`) and proves
+# its decisions keep reaching its Control Plane across the rotations (BUG-0195).
 set -euo pipefail
 
 # Written for the bash macOS ships, 3.2: no negative indexes, no empty array expanded under `-u`.
@@ -48,7 +50,11 @@ fi
 
 run_profile() {
     local profile="$1" project="permguard-lab-$1"
-    dc() { COMPOSE_PROFILES="${profile}" docker compose -f docker-compose.lab.yml -p "${project}" "$@"; }
+    local files=(-f docker-compose.lab.yml)
+    if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
+        files+=(-f docker-compose.lab.rotation.yml)
+    fi
+    dc() { COMPOSE_PROFILES="${profile}" docker compose "${files[@]}" -p "${project}" "$@"; }
     failed() {
         dc ps -a >"${artifacts}/${profile}.ps" 2>&1 || true
         dc logs --no-color --timestamps >"${artifacts}/${profile}.log" 2>&1 || true
@@ -89,6 +95,10 @@ run_profile() {
 
     step "${profile}: what it must prove"
     dc run --rm lab assert "${profile}" || failed "an assertion failed"
+    if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
+        step "${profile}: decisions across key rotations"
+        dc run --rm lab assert "${profile}" rotation || failed "an assertion failed across rotations"
+    fi
     if [ "${profile}" = temporal-replicas ]; then
         step "${profile}: failover, the first replica stopped"
         dc stop temporal-a >/dev/null 2>&1

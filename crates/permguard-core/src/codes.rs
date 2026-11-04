@@ -218,6 +218,9 @@ pub mod stream {
     /// incident; the subscription stops (WP-5.4).
     pub const ACK_BEHIND: &str = "ack_behind";
     pub const UNSHIPPABLE: &str = "unshippable";
+    /// A stream behind its required subscriptions whose acknowledgement has not moved past the
+    /// shipping watch's bound: the Host is `degraded: shipping` until it moves (logged).
+    pub const SHIPPING_STALLED: &str = "shipping_stalled";
     /// A coordinator restored from a snapshot needs records the producer already deleted: a
     /// durable producer gap, nothing reconstructed; the subscription stops (WP-7.9b).
     pub const PRODUCER_GAP: &str = "producer_gap";
@@ -690,6 +693,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         stream::ACK_AHEAD,
         stream::ACK_BEHIND,
         stream::UNSHIPPABLE,
+        stream::SHIPPING_STALLED,
         stream::PRODUCER_GAP,
         stream::DECISION_NOT_FOUND,
         stream::EVENT_NOT_FOUND,

@@ -24,10 +24,22 @@ is cut.
   When it is `true`, `refresh`, `validate`, `test`, `plan`, `apply` and `status` refuse a policy file that holds more than one policy, naming the file and the line where the second policy begins.
   When it is `false`, nothing changes: a file of several policies is split as before.
 
+- **A shipping stall is reported, whatever the profile.**
+  A decision or event stream behind its required subscriptions whose acknowledgement has not moved for five minutes, or four fifths of `objectives.evidence_shipping_lag` when that is shorter, makes the Host `degraded: shipping` in its status (`GET /host/v1/status`), naming the streams, and logs `host.shipping_stalled` (code `shipping_stalled`) once; `host.shipping_resumed` when it moves again.
+  The gauge `permguard_stream_shipping_stalled_seconds` reads the longest stall, and the alert `PermguardEvidenceShippingStalled` (lab rules and chart, `metrics.prometheusRule.shipping`) fires past five minutes.
+  With `evidence_shipping_lag` declared, readiness is held past four fifths of it, like the other objectives.
+
 ### Changed
 
 - **The same policy twice in one file is named once.**
   `validate` said `appears in both <file> and <file>` with the same file twice; it now says `<file>: the same policy (<id>) appears twice in it`.
+
+### Fixed
+
+- **An all-in-one keeps its decision and event logs after a key rotation.**
+  A Host running both Planes ships to its own Control Plane in-process, and its streams waited, at the first rotation of `data.attest`, for a cutover only a membership's coordinator journals: from then on, about an hour after start, nothing more reached the Control Plane's decision and event reads, silently and across restarts.
+  The local pass now journals the cutover itself, as that Host is the member and the coordinator, and logs `host.local_cutover`.
+  A Host already stopped resumes at its first pass after the upgrade and ships what it held on the volume, within the decision spool's bounds (`PERMGUARD_DECISIONS_LOG_SPOOL_AGE`, 24 hours, and `PERMGUARD_DECISIONS_LOG_SPOOL_BYTES`, 512 MiB, by default): a stream those bounds ended carries its discontinuity, as any spool overflow does.
 
 ## [0.1.15] - 2026-11-01
 

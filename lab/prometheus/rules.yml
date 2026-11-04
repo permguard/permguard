@@ -109,6 +109,19 @@ groups:
             Records are durable locally but have not been acknowledged by the control plane. Check
             control-plane reachability and the decision-log shipper.
 
+      - alert: PermguardEvidenceShippingStalled
+        expr: max by (component) (permguard_stream_shipping_stalled_seconds) > 300
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.component }} evidence is not reaching its consumers"
+          description: >-
+            A decision or event stream has been behind its required subscriptions with no
+            acknowledgement for more than five minutes: the control plane's decision and event
+            reads miss what was decided since. The Host health names the streams under
+            `degraded: shipping`.
+
       - alert: PermguardDecisionLogDroppedRecords
         expr: increase(permguard_decisions_dropped_total[5m]) > 0
         labels:

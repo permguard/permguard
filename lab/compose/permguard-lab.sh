@@ -213,7 +213,7 @@ grant_operator() {
     endpoint="$(host_endpoint "${host}")"
     # The backup operations and the key bundle are the restore drill's (`scripts/drill-restore.sh`).
     pg --host-endpoint "${endpoint}" host grants issue --principal "${principal}" \
-        --operations membership.admin,membership.read,identity.read,streams.read,backup.manage,backup.read,keys.read \
+        --operations membership.admin,membership.read,identity.read,streams.read,backup.manage,backup.read,keys.read,lifecycle.read \
         --selector host >/dev/null
     case "${host}" in
     control-plane | all-in-one)
@@ -448,7 +448,13 @@ expect_not_served() {
 cmd_assert() {
     local profile="${1:?the profile}" phase="${2:-}"
     case "${profile}" in
-    all-in-one) assert_all_in_one ;;
+    all-in-one)
+        case "${phase}" in
+        "") assert_all_in_one ;;
+        rotation) assert_all_in_one_rotation ;;
+        *) fail "no all-in-one phase ${phase}" ;;
+        esac
+        ;;
     split-plane)
         case "${phase}" in
         "") assert_split_plane ;;
@@ -469,6 +475,42 @@ assert_all_in_one() {
     expect_decision all-in-one acme main permit.json true >/dev/null
     expect_decision all-in-one acme main deny.json false >/dev/null
     log "a permit and a deny, as the policies say"
+    wait_shipped all-in-one "$(own_resource all-in-one acme main)" >/dev/null
+    log "its decisions reach its own Control Plane, sealed and acknowledged"
+}
+
+# The resource of `zone/ledger`'s decision stream on a Host that runs both Planes.
+own_resource() { # host, zone, ledger
+    printf 'plane/data/zone/%s/ledger/%s' "$(zone_id "$1" "$2")" "$(ledger_id "$1" "$2" "$3")"
+}
+
+# Across key rotations (BUG-0195): the keys replaced every two minutes
+# (`docker-compose.lab.rotation.yml`), a decision every round is sealed and acknowledged by the
+# Host's own Control Plane within its bound, and the Host never reports `degraded: shipping`.
+# `data.attest` must rise by three epochs: three keys prepublished, and so activated, in the run.
+assert_all_in_one_rotation() {
+    local minutes="${LAB_ROTATION_MINUTES:-8}" resource first epoch deadline
+    step "all-in-one: decisions across key rotations, ${minutes} minutes"
+    wait_serving all-in-one acme main
+    resource="$(own_resource all-in-one acme main)"
+    first="$(ring_epoch all-in-one data.attest)"
+    deadline=$((SECONDS + minutes * 60))
+    while [ "${SECONDS}" -lt "${deadline}" ]; do
+        expect_decision all-in-one acme main permit.json true >/dev/null
+        wait_shipped all-in-one "${resource}" 120 >/dev/null
+        pg --host-endpoint "$(host_endpoint all-in-one)" host status |
+            jq -e '[.degraded[]? | select(.capability == "shipping")] | length == 0' >/dev/null ||
+            fail "all-in-one reports degraded: shipping"
+        sleep 15
+    done
+    epoch="$(ring_epoch all-in-one data.attest)"
+    [ "${epoch}" -ge $((first + 3)) ] ||
+        fail "data.attest went from epoch ${first} to ${epoch}: the keys did not rotate"
+    log "every decision shipped while data.attest went from epoch ${first} to ${epoch}"
+}
+
+ring_epoch() { # host, ring
+    pg --host-endpoint "$(host_endpoint "$1")" host keys show "$2" | jq -er '.epoch'
 }
 
 # The resource of `zone/ledger`'s decision stream: what both ends of `decisions.ship` name it by.

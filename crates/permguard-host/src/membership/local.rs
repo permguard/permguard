@@ -31,6 +31,7 @@
 //! records stay in the producer and are never shipped. Nothing here is reachable by a peer: the
 //! nil UUID is never minted, so no membership's pins answer for it.
 
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -38,8 +39,8 @@ use permguard_core::BoxFuture;
 use permguard_core::authz::{Resource, Selector};
 
 use crate::composition::{
-    MirrorRefusal, MirrorSession, MirrorTask, MirrorTasks, MirrorWatch, PinnedRing, StreamShipping,
-    Subscribed,
+    MirrorRefusal, MirrorSession, MirrorTask, MirrorTasks, MirrorWatch, PinnedRing, StreamCutovers,
+    StreamShipping, Subscribed,
 };
 use crate::keys::ring::Ring;
 use crate::membership::record::{Limits, ProgressResource, RingPin, Role, TaskType};
@@ -255,6 +256,9 @@ pub fn local_pins(ring: &Ring) -> Vec<RingPin> {
 /// shipped to its own Control Plane's consumers, in-process.
 pub struct LocalShipping {
     engine: Arc<dyn StreamShipping>,
+    /// The same streams' cutovers: this Host journals its own, being the member and the
+    /// coordinator.
+    cutovers: Arc<dyn StreamCutovers>,
     decisions: Arc<dyn TaskHandler>,
     events: Arc<dyn TaskHandler>,
     host_id: [u8; 16],
@@ -262,6 +266,10 @@ pub struct LocalShipping {
     calls: AtomicU64,
     /// Held by a pass: two never ship the same stream at once.
     passing: Mutex<()>,
+    /// The `(stream, kid)` cutovers this process journaled: the engine names a confirmed cutover
+    /// again at every pass, and it is journaled and logged once. A restart journals it once more,
+    /// which confirming makes harmless.
+    journaled: Mutex<BTreeSet<(String, String)>>,
 }
 
 impl LocalShipping {
@@ -269,6 +277,7 @@ impl LocalShipping {
     /// `events` (the Control Plane's ingest handlers), the subscription's epoch `data_attest`'s.
     pub fn new(
         engine: Arc<dyn StreamShipping>,
+        cutovers: Arc<dyn StreamCutovers>,
         decisions: Arc<dyn TaskHandler>,
         events: Arc<dyn TaskHandler>,
         host_id: [u8; 16],
@@ -276,12 +285,14 @@ impl LocalShipping {
     ) -> Self {
         Self {
             engine,
+            cutovers,
             decisions,
             events,
             host_id,
             data_attest,
             calls: AtomicU64::new(0),
             passing: Mutex::new(()),
+            journaled: Mutex::new(BTreeSet::new()),
         }
     }
 
@@ -351,6 +362,9 @@ impl LocalShipping {
         {
             warn_failed(&error);
         }
+        if let Err(error) = self.cut_over() {
+            warn_failed(&error);
+        }
         let mut shipped = 0;
         for (task_type, handler) in self.tasks() {
             let subscription = subscribed(task_type, epoch, &selector);
@@ -369,6 +383,47 @@ impl LocalShipping {
             }
         }
         shipped
+    }
+
+    /// Journals the cutover every local stream waits for: once `data.attest` activated a new key,
+    /// a fenced run seals under it only from the sequence its cutover names (WP-4.5, WP-5.2). A
+    /// membership's coordinator journals a member's cutover; here this Host is both, so the pass
+    /// journals its own, as a coordinator would, before it ships. Without it every local stream
+    /// stops at the first rotation. The ingest verifies the batches under this Host's own set,
+    /// which publishes the new key from its prepublication on.
+    fn cut_over(&self) -> Result<(), String> {
+        use permguard_core::keys::Sign as _;
+        let kid = self
+            .data_attest
+            .active_key_id()
+            .map_err(|error| error.to_string())?
+            .as_str()
+            .to_owned();
+        let ring = self.data_attest.id();
+        let mut journaled = self
+            .journaled
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let due: Vec<(String, u64)> = self
+            .cutovers
+            .due(&LOCAL_MEMBERSHIP, ring, &kid)?
+            .into_iter()
+            .filter(|(stream, _)| !journaled.contains(&(stream.clone(), kid.clone())))
+            .collect();
+        if due.is_empty() {
+            return Ok(());
+        }
+        self.cutovers.journaled(ring, &kid, &due)?;
+        journaled.extend(due.iter().map(|(stream, _)| (stream.clone(), kid.clone())));
+        tracing::info!(
+            event.name = "host.local_cutover",
+            component = "host",
+            ring = %ring,
+            kid = %kid,
+            streams = due.len(),
+            "the local streams seal under the ring's new key"
+        );
+        Ok(())
     }
 
     /// Ships `resource`'s stream until the engine has nothing due or an answer stops it.
@@ -703,6 +758,45 @@ mod tests {
     struct Batches {
         sent: Mutex<u64>,
         log: Mutex<Vec<String>>,
+        /// The streams that wait for a cutover to the ring's active key.
+        waiting: Mutex<Vec<(String, u64)>>,
+    }
+
+    impl StreamCutovers for Batches {
+        fn due(
+            &self,
+            membership_id: &[u8; 16],
+            ring: &str,
+            _kid: &str,
+        ) -> Result<Vec<(String, u64)>, String> {
+            assert_eq!(*membership_id, LOCAL_MEMBERSHIP);
+            self.log
+                .lock()
+                .expect("the log")
+                .push(format!("cutovers due {ring}"));
+            Ok(self.waiting.lock().expect("the waiting").clone())
+        }
+
+        fn journaled(
+            &self,
+            ring: &str,
+            kid: &str,
+            streams: &[(String, u64)],
+        ) -> Result<(), String> {
+            let waiting = self.waiting.lock().expect("the waiting");
+            assert_eq!(
+                streams,
+                waiting.as_slice(),
+                "the streams that wait, journaled"
+            );
+            assert!(kid.starts_with(&format!("{ring}:")), "the ring's own key");
+            self.log
+                .lock()
+                .expect("the log")
+                .push(format!("journaled {ring} {}", streams.len()));
+            // A confirmed cutover is named again by the next `due`, as the engine names it.
+            Ok(())
+        }
     }
 
     impl StreamShipping for Batches {
@@ -798,6 +892,7 @@ mod tests {
         let events = Arc::new(Echo::default());
         let local = LocalShipping::new(
             Arc::clone(&engine) as Arc<dyn StreamShipping>,
+            Arc::clone(&engine) as Arc<dyn StreamCutovers>,
             Arc::clone(&decisions) as Arc<dyn TaskHandler>,
             Arc::clone(&events) as Arc<dyn TaskHandler>,
             identity.host_id(),
@@ -807,6 +902,7 @@ mod tests {
         assert_eq!(
             *engine.log.lock().expect("the log"),
             [
+                "cutovers due control.attest",
                 "due DecisionsShip local true",
                 "answered 1",
                 "answered 2",
@@ -830,6 +926,7 @@ mod tests {
         let engine = Arc::new(Batches::default());
         let deferring = LocalShipping::new(
             Arc::clone(&engine) as Arc<dyn StreamShipping>,
+            Arc::clone(&engine) as Arc<dyn StreamCutovers>,
             Arc::new(Unavailable),
             Arc::new(Unavailable),
             identity.host_id(),
@@ -839,10 +936,50 @@ mod tests {
         assert_eq!(
             *engine.log.lock().expect("the log"),
             [
+                "cutovers due control.attest",
                 "due DecisionsShip local true",
                 "deferred plane/data/zone/z/ledger/l",
                 "due EventsShip local true",
             ]
+        );
+    }
+
+    /// A local stream waiting for its cutover to the ring's active key is journaled by the pass
+    /// itself, before anything ships: this Host is the member and the coordinator.
+    #[test]
+    fn the_local_pass_journals_the_cutover_its_streams_wait_for() {
+        let (_volume, identity, ring) = host("cutover");
+        let engine = Arc::new(Batches::default());
+        *engine.waiting.lock().expect("the waiting") = vec![("data/decisions/r/run".to_owned(), 7)];
+        let local = LocalShipping::new(
+            Arc::clone(&engine) as Arc<dyn StreamShipping>,
+            Arc::clone(&engine) as Arc<dyn StreamCutovers>,
+            Arc::new(Echo::default()),
+            Arc::new(Echo::default()),
+            identity.host_id(),
+            Arc::clone(&ring),
+        );
+        assert_eq!(local.ship_due(), 2);
+        let log = engine.log.lock().expect("the log").clone();
+        assert_eq!(
+            log[..3],
+            [
+                "cutovers due control.attest",
+                "journaled control.attest 1",
+                "due DecisionsShip local true",
+            ]
+        );
+        // Journaled once: the engine names the confirmed cutover again, and the pass journals it
+        // no more.
+        engine.log.lock().expect("the log").clear();
+        local.ship_due();
+        assert!(
+            !engine
+                .log
+                .lock()
+                .expect("the log")
+                .iter()
+                .any(|line| line.starts_with("journaled"))
         );
     }
 

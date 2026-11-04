@@ -91,6 +91,14 @@ spec:
           annotations:
             summary: "{{`{{ $labels.component }}`}} decision log backlog is not draining"
             runbook_url: "https://docs.permguard.com/decision-logs#failure-modes"
+        - alert: PermguardEvidenceShippingStalled
+          expr: max by (component) (permguard_stream_shipping_stalled_seconds) > {{ int $rules.shipping.stalledSeconds }}
+          for: {{ $rules.shipping.stalledFor }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{`{{ $labels.component }}`}} evidence is not reaching its consumers"
+            runbook_url: "https://docs.permguard.com/decision-logs#failure-modes"
         - alert: PermguardDecisionLogDroppedRecords
           expr: increase(permguard_decisions_dropped_total[5m]) > 0
           labels:

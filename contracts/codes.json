@@ -1818,6 +1818,11 @@
       "kind": "refusal",
       "class": "unavailable"
     },
+    "stream.SHIPPING_STALLED": {
+      "code": "shipping_stalled",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
     "stream.SIGNER_MALFORMED": {
       "code": "signer_malformed",
       "contract": "6-contracts/5-contract-stream-common.md",

@@ -1,0 +1,15 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The rotation proof of the Compose lab (BUG-0195): the all-in-one's keys published thirty seconds
+# ahead and replaced every two minutes, so a run of a few minutes crosses several activations of
+# `data.attest`. Added by `ROTATION=1 scripts/compose-lab.sh all-in-one`, never on its own.
+
+services:
+  all-in-one:
+    environment:
+      LAB_HOST: all-in-one
+      PERMGUARD_KEYS_PUBLISH_AHEAD: 30s
+      PERMGUARD_KEYS_ROTATE_EVERY: 2m
+      PERMGUARD_KEYS_RETAIN: 1h
+      PERMGUARD_KEYS_MAINTENANCE_INTERVAL: 10s

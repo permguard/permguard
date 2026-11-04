@@ -550,6 +550,12 @@ metrics:
     decisionLog:
       backlogRecords: 1000
       backlogFor: 10m
+    # A decision or event stream behind its required subscriptions with no acknowledgement for
+    # this long; 300 is the bound the Host's own `degraded: shipping` takes when
+    # `objectives.evidence_shipping_lag` is not declared.
+    shipping:
+      stalledSeconds: 300
+      stalledFor: 1m
     tls:
       certificateExpiryDays: 30
       crlExpiryDays: 7

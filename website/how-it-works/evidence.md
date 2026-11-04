@@ -58,7 +58,8 @@ permguard decisions list \
 ```
 
 The Control Plane answers these reads from what its Data Planes ship to it, as signed batches over each membership's `decisions.ship` and `events.ship` tasks.
-An all-in-one ships to its own Control Plane in-process, each batch verified under the Host's own `data.attest` ring, so its reads answer within seconds of the decision.
+An all-in-one ships to its own Control Plane in-process, each batch verified under the Host's own `data.attest` ring, so its reads answer within seconds of the decision; when that ring rotates its key, the Host cuts its streams over to the new key itself.
+A stream that stops moving is never silent: past five minutes, or four fifths of `objectives.evidence_shipping_lag` when that is shorter, the Host reports `degraded: shipping` in its status, naming the stream, and sets `permguard_stream_shipping_stalled_seconds`.
 
 <div class="pgx-note"><strong>No timestamp guessing.</strong><span>The response and record carry the same decision identity.</span></div>
 

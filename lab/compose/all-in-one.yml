@@ -31,6 +31,8 @@ controlPlane:
   public:
     http: { addr: 0.0.0.0:6443 }
     grpc: { addr: 0.0.0.0:6443 }
+  # Every decision its Data Plane records reaches it in-process, and is read from here.
+  decisions: { enabled: "true" }
 
 dataPlane:
   public:
@@ -41,3 +43,6 @@ dataPlane:
   mirrors:
     enabled: "true"
     interval: 5s
+  # Every decision is recorded, then shipped to this Host's own Control Plane in-process.
+  decisions:
+    log: { enabled: "true" }

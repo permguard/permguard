@@ -2544,9 +2544,16 @@ impl HostApi {
     /// Whether a stream is behind its required subscriptions now (WP-5.8): what a drain still has
     /// to ship.
     pub fn shipping_behind(&self) -> Result<bool, String> {
+        Ok(!self.streams_behind()?.is_empty())
+    }
+
+    /// The streams behind their required subscriptions now, each with what it is acknowledged
+    /// through: what the shipping watch judges a stall against
+    /// (`8-architecture-storage-operations.md`, service objectives).
+    pub fn streams_behind(&self) -> Result<Vec<crate::composition::Unshipped>, String> {
         match self.shipping() {
-            Some(engine) => Ok(!engine.behind()?.is_empty()),
-            None => Ok(false),
+            Some(engine) => engine.behind(),
+            None => Ok(Vec::new()),
         }
     }
 

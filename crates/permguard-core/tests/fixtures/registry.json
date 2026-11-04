@@ -485,6 +485,7 @@
     "stream.SCOPE_REQUIRED": "scope_required",
     "stream.SCOPE_UNKNOWN": "scope_unknown",
     "stream.SEARCH_EXHAUSTED": "search_exhausted",
+    "stream.SHIPPING_STALLED": "shipping_stalled",
     "stream.SIGNER_MALFORMED": "signer_malformed",
     "stream.SIGNER_RANGE_TOO_WIDE": "signer_range_too_wide",
     "stream.SPOOL_FULL": "spool_full",

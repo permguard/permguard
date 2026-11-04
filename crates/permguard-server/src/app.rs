@@ -2443,6 +2443,8 @@ impl App {
                         permguard_host::membership::local::LocalShipping::new(
                             Arc::clone(engine)
                                 as Arc<dyn permguard_host::composition::StreamShipping>,
+                            Arc::clone(engine)
+                                as Arc<dyn permguard_host::composition::StreamCutovers>,
                             Arc::new(permguard_stream::engine::ingest::Ingest {
                                 consumer: Arc::clone(decisions),
                                 pins: Arc::clone(&pins)
@@ -2505,6 +2507,10 @@ impl App {
                     }
                     _ => None,
                 },
+                shipping: serving
+                    .as_ref()
+                    .filter(|api| api.ships_streams())
+                    .map(Arc::clone),
             },
         );
         // The streams' garbage collection, at start and every hour, off the request path (WP-5.6b).

@@ -10,6 +10,7 @@
 //! | `spool_headroom`        | `permguard_decisions_spool_bytes` against the spool's capacity | less free than the headroom     |
 //! | `checkpoint_export_lag` | the Host degraded on `audit_egress`                            | while it is                     |
 //! | `backup_interval`       | the newest finalized backup, or the volume's creation          | past four fifths of it          |
+//! | `evidence_shipping_lag` | the longest a stream behind has gone with no acknowledgement   | past four fifths of it          |
 //! | the qualification       | the qualified record's `expires_at`, from `production`         | once it has passed              |
 //!
 //! A hold names its objective and is released by the first pass that measures it within its
@@ -17,17 +18,107 @@
 //! ([`permguard_core::objectives`]): what a subsystem enforces itself is not measured twice. The
 //! hold's reason is a sentence of numbers; the objective is the only label, so the telemetry it
 //! reaches stays bounded.
+//!
+//! The shipping watch runs whatever the profile (`8-architecture-storage-operations.md`, service
+//! objectives): a stream behind its required subscriptions whose acknowledgement has not moved for
+//! longer than [`SHIPPING_STALL`], or four fifths of `evidence_shipping_lag` when that is shorter,
+//! makes the Host `degraded: shipping`, named, and sets [`SHIPPING_STALLED`]; readiness is held
+//! only past four fifths of the declared objective. It clears when the acknowledgement moves. A
+//! stall is learned within minutes, never from a missing record. The watch remembers in-process:
+//! after a restart a stream still stalled is named again one bound later.
 
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use permguard_core::metrics::Metric;
 use permguard_core::objectives::{Objectives, within_margin};
+use permguard_host::composition::Unshipped;
 
 /// What a stale qualification holds readiness under, beside the objectives.
 pub const STORAGE_QUALIFICATION: &str = "storage_qualification";
 
 /// How often the measures are read.
 pub const PASS: Duration = Duration::from_secs(15);
+
+/// The capability a shipping stall degrades the Host on: `degraded: shipping`.
+pub const SHIPPING: &str = "shipping";
+
+/// How long a stream may stay behind with no acknowledgement before it is stalled, when
+/// `evidence_shipping_lag` is not declared.
+pub const SHIPPING_STALL: Duration = Duration::from_secs(300);
+
+/// How many stalled streams a degradation names; the rest are counted.
+const STALLS_NAMED: usize = 5;
+
+/// How long the longest stream behind has gone without an acknowledgement, in seconds; 0 when
+/// none is behind, or one has just fallen behind.
+pub const SHIPPING_STALLED: Metric = Metric::gauge(
+    "permguard_stream_shipping_stalled_seconds",
+    "Seconds the longest stream behind its required subscriptions has gone with no acknowledgement.",
+);
+
+/// The shipping watch's memory: for each stream behind, what it was acknowledged through and when
+/// that last moved, on the guard's monotonic time.
+#[derive(Debug, Default)]
+pub struct Stalls {
+    since: BTreeMap<(String, String), (u64, Duration)>,
+}
+
+impl Stalls {
+    /// Takes the streams `behind` at `now`: a stream no longer behind is forgotten, one whose
+    /// acknowledgement moved starts again. Answers each stream with how long it has gone without
+    /// moving, the longest first.
+    pub fn observe(&mut self, behind: &[Unshipped], now: Duration) -> Vec<(String, Duration)> {
+        let mut kept = BTreeMap::new();
+        for stream in behind {
+            let key = (stream.stream.clone(), stream.resource.clone());
+            let since = match self.since.get(&key) {
+                Some((acked, since)) if *acked == stream.truncate_safe => *since,
+                _ => now,
+            };
+            kept.insert(key, (stream.truncate_safe, since));
+        }
+        self.since = kept;
+        let mut stalled: Vec<(String, Duration)> = self
+            .since
+            .iter()
+            .map(|((stream, resource), (acked, since))| {
+                (
+                    format!("{stream} {resource} acknowledged through {acked}"),
+                    now.saturating_sub(*since),
+                )
+            })
+            .collect();
+        stalled.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        stalled
+    }
+}
+
+/// The Host's shipping degradation for `stalled`, the streams past `bound`: `None` when none is.
+pub fn shipping_degradation(stalled: &[(String, Duration)], bound: Duration) -> Option<String> {
+    let past: Vec<&(String, Duration)> = stalled.iter().filter(|(_, idle)| *idle > bound).collect();
+    if past.is_empty() {
+        return None;
+    }
+    let named: Vec<String> = past
+        .iter()
+        .take(STALLS_NAMED)
+        .map(|(stream, idle)| format!("{stream}, not moved for {}s", idle.as_secs()))
+        .collect();
+    let more = past.len().saturating_sub(STALLS_NAMED);
+    Some(format!(
+        "{}: past the {}s bound: {}{}",
+        permguard_core::codes::stream::SHIPPING_STALLED,
+        bound.as_secs(),
+        named.join("; "),
+        if more > 0 {
+            format!("; and {more} more")
+        } else {
+            String::new()
+        }
+    ))
+}
 
 /// What one pass measured; `None` where nothing measured it.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -43,6 +134,10 @@ pub struct Measures {
     /// When the volume's qualification record expired, once it has: from `production` the volume
     /// is then out of Ready like an unqualified one (TS-5).
     pub qualification_expired_at: Option<i64>,
+    /// Each stream behind its required subscriptions, with how long it has gone without an
+    /// acknowledgement, the longest first; empty when none is behind, `None` when this process
+    /// ships nothing or its streams could not be read this pass.
+    pub stalled: Option<Vec<(String, Duration)>>,
 }
 
 /// Each monitored objective, with the reason to hold readiness for it, or `None` to release it.
@@ -100,6 +195,27 @@ pub fn judge(objectives: &Objectives, measures: &Measures) -> Vec<(&'static str,
             }),
         ));
     }
+    // Unmeasured this pass, the objective keeps its hold or its release.
+    if let (Some(lag), Some(_)) = (objectives.evidence_shipping_lag, &measures.stalled) {
+        let margin = within_margin(lag);
+        judged.push((
+            "evidence_shipping_lag",
+            measures
+                .stalled
+                .as_ref()
+                .and_then(|stalled| stalled.first())
+                .filter(|(_, idle)| *idle > margin)
+                .map(|(stream, idle)| {
+                    format!(
+                        "{stream} has not shipped for {}s, past {}s, four fifths of the {}s \
+                         objective",
+                        idle.as_secs(),
+                        margin.as_secs(),
+                        lag.as_secs()
+                    )
+                }),
+        ));
+    }
     if let Some(interval) = objectives.backup_interval {
         let margin = within_margin(interval);
         judged.push((
@@ -144,23 +260,33 @@ pub struct Sources {
     /// When the volume's qualification record expires, from `production`: judged at every pass,
     /// not only at Bootstrap.
     pub qualification_expires_at: Option<i64>,
+    /// The Host whose streams the shipping watch reads, when it ships any.
+    pub shipping: Option<Arc<permguard_host::api::HostApi>>,
 }
 
 /// Measures every [`PASS`] and holds or releases readiness by objective.
 pub fn drive(objectives: Objectives, sources: Sources) -> Monitoring {
     let sources = Arc::new(sources);
+    let stalls = Arc::new(Mutex::new(Stalls::default()));
+    let bound = objectives
+        .evidence_shipping_lag
+        .map_or(SHIPPING_STALL, |lag| within_margin(lag).min(SHIPPING_STALL));
     Monitoring(tokio::spawn(async move {
         let mut interval = tokio::time::interval(PASS);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut stalled_before = false;
         loop {
             interval.tick().await;
-            // A backups listing and a metrics snapshot: off the async threads.
+            // A backups listing, a metrics snapshot and the streams on disk: off the async threads.
             let measuring = Arc::clone(&sources);
-            let Ok(measures) = tokio::task::spawn_blocking(move || measure(&measuring)).await
+            let watching = Arc::clone(&stalls);
+            let Ok(measures) =
+                tokio::task::spawn_blocking(move || measure(&measuring, &watching)).await
             else {
                 continue;
             };
             let lifecycle = sources.health.lifecycle();
+            stalled_before = watch_shipping(&sources, &measures, bound, stalled_before);
             let held = lifecycle.holds();
             for (objective, hold) in judge(&objectives, &measures) {
                 match hold {
@@ -191,12 +317,50 @@ pub fn drive(objectives: Objectives, sources: Sources) -> Monitoring {
     }))
 }
 
+/// The shipping watch's verdict applied: `degraded: shipping` while a stream is stalled past
+/// `bound`, a warning when it starts and a note when it clears, the gauge every pass. Answers
+/// whether a stall holds now.
+fn watch_shipping(sources: &Sources, measures: &Measures, bound: Duration, before: bool) -> bool {
+    // Unread this pass, or nothing shipped here: the verdict of the last stands.
+    let Some(stalled) = measures.stalled.as_deref() else {
+        return before;
+    };
+    let longest = stalled.first().map_or(0, |(_, idle)| idle.as_secs());
+    #[allow(clippy::cast_precision_loss)]
+    sources.metrics.set(&SHIPPING_STALLED, &[], longest as f64);
+    let lifecycle = sources.health.lifecycle();
+    match shipping_degradation(stalled, bound) {
+        Some(reason) => {
+            if !before {
+                tracing::warn!(
+                    event.name = "host.shipping_stalled",
+                    code = permguard_core::codes::stream::SHIPPING_STALLED,
+                    reason = %reason,
+                    "evidence is not reaching its consumers: degraded until it moves"
+                );
+            }
+            lifecycle.degrade(permguard_core::lifecycle::HOST, SHIPPING, reason);
+            true
+        }
+        None => {
+            if before {
+                tracing::info!(
+                    event.name = "host.shipping_resumed",
+                    "evidence reaches its consumers again"
+                );
+                lifecycle.restore(permguard_core::lifecycle::HOST, SHIPPING);
+            }
+            false
+        }
+    }
+}
+
 /// When a record expiring at `expires_at` expired, once `now` has reached it.
 pub fn expired(expires_at: Option<i64>, now: i64) -> Option<i64> {
     expires_at.filter(|at| *at <= now)
 }
 
-fn measure(sources: &Sources) -> Measures {
+fn measure(sources: &Sources, stalls: &Mutex<Stalls>) -> Measures {
     use permguard_core::metrics::Reading;
 
     let gauge = |name: &str| {
@@ -237,6 +401,26 @@ fn measure(sources: &Sources) -> Measures {
             }),
         since_backup,
         qualification_expired_at,
+        stalled: sources
+            .shipping
+            .as_ref()
+            .and_then(|api| match api.streams_behind() {
+                Ok(behind) => Some(behind),
+                Err(error) => {
+                    tracing::warn!(
+                        event.name = "host.shipping_unread",
+                        error = %error,
+                        "the streams behind could not be read: the shipping watch keeps its verdict"
+                    );
+                    None
+                }
+            })
+            .map(|behind| {
+                stalls
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .observe(&behind, sources.time.elapsed())
+            }),
     }
 }
 
@@ -250,6 +434,7 @@ mod tests {
             spool_headroom: Some(20),
             checkpoint_export_lag: Some(Duration::from_secs(3600)),
             backup_interval: Some(Duration::from_secs(86_400)),
+            evidence_shipping_lag: Some(Duration::from_secs(300)),
             ..Objectives::default()
         }
     }
@@ -272,11 +457,15 @@ mod tests {
                 audit_egress_degraded: false,
                 since_backup: Some(Duration::from_secs(69_120)),
                 qualification_expired_at: None,
+                stalled: Some(vec![(
+                    "data/decisions plane/data/zone/z/ledger/l acknowledged through 7".to_owned(),
+                    Duration::from_secs(240),
+                )]),
             },
         );
         assert_eq!(
             judged.len(),
-            5,
+            6,
             "every declared objective, and the qualification"
         );
         assert!(held(&judged).is_empty(), "{judged:?}");
@@ -313,6 +502,16 @@ mod tests {
                     ..Measures::default()
                 },
                 "backup_interval",
+            ),
+            (
+                Measures {
+                    stalled: Some(vec![(
+                        "s r acknowledged through 1".to_owned(),
+                        Duration::from_secs(241),
+                    )]),
+                    ..Measures::default()
+                },
+                "evidence_shipping_lag",
             ),
         ];
         for (measures, objective) in cases {
@@ -365,5 +564,93 @@ mod tests {
         );
         assert_eq!(judged.len(), 1, "only the qualification: {judged:?}");
         assert!(held(&judged).is_empty());
+    }
+
+    fn behind(stream: &str, acked: u64) -> Unshipped {
+        Unshipped {
+            stream: "data/decisions".to_owned(),
+            resource: stream.to_owned(),
+            tail: acked + 10,
+            truncate_safe: acked,
+        }
+    }
+
+    /// A stream behind whose acknowledgement does not move is stalled for as long as it does
+    /// not; one that moves starts again, and one that caught up is forgotten.
+    #[test]
+    fn a_stall_is_how_long_a_stream_behind_has_not_moved() {
+        let mut stalls = Stalls::default();
+        let at = Duration::from_secs;
+        assert!(stalls.observe(&[], at(0)).is_empty());
+        stalls.observe(&[behind("a", 5), behind("b", 9)], at(10));
+        let watched = stalls.observe(&[behind("a", 5), behind("b", 12)], at(400));
+        assert_eq!(
+            watched,
+            vec![
+                (
+                    "data/decisions a acknowledged through 5".to_owned(),
+                    at(390)
+                ),
+                ("data/decisions b acknowledged through 12".to_owned(), at(0)),
+            ]
+        );
+        // `a` caught up, then fell behind again: its clock starts over; `b` has not moved since 400.
+        stalls.observe(&[behind("b", 12)], at(410));
+        let again = stalls.observe(&[behind("a", 5), behind("b", 12)], at(420));
+        assert_eq!(
+            again[0],
+            (
+                "data/decisions b acknowledged through 12".to_owned(),
+                at(20)
+            )
+        );
+        assert_eq!(
+            again[1],
+            ("data/decisions a acknowledged through 5".to_owned(), at(0))
+        );
+    }
+
+    /// The Host is degraded on `shipping` only past the bound, naming the streams, the code first.
+    #[test]
+    fn the_shipping_degradation_names_the_streams_past_the_bound() {
+        let bound = SHIPPING_STALL;
+        let at = Duration::from_secs;
+        assert_eq!(shipping_degradation(&[], bound), None);
+        assert_eq!(
+            shipping_degradation(&[("s".to_owned(), at(300))], bound),
+            None
+        );
+        let reason = shipping_degradation(
+            &[
+                ("s1".to_owned(), at(900)),
+                ("s2".to_owned(), at(301)),
+                ("s3".to_owned(), at(10)),
+            ],
+            bound,
+        )
+        .unwrap_or_default();
+        assert_eq!(
+            reason,
+            "shipping_stalled: past the 300s bound: s1, not moved for 900s; s2, not moved for 301s"
+        );
+        let many: Vec<(String, Duration)> = (0..8).map(|n| (format!("s{n}"), at(1000))).collect();
+        assert!(
+            shipping_degradation(&many, bound)
+                .unwrap_or_default()
+                .ends_with("; and 3 more")
+        );
+    }
+
+    /// Streams that could not be read leave `evidence_shipping_lag` unjudged: its hold or its
+    /// release stands until a pass reads them.
+    #[test]
+    fn an_unread_shipping_pass_keeps_the_last_verdict() {
+        let judged = judge(&objectives(), &Measures::default());
+        assert!(
+            judged
+                .iter()
+                .all(|(objective, _)| *objective != "evidence_shipping_lag"),
+            "{judged:?}"
+        );
     }
 }

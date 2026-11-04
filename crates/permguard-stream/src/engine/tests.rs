@@ -7545,6 +7545,7 @@ fn a_host_ships_its_own_streams_to_itself_under_its_own_ring() {
     };
     let local = LocalShipping::new(
         Arc::clone(&producer) as Arc<dyn StreamShipping>,
+        Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamCutovers>,
         ingest(),
         ingest(),
         host.identity.host_id(),
@@ -7581,5 +7582,159 @@ fn a_host_ships_its_own_streams_to_itself_under_its_own_ring() {
     assert!(
         pins.verifying_pins(&LOCAL_MEMBERSHIP, "control.attest", "any", 1)
             .is_empty()
+    );
+}
+
+/// A Host stuck by the bug the local cutover fixes resumes once upgraded: its stream waits for a
+/// cutover recorded for a key the ring has since replaced, the records appended meanwhile never
+/// sealed. The first pass journals the cutover to the key active now, and every record of the
+/// fenced run reaches the consumer, nothing lost.
+#[test]
+fn a_host_stuck_on_an_old_cutover_resumes_shipping_to_itself() {
+    use permguard_host::membership::local::{LOCAL_MEMBERSHIP, LOCAL_TASK, LocalShipping};
+
+    let (host, wall, mono) = manual_host("local-stuck");
+    let consumer = Arc::new(consumer_on(&host));
+    let producer = Arc::new(host.sealer());
+    let pins = Arc::new(super::ingest::LocalPins {
+        ring: Arc::clone(&host.attest),
+    });
+    let ingest = || {
+        Arc::new(super::ingest::Ingest {
+            consumer: Arc::clone(&consumer),
+            pins: Arc::clone(&pins) as Arc<dyn super::ingest::StreamPins>,
+        })
+    };
+    let local = LocalShipping::new(
+        Arc::clone(&producer) as Arc<dyn StreamShipping>,
+        Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamCutovers>,
+        ingest(),
+        ingest(),
+        host.identity.host_id(),
+        Arc::clone(&host.attest),
+    );
+    assert_eq!(local.ship_due(), 0);
+    let run = producer
+        .append(&ledger(1), &"shipped".to_owned())
+        .expect("appended")
+        .run_id;
+    assert!(local.ship_due() > 0);
+    // The release before the fix: the key rotates, the producer records the cutover it waits for
+    // and seals nothing more; nobody journals it.
+    rotate_attest(&host, &wall, &mono);
+    producer
+        .append(&ledger(1), &"held 1".to_owned())
+        .expect("appended");
+    assert!(matches!(
+        producer.seal(&ledger(1), 10).expect("waits"),
+        Sealing::AwaitingCutover { .. }
+    ));
+    // Hours later, rotated again, the cutover still names the first new key.
+    rotate_attest(&host, &wall, &mono);
+    rotate_attest(&host, &wall, &mono);
+    producer
+        .append(&ledger(1), &"held 2".to_owned())
+        .expect("appended");
+    assert_eq!(producer.pending_cutovers().expect("listed").len(), 1);
+    // Upgraded: the next pass cuts over to the key active now and ships what was held.
+    local.ship_due();
+    local.ship_due();
+    assert!(producer.pending_cutovers().expect("listed").is_empty());
+    let subscription = producer
+        .subscription(&ledger(1), &LOCAL_MEMBERSHIP, LOCAL_TASK)
+        .expect("read")
+        .expect("held");
+    let runs: std::collections::BTreeSet<[u8; 16]> = producer
+        .spans(&ledger(1))
+        .expect("spans")
+        .runs
+        .iter()
+        .map(|(run, _)| *run)
+        .collect();
+    assert!(runs.contains(&run));
+    let acked: u64 = runs.iter().map(|run| subscription.acked(run)).sum();
+    assert_eq!(
+        acked, 3,
+        "the shipped record and the two held reached the consumer"
+    );
+}
+
+/// A Host running both Planes keeps shipping its own streams across `data.attest` rotations,
+/// with the local pass running between a key's prepublication and its activation as the server's
+/// two-second pass does: the producer waits for the cutover to the new key, and the local pass,
+/// this Host being both the member and the coordinator, journals it. Every record appended to a
+/// fenced run reaches the consumer. Found in a lab: an all-in-one's decisions stopped reaching
+/// its Control Plane at the first rotation, an hour after it started, and never resumed.
+#[test]
+fn a_host_keeps_shipping_to_itself_across_key_rotations() {
+    use permguard_core::keys::Sign as _;
+    use permguard_host::membership::local::{LOCAL_MEMBERSHIP, LOCAL_TASK, LocalShipping};
+
+    let (host, wall, mono) = manual_host("local-rotation");
+    let consumer = Arc::new(consumer_on(&host));
+    let producer = Arc::new(host.sealer());
+    let pins = Arc::new(super::ingest::LocalPins {
+        ring: Arc::clone(&host.attest),
+    });
+    let ingest = || {
+        Arc::new(super::ingest::Ingest {
+            consumer: Arc::clone(&consumer),
+            pins: Arc::clone(&pins) as Arc<dyn super::ingest::StreamPins>,
+        })
+    };
+    let local = LocalShipping::new(
+        Arc::clone(&producer) as Arc<dyn StreamShipping>,
+        Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamCutovers>,
+        ingest(),
+        ingest(),
+        host.identity.host_id(),
+        Arc::clone(&host.attest),
+    );
+    // The first pass fences the stream.
+    assert_eq!(local.ship_due(), 0);
+    let mut appended: Vec<[u8; 16]> = Vec::new();
+    let first = host
+        .attest
+        .active_key_id()
+        .expect("a key")
+        .as_str()
+        .to_owned();
+    let mut keys = std::collections::BTreeSet::from([first]);
+    // Three rotations, a record and a pass at every step of the clock, as the server runs them.
+    for step in 0..60 {
+        let run = producer
+            .append(&ledger(1), &format!("r{step}"))
+            .expect("appended")
+            .run_id;
+        appended.push(run);
+        local.ship_due();
+        wall.jump(5);
+        mono.advance(Duration::from_secs(5));
+        permguard_core::KeyManager::maintain(host.attest.as_ref()).expect("maintained");
+        permguard_core::KeyManager::maintain(host.operations.as_ref()).expect("maintained");
+        keys.insert(
+            host.attest
+                .active_key_id()
+                .expect("a key")
+                .as_str()
+                .to_owned(),
+        );
+    }
+    local.ship_due();
+    assert!(keys.len() >= 4, "{} keys: the ring rotated", keys.len());
+    assert!(
+        producer.pending_cutovers().expect("listed").is_empty(),
+        "no cutover left waiting"
+    );
+    let subscription = producer
+        .subscription(&ledger(1), &LOCAL_MEMBERSHIP, LOCAL_TASK)
+        .expect("read")
+        .expect("held");
+    let runs: std::collections::BTreeSet<[u8; 16]> = appended.iter().copied().collect();
+    let acked: u64 = runs.iter().map(|run| subscription.acked(run)).sum();
+    assert_eq!(
+        acked,
+        appended.len() as u64,
+        "every record appended reached the consumer"
     );
 }
