@@ -546,14 +546,27 @@ mod tests {
         assert!(verifier.verify(&no_subject).is_err());
     }
 
+    /// The window is measured on a manual monotonic clock: the test reads the same on every
+    /// platform, whatever the granularity of its timers (Windows sleeps in steps of about 15 ms,
+    /// which made a 20 ms window measured by `sleep` fail there now and then).
     #[test]
     fn the_key_set_is_looked_at_again_half_way_and_ages_out_only_when_the_file_is_gone() {
+        use crate::time::{ManualClock, ManualMonotonic, TimeGuard};
+
         let dir = scratch("stale");
         let (pair, mut rule) = issuer(&dir);
-        rule.max_stale = Duration::from_millis(20);
+        rule.max_stale = Duration::from_secs(20);
         let file = rule.jwks_file.clone();
         let jwks = std::fs::read(&file).expect("the key set reads");
-        let verifier = Verifier::new(rule, 0, guard()).expect("builds");
+        let mono = Arc::new(ManualMonotonic::default());
+        let time = Arc::new(TimeGuard::new(
+            Arc::new(ManualClock::at(
+                i64::try_from(crate::authz::store::now()).expect("in range"),
+            )),
+            mono.clone(),
+            Duration::from_secs(30),
+        ));
+        let verifier = Verifier::new(rule, 0, time).expect("builds");
         let token = token(
             &pair,
             serde_json::json!({"alg": "EdDSA"}),
@@ -561,9 +574,9 @@ mod tests {
         );
         // Past half the window with the file in place: `verify` looks again by itself and the
         // window restarts, so the token keeps verifying well past the original window.
-        std::thread::sleep(Duration::from_millis(12));
+        mono.advance(Duration::from_secs(12));
         assert!(verifier.verify(&token).expect("verifies").is_some());
-        std::thread::sleep(Duration::from_millis(12));
+        mono.advance(Duration::from_secs(12));
         assert!(
             verifier.verify(&token).expect("verifies").is_some(),
             "the window restarted when the file was seen unchanged"
@@ -571,11 +584,11 @@ mod tests {
         // The file gone: the look fails, the loaded set ages past the window, authentication is
         // unavailable until the file is back and looked at again.
         std::fs::remove_file(&file).expect("removed");
-        std::thread::sleep(Duration::from_millis(25));
+        mono.advance(Duration::from_secs(25));
         let refused = verifier.verify(&token).expect_err("stale");
         assert!(refused.message().contains("stale window"), "{refused}");
         std::fs::write(&file, &jwks).expect("restored");
-        std::thread::sleep(Duration::from_millis(12));
+        mono.advance(Duration::from_secs(12));
         assert!(verifier.verify(&token).expect("verifies").is_some());
         // A new key in the file is read when the file changes.
         let other = Ed25519KeyPair::from_seed_unchecked(&[9u8; 32]).expect("a seed");
@@ -583,7 +596,8 @@ mod tests {
             "kty": "OKP", "crv": "Ed25519", "kid": "k2", "alg": "EdDSA", "use": "sig",
             "x": URL_SAFE_NO_PAD.encode(other.public_key().as_ref()),
         }]});
-        std::thread::sleep(Duration::from_millis(12));
+        // A real pause only so the file's modification time moves; the window reads the manual clock.
+        std::thread::sleep(Duration::from_millis(20));
         std::fs::write(&file, serde_json::to_vec(&rotated).expect("json")).expect("rotated");
         assert!(verifier.refresh().expect("refreshes"), "the file changed");
         assert!(verifier.verify(&token).is_err(), "the old key is gone");
