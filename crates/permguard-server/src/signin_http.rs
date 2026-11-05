@@ -39,36 +39,7 @@ pub struct SignInRoutes {
     pub recorder: Option<AuditRecorder>,
 }
 
-/// Who a request on the Server Host surface acts as: a live password session, enrollment-only
-/// sessions included, since the routes that take one decide what it may do; nobody without one.
-/// The surface's authentication boundary, so a session token reaches the routes that read it
-/// rather than being refused as a credential no rule maps (WP-8.1).
-pub struct SessionBearers(pub Arc<SignIn>);
-
-impl permguard_core::authz::Authenticator for SessionBearers {
-    fn authenticate(
-        &self,
-        _peer: Option<&permguard_core::PeerIdentity>,
-        bearer: Option<&str>,
-    ) -> Result<permguard_core::authz::Actor, permguard_core::AccessDenial> {
-        use permguard_core::authz::{Actor, ActorContext, Credential, Principal};
-        let Some(token) = bearer else {
-            return Ok(Actor::Anonymous);
-        };
-        let session = self.0.session(token).ok_or_else(|| {
-            permguard_core::AccessDenial::unauthenticated("the session is not valid: sign in again")
-        })?;
-        let principal = Principal::new(permguard_host::authz::directory::user_principal(
-            &session.user,
-        ))
-        .map_err(|error| permguard_core::AccessDenial::unauthenticated(error.to_string()))?;
-        Ok(Actor::Authenticated(ActorContext::new(
-            principal,
-            Credential::Password,
-            Some(session.user),
-        )))
-    }
-}
+pub use permguard_host::authz::mapper::SessionBearers;
 
 /// The `/auth/v1` routes over `state`.
 pub fn router(state: SignInRoutes) -> axum::Router {

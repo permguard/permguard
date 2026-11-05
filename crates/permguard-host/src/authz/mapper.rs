@@ -450,6 +450,34 @@ pub(crate) fn digest_hex(text: &str) -> Option<String> {
     (hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit())).then(|| hex.to_owned())
 }
 
+/// Who a request on the Server Host surface acts as: a live password session, enrollment-only
+/// sessions included, since the routes that take one decide what it may do; nobody without one.
+/// The surface's authentication boundary, so a session token reaches the routes that read it
+/// rather than being refused as a credential no rule maps (WP-8.1).
+pub struct SessionBearers(pub std::sync::Arc<super::signin::SignIn>);
+
+impl Authenticator for SessionBearers {
+    fn authenticate(
+        &self,
+        _peer: Option<&permguard_core::PeerIdentity>,
+        bearer: Option<&str>,
+    ) -> Result<Actor, permguard_core::AccessDenial> {
+        let Some(token) = bearer else {
+            return Ok(Actor::Anonymous);
+        };
+        let session = self.0.session(token).ok_or_else(|| {
+            permguard_core::AccessDenial::unauthenticated("the session is not valid: sign in again")
+        })?;
+        let principal = Principal::new(super::directory::user_principal(&session.user))
+            .map_err(|error| permguard_core::AccessDenial::unauthenticated(error.to_string()))?;
+        Ok(Actor::Authenticated(ActorContext::new(
+            principal,
+            Credential::Password,
+            Some(session.user),
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
