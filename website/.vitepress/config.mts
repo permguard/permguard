@@ -65,6 +65,7 @@ export default defineConfig({
             text: 'Concepts',
             items: [
               { text: 'Server, Host & Planes', link: '/how-it-works/architecture' },
+              { text: 'Identity & Access', link: '/how-it-works/identity-and-access' },
               { text: 'Git-like Policy Storage', link: '/how-it-works/policy-storage' },
               { text: 'Bring Your Own Data Plane', link: '/how-it-works/bring-your-own-data-plane' },
               { text: 'Policy Lifecycle', link: '/how-it-works/policy-lifecycle' },
