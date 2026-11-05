@@ -2415,6 +2415,7 @@ dependencies = [
  "permguard-transport",
  "rcgen",
  "ring",
+ "rustix",
  "serde",
  "serde_json",
  "serde_norway",

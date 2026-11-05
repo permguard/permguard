@@ -48,6 +48,10 @@ serde_json.workspace = true
 serde_norway.workspace = true
 toml = "1.1"
 
+[target.'cfg(unix)'.dependencies]
+# A password typed at a terminal is read with echo off (WP-8.1).
+rustix = { workspace = true, features = ["termios"] }
+
 [features]
 # The `pkcs11` custody of the offline `host` commands: the server's, behind the same feature.
 pkcs11 = ["permguard-server/pkcs11"]

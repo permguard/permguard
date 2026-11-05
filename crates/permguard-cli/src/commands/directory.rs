@@ -27,8 +27,12 @@ pub(super) fn client(failure: permguard_control_client::catalog::Failure) -> Fai
     Failure::from_client(&failure)
 }
 
-/// The password on standard input: everything up to the end, one trailing line break dropped.
+/// The password on standard input: typed at a terminal, one line read with echo off after a
+/// prompt on standard error; piped, everything up to the end, one trailing line break dropped.
 fn password_from_stdin() -> Result<String, Failure> {
+    if let Some(typed) = typed_secret("Password: ")? {
+        return Ok(typed);
+    }
     let mut text = String::new();
     std::io::stdin()
         .take(4 * 1024)
@@ -44,8 +48,16 @@ fn password_from_stdin() -> Result<String, Failure> {
     Ok(password.to_owned())
 }
 
-/// The two lines of `password`: the current password, then the new one.
+/// The two lines of `password`: the current password, then the new one; typed at a terminal, each
+/// after its own prompt with echo off.
 fn two_passwords_from_stdin() -> Result<(String, String), Failure> {
+    if let Some(current) = typed_secret("Current password: ")? {
+        let new = typed_secret("New password: ")?.unwrap_or_default();
+        if new.is_empty() {
+            return Err(Failure::usage("no new password was typed"));
+        }
+        return Ok((current, new));
+    }
     let mut text = String::new();
     std::io::stdin()
         .take(8 * 1024)
@@ -60,6 +72,57 @@ fn two_passwords_from_stdin() -> Result<(String, String), Failure> {
             "standard input holds the current password on one line and the new one on the next",
         )),
     }
+}
+
+/// One secret typed at the terminal standard input is, with echo off; `None` when standard input
+/// is not a terminal, and is then read as piped.
+#[cfg(unix)]
+fn typed_secret(prompt: &str) -> Result<Option<String>, Failure> {
+    use std::io::{BufRead as _, IsTerminal as _, Write as _};
+    use std::os::fd::AsFd as _;
+
+    use rustix::termios::{LocalModes, OptionalActions, tcgetattr, tcsetattr};
+
+    let stdin = std::io::stdin();
+    if !stdin.is_terminal() {
+        return Ok(None);
+    }
+    let terminal = |error: rustix::io::Errno| {
+        Failure::usage(format!("reading the password from the terminal: {error}"))
+    };
+    let fd = stdin.as_fd();
+    let original = tcgetattr(fd).map_err(terminal)?;
+    let mut hidden = original.clone();
+    hidden.local_modes.remove(LocalModes::ECHO);
+    hidden.local_modes.insert(LocalModes::ECHONL);
+    let mut stderr = std::io::stderr();
+    let _ = write!(stderr, "{prompt}");
+    let _ = stderr.flush();
+    tcsetattr(fd, OptionalActions::Now, &hidden).map_err(terminal)?;
+    let mut line = String::new();
+    let read = stdin.lock().take(4 * 1024).read_line(&mut line);
+    // Echo comes back whatever the read did.
+    let restored = tcsetattr(fd, OptionalActions::Now, &original);
+    read.map_err(|error| Failure::usage(format!("reading the password: {error}")))?;
+    restored.map_err(terminal)?;
+    let typed = line.trim_end_matches(['\n', '\r']);
+    if typed.is_empty() {
+        return Err(Failure::usage("no password was typed"));
+    }
+    Ok(Some(typed.to_owned()))
+}
+
+/// Elsewhere a terminal is not switched to echo off: a password is piped in.
+#[cfg(not(unix))]
+fn typed_secret(_prompt: &str) -> Result<Option<String>, Failure> {
+    use std::io::IsTerminal as _;
+
+    if std::io::stdin().is_terminal() {
+        return Err(Failure::usage(
+            "pipe the password into standard input: a terminal here would show it as it is typed",
+        ));
+    }
+    Ok(None)
 }
 
 /// The principal `who` names: a local user, a provider's subject or issuer, or an exact one.
