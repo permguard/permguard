@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.18] - 2026-11-05
+
 ### Added
 
 - **Several identity providers at once, their keys fetched by the Host.**
