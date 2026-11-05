@@ -301,6 +301,14 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Discover { url, timeout } => {
             commands::discover::discover_command(&globals, &url, timeout, &trace)
         }
+        Command::Login { url, user, code } => {
+            commands::directory::login(&globals, &url, &user, code.as_deref(), &trace)
+        }
+        Command::Logout { url } => commands::directory::logout(&globals, &url, &trace),
+        Command::Password { url } => commands::directory::password(&globals, &url, &trace),
+        Command::Factor { url, action } => {
+            commands::directory::factor(&globals, &url, action, &trace)
+        }
         Command::Init { name, language } => {
             let languages: Vec<&str> = language.iter().map(String::as_str).collect();
             workspace_command(
@@ -406,6 +414,10 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Evidence { .. } => ("evidence", Class::Host),
         Command::Migrate { .. } => ("migrate", Class::Volume),
         Command::Discover { .. } => ("discover", Class::Local),
+        Command::Login { .. } => ("login", Class::Local),
+        Command::Logout { .. } => ("logout", Class::Local),
+        Command::Password { .. } => ("password", Class::Local),
+        Command::Factor { .. } => ("factor", Class::Local),
         Command::Host { action, .. } => {
             let class = match action {
                 HostAction::Identity {
@@ -413,6 +425,9 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
                 }
                 | HostAction::Grants {
                     action: GrantsAction::Bootstrap { .. },
+                }
+                | HostAction::Users {
+                    action: crate::args::UsersAction::Bootstrap { .. },
                 }
                 | HostAction::Holds { .. } => Class::Volume,
                 HostAction::Identity {
@@ -422,6 +437,9 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
                 | HostAction::Members { .. }
                 | HostAction::Streams { .. }
                 | HostAction::Grants { .. }
+                | HostAction::Roles { .. }
+                | HostAction::Users { .. }
+                | HostAction::Providers { .. }
                 | HostAction::Keys { .. }
                 | HostAction::Audit { .. }
                 | HostAction::Config { .. }

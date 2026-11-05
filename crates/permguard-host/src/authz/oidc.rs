@@ -517,6 +517,13 @@ impl Verifier {
         }
     }
 
+    /// Wakes the refresh task for a fetch now: an administrator's ask, not rate-limited.
+    pub fn ask_refresh(&self) {
+        if let Some(wake) = self.waker.get() {
+            wake();
+        }
+    }
+
     /// A token named a key the set does not hold: the refresh task is asked for an early fetch,
     /// at most once per [`EARLY_REFRESH_EVERY`]. The request that asked is refused all the same.
     fn want_early(&self) {

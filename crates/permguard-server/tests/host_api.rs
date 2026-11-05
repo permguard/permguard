@@ -143,6 +143,8 @@ fn facade(tag: &str) -> Arc<HostApi> {
     let root = scratch(tag);
     let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
     let (store, _) = GrantStore::open(&volume).expect("the grant store opens");
+    let (directory, _) =
+        permguard_host::authz::directory::Directory::open(&volume).expect("the directory opens");
     let mutations = Arc::new(
         permguard_host::operations::mutation::Mutations::open_offline(&volume, "test")
             .expect("the mutation journal opens"),
@@ -318,7 +320,14 @@ fn facade(tag: &str) -> Arc<HostApi> {
             })),
         })
         .with_streams(Arc::new(FixedStreams))
-        .with_backups(Arc::new(backups), None, None),
+        .with_backups(Arc::new(backups), None, None)
+        // Roles and local users on the same volume (WP-8.1).
+        .with_identities(permguard_host::api::directory::Identities {
+            directory,
+            signin: None,
+            providers: Vec::new(),
+            min_length: 12,
+        }),
     );
     // The object sweep a Control Plane provides (WP-7.11b), answering fixed reports.
     api.gc_jobs()
@@ -3560,4 +3569,346 @@ fn chrono_like(text: &str) -> bool {
             .chars()
             .enumerate()
             .all(|(at, held)| [4, 7, 10, 13, 16, 19].contains(&at) || held.is_ascii_digit())
+}
+
+/// One step of the directory script, as either transport answered it: the status or code, and the
+/// members the step checks.
+#[derive(Debug, PartialEq, Eq)]
+struct Step {
+    outcome: String,
+    seen: Value,
+}
+
+fn grpc_step<T: serde::Serialize>(
+    answered: Result<tonic::Response<T>, tonic::Status>,
+    seen: impl FnOnce(T) -> Value,
+) -> Step {
+    match answered {
+        Ok(response) => Step {
+            outcome: "ok".to_owned(),
+            seen: seen(response.into_inner()),
+        },
+        Err(status) => match reduced_grpc::<T>(Err(status)) {
+            Outcome::Refused { code, .. } => Step {
+                outcome: code,
+                seen: Value::Null,
+            },
+            Outcome::Answered(_) => unreachable!("an error is a refusal"),
+        },
+    }
+}
+
+fn rest_step(outcome: Outcome, seen: impl FnOnce(&Value) -> Value) -> Step {
+    match outcome {
+        Outcome::Answered(body) => Step {
+            outcome: "ok".to_owned(),
+            seen: seen(&body),
+        },
+        Outcome::Refused { code, .. } => Step {
+            outcome: code,
+            seen: Value::Null,
+        },
+    }
+}
+
+async fn directory_script_rest(transport: &Transport) -> Vec<Step> {
+    let call = |method: &'static str, path: String, who: &'static str, body: Option<Value>| async move {
+        transport.rest(method, &path, Some(who), body).await
+    };
+    let changed = |body: &Value| json!({"revision": body["revision"], "changed": body["changed"]});
+    vec![
+        rest_step(call("POST", "/host/v1/roles".into(), ADMIN, Some(json!({"request_id": "r1", "name": "operators", "description": "run it"}))).await, changed),
+        rest_step(call("POST", "/host/v1/users".into(), ADMIN, Some(json!({"request_id": "r2", "name": "paperino", "email": "paperino@hotmail.com", "password": "a long enough secret"}))).await, changed),
+        rest_step(call("POST", "/host/v1/roles/operators/members".into(), ADMIN, Some(json!({"request_id": "r3", "member": "user:paperino"}))).await, changed),
+        rest_step(call("POST", "/host/v1/roles/operators/members".into(), ADMIN, Some(json!({"request_id": "r4", "member": "user:paperino"}))).await, changed),
+        rest_step(call("GET", "/host/v1/roles/operators".into(), ADMIN, None).await, |body| json!({"members": body["members"], "description": body["description"]})),
+        rest_step(call("GET", "/host/v1/principals/user%3Apaperino/roles".into(), ADMIN, None).await, Clone::clone),
+        rest_step(call("GET", "/host/v1/users".into(), ADMIN, None).await, |body| json!({"name": body["users"][0]["name"], "password": body["users"][0]["password"], "roles": body["users"][0]["roles"]})),
+        rest_step(call("GET", "/host/v1/roles".into(), "spiffe://acme/stranger", None).await, Clone::clone),
+        rest_step(call("POST", "/host/v1/users".into(), ADMIN, Some(json!({"request_id": "r5", "name": "weak", "password": "short"}))).await, changed),
+        rest_step(call("POST", "/host/v1/grants".into(), ADMIN, Some(json!({"request_id": "r6", "principal": "role:operators", "operations": ["catalog.read"], "selector": "plane/control/*"}))).await, |_| Value::Null),
+        rest_step(call("POST", "/host/v1/roles/operators/delete".into(), ADMIN, Some(json!({"request_id": "r7"}))).await, changed),
+        rest_step(call("POST", "/host/v1/users/paperino/disable".into(), ADMIN, Some(json!({"request_id": "r8"}))).await, changed),
+        rest_step(call("GET", "/host/v1/users/paperino".into(), ADMIN, None).await, |body| json!({"status": body["user"]["status"]})),
+        rest_step(call("POST", "/host/v1/users/paperino/delete".into(), ADMIN, Some(json!({"request_id": "r9"}))).await, changed),
+        rest_step(call("GET", "/host/v1/users/paperino".into(), ADMIN, None).await, Clone::clone),
+    ]
+}
+
+async fn directory_script_grpc(transport: &Transport) -> Vec<Step> {
+    let url = format!("http://{}", transport.grpc_url());
+    let mut roles = host_v1::role_service_client::RoleServiceClient::connect(url.clone())
+        .await
+        .expect("roles");
+    let mut users = host_v1::user_service_client::UserServiceClient::connect(url.clone())
+        .await
+        .expect("users");
+    let mut grants = transport.grants().await;
+    let changed = |answer: host_v1::DirectoryChangeResponse| json!({"revision": answer.revision, "changed": answer.changed});
+    vec![
+        grpc_step(
+            roles
+                .create_role(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::CreateRoleRequest {
+                        request_id: "r1".into(),
+                        expected_revision: None,
+                        name: "operators".into(),
+                        description: "run it".into(),
+                    },
+                ))
+                .await,
+            changed,
+        ),
+        grpc_step(
+            users
+                .create_user(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::CreateUserRequest {
+                        request_id: "r2".into(),
+                        expected_revision: None,
+                        name: "paperino".into(),
+                        email: Some("paperino@hotmail.com".into()),
+                        display: None,
+                        password: Some("a long enough secret".into()),
+                    },
+                ))
+                .await,
+            changed,
+        ),
+        grpc_step(
+            roles
+                .add_member(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::MemberRequest {
+                        role: "operators".into(),
+                        request_id: "r3".into(),
+                        expected_revision: None,
+                        member: "user:paperino".into(),
+                    },
+                ))
+                .await,
+            changed,
+        ),
+        grpc_step(
+            roles
+                .add_member(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::MemberRequest {
+                        role: "operators".into(),
+                        request_id: "r4".into(),
+                        expected_revision: None,
+                        member: "user:paperino".into(),
+                    },
+                ))
+                .await,
+            changed,
+        ),
+        grpc_step(
+            roles
+                .get_role(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::GetRoleRequest {
+                        name: "operators".into(),
+                    },
+                ))
+                .await,
+            |answer| json!({"members": answer.members, "description": answer.description}),
+        ),
+        grpc_step(
+            roles
+                .roles_of(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::RolesOfRequest {
+                        principal: "user:paperino".into(),
+                    },
+                ))
+                .await,
+            |answer| json!(answer.roles),
+        ),
+        grpc_step(
+            users
+                .list_users(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::ListUsersRequest {},
+                ))
+                .await,
+            |answer| json!({"name": answer.users[0].name, "password": answer.users[0].password, "roles": answer.users[0].roles}),
+        ),
+        grpc_step(
+            roles
+                .list_roles(Transport::grpc_request(
+                    Some("spiffe://acme/stranger"),
+                    host_v1::ListRolesRequest {},
+                ))
+                .await,
+            |_| Value::Null,
+        ),
+        grpc_step(
+            users
+                .create_user(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::CreateUserRequest {
+                        request_id: "r5".into(),
+                        expected_revision: None,
+                        name: "weak".into(),
+                        email: None,
+                        display: None,
+                        password: Some("short".into()),
+                    },
+                ))
+                .await,
+            changed,
+        ),
+        grpc_step(
+            grants
+                .create_grant(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::CreateGrantRequest {
+                        request_id: "r6".into(),
+                        expected_revision: None,
+                        principal: "role:operators".into(),
+                        operations: vec!["catalog.read".into()],
+                        selector: "plane/control/*".into(),
+                        resource_types: Vec::new(),
+                        constraints: Default::default(),
+                        expires_at: None,
+                    },
+                ))
+                .await,
+            |_| Value::Null,
+        ),
+        grpc_step(
+            roles
+                .delete_role(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::DeleteRoleRequest {
+                        name: "operators".into(),
+                        request_id: "r7".into(),
+                        expected_revision: None,
+                    },
+                ))
+                .await,
+            changed,
+        ),
+        grpc_step(
+            users
+                .set_user_status(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::SetUserStatusRequest {
+                        name: "paperino".into(),
+                        request_id: "r8".into(),
+                        expected_revision: None,
+                        active: false,
+                    },
+                ))
+                .await,
+            changed,
+        ),
+        grpc_step(
+            users
+                .get_user(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::GetUserRequest {
+                        name: "paperino".into(),
+                    },
+                ))
+                .await,
+            |answer| json!({"status": answer.user.map(|user| user.status)}),
+        ),
+        grpc_step(
+            users
+                .delete_user(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::UserPlainRequest {
+                        name: "paperino".into(),
+                        request_id: "r9".into(),
+                        expected_revision: None,
+                    },
+                ))
+                .await,
+            changed,
+        ),
+        grpc_step(
+            users
+                .get_user(Transport::grpc_request(
+                    Some(ADMIN),
+                    host_v1::GetUserRequest {
+                        name: "paperino".into(),
+                    },
+                ))
+                .await,
+            |_| Value::Null,
+        ),
+    ]
+}
+
+/// Roles and local users (WP-8.1): the same script over both transports, the same outcome at
+/// every step; a role holding grants is not deleted; a stranger is refused; a weak password too.
+#[tokio::test(flavor = "multi_thread")]
+async fn roles_and_users_answer_the_same_over_both_transports() {
+    let rest = Transport::Rest(
+        host_api::http::routes(facade("directory-rest"), Disclosure::Minimal)
+            .layer(ActorLayer::new(Arc::new(Bearers))),
+    );
+    let mut grpc = tonic::service::RoutesBuilder::default();
+    let served = host_api::grpc::Served::new(facade("directory-grpc"), Disclosure::Minimal);
+    use permguard_server::host_api::v1 as served_v1;
+    grpc.add_service(
+        served_v1::role_service_server::RoleServiceServer::with_interceptor(
+            served.clone(),
+            bearer_interceptor,
+        ),
+    );
+    grpc.add_service(
+        served_v1::user_service_server::UserServiceServer::with_interceptor(
+            served.clone(),
+            bearer_interceptor,
+        ),
+    );
+    grpc.add_service(
+        served_v1::grant_service_server::GrantServiceServer::with_interceptor(
+            served,
+            bearer_interceptor,
+        ),
+    );
+    let served = serve(axum::Router::new(), grpc.routes());
+    let grpc = Transport::Grpc(served.grpc);
+
+    let over_rest = directory_script_rest(&rest).await;
+    let over_grpc = directory_script_grpc(&grpc).await;
+    let expected = [
+        ("ok", json!({"revision": 1, "changed": true})),
+        ("ok", json!({"revision": 2, "changed": true})),
+        ("ok", json!({"revision": 3, "changed": true})),
+        ("ok", json!({"revision": 3, "changed": false})),
+        (
+            "ok",
+            json!({"members": ["user:paperino"], "description": "run it"}),
+        ),
+        ("ok", json!(["operators"])),
+        (
+            "ok",
+            json!({"name": "paperino", "password": true, "roles": ["operators"]}),
+        ),
+        ("forbidden", Value::Null),
+        ("invalid_argument", Value::Null),
+        ("ok", Value::Null),
+        ("conflict", Value::Null),
+        ("ok", json!({"revision": 4, "changed": true})),
+        ("ok", json!({"status": "disabled"})),
+        ("ok", json!({"revision": 5, "changed": true})),
+        ("not_found", Value::Null),
+    ];
+    for (at, (rest, grpc)) in over_rest.iter().zip(&over_grpc).enumerate() {
+        let (outcome, seen) = &expected[at];
+        assert_eq!(rest.outcome, *outcome, "REST step {at}: {rest:?}");
+        assert_eq!(grpc.outcome, *outcome, "gRPC step {at}: {grpc:?}");
+        if !seen.is_null() {
+            assert_eq!(&rest.seen, seen, "REST step {at}");
+            assert_eq!(&grpc.seen, seen, "gRPC step {at}");
+        }
+    }
+    assert_eq!(over_rest.len(), expected.len());
+    assert_eq!(over_grpc.len(), expected.len());
 }

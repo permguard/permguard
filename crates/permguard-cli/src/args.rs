@@ -558,6 +558,31 @@ pub enum Command {
         #[command(subcommand)]
         action: EventsAction,
     },
+    /// Sign in with a password on a Server Host surface and keep the session in the token file
+    /// (`--token-file`, or `~/.permguard/session`), private to its owner. The password is read
+    /// from standard input, never an argument.
+    #[command(after_help = "Examples:
+  printf '%s' \"$PASSWORD\" | permguard login https://pg.example:5443 --user paperino
+  printf '%s' \"$PASSWORD\" | permguard login https://pg.example:5443 --user paperino --code 123456")]
+    Login {
+        /// The Server Host surface: `https://host:port`.
+        url: String,
+        #[arg(long)]
+        user: String,
+        /// The second factor's current code, when the user has one.
+        #[arg(long)]
+        code: Option<String>,
+    },
+    /// End the session the token file holds, and remove the file.
+    Logout { url: String },
+    /// Change your password: the current and the new one, one per line on standard input.
+    Password { url: String },
+    /// Enroll a second factor: `begin` shows the secret once, `confirm` puts it in force.
+    Factor {
+        url: String,
+        #[command(subcommand)]
+        action: FactorAction,
+    },
     /// Walk the discovery chain from one address: the process, each plane, each interface.
     ///
     /// The address is a process's telemetry listener or a plane's public one; every link is
@@ -586,6 +611,18 @@ pub enum Command {
         /// How long to wait for one request, in seconds.
         #[arg(long, default_value = "5", value_name = "SECONDS")]
         timeout: u64,
+    },
+}
+
+/// `permguard factor …`.
+#[derive(Debug, Subcommand)]
+pub enum FactorAction {
+    /// Start an enrollment: the password on standard input; the secret and its URI, once.
+    Begin,
+    /// Confirm it with a code of the new factor.
+    Confirm {
+        #[arg(long)]
+        code: String,
     },
 }
 
@@ -1811,6 +1848,22 @@ pub enum HostAction {
         #[command(subcommand)]
         action: GrantsAction,
     },
+    /// Roles: named sets of grants their members act with (WP-8.1).
+    Roles {
+        #[command(subcommand)]
+        action: RolesAction,
+    },
+    /// Local users, who sign in with a password or through a linked identity provider; the
+    /// first administrator is created offline (WP-8.1).
+    Users {
+        #[command(subcommand)]
+        action: UsersAction,
+    },
+    /// The identity providers and the keys the Host fetched for each (WP-8.1).
+    Providers {
+        #[command(subcommand)]
+        action: ProvidersAction,
+    },
     /// The Host identity; provisioning and emergency reset remain offline.
     Identity {
         #[command(subcommand)]
@@ -2716,6 +2769,201 @@ pub enum HostBackupAction {
         after_help = "Examples:\n  permguard host backup list\n  permguard host backup list -o json"
     )]
     List,
+}
+
+/// Who a role's member or a lookup names: exactly one of these.
+#[derive(Debug, Clone, clap::Args)]
+#[group(required = true, multiple = false)]
+pub struct Who {
+    /// A local user, by name.
+    #[arg(long, value_name = "NAME")]
+    pub local: Option<String>,
+    /// A provider's subject, `<provider>:<value>`: `entra:alice@acme.com`.
+    #[arg(long, value_name = "PROVIDER:VALUE")]
+    pub user: Option<String>,
+    /// Every subject of a provider, by the provider's name.
+    #[arg(long, value_name = "PROVIDER")]
+    pub issuer: Option<String>,
+    /// An exact authorization principal, as the credential mapper produces it.
+    #[arg(long, value_name = "PRINCIPAL")]
+    pub principal: Option<String>,
+}
+
+/// `permguard host roles …`.
+#[derive(Debug, Subcommand)]
+pub enum RolesAction {
+    /// List the roles with their member and grant counts.
+    #[command(
+        after_help = "Examples:\n  permguard host roles list\n  permguard host roles list -o json"
+    )]
+    List,
+    /// Show a role: its members and its grants.
+    #[command(after_help = "Examples:\n  permguard host roles get operators")]
+    Get { name: String },
+    /// Create a role.
+    #[command(
+        after_help = "Examples:\n  permguard host roles create operators --description \"run the platform\""
+    )]
+    Create {
+        name: String,
+        #[arg(long, default_value = "")]
+        description: String,
+        #[arg(long)]
+        expected_revision: Option<u64>,
+    },
+    /// Change a role's description.
+    Update {
+        name: String,
+        #[arg(long)]
+        description: String,
+        #[arg(long)]
+        expected_revision: Option<u64>,
+    },
+    /// Delete a role; with `--revoke-grants` its grants are revoked first, each its own operation.
+    #[command(
+        after_help = "Examples:\n  permguard host roles delete readers\n  permguard host roles delete readers --revoke-grants"
+    )]
+    Delete {
+        name: String,
+        #[arg(long)]
+        revoke_grants: bool,
+        #[arg(long)]
+        expected_revision: Option<u64>,
+    },
+    /// Add or remove a member.
+    Members {
+        #[command(subcommand)]
+        action: RoleMembersAction,
+    },
+    /// Grant the role: `host grants issue` for `role:<name>`.
+    #[command(
+        after_help = "Examples:\n  permguard host roles grant readers --operations catalog.read --selector plane/control/*"
+    )]
+    Grant {
+        name: String,
+        #[arg(long, value_delimiter = ',', required = true)]
+        operations: Vec<String>,
+        #[arg(long)]
+        selector: String,
+        #[arg(long, value_delimiter = ',')]
+        types: Vec<String>,
+        #[arg(long, value_name = "INSTANT")]
+        expires: Option<String>,
+    },
+    /// The roles a principal acts with.
+    #[command(
+        after_help = "Examples:\n  permguard host roles of --local paperino\n  permguard host roles of --user entra:alice@acme.com"
+    )]
+    Of {
+        #[command(flatten)]
+        who: Who,
+    },
+}
+
+/// `permguard host roles members …`.
+#[derive(Debug, Subcommand)]
+pub enum RoleMembersAction {
+    /// Add a member to a role.
+    #[command(
+        after_help = "Examples:\n  permguard host roles members add operators --local paperino\n  permguard host roles members add readers --issuer entra"
+    )]
+    Add {
+        role: String,
+        #[command(flatten)]
+        who: Who,
+    },
+    /// Remove a member from a role.
+    Remove {
+        role: String,
+        #[command(flatten)]
+        who: Who,
+    },
+}
+
+/// `permguard host users …`.
+#[derive(Debug, Subcommand)]
+pub enum UsersAction {
+    /// List the local users.
+    List,
+    /// Show a user: its roles, links and grants.
+    Get { name: String },
+    /// Create a user; its password, if any, read from standard input.
+    #[command(
+        after_help = "Examples:\n  printf '%s' \"$PASSWORD\" | permguard host users create paperino --email paperino@hotmail.com --password-stdin\n  permguard host users create alice@acme.com --email alice@acme.com"
+    )]
+    Create {
+        name: String,
+        #[arg(long)]
+        email: Option<String>,
+        #[arg(long)]
+        display: Option<String>,
+        /// Read the password from standard input: never an argument.
+        #[arg(long)]
+        password_stdin: bool,
+    },
+    /// Change a user's email or display name; an empty value clears it.
+    Update {
+        name: String,
+        #[arg(long)]
+        email: Option<String>,
+        #[arg(long)]
+        display: Option<String>,
+    },
+    /// Set a user's password, read from standard input; its sessions end.
+    Password {
+        name: String,
+        #[arg(long, required = true)]
+        password_stdin: bool,
+    },
+    /// Disable a user: no method signs it in; its sessions end.
+    Disable { name: String },
+    /// Enable a user again.
+    Enable { name: String },
+    /// Reset a user's second factor.
+    FactorReset { name: String },
+    /// End a lockout of failed sign-ins.
+    Unlock { name: String },
+    /// Link a provider's subject: it signs in as this user.
+    Link {
+        name: String,
+        #[command(flatten)]
+        who: Who,
+    },
+    /// Remove a link.
+    Unlink {
+        name: String,
+        #[command(flatten)]
+        who: Who,
+    },
+    /// Delete a user; with `--revoke-grants` its grants are revoked first.
+    Delete {
+        name: String,
+        #[arg(long)]
+        revoke_grants: bool,
+    },
+    /// Create the first administrator offline, on a stopped server's volume: a user with
+    /// `authz.admin` on the Host, with a password, or with only an email its first provider
+    /// sign-in links.
+    #[command(
+        after_help = "Examples:\n  printf '%s' \"$PASSWORD\" | permguard host users bootstrap --volume /var/lib/permguard --name admin --password-stdin\n  permguard host users bootstrap --volume /var/lib/permguard --name admin@acme.com --email admin@acme.com"
+    )]
+    Bootstrap {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        email: Option<String>,
+        #[arg(long)]
+        password_stdin: bool,
+    },
+}
+
+/// `permguard host providers …`.
+#[derive(Debug, Subcommand)]
+pub enum ProvidersAction {
+    /// List the identity providers and how their keys stand.
+    List,
+    /// Fetch a provider's keys now.
+    Refresh { name: String },
 }
 
 /// `permguard host grants …`: online administration, plus offline recovery bootstrap.

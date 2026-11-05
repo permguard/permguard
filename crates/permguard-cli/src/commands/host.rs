@@ -62,6 +62,11 @@ pub fn host_command(
 ) -> Result<ExitCode, Failure> {
     match action {
         HostAction::Grants { action } => grants(globals, server_config, action, trace),
+        HostAction::Roles { action } => super::directory::roles(globals, action, trace),
+        HostAction::Users { action } => {
+            super::directory::users(globals, server_config, action, trace)
+        }
+        HostAction::Providers { action } => super::directory::providers(globals, action, trace),
         HostAction::Holds { action } => holds(globals, server_config, action, trace),
         HostAction::Identity { action } => identity(globals, server_config, action, trace),
         HostAction::Members { action } => members(globals, action, trace),
@@ -539,7 +544,7 @@ impl Report for BootstrapReport {
 
 /// The mutation engine of a volume opened offline, its records stamped with the volume's
 /// identity when it has one.
-fn offline_engine(
+pub(super) fn offline_engine(
     held: &Volume,
     server_config: Option<&Path>,
     trace: &Trace,

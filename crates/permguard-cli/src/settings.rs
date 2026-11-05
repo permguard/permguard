@@ -484,7 +484,7 @@ pub fn config_path(explicit: Option<&str>) -> Result<PathBuf, Error> {
 }
 
 /// The user's home directory, from the environment.
-fn home_directory() -> Result<PathBuf, Error> {
+pub(crate) fn home_directory() -> Result<PathBuf, Error> {
     for name in ["HOME", "USERPROFILE"] {
         if let Some(home) = environment(name).filter(|home| !home.is_empty()) {
             return Ok(PathBuf::from(home));

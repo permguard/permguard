@@ -2386,7 +2386,6 @@ impl App {
                 }),
             )));
         }
-        let _ = &directory;
 
         // The Host API facade (WP-2.5), when the deployment has a Host listener: the replay
         // journal on the volume, the grant store, every ring this process composes and the
@@ -2687,6 +2686,16 @@ impl App {
                 None => api,
             };
             local_shipper = local_shipping;
+            // Roles, local users and identity providers over both transports (WP-8.1).
+            let api = api.with_identities(permguard_host::api::directory::Identities {
+                directory: Arc::clone(&directory),
+                signin: signin.clone(),
+                providers: mapper.providers(),
+                min_length: signin.as_ref().map_or(
+                    permguard_host::authz::password::DEFAULT_MIN_LENGTH,
+                    |signin| signin.policy().min_length,
+                ),
+            });
             let api = Arc::new(api);
             serving = Some(Arc::clone(&api));
             context = context.with_host_handles(api);

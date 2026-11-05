@@ -38,6 +38,7 @@ use permguard_host::api::{CreateGrant, Grants, PlanRevoke, Planned, Revoked, Run
 
 use crate::catalog::Failure;
 
+mod directory;
 mod ops;
 use crate::endpoint::Endpoint;
 use crate::grpc::GrpcChannel;
@@ -45,6 +46,7 @@ use crate::host_proto as map;
 use crate::host_v1 as proto;
 use crate::http::Client;
 use crate::tls::TlsOptions;
+pub use directory::Directory;
 pub use ops::Operations;
 
 /// One stream of one resource, as the stream reads name it (WP-5.7b).
@@ -76,7 +78,7 @@ impl Change {
 }
 
 /// What the Host listener answers, whichever transport asked.
-pub trait Host: Operations {
+pub trait Host: Operations + Directory {
     /// `GET /host/v1/status`, `OperationsService.GetStatus`.
     fn status(&self) -> Result<StatusView, Failure>;
 
@@ -453,6 +455,14 @@ impl RestHost {
         body: &str,
     ) -> Result<T, Failure> {
         crate::catalog::call(&self.client, &self.endpoint, "POST", path, Some(body))
+    }
+
+    fn patch<T: for<'de> serde::Deserialize<'de>>(
+        &self,
+        path: &str,
+        body: &str,
+    ) -> Result<T, Failure> {
+        crate::catalog::call(&self.client, &self.endpoint, "PATCH", path, Some(body))
     }
 }
 

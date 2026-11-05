@@ -54,6 +54,15 @@ pub fn grpc_routes(api: Arc<HostApi>, disclosure: Disclosure) -> tonic::service:
     routes.add_service(v1::grant_service_server::GrantServiceServer::new(
         served.clone(),
     ));
+    routes.add_service(v1::role_service_server::RoleServiceServer::new(
+        served.clone(),
+    ));
+    routes.add_service(v1::user_service_server::UserServiceServer::new(
+        served.clone(),
+    ));
+    routes.add_service(v1::provider_service_server::ProviderServiceServer::new(
+        served.clone(),
+    ));
     routes.add_service(v1::key_service_server::KeyServiceServer::new(
         served.clone(),
     ));

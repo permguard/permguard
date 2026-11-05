@@ -97,6 +97,58 @@ service GrantService {
   rpc RunGrantRevoke(RunGrantRevokeRequest) returns (RunGrantRevokeResponse);
 }
 
+// REST group: roles and members (WP-8.1).
+service RoleService {
+  // `GET /host/v1/roles`.
+  rpc ListRoles(ListRolesRequest) returns (ListRolesResponse);
+  // `GET /host/v1/roles/{name}`.
+  rpc GetRole(GetRoleRequest) returns (GetRoleResponse);
+  // `POST /host/v1/roles`.
+  rpc CreateRole(CreateRoleRequest) returns (DirectoryChangeResponse);
+  // `PATCH /host/v1/roles/{name}`.
+  rpc UpdateRole(UpdateRoleRequest) returns (DirectoryChangeResponse);
+  // `POST /host/v1/roles/{name}/delete`.
+  rpc DeleteRole(DeleteRoleRequest) returns (DirectoryChangeResponse);
+  // `POST /host/v1/roles/{name}/members`.
+  rpc AddMember(MemberRequest) returns (DirectoryChangeResponse);
+  // `POST /host/v1/roles/{name}/members/remove`.
+  rpc RemoveMember(MemberRequest) returns (DirectoryChangeResponse);
+  // `GET /host/v1/principals/{principal}/roles`.
+  rpc RolesOf(RolesOfRequest) returns (RolesOfResponse);
+}
+
+// REST group: local users (WP-8.1).
+service UserService {
+  // `GET /host/v1/users`.
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  // `GET /host/v1/users/{name}`.
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  // `POST /host/v1/users`.
+  rpc CreateUser(CreateUserRequest) returns (DirectoryChangeResponse);
+  // `PATCH /host/v1/users/{name}`.
+  rpc UpdateUser(UpdateUserRequest) returns (DirectoryChangeResponse);
+  // `POST /host/v1/users/{name}/password`.
+  rpc SetPassword(SetPasswordRequest) returns (DirectoryChangeResponse);
+  // `POST /host/v1/users/{name}/disable` and `…/enable`.
+  rpc SetUserStatus(SetUserStatusRequest) returns (DirectoryChangeResponse);
+  // `POST /host/v1/users/{name}/factor/reset`.
+  rpc ResetFactor(UserPlainRequest) returns (DirectoryChangeResponse);
+  // `POST /host/v1/users/{name}/unlock`.
+  rpc UnlockUser(UnlockUserRequest) returns (UnlockUserResponse);
+  // `POST /host/v1/users/{name}/links` and `…/links/remove`.
+  rpc LinkUser(LinkUserRequest) returns (DirectoryChangeResponse);
+  // `POST /host/v1/users/{name}/delete`.
+  rpc DeleteUser(UserPlainRequest) returns (DirectoryChangeResponse);
+}
+
+// REST group: identity providers (WP-8.1).
+service ProviderService {
+  // `GET /host/v1/providers`.
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse);
+  // `POST /host/v1/providers/{name}/refresh`.
+  rpc RefreshProvider(RefreshProviderRequest) returns (Provider);
+}
+
 // REST group: keys and secrets.
 service KeyService {
   // `GET /host/v1/keys`.
@@ -1499,4 +1551,166 @@ message ApprovePlanRequest {
 message ApprovePlanResponse {
   Receipt receipt = 1;
   OperationPlan plan = 2;
+}
+
+// Roles, members, local users and identity providers (WP-8.1).
+
+// What a directory change answers.
+message DirectoryChangeResponse {
+  Receipt receipt = 1;
+  // The directory revision after it.
+  uint64 revision = 2;
+  // Whether it wrote anything.
+  bool changed = 3;
+}
+message ListRolesRequest {}
+message ListRolesResponse {
+  uint64 revision = 1;
+  repeated RoleSummary roles = 2;
+}
+message RoleSummary {
+  string name = 1;
+  string description = 2;
+  uint64 members = 3;
+  uint64 grants = 4;
+  uint64 revision = 5;
+}
+message GetRoleRequest {
+  string name = 1;
+}
+message GetRoleResponse {
+  string name = 1;
+  string description = 2;
+  repeated string members = 3;
+  repeated Grant grants = 4;
+  uint64 revision = 5;
+  uint64 directory_revision = 6;
+}
+message CreateRoleRequest {
+  string request_id = 1;
+  optional uint64 expected_revision = 2;
+  string name = 3;
+  string description = 4;
+}
+message UpdateRoleRequest {
+  string name = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+  string description = 4;
+}
+message DeleteRoleRequest {
+  string name = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+}
+message MemberRequest {
+  string role = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+  string member = 4;
+}
+message RolesOfRequest {
+  string principal = 1;
+}
+message RolesOfResponse {
+  repeated string roles = 1;
+}
+// A local user: never its password or factor, whether it holds them.
+message UserSummary {
+  string name = 1;
+  optional string email = 2;
+  optional string display = 3;
+  // `active` or `disabled`.
+  string status = 4;
+  bool password = 5;
+  bool factor = 6;
+  repeated string links = 7;
+  repeated string roles = 8;
+  optional uint64 locked_for = 9;
+  uint64 revision = 10;
+}
+message ListUsersRequest {}
+message ListUsersResponse {
+  uint64 revision = 1;
+  repeated UserSummary users = 2;
+}
+message GetUserRequest {
+  string name = 1;
+}
+message GetUserResponse {
+  UserSummary user = 1;
+  repeated Grant grants = 2;
+  uint64 directory_revision = 3;
+}
+message CreateUserRequest {
+  string request_id = 1;
+  optional uint64 expected_revision = 2;
+  string name = 3;
+  optional string email = 4;
+  optional string display = 5;
+  // Hashed by the Host, never answered.
+  optional string password = 6;
+}
+message UpdateUserRequest {
+  string name = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+  optional string email = 4;
+  optional string display = 5;
+}
+message SetPasswordRequest {
+  string name = 1;
+  string request_id = 2;
+  string password = 3;
+}
+message SetUserStatusRequest {
+  string name = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+  bool active = 4;
+}
+message UserPlainRequest {
+  string name = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+}
+message UnlockUserRequest {
+  string name = 1;
+}
+message UnlockUserResponse {
+  bool unlocked = 1;
+}
+message LinkUserRequest {
+  string name = 1;
+  string request_id = 2;
+  string subject = 3;
+  // True links, false unlinks.
+  bool link = 4;
+}
+message ListProvidersRequest {}
+message ListProvidersResponse {
+  repeated Provider providers = 1;
+}
+message RefreshProviderRequest {
+  string name = 1;
+}
+// An identity provider: never its keys, their ids and algorithms.
+message Provider {
+  string name = 1;
+  string issuer = 2;
+  string claim = 3;
+  // `discovery`, `jwks_uri` or `jwks_file`.
+  string source = 4;
+  string location = 5;
+  repeated ProviderKey keys = 6;
+  optional string fetched_at = 7;
+  optional uint64 age_seconds = 8;
+  optional string failure = 9;
+  optional string failed_at = 10;
+  // `empty`, `fresh`, `aging` or `stale`.
+  string state = 11;
+}
+message ProviderKey {
+  optional string kid = 1;
+  string algorithm = 2;
 }

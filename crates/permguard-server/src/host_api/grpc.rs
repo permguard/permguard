@@ -19,6 +19,7 @@ use super::v1::key_service_server::KeyService;
 use super::v1::operations_service_server::OperationsService;
 use super::wire;
 
+mod directory;
 mod evidence;
 mod members;
 

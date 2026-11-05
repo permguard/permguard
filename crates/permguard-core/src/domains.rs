@@ -358,6 +358,9 @@ pub mod grpc {
     pub const HOST_IDENTITY_SERVICE: &str = "permguard.host.v1.IdentityService";
     pub const HOST_GRANT_SERVICE: &str = "permguard.host.v1.GrantService";
     pub const HOST_KEY_SERVICE: &str = "permguard.host.v1.KeyService";
+    pub const HOST_ROLE_SERVICE: &str = "permguard.host.v1.RoleService";
+    pub const HOST_USER_SERVICE: &str = "permguard.host.v1.UserService";
+    pub const HOST_PROVIDER_SERVICE: &str = "permguard.host.v1.ProviderService";
     pub const HOST_OPERATIONS_SERVICE: &str = "permguard.host.v1.OperationsService";
 }
 
@@ -721,6 +724,9 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("grpc.HOST_IDENTITY_SERVICE", grpc::HOST_IDENTITY_SERVICE),
         ("grpc.HOST_GRANT_SERVICE", grpc::HOST_GRANT_SERVICE),
         ("grpc.HOST_KEY_SERVICE", grpc::HOST_KEY_SERVICE),
+        ("grpc.HOST_ROLE_SERVICE", grpc::HOST_ROLE_SERVICE),
+        ("grpc.HOST_USER_SERVICE", grpc::HOST_USER_SERVICE),
+        ("grpc.HOST_PROVIDER_SERVICE", grpc::HOST_PROVIDER_SERVICE),
         (
             "grpc.HOST_OPERATIONS_SERVICE",
             grpc::HOST_OPERATIONS_SERVICE,

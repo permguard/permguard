@@ -56,6 +56,24 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/grants", get(list_grants).post(create_grant))
         .route("/host/v1/grants/{id}/revoke/plan", post(plan_revoke))
         .route("/host/v1/grants/{id}/revoke/run", post(run_revoke))
+        .route("/host/v1/roles", get(list_roles).post(create_role))
+        .route("/host/v1/roles/{name}", get(get_role).patch(update_role))
+        .route("/host/v1/roles/{name}/delete", post(delete_role))
+        .route("/host/v1/roles/{name}/members", post(add_member))
+        .route("/host/v1/roles/{name}/members/remove", post(remove_member))
+        .route("/host/v1/principals/{principal}/roles", get(roles_of))
+        .route("/host/v1/users", get(list_users).post(create_user))
+        .route("/host/v1/users/{name}", get(get_user).patch(update_user))
+        .route("/host/v1/users/{name}/password", post(set_password))
+        .route("/host/v1/users/{name}/disable", post(disable_user))
+        .route("/host/v1/users/{name}/enable", post(enable_user))
+        .route("/host/v1/users/{name}/factor/reset", post(reset_factor))
+        .route("/host/v1/users/{name}/unlock", post(unlock_user))
+        .route("/host/v1/users/{name}/links", post(link_user))
+        .route("/host/v1/users/{name}/links/remove", post(unlink_user))
+        .route("/host/v1/users/{name}/delete", post(delete_user))
+        .route("/host/v1/providers", get(list_providers))
+        .route("/host/v1/providers/{name}/refresh", post(refresh_provider))
         .route("/host/v1/keys", get(list_rings))
         .route("/host/v1/keys/bundle", get(key_bundle))
         .route("/host/v1/keys/{ring}", get(get_ring))
@@ -961,6 +979,270 @@ fn percent_decode(text: &str) -> String {
         index += 1;
     }
     String::from_utf8_lossy(&decoded).into_owned()
+}
+
+// Roles, local users and identity providers (WP-8.1).
+
+async fn list_roles(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    answer(&served, StatusCode::OK, served.api.roles(&actor))
+}
+
+async fn get_role(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+) -> Response {
+    answer(&served, StatusCode::OK, served.api.role(&actor, &name))
+}
+
+async fn create_role(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(create): Closed<permguard_host::api::directory::CreateRole>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::CREATED,
+        served.api.create_role(&actor, create).await,
+    )
+}
+
+async fn update_role(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(update): Closed<permguard_host::api::directory::UpdateRole>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.update_role(&actor, &name, update).await,
+    )
+}
+
+async fn delete_role(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(delete): Closed<permguard_host::api::directory::Plain>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.delete_role(&actor, &name, delete).await,
+    )
+}
+
+async fn add_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(member): Closed<permguard_host::api::directory::Member>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.add_member(&actor, &name, member).await,
+    )
+}
+
+async fn remove_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(member): Closed<permguard_host::api::directory::Member>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.remove_member(&actor, &name, member).await,
+    )
+}
+
+async fn roles_of(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(principal): Path<String>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.roles_of(&actor, &principal),
+    )
+}
+
+async fn list_users(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    answer(&served, StatusCode::OK, served.api.users(&actor))
+}
+
+async fn get_user(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+) -> Response {
+    answer(&served, StatusCode::OK, served.api.user(&actor, &name))
+}
+
+async fn create_user(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(create): Closed<permguard_host::api::directory::CreateUser>,
+) -> Response {
+    // Argon2id runs off the runtime's threads.
+    let api = Arc::clone(&served.api);
+    let handle = tokio::runtime::Handle::current();
+    let created = tokio::task::spawn_blocking(move || {
+        handle.block_on(async move { api.create_user(&actor, create).await })
+    })
+    .await
+    .unwrap_or_else(|_| Err(blocking_failed()));
+    answer(&served, StatusCode::CREATED, created)
+}
+
+async fn update_user(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(update): Closed<permguard_host::api::directory::UpdateUser>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.update_user(&actor, &name, update).await,
+    )
+}
+
+async fn set_password(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(set): Closed<permguard_host::api::directory::SetPassword>,
+) -> Response {
+    let api = Arc::clone(&served.api);
+    let handle = tokio::runtime::Handle::current();
+    let changed = tokio::task::spawn_blocking(move || {
+        handle.block_on(async move { api.set_password(&actor, &name, set).await })
+    })
+    .await
+    .unwrap_or_else(|_| Err(blocking_failed()));
+    answer(&served, StatusCode::OK, changed)
+}
+
+async fn disable_user(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(plain): Closed<permguard_host::api::directory::Plain>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.set_status(&actor, &name, false, plain).await,
+    )
+}
+
+async fn enable_user(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(plain): Closed<permguard_host::api::directory::Plain>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.set_status(&actor, &name, true, plain).await,
+    )
+}
+
+async fn reset_factor(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(plain): Closed<permguard_host::api::directory::Plain>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.reset_factor(&actor, &name, plain).await,
+    )
+}
+
+async fn unlock_user(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .unlock_user(&actor, &name)
+            .map(|unlocked| serde_json::json!({"unlocked": unlocked})),
+    )
+}
+
+async fn link_user(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(link): Closed<permguard_host::api::directory::Link>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.link_user(&actor, &name, link, true).await,
+    )
+}
+
+async fn unlink_user(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(link): Closed<permguard_host::api::directory::Link>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.link_user(&actor, &name, link, false).await,
+    )
+}
+
+async fn delete_user(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(delete): Closed<permguard_host::api::directory::Plain>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.delete_user(&actor, &name, delete).await,
+    )
+}
+
+async fn list_providers(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    answer(&served, StatusCode::OK, served.api.providers(&actor))
+}
+
+async fn refresh_provider(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+) -> Response {
+    let api = Arc::clone(&served.api);
+    let refreshed = tokio::task::spawn_blocking(move || api.refresh_provider(&actor, &name))
+        .await
+        .unwrap_or_else(|_| Err(blocking_failed()));
+    answer(&served, StatusCode::OK, refreshed)
+}
+
+fn blocking_failed() -> Refusal {
+    Refusal::new(
+        permguard_core::ErrorClass::Unavailable,
+        permguard_core::codes::common::UNAVAILABLE,
+        "the request could not be completed",
+    )
 }
 
 #[cfg(test)]

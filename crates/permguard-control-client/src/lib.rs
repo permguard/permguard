@@ -63,6 +63,7 @@ pub mod pdp_v1;
 pub mod pull;
 pub mod remote;
 pub mod remote_http;
+pub mod signin;
 pub mod store;
 pub mod temporal;
 pub mod tls;

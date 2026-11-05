@@ -84,6 +84,56 @@ fn decode(bytes: &[u8]) -> Result<&str, &'static str> {
     std::str::from_utf8(bytes).map_err(|_| "is not UTF-8 text: save it as UTF-8")
 }
 
+/// Writes `token` to `path` for its owner alone, as [`read`] requires: written beside it, then
+/// renamed over it, so a reader finds the old token or the new one, never half of one. On Unix
+/// the file is created `0600` and its folder `0700` when it makes one; on Windows the file lands
+/// in the user's profile, the folder only its owner reads there (5-command-line § 1).
+pub fn write(path: &Path, token: &str) -> Result<(), String> {
+    use std::io::Write as _;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if !parent.exists() {
+        let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt as _;
+            builder.mode(0o700);
+        }
+        builder
+            .create(parent)
+            .map_err(|error| format!("creating {}: {error}", parent.display()))?;
+    }
+    let aside = parent.join(format!(
+        ".{}.{}.part",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("session"),
+        std::process::id()
+    ));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    let written = options
+        .open(&aside)
+        .and_then(|mut file| {
+            file.write_all(token.as_bytes())?;
+            file.write_all(b"\n")?;
+            file.sync_all()
+        })
+        .and_then(|()| std::fs::rename(&aside, path));
+    written.map_err(|error| {
+        let _ = std::fs::remove_file(&aside);
+        format!("writing {}: {error}", path.display())
+    })
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use std::os::unix::fs::PermissionsExt as _;

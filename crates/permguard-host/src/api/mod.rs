@@ -25,6 +25,7 @@ pub mod audit;
 pub mod backups;
 pub mod bounds;
 pub mod config;
+pub mod directory;
 pub mod drain;
 pub mod gc;
 pub mod grants;
@@ -278,6 +279,8 @@ pub struct HostApi {
     volume: Option<([u8; 16], u64)>,
     /// The local ship tasks of a Host that runs both Planes, given once the server composed them.
     local_shipping: Option<Arc<crate::membership::local::LocalShipping>>,
+    /// Roles, local users and identity providers (WP-8.1), given once the server built them.
+    identities: Option<directory::Identities>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -316,11 +319,18 @@ impl HostApi {
             gc_spending: std::sync::Mutex::new(()),
             volume: None,
             local_shipping: None,
+            identities: None,
         }
     }
 
     /// This facade shipping its Data Plane's streams to its own Control Plane through `local`
     /// on every ship pass.
+    /// Serves roles, local users and identity providers (WP-8.1).
+    pub fn with_identities(mut self, identities: directory::Identities) -> Self {
+        self.identities = Some(identities);
+        self
+    }
+
     pub fn with_local_shipping(
         mut self,
         local: Arc<crate::membership::local::LocalShipping>,
