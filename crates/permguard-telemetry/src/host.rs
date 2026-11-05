@@ -154,6 +154,11 @@ pub fn keys_moved_route(location: String) -> Router {
 #[derive(Clone)]
 pub struct HostRoutes(pub Router);
 
+/// Who a request on the Server Host surface acts as, when the composition adds routes that read a
+/// bearer token: the password sign-in's sessions (WP-8.1). Without it no bearer is read here.
+#[derive(Clone)]
+pub struct HostAuthenticator(pub std::sync::Arc<dyn permguard_core::authz::Authenticator>);
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {

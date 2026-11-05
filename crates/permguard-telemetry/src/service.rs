@@ -167,6 +167,11 @@ impl Service for TelemetryService {
             .tls(secured.as_ref())
             .limits(context.config().limits())
             .metrics(context.metrics().clone())
+            .authenticator(
+                context
+                    .extension::<host::HostAuthenticator>()
+                    .map(|authenticator| std::sync::Arc::clone(&authenticator.0)),
+            )
             .start()
             .await
             .context("starting the telemetry surface")?;

@@ -77,6 +77,8 @@ impl Service for HostApiService {
                 );
             }
             let tls = tls.with_allow(context.config().admin_allow().to_vec());
+            // `admin.allow` names a certificate every request shows: an optional one contradicts it.
+            permguard_core::config::check_client_auth(&tls, "admin.tls.client_auth")?;
             let surface = Surface::listener(
                 COMPONENT,
                 configured,

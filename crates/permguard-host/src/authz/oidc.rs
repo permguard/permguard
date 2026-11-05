@@ -344,7 +344,11 @@ impl Verifier {
             .get("fetched_at")
             .and_then(serde_json::Value::as_u64)
             .ok_or("the kept set carries no fetch time")?;
-        let age = Duration::from_secs(self.time.now_secs().saturating_sub(fetched_at));
+        // A fetch time ahead of the clock would make the set look new for as long as it stays ahead.
+        if fetched_at > self.time.now_secs() {
+            return Err("the kept set was fetched after now".to_owned());
+        }
+        let age = Duration::from_secs(self.time.now_secs() - fetched_at);
         if age > self.rule.max_stale {
             return Err(format!(
                 "the kept set is {}s old, past max_stale",

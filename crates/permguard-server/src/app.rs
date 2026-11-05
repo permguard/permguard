@@ -2385,6 +2385,11 @@ impl App {
                     recorder: Some(recorder.clone()),
                 }),
             )));
+            // Its sessions are the surface's credentials: the routes that take one are reached.
+            context =
+                context.with_extension(Arc::new(permguard_telemetry::host::HostAuthenticator(
+                    Arc::new(crate::signin_http::SessionBearers(Arc::clone(signin))),
+                )));
         }
 
         // The Host API facade (WP-2.5), when the deployment has a Host listener: the replay

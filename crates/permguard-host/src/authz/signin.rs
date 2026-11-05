@@ -107,6 +107,9 @@ pub struct SignIn {
     used: Mutex<HashMap<String, u64>>,
     /// Enrollments waiting for their confirming code: the secret and when it was made.
     pending: Mutex<HashMap<String, Pending>>,
+    /// The last step a code could have been accepted at before this process started: the codes
+    /// accepted are held in memory, so none of a step up to this one is taken after a restart.
+    started_step: u64,
     time: Arc<crate::time::TimeGuard>,
 }
 
@@ -141,6 +144,9 @@ impl SignIn {
             label: label.into(),
             used: Mutex::new(HashMap::new()),
             pending: Mutex::new(HashMap::new()),
+            // A code is accepted one step either side of its own: the last step accepted before
+            // this start is at most the current one plus one.
+            started_step: time.now_secs() / factor::STEP + 1,
             time,
         }
     }
@@ -250,7 +256,13 @@ impl SignIn {
             return false;
         };
         let mut used = self.used.lock().unwrap_or_else(PoisonError::into_inner);
-        match factor::check(&secret, code, self.time.now_secs(), used.get(name).copied()) {
+        // Each code once, across a restart too: a code that could have been accepted before this
+        // process started is refused, whatever the memory of this one says.
+        let last = used
+            .get(name)
+            .copied()
+            .map_or(self.started_step, |step| step.max(self.started_step));
+        match factor::check(&secret, code, self.time.now_secs(), Some(last)) {
             Some(step) => {
                 used.insert(name.to_owned(), step);
                 true
@@ -291,6 +303,12 @@ impl SignIn {
         let session = self
             .session(token)
             .ok_or_else(|| ChangeRefused("the session is not valid".to_owned()))?;
+        // An enrollment-only session serves the enrollment of a second factor, nothing else.
+        if session.opened == Opened::EnrollFactor {
+            return Err(ChangeRefused(
+                "this session serves only the enrollment of a second factor".to_owned(),
+            ));
+        }
         self.prove(&session.user, current)?;
         password::check_policy(&session.user, new, self.policy.min_length)
             .map_err(ChangeRefused)?;
@@ -393,7 +411,15 @@ impl SignIn {
         Ok(())
     }
 
+    /// The current password, proved by a session's user: refused unread while the user is locked,
+    /// and a failure counted like a sign-in's; the failure that locks the user ends every session
+    /// of it, so a session token cannot be used to guess the password it was opened with.
     fn prove(&self, name: &str, current: &str) -> Result<(), ChangeRefused> {
+        if self.lockout.locked(name, None) {
+            return Err(ChangeRefused(
+                "the current password does not match".to_owned(),
+            ));
+        }
         let proved = self
             .directory
             .user(name)
@@ -403,6 +429,16 @@ impl SignIn {
             Ok(())
         } else {
             self.lockout.failed(name, None);
+            if self.lockout.locked(name, None) {
+                let ended = self.sessions.end_user(name, None);
+                tracing::warn!(
+                    event.name = "host.signin_locked",
+                    component = "host",
+                    user = %name,
+                    sessions_ended = ended,
+                    "a session's user failed to prove its password too often: locked, its sessions ended"
+                );
+            }
             Err(ChangeRefused(
                 "the current password does not match".to_owned(),
             ))
@@ -694,8 +730,20 @@ mod tests {
                 .reason,
             "no code"
         );
+        // A code of the steps around the start could have been taken before a restart: the first
+        // one accepted is two steps later.
         world.wall.jump(30);
-        let fresh = code(&secret, now + 30);
+        let early = code(&secret, now + 30);
+        assert_eq!(
+            world
+                .signin
+                .sign_in("alice", "a long enough secret", Some(&early), None)
+                .expect_err("too close to the start")
+                .reason,
+            "wrong code"
+        );
+        world.wall.jump(30);
+        let fresh = code(&secret, now + 60);
         let (token, session) = world
             .signin
             .sign_in("alice", "a long enough secret", Some(&fresh), None)
@@ -710,6 +758,50 @@ mod tests {
                 .reason,
             "wrong code",
             "each code once"
+        );
+    }
+
+    /// A session cannot be used to guess its user's password: failures count toward the lockout,
+    /// the one that locks ends the user's sessions, and a locked user is refused unread. An
+    /// enrollment-only session changes no password.
+    #[test]
+    fn a_session_guessing_its_password_is_locked_out_and_ended() {
+        let world = world("prove", Mfa::Off, false);
+        let (token, _) = world
+            .signin
+            .sign_in("alice", "a long enough secret", None, None)
+            .expect("signed in");
+        for _ in 0..3 {
+            assert!(
+                world
+                    .signin
+                    .change_password(&token, "a wrong guess here", "another long secret")
+                    .is_err()
+            );
+        }
+        assert!(world.signin.session(&token).is_none(), "the session ended");
+        assert_eq!(
+            world
+                .signin
+                .sign_in("alice", "a long enough secret", None, None)
+                .expect_err("locked")
+                .reason,
+            "locked"
+        );
+
+        let enrolling_world = super::tests::world("enroll-only", Mfa::Required, true);
+        let (enrolling, session) = enrolling_world
+            .signin
+            .sign_in("bob", "a long enough secret", None, None)
+            .expect("signed in to enroll");
+        assert_eq!(session.opened, Opened::EnrollFactor);
+        assert!(
+            enrolling_world
+                .signin
+                .change_password(&enrolling, "a long enough secret", "another long secret")
+                .unwrap_err()
+                .0
+                .contains("enrollment")
         );
     }
 

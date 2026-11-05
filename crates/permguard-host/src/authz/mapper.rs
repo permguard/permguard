@@ -158,6 +158,16 @@ impl PrincipalMapper {
                             "host.principals[{position}].san_uri `{uri}` is not a URI"
                         )));
                     }
+                    // The Host mints these itself, for its roles, local users and providers' subjects:
+                    // a certificate naming one would act as a role or as somebody else (WP-8.1).
+                    if ["role:", "user:", "oidc:", "spki:"]
+                        .iter()
+                        .any(|reserved| uri.starts_with(reserved))
+                    {
+                        return Err(MapperError::Invalid(format!(
+                            "host.principals[{position}].san_uri `{uri}` names a principal the Host reserves"
+                        )));
+                    }
                     let principal = Principal::new(uri).map_err(|error| {
                         MapperError::Invalid(format!(
                             "host.principals[{position}].san_uri: {error}"
@@ -547,6 +557,22 @@ mod tests {
             PrincipalMapper::new(&[Rule::SanUri("spiffe://acme/x".to_owned())], Some("bad")),
             Err(MapperError::Invalid(_))
         ));
+
+        // A certificate never names a principal the Host mints for its roles, users and providers.
+        for reserved in [
+            "role:admins",
+            "user:alice",
+            "oidc:https://login.example",
+            "spki:sha256:00",
+        ] {
+            assert!(
+                matches!(
+                    PrincipalMapper::new(&[Rule::SanUri(reserved.to_owned())], None),
+                    Err(MapperError::Invalid(_))
+                ),
+                "{reserved}"
+            );
+        }
     }
 
     #[test]

@@ -646,6 +646,13 @@ assert_all_in_one_identity() {
         permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${carol}" login https://all-in-one:5443 --user carol >/dev/null ||
         fail "carol could not sign in with her password"
     expect_admitted "${carol}" "carol, signed in with a password"
+    # Her session reaches the routes that take one: she changes her password with it.
+    printf '%s\n%s\n' lab-carol-password-0003 lab-carol-password-0004 |
+        permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${carol}" password https://all-in-one:5443 >/dev/null ||
+        fail "carol could not change her password with her session"
+    printf '%s' lab-carol-password-0004 |
+        permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${carol}" login https://all-in-one:5443 --user carol >/dev/null ||
+        fail "carol could not sign in with her new password"
     status="$(printf '%s' wrong-password-0000 |
         permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${HOME}/wrong.session" login https://all-in-one:5443 --user carol 2>&1 || true)"
     grep -q 'refused' <<<"${status}" || fail "a wrong password was not refused: ${status}"
