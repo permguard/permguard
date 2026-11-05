@@ -1678,12 +1678,12 @@ impl App {
         };
         match (mfa, sealer.is_some()) {
             (Mfa::Required, false) => bail!(
-                "host.authentication.password.mfa is required and no factor_key names the                  Host-local root second factors are sealed under: nobody could sign in"
+                "host.authentication.password.mfa is required and no factor_key names the Host-local root second factors are sealed under: nobody could sign in"
             ),
             (Mfa::Optional, false) => tracing::warn!(
                 event.name = "authz.factor_unavailable",
                 component = "server",
-                "host.authentication.password.mfa is optional and no factor_key is configured:                  no user can enroll a second factor"
+                "host.authentication.password.mfa is optional and no factor_key is configured: no user can enroll a second factor"
             ),
             _ => {}
         }

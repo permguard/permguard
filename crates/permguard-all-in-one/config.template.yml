@@ -133,21 +133,58 @@ host:
   # What the process-level well-known and the Host jwks_uri publish, when where this surface is
   # reached is not where it binds — a Service, an Ingress, a load balancer.
   # advertised_url: "https://ops.example.com"
-  # Who a caller is (WP-2.4). A certificate whose SAN URI a rule names, or whose subject public
-  # key a rule pins, maps to that principal; CN and DN are labels and map nothing; a bearer token
-  # from a pinned OIDC issuer maps to `oidc:<issuer>#<claim>`. A credential no rule maps is
-  # unauthenticated. Two rules that collapse to one principal stop the start. Grants are issued
-  # offline with `permguard host grants`, the first administrator with `host grants bootstrap`.
+  # Who a caller is (WP-2.4, WP-8.1). A certificate whose SAN URI a rule names, or whose subject
+  # public key a rule pins, maps to that principal; CN and DN are labels and map nothing; a bearer
+  # token from an identity provider maps to `oidc:<issuer>#<claim>`, or to the local user linked to
+  # it. A credential no rule maps is unauthenticated. Two rules that collapse to one principal stop
+  # the start. The identity provider only authenticates: grants and roles are the Host's own,
+  # managed with `permguard host grants`, `host roles` and `host users`. The first administrator
+  # is created offline with `host users bootstrap` (or `host grants bootstrap` for a certificate).
+  # A bearer token is accepted only over TLS, on loopback, or behind a declared TLS terminator
+  # (a plane's `public.tls.terminated_upstream`).
   # principals:
   #   - san_uri: "spiffe://acme/operators/alice"
   #   - spki: "sha256:<64 hex of the subject public key info>"
+  #   # Several providers at once, each its own entry. Its keys come from exactly one source:
+  #   # discovery (the default), a pinned `jwks_uri`, or a `jwks_file` the deployment keeps.
+  #   # Fetched keys are refreshed by a task of their own, never by a request, and kept under
+  #   # host/authz/oidc/ so a restart without network serves them until `max_stale`.
   #   - oidc:
+  #       name: entra                          # what operators type: --user entra:alice@acme.com
+  #       issuer: "https://login.microsoftonline.com/<tenant-id>/v2.0"
+  #       audience: "api://permguard"
+  #       algorithms: [RS256]                  # the token's header is compared, never obeyed
+  #       claim: oid                           # sub by default; email only with email_verified
+  #       clients: ["<application-id>"]        # optional: the azp or client_id values accepted
+  #       refresh: "1h"                        # how often the keys are fetched again
+  #       max_stale: "24h"                     # without a successful fetch, the keys serve this long
+  #   - oidc:
+  #       name: keycloak
+  #       issuer: "https://sso.internal.example/realms/ops"
+  #       audience: "permguard"
+  #       ca_file: "./internal-ca.pem"         # a private provider's authority, beside the system's
+  #       link: email                          # a verified email equal to a local user's acts as it
+  #   - oidc:
+  #       name: offline
   #       issuer: "https://login.example.com"
   #       audience: "permguard"
-  #       algorithms: [RS256, ES256, EdDSA]   # the default; the token's header is compared, never obeyed
-  #       claim: sub                           # the default
-  #       jwks_file: "./login.example.com.jwks.json"   # beside this file; re-read when it changes, never fetched
-  #       max_stale: "24h"                     # a key set not re-read for this long makes authentication unavailable
+  #       jwks_file: "./login.example.com.jwks.json"   # re-read when it changes, never fetched
+  # How people sign in with the Host's own local users (WP-8.1). Without this block, `oidc` when a
+  # provider is configured, and nothing else; a method not listed is refused whatever else is
+  # configured. Password sign-in is `POST /auth/v1/sessions` on this surface, over TLS only
+  # outside `development`; `regulated` requires `mfa: required`.
+  # authentication:
+  #   methods: [password, oidc]               # password, oidc, or both
+  #   password:
+  #     min_length: 12                        # never under 8
+  #     mfa: optional                         # off, optional or required
+  #     factor_key:                           # the Host-local root second factors are sealed under
+  #       ref: mfa-seal                       # a secret of operations.secrets
+  #       version: "v1"
+  #     lockout: { attempts: 5, window: 15m, duration: 15m }
+  #   sessions:
+  #     lifetime: 8h
+  #     idle: 1h
   # What anybody may do without a credential: nothing, in production. Declared here, never
   # journaled; the development configurations open the catalog, pushes and evaluations this way.
   # authz:
