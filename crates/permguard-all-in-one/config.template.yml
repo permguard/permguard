@@ -141,7 +141,8 @@ host:
   # managed with `permguard host grants`, `host roles` and `host users`. The first administrator
   # is created offline with `host users bootstrap` (or `host grants bootstrap` for a certificate).
   # A bearer token is accepted only over TLS, on loopback, or behind a declared TLS terminator
-  # (a plane's `public.tls.terminated_upstream`).
+  # (a plane's `public.tls.terminated_upstream`). A listener with a `client_ca` that also serves
+  # people with tokens sets `tls.client_auth: optional`: certificates verified when presented.
   # principals:
   #   - san_uri: "spiffe://acme/operators/alice"
   #   - spki: "sha256:<64 hex of the subject public key info>"

@@ -41,6 +41,11 @@ is cut.
   `GET /host/v1/providers` and `permguard host providers list|refresh` show each provider's key source, keys, last fetch and failure.
   The Host is `degraded: oidc` while a provider's keys are older than twice `refresh`, or missing after a failed fetch.
   Metrics `permguard_oidc_keys_oldest_age_seconds`, `permguard_oidc_providers_not_fresh`, `permguard_oidc_refresh_failures_total`; alerts `PermguardIdentityProviderKeysNotFresh` and `PermguardIdentityProviderRefreshFailing` in the lab rules and the chart.
+- **One listener for workloads and people.**
+  `tls.client_auth: optional` beside `tls.client_ca` (`PERMGUARD_*_TLS_CLIENT_AUTH`) verifies a client certificate when one is presented and admits a connection without one, whose requests a bearer token authenticates or are refused `401`; `required` stays the default.
+  It needs `client_ca` and is refused beside an allow list; the listener is reported as `mutual_tls_optional`.
+- **The Compose lab proves the providers.**
+  `IDENTITY=1 scripts/compose-lab.sh all-in-one` runs a Keycloak of two realms beside the all-in-one and proves both providers, roles, local users and a key rotation over REST and gRPC.
 - **A call a role allowed is attributed.**
   The `access` trail records `host.authz.granted` with the role as `granted_by` whenever a role's grant, not the caller's own, allows a Host API call.
 

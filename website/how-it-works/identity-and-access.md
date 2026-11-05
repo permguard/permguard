@@ -212,6 +212,8 @@ A call a role's grant allowed is recorded in the `access` audit trail, naming th
 
 ## Bearer tokens travel over TLS
 
+A listener that serves workloads with client certificates and people with tokens sets `tls.client_auth: optional` beside its `client_ca`: a certificate presented is verified, and a connection without one is authenticated by its bearer token.
+
 A bearer token on a listener without TLS is refused before it is read, unless the listener is on a loopback address or an ingress terminates TLS in front of it and the plane says so with `public.tls.terminated_upstream: true`.
 A refused token is answered `401` with `WWW-Authenticate: Bearer realm="permguard", error="invalid_token"`.
 
