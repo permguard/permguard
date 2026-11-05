@@ -438,6 +438,8 @@ pub enum Credential {
     Certificate,
     /// A bearer token a configured OIDC issuer signed.
     Oidc,
+    /// A session a local user opened with its password (WP-8.1).
+    Password,
 }
 
 impl Credential {
@@ -448,6 +450,7 @@ impl Credential {
             Self::Spki => "spki",
             Self::Certificate => "certificate",
             Self::Oidc => "oidc",
+            Self::Password => "password",
         }
     }
 }
@@ -678,6 +681,8 @@ pub struct OidcPrincipalRule {
     pub clients: Vec<String>,
     /// The accepted `typ` header values; a token with no `typ` is accepted.
     pub token_types: Vec<String>,
+    /// Whether a token whose verified email equals a local user's acts as that user.
+    pub link_email: bool,
 }
 
 /// Where a provider's verification keys come from.
@@ -790,6 +795,44 @@ pub struct PublicGrantRule {
 pub struct HostAuth {
     pub principals: Vec<PrincipalRule>,
     pub public: Vec<PublicGrantRule>,
+    pub authentication: Authentication,
+}
+
+/// `host.authentication` (WP-8.1, `1-architecture/1` Local users and authentication methods):
+/// which sign-in methods the Host admits and how a password sign-in is held.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Authentication {
+    /// Local users sign in with a password.
+    pub password: bool,
+    /// Identity providers' tokens are accepted.
+    pub oidc: bool,
+    pub min_length: usize,
+    /// `off`, `optional` or `required`.
+    pub mfa: String,
+    /// The Host-local root the second factors are sealed under, and its version.
+    pub factor_key: Option<(crate::secrets::SecretRef, String)>,
+    pub attempts: u32,
+    pub window: std::time::Duration,
+    pub lockout: std::time::Duration,
+    pub lifetime: std::time::Duration,
+    pub idle: std::time::Duration,
+}
+
+impl Default for Authentication {
+    fn default() -> Self {
+        Self {
+            password: false,
+            oidc: false,
+            min_length: 12,
+            mfa: "optional".to_owned(),
+            factor_key: None,
+            attempts: 5,
+            window: std::time::Duration::from_secs(900),
+            lockout: std::time::Duration::from_secs(900),
+            lifetime: std::time::Duration::from_secs(8 * 3600),
+            idle: std::time::Duration::from_secs(3600),
+        }
+    }
 }
 
 /// The authenticator of a deployment with no rules: nothing presented is anonymous, anything

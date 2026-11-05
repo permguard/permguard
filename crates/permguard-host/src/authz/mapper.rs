@@ -80,6 +80,19 @@ pub struct PrincipalMapper {
     spki: BTreeMap<String, Principal>,
     certificates: BTreeMap<String, Principal>,
     oidc: Vec<std::sync::Arc<Verifier>>,
+    /// The local users a session or a provider subject may act as (WP-8.1); none, every
+    /// credential maps as before.
+    accounts: std::sync::OnceLock<Accounts>,
+}
+
+/// What the mapper consults for local users (WP-8.1, `1-architecture/1` Local users and
+/// authentication methods).
+pub struct Accounts {
+    pub directory: std::sync::Arc<super::directory::Directory>,
+    /// The password sign-in, when `password` is among the methods.
+    pub signin: Option<std::sync::Arc<super::signin::SignIn>>,
+    /// Whether `oidc` is among the methods.
+    pub oidc: bool,
 }
 
 impl fmt::Debug for PrincipalMapper {
@@ -200,6 +213,7 @@ impl PrincipalMapper {
             spki,
             certificates,
             oidc,
+            accounts: std::sync::OnceLock::new(),
         })
     }
 
@@ -210,6 +224,7 @@ impl PrincipalMapper {
             spki: BTreeMap::new(),
             certificates: BTreeMap::new(),
             oidc: Vec::new(),
+            accounts: std::sync::OnceLock::new(),
         }
     }
 
@@ -254,6 +269,85 @@ impl PrincipalMapper {
 }
 
 impl PrincipalMapper {
+    /// Lets sessions and linked provider subjects act as local users, and admits only the
+    /// methods `accounts` names. Set once, at composition.
+    pub fn attach_accounts(&self, accounts: Accounts) {
+        let _ = self.accounts.set(accounts);
+    }
+
+    /// A verified provider token, as the actor it is: the local user its subject is linked to,
+    /// or whose email it verifies when the provider links by email; otherwise its own subject.
+    /// A disabled user is refused, never mapped to its subject.
+    fn as_user(
+        &self,
+        verifier: &Verifier,
+        verified: super::oidc::Verified,
+    ) -> Result<Actor, AccessDenial> {
+        let Some(accounts) = self.accounts.get() else {
+            return Ok(Actor::Authenticated(verified.context));
+        };
+        let subject = verified
+            .context
+            .authorization_principal()
+            .as_str()
+            .to_owned();
+        let user = accounts.directory.user_of_subject(&subject).or_else(|| {
+            verifier
+                .rule()
+                .link_email
+                .then(|| {
+                    verified
+                        .verified_email
+                        .as_deref()
+                        .and_then(|email| accounts.directory.user_by_email(email))
+                })
+                .flatten()
+        });
+        let Some(user) = user else {
+            return Ok(Actor::Authenticated(verified.context));
+        };
+        if user.status != super::directory::UserStatus::Active {
+            return Err(AccessDenial::unauthenticated(
+                "the local user this token signs in as is disabled",
+            ));
+        }
+        let principal = Principal::new(user.principal())
+            .map_err(|error| AccessDenial::unauthenticated(error.to_string()))?;
+        Ok(Actor::Authenticated(ActorContext::new(
+            principal,
+            Credential::Oidc,
+            Some(format!("{} ({})", user.name, verifier.name())),
+        )))
+    }
+
+    /// A password session, as its user.
+    fn as_session(&self, token: &str) -> Result<Actor, AccessDenial> {
+        let Some(signin) = self
+            .accounts
+            .get()
+            .and_then(|accounts| accounts.signin.as_ref())
+        else {
+            return Err(AccessDenial::unauthenticated(
+                "this deployment admits no password sign-in",
+            ));
+        };
+        let session = signin.session(token).ok_or_else(|| {
+            AccessDenial::unauthenticated("the session is not valid: sign in again")
+        })?;
+        if session.opened == super::sessions::Opened::EnrollFactor {
+            return Err(AccessDenial::unauthenticated(
+                "this session serves only the enrollment of a second factor",
+            ));
+        }
+        let principal = Principal::new(super::directory::user_principal(&session.user))
+            .map_err(|error| AccessDenial::unauthenticated(error.to_string()))?;
+        Ok(Actor::Authenticated(ActorContext::new(
+            principal,
+            Credential::Password,
+            Some(session.user),
+        )))
+    }
+
     /// The identity providers, in configuration order: what the refresh task fetches for, the
     /// Host API reports and the health report watches.
     pub fn providers(&self) -> Vec<std::sync::Arc<Verifier>> {
@@ -310,6 +404,14 @@ impl Authenticator for PrincipalMapper {
             }
         }
         if let Some(token) = bearer {
+            if token.starts_with(super::sessions::TOKEN_PREFIX) {
+                return self.as_session(token);
+            }
+            if self.accounts.get().is_some_and(|accounts| !accounts.oidc) {
+                return Err(AccessDenial::unauthenticated(
+                    "this deployment admits no identity provider token",
+                ));
+            }
             if self.oidc.is_empty() {
                 return Err(AccessDenial::unauthenticated(
                     "this deployment accepts no bearer token",
@@ -317,8 +419,8 @@ impl Authenticator for PrincipalMapper {
             }
             let mut last = None;
             for verifier in &self.oidc {
-                match verifier.verify(token) {
-                    Ok(Some(context)) => return Ok(Actor::Authenticated(context)),
+                match verifier.verify_token(token) {
+                    Ok(Some(verified)) => return self.as_user(verifier, verified),
                     Ok(None) => {}
                     Err(denial) => last = Some(denial),
                 }
@@ -445,5 +547,208 @@ mod tests {
             PrincipalMapper::new(&[Rule::SanUri("spiffe://acme/x".to_owned())], Some("bad")),
             Err(MapperError::Invalid(_))
         ));
+    }
+
+    #[test]
+    fn sessions_and_provider_subjects_act_as_local_users_and_only_the_admitted_methods_sign_in() {
+        use super::super::directory::{Change, Directory};
+        use super::super::lockout::Lockout;
+        use super::super::oidc::{KeySource, OidcRule};
+        use super::super::sessions::Sessions;
+        use super::super::signin::{Mfa, Policy, SignIn};
+        use crate::operations::mutation::{Applying, Mutations};
+        use crate::storage::volume::Volume;
+        use base64::Engine as _;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use ring::signature::{Ed25519KeyPair, KeyPair as _};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let root = std::env::temp_dir().join(format!("pg-mapper-accounts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch");
+        let pair = Ed25519KeyPair::from_seed_unchecked(&[4u8; 32]).expect("a seed");
+        let jwks = root.join("jwks.json");
+        std::fs::write(
+            &jwks,
+            serde_json::to_vec(&serde_json::json!({"keys": [{"kty": "OKP", "crv": "Ed25519", "kid": "k", "x": URL_SAFE_NO_PAD.encode(pair.public_key().as_ref())}]})).expect("json"),
+        )
+        .expect("written");
+        let rule = |link_email: bool| OidcRule {
+            name: "idp".to_owned(),
+            issuer: "https://idp.example".to_owned(),
+            audience: "permguard".to_owned(),
+            algorithms: vec!["EdDSA".to_owned()],
+            claim: "sub".to_owned(),
+            keys: KeySource::File(jwks.clone()),
+            ca_file: None,
+            refresh: Duration::from_secs(3_600),
+            max_stale: Duration::from_secs(3_600),
+            clients: Vec::new(),
+            token_types: vec!["JWT".to_owned()],
+            link_email,
+        };
+        let token = |sub: &str, email: Option<&str>| {
+            let exp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("now")
+                .as_secs()
+                + 600;
+            let mut claims = serde_json::json!({"iss": "https://idp.example", "aud": "permguard", "exp": exp, "sub": sub});
+            if let Some(email) = email {
+                claims["email"] = serde_json::json!(email);
+                claims["email_verified"] = serde_json::json!(true);
+            }
+            let signed = format!(
+                "{}.{}",
+                URL_SAFE_NO_PAD.encode(br#"{"alg":"EdDSA","kid":"k"}"#),
+                URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).expect("json"))
+            );
+            format!(
+                "{signed}.{}",
+                URL_SAFE_NO_PAD.encode(pair.sign(signed.as_bytes()).as_ref())
+            )
+        };
+        let volume = Volume::claim(
+            &root.join("volume"),
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        let (directory, _) = Directory::open(&volume).expect("the directory");
+        let change = |op: u8, change: Change| {
+            directory
+                .apply(&Applying::for_tests(op), change, "admin", 1, None)
+                .expect("applied");
+        };
+        let phc = super::super::password::hash("a long enough secret").expect("hashed");
+        change(
+            1,
+            Change::CreateUser {
+                name: "paperino".to_owned(),
+                email: Some("paperino@hotmail.com".to_owned()),
+                display: None,
+                password: Some(phc.clone()),
+            },
+        );
+        change(
+            2,
+            Change::CreateUser {
+                name: "linked".to_owned(),
+                email: None,
+                display: None,
+                password: None,
+            },
+        );
+        change(
+            3,
+            Change::Link {
+                name: "linked".to_owned(),
+                subject: "oidc:https://idp.example#0042".to_owned(),
+            },
+        );
+        let time = Arc::new(crate::time::TimeGuard::system(Duration::from_secs(30)));
+        let signin = Arc::new(SignIn::new(
+            Arc::clone(&directory),
+            Arc::new(Sessions::new(
+                Duration::from_secs(3_600),
+                Duration::from_secs(600),
+                Arc::clone(&time),
+            )),
+            Arc::new(Mutations::open_offline(&volume, "test").expect("the engine")),
+            Lockout::new(
+                5,
+                Duration::from_secs(900),
+                Duration::from_secs(900),
+                Arc::clone(&time),
+            ),
+            Policy {
+                min_length: 12,
+                mfa: Mfa::Off,
+            },
+            None,
+            "test",
+            time,
+        ));
+        let principal = |mapper: &PrincipalMapper, bearer: &str| match mapper
+            .authenticate(None, Some(bearer))
+        {
+            Ok(Actor::Authenticated(context)) => {
+                Ok(context.authorization_principal().as_str().to_owned())
+            }
+            Ok(other) => panic!("{other:?}"),
+            Err(denial) => Err(denial.message().to_owned()),
+        };
+
+        let both = PrincipalMapper::new(&[Rule::Oidc(Box::new(rule(true)))], None).expect("builds");
+        both.attach_accounts(Accounts {
+            directory: Arc::clone(&directory),
+            signin: Some(Arc::clone(&signin)),
+            oidc: true,
+        });
+        let (session, _) = signin
+            .sign_in("paperino", "a long enough secret", None, None)
+            .expect("signed in");
+        assert_eq!(principal(&both, &session).as_deref(), Ok("user:paperino"));
+        assert_eq!(
+            principal(&both, &token("0042", None)).as_deref(),
+            Ok("user:linked"),
+            "an explicit link"
+        );
+        assert_eq!(
+            principal(&both, &token("p-77", Some("Paperino@Hotmail.com"))).as_deref(),
+            Ok("user:paperino"),
+            "a verified email"
+        );
+        assert_eq!(
+            principal(&both, &token("nobody", None)).as_deref(),
+            Ok("oidc:https://idp.example#nobody"),
+            "no user: its own subject"
+        );
+        assert!(principal(&both, "pgs_forged").is_err());
+
+        let no_email_link =
+            PrincipalMapper::new(&[Rule::Oidc(Box::new(rule(false)))], None).expect("builds");
+        no_email_link.attach_accounts(Accounts {
+            directory: Arc::clone(&directory),
+            signin: None,
+            oidc: true,
+        });
+        assert_eq!(
+            principal(&no_email_link, &token("p-77", Some("paperino@hotmail.com"))).as_deref(),
+            Ok("oidc:https://idp.example#p-77"),
+            "a provider without `link: email` never maps by email"
+        );
+        assert!(
+            principal(&no_email_link, &session)
+                .expect_err("no password method")
+                .contains("no password sign-in")
+        );
+
+        let password_only =
+            PrincipalMapper::new(&[Rule::Oidc(Box::new(rule(true)))], None).expect("builds");
+        password_only.attach_accounts(Accounts {
+            directory: Arc::clone(&directory),
+            signin: Some(Arc::clone(&signin)),
+            oidc: false,
+        });
+        assert!(
+            principal(&password_only, &token("0042", None))
+                .expect_err("no oidc method")
+                .contains("no identity provider")
+        );
+
+        change(
+            4,
+            Change::SetStatus {
+                name: "linked".to_owned(),
+                active: false,
+            },
+        );
+        assert!(
+            principal(&both, &token("0042", None))
+                .expect_err("disabled")
+                .contains("disabled"),
+            "never its own subject instead"
+        );
     }
 }

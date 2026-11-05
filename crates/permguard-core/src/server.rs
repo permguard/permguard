@@ -212,6 +212,8 @@ pub struct ServerContext<'a> {
     /// What the Host's own listener serves with (WP-2.5), typed by the composition like the Plane
     /// handles, so the core names no Host type.
     host_handles: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    /// Further typed handles the composition hands its services, each found by its type.
+    extensions: Vec<Arc<dyn std::any::Any + Send + Sync>>,
     /// The Host's credential mapper, which every Plane surface decides its actor with (WP-2.4).
     /// The composition sets it; a Plane never reaches it, its context having no accessor.
     authenticator: Option<Arc<dyn crate::authz::Authenticator>>,
@@ -252,6 +254,7 @@ impl<'a> ServerContext<'a> {
             maintained_rings: Vec::new(),
             plane_handles: std::collections::BTreeMap::new(),
             host_handles: None,
+            extensions: Vec::new(),
             authenticator: None,
             services: NO_SERVICES,
             health: Health::new(),
@@ -320,6 +323,13 @@ impl<'a> ServerContext<'a> {
     }
 
     /// Attaches what the Host's own listener serves with (WP-2.5).
+    /// Hands the services one more typed handle, found with [`ServerContext::extension`].
+    pub fn with_extension(mut self, extension: Arc<dyn std::any::Any + Send + Sync>) -> Self {
+        self.extensions.push(extension);
+
+        self
+    }
+
     pub fn with_host_handles(mut self, handles: Arc<dyn std::any::Any + Send + Sync>) -> Self {
         self.host_handles = Some(handles);
 
@@ -429,6 +439,13 @@ impl<'a> ServerContext<'a> {
 
     /// Returns what the Host listener serves with, as the type the composition stored it as;
     /// `None` when the composition built none or the type does not match.
+    /// The handle of type `T` the composition handed with [`ServerContext::with_extension`].
+    pub fn extension<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.extensions
+            .iter()
+            .find_map(|extension| Arc::clone(extension).downcast::<T>().ok())
+    }
+
     pub fn host_handles<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
         self.host_handles
             .as_ref()

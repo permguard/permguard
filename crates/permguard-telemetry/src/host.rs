@@ -148,6 +148,12 @@ pub fn keys_moved_route(location: String) -> Router {
         .with_state(Arc::new(location))
 }
 
+/// Routes the composition adds to the Server Host surface, such as the password sign-in of
+/// `/auth/v1` (WP-8.1): handed as a [`permguard_core::ServerContext`] extension, merged as they
+/// are.
+#[derive(Clone)]
+pub struct HostRoutes(pub Router);
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {

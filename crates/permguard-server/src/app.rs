@@ -198,6 +198,10 @@ struct HostAuthz {
     /// The same mapper, typed: its identity providers, for the key refresh and the Host API.
     mapper: Arc<permguard_host::authz::PrincipalMapper>,
     store: Arc<permguard_host::authz::GrantStore>,
+    /// Roles, members, local users and links (WP-8.1).
+    directory: Arc<permguard_host::authz::directory::Directory>,
+    /// The password sign-in, when `password` is among the methods.
+    signin: Option<Arc<permguard_host::authz::signin::SignIn>>,
 }
 
 /// Builds one of the Host's rings (WP-3.1): laid out on the volume, a legacy ring migrated
@@ -1440,6 +1444,7 @@ impl App {
     /// Opens `host/authz/` on the volume, builds the credential mapper from `host.principals[]`
     /// and the bootstrap commitment, and the authorization from the store plus
     /// `host.authz.public[]`. A rule that cannot be honoured, or two that collide, stop the start.
+    #[allow(clippy::too_many_arguments)]
     fn authorization_for(
         &self,
         config: &Config,
@@ -1447,7 +1452,9 @@ impl App {
         file: &ConfigFile,
         volume: &permguard_host::storage::volume::Volume,
         time: &Arc<permguard_host::time::TimeGuard>,
-        mutations: &permguard_host::operations::mutation::Mutations,
+        mutations: &Arc<permguard_host::operations::mutation::Mutations>,
+        secrets: Option<&dyn SecretStore>,
+        host_id: [u8; 16],
     ) -> Result<HostAuthz> {
         use permguard_host::authz::{
             Authorization, GrantStore, PrincipalMapper, PublicGrant, Rule,
@@ -1530,6 +1537,7 @@ impl App {
                         max_stale: oidc.max_stale,
                         clients: oidc.clients.clone(),
                         token_types: oidc.token_types.clone(),
+                        link_email: oidc.link_email,
                     })))
                 }
             })
@@ -1559,8 +1567,51 @@ impl App {
                 "the configuration declares public grants: what they name needs no credential"
             );
         }
-        let authorization =
-            Arc::new(Authorization::new(Arc::clone(&store), &public).with_time(Arc::clone(time)));
+        // The directory (WP-8.1): roles, members, local users and links; its mutations a crash
+        // left open resolved before anything decides with it.
+        let (directory, directory_recovery) =
+            permguard_host::authz::directory::Directory::open(volume)
+                .map_err(|error| anyhow::anyhow!("{error}"))
+                .context("opening the Host's directory")?;
+        mutations
+            .recover(&permguard_host::authz::directory::Recovering(&directory))
+            .context("recovering the directory mutations a crash left open")?;
+        tracing::info!(
+            event.name = "authz.directory_opened",
+            component = "server",
+            revision = directory.revision(),
+            roles = directory.roles().len(),
+            users = directory.users().len(),
+            recovered_truncated_bytes = directory_recovery.truncated_bytes,
+            "the directory is open"
+        );
+        let authorization = Arc::new(
+            Authorization::new(Arc::clone(&store), &public)
+                .with_time(Arc::clone(time))
+                .with_directory(Arc::clone(&directory)),
+        );
+        let signin = self.signin_for(
+            &auth.authentication,
+            &directory,
+            mutations,
+            time,
+            volume,
+            secrets,
+            host_id,
+        )?;
+        mapper.attach_accounts(permguard_host::authz::Accounts {
+            directory: Arc::clone(&directory),
+            signin: signin.clone(),
+            oidc: auth.authentication.oidc,
+        });
+        tracing::info!(
+            event.name = "authz.methods",
+            component = "server",
+            password = auth.authentication.password,
+            oidc = auth.authentication.oidc,
+            mfa = %auth.authentication.mfa,
+            "the sign-in methods the Host admits"
+        );
         tracing::info!(
             event.name = "authz.mapper",
             component = "server",
@@ -1578,7 +1629,87 @@ impl App {
             authenticator: Arc::clone(&mapper) as Arc<dyn permguard_core::authz::Authenticator>,
             mapper,
             store,
+            directory,
+            signin,
         })
+    }
+
+    /// The password sign-in `authentication` asks for, or none: sessions, lockout, policy and the
+    /// second factor's sealing key, the Host-local root `factor_key` names (WP-8.1).
+    #[allow(clippy::too_many_arguments)]
+    fn signin_for(
+        &self,
+        authentication: &permguard_core::authz::Authentication,
+        directory: &Arc<permguard_host::authz::directory::Directory>,
+        mutations: &Arc<permguard_host::operations::mutation::Mutations>,
+        time: &Arc<permguard_host::time::TimeGuard>,
+        volume: &permguard_host::storage::volume::Volume,
+        secrets: Option<&dyn SecretStore>,
+        host_id: [u8; 16],
+    ) -> Result<Option<Arc<permguard_host::authz::signin::SignIn>>> {
+        use permguard_host::authz::signin::{Mfa, Policy, Sealer, SignIn};
+        if !authentication.password {
+            return Ok(None);
+        }
+        let mfa = Mfa::parse(&authentication.mfa).with_context(|| {
+            format!("host.authentication.password.mfa `{}`", authentication.mfa)
+        })?;
+        let sealer: Option<Sealer> = match &authentication.factor_key {
+            Some((reference, version)) if mfa != Mfa::Off => {
+                let secrets = secrets.context(
+                    "host.authentication.password.factor_key names a secret and this build resolved no secret store",
+                )?;
+                let root = resolve_root(
+                    secrets,
+                    volume,
+                    reference,
+                    version,
+                    "the second-factor key",
+                    "mfa-seal",
+                )?;
+                let local = Arc::new(permguard_host::secrets::HostLocal::new(root, host_id));
+                Some(Arc::new(move |principal: &str| {
+                    local
+                        .key(permguard_host::secrets::HostPurpose::MfaSeal, principal)
+                        .ok()
+                }))
+            }
+            _ => None,
+        };
+        match (mfa, sealer.is_some()) {
+            (Mfa::Required, false) => bail!(
+                "host.authentication.password.mfa is required and no factor_key names the                  Host-local root second factors are sealed under: nobody could sign in"
+            ),
+            (Mfa::Optional, false) => tracing::warn!(
+                event.name = "authz.factor_unavailable",
+                component = "server",
+                "host.authentication.password.mfa is optional and no factor_key is configured:                  no user can enroll a second factor"
+            ),
+            _ => {}
+        }
+        let label = "Permguard".to_owned();
+        Ok(Some(Arc::new(SignIn::new(
+            Arc::clone(directory),
+            Arc::new(permguard_host::authz::sessions::Sessions::new(
+                authentication.lifetime,
+                authentication.idle,
+                Arc::clone(time),
+            )),
+            Arc::clone(mutations),
+            permguard_host::authz::lockout::Lockout::new(
+                authentication.attempts,
+                authentication.window,
+                authentication.lockout,
+                Arc::clone(time),
+            ),
+            Policy {
+                min_length: authentication.min_length,
+                mfa,
+            },
+            sealer,
+            label,
+            Arc::clone(time),
+        ))))
     }
 
     fn load(&self, config_file: &Path) -> Result<ConfigFile> {
@@ -2201,8 +2332,61 @@ impl App {
             authenticator,
             mapper,
             store: grants,
-        } = self.authorization_for(config, config_file, &file, &volume, &time, &mutations)?;
+            directory,
+            signin,
+        } = self.authorization_for(
+            config,
+            config_file,
+            &file,
+            &volume,
+            &time,
+            &mutations,
+            secrets,
+            host_identity.host_id(),
+        )?;
         context = context.with_authenticator(authenticator);
+        // The password sign-in on the Server Host surface (WP-8.1): a password crosses only TLS
+        // or a loopback address.
+        if let Some(signin) = &signin {
+            let secure = config.telemetry_tls().is_some()
+                || config
+                    .telemetry_addr()
+                    .and_then(|address| address.parse::<std::net::SocketAddr>().ok())
+                    .is_some_and(|address| address.ip().is_loopback());
+            let profile = config.assurance().profile();
+            if !secure && profile != permguard_core::assurance::AssuranceProfile::Development {
+                bail!(
+                    "password sign-in is on and the Server Host surface is neither TLS nor on a \
+                     loopback address: the `{}` profile signs passwords in over TLS only \
+                     (PERMGUARD_TELEMETRY_TLS_CERT and PERMGUARD_TELEMETRY_TLS_KEY)",
+                    profile.as_str()
+                );
+            }
+            if profile == permguard_core::assurance::AssuranceProfile::Regulated
+                && signin.policy().mfa != permguard_host::authz::signin::Mfa::Required
+            {
+                bail!(
+                    "the `regulated` profile asks a second factor of every password sign-in: \
+                     set host.authentication.password.mfa to required"
+                );
+            }
+            if !secure {
+                tracing::warn!(
+                    event.name = "authz.signin_insecure",
+                    component = "server",
+                    "password sign-in is on and the Server Host surface is neither TLS nor on a \
+                     loopback address: every sign-in is refused until it is"
+                );
+            }
+            context = context.with_extension(Arc::new(permguard_telemetry::host::HostRoutes(
+                crate::signin_http::router(crate::signin_http::SignInRoutes {
+                    signin: Arc::clone(signin),
+                    secure,
+                    recorder: Some(recorder.clone()),
+                }),
+            )));
+        }
+        let _ = &directory;
 
         // The Host API facade (WP-2.5), when the deployment has a Host listener: the replay
         // journal on the volume, the grant store, every ring this process composes and the

@@ -873,6 +873,63 @@ struct TelemetrySection {
     /// The grants anybody holds, declared here and never journaled.
     #[serde(default)]
     authz: AuthzSection,
+    /// Which sign-in methods the Host admits (WP-8.1). Structured, so file only.
+    #[serde(default)]
+    authentication: AuthenticationSection,
+}
+
+/// `host.authentication`.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuthenticationSection {
+    #[serde(default)]
+    methods: Option<Vec<String>>,
+    #[serde(default)]
+    password: PasswordSection,
+    #[serde(default)]
+    sessions: SessionsSection,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasswordSection {
+    #[serde(default)]
+    min_length: Option<usize>,
+    #[serde(default)]
+    mfa: Option<String>,
+    #[serde(default)]
+    factor_key: Option<FactorKeySection>,
+    #[serde(default)]
+    lockout: LockoutSection,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FactorKeySection {
+    #[serde(rename = "ref")]
+    reference: String,
+    #[serde(default)]
+    version: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LockoutSection {
+    #[serde(default)]
+    attempts: Option<u32>,
+    #[serde(default)]
+    window: Option<String>,
+    #[serde(default)]
+    duration: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionsSection {
+    #[serde(default)]
+    lifetime: Option<String>,
+    #[serde(default)]
+    idle: Option<String>,
 }
 
 /// One `host.principals[]` entry: exactly one of its members is set.
@@ -913,6 +970,9 @@ struct OidcRuleSection {
     clients: Vec<String>,
     #[serde(default)]
     token_types: Vec<String>,
+    /// `email`: a verified email equal to a local user's acts as that user.
+    #[serde(default)]
+    link: Option<String>,
 }
 
 /// The `host.authz` block: the public grants.
@@ -1789,7 +1849,16 @@ impl ConfigFile {
                 resource_types,
             });
         }
-        Ok(crate::authz::HostAuth { principals, public })
+        let providers = principals
+            .iter()
+            .filter(|rule| matches!(rule, PrincipalRule::Oidc(_)))
+            .count();
+        let authentication = authentication(&self.host.authentication, providers)?;
+        Ok(crate::authz::HostAuth {
+            principals,
+            public,
+            authentication,
+        })
     }
 
     /// The service objectives the file declares (TS-5), every value read and bounded.
@@ -2170,7 +2239,92 @@ fn oidc_rule(at: &str, oidc: &OidcRuleSection) -> Result<crate::authz::OidcPrinc
         max_stale,
         clients: list(&oidc.clients, "clients")?,
         token_types,
+        link_email: match oidc.link.as_deref().map(str::trim) {
+            None | Some("") => false,
+            Some("email") => true,
+            Some(other) => bail!("{at}.oidc.link is `email` or absent, not `{other}`"),
+        },
     })
+}
+
+/// `host.authentication`, read and checked against the providers configured.
+fn authentication(
+    section: &AuthenticationSection,
+    providers: usize,
+) -> Result<crate::authz::Authentication> {
+    let mut read = crate::authz::Authentication::default();
+    match &section.methods {
+        None => read.oidc = providers > 0,
+        Some(methods) => {
+            for method in methods {
+                match method.trim() {
+                    "password" => read.password = true,
+                    "oidc" => read.oidc = true,
+                    other => bail!("host.authentication.methods names `{other}`: password or oidc"),
+                }
+            }
+        }
+    }
+    if read.oidc && providers == 0 {
+        bail!(
+            "host.authentication.methods names oidc, and host.principals configures no identity provider"
+        );
+    }
+    let password = &section.password;
+    if let Some(min_length) = password.min_length {
+        if min_length < 8 {
+            bail!("host.authentication.password.min_length is at least 8");
+        }
+        read.min_length = min_length;
+    }
+    if let Some(mfa) = password.mfa.as_deref().map(str::trim) {
+        if !matches!(mfa, "off" | "optional" | "required") {
+            bail!("host.authentication.password.mfa is off, optional or required, not `{mfa}`");
+        }
+        read.mfa = mfa.to_owned();
+    }
+    if let Some(key) = &password.factor_key {
+        if key.reference.trim().is_empty() {
+            bail!("host.authentication.password.factor_key.ref names a secret");
+        }
+        read.factor_key = Some((
+            crate::secrets::SecretRef::new(key.reference.trim()),
+            key.version.clone().unwrap_or_else(|| "v1".to_owned()),
+        ));
+    }
+    let duration = |text: &Option<String>, key: &str, default| -> Result<std::time::Duration> {
+        match text.as_deref().map(str::trim) {
+            None | Some("") => Ok(default),
+            Some(text) => crate::config::parse_duration(text)
+                .with_context(|| format!("reading host.authentication.{key}")),
+        }
+    };
+    if let Some(attempts) = password.lockout.attempts {
+        if attempts == 0 {
+            bail!("host.authentication.password.lockout.attempts is at least 1");
+        }
+        read.attempts = attempts;
+    }
+    read.window = duration(
+        &password.lockout.window,
+        "password.lockout.window",
+        read.window,
+    )?;
+    read.lockout = duration(
+        &password.lockout.duration,
+        "password.lockout.duration",
+        read.lockout,
+    )?;
+    read.lifetime = duration(
+        &section.sessions.lifetime,
+        "sessions.lifetime",
+        read.lifetime,
+    )?;
+    read.idle = duration(&section.sessions.idle, "sessions.idle", read.idle)?;
+    if read.lifetime.is_zero() || read.idle.is_zero() {
+        bail!("host.authentication.sessions: lifetime and idle are positive");
+    }
+    Ok(read)
 }
 
 #[cfg(test)]

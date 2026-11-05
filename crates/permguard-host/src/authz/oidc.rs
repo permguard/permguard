@@ -53,6 +53,16 @@ pub struct OidcRule {
     pub clients: Vec<String>,
     /// The accepted `typ` header values; a token with no `typ` is accepted.
     pub token_types: Vec<String>,
+    /// Whether a token whose verified email equals a local user's acts as that user.
+    pub link_email: bool,
+}
+
+/// A token that verified: the actor its subject names, and its email when the provider verified
+/// it, for the link to a local user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Verified {
+    pub context: ActorContext,
+    pub verified_email: Option<String>,
 }
 
 impl OidcRule {
@@ -560,6 +570,12 @@ impl Verifier {
     /// Verifies `token`: `Ok(None)` when it names another issuer, the actor when it verifies,
     /// a denial when it names this issuer and does not.
     pub fn verify(&self, token: &str) -> Result<Option<ActorContext>, AccessDenial> {
+        self.verify_token(token)
+            .map(|verified| verified.map(|verified| verified.context))
+    }
+
+    /// [`Verifier::verify`], with the token's email when the provider verified it.
+    pub fn verify_token(&self, token: &str) -> Result<Option<Verified>, AccessDenial> {
         if token.len() > MAX_TOKEN_BYTES {
             return Err(AccessDenial::unauthenticated(
                 "the bearer token is longer than any token this adapter accepts",
@@ -757,11 +773,23 @@ impl Verifier {
             Principal::new(format!("{}{subject}", self.principal_prefix())).map_err(|error| {
                 AccessDenial::unauthenticated(format!("the token's subject: {error}"))
             })?;
-        Ok(Some(ActorContext::new(
-            principal,
-            Credential::Oidc,
-            Some(format!("{subject} ({})", self.rule.name)),
-        )))
+        let verified_email = match claims.get("email_verified") {
+            Some(serde_json::Value::Bool(true)) => true,
+            Some(serde_json::Value::String(flag)) => flag == "true",
+            _ => false,
+        }
+        .then(|| claims.get("email").and_then(serde_json::Value::as_str))
+        .flatten()
+        .filter(|email| !email.is_empty())
+        .map(str::to_owned);
+        Ok(Some(Verified {
+            context: ActorContext::new(
+                principal,
+                Credential::Oidc,
+                Some(format!("{subject} ({})", self.rule.name)),
+            ),
+            verified_email,
+        }))
     }
 }
 
@@ -971,6 +999,7 @@ mod tests {
                     .iter()
                     .map(|typ| (*typ).to_owned())
                     .collect(),
+                link_email: false,
             },
         )
     }
@@ -1242,6 +1271,7 @@ mod tests {
                 .iter()
                 .map(|typ| (*typ).to_owned())
                 .collect(),
+            link_email: false,
         };
         let verifier = Verifier::new(rule, 0, time).expect("builds");
         (pair, verifier, wall, mono)

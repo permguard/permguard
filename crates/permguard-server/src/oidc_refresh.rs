@@ -440,6 +440,7 @@ mod tests {
                 max_stale: Duration::from_secs(86_400),
                 clients: Vec::new(),
                 token_types: vec!["JWT".to_owned()],
+                link_email: false,
             }
         }
     }

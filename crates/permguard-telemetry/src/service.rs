@@ -158,6 +158,10 @@ impl Service for TelemetryService {
                         None => host::keys_route(std::sync::Arc::clone(keys)),
                     });
                 }
+                // What the composition adds: the password sign-in, when the Host admits one.
+                if let Some(extra) = context.extension::<host::HostRoutes>() {
+                    routes = routes.merge(extra.0.clone());
+                }
                 routes
             })
             .tls(secured.as_ref())
