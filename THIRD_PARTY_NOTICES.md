@@ -19,7 +19,7 @@ says so and its repository is the authority.
 
 ## Packages
 
-456 packages.
+461 packages.
 
 | Package | Version | Licence | Source |
 | ------- | ------- | ------- | ------ |
@@ -36,6 +36,7 @@ says so and its repository is the authority.
 | `anyhow` | 1.0.104 | MIT OR Apache-2.0 | https://github.com/dtolnay/anyhow |
 | `ar_archive_writer` | 0.5.3 | Apache-2.0 WITH LLVM-exception | https://github.com/rust-lang/ar_archive_writer |
 | `arc-swap` | 1.9.2 | MIT OR Apache-2.0 | https://github.com/vorner/arc-swap |
+| `argon2` | 0.6.0 | MIT OR Apache-2.0 | https://github.com/RustCrypto/password-hashes |
 | `arrayvec` | 0.5.2 | MIT/Apache-2.0 | https://github.com/bluss/arrayvec |
 | `arrayvec` | 0.7.8 | MIT OR Apache-2.0 | https://github.com/bluss/arrayvec |
 | `ascii-canvas` | 4.0.0 | Apache-2.0/MIT | https://github.com/lalrpop/ascii-canvas |
@@ -50,11 +51,13 @@ says so and its repository is the authority.
 | `axum-server` | 0.8.0 | MIT | https://github.com/programatik29/axum-server |
 | `base64` | 0.22.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | `base64` | 0.23.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
+| `base64ct` | 1.8.3 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
 | `bit-set` | 0.8.0 | Apache-2.0 OR MIT | https://github.com/contain-rs/bit-set |
 | `bit-vec` | 0.8.0 | Apache-2.0 OR MIT | https://github.com/contain-rs/bit-vec |
 | `bit-vec` | 0.9.1 | Apache-2.0 OR MIT | https://github.com/contain-rs/bit-vec |
 | `bitflags` | 1.3.2 | MIT/Apache-2.0 | https://github.com/bitflags/bitflags |
 | `bitflags` | 2.13.2 | MIT OR Apache-2.0 | https://github.com/bitflags/bitflags |
+| `blake2` | 0.11.0 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
 | `block-buffer` | 0.10.4 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
 | `block-buffer` | 0.12.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
 | `borrow-or-share` | 0.2.4 | MIT-0 | https://github.com/yescallop/borrow-or-share |
@@ -252,6 +255,7 @@ says so and its repository is the authority.
 | `outref` | 0.5.2 | MIT | https://github.com/Nugine/outref |
 | `parking_lot` | 0.12.5 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | `parking_lot_core` | 0.9.12 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
+| `password-hash` | 0.6.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | `pem` | 4.0.0 | MIT | https://github.com/jcreekmore/pem-rs.git |
 | `percent-encoding` | 2.3.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url/ |
 | `pest` | 2.9.2 | MIT OR Apache-2.0 | https://github.com/pest-parser/pest |
@@ -260,6 +264,7 @@ says so and its repository is the authority.
 | `pest_meta` | 2.9.2 | MIT OR Apache-2.0 | https://github.com/pest-parser/pest |
 | `petgraph` | 0.7.1 | MIT OR Apache-2.0 | https://github.com/petgraph/petgraph |
 | `petgraph` | 0.8.3 | MIT OR Apache-2.0 | https://github.com/petgraph/petgraph |
+| `phc` | 0.6.1 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
 | `phf` | 0.12.1 | MIT | https://github.com/rust-phf/rust-phf |
 | `phf_shared` | 0.11.3 | MIT | https://github.com/rust-phf/rust-phf |
 | `phf_shared` | 0.12.1 | MIT | https://github.com/rust-phf/rust-phf |
