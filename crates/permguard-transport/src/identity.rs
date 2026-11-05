@@ -36,6 +36,12 @@ use x509_parser::prelude::{FromDer, X509Certificate};
 
 use permguard_core::{ChannelBinding, PeerIdentity};
 
+/// The address a connection came from, on every request of it: what a per-source bound keys on
+/// (WP-8.1). Only a TLS connection carries it; a cleartext surface is reached from loopback or
+/// through a terminator, whose address says nothing about the client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PeerAddress(pub std::net::IpAddr);
+
 /// Terminates TLS and remembers who was on the other end.
 #[derive(Clone)]
 pub struct PeerAcceptor {
@@ -57,7 +63,7 @@ impl std::fmt::Debug for PeerAcceptor {
 
 impl<I, S> Accept<I, S> for PeerAcceptor
 where
-    I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    I: AsyncRead + AsyncWrite + crate::guard::PeerIp + Unpin + Send + 'static,
     S: Send + 'static,
 {
     type Stream = TlsStream<I>;
@@ -65,6 +71,7 @@ where
     type Future = Pin<Box<dyn Future<Output = io::Result<(Self::Stream, Self::Service)>> + Send>>;
 
     fn accept(&self, stream: I, service: S) -> Self::Future {
+        let address = stream.peer_ip().map(|ip| Arc::new(PeerAddress(ip)));
         let handshake = self.inner.accept(stream, service);
 
         Box::pin(async move {
@@ -87,6 +94,7 @@ where
                 stream,
                 WithPeer {
                     inner: service,
+                    address,
                     identity,
                     binding,
                 },
@@ -99,6 +107,7 @@ where
 #[derive(Clone)]
 pub struct WithPeer<S> {
     inner: S,
+    address: Option<Arc<PeerAddress>>,
     identity: Option<Arc<PeerIdentity>>,
     binding: Option<Arc<ChannelBinding>>,
 }
@@ -116,6 +125,9 @@ where
     }
 
     fn call(&mut self, mut request: http::Request<B>) -> Self::Future {
+        if let Some(address) = &self.address {
+            request.extensions_mut().insert(Arc::clone(address));
+        }
         if let Some(identity) = &self.identity {
             request.extensions_mut().insert(Arc::clone(identity));
         }

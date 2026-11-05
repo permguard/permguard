@@ -105,14 +105,21 @@ struct SignInBody {
     code: Option<String>,
 }
 
-async fn sign_in(State(state): State<SignInRoutes>, Json(body): Json<SignInBody>) -> Response {
+async fn sign_in(
+    State(state): State<SignInRoutes>,
+    address: Option<axum::Extension<Arc<permguard_transport::PeerAddress>>>,
+    Json(body): Json<SignInBody>,
+) -> Response {
     if !state.secure {
         return insecure();
     }
     let signin = Arc::clone(&state.signin);
     let name = body.name.clone();
+    // The connection's address, over TLS: what the per-source lockout keys on.
+    let source = address.map(|axum::Extension(address)| address.0);
+    let from = source.map_or_else(|| "unknown".to_owned(), |source| source.to_string());
     let opened = tokio::task::spawn_blocking(move || {
-        signin.sign_in(&body.name, &body.password, body.code.as_deref(), None)
+        signin.sign_in(&body.name, &body.password, body.code.as_deref(), source)
     })
     .await;
     match opened {
@@ -120,7 +127,11 @@ async fn sign_in(State(state): State<SignInRoutes>, Json(body): Json<SignInBody>
             record(
                 &state,
                 "host.signin.accepted",
-                format!("user={} opened={}", session.user, session.opened.as_str()),
+                format!(
+                    "user={} opened={} source={from}",
+                    session.user,
+                    session.opened.as_str()
+                ),
             );
             Json(json!({
                 "token": token,
@@ -139,7 +150,7 @@ async fn sign_in(State(state): State<SignInRoutes>, Json(body): Json<SignInBody>
                     "host.signin.refused"
                 },
                 format!(
-                    "user={} reason={}",
+                    "user={} reason={} source={from}",
                     name.chars().take(128).collect::<String>(),
                     refused.reason
                 ),

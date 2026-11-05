@@ -425,3 +425,39 @@ async fn test_a_tls_1_3_connection_carries_its_channel_binding_and_a_1_2_one_non
         .await
         .expect("the listener stops");
 }
+
+/// WP-8.1: every request of a TLS connection carries the address it came from, what a sign-in's
+/// per-source lockout keys on.
+#[tokio::test]
+async fn test_a_tls_request_carries_the_address_it_came_from() {
+    let pki = Pki::new("address");
+    let (certificate, key) = self_signed(&pki, "server");
+    let settings = TlsSettings::new(&certificate, &key);
+    let router = Router::new().route(
+        "/",
+        get(
+            |address: Option<axum::Extension<Arc<permguard_transport::PeerAddress>>>| async move {
+                address.map_or_else(
+                    || "address=none".to_owned(),
+                    |address| format!("address={}", address.0.0),
+                )
+            },
+        ),
+    );
+    let surface = Surface::listener("test", "127.0.0.1:0", router)
+        .tls(Some(&settings))
+        .start()
+        .await
+        .expect("the listener binds");
+    let client = rustls::ClientConfig::builder()
+        .with_root_certificates(roots_of(&certificate))
+        .with_no_client_auth();
+    let said = speak_tls(surface.address(), client)
+        .await
+        .expect("the handshake works");
+    assert!(said.contains("address=127.0.0.1"), "{said}");
+    surface
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("the listener stops");
+}

@@ -61,7 +61,7 @@ pub use digest::digest;
 pub use gate::PeerGateLayer;
 pub use guard::LimitedAcceptor;
 pub use identity::{
-    EXPORTER_LABEL, PeerAcceptor, WithPeer, channel_binding, fingerprint, identity_of,
+    EXPORTER_LABEL, PeerAcceptor, PeerAddress, WithPeer, channel_binding, fingerprint, identity_of,
 };
 pub use material::{load_certificates, load_key, load_revocations, server_config};
 pub use measure::{
