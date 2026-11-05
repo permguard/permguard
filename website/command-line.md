@@ -33,3 +33,5 @@ description: Author, validate, publish and query Permguard policy from one CLI.
 The CLI keeps editable files local and transfers content-addressed objects over NOTP when publishing or pulling. A workspace can continue from a remote head without rewriting history.
 
 Start with [Install](./how-it-works/install), then run the complete [Getting Started](./how-it-works/getting-started) flow.
+
+Operators sign in with a client certificate, an identity provider's token or `permguard login`, and the Host's roles decide what they may do: see [Identity & Access](./how-it-works/identity-and-access).
