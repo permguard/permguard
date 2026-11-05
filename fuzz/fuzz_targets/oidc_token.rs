@@ -36,6 +36,7 @@ fn verifier() -> &'static Verifier {
                 max_stale: std::time::Duration::from_secs(86_400),
                 clients: Vec::new(),
                 token_types: vec!["JWT".to_owned(), "at+jwt".to_owned()],
+                link_email: false,
             },
             0,
             Arc::new(TimeGuard::system(std::time::Duration::from_secs(30))),

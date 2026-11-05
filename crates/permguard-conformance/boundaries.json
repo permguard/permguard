@@ -1299,6 +1299,26 @@
       "limit": "`exports::MAX_MANIFEST_BYTES` and 64 KiB of envelope for the manifest, and the keys bundle's own bounds, checked before anything is parsed: an archive and a bundle an import is handed (WP-7.10)",
       "enforced_at_decoder": true,
       "fuzz": "export_manifest"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/authz/directory.rs",
+      "item": "DirectoryTransition::decode",
+      "entry": "permguard_host::authz::directory::DirectoryTransition::decode",
+      "max_input_bytes": 16384,
+      "limit": "`authz::directory::MAX_TRANSITION_BYTES`, checked by the decoder before it parses; read from the Host's own directory journal only",
+      "enforced_at_decoder": true,
+      "fuzz": "directory_transition"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/authz/password.rs",
+      "item": "verify",
+      "entry": "permguard_host::authz::password::verify",
+      "max_input_bytes": 1024,
+      "limit": "`authz::password::MAX_PASSWORD_BYTES`, checked before any hashing; the PHC string comes from the Host's own directory and only an Argon2id one is read",
+      "enforced_at_decoder": true,
+      "fuzz": "password_verify"
     }
   ],
   "trusted": [
@@ -1641,6 +1661,26 @@
       "source": "crates/permguard-host/src/restore.rs",
       "item": "Mode::parse",
       "reason": "a closed set of three names: the marker's own field, and a command-line value clap already restricts to them (WP-7.9)"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/directory.rs",
+      "item": "Directory::open",
+      "reason": "the directory's own journal on the Host's volume, written by this process; every frame is decoded by `DirectoryTransition::decode`, the registered boundary"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/factor.rs",
+      "item": "unseal",
+      "reason": "a sealed factor from the Host's own directory journal, decoded there by `DirectoryTransition::decode`; it opens under the Host-local key or answers nothing"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/sessions.rs",
+      "item": "Sessions::open",
+      "reason": "opens a session for a user the sign-in already checked: it draws a token and reads no input"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/signin.rs",
+      "item": "Mfa::parse",
+      "reason": "`host.authentication.password.mfa`, a configuration value the operator sets"
     }
   ]
 }

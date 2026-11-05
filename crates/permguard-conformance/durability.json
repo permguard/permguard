@@ -60,6 +60,18 @@
       "item": "serving_gate",
       "primitive": "write",
       "reason": "writes the serving gate's verdict to the path its operator named: an output file of a tool, not Host state"
+    },
+    {
+      "source": "crates/permguard-cli/src/token.rs",
+      "item": "write",
+      "primitive": "flush",
+      "reason": "the operator's own session token in the operator's own token file, outside any Host volume: written beside it and renamed over it so a reader never finds half a token; the storage library serves a volume the Host claimed, which this is not"
+    },
+    {
+      "source": "crates/permguard-cli/src/token.rs",
+      "item": "write",
+      "primitive": "rename",
+      "reason": "the operator's own session token in the operator's own token file, outside any Host volume: written beside it and renamed over it so a reader never finds half a token; the storage library serves a volume the Host claimed, which this is not"
     }
   ]
 }

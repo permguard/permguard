@@ -227,3 +227,24 @@ path = "fuzz_targets/export_manifest.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "directory_transition"
+path = "fuzz_targets/directory_transition.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "oidc_key_set"
+path = "fuzz_targets/oidc_key_set.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "password_verify"
+path = "fuzz_targets/password_verify.rs"
+test = false
+doc = false
+bench = false
