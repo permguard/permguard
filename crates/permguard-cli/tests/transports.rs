@@ -1218,6 +1218,163 @@ fn the_host_facade_reads_the_same_over_https_and_grpcs() {
 
 const ADMIN: &str = "spiffe://acme/operator";
 
+/// WP-8.1: `host roles apply` converges the Host to the file, over either transport; planning
+/// again changes nothing, and a plan the Host moved past is refused, not applied.
+#[test]
+fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
+    let dir = scratch("roles-apply");
+    let pki = pki(&dir);
+    let address = host_listener(&dir, &pki);
+    let admin_token = dir.join("admin-token");
+    std::fs::write(&admin_token, ADMIN).expect("the administrator token writes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&admin_token, std::fs::Permissions::from_mode(0o600))
+            .expect("the token is private");
+    }
+    let run = |scheme: &str, args: &[&str]| {
+        let url = format!("{scheme}://localhost:{}", address.port());
+        let mut all = vec![
+            "-o",
+            "json",
+            "--host-endpoint",
+            url.as_str(),
+            "--tls-ca-file",
+            pki.authority.to_str().expect("a UTF-8 path"),
+            "--token-file",
+            admin_token.to_str().expect("a UTF-8 path"),
+        ];
+        all.extend_from_slice(args);
+        let output = cli(&dir, &all);
+        (
+            output.status.success(),
+            serde_json::from_slice::<Value>(&output.stdout).unwrap_or(Value::Null),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    };
+    let kinds = |plan: &Value| -> Vec<String> {
+        plan["changes"]
+            .as_array()
+            .expect("changes")
+            .iter()
+            .map(|change| change["change"].as_str().expect("a kind").to_owned())
+            .collect()
+    };
+
+    std::fs::write(
+        dir.join("roles.yml"),
+        "roles:\n  operators:\n    description: run the Host\n    members:\n      - principal: spiffe://acme/ops\n      - principal: spiffe://acme/oncall\n    grants:\n      - operations: [authz.admin]\n        selector: host\n",
+    )
+    .expect("the roles file writes");
+    let (ok, plan, stderr) = run(
+        "https",
+        &[
+            "host",
+            "roles",
+            "apply",
+            "plan",
+            "-f",
+            "roles.yml",
+            "--out",
+            "first.plan",
+        ],
+    );
+    assert!(ok, "{stderr}");
+    assert_eq!(
+        kinds(&plan),
+        ["create_role", "add_member", "add_member", "issue_grant"]
+    );
+    let (ok, applied, stderr) = run(
+        "https",
+        &[
+            "host",
+            "roles",
+            "apply",
+            "run",
+            "--confirm-file",
+            "first.plan",
+        ],
+    );
+    assert!(ok, "{stderr}");
+    assert_eq!(applied["applied"], 4);
+
+    // Planned again over the other transport: converged.
+    let (ok, plan, stderr) = run(
+        "grpcs",
+        &[
+            "host",
+            "roles",
+            "apply",
+            "plan",
+            "-f",
+            "roles.yml",
+            "--out",
+            "again.plan",
+        ],
+    );
+    assert!(ok, "{stderr}");
+    assert!(kinds(&plan).is_empty(), "{plan}");
+    let (ok, role, stderr) = run("grpcs", &["host", "roles", "get", "operators"]);
+    assert!(ok, "{stderr}");
+    assert_eq!(
+        role["members"],
+        serde_json::json!(["spiffe://acme/oncall", "spiffe://acme/ops"])
+    );
+
+    // The file narrows: the plan lists the removal and the new description.
+    std::fs::write(
+        dir.join("roles.yml"),
+        "roles:\n  operators:\n    description: run the Host, on call\n    members:\n      - principal: spiffe://acme/oncall\n    grants:\n      - operations: [authz.admin]\n        selector: host\n",
+    )
+    .expect("the roles file writes");
+    let (ok, plan, stderr) = run(
+        "https",
+        &[
+            "host",
+            "roles",
+            "apply",
+            "plan",
+            "-f",
+            "roles.yml",
+            "--out",
+            "narrow.plan",
+        ],
+    );
+    assert!(ok, "{stderr}");
+    assert_eq!(kinds(&plan), ["describe_role", "remove_member"]);
+
+    // Somebody changes the role before the run: the plan is refused, nothing applied.
+    let (ok, _, stderr) = run(
+        "https",
+        &[
+            "host",
+            "roles",
+            "members",
+            "add",
+            "operators",
+            "--principal",
+            "spiffe://acme/late",
+        ],
+    );
+    assert!(ok, "{stderr}");
+    let (ok, _, stderr) = run(
+        "https",
+        &[
+            "host",
+            "roles",
+            "apply",
+            "run",
+            "--confirm-file",
+            "narrow.plan",
+        ],
+    );
+    assert!(!ok, "a stale plan is refused");
+    assert!(stderr.contains("plan again"), "{stderr}");
+    let (_, role, _) = run("https", &["host", "roles", "get", "operators"]);
+    assert_eq!(role["description"], "run the Host", "nothing was applied");
+}
+
 /// `Bearer <name>` is the principal `<name>`; nothing else authenticates.
 struct Bearers;
 
@@ -1287,40 +1444,50 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
     .expect("the administrator");
     let (replay, _) =
         Replay::open(&volume, permguard_host::authz::store::now()).expect("the replay");
-    let api = Arc::new(HostApi::new(Composition {
-        authorization: Arc::new(Authorization::new(Arc::clone(&store), &[])),
-        store: Some(store),
-        replay,
-        keys: Arc::new(permguard_host::keys::registry::Registry::new(
-            Some(Arc::clone(&identity)),
-            Vec::new(),
-        )),
-        health: permguard_core::Health::new(),
-        assurance: Assurance::of(
-            &permguard_core::assurance::Assurance::new(AssuranceProfile::Development, [])
-                .report(&[]),
-        ),
-        effective: Effective {
-            revision: 0,
-            settings: Vec::new(),
-        },
-        trail: "test".to_owned(),
-        mutations: Some(mutations),
-        identity: Some(identity),
-        time: Arc::new(permguard_host::time::TimeGuard::system(
-            std::time::Duration::from_secs(30),
-        )),
-        peer_sessions: permguard_host::api::sessions::PeerSessions::none(),
-        listeners: vec![permguard_core::ListenerReport::of(
-            "host-api",
-            permguard_core::ListenerClass::Host,
-            Some(&TlsSettings::new("c", "k")),
-            false,
-            false,
-        )],
-        audit: None,
-        memberships: None,
-    }));
+    let (directory, _) =
+        permguard_host::authz::directory::Directory::open(&volume).expect("the directory");
+    let api = Arc::new(
+        HostApi::new(Composition {
+            authorization: Arc::new(Authorization::new(Arc::clone(&store), &[])),
+            store: Some(store),
+            replay,
+            keys: Arc::new(permguard_host::keys::registry::Registry::new(
+                Some(Arc::clone(&identity)),
+                Vec::new(),
+            )),
+            health: permguard_core::Health::new(),
+            assurance: Assurance::of(
+                &permguard_core::assurance::Assurance::new(AssuranceProfile::Development, [])
+                    .report(&[]),
+            ),
+            effective: Effective {
+                revision: 0,
+                settings: Vec::new(),
+            },
+            trail: "test".to_owned(),
+            mutations: Some(mutations),
+            identity: Some(identity),
+            time: Arc::new(permguard_host::time::TimeGuard::system(
+                std::time::Duration::from_secs(30),
+            )),
+            peer_sessions: permguard_host::api::sessions::PeerSessions::none(),
+            listeners: vec![permguard_core::ListenerReport::of(
+                "host-api",
+                permguard_core::ListenerClass::Host,
+                Some(&TlsSettings::new("c", "k")),
+                false,
+                false,
+            )],
+            audit: None,
+            memberships: None,
+        })
+        .with_identities(permguard_host::api::directory::Identities {
+            directory,
+            signin: None,
+            providers: Vec::new(),
+            min_length: 12,
+        }),
+    );
     std::mem::forget(volume);
     let settings = TlsSettings::new(&pki.certificate, &pki.key);
     let (bound, address) = std::sync::mpsc::channel();

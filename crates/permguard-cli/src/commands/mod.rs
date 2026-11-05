@@ -19,4 +19,5 @@ pub mod objects;
 pub mod offline_ops;
 pub mod reclaim;
 pub mod restore;
+mod roles_apply;
 pub mod workspace;

@@ -2901,6 +2901,39 @@ pub enum RolesAction {
         #[command(flatten)]
         who: Who,
     },
+    /// Converge the Host's roles to a declared file: plan, then run. The same file keeps several
+    /// Hosts alike.
+    Apply {
+        #[command(subcommand)]
+        action: RolesApplyAction,
+    },
+}
+
+/// `permguard host roles apply …`.
+#[derive(Debug, Subcommand)]
+pub enum RolesApplyAction {
+    /// Plan the changes that converge the Host to a roles file, into a new owner-only file;
+    /// every member removed and every grant revoked is listed.
+    #[command(
+        after_help = "Examples:\n  permguard host roles apply plan -f roles.yml --out roles.plan\n  permguard host roles apply plan -f roles.yml --out roles.plan -o json"
+    )]
+    Plan {
+        /// The roles file, YAML or JSON: each role's description, members and grants.
+        #[arg(short = 'f', long, value_name = "FILE")]
+        file: PathBuf,
+        /// A new owner-only file that receives the plan.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+    /// Run a plan, refused when the Host changed since it was made.
+    #[command(
+        after_help = "Examples:\n  permguard host roles apply run --confirm-file roles.plan\n  permguard host roles apply run --confirm-file roles.plan -o json"
+    )]
+    Run {
+        /// The plan file written by `roles apply plan`.
+        #[arg(long, value_name = "FILE")]
+        confirm_file: PathBuf,
+    },
 }
 
 /// `permguard host roles members …`.

@@ -23,7 +23,7 @@ use crate::args::{
 use crate::failure::{EXIT_READY, Failure};
 use crate::trace::Trace;
 
-fn client(failure: permguard_control_client::catalog::Failure) -> Failure {
+pub(super) fn client(failure: permguard_control_client::catalog::Failure) -> Failure {
     Failure::from_client(&failure)
 }
 
@@ -63,7 +63,7 @@ fn two_passwords_from_stdin() -> Result<(String, String), Failure> {
 }
 
 /// The principal `who` names: a local user, a provider's subject or issuer, or an exact one.
-fn principal_of(backend: &dyn Host, who: &Who) -> Result<String, Failure> {
+pub(super) fn principal_of(backend: &dyn Host, who: &Who) -> Result<String, Failure> {
     if let Some(local) = &who.local {
         return Ok(format!("user:{local}"));
     }
@@ -238,6 +238,9 @@ pub(super) fn roles(
             globals,
             trace,
         )?,
+        RolesAction::Apply { action } => {
+            return super::roles_apply::apply(globals, backend.as_ref(), action, trace);
+        }
         RolesAction::Of { who } => {
             let principal = principal_of(backend.as_ref(), &who)?;
             let roles = backend.roles_of(&principal).map_err(client)?;

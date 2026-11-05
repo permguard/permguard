@@ -156,6 +156,8 @@ The **State** cell is one of:
 | `host roles members remove` | `authz.admin`  | present |     |
 | `host roles grant`          | `authz.admin`  | present |     |
 | `host roles of`             | `authz.admin`  | present |     |
+| `host roles apply plan`     | `authz.admin`  | present |     |
+| `host roles apply run`      | `authz.admin`  | present |     |
 | `host users list`           | `authz.admin`  | present |     |
 | `host users get`            | `authz.admin`  | present |     |
 | `host users create`         | `authz.admin`  | present |     |
