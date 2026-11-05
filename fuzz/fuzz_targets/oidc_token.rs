@@ -25,12 +25,17 @@ fn verifier() -> &'static Verifier {
         .expect("the key set is written");
         Verifier::new(
             OidcRule {
+                name: "login".to_owned(),
                 issuer: "https://login.example".to_owned(),
                 audience: "permguard".to_owned(),
                 algorithms: vec!["EdDSA".to_owned()],
                 claim: "sub".to_owned(),
-                jwks_file: file,
+                keys: permguard_host::authz::KeySource::File(file),
+                ca_file: None,
+                refresh: std::time::Duration::from_secs(3_600),
                 max_stale: std::time::Duration::from_secs(86_400),
+                clients: Vec::new(),
+                token_types: vec!["JWT".to_owned(), "at+jwt".to_owned()],
             },
             0,
             Arc::new(TimeGuard::system(std::time::Duration::from_secs(30))),

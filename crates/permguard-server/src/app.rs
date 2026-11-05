@@ -195,6 +195,8 @@ fn transit_for(
 struct HostAuthz {
     authorization: Arc<permguard_host::authz::Authorization>,
     authenticator: Arc<dyn permguard_core::authz::Authenticator>,
+    /// The same mapper, typed: its identity providers, for the key refresh and the Host API.
+    mapper: Arc<permguard_host::authz::PrincipalMapper>,
     store: Arc<permguard_host::authz::GrantStore>,
 }
 
@@ -1491,20 +1493,47 @@ impl App {
             .principals
             .iter()
             .map(|rule| match rule {
-                permguard_core::authz::PrincipalRule::SanUri(uri) => Rule::SanUri(uri.clone()),
-                permguard_core::authz::PrincipalRule::Spki(digest) => Rule::Spki(digest.clone()),
+                permguard_core::authz::PrincipalRule::SanUri(uri) => Ok(Rule::SanUri(uri.clone())),
+                permguard_core::authz::PrincipalRule::Spki(digest) => {
+                    Ok(Rule::Spki(digest.clone()))
+                }
                 permguard_core::authz::PrincipalRule::Oidc(oidc) => {
-                    Rule::Oidc(permguard_host::authz::OidcRule {
+                    use permguard_core::authz::{OidcKeySource, check_provider_url};
+                    // Plain HTTP to a provider only under `development` (`1-architecture/7`).
+                    let allow_http = config.assurance().profile()
+                        == permguard_core::assurance::AssuranceProfile::Development;
+                    check_provider_url(&oidc.issuer, allow_http).map_err(|error| {
+                        anyhow::anyhow!("identity provider `{}`: issuer {error}", oidc.name)
+                    })?;
+                    if let OidcKeySource::Uri(uri) = &oidc.keys {
+                        check_provider_url(uri, allow_http).map_err(|error| {
+                            anyhow::anyhow!("identity provider `{}`: jwks_uri {error}", oidc.name)
+                        })?;
+                    }
+                    Ok(Rule::Oidc(Box::new(permguard_host::authz::OidcRule {
+                        name: oidc.name.clone(),
                         issuer: oidc.issuer.clone(),
                         audience: oidc.audience.clone(),
                         algorithms: oidc.algorithms.clone(),
                         claim: oidc.claim.clone(),
-                        jwks_file: resolve_beside(config_file, &oidc.jwks_file),
+                        keys: match &oidc.keys {
+                            OidcKeySource::File(path) => {
+                                OidcKeySource::File(resolve_beside(config_file, path))
+                            }
+                            other => other.clone(),
+                        },
+                        ca_file: oidc
+                            .ca_file
+                            .as_ref()
+                            .map(|path| resolve_beside(config_file, path)),
+                        refresh: oidc.refresh,
                         max_stale: oidc.max_stale,
-                    })
+                        clients: oidc.clients.clone(),
+                        token_types: oidc.token_types.clone(),
+                    })))
                 }
             })
-            .collect();
+            .collect::<Result<_>>()?;
         let bootstrap = store.bootstrap();
         let mapper = PrincipalMapper::with_time(
             &rules,
@@ -1538,9 +1567,16 @@ impl App {
             rules = mapper.rules(),
             "the credential mapper is built"
         );
+        // A fetched provider's keys kept on the volume serve from the start, until its first fetch.
+        mapper
+            .attach_key_cache(volume)
+            .map_err(|error| anyhow::anyhow!("{error}"))
+            .context("opening host/authz/oidc/ for the identity providers' keys")?;
+        let mapper = Arc::new(mapper);
         Ok(HostAuthz {
             authorization,
-            authenticator: Arc::new(mapper),
+            authenticator: Arc::clone(&mapper) as Arc<dyn permguard_core::authz::Authenticator>,
+            mapper,
             store,
         })
     }
@@ -2163,6 +2199,7 @@ impl App {
         let HostAuthz {
             authorization,
             authenticator,
+            mapper,
             store: grants,
         } = self.authorization_for(config, config_file, &file, &volume, &time, &mutations)?;
         context = context.with_authenticator(authenticator);
@@ -2516,6 +2553,12 @@ impl App {
         // The streams' garbage collection, at start and every hour, off the request path (WP-5.6b).
         let _pruning =
             crate::stream_gc::drive(prunables, Arc::clone(&audit_engine), Arc::clone(&time));
+        // The identity providers' keys, fetched off the request path (WP-8.1).
+        let _refreshing = crate::oidc_refresh::drive(
+            &mapper.providers(),
+            config.assurance().profile()
+                == permguard_core::assurance::AssuranceProfile::Development,
+        );
         // Members silent past their thresholds suspended, then revoked (WP-4.6).
         let _dormancy = repinning_coordinator
             .as_ref()

@@ -24,6 +24,7 @@
 //! | the control client over gRPC (`call`)    | before the channel dials, on its first call     |
 //! | the Host peer client                     | before the name is resolved and the socket dials |
 //! | the Vault Transit custody (`send`)       | on the caller's thread, before the job is queued |
+//! | the identity providers' key refresh      | before each fetch's connection                   |
 //! | the telemetry exporter                   | never: it runs on its own threads, off the path |
 //!
 //! A new outbound client calls [`check`] before it reaches the network.
@@ -55,6 +56,8 @@ pub enum Target {
     HostPeer,
     /// A remote key-management service.
     Kms,
+    /// An identity provider's discovery document or key set.
+    IdentityProvider,
 }
 
 impl Target {
@@ -65,6 +68,7 @@ impl Target {
             Self::ControlPlane => "Control Plane",
             Self::HostPeer => "peer Host",
             Self::Kms => "remote KMS",
+            Self::IdentityProvider => "identity provider",
         }
     }
 }

@@ -887,19 +887,32 @@ struct PrincipalRuleSection {
     oidc: Option<OidcRuleSection>,
 }
 
-/// The pinned issuer of an OIDC rule.
+/// One identity provider: the pinned issuer of an OIDC rule.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct OidcRuleSection {
+    #[serde(default)]
+    name: Option<String>,
     issuer: String,
     audience: String,
     #[serde(default)]
     algorithms: Vec<String>,
     #[serde(default)]
     claim: Option<String>,
-    jwks_file: String,
+    #[serde(default)]
+    jwks_uri: Option<String>,
+    #[serde(default)]
+    jwks_file: Option<String>,
+    #[serde(default)]
+    ca_file: Option<String>,
+    #[serde(default)]
+    refresh: Option<String>,
     #[serde(default)]
     max_stale: Option<String>,
+    #[serde(default)]
+    clients: Vec<String>,
+    #[serde(default)]
+    token_types: Vec<String>,
 }
 
 /// The `host.authz` block: the public grants.
@@ -1694,7 +1707,7 @@ impl ConfigFile {
     /// a selector that parses. Who the rules collide with is the Host's to decide, with the
     /// bootstrap commitment in hand.
     pub fn host_auth(&self) -> Result<crate::authz::HostAuth> {
-        use crate::authz::{OidcPrincipalRule, PrincipalRule, PublicGrantRule, Selector};
+        use crate::authz::{PrincipalRule, PublicGrantRule, Selector};
         use crate::authz::{operations, resource_types};
 
         let mut principals = Vec::new();
@@ -1717,29 +1730,18 @@ impl ConfigFile {
                 }
                 principals.push(PrincipalRule::Spki(spki.trim().to_owned()));
             } else if let Some(oidc) = &rule.oidc {
-                let max_stale = match oidc.max_stale.as_deref().map(str::trim) {
-                    None | Some("") => std::time::Duration::from_secs(24 * 3600),
-                    Some(text) => crate::config::parse_duration(text)
-                        .with_context(|| format!("reading {at}.oidc.max_stale"))?,
-                };
-                principals.push(PrincipalRule::Oidc(OidcPrincipalRule {
-                    issuer: oidc.issuer.trim().to_owned(),
-                    audience: oidc.audience.trim().to_owned(),
-                    algorithms: if oidc.algorithms.is_empty() {
-                        vec!["RS256".to_owned(), "ES256".to_owned(), "EdDSA".to_owned()]
-                    } else {
-                        oidc.algorithms.clone()
-                    },
-                    claim: oidc
-                        .claim
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|claim| !claim.is_empty())
-                        .unwrap_or("sub")
-                        .to_owned(),
-                    jwks_file: std::path::PathBuf::from(oidc.jwks_file.trim()),
-                    max_stale,
-                }));
+                principals.push(PrincipalRule::Oidc(Box::new(oidc_rule(&at, oidc)?)));
+            }
+        }
+        let mut names = std::collections::BTreeSet::new();
+        for rule in &principals {
+            if let PrincipalRule::Oidc(oidc) = rule
+                && !names.insert(oidc.name.clone())
+            {
+                bail!(
+                    "two identity providers in host.principals are named `{}`: give each its own `name`",
+                    oidc.name
+                );
             }
         }
         let mut public = Vec::new();
@@ -2053,6 +2055,124 @@ fn push_endpoint_settings(
     }
 }
 
+/// One `host.principals[].oidc` section, read and checked (`1-architecture/1` Identity providers).
+/// Whether plain HTTP is allowed depends on the assurance profile, which the server checks.
+fn oidc_rule(at: &str, oidc: &OidcRuleSection) -> Result<crate::authz::OidcPrincipalRule> {
+    use crate::authz::{
+        DEFAULT_KEY_MAX_STALE, DEFAULT_KEY_REFRESH, DEFAULT_TOKEN_TYPES, MIN_KEY_REFRESH,
+        OidcKeySource, OidcPrincipalRule, check_provider_url, default_provider_name,
+        is_provider_name,
+    };
+    let issuer = oidc.issuer.trim().to_owned();
+    check_provider_url(&issuer, true)
+        .map_err(|error| anyhow::anyhow!("{at}.oidc.issuer: {error}"))?;
+    let audience = oidc.audience.trim().to_owned();
+    if audience.is_empty() {
+        bail!("{at}.oidc.audience is required");
+    }
+    let name = match oidc.name.as_deref().map(str::trim) {
+        None | Some("") => default_provider_name(&issuer),
+        Some(name) => name.to_owned(),
+    };
+    if !is_provider_name(&name) {
+        bail!("{at}.oidc.name `{name}` is not 1 to 63 lowercase letters, digits or `-`");
+    }
+    let duration = |text: Option<&str>, key: &str, default| -> Result<std::time::Duration> {
+        match text.map(str::trim) {
+            None | Some("") => Ok(default),
+            Some(text) => crate::config::parse_duration(text)
+                .with_context(|| format!("reading {at}.oidc.{key}")),
+        }
+    };
+    let max_stale = duration(
+        oidc.max_stale.as_deref(),
+        "max_stale",
+        DEFAULT_KEY_MAX_STALE,
+    )?;
+    if max_stale.is_zero() {
+        bail!("{at}.oidc.max_stale is positive");
+    }
+    let present = |value: &Option<String>| {
+        value
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    };
+    let keys = match (present(&oidc.jwks_uri), present(&oidc.jwks_file)) {
+        (Some(_), Some(_)) => {
+            bail!("{at}.oidc names both jwks_uri and jwks_file: the keys come from exactly one")
+        }
+        (Some(uri), None) => {
+            check_provider_url(&uri, true)
+                .map_err(|error| anyhow::anyhow!("{at}.oidc.jwks_uri: {error}"))?;
+            OidcKeySource::Uri(uri)
+        }
+        (None, Some(file)) => OidcKeySource::File(std::path::PathBuf::from(file)),
+        (None, None) => OidcKeySource::Discovery,
+    };
+    let refresh = duration(
+        oidc.refresh.as_deref(),
+        "refresh",
+        DEFAULT_KEY_REFRESH.min(max_stale / 2),
+    )?;
+    if keys.is_fetched() {
+        if refresh < MIN_KEY_REFRESH {
+            bail!("{at}.oidc.refresh is at least 1m");
+        }
+        if refresh > max_stale / 2 {
+            bail!(
+                "{at}.oidc.refresh is at most half of max_stale, so a failed fetch is retried before the keys go stale"
+            );
+        }
+    } else if oidc.refresh.is_some() || oidc.ca_file.is_some() {
+        bail!("{at}.oidc: refresh and ca_file apply to fetched keys, not to a jwks_file");
+    }
+    let list = |values: &[String], key: &str| -> Result<Vec<String>> {
+        values
+            .iter()
+            .map(|value| {
+                let value = value.trim();
+                if value.is_empty() {
+                    bail!("{at}.oidc.{key} holds an empty value");
+                }
+                Ok(value.to_owned())
+            })
+            .collect()
+    };
+    let token_types = if oidc.token_types.is_empty() {
+        DEFAULT_TOKEN_TYPES
+            .iter()
+            .map(|typ| (*typ).to_owned())
+            .collect()
+    } else {
+        list(&oidc.token_types, "token_types")?
+    };
+    Ok(OidcPrincipalRule {
+        name,
+        issuer,
+        audience,
+        algorithms: if oidc.algorithms.is_empty() {
+            vec!["RS256".to_owned(), "ES256".to_owned(), "EdDSA".to_owned()]
+        } else {
+            oidc.algorithms.clone()
+        },
+        claim: oidc
+            .claim
+            .as_deref()
+            .map(str::trim)
+            .filter(|claim| !claim.is_empty())
+            .unwrap_or("sub")
+            .to_owned(),
+        keys,
+        ca_file: present(&oidc.ca_file).map(std::path::PathBuf::from),
+        refresh,
+        max_stale,
+        clients: list(&oidc.clients, "clients")?,
+        token_types,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -2232,6 +2352,108 @@ mod tests {
         )
         .expect("the file parses");
         assert!(unknown.host_auth().is_err(), "an unregistered operation");
+    }
+
+    fn providers(yaml: &str) -> Result<Vec<crate::authz::OidcPrincipalRule>> {
+        let file =
+            ConfigFile::parse(&format!("host:\n  principals:\n{yaml}")).expect("the file parses");
+        Ok(file
+            .host_auth()?
+            .principals
+            .into_iter()
+            .filter_map(|rule| match rule {
+                crate::authz::PrincipalRule::Oidc(oidc) => Some(*oidc),
+                _ => None,
+            })
+            .collect())
+    }
+
+    #[test]
+    fn test_an_identity_provider_reads_with_its_defaults_and_discovers_its_keys() {
+        use crate::authz::OidcKeySource;
+        let read = providers(
+            "    - oidc:\n        issuer: https://login.microsoftonline.com/tenant/v2.0\n        audience: api://permguard\n",
+        )
+        .expect("reads");
+        let entra = &read[0];
+        assert_eq!(
+            entra.name, "login-microsoftonline-com",
+            "the issuer's host by default"
+        );
+        assert_eq!(entra.keys, OidcKeySource::Discovery);
+        assert_eq!(entra.claim, "sub");
+        assert_eq!(entra.refresh, crate::authz::DEFAULT_KEY_REFRESH);
+        assert_eq!(entra.max_stale, crate::authz::DEFAULT_KEY_MAX_STALE);
+        assert_eq!(
+            entra.token_types,
+            vec!["JWT", "at+jwt", "application/at+jwt"]
+        );
+        assert!(entra.clients.is_empty());
+
+        let read = providers(
+            "    - oidc:\n        name: okta\n        issuer: https://acme.okta.com/oauth2/default\n        audience: permguard\n        jwks_uri: https://acme.okta.com/oauth2/default/v1/keys\n        refresh: 10m\n        max_stale: 2h\n        claim: email\n        clients: [cli]\n        ca_file: ./okta-ca.pem\n    - oidc:\n        name: offline\n        issuer: https://idp.internal\n        audience: permguard\n        jwks_file: ./idp.jwks.json\n",
+        )
+        .expect("reads");
+        assert_eq!(
+            read[0].keys,
+            OidcKeySource::Uri("https://acme.okta.com/oauth2/default/v1/keys".to_owned())
+        );
+        assert_eq!(read[0].refresh, std::time::Duration::from_secs(600));
+        assert_eq!(read[0].clients, vec!["cli"]);
+        assert_eq!(
+            read[0].ca_file.as_deref(),
+            Some(std::path::Path::new("./okta-ca.pem"))
+        );
+        assert_eq!(read[1].keys, OidcKeySource::File("./idp.jwks.json".into()));
+    }
+
+    #[test]
+    fn test_an_identity_provider_that_cannot_be_honoured_is_refused_by_name() {
+        let refused = |yaml: &str, says: &str| {
+            let error = format!("{:#}", providers(yaml).expect_err(says));
+            assert!(error.contains(says), "{error}");
+        };
+        let base =
+            "    - oidc:\n        issuer: https://idp.example\n        audience: permguard\n";
+        refused(
+            &format!(
+                "{base}        jwks_uri: https://idp.example/keys\n        jwks_file: ./keys.json\n"
+            ),
+            "exactly one",
+        );
+        refused(&format!("{base}        refresh: 30s\n"), "at least 1m");
+        refused(
+            &format!("{base}        refresh: 20h\n"),
+            "at most half of max_stale",
+        );
+        refused(
+            &format!("{base}        jwks_file: ./keys.json\n        refresh: 1h\n"),
+            "apply to fetched keys",
+        );
+        refused(&format!("{base}        name: Entra\n"), "lowercase");
+        refused(
+            &format!("{base}        jwks_uri: ftp://idp.example/keys\n"),
+            "neither https nor http",
+        );
+        refused(
+            &format!("{base}        jwks_uri: https://user:pw@idp.example/keys\n"),
+            "credentials",
+        );
+        refused(
+            "    - oidc:\n        issuer: idp.example\n        audience: permguard\n",
+            "absolute URL",
+        );
+        refused(
+            "    - oidc:\n        issuer: https://idp.example\n        audience: \"\"\n",
+            "audience is required",
+        );
+        refused(&format!("{base}{base}"), "named `idp-example`");
+        refused(
+            &format!("{base}        token_types: [\"\"]\n"),
+            "empty value",
+        );
+        // Plain HTTP reads here; the server refuses it outside `development`.
+        assert!(providers("    - oidc:\n        issuer: http://keycloak:8080/realms/a\n        audience: permguard\n").is_ok());
     }
 
     #[test]

@@ -25,6 +25,7 @@ pub mod legacy_spool;
 pub mod logging;
 pub mod objectives;
 pub mod offline;
+pub mod oidc_refresh;
 pub mod plane;
 pub mod prestop;
 pub mod repin;

@@ -653,20 +653,128 @@ pub enum PrincipalRule {
     /// `spki:sha256:<hex>`.
     Spki(String),
     /// A bearer token from a pinned OIDC issuer maps to `oidc:<issuer>#<claim value>`.
-    Oidc(OidcPrincipalRule),
+    Oidc(Box<OidcPrincipalRule>),
 }
 
-/// The pinned OIDC issuer of a [`PrincipalRule::Oidc`].
+/// One identity provider: the pinned OIDC issuer of a [`PrincipalRule::Oidc`]
+/// (`1-architecture/1` Identity providers).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OidcPrincipalRule {
+    /// The short name operators type, `entra:alice@acme.com`; never part of a principal.
+    pub name: String,
     pub issuer: String,
     pub audience: String,
     pub algorithms: Vec<String>,
     pub claim: String,
-    /// The JWKS file beside the configuration; never a URL in this release.
-    pub jwks_file: std::path::PathBuf,
-    /// How long the keys last loaded stay trusted.
+    /// Where the verification keys come from: exactly one source.
+    pub keys: OidcKeySource,
+    /// The authority of a private provider's TLS certificate, beside the system's.
+    pub ca_file: Option<std::path::PathBuf>,
+    /// How often fetched keys are fetched again.
+    pub refresh: std::time::Duration,
+    /// How long the keys last fetched or read stay trusted.
     pub max_stale: std::time::Duration,
+    /// The `azp` or `client_id` values accepted; empty accepts any client of the audience.
+    pub clients: Vec<String>,
+    /// The accepted `typ` header values; a token with no `typ` is accepted.
+    pub token_types: Vec<String>,
+}
+
+/// Where a provider's verification keys come from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OidcKeySource {
+    /// `<issuer>/.well-known/openid-configuration`, whose `jwks_uri` is fetched.
+    Discovery,
+    /// A pinned key set URL.
+    Uri(String),
+    /// A file the deployment keeps, beside the configuration.
+    File(std::path::PathBuf),
+}
+
+impl OidcKeySource {
+    /// Whether the keys are fetched over the network.
+    pub fn is_fetched(&self) -> bool {
+        !matches!(self, Self::File(_))
+    }
+}
+
+/// The `typ` values a token is accepted with when the provider names none.
+pub const DEFAULT_TOKEN_TYPES: &[&str] = &["JWT", "at+jwt", "application/at+jwt"];
+
+/// The default refresh of fetched keys and their default stale window.
+pub const DEFAULT_KEY_REFRESH: std::time::Duration = std::time::Duration::from_secs(3600);
+pub const DEFAULT_KEY_MAX_STALE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+/// The shortest refresh a provider may ask for.
+pub const MIN_KEY_REFRESH: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Whether `name` is a provider name: 1 to 63 lowercase letters, digits or `-`, not starting or
+/// ending with `-`.
+pub fn is_provider_name(name: &str) -> bool {
+    (1..=63).contains(&name.len())
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && !name.starts_with('-')
+        && !name.ends_with('-')
+}
+
+/// The name a provider takes when its rule gives none: its issuer's host, dots as dashes.
+pub fn default_provider_name(issuer: &str) -> String {
+    let host = issuer
+        .split_once("://")
+        .map_or(issuer, |(_, rest)| rest)
+        .split(['/', ':', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    let name: String = host
+        .chars()
+        .map(|c| {
+            let c = c.to_ascii_lowercase();
+            if c.is_ascii_lowercase() || c.is_ascii_digit() {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let name = name.trim_matches('-');
+    name.chars()
+        .take(63)
+        .collect::<String>()
+        .trim_end_matches('-')
+        .to_owned()
+}
+
+/// Checks an identity provider URL: `https`, or `http` where plain HTTP is allowed; a host; no
+/// credentials, no fragment. Answers why it is not one.
+pub fn check_provider_url(url: &str, allow_http: bool) -> Result<(), String> {
+    let (scheme, rest) = url
+        .split_once("://")
+        .ok_or_else(|| format!("`{url}` is not an absolute URL"))?;
+    match scheme {
+        "https" => {}
+        "http" if allow_http => {}
+        "http" => {
+            return Err(format!(
+                "`{url}` is plain HTTP, accepted only under the `development` profile"
+            ));
+        }
+        _ => return Err(format!("`{url}` is neither https nor http")),
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.is_empty() {
+        return Err(format!("`{url}` names no host"));
+    }
+    if authority.contains('@') {
+        return Err(format!("`{url}` carries credentials"));
+    }
+    if url.contains('#') {
+        return Err(format!("`{url}` carries a fragment"));
+    }
+    if url.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(format!("`{url}` carries whitespace"));
+    }
+    Ok(())
 }
 
 /// One `host.authz.public[]` entry: what anybody may do, declared and never journaled.

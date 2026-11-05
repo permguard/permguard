@@ -37,7 +37,7 @@ pub enum Rule {
     /// An mTLS certificate whose subject public key info hashes to this, as `sha256:<hex>`.
     Spki(String),
     /// A bearer token from a pinned OIDC issuer.
-    Oidc(OidcRule),
+    Oidc(Box<OidcRule>),
 }
 
 /// Why the mapper did not build: a configuration mistake, named.
@@ -79,7 +79,7 @@ pub struct PrincipalMapper {
     san_uris: BTreeMap<String, Principal>,
     spki: BTreeMap<String, Principal>,
     certificates: BTreeMap<String, Principal>,
-    oidc: Vec<Verifier>,
+    oidc: Vec<std::sync::Arc<Verifier>>,
 }
 
 impl fmt::Debug for PrincipalMapper {
@@ -172,7 +172,7 @@ impl PrincipalMapper {
                 }
                 Rule::Oidc(rule) => {
                     let verifier =
-                        Verifier::new(rule.clone(), position, std::sync::Arc::clone(&time))?;
+                        Verifier::new((**rule).clone(), position, std::sync::Arc::clone(&time))?;
                     // Every subject of the issuer shares one prefix; two rules on one issuer
                     // and claim would both produce it, so the prefix is what collides.
                     claim(
@@ -180,7 +180,7 @@ impl PrincipalMapper {
                             .map_err(|error| MapperError::Invalid(error.to_string()))?,
                         format!("host.principals[{position}].oidc"),
                     )?;
-                    oidc.push(verifier);
+                    oidc.push(std::sync::Arc::new(verifier));
                 }
             }
         }
@@ -250,6 +250,42 @@ impl PrincipalMapper {
             ));
         }
         None
+    }
+}
+
+impl PrincipalMapper {
+    /// The identity providers, in configuration order: what the refresh task fetches for, the
+    /// Host API reports and the health report watches.
+    pub fn providers(&self) -> Vec<std::sync::Arc<Verifier>> {
+        self.oidc.clone()
+    }
+
+    /// The provider of this name.
+    pub fn provider(&self, name: &str) -> Option<std::sync::Arc<Verifier>> {
+        self.oidc
+            .iter()
+            .find(|verifier| verifier.name() == name)
+            .cloned()
+    }
+
+    /// Keeps every fetched provider's key set under `host/authz/oidc/` and restores what is kept
+    /// there, so a restart without network serves keys still within their `max_stale`.
+    pub fn attach_key_cache(
+        &self,
+        volume: &crate::storage::volume::Volume,
+    ) -> Result<(), crate::storage::StorageError> {
+        if !self
+            .oidc
+            .iter()
+            .any(|verifier| verifier.rule().keys.is_fetched())
+        {
+            return Ok(());
+        }
+        let authz = volume.host().subdir(super::store::DIRECTORY, true)?;
+        for verifier in &self.oidc {
+            verifier.attach_cache(authz.subdir(super::oidc::CACHE_DIRECTORY, true)?);
+        }
+        Ok(())
     }
 }
 

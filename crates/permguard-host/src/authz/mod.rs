@@ -28,7 +28,7 @@ use permguard_core::AccessDenial;
 use permguard_core::authz::{Actor, Allow, AllowSet, Principal, Resource, Selector};
 
 pub use mapper::{MapperError, PrincipalMapper, Rule};
-pub use oidc::OidcRule;
+pub use oidc::{KeySource, KeyState, OidcRule, ProviderStatus, Verifier};
 pub use record::{GrantId, GrantRecord, Status};
 pub use store::{AuthzError, Bootstrap, Change, GrantStore, Issue, validate_issue};
 
