@@ -257,13 +257,17 @@ fn facade(tag: &str) -> Arc<HostApi> {
     std::mem::forget(volume);
     let api = Arc::new(
         HostApi::new(Composition {
-            authorization: Arc::new(Authorization::new(
-                Arc::clone(&store),
-                &[PublicGrant::new(
-                    &[operations::KEYS_READ],
-                    Selector::exactly(Resource::host()),
-                )],
-            )),
+            // Roles count in its decisions, as the server composes it (WP-8.1).
+            authorization: Arc::new(
+                Authorization::new(
+                    Arc::clone(&store),
+                    &[PublicGrant::new(
+                        &[operations::KEYS_READ],
+                        Selector::exactly(Resource::host()),
+                    )],
+                )
+                .with_directory(Arc::clone(&directory)),
+            ),
             store: Some(store),
             replay,
             keys,
@@ -4444,4 +4448,95 @@ async fn a_password_is_read_only_after_the_caller_is_authorized() {
             "{path}: the administrator is told the policy"
         );
     }
+}
+
+/// A call a role's grant allowed is recorded in the `access` trail with the role as `granted_by`
+/// and the caller as the subject: role-derived access is never unattributed (WP-8.1).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_call_a_role_allowed_names_the_role_in_the_access_trail() {
+    const READER: &str = "spiffe://acme/reader";
+    let router = host_api::routes(facade("granted-by"), Disclosure::Minimal)
+        .layer(ActorLayer::new(Arc::new(Bearers)));
+    let post = |path: &'static str, body: Value| {
+        let router = router.clone();
+        async move {
+            walk_rest(&router, "POST", path, Some(&body), Some(ADMIN))
+                .await
+                .0
+        }
+    };
+    assert_eq!(
+        post(
+            "/host/v1/roles",
+            json!({"request_id": "g-1", "name": "readers"})
+        )
+        .await,
+        201
+    );
+    assert_eq!(
+        post(
+            "/host/v1/roles/readers/members",
+            json!({"request_id": "g-2", "member": READER})
+        )
+        .await,
+        200
+    );
+    assert_eq!(
+        post(
+            "/host/v1/grants",
+            json!({
+                "request_id": "g-3",
+                "principal": "role:readers",
+                "operations": [operations::LIFECYCLE_READ],
+                "selector": "host",
+            })
+        )
+        .await,
+        201
+    );
+    assert_eq!(
+        walk_rest(&router, "GET", "/host/v1/status", None, Some(READER))
+            .await
+            .0,
+        200,
+        "the role's grant allows the reader"
+    );
+
+    // The access trail is written off the request path: read until the record lands.
+    let mut found = None;
+    for _ in 0..100 {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::get("/host/v1/audit/access/records?resource=host")
+                    .header("authorization", format!("Bearer {ADMIN}"))
+                    .body(axum::body::Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("reads")
+            .to_bytes();
+        let page: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        found = page["records"].as_array().and_then(|records| {
+            records
+                .iter()
+                .find(|record| record.to_string().contains("host.authz.granted"))
+                .cloned()
+        });
+        if found.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let found = found.expect("the access trail names the grant");
+    // The record's bytes, deterministic CBOR: its facts are text inside them.
+    let bytes = receipt_bytes(found["record"].as_str().expect("the record's bytes"));
+    let record = String::from_utf8_lossy(&bytes);
+    assert!(record.contains("role:readers"), "{found}");
+    assert!(record.contains(operations::LIFECYCLE_READ), "{found}");
 }

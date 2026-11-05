@@ -26,6 +26,17 @@ fn test_the_host_api_declares_the_six_services_of_the_contract() {
     assert_eq!(services.len(), 6);
 }
 
+/// The services WP-8.1 added beside the contract's six: roles, local users and identity providers.
+#[test]
+fn test_the_host_api_serves_roles_users_and_providers() {
+    let services = [
+        served::<host_v1::role_service_server::RoleServiceServer<()>>(),
+        served::<host_v1::user_service_server::UserServiceServer<()>>(),
+        served::<host_v1::provider_service_server::ProviderServiceServer<()>>(),
+    ];
+    assert_eq!(services.len(), 3);
+}
+
 /// The messages whose operations the Host listener serves (WP-2.5): the only ones with fields.
 /// A package that serves another operation adds its messages here with its OpenAPI mapping.
 const SHAPED: &[&str] = &[
@@ -205,6 +216,34 @@ const SHAPED: &[&str] = &[
     "GcKept",
     // Where the volume stands, in the status (TS-5).
     "HostStorage",
+    // Roles, local users and identity providers (WP-8.1).
+    "CreateRoleRequest",
+    "CreateUserRequest",
+    "DeleteRoleRequest",
+    "DirectoryChangeResponse",
+    "GetRoleRequest",
+    "GetRoleResponse",
+    "GetUserRequest",
+    "GetUserResponse",
+    "LinkUserRequest",
+    "ListProvidersResponse",
+    "ListRolesResponse",
+    "ListUsersResponse",
+    "MemberRequest",
+    "Provider",
+    "ProviderKey",
+    "RefreshProviderRequest",
+    "RolesOfRequest",
+    "RolesOfResponse",
+    "RoleSummary",
+    "SetPasswordRequest",
+    "SetUserStatusRequest",
+    "UnlockUserRequest",
+    "UnlockUserResponse",
+    "UpdateRoleRequest",
+    "UpdateUserRequest",
+    "UserPlainRequest",
+    "UserSummary",
 ];
 
 /// Every message outside [`SHAPED`] is empty: no field number is assigned ahead of the contract.

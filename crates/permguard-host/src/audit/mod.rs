@@ -152,6 +152,10 @@ const fn mutation(action: &'static str, root: &'static str) -> ActionSchema {
     }
 }
 
+/// The `access` record of a Host API call that a grant held by another subject than the caller's
+/// principal allowed: one of its roles, or its issuer's (WP-8.1).
+pub const AUTHZ_GRANTED: &str = "host.authz.granted";
+
 /// Every action the process records, with its class (owner decisions of 2026-10-07).
 pub const REGISTRY: &[ActionSchema] = &[
     // The Host's lifecycle and services.
@@ -182,6 +186,20 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.user.linked", HOST),
     mutation("host.user.unlinked", HOST),
     mutation("host.user.deleted", HOST),
+    // A Host API call a role's or an issuer's grant allowed (WP-8.1): the principal is the
+    // record's subject, the grant's holder a fact, so a role-derived access is never anonymous
+    // in the trail.
+    ActionSchema {
+        action: AUTHZ_GRANTED,
+        class: Class::Access,
+        root: HOST,
+        facts: &[
+            ("granted_by", FactType::Text(512)),
+            ("operation", FactType::Text(64)),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
     // Password sign-in (WP-8.1): who, from where, how, and why a refusal; never a secret.
     ActionSchema {
         action: "host.signin.accepted",

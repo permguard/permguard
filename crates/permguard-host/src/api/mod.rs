@@ -377,13 +377,57 @@ impl HostApi {
         operation: &str,
         resource: &Resource,
     ) -> Result<Admitted<'_>, Refusal> {
-        self.authorization.authorize(actor, operation, resource)?;
+        let granted_by = self
+            .authorization
+            .authorize_by(actor, operation, resource)?;
         let principal = actor.principal()?;
         let permit = self.bounds.admit(&principal)?;
+        if granted_by != principal {
+            self.record_granted(&principal, &granted_by, operation, resource);
+        }
         Ok(Admitted {
             principal,
             _permit: permit,
         })
+    }
+
+    /// Records that `granted_by`'s grant, not `principal`'s own, allowed `operation`: an `access`
+    /// record, queued off the request path. Public grants are not recorded: they name nobody.
+    fn record_granted(
+        &self,
+        principal: &Principal,
+        granted_by: &Principal,
+        operation: &str,
+        resource: &Resource,
+    ) {
+        let Some(audit) = self.audit.as_ref() else {
+            return;
+        };
+        if granted_by.as_str() == permguard_core::authz::ANONYMOUS {
+            return;
+        }
+        let target = resource.to_string();
+        let facts = [
+            (
+                "granted_by",
+                permguard_core::Fact::Text(granted_by.as_str()),
+            ),
+            ("operation", permguard_core::Fact::Text(operation)),
+        ];
+        let event = permguard_core::AuditEvent::new(
+            crate::audit::AUTHZ_GRANTED,
+            permguard_core::Subject::Principal(principal.as_str()),
+        )
+        .on(&target)
+        .with_facts(&facts);
+        if let Err(error) = audit.append(&event, None) {
+            tracing::warn!(
+                event.name = "host.authz_granted_unrecorded",
+                component = COMPONENT,
+                error = %error,
+                "the grant that allowed a call could not be recorded"
+            );
+        }
     }
 
     /// The grant store, or the refusal a mutation without one answers.

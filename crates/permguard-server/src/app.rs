@@ -1607,8 +1607,8 @@ impl App {
         tracing::info!(
             event.name = "authz.methods",
             component = "server",
-            password = auth.authentication.password,
-            oidc = auth.authentication.oidc,
+            password_signin = auth.authentication.password,
+            oidc_signin = auth.authentication.oidc,
             mfa = %auth.authentication.mfa,
             "the sign-in methods the Host admits"
         );
