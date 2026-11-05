@@ -478,8 +478,7 @@ fn bootstrap(
     };
     let volume = super::host::volume_of(globals)?;
     let held = super::host::claim(&volume, trace)?;
-    let (store, _) = permguard_host::authz::GrantStore::open(&held)
-        .map_err(|error| Failure::unavailable(error.to_string()))?;
+    let store = super::host::grant_store_of(&held, trace)?;
     let (directory, _) =
         Directory::open(&held).map_err(|error| Failure::unavailable(error.to_string()))?;
     let mutations = super::host::offline_engine(&held, server_config, trace)?;

@@ -178,14 +178,24 @@ fn open(
     trace: &Trace,
 ) -> Result<(std::sync::Arc<GrantStore>, Volume), Failure> {
     let held = claim(volume, trace)?;
-    let (store, recovery) = GrantStore::open(&held).map_err(failure)?;
+    let store = grant_store_of(&held, trace)?;
+    Ok((store, held))
+}
+
+/// The grant store of a volume already held: what the offline commands beside the grants open,
+/// `host users bootstrap` among them (WP-8.1).
+pub(super) fn grant_store_of(
+    held: &Volume,
+    trace: &Trace,
+) -> Result<std::sync::Arc<GrantStore>, Failure> {
+    let (store, recovery) = GrantStore::open(held).map_err(failure)?;
     if recovery.truncated_bytes > 0 {
         trace.say(format!(
             "the grant journal recovered, truncating {} byte(s)",
             recovery.truncated_bytes
         ));
     }
-    Ok((store, held))
+    Ok(store)
 }
 
 /// Claims `volume`, an existing one only, without opening any store: what `host holds` reads and
