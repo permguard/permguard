@@ -461,3 +461,62 @@ async fn test_a_tls_request_carries_the_address_it_came_from() {
         .await
         .expect("the listener stops");
 }
+
+/// WP-8.1: with `client_auth: optional`, a client without a certificate is served, and its
+/// requests carry no peer identity; one that presents a certificate the authority signed carries
+/// it, as under mutual TLS.
+#[tokio::test]
+async fn test_an_optional_client_certificate_is_verified_when_presented_and_not_demanded() {
+    let pki = Pki::new("optional");
+    let authority = pki.authority_pem();
+    let (server_cert, server_key) = pki.issue("server", "localhost");
+    let (client_cert, client_key) = pki.issue("client", "a-client");
+    let settings = TlsSettings::new(&server_cert, &server_key)
+        .with_client_ca(&authority)
+        .with_client_auth(permguard_core::ClientAuth::Optional);
+    let router = Router::new().route(
+        "/",
+        get(
+            |peer: Option<axum::Extension<Arc<permguard_core::PeerIdentity>>>| async move {
+                peer.map_or_else(
+                    || "peer=none".to_owned(),
+                    |peer| format!("peer={}", peer.label()),
+                )
+            },
+        ),
+    );
+    let surface = Surface::listener("test", "127.0.0.1:0", router)
+        .tls(Some(&settings))
+        .start()
+        .await
+        .expect("the listener binds");
+    let address = surface.address();
+
+    let anonymous = rustls::ClientConfig::builder()
+        .with_root_certificates(roots_of(&authority))
+        .with_no_client_auth();
+    let said = speak_tls(address, anonymous)
+        .await
+        .expect("a client without a certificate is served");
+    assert!(said.contains("peer=none"), "{said}");
+
+    let identified = rustls::ClientConfig::builder()
+        .with_root_certificates(roots_of(&authority))
+        .with_client_auth_cert(
+            load_certificates(&client_cert).expect("the client certificate reads"),
+            load_key(&client_key).expect("the client key reads"),
+        )
+        .expect("the client identity builds");
+    let said = speak_tls(address, identified)
+        .await
+        .expect("an identified client is served");
+    assert!(
+        said.contains("peer=") && !said.contains("peer=none"),
+        "the presented certificate's identity reaches the request: {said}"
+    );
+
+    surface
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("the listener stops");
+}

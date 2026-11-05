@@ -8706,9 +8706,10 @@
               "none",
               "tls",
               "mutual_tls",
+              "mutual_tls_optional",
               "upstream_tls"
             ],
-            "description": "What the listener demands of a client before a route: `none` (the clear), `tls` (TLS the process serves), `mutual_tls` (a client certificate demanded) or `upstream_tls` (the clear behind an ingress or a sidecar the deployment declares terminates TLS: the relaxation `tls.terminated_upstream`).",
+            "description": "What the listener demands of a client before a route: `none` (the clear), `tls` (TLS the process serves), `mutual_tls` (a client certificate demanded), `mutual_tls_optional` (a client certificate verified when presented, a bearer token otherwise: `tls.client_auth: optional`) or `upstream_tls` (the clear behind an ingress or a sidecar the deployment declares terminates TLS: the relaxation `tls.terminated_upstream`).",
             "x-grpc-field": "authentication"
           },
           "client_allow": {

@@ -103,7 +103,7 @@ pub use server::{
 };
 pub use storage::Storage;
 pub use time::Date;
-pub use tls::{TlsSettings, TlsVersion};
+pub use tls::{ClientAuth, TlsSettings, TlsVersion};
 
 /// The parsed form of a configuration-file section this crate does not itself understand.
 ///

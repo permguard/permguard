@@ -94,8 +94,43 @@ pub struct TlsSettings {
     /// any workload the mesh signed — and the wrong one for anything administrative, which is why
     /// validation refuses an admin surface without it.
     allow: Vec<AllowedPeer>,
+    /// Whether a client certificate is demanded of every connection or verified when presented.
+    client_auth: ClientAuth,
     min_version: TlsVersion,
     reload: Option<Duration>,
+}
+
+/// How a listener with a client authority treats a connection without a certificate (WP-8.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ClientAuth {
+    /// Refused at the handshake: the default.
+    #[default]
+    Required,
+    /// Admitted, its requests authenticated by a bearer token or refused; a certificate presented
+    /// is verified as under `Required`.
+    Optional,
+}
+
+impl ClientAuth {
+    /// The word a configuration spells.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Required => "required",
+            Self::Optional => "optional",
+        }
+    }
+}
+
+impl std::str::FromStr for ClientAuth {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> anyhow::Result<Self> {
+        match value.trim() {
+            "required" => Ok(Self::Required),
+            "optional" => Ok(Self::Optional),
+            other => anyhow::bail!("`{other}` is not a client_auth: required or optional"),
+        }
+    }
 }
 
 impl TlsSettings {
@@ -107,6 +142,7 @@ impl TlsSettings {
             client_ca: None,
             crl: None,
             allow: Vec::new(),
+            client_auth: ClientAuth::Required,
             min_version: TlsVersion::default(),
             reload: None,
         }
@@ -134,6 +170,18 @@ impl TlsSettings {
         self.allow = allow;
 
         self
+    }
+
+    /// Verifies a client certificate when one is presented, and admits a connection without one.
+    pub fn with_client_auth(mut self, client_auth: ClientAuth) -> Self {
+        self.client_auth = client_auth;
+
+        self
+    }
+
+    /// Whether a connection without a client certificate is admitted.
+    pub fn client_auth(&self) -> ClientAuth {
+        self.client_auth
     }
 
     /// Returns who this surface answers, empty meaning everybody the handshake admits.
@@ -237,6 +285,7 @@ impl TlsSettings {
             client_ca: self.client_ca.as_deref().map(resolve),
             crl: self.crl.as_deref().map(resolve),
             allow: self.allow.clone(),
+            client_auth: self.client_auth,
             min_version: self.min_version,
             reload: self.reload,
         }

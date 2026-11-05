@@ -1374,6 +1374,11 @@
     },
     {
       "source": "crates/permguard-core/src/tls.rs",
+      "item": "ClientAuth::from_str",
+      "reason": "a configuration value the operator sets"
+    },
+    {
+      "source": "crates/permguard-core/src/tls.rs",
       "item": "TlsVersion::from_str",
       "reason": "a configuration value the operator sets"
     },

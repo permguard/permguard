@@ -152,6 +152,9 @@ pub const SETTING_PUBLIC_TLS_CERT: &str = "PERMGUARD_PUBLIC_TLS_CERT";
 pub const SETTING_PUBLIC_TLS_KEY: &str = "PERMGUARD_PUBLIC_TLS_KEY";
 /// Authority client certificates on the public surface must be signed by.
 pub const SETTING_PUBLIC_TLS_CLIENT_CA: &str = "PERMGUARD_PUBLIC_TLS_CLIENT_CA";
+/// `required` (the default) or `optional`: whether the public surface admits a connection without
+/// a client certificate, its requests then authenticated by a bearer token (WP-8.1).
+pub const SETTING_PUBLIC_TLS_CLIENT_AUTH: &str = "PERMGUARD_PUBLIC_TLS_CLIENT_AUTH";
 /// Revocation list client certificates on the public surface are checked against.
 pub const SETTING_PUBLIC_TLS_CRL: &str = "PERMGUARD_PUBLIC_TLS_CRL";
 /// Lowest protocol version the public surface accepts.
@@ -186,6 +189,8 @@ pub const SETTING_ADMIN_TLS_CERT: &str = "PERMGUARD_ADMIN_TLS_CERT";
 pub const SETTING_ADMIN_TLS_KEY: &str = "PERMGUARD_ADMIN_TLS_KEY";
 /// Authority client certificates on the administrative surface must be signed by.
 pub const SETTING_ADMIN_TLS_CLIENT_CA: &str = "PERMGUARD_ADMIN_TLS_CLIENT_CA";
+/// `required` (the default) or `optional`, for the Host listener (WP-8.1).
+pub const SETTING_ADMIN_TLS_CLIENT_AUTH: &str = "PERMGUARD_ADMIN_TLS_CLIENT_AUTH";
 /// Revocation list client certificates on the administrative surface are checked against.
 pub const SETTING_ADMIN_TLS_CRL: &str = "PERMGUARD_ADMIN_TLS_CRL";
 /// Lowest protocol version the administrative surface accepts.
@@ -4571,6 +4576,11 @@ produce: use `EdDSA` or `ES256`"
                 .public_tls
                 .as_ref()
                 .and_then(|tls| tls.client_ca().map(|p| p.display().to_string())),
+            SETTING_PUBLIC_TLS_CLIENT_AUTH => self
+                .public_tls
+                .as_ref()
+                .filter(|tls| tls.is_mutual())
+                .map(|tls| tls.client_auth().as_str().to_owned()),
             SETTING_PUBLIC_TLS_CRL => self
                 .public_tls
                 .as_ref()
@@ -4595,6 +4605,11 @@ produce: use `EdDSA` or `ES256`"
                 .admin_tls
                 .as_ref()
                 .and_then(|tls| tls.client_ca().map(|p| p.display().to_string())),
+            SETTING_ADMIN_TLS_CLIENT_AUTH => self
+                .admin_tls
+                .as_ref()
+                .filter(|tls| tls.is_mutual())
+                .map(|tls| tls.client_auth().as_str().to_owned()),
             SETTING_ADMIN_TLS_CRL => self
                 .admin_tls
                 .as_ref()
@@ -5024,6 +5039,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_PUBLIC_TLS_KEY,
             TlsKeys {
                 client_ca: Some(SETTING_PUBLIC_TLS_CLIENT_CA),
+                client_auth: Some(SETTING_PUBLIC_TLS_CLIENT_AUTH),
                 crl: Some(SETTING_PUBLIC_TLS_CRL),
                 allow: Some(SETTING_PUBLIC_TLS_ALLOW),
                 min_version: SETTING_PUBLIC_TLS_MIN_VERSION,
@@ -5037,6 +5053,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_ADMIN_TLS_KEY,
             TlsKeys {
                 client_ca: Some(SETTING_ADMIN_TLS_CLIENT_CA),
+                client_auth: Some(SETTING_ADMIN_TLS_CLIENT_AUTH),
                 crl: Some(SETTING_ADMIN_TLS_CRL),
                 // The administrative surface's peers are `admin.allow`, kept beside its address
                 // rather than inside its TLS block.
@@ -5054,6 +5071,7 @@ produce: use `EdDSA` or `ES256`"
                 // Telemetry never demands a certificate, so there is neither an authority to name
                 // nor a list to check against.
                 client_ca: None,
+                client_auth: None,
                 crl: None,
                 allow: None,
                 min_version: SETTING_TELEMETRY_TLS_MIN_VERSION,
@@ -6180,6 +6198,7 @@ produce: use `EdDSA` or `ES256`"
 /// The setting names one surface's TLS block reads, beyond the certificate and key every one has.
 struct TlsKeys<'a> {
     client_ca: Option<&'a str>,
+    client_auth: Option<&'a str>,
     crl: Option<&'a str>,
     allow: Option<&'a str>,
     min_version: &'a str,
@@ -6194,6 +6213,7 @@ fn tls_of(
 ) -> Result<Option<TlsSettings>> {
     let TlsKeys {
         client_ca: client_ca_key,
+        client_auth: client_auth_key,
         crl: crl_key,
         allow: allow_key,
         min_version: min_version_key,
@@ -6235,7 +6255,37 @@ fn tls_of(
         );
     }
 
+    if let Some(client_auth_key) = client_auth_key
+        && let Some(value) = settings.get(client_auth_key)
+    {
+        tls = tls.with_client_auth(
+            value
+                .parse()
+                .with_context(|| format!("reading {client_auth_key}"))?,
+        );
+    }
+    check_client_auth(&tls, client_auth_key.unwrap_or("client_auth"))?;
+
     Ok(Some(tls))
+}
+
+/// `optional` admits a connection without a certificate, so it needs an authority to verify the
+/// ones presented, and contradicts an allow list, which names a certificate every request shows.
+pub fn check_client_auth(tls: &TlsSettings, key: &str) -> Result<()> {
+    if tls.client_auth() != crate::ClientAuth::Optional {
+        return Ok(());
+    }
+    if !tls.is_mutual() {
+        bail!(
+            "{key} is optional and no client_ca names the authority a presented certificate is verified against"
+        );
+    }
+    if !tls.allow().is_empty() {
+        bail!(
+            "{key} is optional beside an allow list: the list names a certificate every request must show"
+        );
+    }
+    Ok(())
 }
 
 /// Reads a setting written as a duration: a plain number of seconds, or one suffixed `ms`, `s`,
@@ -6449,6 +6499,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_ADMIN_ADVERTISED_URL,
     SETTING_ADMIN_ALLOW,
     SETTING_ADMIN_TLS_CERT,
+    SETTING_ADMIN_TLS_CLIENT_AUTH,
     SETTING_ADMIN_TLS_CLIENT_CA,
     SETTING_ADMIN_TLS_CRL,
     SETTING_ADMIN_TLS_KEY,
@@ -6595,6 +6646,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_PUBLIC_PATH_PREFIX,
     SETTING_PUBLIC_TLS_ALLOW,
     SETTING_PUBLIC_TLS_CERT,
+    SETTING_PUBLIC_TLS_CLIENT_AUTH,
     SETTING_PUBLIC_TLS_CLIENT_CA,
     SETTING_PUBLIC_TLS_CRL,
     SETTING_PUBLIC_TLS_KEY,
@@ -6672,10 +6724,12 @@ const STARTUP_SETTINGS: &[&str] = &[
     SETTING_PUBLIC_TLS_CERT,
     SETTING_PUBLIC_TLS_KEY,
     SETTING_PUBLIC_TLS_CLIENT_CA,
+    SETTING_PUBLIC_TLS_CLIENT_AUTH,
     SETTING_PUBLIC_TLS_CRL,
     SETTING_ADMIN_TLS_CERT,
     SETTING_ADMIN_TLS_KEY,
     SETTING_ADMIN_TLS_CLIENT_CA,
+    SETTING_ADMIN_TLS_CLIENT_AUTH,
     SETTING_ADMIN_TLS_CRL,
     SETTING_TELEMETRY_TLS_CERT,
     SETTING_TELEMETRY_TLS_KEY,
@@ -6691,6 +6745,7 @@ const STARTUP_SHAPES: &[&str] = &[
     "_TLS_CERT",
     "_TLS_KEY",
     "_TLS_CLIENT_CA",
+    "_TLS_CLIENT_AUTH",
     "_TLS_CRL",
 ];
 
@@ -6741,7 +6796,31 @@ fn setting_label(key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
+
+    /// WP-8.1: `client_auth: optional` needs an authority for the certificates presented, and
+    /// cannot stand beside an allow list; `required` and a plain TLS listener pass unchecked.
+    #[test]
+    fn an_optional_client_certificate_needs_an_authority_and_no_allow_list() {
+        let optional = TlsSettings::new("c", "k").with_client_auth(crate::ClientAuth::Optional);
+        assert!(check_client_auth(&optional, "x").is_err(), "no authority");
+        assert!(check_client_auth(&optional.clone().with_client_ca("ca"), "x").is_ok());
+        let listed = optional
+            .with_client_ca("ca")
+            .with_allow(vec!["cn:ops".parse().expect("an entry")]);
+        assert!(
+            check_client_auth(&listed, "x").is_err(),
+            "beside an allow list"
+        );
+        assert!(check_client_auth(&TlsSettings::new("c", "k"), "x").is_ok());
+        assert_eq!(
+            "optional".parse::<crate::ClientAuth>().expect("a word"),
+            crate::ClientAuth::Optional
+        );
+        assert!("sometimes".parse::<crate::ClientAuth>().is_err());
+    }
 
     /// The startup list is the registry's, and a core setting shaped like a bind, a path, a
     /// reference or TLS material is in it: a new one added to [`CORE_SETTINGS`] alone would be

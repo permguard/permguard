@@ -36,6 +36,7 @@ pub const SETTING_CONTROL_HTTP_TLS_ENABLED: &str = "PERMGUARD_CONTROL_HTTP_TLS_E
 pub const SETTING_CONTROL_HTTP_TLS_CERT: &str = "PERMGUARD_CONTROL_HTTP_TLS_CERT";
 pub const SETTING_CONTROL_HTTP_TLS_KEY: &str = "PERMGUARD_CONTROL_HTTP_TLS_KEY";
 pub const SETTING_CONTROL_HTTP_TLS_CLIENT_CA: &str = "PERMGUARD_CONTROL_HTTP_TLS_CLIENT_CA";
+pub const SETTING_CONTROL_HTTP_TLS_CLIENT_AUTH: &str = "PERMGUARD_CONTROL_HTTP_TLS_CLIENT_AUTH";
 pub const SETTING_CONTROL_HTTP_TLS_CRL: &str = "PERMGUARD_CONTROL_HTTP_TLS_CRL";
 pub const SETTING_CONTROL_HTTP_TLS_MIN_VERSION: &str = "PERMGUARD_CONTROL_HTTP_TLS_MIN_VERSION";
 pub const SETTING_CONTROL_HTTP_TLS_ALLOW: &str = "PERMGUARD_CONTROL_HTTP_TLS_ALLOW";
@@ -47,6 +48,7 @@ pub const SETTING_CONTROL_GRPC_TLS_ENABLED: &str = "PERMGUARD_CONTROL_GRPC_TLS_E
 pub const SETTING_CONTROL_GRPC_TLS_CERT: &str = "PERMGUARD_CONTROL_GRPC_TLS_CERT";
 pub const SETTING_CONTROL_GRPC_TLS_KEY: &str = "PERMGUARD_CONTROL_GRPC_TLS_KEY";
 pub const SETTING_CONTROL_GRPC_TLS_CLIENT_CA: &str = "PERMGUARD_CONTROL_GRPC_TLS_CLIENT_CA";
+pub const SETTING_CONTROL_GRPC_TLS_CLIENT_AUTH: &str = "PERMGUARD_CONTROL_GRPC_TLS_CLIENT_AUTH";
 pub const SETTING_CONTROL_GRPC_TLS_CRL: &str = "PERMGUARD_CONTROL_GRPC_TLS_CRL";
 pub const SETTING_CONTROL_GRPC_TLS_MIN_VERSION: &str = "PERMGUARD_CONTROL_GRPC_TLS_MIN_VERSION";
 pub const SETTING_CONTROL_GRPC_TLS_ALLOW: &str = "PERMGUARD_CONTROL_GRPC_TLS_ALLOW";
@@ -67,6 +69,7 @@ pub const SETTING_DATA_HTTP_TLS_ENABLED: &str = "PERMGUARD_DATA_HTTP_TLS_ENABLED
 pub const SETTING_DATA_HTTP_TLS_CERT: &str = "PERMGUARD_DATA_HTTP_TLS_CERT";
 pub const SETTING_DATA_HTTP_TLS_KEY: &str = "PERMGUARD_DATA_HTTP_TLS_KEY";
 pub const SETTING_DATA_HTTP_TLS_CLIENT_CA: &str = "PERMGUARD_DATA_HTTP_TLS_CLIENT_CA";
+pub const SETTING_DATA_HTTP_TLS_CLIENT_AUTH: &str = "PERMGUARD_DATA_HTTP_TLS_CLIENT_AUTH";
 pub const SETTING_DATA_HTTP_TLS_CRL: &str = "PERMGUARD_DATA_HTTP_TLS_CRL";
 pub const SETTING_DATA_HTTP_TLS_MIN_VERSION: &str = "PERMGUARD_DATA_HTTP_TLS_MIN_VERSION";
 pub const SETTING_DATA_HTTP_TLS_ALLOW: &str = "PERMGUARD_DATA_HTTP_TLS_ALLOW";
@@ -77,6 +80,7 @@ pub const SETTING_DATA_GRPC_TLS_ENABLED: &str = "PERMGUARD_DATA_GRPC_TLS_ENABLED
 pub const SETTING_DATA_GRPC_TLS_CERT: &str = "PERMGUARD_DATA_GRPC_TLS_CERT";
 pub const SETTING_DATA_GRPC_TLS_KEY: &str = "PERMGUARD_DATA_GRPC_TLS_KEY";
 pub const SETTING_DATA_GRPC_TLS_CLIENT_CA: &str = "PERMGUARD_DATA_GRPC_TLS_CLIENT_CA";
+pub const SETTING_DATA_GRPC_TLS_CLIENT_AUTH: &str = "PERMGUARD_DATA_GRPC_TLS_CLIENT_AUTH";
 pub const SETTING_DATA_GRPC_TLS_CRL: &str = "PERMGUARD_DATA_GRPC_TLS_CRL";
 pub const SETTING_DATA_GRPC_TLS_MIN_VERSION: &str = "PERMGUARD_DATA_GRPC_TLS_MIN_VERSION";
 pub const SETTING_DATA_GRPC_TLS_ALLOW: &str = "PERMGUARD_DATA_GRPC_TLS_ALLOW";
@@ -112,6 +116,8 @@ pub struct PlaneTlsKeys {
     pub(crate) cert: &'static str,
     pub(crate) key: &'static str,
     pub(crate) client_ca: &'static str,
+    /// `required` or `optional` (WP-8.1).
+    pub(crate) client_auth: &'static str,
     pub(crate) crl: &'static str,
     pub(crate) allow: &'static str,
     pub(crate) min_version: &'static str,
@@ -137,6 +143,7 @@ impl PlaneSettingKeys {
                 cert: SETTING_CONTROL_HTTP_TLS_CERT,
                 key: SETTING_CONTROL_HTTP_TLS_KEY,
                 client_ca: SETTING_CONTROL_HTTP_TLS_CLIENT_CA,
+                client_auth: SETTING_CONTROL_HTTP_TLS_CLIENT_AUTH,
                 crl: SETTING_CONTROL_HTTP_TLS_CRL,
                 allow: SETTING_CONTROL_HTTP_TLS_ALLOW,
                 min_version: SETTING_CONTROL_HTTP_TLS_MIN_VERSION,
@@ -152,6 +159,7 @@ impl PlaneSettingKeys {
                 cert: SETTING_CONTROL_GRPC_TLS_CERT,
                 key: SETTING_CONTROL_GRPC_TLS_KEY,
                 client_ca: SETTING_CONTROL_GRPC_TLS_CLIENT_CA,
+                client_auth: SETTING_CONTROL_GRPC_TLS_CLIENT_AUTH,
                 crl: SETTING_CONTROL_GRPC_TLS_CRL,
                 allow: SETTING_CONTROL_GRPC_TLS_ALLOW,
                 min_version: SETTING_CONTROL_GRPC_TLS_MIN_VERSION,
@@ -173,6 +181,7 @@ impl PlaneSettingKeys {
                 cert: SETTING_DATA_HTTP_TLS_CERT,
                 key: SETTING_DATA_HTTP_TLS_KEY,
                 client_ca: SETTING_DATA_HTTP_TLS_CLIENT_CA,
+                client_auth: SETTING_DATA_HTTP_TLS_CLIENT_AUTH,
                 crl: SETTING_DATA_HTTP_TLS_CRL,
                 allow: SETTING_DATA_HTTP_TLS_ALLOW,
                 min_version: SETTING_DATA_HTTP_TLS_MIN_VERSION,
@@ -188,6 +197,7 @@ impl PlaneSettingKeys {
                 cert: SETTING_DATA_GRPC_TLS_CERT,
                 key: SETTING_DATA_GRPC_TLS_KEY,
                 client_ca: SETTING_DATA_GRPC_TLS_CLIENT_CA,
+                client_auth: SETTING_DATA_GRPC_TLS_CLIENT_AUTH,
                 crl: SETTING_DATA_GRPC_TLS_CRL,
                 allow: SETTING_DATA_GRPC_TLS_ALLOW,
                 min_version: SETTING_DATA_GRPC_TLS_MIN_VERSION,
@@ -202,7 +212,7 @@ impl PlaneSettingKeys {
         PlaneAddresses::settings(self.http, self.grpc)
     }
 
-    pub(crate) const fn settings(self) -> [&'static str; 23] {
+    pub(crate) const fn settings(self) -> [&'static str; 25] {
         let http = self.http.settings();
         let grpc = self.grpc.settings();
 
@@ -217,6 +227,7 @@ impl PlaneSettingKeys {
             http[7],
             http[8],
             http[9],
+            http[10],
             grpc[0],
             grpc[1],
             grpc[2],
@@ -227,6 +238,7 @@ impl PlaneSettingKeys {
             grpc[7],
             grpc[8],
             grpc[9],
+            grpc[10],
             self.keys_enabled,
             self.keys_directory,
             // HTTP only: a discovery document publishes HTTP addresses.
@@ -239,7 +251,7 @@ impl PlaneSettingKeys {
 }
 
 impl PlaneEndpointKeys {
-    pub(crate) const fn settings(self) -> [&'static str; 10] {
+    pub(crate) const fn settings(self) -> [&'static str; 11] {
         [
             self.enabled,
             self.addr,
@@ -247,6 +259,7 @@ impl PlaneEndpointKeys {
             self.tls.cert,
             self.tls.key,
             self.tls.client_ca,
+            self.tls.client_auth,
             self.tls.crl,
             self.tls.allow,
             self.tls.min_version,
@@ -462,6 +475,7 @@ fn push_tls_settings(settings: &mut Vec<(String, String)>, keys: PlaneTlsKeys, t
         (keys.cert, tls.cert.as_ref()),
         (keys.key, tls.key.as_ref()),
         (keys.client_ca, tls.client_ca.as_ref()),
+        (keys.client_auth, tls.client_auth.as_ref()),
         (keys.crl, tls.crl.as_ref()),
         (keys.allow, allow.as_ref()),
         (keys.min_version, tls.min_version.as_ref()),
@@ -616,6 +630,7 @@ fn states_tls(config: &Config, keys: PlaneTlsKeys) -> bool {
         keys.cert,
         keys.key,
         keys.client_ca,
+        keys.client_auth,
         keys.crl,
         keys.allow,
         keys.min_version,
@@ -712,6 +727,15 @@ pub(crate) fn tls_for(config: &Config, keys: PlaneTlsKeys) -> Result<Option<TlsS
                 .with_context(|| format!("reading {}", keys.min_version))?,
         );
     }
+
+    if let Some(client_auth) = config.setting(keys.client_auth) {
+        tls = tls.with_client_auth(
+            client_auth
+                .parse()
+                .with_context(|| format!("reading {}", keys.client_auth))?,
+        );
+    }
+    permguard_core::config::check_client_auth(&tls, keys.client_auth)?;
 
     let tls = tls.resolved_in(config.working_dir());
     let tls = if config.tls_reload() {
@@ -872,6 +896,10 @@ struct TlsSection {
     key: Option<String>,
     #[serde(default)]
     client_ca: Option<String>,
+    /// `required` (the default) or `optional`: a connection without a client certificate admitted,
+    /// its requests authenticated by a bearer token (WP-8.1).
+    #[serde(default)]
+    client_auth: Option<String>,
     #[serde(default)]
     crl: Option<String>,
     /// Who, of everybody `client_ca` signed, this endpoint answers: `cn:`, `dn:` or `sha256:`

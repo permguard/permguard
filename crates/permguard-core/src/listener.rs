@@ -55,6 +55,8 @@ pub enum ListenerAuthentication {
     Tls,
     /// TLS the process serves, a client certificate demanded.
     MutualTls,
+    /// TLS the process serves, a client certificate verified when presented, a bearer otherwise.
+    MutualTlsOptional,
     /// The clear behind an ingress or a sidecar the deployment says terminates TLS.
     UpstreamTls,
 }
@@ -66,6 +68,7 @@ impl ListenerAuthentication {
             Self::None => "none",
             Self::Tls => "tls",
             Self::MutualTls => "mutual_tls",
+            Self::MutualTlsOptional => "mutual_tls_optional",
             Self::UpstreamTls => "upstream_tls",
         }
     }
@@ -96,6 +99,9 @@ impl ListenerReport {
         client_allow: bool,
     ) -> Self {
         let authentication = match tls {
+            Some(tls) if tls.is_mutual() && tls.client_auth() == crate::ClientAuth::Optional => {
+                ListenerAuthentication::MutualTlsOptional
+            }
             Some(tls) if tls.is_mutual() => ListenerAuthentication::MutualTls,
             Some(_) => ListenerAuthentication::Tls,
             None if terminated_upstream => ListenerAuthentication::UpstreamTls,

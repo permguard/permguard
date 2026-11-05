@@ -87,6 +87,12 @@ pub(crate) fn build(settings: &TlsSettings) -> Result<(Arc<ServerConfig>, String
                     .enforce_revocation_expiration();
             }
 
+            // A connection without a certificate reaches the application, where only a bearer
+            // token authenticates it (WP-8.1); one presented is verified all the same.
+            if settings.client_auth() == permguard_core::ClientAuth::Optional {
+                verifier = verifier.allow_unauthenticated();
+            }
+
             let verifier = verifier.build().with_context(|| {
                 format!("building the client verifier from {}", client_ca.display())
             })?;
