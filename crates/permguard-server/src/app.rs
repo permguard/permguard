@@ -2751,6 +2751,10 @@ impl App {
             &mapper.providers(),
             config.assurance().profile()
                 == permguard_core::assurance::AssuranceProfile::Development,
+            &crate::oidc_refresh::Observing {
+                health: context.health().clone(),
+                metrics: context.metrics().clone(),
+            },
         );
         // Members silent past their thresholds suspended, then revoked (WP-4.6).
         let _dormancy = repinning_coordinator

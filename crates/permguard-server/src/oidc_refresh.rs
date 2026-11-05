@@ -12,6 +12,10 @@
 //! | transport   | HTTPS with the system's authorities and `ca_file`; HTTP only under `development`; no redirect; 5 s to connect, 15 s in all |
 //! | size        | over 256 KiB refused                                                                   |
 //! | failure     | recorded on the verifier, retried from 10 s, doubling up to `refresh`                  |
+//! | reported    | every 15 s: `degraded: oidc` on the Host naming each provider not fresh, and the metrics below |
+//!
+//! The metrics carry no provider label (P10: an operator-chosen name is not a closed vocabulary);
+//! which provider is behind is in the degraded reason and in `permguard host providers list`.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,6 +29,37 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long a whole fetch may take, connection included.
 pub const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// How often the keys' standing is reported.
+pub const WATCH: Duration = Duration::from_secs(15);
+
+/// The capability an identity provider's keys degrade on the Host.
+pub const CAPABILITY: &str = "oidc";
+
+/// The age of the oldest key set held, across the providers.
+pub const KEYS_OLDEST_AGE: permguard_core::Metric = permguard_core::Metric::gauge(
+    "permguard_oidc_keys_oldest_age_seconds",
+    "Seconds since the oldest identity provider key set held was fetched or read; 0 when none is held.",
+);
+
+/// The providers whose keys are not fresh.
+pub const PROVIDERS_NOT_FRESH: permguard_core::Metric = permguard_core::Metric::gauge(
+    "permguard_oidc_providers_not_fresh",
+    "Identity providers whose keys are aging, stale, or missing after a failed fetch.",
+);
+
+/// Key fetches that failed.
+pub const REFRESH_FAILURES: permguard_core::Metric = permguard_core::Metric::counter(
+    "permguard_oidc_refresh_failures_total",
+    "Identity provider key fetches that failed; the keys held serve until their max_stale.",
+);
+
+/// Where the keys' standing is reported.
+#[derive(Clone)]
+pub struct Observing {
+    pub health: permguard_core::server::Health,
+    pub metrics: permguard_core::Metrics,
+}
+
 /// The running refresh tasks; dropping them stops them.
 pub struct Refreshing(Vec<tokio::task::JoinHandle<()>>);
 
@@ -36,22 +71,89 @@ impl Drop for Refreshing {
     }
 }
 
-/// Starts one task per provider whose keys are fetched; `None` when none is.
-pub fn drive(providers: &[Arc<Verifier>], allow_http: bool) -> Option<Refreshing> {
-    let tasks: Vec<_> = providers
+/// Starts one task per provider whose keys are fetched, and the report of every provider's
+/// keys; `None` when no provider is configured.
+pub fn drive(
+    providers: &[Arc<Verifier>],
+    allow_http: bool,
+    observing: &Observing,
+) -> Option<Refreshing> {
+    if providers.is_empty() {
+        return None;
+    }
+    let mut tasks: Vec<_> = providers
         .iter()
         .filter(|verifier| verifier.rule().keys.is_fetched())
         .map(|verifier| {
             let wake = Arc::new(tokio::sync::Notify::new());
             let waking = Arc::clone(&wake);
             verifier.set_waker(Box::new(move || waking.notify_one()));
-            tokio::spawn(run(Arc::clone(verifier), wake, allow_http))
+            tokio::spawn(run(
+                Arc::clone(verifier),
+                wake,
+                allow_http,
+                observing.metrics.clone(),
+            ))
         })
         .collect();
-    (!tasks.is_empty()).then_some(Refreshing(tasks))
+    let watched = providers.to_vec();
+    let observing = observing.clone();
+    tasks.push(tokio::spawn(async move {
+        let mut interval = tokio::time::interval(WATCH);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            report(&watched, &observing);
+        }
+    }));
+    Some(Refreshing(tasks))
 }
 
-async fn run(verifier: Arc<Verifier>, wake: Arc<tokio::sync::Notify>, allow_http: bool) {
+/// Reports the providers' keys once: the metrics, and `degraded: oidc` on the Host while a
+/// provider's keys are aging, stale, or missing after a failed fetch. Keys not fetched yet with no
+/// failure are a start in progress, not a degradation.
+pub fn report(providers: &[Arc<Verifier>], observing: &Observing) {
+    use permguard_host::authz::KeyState;
+
+    let mut behind = Vec::new();
+    let mut oldest = Duration::ZERO;
+    for verifier in providers {
+        let status = verifier.status();
+        oldest = oldest.max(status.age.unwrap_or_default());
+        let failed = status.failure.is_some();
+        if matches!(status.state, KeyState::Aging | KeyState::Stale)
+            || (status.state == KeyState::Empty && failed)
+        {
+            behind.push(format!("{} ({})", status.name, status.state.as_str()));
+        }
+    }
+    observing
+        .metrics
+        .set(&KEYS_OLDEST_AGE, &[], oldest.as_secs_f64());
+    observing
+        .metrics
+        .set(&PROVIDERS_NOT_FRESH, &[], behind.len() as f64);
+    let lifecycle = observing.health.lifecycle();
+    if behind.is_empty() {
+        lifecycle.restore(permguard_core::lifecycle::HOST, CAPABILITY);
+    } else {
+        lifecycle.degrade(
+            permguard_core::lifecycle::HOST,
+            CAPABILITY,
+            format!(
+                "identity provider keys not fresh: {}; their tokens are refused once past max_stale",
+                behind.join(", ")
+            ),
+        );
+    }
+}
+
+async fn run(
+    verifier: Arc<Verifier>,
+    wake: Arc<tokio::sync::Notify>,
+    allow_http: bool,
+    metrics: permguard_core::Metrics,
+) {
     let mut retry = FIRST_RETRY;
     loop {
         let Some(due) = verifier.next_fetch_in() else {
@@ -71,6 +173,7 @@ async fn run(verifier: Arc<Verifier>, wake: Arc<tokio::sync::Notify>, allow_http
             Ok(()) => retry = FIRST_RETRY,
             Err(reason) => {
                 verifier.failed(reason);
+                metrics.count(&REFRESH_FAILURES, &[]);
                 tokio::select! {
                     () = tokio::time::sleep(retry) => {}
                     () = wake.notified() => {}
@@ -475,6 +578,38 @@ mod tests {
         )
     }
 
+    fn observing() -> Observing {
+        Observing {
+            health: permguard_core::server::Health::new(),
+            metrics: permguard_core::Metrics::new(
+                Arc::new(permguard_std::metrics::Registry::new()),
+            ),
+        }
+    }
+
+    fn reading(observing: &Observing, metric: &permguard_core::Metric) -> f64 {
+        observing
+            .metrics
+            .snapshot()
+            .into_iter()
+            .find(|sample| sample.metric.name() == metric.name())
+            .map_or(0.0, |sample| match sample.reading {
+                permguard_core::metrics::Reading::Value(value) => value,
+                permguard_core::metrics::Reading::Distribution { .. } => f64::NAN,
+            })
+    }
+
+    fn degraded(observing: &Observing) -> Option<String> {
+        observing
+            .health
+            .lifecycle()
+            .report(permguard_core::lifecycle::HOST)
+            .degraded
+            .into_iter()
+            .find(|degraded| degraded.capability == CAPABILITY)
+            .map(|degraded| degraded.reason)
+    }
+
     async fn eventually(what: &str, check: impl Fn() -> bool) {
         for _ in 0..200 {
             if check() {
@@ -495,7 +630,8 @@ mod tests {
         assert!(String::from_utf8_lossy(&fetched).contains("\"k1\""));
 
         let verifier = verifier(provider.rule());
-        let _refreshing = drive(&[Arc::clone(&verifier)], false).expect("one fetched provider");
+        let _refreshing =
+            drive(&[Arc::clone(&verifier)], false, &observing()).expect("one fetched provider");
         eventually("the first fetch", || {
             verifier.state() == permguard_host::authz::KeyState::Fresh
         })
@@ -518,7 +654,8 @@ mod tests {
         provider.discovery(&provider.issuer());
         provider.keys(&[(&first, "k1")]);
         let verifier = verifier(provider.rule());
-        let _refreshing = drive(&[Arc::clone(&verifier)], false).expect("one fetched provider");
+        let _refreshing =
+            drive(&[Arc::clone(&verifier)], false, &observing()).expect("one fetched provider");
         eventually("the first fetch", || {
             verifier.state() == permguard_host::authz::KeyState::Fresh
         })
@@ -598,11 +735,18 @@ mod tests {
         provider.discovery(&provider.issuer());
         provider.serve("/realm/keys", 503, b"{}".to_vec());
         let verifier = verifier(provider.rule());
-        let _refreshing = drive(&[Arc::clone(&verifier)], false).expect("one fetched provider");
+        let watching = observing();
+        let _refreshing =
+            drive(&[Arc::clone(&verifier)], false, &watching).expect("one fetched provider");
         eventually("the failure recorded", || {
             verifier.status().failure.is_some()
         })
         .await;
+        report(&[Arc::clone(&verifier)], &watching);
+        let reason = degraded(&watching).expect("degraded: oidc");
+        assert!(reason.contains("(empty)"), "{reason}");
+        assert!(reading(&watching, &REFRESH_FAILURES) >= 1.0);
+        assert!((reading(&watching, &PROVIDERS_NOT_FRESH) - 1.0).abs() < f64::EPSILON);
         assert!(
             verifier
                 .status()
@@ -622,6 +766,9 @@ mod tests {
         })
         .await;
         assert!(verifier.status().failure.is_none());
+        report(&[Arc::clone(&verifier)], &watching);
+        assert_eq!(degraded(&watching), None, "restored once fresh");
+        assert!(reading(&watching, &PROVIDERS_NOT_FRESH).abs() < f64::EPSILON);
     }
 
     #[test]

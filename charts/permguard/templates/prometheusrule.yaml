@@ -150,4 +150,21 @@ spec:
           annotations:
             summary: "{{`{{ $labels.surface }}`}} certificate expires soon"
             runbook_url: "https://docs.permguard.com/observability#alerts"
+    - name: permguard.identity
+      rules:
+        - alert: PermguardIdentityProviderKeysNotFresh
+          expr: max by (component) (permguard_oidc_providers_not_fresh) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.component }}`}} holds identity provider keys that are not fresh"
+            runbook_url: "https://docs.permguard.com/observability#alerts"
+        - alert: PermguardIdentityProviderRefreshFailing
+          expr: increase(permguard_oidc_refresh_failures_total[30m]) > 3
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.component }}`}} cannot fetch identity provider keys"
+            runbook_url: "https://docs.permguard.com/observability#alerts"
 {{- end }}

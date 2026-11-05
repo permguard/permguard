@@ -182,3 +182,26 @@ groups:
         annotations:
           summary: "{{ $labels.surface }}'s certificate expires in less than 30 days"
           description: "A 90-day certificate renews at 60; under 30 means two windows were missed."
+
+  - name: permguard-identity
+    rules:
+      # The Host also reports `degraded: oidc`, naming each provider; the metrics carry no provider
+      # label, so `permguard host providers list` says which one.
+      - alert: PermguardIdentityProviderKeysNotFresh
+        expr: max by (component) (permguard_oidc_providers_not_fresh) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.component }} holds identity provider keys that are not fresh"
+          description: >-
+            Keys older than twice their refresh still verify tokens until max_stale; past it, the
+            provider's tokens are refused.
+
+      - alert: PermguardIdentityProviderRefreshFailing
+        expr: increase(permguard_oidc_refresh_failures_total[30m]) > 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.component }} cannot fetch identity provider keys"
+          description: "The provider, its discovery document or the egress policy refuses the fetch."
