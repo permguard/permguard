@@ -657,7 +657,20 @@ impl HostApi {
         .await
     }
 
+    /// Authorizes before a password is looked at: a caller without the grant learns nothing of
+    /// the policy and never makes the Host spend an Argon2id hash. The mutation admits again,
+    /// with its bound.
+    fn authorized_first(&self, actor: &Actor) -> Result<(), Refusal> {
+        self.authorization.authorize(
+            actor,
+            operations::AUTHZ_ADMIN,
+            &permguard_core::authz::Resource::host(),
+        )?;
+        Ok(())
+    }
+
     pub async fn create_user(&self, actor: &Actor, create: CreateUser) -> Result<Changed, Refusal> {
+        self.authorized_first(actor)?;
         let identities = self.identities()?;
         let password = match &create.password {
             Some(password) => {
@@ -721,6 +734,7 @@ impl HostApi {
         name: &str,
         set: SetPassword,
     ) -> Result<Changed, Refusal> {
+        self.authorized_first(actor)?;
         let identities = self.identities()?;
         crate::authz::password::check_policy(name, &set.password, identities.min_length)
             .map_err(invalid)?;

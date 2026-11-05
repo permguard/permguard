@@ -3912,3 +3912,536 @@ async fn roles_and_users_answer_the_same_over_both_transports() {
     assert_eq!(over_rest.len(), expected.len());
     assert_eq!(over_grpc.len(), expected.len());
 }
+
+/// What one call of the walk answered: the HTTP status, or the gRPC status code.
+type Answered = (u16, String);
+
+/// A body for `schema`, every required member filled with a value of its type: the walk asks
+/// whether a route authorizes, not whether the body is meaningful, so a refusal for the body
+/// would hide the answer. `seed` keeps request ids distinct.
+fn walk_body(document: &Value, schema: &Value, seed: usize) -> Value {
+    let schema = match schema.get("$ref").and_then(Value::as_str) {
+        Some(reference) => {
+            let name = reference.rsplit('/').next().expect("a schema name");
+            &document["components"]["schemas"][name]
+        }
+        None => schema,
+    };
+    let kinds: Vec<&str> = match &schema["type"] {
+        Value::String(kind) => vec![kind.as_str()],
+        Value::Array(kinds) => kinds.iter().filter_map(Value::as_str).collect(),
+        _ => vec!["object"],
+    };
+    if kinds.contains(&"null") {
+        return Value::Null;
+    }
+    if let Some(first) = schema["enum"].as_array().and_then(|values| values.first()) {
+        return first.clone();
+    }
+    match kinds.first().copied().unwrap_or("object") {
+        "string" => json!(format!("walk-{seed}")),
+        "integer" | "number" => json!(0),
+        "boolean" => json!(false),
+        "array" => {
+            if schema["minItems"].as_u64().unwrap_or(0) > 0 {
+                json!([walk_body(document, &schema["items"], seed)])
+            } else {
+                json!([])
+            }
+        }
+        _ => {
+            let mut object = serde_json::Map::new();
+            for name in schema["required"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+            {
+                object.insert(
+                    name.to_owned(),
+                    walk_body(document, &schema["properties"][name], seed),
+                );
+            }
+            Value::Object(object)
+        }
+    }
+}
+
+async fn walk_rest(
+    router: &axum::Router,
+    method: &str,
+    path: &str,
+    body: Option<&Value>,
+    who: Option<&str>,
+) -> Answered {
+    let mut request = Request::builder().method(method).uri(path);
+    if let Some(who) = who {
+        request = request.header("authorization", format!("Bearer {who}"));
+    }
+    if body.is_some() {
+        request = request.header("content-type", "application/json");
+    }
+    let request = request
+        .body(axum::body::Body::from(
+            body.map(Value::to_string).unwrap_or_default(),
+        ))
+        .expect("a request");
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        router.clone().oneshot(request),
+    )
+    .await
+    .unwrap_or_else(|_| panic!("{method} {path} as {who:?}: no answer within 10 s"))
+    .expect("answered");
+    let status = response.status().as_u16();
+    let challenge = response
+        .headers()
+        .get_all(axum::http::header::WWW_AUTHENTICATE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .collect::<Vec<_>>()
+        .join(", ");
+    (status, challenge)
+}
+
+/// One message of `fields`, `(type, name, number)` as `host.proto` declares them, with every
+/// `string resource` set to `host`: a route that names its resource first is authorized on it,
+/// and every other field stays at its default.
+fn walk_message(fields: &[(String, String, u32)]) -> Vec<u8> {
+    let mut message = Vec::new();
+    for (kind, name, number) in fields {
+        if kind == "string" && name == "resource" {
+            message.push(u8::try_from(number << 3 | 2).expect("a one-byte tag"));
+            message.push(4);
+            message.extend_from_slice(b"host");
+        }
+    }
+    let mut framed = vec![0u8];
+    framed.extend_from_slice(&u32::try_from(message.len()).expect("small").to_be_bytes());
+    framed.extend_from_slice(&message);
+    framed
+}
+
+async fn walk_grpc(
+    router: &axum::Router,
+    rpc: &str,
+    message: &[u8],
+    who: Option<&str>,
+) -> Answered {
+    let mut request = Request::builder()
+        .method("POST")
+        .uri(format!("/{rpc}"))
+        .header("content-type", "application/grpc")
+        .header("te", "trailers");
+    if let Some(who) = who {
+        request = request.header("authorization", format!("Bearer {who}"));
+    }
+    let request = request
+        .body(axum::body::Body::from(message.to_vec()))
+        .expect("a request");
+    let answered = async {
+        let response = router.clone().oneshot(request).await.expect("answered");
+        let (parts, body) = response.into_parts();
+        let header = |headers: &axum::http::HeaderMap, name: &str| {
+            headers
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned)
+        };
+        if let Some(status) = header(&parts.headers, "grpc-status") {
+            return (status, header(&parts.headers, "grpc-message"));
+        }
+        let collected = body.collect().await.expect("the body reads");
+        let trailers = collected.trailers().cloned().unwrap_or_default();
+        (
+            header(&trailers, "grpc-status").unwrap_or_else(|| "none".to_owned()),
+            header(&trailers, "grpc-message"),
+        )
+    };
+    let (status, message) = tokio::time::timeout(std::time::Duration::from_secs(10), answered)
+        .await
+        .unwrap_or_else(|_| panic!("{rpc} as {who:?}: no answer within 10 s"));
+    (
+        status.parse().unwrap_or(u16::MAX),
+        message.unwrap_or_default(),
+    )
+}
+
+/// How a route outside the Host's grants answers, checked for every caller.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Open {
+    /// The same refusal to nobody, a stranger and the administrator: nothing is behind it.
+    RefusedToEveryone,
+    /// `UNIMPLEMENTED` to every caller: not served by this build.
+    Unimplemented,
+    /// Open by the deployment's own public grant: `keys.read` on the Host, in this facade.
+    Public,
+}
+
+/// The routes a caller reaches without a grant of its own, each with why. Everything else in
+/// `host.json` and `host.proto` is behind the Host's grants.
+const OPEN_ROUTES: &[(&str, Open, &str)] = &[
+    (
+        "POST /host/v1/sessions/hello",
+        Open::RefusedToEveryone,
+        "a peer session runs on the peer channel only (WP-2.3)",
+    ),
+    (
+        "POST /host/v1/sessions/prove",
+        Open::RefusedToEveryone,
+        "a peer session runs on the peer channel only (WP-2.3)",
+    ),
+    (
+        "POST /host/v1/members/enroll",
+        Open::RefusedToEveryone,
+        "an enrollment runs inside a proven peer session (WP-4.1)",
+    ),
+    (
+        "POST /host/v1/tasks/{task}/session",
+        Open::RefusedToEveryone,
+        "a task session runs inside a proven peer session (WP-4.3)",
+    ),
+    (
+        "permguard.host.v1.IdentityService/PeerChannel",
+        Open::RefusedToEveryone,
+        "the peer channel proves the peer Host itself, on a listener that serves it (WP-2.3)",
+    ),
+    (
+        "GET /host/v1/keys",
+        Open::Public,
+        "keys.read is public in this facade",
+    ),
+    (
+        "GET /host/v1/keys/bundle",
+        Open::Public,
+        "keys.read is public in this facade",
+    ),
+    (
+        "GET /host/v1/keys/{ring}",
+        Open::Public,
+        "keys.read is public in this facade",
+    ),
+    (
+        "permguard.host.v1.KeyService/ListKeyRings",
+        Open::Public,
+        "keys.read is public in this facade",
+    ),
+    (
+        "permguard.host.v1.KeyService/GetKeyRing",
+        Open::Public,
+        "keys.read is public in this facade",
+    ),
+    (
+        "permguard.host.v1.KeyService/GetKeyBundle",
+        Open::Public,
+        "keys.read is public in this facade",
+    ),
+    (
+        "permguard.host.v1.KeyService/ListSecrets",
+        Open::Unimplemented,
+        "not served by this build",
+    ),
+    (
+        "permguard.host.v1.KeyService/RotateSecret",
+        Open::Unimplemented,
+        "not served by this build",
+    ),
+    (
+        "permguard.host.v1.EvidenceService/ShipStreamBatch",
+        Open::Unimplemented,
+        "not served by this build",
+    ),
+    (
+        "permguard.host.v1.OperationsService/Drain",
+        Open::Unimplemented,
+        "not served by this build",
+    ),
+    (
+        "permguard.host.v1.OperationsService/Maintenance",
+        Open::Unimplemented,
+        "not served by this build",
+    ),
+    (
+        "permguard.host.v1.OperationsService/GetStorageQuota",
+        Open::Unimplemented,
+        "not served by this build",
+    ),
+    (
+        "permguard.host.v1.OperationsService/ProbeStorage",
+        Open::Unimplemented,
+        "not served by this build",
+    ),
+];
+
+/// Routes whose resource lies outside the administrator's selector, `under(host)`, in this facade:
+/// it is refused there for what it names, as anybody would be, which is the point.
+const OUTSIDE_THE_ADMINISTRATOR: &[(&str, &str)] = &[(
+    "POST /host/v1/gc/{job}/plan",
+    "without `resource` the sweep covers the whole Plane, `plane/control`, outside `host`",
+)];
+
+/// The offence, if any, of an open route's three answers. `refused` are the codes that turn a
+/// caller away for who it is; `unimplemented` is the binding's word for a route not served.
+fn open_offence(
+    route: &str,
+    open: Open,
+    answers: [&Answered; 3],
+    refused: [u16; 2],
+    unimplemented: u16,
+) -> Option<String> {
+    let [nobody, stranger, admin] = answers;
+    let fine = match open {
+        Open::RefusedToEveryone => {
+            nobody.0 == stranger.0
+                && stranger.0 == admin.0
+                && !(200..300).contains(&admin.0)
+                && admin.0 != 0
+        }
+        Open::Unimplemented => answers.iter().all(|answer| answer.0 == unimplemented),
+        Open::Public => answers.iter().all(|answer| !refused.contains(&answer.0)),
+    };
+    (!fine).then(|| format!("{route} ({open:?}): answered {nobody:?}, {stranger:?}, {admin:?}"))
+}
+
+/// G5 (WP-8.1): every route of the Host API, REST from `host.json` and gRPC from `host.proto`,
+/// served on one router behind the authentication boundary as the server serves it. Nobody is
+/// refused `401` (`UNAUTHENTICATED`), a principal without a grant `403` (`PERMISSION_DENIED`), and
+/// the administrator is never refused for who it is. A route added without authorizing fails
+/// here, unless `OPEN_ROUTES` says why it is open.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_the_administrator() {
+    let router = host_api::routes(facade("walk"), Disclosure::Minimal)
+        .layer(ActorLayer::new(Arc::new(Bearers)));
+    let root = permguard_conformance::contracts::root();
+    let document: Value = serde_json::from_slice(
+        &std::fs::read(root.join("openapi/host.json")).expect("host.json reads"),
+    )
+    .expect("host.json is JSON");
+    let open = |route: &str| {
+        OPEN_ROUTES
+            .iter()
+            .find(|(open, _, _)| *open == route)
+            .map(|(_, open, _)| *open)
+    };
+
+    let mut offences = Vec::new();
+    let mut walked = 0;
+    let mut seed = 0;
+    for (path, operations) in document["paths"].as_object().expect("paths") {
+        for (method, operation) in operations.as_object().expect("operations") {
+            if !["get", "post", "put", "patch", "delete"].contains(&method.as_str()) {
+                continue;
+            }
+            let method = method.to_uppercase();
+            let route = format!("{method} {path}");
+            // Path parameters take their schema's first value, or a well-formed name; required
+            // query parameters a resource or a request id: a route that validates them before it
+            // authorizes is then asked about authorization, not about its arguments.
+            let parameters = operation["parameters"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let mut concrete = path
+                .split('/')
+                .map(|segment| {
+                    let Some(name) = segment.strip_prefix('{').and_then(|s| s.strip_suffix('}'))
+                    else {
+                        return segment.to_owned();
+                    };
+                    parameters
+                        .iter()
+                        .find(|parameter| parameter["name"] == name)
+                        .and_then(|parameter| parameter["schema"]["enum"][0].as_str())
+                        .map_or_else(
+                            || match name {
+                                "class" => "security".to_owned(),
+                                "plane" => "data".to_owned(),
+                                _ => "walk".to_owned(),
+                            },
+                            str::to_owned,
+                        )
+                })
+                .collect::<Vec<_>>()
+                .join("/");
+            let query: Vec<String> = parameters
+                .iter()
+                .filter(|parameter| parameter["in"] == "query" && parameter["required"] == true)
+                .map(|parameter| {
+                    let name = parameter["name"].as_str().expect("a name");
+                    if name == "resource" {
+                        "resource=host".to_owned()
+                    } else {
+                        format!("{name}=walk-query")
+                    }
+                })
+                .collect();
+            if !query.is_empty() {
+                concrete = format!("{concrete}?{}", query.join("&"));
+            }
+            let schema = &operation["requestBody"]["content"]["application/json"]["schema"];
+            let body = |seed: &mut usize| {
+                *seed += 1;
+                (!schema.is_null()).then(|| walk_body(&document, schema, *seed))
+            };
+            walked += 1;
+            let nobody =
+                walk_rest(&router, &method, &concrete, body(&mut seed).as_ref(), None).await;
+            let stranger = walk_rest(
+                &router,
+                &method,
+                &concrete,
+                body(&mut seed).as_ref(),
+                Some(STRANGER),
+            )
+            .await;
+            let admin = walk_rest(
+                &router,
+                &method,
+                &concrete,
+                body(&mut seed).as_ref(),
+                Some(ADMIN),
+            )
+            .await;
+            if let Some(kind) = open(&route) {
+                offences.extend(open_offence(
+                    &route,
+                    kind,
+                    [&nobody, &stranger, &admin],
+                    [401, 403],
+                    501,
+                ));
+                continue;
+            }
+            if nobody.0 != 401 || !nobody.1.contains("Mutual-TLS") {
+                offences.push(format!(
+                    "{route}: nobody answered {nobody:?}, not 401 with a challenge"
+                ));
+            }
+            if stranger.0 != 403 {
+                offences.push(format!(
+                    "{route}: a stranger answered {stranger:?}, not 403"
+                ));
+            }
+            let outside = OUTSIDE_THE_ADMINISTRATOR
+                .iter()
+                .any(|(outside, _)| *outside == route);
+            if admin.0 == 401 || (admin.0 == 403 && !outside) {
+                offences.push(format!("{route}: the administrator answered {admin:?}"));
+            }
+        }
+    }
+    assert!(walked >= 70, "{walked} REST routes walked");
+
+    let proto = std::fs::read_to_string(root.join("proto/permguard/host/v1/host.proto"))
+        .expect("host.proto reads");
+    // The messages' scalar fields, `type name = number;`, by message.
+    let mut messages: std::collections::HashMap<String, Vec<(String, String, u32)>> =
+        std::collections::HashMap::new();
+    let mut current = None;
+    for line in proto.lines().map(str::trim) {
+        if let Some(name) = line.strip_prefix("message ") {
+            current = Some(name.trim_end_matches('{').trim().to_owned());
+            continue;
+        }
+        let words: Vec<&str> = line.trim_end_matches(';').split_whitespace().collect();
+        let field = match words.as_slice() {
+            ["optional" | "repeated", kind, name, "=", number] | [kind, name, "=", number] => {
+                number.parse().ok().map(|number| (*kind, *name, number))
+            }
+            _ => None,
+        };
+        if let (Some(message), Some((kind, name, number))) = (&current, field) {
+            messages.entry(message.clone()).or_default().push((
+                kind.to_owned(),
+                name.to_owned(),
+                number,
+            ));
+        }
+    }
+    let mut service = String::new();
+    let mut rpcs = 0;
+    for line in proto.lines().map(str::trim) {
+        if let Some(name) = line.strip_prefix("service ") {
+            service = name.trim_end_matches('{').trim().to_owned();
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("rpc ") else {
+            continue;
+        };
+        let method = rest.split('(').next().expect("a method").trim();
+        let input = rest
+            .split('(')
+            .nth(1)
+            .and_then(|input| input.split(')').next())
+            .expect("an input")
+            .trim_start_matches("stream ")
+            .trim();
+        let message = walk_message(messages.get(input).map_or(&[][..], Vec::as_slice));
+        let rpc = format!("permguard.host.v1.{service}/{method}");
+        rpcs += 1;
+        let nobody = walk_grpc(&router, &rpc, &message, None).await;
+        let stranger = walk_grpc(&router, &rpc, &message, Some(STRANGER)).await;
+        let admin = walk_grpc(&router, &rpc, &message, Some(ADMIN)).await;
+        if let Some(kind) = open(&rpc) {
+            offences.extend(open_offence(
+                &rpc,
+                kind,
+                [&nobody, &stranger, &admin],
+                [16, 7],
+                12,
+            ));
+            continue;
+        }
+        // UNAUTHENTICATED is 16, PERMISSION_DENIED 7.
+        if nobody.0 != 16 {
+            offences.push(format!(
+                "{rpc}: nobody answered {nobody:?}, not UNAUTHENTICATED"
+            ));
+        }
+        if stranger.0 != 7 {
+            offences.push(format!(
+                "{rpc}: a stranger answered {stranger:?}, not PERMISSION_DENIED"
+            ));
+        }
+        if [16, 7].contains(&admin.0) {
+            offences.push(format!("{rpc}: the administrator answered {admin:?}"));
+        }
+    }
+    assert!(rpcs >= 70, "{rpcs} gRPC methods walked");
+    assert!(offences.is_empty(), "{}", offences.join("\n"));
+}
+
+/// A password is looked at only once the caller is authorized: without the grant, a password the
+/// policy refuses is answered `401` or `403`, never the policy, and the Host spends no Argon2id
+/// hash on it (WP-8.1).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_password_is_read_only_after_the_caller_is_authorized() {
+    let router = host_api::routes(facade("password-first"), Disclosure::Minimal)
+        .layer(ActorLayer::new(Arc::new(Bearers)));
+    let create = json!({"request_id": "p-1", "name": "paperino", "password": "short"});
+    let set = json!({"request_id": "p-2", "password": "short"});
+    for (path, body) in [
+        ("/host/v1/users", &create),
+        ("/host/v1/users/paperino/password", &set),
+    ] {
+        assert_eq!(
+            walk_rest(&router, "POST", path, Some(body), None).await.0,
+            401,
+            "{path}: nobody"
+        );
+        assert_eq!(
+            walk_rest(&router, "POST", path, Some(body), Some(STRANGER))
+                .await
+                .0,
+            403,
+            "{path}: a stranger"
+        );
+        assert_eq!(
+            walk_rest(&router, "POST", path, Some(body), Some(ADMIN))
+                .await
+                .0,
+            400,
+            "{path}: the administrator is told the policy"
+        );
+    }
+}

@@ -5420,6 +5420,2053 @@
         },
         "x-grpc-rpc": "permguard.host.v1.OperationsService/RunGc"
       }
+    },
+    "/host/v1/roles": {
+      "get": {
+        "operationId": "listRoles",
+        "summary": "The roles",
+        "description": "Under `authz.admin` on the Host. Roles are Permguard's own: a grant held by `role:<name>` is held by every member.",
+        "responses": {
+          "200": {
+            "description": "Every role, with its member and grant counts, and the directory revision they were read at.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.RoleService/ListRoles"
+      },
+      "post": {
+        "operationId": "createRole",
+        "summary": "Create a role",
+        "description": "Under `authz.admin` on the Host. Mutation `host.role.create`.",
+        "requestBody": {
+          "required": true,
+          "description": "The role and the envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A role with that name exists (`conflict`), or the directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.RoleService/CreateRole"
+      }
+    },
+    "/host/v1/roles/{name}": {
+      "get": {
+        "operationId": "getRole",
+        "summary": "One role",
+        "description": "Under `authz.admin` on the Host. Its members and the grants `role:<name>` holds.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The role's name: lowercase letters, digits, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The role, its members and its active grants.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No role has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.RoleService/GetRole"
+      },
+      "patch": {
+        "operationId": "updateRole",
+        "summary": "Describe a role",
+        "description": "Under `authz.admin` on the Host. Mutation `host.role.update`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The role's name: lowercase letters, digits, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The new description and the envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRoleBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No role has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.RoleService/UpdateRole"
+      }
+    },
+    "/host/v1/roles/{name}/delete": {
+      "post": {
+        "operationId": "deleteRole",
+        "summary": "Delete a role",
+        "description": "Under `authz.admin` on the Host. Mutation `host.role.delete`. Refused while `role:<name>` holds active grants: revoke them first.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The role's name: lowercase letters, digits, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and, optionally, the directory revision read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteRoleBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No role has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The role holds active grants, named in the message (`conflict`), or the directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.RoleService/DeleteRole"
+      }
+    },
+    "/host/v1/roles/{name}/members": {
+      "post": {
+        "operationId": "addRoleMember",
+        "summary": "Add a member to a role",
+        "description": "Under `authz.admin` on the Host. Mutation `host.member.add`. Adding a member already there writes nothing and answers `changed: false`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The role's name.",
+            "x-grpc-field": "role"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The member and the envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleMemberBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No role has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.RoleService/AddMember"
+      }
+    },
+    "/host/v1/roles/{name}/members/remove": {
+      "post": {
+        "operationId": "removeRoleMember",
+        "summary": "Remove a member from a role",
+        "description": "Under `authz.admin` on the Host. Mutation `host.member.remove`. Removing a member not there writes nothing and answers `changed: false`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The role's name.",
+            "x-grpc-field": "role"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The member and the envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleMemberBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No role has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.RoleService/RemoveMember"
+      }
+    },
+    "/host/v1/principals/{principal}/roles": {
+      "get": {
+        "operationId": "rolesOf",
+        "summary": "The roles of a principal",
+        "description": "Under `authz.admin` on the Host. The roles a principal is a member of, directly or as a local user linked to it.",
+        "parameters": [
+          {
+            "name": "principal",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The authorization principal: `user:<name>`, `oidc:<issuer>#<subject>`, a SPIFFE id, percent-encoded.",
+            "x-grpc-field": "principal"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The role names, sorted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.RoleService/RolesOf"
+      }
+    },
+    "/host/v1/users": {
+      "get": {
+        "operationId": "listUsers",
+        "summary": "The local users",
+        "description": "Under `authz.admin` on the Host. Never a password or a factor: only whether the user holds them.",
+        "responses": {
+          "200": {
+            "description": "Every local user and the directory revision they were read at.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/ListUsers"
+      },
+      "post": {
+        "operationId": "createUser",
+        "summary": "Create a local user",
+        "description": "Under `authz.admin` on the Host. Mutation `host.user.create`. The password, when given, is hashed with Argon2id by the Host and never answered.",
+        "requestBody": {
+          "required": true,
+          "description": "The user, optionally its first password, and the envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A user with that name or that email exists (`conflict`), or the directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/CreateUser"
+      }
+    },
+    "/host/v1/users/{name}": {
+      "get": {
+        "operationId": "getUser",
+        "summary": "One local user",
+        "description": "Under `authz.admin` on the Host. The user and the grants `user:<name>` holds.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The user, its roles and its active grants.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No local user has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/GetUser"
+      },
+      "patch": {
+        "operationId": "updateUser",
+        "summary": "Change a local user's email or display name",
+        "description": "Under `authz.admin` on the Host. Mutation `host.user.update`. A member absent is unchanged.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The new email or display name and the envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No local user has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/UpdateUser"
+      }
+    },
+    "/host/v1/users/{name}/password": {
+      "post": {
+        "operationId": "setUserPassword",
+        "summary": "Set a local user's password",
+        "description": "Under `authz.admin` on the Host. Mutation `host.user.password`. Ends the user's sessions.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The new password and the envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPasswordBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No local user has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/SetPassword"
+      }
+    },
+    "/host/v1/users/{name}/disable": {
+      "post": {
+        "operationId": "disableUser",
+        "summary": "Disable a local user",
+        "description": "Under `authz.admin` on the Host. Mutation `host.user.disable`. Ends the user's sessions; a disabled user cannot sign in.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and, optionally, the directory revision read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserStatusBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No local user has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/SetUserStatus"
+      }
+    },
+    "/host/v1/users/{name}/enable": {
+      "post": {
+        "operationId": "enableUser",
+        "summary": "Enable a local user",
+        "description": "Under `authz.admin` on the Host. Mutation `host.user.enable`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and, optionally, the directory revision read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserStatusBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No local user has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/SetUserStatus"
+      }
+    },
+    "/host/v1/users/{name}/factor/reset": {
+      "post": {
+        "operationId": "resetUserFactor",
+        "summary": "Reset a local user's second factor",
+        "description": "Under `authz.admin` on the Host. Mutation `host.user.factor.reset`. The user enrolls again at the next sign-in; its sessions end.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and, optionally, the directory revision read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserPlainBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No local user has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/ResetFactor"
+      }
+    },
+    "/host/v1/users/{name}/unlock": {
+      "post": {
+        "operationId": "unlockUser",
+        "summary": "Lift a local user's sign-in lockout",
+        "description": "Under `authz.admin` on the Host. Not a directory mutation: the lockout lives in memory.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Whether a lockout was lifted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserUnlocked"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No local user has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/UnlockUser"
+      }
+    },
+    "/host/v1/users/{name}/links": {
+      "post": {
+        "operationId": "linkUser",
+        "summary": "Link a local user to an identity provider subject",
+        "description": "Under `authz.admin` on the Host. Mutation `host.user.link`. A token of that subject then acts as `user:<name>`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The subject, `<provider>:<value>`, and the envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkUserBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No local user has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The subject is linked to another user (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/LinkUser"
+      }
+    },
+    "/host/v1/users/{name}/links/remove": {
+      "post": {
+        "operationId": "unlinkUser",
+        "summary": "Unlink a local user from a subject",
+        "description": "Under `authz.admin` on the Host. Mutation `host.user.unlink`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The subject and the envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkUserBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No local user has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The subject is not linked to this user (`conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/LinkUser"
+      }
+    },
+    "/host/v1/users/{name}/delete": {
+      "post": {
+        "operationId": "deleteUser",
+        "summary": "Delete a local user",
+        "description": "Under `authz.admin` on the Host. Mutation `host.user.delete`. Refused while `user:<name>` holds active grants: revoke them first. Ends its sessions.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and, optionally, the directory revision read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserPlainBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No local user has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user holds active grants, named in the message (`conflict`), or the directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.UserService/DeleteUser"
+      }
+    },
+    "/host/v1/providers": {
+      "get": {
+        "operationId": "listProviders",
+        "summary": "The identity providers",
+        "description": "Under `authz.admin` on the Host. Their key sources and the standing of their keys; never the key material.",
+        "responses": {
+          "200": {
+            "description": "Every configured identity provider.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.ProviderService/ListProviders"
+      }
+    },
+    "/host/v1/providers/{name}/refresh": {
+      "post": {
+        "operationId": "refreshProvider",
+        "summary": "Fetch a provider's keys now",
+        "description": "Under `authz.admin` on the Host. Asks the refresh task to fetch now, or re-reads a key file; answers the provider as it stands.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The provider's name.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The provider after the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Provider"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No provider has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.ProviderService/RefreshProvider"
+      }
     }
   },
   "components": {
@@ -11182,6 +13229,837 @@
         "additionalProperties": false,
         "description": "What a sweep kept for one reason.",
         "x-grpc-message": "permguard.host.v1.GcKept"
+      },
+      "RoleSummary": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The role's name; its principal is `role:<name>`.",
+            "x-grpc-field": "name"
+          },
+          "description": {
+            "type": "string",
+            "description": "What the role is for; empty when not described.",
+            "x-grpc-field": "description"
+          },
+          "members": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many members it has.",
+            "x-grpc-field": "members"
+          },
+          "grants": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many active grants `role:<name>` holds.",
+            "x-grpc-field": "grants"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The directory revision of its last change.",
+            "x-grpc-field": "revision"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "members",
+          "grants",
+          "revision"
+        ],
+        "additionalProperties": false,
+        "description": "One role, counted.",
+        "x-grpc-message": "permguard.host.v1.RoleSummary"
+      },
+      "RoleList": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The directory revision the list was read at.",
+            "x-grpc-field": "revision"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleSummary"
+            },
+            "description": "Every role, by name.",
+            "x-grpc-field": "roles"
+          }
+        },
+        "required": [
+          "revision",
+          "roles"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/roles` answers.",
+        "x-grpc-message": "permguard.host.v1.ListRolesResponse"
+      },
+      "RoleDetail": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The role's name.",
+            "x-grpc-field": "name"
+          },
+          "description": {
+            "type": "string",
+            "description": "What the role is for.",
+            "x-grpc-field": "description"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its members' principals, sorted.",
+            "x-grpc-field": "members"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Grant"
+            },
+            "description": "The active grants `role:<name>` holds.",
+            "x-grpc-field": "grants"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The directory revision of its last change.",
+            "x-grpc-field": "revision"
+          },
+          "directory_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The directory revision it was read at.",
+            "x-grpc-field": "directory_revision"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "members",
+          "grants",
+          "revision",
+          "directory_revision"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/roles/{name}` answers.",
+        "x-grpc-message": "permguard.host.v1.GetRoleResponse"
+      },
+      "DirectoryChanged": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The mutation's receipt.",
+            "x-grpc-field": "receipt"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The directory revision after it.",
+            "x-grpc-field": "revision"
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "Whether it wrote anything: adding a member already there writes nothing.",
+            "x-grpc-field": "changed"
+          }
+        },
+        "required": [
+          "receipt",
+          "revision",
+          "changed"
+        ],
+        "additionalProperties": false,
+        "description": "What every role and user mutation answers.",
+        "x-grpc-message": "permguard.host.v1.DirectoryChangeResponse"
+      },
+      "CreateRoleBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          },
+          "name": {
+            "type": "string",
+            "description": "The role's name: lowercase letters, digits, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          },
+          "description": {
+            "type": "string",
+            "description": "What the role is for; empty when absent.",
+            "x-grpc-field": "description"
+          }
+        },
+        "required": [
+          "request_id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/roles` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.CreateRoleRequest"
+      },
+      "UpdateRoleBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          },
+          "description": {
+            "type": "string",
+            "description": "The new description.",
+            "x-grpc-field": "description"
+          }
+        },
+        "required": [
+          "request_id",
+          "description"
+        ],
+        "additionalProperties": false,
+        "description": "What `PATCH /host/v1/roles/{name}` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.UpdateRoleRequest",
+        "x-grpc-only": [
+          "name"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST."
+      },
+      "DeleteRoleBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/roles/{name}/delete` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.DeleteRoleRequest",
+        "x-grpc-only": [
+          "name"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST."
+      },
+      "RoleMemberBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          },
+          "member": {
+            "type": "string",
+            "description": "The member's principal: `user:<name>`, `oidc:<issuer>#<subject>`, a SPIFFE id; never `anonymous` or another role.",
+            "x-grpc-field": "member"
+          }
+        },
+        "required": [
+          "request_id",
+          "member"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/roles/{name}/members` and `…/members/remove` carry. A closed body.",
+        "x-grpc-message": "permguard.host.v1.MemberRequest",
+        "x-grpc-only": [
+          "role"
+        ],
+        "x-grpc-note": "`role` travels in the path on REST."
+      },
+      "UserSummary": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The user's name; its principal is `user:<name>`.",
+            "x-grpc-field": "name"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its email, unique among users; `null` when none.",
+            "x-grpc-field": "email"
+          },
+          "display": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its display name; `null` when none.",
+            "x-grpc-field": "display"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "description": "`active` or `disabled`.",
+            "x-grpc-field": "status"
+          },
+          "password": {
+            "type": "boolean",
+            "description": "Whether it holds a password; never the password.",
+            "x-grpc-field": "password"
+          },
+          "factor": {
+            "type": "boolean",
+            "description": "Whether it enrolled a second factor; never the factor.",
+            "x-grpc-field": "factor"
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The identity provider subjects linked to it, `<provider>:<value>`.",
+            "x-grpc-field": "links"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The roles it is a member of.",
+            "x-grpc-field": "roles"
+          },
+          "locked_for": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Seconds it stays locked by failed sign-ins; `null` when it is not.",
+            "x-grpc-field": "locked_for"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The directory revision of its last change.",
+            "x-grpc-field": "revision"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "display",
+          "status",
+          "password",
+          "factor",
+          "links",
+          "roles",
+          "locked_for",
+          "revision"
+        ],
+        "additionalProperties": false,
+        "description": "One local user: never its password or factor, only whether it holds them.",
+        "x-grpc-message": "permguard.host.v1.UserSummary"
+      },
+      "UserList": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The directory revision the list was read at.",
+            "x-grpc-field": "revision"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserSummary"
+            },
+            "description": "Every local user, by name.",
+            "x-grpc-field": "users"
+          }
+        },
+        "required": [
+          "revision",
+          "users"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/users` answers.",
+        "x-grpc-message": "permguard.host.v1.ListUsersResponse"
+      },
+      "UserDetail": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserSummary",
+            "description": "The user.",
+            "x-grpc-field": "user"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Grant"
+            },
+            "description": "The active grants `user:<name>` holds.",
+            "x-grpc-field": "grants"
+          },
+          "directory_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The directory revision it was read at.",
+            "x-grpc-field": "directory_revision"
+          }
+        },
+        "required": [
+          "user",
+          "grants",
+          "directory_revision"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/users/{name}` answers.",
+        "x-grpc-message": "permguard.host.v1.GetUserResponse"
+      },
+      "CreateUserBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          },
+          "name": {
+            "type": "string",
+            "description": "The user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "x-grpc-field": "name"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its email, unique among users; what a provider's verified `email` links to. Optional.",
+            "x-grpc-field": "email"
+          },
+          "display": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its display name. Optional.",
+            "x-grpc-field": "display"
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its first password, at least `min_length` characters; hashed by the Host, never answered. Optional: without it the user signs in only through a linked provider until one is set.",
+            "x-grpc-field": "password"
+          }
+        },
+        "required": [
+          "request_id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/users` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.CreateUserRequest"
+      },
+      "UpdateUserBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The new email; absent is unchanged.",
+            "x-grpc-field": "email"
+          },
+          "display": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The new display name; absent is unchanged.",
+            "x-grpc-field": "display"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `PATCH /host/v1/users/{name}` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.UpdateUserRequest",
+        "x-grpc-only": [
+          "name"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST."
+      },
+      "SetPasswordBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "password": {
+            "type": "string",
+            "description": "The new password, at least `min_length` characters; hashed by the Host, never answered.",
+            "x-grpc-field": "password"
+          }
+        },
+        "required": [
+          "request_id",
+          "password"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/users/{name}/password` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.SetPasswordRequest",
+        "x-grpc-only": [
+          "name"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST."
+      },
+      "SetUserStatusBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/users/{name}/disable` and `…/enable` carry. A closed body.",
+        "x-grpc-message": "permguard.host.v1.SetUserStatusRequest",
+        "x-grpc-only": [
+          "name",
+          "active"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST, and `active` is the path's last segment."
+      },
+      "UserPlainBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/users/{name}/factor/reset` and `…/delete` carry. A closed body.",
+        "x-grpc-message": "permguard.host.v1.UserPlainRequest",
+        "x-grpc-only": [
+          "name"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST."
+      },
+      "UserUnlocked": {
+        "type": "object",
+        "properties": {
+          "unlocked": {
+            "type": "boolean",
+            "description": "Whether a lockout was lifted.",
+            "x-grpc-field": "unlocked"
+          }
+        },
+        "required": [
+          "unlocked"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/users/{name}/unlock` answers.",
+        "x-grpc-message": "permguard.host.v1.UnlockUserResponse"
+      },
+      "LinkUserBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "subject": {
+            "type": "string",
+            "description": "The subject, `<provider>:<value>`: the provider's name and the value of its `claim`.",
+            "x-grpc-field": "subject"
+          }
+        },
+        "required": [
+          "request_id",
+          "subject"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/users/{name}/links` and `…/links/remove` carry. A closed body.",
+        "x-grpc-message": "permguard.host.v1.LinkUserRequest",
+        "x-grpc-only": [
+          "name",
+          "link"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST, and `link` is whether the path ends in `/remove`."
+      },
+      "ProviderKey": {
+        "type": "object",
+        "properties": {
+          "kid": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The key's id; `null` when the provider names none.",
+            "x-grpc-field": "kid"
+          },
+          "algorithm": {
+            "type": "string",
+            "description": "The algorithm it verifies.",
+            "x-grpc-field": "algorithm"
+          }
+        },
+        "required": [
+          "kid",
+          "algorithm"
+        ],
+        "additionalProperties": false,
+        "description": "One key a provider published: its id and algorithm, never the key.",
+        "x-grpc-message": "permguard.host.v1.ProviderKey"
+      },
+      "Provider": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The provider's name.",
+            "x-grpc-field": "name"
+          },
+          "issuer": {
+            "type": "string",
+            "description": "Its issuer, as tokens carry it in `iss`.",
+            "x-grpc-field": "issuer"
+          },
+          "claim": {
+            "type": "string",
+            "description": "The claim whose value names the subject.",
+            "x-grpc-field": "claim"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "discovery",
+              "jwks_uri",
+              "jwks_file"
+            ],
+            "description": "`discovery`, `jwks_uri` or `jwks_file`.",
+            "x-grpc-field": "source"
+          },
+          "location": {
+            "type": "string",
+            "description": "The discovery URL, the key set URL or the file.",
+            "x-grpc-field": "location"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderKey"
+            },
+            "description": "The keys held.",
+            "x-grpc-field": "keys"
+          },
+          "fetched_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the keys held were fetched or read, RFC 3339; `null` before the first.",
+            "x-grpc-field": "fetched_at"
+          },
+          "age_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How old the keys held are; `null` before the first.",
+            "x-grpc-field": "age_seconds"
+          },
+          "failure": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last fetch failed; `null` when it did not.",
+            "x-grpc-field": "failure"
+          },
+          "failed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the last fetch failed, RFC 3339; `null` when it did not.",
+            "x-grpc-field": "failed_at"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "empty",
+              "fresh",
+              "aging",
+              "stale"
+            ],
+            "description": "`empty` before the first keys, `fresh`, `aging` past twice `refresh` (the Host is `degraded: oidc`), `stale` past `max_stale` (its tokens are refused).",
+            "x-grpc-field": "state"
+          }
+        },
+        "required": [
+          "name",
+          "issuer",
+          "claim",
+          "source",
+          "location",
+          "keys",
+          "fetched_at",
+          "age_seconds",
+          "failure",
+          "failed_at",
+          "state"
+        ],
+        "additionalProperties": false,
+        "description": "An identity provider and the standing of its keys.",
+        "x-grpc-message": "permguard.host.v1.Provider"
+      },
+      "ProviderList": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Provider"
+            },
+            "description": "Every configured provider, in configuration order.",
+            "x-grpc-field": "providers"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/providers` answers.",
+        "x-grpc-message": "permguard.host.v1.ListProvidersResponse"
       }
     }
   },
@@ -11259,6 +14137,28 @@
       "note": "wraps `Member`, which REST answers bare",
       "fields": [
         "member"
+      ]
+    },
+    {
+      "message": "permguard.host.v1.ListRolesRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.ListUsersRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.ListProvidersRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.RolesOfResponse",
+      "note": "REST answers the bare list of role names",
+      "fields": [
+        "roles"
       ]
     }
   ],
