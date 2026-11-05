@@ -47,6 +47,8 @@ pub mod digest {
     pub const LEDGER_EXPORT_BUNDLE: &str = "permguard.ledger.export.bundle.v1\n";
     /// An audit record.
     pub const AUDIT_RECORD: &str = "permguard.audit.record.v1\n";
+    /// The associated data of a local user's sealed second factor (WP-8.1).
+    pub const FACTOR_SEAL: &str = "permguard.factor.seal.v1\n";
     /// An audit pseudonym.
     pub const AUDIT_PSEUDONYM: &str = "permguard.audit.pseudonym.v1\n";
     /// An audit checkpoint envelope, as the next checkpoint and an anchor cite it (WP-3.7).
@@ -374,6 +376,9 @@ pub mod kdf {
     pub const DECISION_COMMITMENT: &str = "decision.commitment";
     /// The purpose of read-offset MACs, Host-local per API (WP-3.3).
     pub const STREAM_CURSOR: &str = "stream.cursor";
+    /// The purpose of the key a local user's second factor is sealed with, Host-local per user
+    /// (WP-8.1).
+    pub const MFA_SEAL: &str = "mfa.seal";
 }
 
 /// Every constant of this module as `(name, value)`, for vectors and lints.
@@ -387,6 +392,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.BACKUP_RECOVERY_KEY", digest::BACKUP_RECOVERY_KEY),
         ("digest.LEDGER_EXPORT_BUNDLE", digest::LEDGER_EXPORT_BUNDLE),
         ("digest.AUDIT_RECORD", digest::AUDIT_RECORD),
+        ("digest.FACTOR_SEAL", digest::FACTOR_SEAL),
         ("digest.AUDIT_PSEUDONYM", digest::AUDIT_PSEUDONYM),
         ("digest.AUDIT_CHECKPOINT", digest::AUDIT_CHECKPOINT),
         ("digest.AUDIT_CURSOR", digest::AUDIT_CURSOR),
@@ -701,6 +707,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("kdf.AUDIT_PSEUDONYM", kdf::AUDIT_PSEUDONYM),
         ("kdf.DECISION_COMMITMENT", kdf::DECISION_COMMITMENT),
         ("kdf.STREAM_CURSOR", kdf::STREAM_CURSOR),
+        ("kdf.MFA_SEAL", kdf::MFA_SEAL),
         ("grpc.CONTROL_PLANE", grpc::CONTROL_PLANE),
         ("grpc.DATA_PLANE", grpc::DATA_PLANE),
         ("grpc.GIT_LIKE_STORE", grpc::GIT_LIKE_STORE),

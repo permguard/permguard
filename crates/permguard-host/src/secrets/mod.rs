@@ -158,6 +158,8 @@ pub enum HostPurpose {
     AuditPseudonym,
     /// Read-offset MACs, per API.
     StreamCursor,
+    /// The seal of a local user's second factor, per user (WP-8.1).
+    MfaSeal,
 }
 
 impl HostPurpose {
@@ -165,6 +167,7 @@ impl HostPurpose {
         match self {
             Self::AuditPseudonym => purposes::AUDIT_PSEUDONYM,
             Self::StreamCursor => purposes::STREAM_CURSOR,
+            Self::MfaSeal => purposes::MFA_SEAL,
         }
     }
 }

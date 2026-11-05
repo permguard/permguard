@@ -29,8 +29,11 @@ serde.workspace = true
 serde_json.workspace = true
 # The start-up record of grants that allow nothing and of a key set that did not re-read (`authz`).
 tracing.workspace = true
-# The OS CSPRNG, for the volume identity (`storage::volume`).
+# The OS CSPRNG, for the volume identity (`storage::volume`), session tokens and salts, the
+# second factor's HMAC and its sealing (`authz`).
 ring.workspace = true
+# Local users' passwords as Argon2id (`authz::password`, WP-8.1).
+argon2.workspace = true
 sha2.workspace = true
 # The secret handle's HMAC, computed inside the Host, and the key wiped when it is dropped
 # (`composition`).

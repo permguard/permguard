@@ -72,6 +72,8 @@ permguard-telemetry = { path = "crates/permguard-telemetry", version = "0.1.0" }
 permguard-transport = { path = "crates/permguard-transport", version = "0.1.0" }
 
 anyhow = "1"
+# Local users' passwords, as Argon2id PHC strings (WP-8.1); salts come from ring.
+argon2 = { version = "0.6", default-features = false, features = ["alloc", "password-hash", "zeroize"] }
 async-stream = "0.3"
 axum = { version = "0.8", default-features = false, features = ["http1", "http2", "json", "tokio"] }
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }

@@ -17,9 +17,15 @@
 //! answered as [`Authorization::not_found_or_forbidden`] says — not found only for a caller whose
 //! grants cover the whole Plane, the same refusal as out of scope for everybody else.
 
+pub mod directory;
+pub mod factor;
+pub mod lockout;
 pub mod mapper;
 pub mod oidc;
+pub mod password;
 pub mod record;
+pub mod sessions;
+pub mod signin;
 pub mod store;
 
 use std::sync::Arc;
@@ -77,6 +83,8 @@ impl PublicGrant {
 /// rule maps is unauthenticated whatever is public.
 pub struct Authorization {
     store: Option<Arc<GrantStore>>,
+    /// The roles a principal acts with (WP-8.1); none, the principal alone.
+    directory: Option<Arc<directory::Directory>>,
     public: AllowSet,
     /// Where a grant's expiry is compared against (WP-2.12).
     time: Arc<crate::time::TimeGuard>,
@@ -96,6 +104,7 @@ impl Authorization {
     pub fn new(store: Arc<GrantStore>, public: &[PublicGrant]) -> Self {
         Self {
             store: Some(store),
+            directory: None,
             public: public_allows(public),
             time: Arc::new(crate::time::TimeGuard::system(
                 permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
@@ -107,6 +116,7 @@ impl Authorization {
     pub fn public_only(public: &[PublicGrant]) -> Self {
         Self {
             store: None,
+            directory: None,
             public: public_allows(public),
             time: Arc::new(crate::time::TimeGuard::system(
                 permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
@@ -115,6 +125,25 @@ impl Authorization {
     }
 
     /// Compares grant expiry against `time`, the Host's guard, instead of a guard of its own.
+    /// Decides with the roles the directory holds: a principal acts as itself and as every role
+    /// it, or its provider's issuer, is a member of (`1-architecture/1` Authorization model).
+    pub fn with_directory(mut self, directory: Arc<directory::Directory>) -> Self {
+        self.directory = Some(directory);
+        self
+    }
+
+    /// Every subject whose grants `principal` acts with: itself, its roles, the roles of its
+    /// issuer, and last the reserved `anonymous`, whose grants are public to everybody.
+    fn subjects_of(&self, principal: &Principal) -> Vec<Principal> {
+        let mut subjects = vec![principal.clone()];
+        if let Some(directory) = &self.directory {
+            let issuer = issuer_of(principal.as_str());
+            subjects.extend(directory.subjects(principal.as_str(), issuer.as_deref()));
+        }
+        subjects.push(Principal::anonymous());
+        subjects
+    }
+
     pub fn with_time(mut self, time: Arc<crate::time::TimeGuard>) -> Self {
         self.time = time;
         self
@@ -162,14 +191,23 @@ impl Authorization {
         operation: &str,
         resource: &Resource,
     ) -> Result<(), AccessDenial> {
+        self.authorize_by(actor, operation, resource).map(|_| ())
+    }
+
+    /// [`Authorization::authorize`], answering whose grant allowed it: the principal itself, a
+    /// role, or `anonymous` for a public grant. What the audit names (WP-8.1).
+    pub fn authorize_by(
+        &self,
+        actor: &Actor,
+        operation: &str,
+        resource: &Resource,
+    ) -> Result<Principal, AccessDenial> {
         let principal = actor.principal()?;
         let allows = self.allows();
-        if allows.permits(&principal, operation, resource)
-            || allows.permits(&Principal::anonymous(), operation, resource)
-        {
-            return Ok(());
-        }
-        Err(actor.without_grant())
+        self.subjects_of(&principal)
+            .into_iter()
+            .find(|subject| allows.permits(subject, operation, resource))
+            .ok_or_else(|| actor.without_grant())
     }
 
     /// The first stage of a lookup by name: whether `actor` holds anything for `operation` at or
@@ -182,8 +220,10 @@ impl Authorization {
     ) -> Result<(), AccessDenial> {
         let principal = actor.principal()?;
         let allows = self.allows();
-        if allows.permits_anywhere_under(&principal, operation, scope)
-            || allows.permits_anywhere_under(&Principal::anonymous(), operation, scope)
+        if self
+            .subjects_of(&principal)
+            .iter()
+            .any(|subject| allows.permits_anywhere_under(subject, operation, scope))
         {
             return Ok(());
         }
@@ -197,8 +237,9 @@ impl Authorization {
             return false;
         };
         let allows = self.allows();
-        allows.permits_whole(&principal, operation, scope)
-            || allows.permits_whole(&Principal::anonymous(), operation, scope)
+        self.subjects_of(&principal)
+            .iter()
+            .any(|subject| allows.permits_whole(subject, operation, scope))
     }
 
     /// What a name that resolved to nothing is answered with: `Ok(())` to say not found, when
@@ -218,6 +259,14 @@ impl Authorization {
     }
 }
 
+/// `oidc:<issuer>` for a provider subject `oidc:<issuer>#<value>`; nothing for any other.
+pub fn issuer_of(principal: &str) -> Option<String> {
+    principal
+        .strip_prefix("oidc:")
+        .and_then(|rest| rest.split_once('#'))
+        .map(|(issuer, _)| format!("oidc:{issuer}"))
+}
+
 fn public_allows(public: &[PublicGrant]) -> AllowSet {
     AllowSet::new(public.iter().flat_map(PublicGrant::allows).collect(), 0)
 }
@@ -235,6 +284,139 @@ mod tests {
             Credential::SanUri,
             None,
         ))
+    }
+
+    #[test]
+    fn a_member_acts_with_its_roles_grants_and_an_issuer_member_stands_for_every_subject() {
+        use crate::operations::mutation::Applying;
+        use crate::storage::volume::Volume;
+        use directory::{Change, Directory};
+
+        let root = std::env::temp_dir().join(format!("pg-authz-roles-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch");
+        let volume = Volume::claim(
+            &root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        let (store, _) = GrantStore::open(&volume).expect("grants");
+        let (directory, _) = Directory::open(&volume).expect("directory");
+        store
+            .issue(
+                &Applying::for_tests(1),
+                Issue {
+                    principal: Principal::new("role:readers").expect("a principal"),
+                    operations: vec![operations::CATALOG_READ.to_owned()],
+                    selector: Selector::parse("plane/control/*").expect("a selector"),
+                    resource_types: vec!["*".to_owned()],
+                    constraints: Default::default(),
+                    issued_by: "test".to_owned(),
+                    expires_at: None,
+                },
+                1_800_000_000,
+                None,
+            )
+            .expect("issued");
+        let change = |op: u8, change: Change| {
+            directory
+                .apply(&Applying::for_tests(op), change, "admin", 1, None)
+                .expect("applied");
+        };
+        change(
+            2,
+            Change::CreateRole {
+                name: "readers".to_owned(),
+                description: String::new(),
+            },
+        );
+        change(
+            3,
+            Change::AddMember {
+                role: "readers".to_owned(),
+                member: "spiffe://acme/billing".to_owned(),
+            },
+        );
+        change(
+            4,
+            Change::AddMember {
+                role: "readers".to_owned(),
+                member: "oidc:https://login.example".to_owned(),
+            },
+        );
+        let authorization =
+            Authorization::new(Arc::clone(&store), &[]).with_directory(Arc::clone(&directory));
+        let zone = Resource::zone("control", "z1");
+        assert_eq!(
+            authorization
+                .authorize_by(
+                    &actor("spiffe://acme/billing"),
+                    operations::CATALOG_READ,
+                    &zone
+                )
+                .expect("allowed")
+                .as_str(),
+            "role:readers",
+            "the role's grant allowed it"
+        );
+        assert!(
+            authorization
+                .authorize(
+                    &actor("oidc:https://login.example#anybody"),
+                    operations::CATALOG_READ,
+                    &zone
+                )
+                .is_ok()
+        );
+        assert!(
+            authorization
+                .authorize(
+                    &actor("oidc:https://other.example#x"),
+                    operations::CATALOG_READ,
+                    &zone
+                )
+                .is_err()
+        );
+        assert!(
+            authorization
+                .authorize(
+                    &actor("spiffe://acme/stranger"),
+                    operations::CATALOG_READ,
+                    &zone
+                )
+                .is_err()
+        );
+        assert!(
+            authorization
+                .authorize(
+                    &actor("spiffe://acme/billing"),
+                    operations::CATALOG_WRITE,
+                    &zone
+                )
+                .is_err()
+        );
+        // Removed: refused at the next decision, with no cache to outlive it.
+        change(
+            5,
+            Change::RemoveMember {
+                role: "readers".to_owned(),
+                member: "spiffe://acme/billing".to_owned(),
+            },
+        );
+        assert!(
+            authorization
+                .authorize(
+                    &actor("spiffe://acme/billing"),
+                    operations::CATALOG_READ,
+                    &zone
+                )
+                .is_err()
+        );
+        assert_eq!(
+            issuer_of("oidc:https://login.example#a#b").as_deref(),
+            Some("oidc:https://login.example")
+        );
+        assert_eq!(issuer_of("spiffe://acme/billing"), None);
     }
 
     #[test]

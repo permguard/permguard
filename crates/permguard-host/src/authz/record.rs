@@ -328,23 +328,23 @@ impl fmt::Display for RecordError {
 
 impl std::error::Error for RecordError {}
 
-fn texts(items: &[String]) -> Value {
+pub(super) fn texts(items: &[String]) -> Value {
     Value::Array(items.iter().map(|item| Value::Text(item.clone())).collect())
 }
 
-fn uint(value: u64) -> Result<Value, RecordError> {
+pub(super) fn uint(value: u64) -> Result<Value, RecordError> {
     i64::try_from(value)
         .map(Value::Int)
         .map_err(|_| RecordError::Malformed("an integer beyond the signed 64-bit range".to_owned()))
 }
 
 /// A decoded integer-labelled map, read label by label and then checked for leftovers.
-struct Labelled {
+pub(super) struct Labelled {
     pairs: BTreeMap<i64, Value>,
 }
 
 impl Labelled {
-    fn new(value: Value, highest: i64) -> Result<Self, RecordError> {
+    pub(super) fn new(value: Value, highest: i64) -> Result<Self, RecordError> {
         let Value::Map(pairs) = value else {
             return Err(RecordError::Malformed("the root is a map".to_owned()));
         };
@@ -361,27 +361,27 @@ impl Labelled {
         Ok(Self { pairs: labelled })
     }
 
-    fn take(&mut self, label: i64) -> Result<Value, RecordError> {
+    pub(super) fn take(&mut self, label: i64) -> Result<Value, RecordError> {
         self.pairs
             .remove(&label)
             .ok_or_else(|| RecordError::Malformed(format!("label {label} is required")))
     }
 
-    fn text(&mut self, label: i64) -> Result<String, RecordError> {
+    pub(super) fn text(&mut self, label: i64) -> Result<String, RecordError> {
         match self.take(label)? {
             Value::Text(text) => Ok(text),
             _ => Err(RecordError::Malformed(format!("label {label} is text"))),
         }
     }
 
-    fn bytes(&mut self, label: i64) -> Result<Vec<u8>, RecordError> {
+    pub(super) fn bytes(&mut self, label: i64) -> Result<Vec<u8>, RecordError> {
         match self.take(label)? {
             Value::Bytes(bytes) => Ok(bytes),
             _ => Err(RecordError::Malformed(format!("label {label} is bytes"))),
         }
     }
 
-    fn uint(&mut self, label: i64) -> Result<u64, RecordError> {
+    pub(super) fn uint(&mut self, label: i64) -> Result<u64, RecordError> {
         match self.take(label)? {
             Value::Int(value) if value >= 0 => Ok(value as u64),
             _ => Err(RecordError::Malformed(format!(
@@ -400,7 +400,10 @@ impl Labelled {
         }
     }
 
-    fn optional_operation_id(&mut self, label: i64) -> Result<Option<OperationId>, RecordError> {
+    pub(super) fn optional_operation_id(
+        &mut self,
+        label: i64,
+    ) -> Result<Option<OperationId>, RecordError> {
         match self.pairs.remove(&label) {
             None => Ok(None),
             Some(Value::Bytes(bytes)) => bytes
@@ -408,6 +411,22 @@ impl Labelled {
                 .try_into()
                 .map(|bytes| Some(OperationId::from_bytes(bytes)))
                 .map_err(|_| RecordError::Malformed(format!("label {label} is 16 bytes"))),
+            Some(_) => Err(RecordError::Malformed(format!("label {label} is bytes"))),
+        }
+    }
+
+    pub(super) fn optional_text(&mut self, label: i64) -> Result<Option<String>, RecordError> {
+        match self.pairs.remove(&label) {
+            None => Ok(None),
+            Some(Value::Text(text)) => Ok(Some(text)),
+            Some(_) => Err(RecordError::Malformed(format!("label {label} is text"))),
+        }
+    }
+
+    pub(super) fn optional_bytes(&mut self, label: i64) -> Result<Option<Vec<u8>>, RecordError> {
+        match self.pairs.remove(&label) {
+            None => Ok(None),
+            Some(Value::Bytes(bytes)) => Ok(Some(bytes)),
             Some(_) => Err(RecordError::Malformed(format!("label {label} is bytes"))),
         }
     }
@@ -442,7 +461,7 @@ impl Labelled {
         }
     }
 
-    fn finish(self) -> Result<(), RecordError> {
+    pub(super) fn finish(self) -> Result<(), RecordError> {
         match self.pairs.keys().next() {
             None => Ok(()),
             Some(label) => Err(RecordError::Malformed(format!("unexpected label {label}"))),
