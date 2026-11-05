@@ -28,7 +28,7 @@ use crate::failure::{EXIT_READY, Failure};
 use crate::trace::Trace;
 
 /// What a plan file says it is.
-const PLAN_KIND: &str = "permguard.roles.apply.plan.v1";
+const PLAN_KIND: &str = permguard_core::domains::format::ROLES_APPLY_PLAN_V1;
 
 /// The largest roles file read.
 const MOST_FILE_BYTES: usize = 1024 * 1024;

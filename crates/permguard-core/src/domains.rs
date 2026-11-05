@@ -314,6 +314,8 @@ pub mod format {
     pub const AUTHZ_SNAPSHOT_V1: &str = "permguard.host.authz.snapshot.v1";
     /// The kind of the plan file an offline identity reset writes and its run confirms (WP-4.1).
     pub const IDENTITY_RESET_PLAN_V1: &str = "permguard.host.identity.reset.offline.v1";
+    /// The kind of the plan file `host roles apply plan` writes and its run confirms (WP-8.1).
+    pub const ROLES_APPLY_PLAN_V1: &str = "permguard.roles.apply.plan.v1";
     /// The wrapping algorithm of a key-encryption key held in the secret store (WP-3.2):
     /// AES-256-GCM, `nonce ‖ ciphertext ‖ tag`, the wrap context as associated data.
     pub const SECRET_KEK_WRAP_V1: &str = "permguard.local-kek.aes-256-gcm.v1";
@@ -694,6 +696,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             "format.IDENTITY_RESET_PLAN_V1",
             format::IDENTITY_RESET_PLAN_V1,
         ),
+        ("format.ROLES_APPLY_PLAN_V1", format::ROLES_APPLY_PLAN_V1),
         ("format.SECRET_KEK_WRAP_V1", format::SECRET_KEK_WRAP_V1),
         ("format.TRANSIT_KEK_WRAP_V1", format::TRANSIT_KEK_WRAP_V1),
         ("format.PKCS11_KEK_WRAP_V1", format::PKCS11_KEK_WRAP_V1),

@@ -98,6 +98,7 @@
     "format.BENCH_REPORT_V1": "permguard.bench.report.v1",
     "format.IDENTITY_RESET_PLAN_V1": "permguard.host.identity.reset.offline.v1",
     "format.PKCS11_KEK_WRAP_V1": "permguard.pkcs11-aes-gcm.v1",
+    "format.ROLES_APPLY_PLAN_V1": "permguard.roles.apply.plan.v1",
     "format.SEALED_KEY_V1": "permguard.sealed-key.v1",
     "format.SECRET_KEK_WRAP_V1": "permguard.local-kek.aes-256-gcm.v1",
     "format.TRANSIT_KEK_WRAP_V1": "permguard.vault-transit.v1",
