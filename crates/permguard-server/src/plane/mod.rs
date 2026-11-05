@@ -533,6 +533,7 @@ impl PlaneService {
             .limits(self.module.limits(context.config()))
             .metrics(context.metrics().clone())
             .authenticator(context.authenticator())
+            .upstream_tls(context.config().public_tls_terminated_upstream())
             .start()
             .await
             .with_context(|| format!("starting the {} surface", self.module.description()))?;

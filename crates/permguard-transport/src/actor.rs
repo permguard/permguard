@@ -28,12 +28,24 @@ use permguard_core::authz::{Actor, Authenticator};
 #[derive(Clone)]
 pub struct ActorLayer {
     authenticator: Arc<dyn Authenticator>,
+    clear_bearer_refused: bool,
 }
 
 impl ActorLayer {
     /// Builds the layer over the Host's authenticator.
     pub fn new(authenticator: Arc<dyn Authenticator>) -> Self {
-        Self { authenticator }
+        Self {
+            authenticator,
+            clear_bearer_refused: false,
+        }
+    }
+
+    /// Refuses every bearer token, unread: the listener is in the clear, neither on a loopback
+    /// address nor behind a declared TLS terminator, where a token would cross the network as
+    /// plainly as a password (WP-8.1).
+    pub fn refusing_clear_bearer(mut self, refused: bool) -> Self {
+        self.clear_bearer_refused = refused;
+        self
     }
 }
 
@@ -44,6 +56,7 @@ impl<S> tower_layer::Layer<S> for ActorLayer {
         Actored {
             inner,
             authenticator: Arc::clone(&self.authenticator),
+            clear_bearer_refused: self.clear_bearer_refused,
         }
     }
 }
@@ -53,6 +66,7 @@ impl<S> tower_layer::Layer<S> for ActorLayer {
 pub struct Actored<S> {
     inner: S,
     authenticator: Arc<dyn Authenticator>,
+    clear_bearer_refused: bool,
 }
 
 impl<S> Service<Request<Body>> for Actored<S>
@@ -100,6 +114,17 @@ where
                 }
             },
         };
+        if bearer.is_some() && self.clear_bearer_refused {
+            return Box::pin(async move {
+                Ok(bearer_refused(
+                    permguard_core::AccessDenial::unauthenticated(
+                        "a bearer token travels only over TLS: this listener is in the clear, not on \
+                         a loopback address and behind no declared TLS terminator",
+                    ),
+                    grpc,
+                ))
+            });
+        }
         match self
             .authenticator
             .authenticate(peer.as_deref(), bearer.as_deref())
@@ -115,10 +140,29 @@ where
                     error.code = denial.code(),
                     "refused a credential that did not verify"
                 );
-                Box::pin(async move { Ok(crate::gate::refused(denial, grpc)) })
+                if bearer.is_some() {
+                    Box::pin(async move { Ok(bearer_refused(denial, grpc)) })
+                } else {
+                    Box::pin(async move { Ok(crate::gate::refused(denial, grpc)) })
+                }
             }
         }
     }
+}
+
+/// A refused bearer token, answered like any denial plus, on an HTTP `401`, the RFC 6750 `Bearer`
+/// challenge, so a client knows the token is what to replace.
+fn bearer_refused(denial: permguard_core::AccessDenial, grpc: bool) -> Response<Body> {
+    let challenged = !grpc && denial.http_status() == 401;
+    let mut response = crate::gate::refused(denial, grpc);
+    if challenged {
+        response.headers_mut().append(
+            http::header::WWW_AUTHENTICATE,
+            http::HeaderValue::from_static(permguard_core::api::BEARER_CHALLENGE),
+        );
+    }
+
+    response
 }
 
 /// The actor a request carries: what the layer attached. A request no layer decided is refused
@@ -192,12 +236,16 @@ mod tests {
     }
 
     fn router() -> Router {
+        clear_router(false)
+    }
+
+    fn clear_router(clear_bearer_refused: bool) -> Router {
         Router::new()
             .route(
                 "/who",
                 get(|ActorOf(actor): ActorOf| async move { actor.label() }),
             )
-            .layer(ActorLayer::new(Arc::new(Rules)))
+            .layer(ActorLayer::new(Arc::new(Rules)).refusing_clear_bearer(clear_bearer_refused))
     }
 
     async fn ask(peer: Option<&str>, bearer: Option<&str>) -> (http::StatusCode, String) {
@@ -253,6 +301,51 @@ mod tests {
             .expect("a request");
         let response = router().oneshot(request).await.expect("answered");
         assert_eq!(response.status(), http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn a_refused_bearer_is_challenged_with_the_bearer_scheme() {
+        let request = Request::get("/who")
+            .header(http::header::AUTHORIZATION, "Bearer bad")
+            .body(Body::empty())
+            .expect("a request");
+        let response = router().oneshot(request).await.expect("answered");
+        assert_eq!(response.status(), http::StatusCode::UNAUTHORIZED);
+        let challenges: Vec<_> = response
+            .headers()
+            .get_all(http::header::WWW_AUTHENTICATE)
+            .iter()
+            .map(|value| value.to_str().expect("ascii").to_owned())
+            .collect();
+        assert!(
+            challenges.contains(&permguard_core::api::BEARER_CHALLENGE.to_owned()),
+            "{challenges:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_bearer_on_a_clear_listener_is_refused_unread_and_certificates_still_pass() {
+        let request = Request::get("/who")
+            .header(http::header::AUTHORIZATION, "Bearer good")
+            .body(Body::empty())
+            .expect("a request");
+        let response = clear_router(true).oneshot(request).await.expect("answered");
+        assert_eq!(response.status(), http::StatusCode::UNAUTHORIZED);
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 16)
+            .await
+            .expect("the body reads");
+        assert!(
+            String::from_utf8_lossy(&bytes).contains("only over TLS"),
+            "the refusal says why"
+        );
+
+        let request = Request::get("/who").body(Body::empty()).expect("a request");
+        let response = clear_router(true).oneshot(request).await.expect("answered");
+        assert_eq!(
+            response.status(),
+            http::StatusCode::OK,
+            "no bearer, no refusal"
+        );
     }
 
     #[test]

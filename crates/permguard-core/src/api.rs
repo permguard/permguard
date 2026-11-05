@@ -353,6 +353,10 @@ pub enum StatusTable {
 /// certificate: the catalog/discovery contract's `Mutual-TLS` scheme.
 pub const MUTUAL_TLS_CHALLENGE: &str = "Mutual-TLS realm=\"permguard\"";
 
+/// The challenge a `401` adds when the caller presented a bearer token that was refused: the
+/// RFC 6750 `Bearer` scheme with `error="invalid_token"`, so a client knows to fetch a new one.
+pub const BEARER_CHALLENGE: &str = "Bearer realm=\"permguard\", error=\"invalid_token\"";
+
 /// A caller turned away before any domain question was asked.
 ///
 /// Not an [`ApiError`]: it has no class, because the five classes describe a request the service

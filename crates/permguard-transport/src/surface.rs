@@ -71,6 +71,8 @@ pub struct Listener<'a> {
     metrics: Metrics,
     authenticator: Option<std::sync::Arc<dyn permguard_core::authz::Authenticator>>,
     streaming: Vec<String>,
+    /// An ingress or a sidecar terminates TLS in front of this listener (`upstream_tls`).
+    upstream_tls: bool,
 }
 
 impl<'a> Listener<'a> {
@@ -116,6 +118,14 @@ impl<'a> Listener<'a> {
         self
     }
 
+    /// Says an ingress or a sidecar terminates TLS in front of this listener, which serves in the
+    /// clear: a bearer token is accepted on it although it is neither TLS nor loopback (WP-8.1).
+    pub fn upstream_tls(mut self, upstream_tls: bool) -> Self {
+        self.upstream_tls = upstream_tls;
+
+        self
+    }
+
     /// Binds the address and starts serving.
     ///
     /// Returns once the socket is bound and the server is running, so a caller that got a [`Surface`]
@@ -130,6 +140,7 @@ impl<'a> Listener<'a> {
             metrics,
             authenticator,
             streaming,
+            upstream_tls,
         } = self;
 
         let parsed: SocketAddr = address
@@ -159,6 +170,9 @@ impl<'a> Listener<'a> {
         let allow = tls
             .map(|settings| settings.allow().to_vec())
             .unwrap_or_default();
+        // A bearer token travels only over TLS (WP-8.1): on a cleartext listener that is neither
+        // on a loopback address nor behind a declared TLS terminator, one is refused unread.
+        let clear_bearer_refused = tls.is_none() && !parsed.ip().is_loopback() && !upstream_tls;
 
         let handle = Handle::new();
         let serving = handle.clone();
@@ -194,7 +208,10 @@ impl<'a> Listener<'a> {
             // refused before any token of its is read.
             let authenticator = authenticator
                 .unwrap_or_else(|| std::sync::Arc::new(permguard_core::authz::NoRules));
-            let router = router.layer(crate::actor::ActorLayer::new(authenticator));
+            let router = router.layer(
+                crate::actor::ActorLayer::new(authenticator)
+                    .refusing_clear_bearer(clear_bearer_refused),
+            );
             // Between the handlers and everything else: nothing below this line runs for a peer the
             // list does not name. Applied conditionally because an empty list means the handshake is
             // the whole decision — configurations where that is dangerous are refused by validation,
@@ -321,6 +338,7 @@ impl Surface {
             metrics: Metrics::none(),
             authenticator: None,
             streaming: Vec::new(),
+            upstream_tls: false,
         }
     }
 
