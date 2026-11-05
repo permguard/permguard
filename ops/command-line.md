@@ -143,6 +143,40 @@ The **State** cell is one of:
 | `host grants revoke run`  | `authz.admin` | present |     |
 | `host grants bootstrap`   | offline       | present |     |
 
+## Roles, local users and identity providers
+
+| Command                     | Grant          | State   | Why |
+| --------------------------- | -------------- | ------- | --- |
+| `host roles list`           | `authz.admin`  | present |     |
+| `host roles get`            | `authz.admin`  | present |     |
+| `host roles create`         | `authz.admin`  | present |     |
+| `host roles update`         | `authz.admin`  | present |     |
+| `host roles delete`         | `authz.admin`  | present |     |
+| `host roles members add`    | `authz.admin`  | present |     |
+| `host roles members remove` | `authz.admin`  | present |     |
+| `host roles grant`          | `authz.admin`  | present |     |
+| `host roles of`             | `authz.admin`  | present |     |
+| `host users list`           | `authz.admin`  | present |     |
+| `host users get`            | `authz.admin`  | present |     |
+| `host users create`         | `authz.admin`  | present |     |
+| `host users update`         | `authz.admin`  | present |     |
+| `host users password`       | `authz.admin`  | present |     |
+| `host users disable`        | `authz.admin`  | present |     |
+| `host users enable`         | `authz.admin`  | present |     |
+| `host users factor-reset`   | `authz.admin`  | present |     |
+| `host users unlock`         | `authz.admin`  | present |     |
+| `host users link`           | `authz.admin`  | present |     |
+| `host users unlink`         | `authz.admin`  | present |     |
+| `host users delete`         | `authz.admin`  | present |     |
+| `host users bootstrap`      | offline        | present |     |
+| `host providers list`       | `authz.admin`  | present |     |
+| `host providers refresh`    | `authz.admin`  | present |     |
+| `login`                     | the user's own | present |     |
+| `logout`                    | the user's own | present |     |
+| `password`                  | the user's own | present |     |
+| `factor begin`              | the user's own | present |     |
+| `factor confirm`            | the user's own | present |     |
+
 ## Audit
 
 | Command                  | Grant        | State   | Why |
