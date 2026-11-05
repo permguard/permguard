@@ -5577,7 +5577,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The role's name: lowercase letters, digits, `-` and `_`, 1 to 64 bytes.",
+            "description": "The role's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`.",
             "x-grpc-field": "name"
           }
         ],
@@ -5654,7 +5654,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The role's name: lowercase letters, digits, `-` and `_`, 1 to 64 bytes.",
+            "description": "The role's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`.",
             "x-grpc-field": "name"
           }
         ],
@@ -5764,7 +5764,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The role's name: lowercase letters, digits, `-` and `_`, 1 to 64 bytes.",
+            "description": "The role's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`.",
             "x-grpc-field": "name"
           }
         ],
@@ -6309,7 +6309,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The local user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           }
         ],
@@ -6386,7 +6386,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The local user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           }
         ],
@@ -6496,7 +6496,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The local user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           }
         ],
@@ -6606,7 +6606,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The local user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           }
         ],
@@ -6716,7 +6716,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The local user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           }
         ],
@@ -6826,7 +6826,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The local user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           }
         ],
@@ -6936,7 +6936,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The local user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           }
         ],
@@ -7015,7 +7015,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The local user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           }
         ],
@@ -7125,7 +7125,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The local user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           }
         ],
@@ -7235,7 +7235,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The local user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The local user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           }
         ],
@@ -13403,7 +13403,7 @@
           },
           "name": {
             "type": "string",
-            "description": "The role's name: lowercase letters, digits, `-` and `_`, 1 to 64 bytes.",
+            "description": "The role's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`.",
             "x-grpc-field": "name"
           },
           "description": {
@@ -13695,7 +13695,7 @@
           },
           "name": {
             "type": "string",
-            "description": "The user's name: lowercase letters, digits, `.`, `-` and `_`, 1 to 64 bytes.",
+            "description": "The user's name: 1 to 128 lowercase letters, digits, `.`, `_`, `-`, `+` or `@`, so an email address is a name.",
             "x-grpc-field": "name"
           },
           "email": {
