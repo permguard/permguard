@@ -17,7 +17,44 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Several identity providers at once, their keys fetched by the Host.**
+  Each `host.principals[].oidc` entry is a provider with a `name`; its keys come from discovery (`<issuer>/.well-known/openid-configuration`, the default), a pinned `jwks_uri`, or a `jwks_file`.
+  One task per provider fetches them every `refresh` (`1h` by default), early when a token names a key it does not hold (at most once a minute), never on a request; the last good set is kept under `host/authz/oidc/` and serves after a restart until `max_stale`.
+  Fetches are HTTPS only outside `development`, with the system's authorities and an optional `ca_file`, no redirect, 256 KiB at most.
+  New provider keys: `clients` (accepted `azp` or `client_id`), `token_types`, `link: email`, `ca_file`, `refresh`.
+  A token naming `crit` is refused, `iat` is checked within the clock skew, and `email` names a subject only with `email_verified: true`.
+- **Roles held by the Host.**
+  A role is a set of grants held by `role:<name>`; its members are principals, a local user, a provider subject or every subject of a provider (`oidc:<issuer>`).
+  The provider authenticates; the Host authorizes: a token's groups grant nothing.
+  REST and gRPC (`RoleService`), and `permguard host roles list|get|create|update|delete|members|grant|of|apply`.
+  `host roles apply plan -f roles.yml --out roles.plan` and `run --confirm-file roles.plan` converge a Host to a declared file, so the same file keeps several Hosts alike.
+- **Local users, for deployments without a provider or beside one.**
+  `host.authentication.methods` admits `password`, `oidc` or both.
+  Passwords are Argon2id; sign-in is `POST /auth/v1/sessions` on the Server Host surface, over TLS outside `development`, with a lockout per user and per source address, and sessions of 256 random bits kept only as hashes.
+  An optional or required TOTP second factor is sealed under the Host-local root `password.factor_key` names; `regulated` requires it.
+  A provider subject acts as a local user when linked to it, or when its verified email equals the user's under `link: email`.
+  REST and gRPC (`UserService`), `permguard host users …`, `permguard login|logout|password|factor`; `host users bootstrap --volume` creates the first administrator offline.
+  A password typed at a terminal is read with echo off; it is never an argument.
+- **The providers' keys are observed.**
+  `GET /host/v1/providers` and `permguard host providers list|refresh` show each provider's key source, keys, last fetch and failure.
+  The Host is `degraded: oidc` while a provider's keys are older than twice `refresh`, or missing after a failed fetch.
+  Metrics `permguard_oidc_keys_oldest_age_seconds`, `permguard_oidc_providers_not_fresh`, `permguard_oidc_refresh_failures_total`; alerts `PermguardIdentityProviderKeysNotFresh` and `PermguardIdentityProviderRefreshFailing` in the lab rules and the chart.
+- **A call a role allowed is attributed.**
+  The `access` trail records `host.authz.granted` with the role as `granted_by` whenever a role's grant, not the caller's own, allows a Host API call.
+
+### Changed
+
+- **A bearer token is refused on a cleartext listener (breaking).**
+  A request carrying `Authorization: Bearer` on a listener without TLS, not on a loopback address and not declared `public.tls.terminated_upstream`, is refused `401` before the token is read.
+  Behind an ingress or a sidecar that terminates TLS, declare `terminated_upstream: true`; otherwise serve TLS.
+- A refused bearer token is answered `401` with `WWW-Authenticate: Bearer realm="permguard", error="invalid_token"` beside the `Mutual-TLS` challenge.
+
+### Security
+
+- Creating a user or setting a password authorizes the caller before the password is read: a caller without the grant no longer learns the password policy, and no longer makes the Host compute an Argon2id hash.
+- Every REST route of the Host API document and every gRPC method of the Host proto is walked by a conformance test: nobody is refused `401`, a principal without a grant `403`.
 
 ## [0.1.17] - 2026-11-04
 
