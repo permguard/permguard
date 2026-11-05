@@ -10,7 +10,8 @@
 #   permguard-lab catalog <profile>         the zones, ledgers and policies a profile serves
 #   permguard-lab enroll <profile>          every data plane of a profile, enrolled with exact
 #                                           fingerprints over one-time invitations
-#   permguard-lab assert <profile> [phase]  what the profile must prove
+#   permguard-lab assert <profile> [phase]  what the profile must prove; the all-in-one's phases
+#                                           are `rotation` and `identity`
 #
 # A lab is an isolated test authority, and only a lab does what this script does: it issues every
 # certificate, grants its operator on every volume before the Host starts, and approves the exact
@@ -58,7 +59,9 @@ data_endpoint() { printf 'https://%s:7443' "$1"; }
 # its listeners one after another, and the lab's authority calls the Host listener next.
 wait_up() {
     local host="$1" deadline=$((SECONDS + ${2:-180}))
-    until curl -fsS -o /dev/null "http://${host}:5443/.well-known/server-configuration" 2>/dev/null &&
+    # The identity lab serves this surface over TLS, where a password signs in.
+    until { curl -fsS -o /dev/null "http://${host}:5443/.well-known/server-configuration" ||
+        curl -fsS -o /dev/null --cacert "${pki}/ca.crt" "https://${host}:5443/.well-known/server-configuration"; } 2>/dev/null &&
         (: <"/dev/tcp/${host}/5444") 2>/dev/null; do
         [ "${SECONDS}" -lt "${deadline}" ] || fail "${host} did not come up"
         sleep 2
@@ -139,7 +142,16 @@ listener_env() {
         export "PERMGUARD_${listener}_TLS_CERT=${pki}/${host}.crt"
         export "PERMGUARD_${listener}_TLS_KEY=${pki}/${host}.key"
         export "PERMGUARD_${listener}_TLS_CLIENT_CA=${pki}/ca.crt"
+        # The identity lab: certificates verified when presented, bearer tokens otherwise (WP-8.1).
+        if [ -n "${LAB_CLIENT_AUTH:-}" ]; then
+            export "PERMGUARD_${listener}_TLS_CLIENT_AUTH=${LAB_CLIENT_AUTH}"
+        fi
     done
+    # The Server Host surface over TLS, where a password signs in (WP-8.1); the clear otherwise.
+    if [ -n "${LAB_CLIENT_AUTH:-}" ]; then
+        export "PERMGUARD_TELEMETRY_TLS_CERT=${pki}/${host}.crt"
+        export "PERMGUARD_TELEMETRY_TLS_KEY=${pki}/${host}.key"
+    fi
 }
 
 # `serve <binary> <config>`: what a Pod's init containers and its server are, in one container.
@@ -158,7 +170,7 @@ cmd_serve() {
     fi
     listener_env "${host}" "${binary}"
     # The server refuses a `PERMGUARD_` name it does not know; the lab's own are not prefixed.
-    unset LAB_HOST LAB_DIR LAB_EXAMPLES LAB_TEMPLATES
+    unset LAB_HOST LAB_DIR LAB_EXAMPLES LAB_TEMPLATES LAB_CLIENT_AUTH
     exec "${binary}" "${config}"
 }
 
@@ -452,6 +464,7 @@ cmd_assert() {
         case "${phase}" in
         "") assert_all_in_one ;;
         rotation) assert_all_in_one_rotation ;;
+        identity) assert_all_in_one_identity ;;
         *) fail "no all-in-one phase ${phase}" ;;
         esac
         ;;
@@ -507,6 +520,164 @@ assert_all_in_one_rotation() {
     [ "${epoch}" -ge $((first + 3)) ] ||
         fail "data.attest went from epoch ${first} to ${epoch}: the keys did not rotate"
     log "every decision shipped while data.attest went from epoch ${first} to ${epoch}"
+}
+
+# ---------------------------------------------------------------------------------------------
+# identity (WP-8.1): two Keycloak realms as providers, roles, local users, a key rotation
+# ---------------------------------------------------------------------------------------------
+
+keycloak=http://keycloak:8080
+
+# An access token of `user` in `realm`, by the lab client's password grant.
+kc_token() { # realm, user, password
+    curl -fsS -d grant_type=password -d client_id=permguard-lab -d scope=openid \
+        --data-urlencode "username=$2" --data-urlencode "password=$3" \
+        "${keycloak}/realms/$1/protocol/openid-connect/token" | jq -er '.access_token'
+}
+
+# `token` in a private file named `name`: what `--token-file` reads.
+token_file() { # name, token
+    local file="${HOME}/$1.token"
+    (
+        umask 077
+        printf '%s' "$2" >"${file}"
+    )
+    echo "${file}"
+}
+
+# The catalog listed with the bearer in `file`, over `scheme`: the output, the exit status kept.
+zones_as() { # token file, scheme
+    permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "$1" \
+        zones list --control-endpoint "$2://all-in-one:6443" 2>&1
+}
+
+# The bearer in `file` lists the catalog over both transports.
+expect_admitted() { # token file, who
+    local scheme answer
+    for scheme in https grpcs; do
+        answer="$(zones_as "$1" "${scheme}")" || fail "$2 over ${scheme} was refused: ${answer}"
+        jq -e '.zones | length > 0' >/dev/null 2>&1 <<<"${answer}" ||
+            fail "$2 over ${scheme} listed no zone: ${answer}"
+    done
+}
+
+# The bearer in `file` is refused the catalog over both transports, for want of a grant.
+expect_forbidden() { # token file, who
+    local scheme answer
+    for scheme in https grpcs; do
+        if answer="$(zones_as "$1" "${scheme}")"; then
+            fail "$2 over ${scheme} listed the catalog without a grant: ${answer}"
+        fi
+        grep -qiE 'forbidden|permission' <<<"${answer}" ||
+            fail "$2 over ${scheme} was refused, not for want of a grant: ${answer}"
+    done
+}
+
+# The keys of `realm` rotated: a new RSA key of a higher priority, so the next token names it.
+kc_rotate() { # realm
+    local admin
+    admin="$(curl -fsS -d grant_type=password -d client_id=admin-cli \
+        -d username=lab-admin -d password=lab-admin-password \
+        "${keycloak}/realms/master/protocol/openid-connect/token" | jq -er '.access_token')"
+    curl -fsS -o /dev/null -H "Authorization: Bearer ${admin}" -H 'Content-Type: application/json' \
+        -d "{\"name\":\"rotated-$(date +%s)\",\"providerId\":\"rsa-generated\",\"providerType\":\"org.keycloak.keys.KeyProvider\",\"parentId\":\"$1\",\"config\":{\"priority\":[\"500\"],\"enabled\":[\"true\"],\"active\":[\"true\"],\"keySize\":[\"2048\"]}}" \
+        "${keycloak}/admin/realms/$1/components"
+}
+
+# The `kid` a token's header names.
+kid_of() {
+    cut -d. -f1 <<<"$1" | tr '_-' '/+' | base64 -d 2>/dev/null | jq -r '.kid' 2>/dev/null || true
+}
+
+assert_all_in_one_identity() {
+    local host_api alice bob carol answer status kid before deadline
+    host_api="$(host_endpoint all-in-one)"
+    step "all-in-one: two identity providers, roles and local users"
+    wait_serving all-in-one acme main
+
+    # Both providers' keys fetched by the Host, off any request.
+    deadline=$((SECONDS + 120))
+    until pg --host-endpoint "${host_api}" host providers list |
+        jq -e '[.providers[] | select(.state == "fresh")] | length == 2' >/dev/null 2>&1; do
+        [ "${SECONDS}" -lt "${deadline}" ] ||
+            fail "the providers' keys were not fetched: $(pg --host-endpoint "${host_api}" host providers list)"
+        sleep 2
+    done
+    log "both providers' keys are fetched and fresh"
+
+    alice="$(token_file alice "$(kc_token ops alice lab-alice-password-0001)")"
+    bob="$(token_file bob "$(kc_token partners bob lab-bob-password-0002)")"
+    expect_forbidden "${alice}" alice
+    expect_forbidden "${bob}" bob
+    log "a verified token without a grant is refused over REST and gRPC"
+
+    # A token that does not verify: 401 with the Bearer challenge.
+    answer="$(curl -sS -o /dev/null -D - --cacert "${pki}/ca.crt" -H 'Authorization: Bearer not.a.token' \
+        https://all-in-one:6443/v1/zones)"
+    grep -q '^HTTP/[0-9.]* 401' <<<"${answer}" || fail "a forged bearer was not refused 401: ${answer}"
+    grep -qi '^www-authenticate: Bearer realm="permguard", error="invalid_token"' <<<"${answer}" ||
+        fail "a refused bearer carries no Bearer challenge: ${answer}"
+    log "a forged token is refused 401 with the Bearer challenge"
+
+    # A role of every subject of `ops`: alice is admitted, bob of the other realm is not.
+    pg --host-endpoint "${host_api}" host roles create lab-readers --description "read the lab catalog" >/dev/null
+    pg --host-endpoint "${host_api}" host roles members add lab-readers --issuer ops >/dev/null
+    pg --host-endpoint "${host_api}" host roles grant lab-readers --operations catalog.read \
+        --selector "plane/control/*" >/dev/null
+    expect_admitted "${alice}" alice
+    expect_forbidden "${bob}" bob
+    log "a role of every ops subject admits alice, and not bob of partners"
+
+    # bob's verified email is a local user's: under link: email he acts as that user and its roles.
+    pg --host-endpoint "${host_api}" host users create bob --email bob@partners.example >/dev/null
+    pg --host-endpoint "${host_api}" host roles members add lab-readers --local bob >/dev/null
+    expect_admitted "${bob}" "bob, as the local user bob"
+    pg --host-endpoint "${host_api}" host users disable bob >/dev/null
+    expect_forbidden_or_refused "${bob}" "bob, disabled"
+    pg --host-endpoint "${host_api}" host users enable bob >/dev/null
+    log "a verified email signs in as its local user, and a disabled user's tokens are refused"
+
+    # A local user with a password: signed in on the Server Host surface, then admitted by its role.
+    printf '%s' lab-carol-password-0003 |
+        pg --host-endpoint "${host_api}" host users create carol --password-stdin >/dev/null
+    pg --host-endpoint "${host_api}" host roles members add lab-readers --local carol >/dev/null
+    carol="${HOME}/carol.session"
+    printf '%s' lab-carol-password-0003 |
+        permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${carol}" login https://all-in-one:5443 --user carol >/dev/null ||
+        fail "carol could not sign in with her password"
+    expect_admitted "${carol}" "carol, signed in with a password"
+    status="$(printf '%s' wrong-password-0000 |
+        permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${HOME}/wrong.session" login https://all-in-one:5443 --user carol 2>&1 || true)"
+    grep -q 'refused' <<<"${status}" || fail "a wrong password was not refused: ${status}"
+    log "a local user signs in with a password and acts with its roles"
+
+    # The ops realm rotates its key: the first token signed with it asks the Host to fetch early.
+    before="$(kid_of "$(cat "${alice}")")"
+    kc_rotate ops
+    alice="$(token_file alice "$(kc_token ops alice lab-alice-password-0001)")"
+    kid="$(kid_of "$(cat "${alice}")")"
+    [ -n "${kid}" ] && [ "${kid}" != "${before}" ] || fail "the ops realm did not sign with a new key (${before} → ${kid})"
+    deadline=$((SECONDS + 90))
+    until answer="$(zones_as "${alice}" https)"; do
+        [ "${SECONDS}" -lt "${deadline}" ] || fail "a token of the rotated key was never admitted: ${answer}"
+        sleep 3
+    done
+    expect_admitted "${alice}" "alice, under the rotated key"
+    log "a rotated key is fetched early and admitted, well before the next scheduled refresh"
+
+    pg --host-endpoint "${host_api}" host status |
+        jq -e '[.degraded[]? | select(.capability == "oidc")] | length == 0' >/dev/null ||
+        fail "the Host reports degraded: oidc with both providers fresh"
+}
+
+# Refused, whether for want of a grant or as an unauthenticated credential.
+expect_forbidden_or_refused() { # token file, who
+    local scheme answer
+    for scheme in https grpcs; do
+        if answer="$(zones_as "$1" "${scheme}")"; then
+            fail "$2 over ${scheme} listed the catalog: ${answer}"
+        fi
+    done
 }
 
 ring_epoch() { # host, ring

@@ -15,7 +15,9 @@
 # skips it, PERMGUARD_LAB_IMAGE names another). KEEP=1 leaves the last profile running; the logs
 # of a failed profile are written under ARTIFACTS (default `target/compose-lab`). ROTATION=1 runs
 # the all-in-one with keys replaced every two minutes (`docker-compose.lab.rotation.yml`) and proves
-# its decisions keep reaching its Control Plane across the rotations (BUG-0195).
+# its decisions keep reaching its Control Plane across the rotations (BUG-0195). IDENTITY=1 runs the
+# all-in-one beside a Keycloak of two realms (`docker-compose.lab.identity.yml`) and proves both
+# providers, roles, local users and a key rotation over REST and gRPC (WP-8.1).
 set -euo pipefail
 
 # Written for the bash macOS ships, 3.2: no negative indexes, no empty array expanded under `-u`.
@@ -53,6 +55,9 @@ run_profile() {
     local files=(-f docker-compose.lab.yml)
     if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
         files+=(-f docker-compose.lab.rotation.yml)
+    fi
+    if [ "${IDENTITY:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
+        files+=(-f docker-compose.lab.identity.yml)
     fi
     dc() { COMPOSE_PROFILES="${profile}" docker compose "${files[@]}" -p "${project}" "$@"; }
     failed() {
@@ -98,6 +103,10 @@ run_profile() {
     if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
         step "${profile}: decisions across key rotations"
         dc run --rm lab assert "${profile}" rotation || failed "an assertion failed across rotations"
+    fi
+    if [ "${IDENTITY:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
+        step "${profile}: identity providers, roles and local users"
+        dc run --rm lab assert "${profile}" identity || failed "an identity assertion failed"
     fi
     if [ "${profile}" = temporal-replicas ]; then
         step "${profile}: failover, the first replica stopped"

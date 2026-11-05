@@ -1,0 +1,45 @@
+{
+  "realm": "ops",
+  "id": "ops",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 900,
+  "clients": [
+    {
+      "clientId": "permguard-lab",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "protocolMappers": [
+        {
+          "name": "permguard audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "permguard",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@ops.example",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Lab",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "lab-alice-password-0001",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
