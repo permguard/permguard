@@ -17,6 +17,15 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.21] - 2026-11-06
+
+### Added
+
+- **A roles file planned and run as library calls.**
+  `permguard_cli::roles::plan_roles` and `run_roles` are what `host roles apply plan` and `run` do, so Permguard Admin applies a roles file as the command line does; the command's behaviour is unchanged.
+
 ### Fixed
 
 - **A development volume generates the second factor's key.**
