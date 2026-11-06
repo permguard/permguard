@@ -153,7 +153,7 @@ enum Change {
 /// What `plan` writes and `run` reads.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Plan {
+pub struct Plan {
     kind: String,
     wanted: BTreeMap<String, WantedRole>,
     changes: Vec<Change>,
@@ -178,19 +178,14 @@ pub(super) fn apply(
         RolesApplyAction::Plan { file, out } => {
             let file = rooted_file(globals, &file);
             let bytes = crate::confirm::read_bytes(Some(&file), "roles file", MOST_FILE_BYTES)?;
-            let declared: RolesFile = serde_norway::from_slice(&bytes).map_err(|error| {
-                Failure::usage(format!("{}: not a roles file: {error}", file.display()))
-            })?;
-            let wanted = resolve(backend, declared)?;
             // The plan file is claimed before the Host is read: a plan is never written over.
             let reserved = Reserved::claim(&rooted_file(globals, &out))?;
-            let (held, undeclared) = held(backend, &wanted)?;
-            let plan = Plan {
-                kind: PLAN_KIND.to_owned(),
-                changes: changes(&wanted, &held),
-                wanted,
-                undeclared,
-            };
+            let plan = plan_roles(backend, &bytes).map_err(|mut failure| {
+                if failure.message.starts_with("not a roles file") {
+                    failure.message = format!("{}: {}", file.display(), failure.message);
+                }
+                failure
+            })?;
             reserved.fill(&serde_json::to_vec_pretty(&plan).map_err(Failure::internal)?)?;
             trace.say(format!("{} changes planned", plan.changes.len()));
             render_json(&plan, globals, trace)?;
@@ -203,15 +198,8 @@ pub(super) fn apply(
                     confirm_file.display()
                 )));
             }
-            let (held, _) = held(backend, &plan.wanted)?;
-            let now = changes(&plan.wanted, &held);
-            if now != plan.changes {
-                return Err(Failure::usage(
-                    "the Host's roles changed since the plan was made: plan again",
-                ));
-            }
+            run_roles(backend, &plan)?;
             for change in &plan.changes {
-                run(backend, change)?;
                 trace.say(format!("applied {change:?}"));
             }
             render_json(
@@ -222,6 +210,36 @@ pub(super) fn apply(
         }
     }
     Ok(ExitCode::from(EXIT_READY))
+}
+
+/// A roles file planned against the Host, as `host roles apply plan` writes it: every change listed,
+/// removals included, nothing applied (2-security/7 Roles). What Permguard Admin calls.
+pub fn plan_roles(backend: &dyn Host, file: &[u8]) -> Result<Plan, Failure> {
+    let declared: RolesFile = serde_norway::from_slice(file)
+        .map_err(|error| Failure::usage(format!("not a roles file: {error}")))?;
+    let wanted = resolve(backend, declared)?;
+    let (held, undeclared) = held(backend, &wanted)?;
+    Ok(Plan {
+        kind: PLAN_KIND.to_owned(),
+        changes: changes(&wanted, &held),
+        wanted,
+        undeclared,
+    })
+}
+
+/// Runs a plan, compared again first: one the Host moved past is refused, never half applied
+/// over another's changes. Answers how many changes it applied.
+pub fn run_roles(backend: &dyn Host, plan: &Plan) -> Result<usize, Failure> {
+    let (held, _) = held(backend, &plan.wanted)?;
+    if changes(&plan.wanted, &held) != plan.changes {
+        return Err(Failure::usage(
+            "the Host's roles changed since the plan was made: plan again",
+        ));
+    }
+    for change in &plan.changes {
+        run(backend, change)?;
+    }
+    Ok(plan.changes.len())
 }
 
 /// The file's roles, each member resolved through the Host's providers.

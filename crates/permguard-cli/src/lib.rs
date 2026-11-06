@@ -42,6 +42,12 @@ pub mod events;
 pub mod host_proof;
 pub mod shell;
 
+/// A roles file planned and run against a Host, as `host roles apply` does: the library calls
+/// Permguard Admin makes (18-identities § 5).
+pub mod roles {
+    pub use crate::commands::roles_apply::{Plan, plan_roles, run_roles};
+}
+
 pub use crate::failure::{
     EXIT_NOT_READY, EXIT_READY, EXIT_SOFTWARE, EXIT_UNAVAILABLE, EXIT_UNREACHABLE, EXIT_USAGE,
 };
