@@ -16,16 +16,16 @@ use serde_json::Value;
 /// The documents that own codes, as paths under the architecture knowledge base.
 const CONTRACTS: [&str; 12] = [
     "1-architecture/8-architecture-storage-operations.md",
-    "6-contracts/0-interfaces-model.md",
-    "6-contracts/1-contract-pdp-native-v1.md",
-    "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
-    "6-contracts/3-contract-evidence-decisions.md",
-    "6-contracts/4-contract-evidence-events.md",
-    "6-contracts/5-contract-stream-common.md",
-    "6-contracts/6-contract-ledger-notp.md",
-    "6-contracts/7-contract-catalog-discovery.md",
-    "6-contracts/8-contract-host-api.md",
-    "5-command-line/1-command-line.md",
+    "7-contracts/0-interfaces-model.md",
+    "7-contracts/1-contract-pdp-native-v1.md",
+    "7-contracts/2-contract-pdp-temporal-v1alpha1.md",
+    "7-contracts/3-contract-evidence-decisions.md",
+    "7-contracts/4-contract-evidence-events.md",
+    "7-contracts/5-contract-stream-common.md",
+    "7-contracts/6-contract-ledger-notp.md",
+    "7-contracts/7-contract-catalog-discovery.md",
+    "7-contracts/8-contract-host-api.md",
+    "6-command-line/1-command-line.md",
     "legacy",
 ];
 

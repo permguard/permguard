@@ -1,6 +1,6 @@
 {
   "artifact": "Peer Host session messages (WP-2.3): the presentation, hello and challenge carried as PeerChannel frames, the transcript each proof signs as a COSE_Sign1 permguard.host.proof.v1 of the profile in crates/permguard-objects/src/cose.rs, and a verifier's seen epoch of a peer",
-  "authority": "1-architecture/2-architecture-server-host-identity.md#proof-of-possession (members), 6-contracts/8-contract-host-api.md#transport-binding, owner decisions of 2026-10-08 (labels, types, cardinalities, the signer role, hello's operation); crates/permguard-host/src/session/record.rs and peers.rs",
+  "authority": "1-architecture/2-architecture-server-host-identity.md#proof-of-possession (members), 7-contracts/8-contract-host-api.md#transport-binding, owner decisions of 2026-10-08 (labels, types, cardinalities, the signer role, hello's operation); crates/permguard-host/src/session/record.rs and peers.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "presentation": {

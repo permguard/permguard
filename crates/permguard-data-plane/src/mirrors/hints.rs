@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! `WatchRefs` on the member side (WP-7.2c, F-19, `3-data-plane/3-data-plane-mirrors-notp.md`,
+//! `WatchRefs` on the member side (WP-7.2c, F-19, `4-data-plane/3-data-plane-mirrors-notp.md`,
 //! change signal).
 //!
 //! ```text

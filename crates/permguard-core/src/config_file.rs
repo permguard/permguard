@@ -2161,7 +2161,7 @@ fn push_endpoint_settings(
     }
 }
 
-/// One `host.principals[].oidc` section, read and checked (`1-architecture/1` Identity providers).
+/// One `host.principals[].oidc` section, read and checked (`2-security/2` Identity providers).
 /// Whether plain HTTP is allowed depends on the assurance profile, which the server checks.
 fn oidc_rule(at: &str, oidc: &OidcRuleSection) -> Result<crate::authz::OidcPrincipalRule> {
     use crate::authz::{

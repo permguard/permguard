@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The Host API's roles, local users and identity providers (WP-8.1, `6-contracts/8` Roles,
+//! The Host API's roles, local users and identity providers (WP-8.1, `2-security/5` Roles,
 //! Local users, Identity providers): one facade both transports call, every route `authz.admin`,
 //! every change one security mutation with its request id and expected revision.
 //!

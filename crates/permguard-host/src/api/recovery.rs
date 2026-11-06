@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! `GET /host/v1/recovery` and `POST /host/v1/recovery/acknowledge` (WP-8.2, `6-contracts/8`
+//! `GET /host/v1/recovery` and `POST /host/v1/recovery/acknowledge` (WP-8.2, `7-contracts/8`
 //! Recovery): the recovery started offline, and its acknowledgement, under `authz.admin`.
 
 use permguard_core::authz::{Actor, operations};

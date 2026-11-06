@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! `permguard host roles apply plan|run` (WP-8.1, `5-command-line/2` Roles): converges a Host to
+//! `permguard host roles apply plan|run` (WP-8.1, `2-security/7` Roles): converges a Host to
 //! a declared set of roles, their members and the grants `role:<name>` holds.
 //!
 //! | Step   | What it does                                                                                    |

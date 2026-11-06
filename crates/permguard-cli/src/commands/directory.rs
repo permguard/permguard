@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! `permguard host roles`, `host users`, `host providers`, and `login`, `logout`, `password`,
-//! `factor` (WP-8.1, `5-command-line/2` Roles, Local users and sign-in, Identity providers).
+//! `factor` (WP-8.1, `2-security/7` Roles, Local users and sign-in, Identity providers).
 //!
 //! A password is read from standard input, never an argument or the environment, and never
 //! printed. A deletion with `--revoke-grants` revokes the grants first, each its own plan and

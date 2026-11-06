@@ -3,7 +3,7 @@
 
 """Independent generator for contracts/vectors/signed-response.json (WP-6.6).
 
-Computes every value from the published rules (3-data-plane/2-data-plane-pdp.md, signed
+Computes every value from the published rules (4-data-plane/2-data-plane-pdp.md, signed
 response) and the decisions recorded in status.md, with Python's standard library and
 `cryptography`, never by calling the Rust code, so the Rust tests compare two implementations.
 """

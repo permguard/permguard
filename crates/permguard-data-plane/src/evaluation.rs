@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The canonical evaluation pipeline (WP-7.5d, IFACE-02, `6-contracts/0-interfaces-model.md`,
+//! The canonical evaluation pipeline (WP-7.5d, IFACE-02, `7-contracts/0-interfaces-model.md`,
 //! boundary and canonical pipeline).
 //!
 //! ```text

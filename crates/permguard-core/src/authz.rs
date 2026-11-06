@@ -82,12 +82,12 @@ pub mod operations {
     /// (WP-6.3c, `1-control-plane.md` plane public API).
     pub const EVIDENCE_READ: &str = "evidence.read";
     /// Prepare, finalize and abort an application-consistent backup of the Host's volume
-    /// (WP-7.8, `5-command-line/2-command-line-commands.md` backup).
+    /// (WP-7.8, `6-command-line/2-command-line-commands.md` backup).
     pub const BACKUP_MANAGE: &str = "backup.manage";
     /// List the snapshot manifests the Host knows (WP-7.8).
     pub const BACKUP_READ: &str = "backup.read";
     /// Plan and run a garbage-collection job on the Host API, on the scope it sweeps (WP-7.11b,
-    /// `5-command-line/2-command-line-commands.md` garbage collection).
+    /// `6-command-line/2-command-line-commands.md` garbage collection).
     pub const GC_MANAGE: &str = "gc.manage";
 
     /// Every registered operation.
@@ -660,7 +660,7 @@ pub enum PrincipalRule {
 }
 
 /// One identity provider: the pinned OIDC issuer of a [`PrincipalRule::Oidc`]
-/// (`1-architecture/1` Identity providers).
+/// (`2-security/2` Identity providers).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OidcPrincipalRule {
     /// The short name operators type, `entra:alice@acme.com`; never part of a principal.
@@ -799,7 +799,7 @@ pub struct HostAuth {
     pub setup: Setup,
 }
 
-/// `host.setup` (WP-8.2, `1-architecture/1` First administrator and recovery): how the setup
+/// `host.setup` (WP-8.2, `2-security/4` First administrator and recovery): how the setup
 /// code a Host without an administrator waits for is made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Setup {
@@ -821,7 +821,7 @@ impl Default for Setup {
     }
 }
 
-/// `host.authentication` (WP-8.1, `1-architecture/1` Local users and authentication methods):
+/// `host.authentication` (WP-8.1, `2-security/3` Local users):
 /// which sign-in methods the Host admits and how a password sign-in is held.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Authentication {

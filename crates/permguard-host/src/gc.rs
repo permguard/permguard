@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The garbage-collection jobs a Plane provides to the Host API (WP-7.11b,
-//! `6-contracts/8-contract-host-api.md` lifecycle, configuration and operations).
+//! `7-contracts/8-contract-host-api.md` lifecycle, configuration and operations).
 //!
 //! The Host owns the plan receipt, its consumption and the audit of `POST /host/v1/gc/{job}/plan`
 //! and `…/run`; the Plane that declared a job only answers what its sweep would remove and what

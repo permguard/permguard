@@ -18,7 +18,7 @@ const TOKEN_FILE_MAX: u64 = 64 * 1024;
 ///
 /// A file written on Windows is read as it comes: its CRLF is trimmed, a UTF-8 byte order mark is
 /// dropped, and UTF-16, what Windows PowerShell 5 writes with `>`, is refused with how to save it.
-/// On Windows the owner check is not made: an ACL check is a known gap (5-command-line § 1).
+/// On Windows the owner check is not made: an ACL check is a known gap (6-command-line § 1).
 pub fn read(path: &Path) -> Result<Credential, String> {
     use std::io::Read as _;
 
@@ -87,7 +87,7 @@ fn decode(bytes: &[u8]) -> Result<&str, &'static str> {
 /// Writes `token` to `path` for its owner alone, as [`read`] requires: written beside it, then
 /// renamed over it, so a reader finds the old token or the new one, never half of one. On Unix
 /// the file is created `0600` and its folder `0700` when it makes one; on Windows the file lands
-/// in the user's profile, the folder only its owner reads there (5-command-line § 1).
+/// in the user's profile, the folder only its owner reads there (6-command-line § 1).
 pub fn write(path: &Path, token: &str) -> Result<(), String> {
     use std::io::Write as _;
     let parent = path

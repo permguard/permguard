@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The application-consistent snapshot on the Host API (WP-7.8, `6-contracts/8-contract-host-api.md`
+//! The application-consistent snapshot on the Host API (WP-7.8, `7-contracts/8-contract-host-api.md`
 //! lifecycle, configuration and operations).
 //!
 //! | Route                               | Grant           | Request                  | Answer                                   |

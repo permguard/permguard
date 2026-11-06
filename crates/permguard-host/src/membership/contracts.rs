@@ -54,7 +54,7 @@ pub const CONTRACTS: [Contract; 6] = [
         consumer: Role::Member,
         provided_by: Server::Plane("control"),
         consumed_by: Server::Plane("data"),
-        messages: "6-contracts/6-contract-ledger-notp.md: the NOTP pull messages and WatchRefs",
+        messages: "7-contracts/6-contract-ledger-notp.md: the NOTP pull messages and WatchRefs",
         served: true,
     },
     Contract {
@@ -64,7 +64,7 @@ pub const CONTRACTS: [Contract; 6] = [
         consumer: Role::Coordinator,
         provided_by: Server::Plane("data"),
         consumed_by: Server::Plane("control"),
-        messages: "6-contracts/3-contract-evidence-decisions.md: decision evidence batches",
+        messages: "7-contracts/3-contract-evidence-decisions.md: decision evidence batches",
         served: false,
     },
     Contract {
@@ -74,7 +74,7 @@ pub const CONTRACTS: [Contract; 6] = [
         consumer: Role::Coordinator,
         provided_by: Server::Plane("data"),
         consumed_by: Server::Plane("control"),
-        messages: "6-contracts/4-contract-evidence-events.md: event evidence batches",
+        messages: "7-contracts/4-contract-evidence-events.md: event evidence batches",
         served: false,
     },
     Contract {

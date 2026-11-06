@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The identity providers' key refresh (WP-8.1, `1-architecture/1` Identity providers): one task
+//! The identity providers' key refresh (WP-8.1, `2-security/2` Identity providers): one task
 //! per provider whose keys are fetched, never a request.
 //!
 //! | Rule        | Here                                                                                   |

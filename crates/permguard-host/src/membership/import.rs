@@ -466,7 +466,7 @@ pub fn verify_checkpoint(
     Checkpoint::decode(payload).map_err(|error| unverified(&error.to_string()))
 }
 
-/// A durable hole in a ledger's imported history (`3-data-plane/5-data-plane-temporal.md`): never
+/// A durable hole in a ledger's imported history (`4-data-plane/5-data-plane-temporal.md`): never
 /// removed by the importer, resolved only by a snapshot or a change of the required origins.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Gap {

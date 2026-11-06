@@ -8,7 +8,7 @@ The blueprint lives beside this repository, in the workspace's knowledge base, s
 repository cannot read it. This script reads it where it is and writes what the check needs into
 `crates/permguard-conformance/traceability/blueprint.json`:
 
-- every H2 and H3 section of every document under `1-architecture` to `6-contracts`, with the
+- every H2 and H3 section of every document under `1-architecture` to `7-contracts`, with the
   anchor its links use (GitHub's: lower case, punctuation dropped, spaces to hyphens, a repeated
   heading suffixed `-1`, `-2`);
 - every finding a register declares (`F`, `H`, `LANG`, `CEDAR`, `REGO`, `DOGWOOD`, `IFACE`): a table
@@ -30,11 +30,12 @@ from pathlib import Path
 
 FOLDERS = [
     "1-architecture",
-    "2-control-plane",
-    "3-data-plane",
-    "4-languages",
-    "5-command-line",
-    "6-contracts",
+    "2-security",
+    "3-control-plane",
+    "4-data-plane",
+    "5-languages",
+    "6-command-line",
+    "7-contracts",
 ]
 HEADING = re.compile(r"^(#{2,3}) (.+?)\s*$")
 FINDING = re.compile(r"^\|\s*`?((?:F|H|LANG|CEDAR|REGO|DOGWOOD|IFACE)-\d+)`?\s*\|")

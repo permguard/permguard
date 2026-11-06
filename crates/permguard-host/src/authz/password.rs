@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Local users' passwords (WP-8.1, `1-architecture/1` Local users and authentication methods):
+//! Local users' passwords (WP-8.1, `2-security/3` Local users):
 //! kept only as Argon2id PHC strings, 19 MiB, 2 passes, 1 lane, a 16-byte salt from the system's
 //! generator; checked against a policy before they are hashed; never logged, never returned.
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Password sessions (WP-8.1, `1-architecture/1` Local users and authentication methods): an
+//! Password sessions (WP-8.1, `2-security/3` Local users): an
 //! opaque token of 256 random bits, `pgs_` then base64url, of which the Host keeps only the
 //! SHA-256. A session ends `lifetime` after it opened or `idle` after its last use, whichever
 //! comes first, and at sign-out, at a password change, when its user is disabled or deleted, and

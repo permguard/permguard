@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! `/auth/v1` on the Server Host surface (WP-8.1, `6-contracts/8` Sign-in): password sign-in,
+//! `/auth/v1` on the Server Host surface (WP-8.1, `2-security/5` Sign-in): password sign-in,
 //! sign-out, the session, a password change and a second factor's enrollment.
 //!
 //! | Route                               | Answers                                                     |

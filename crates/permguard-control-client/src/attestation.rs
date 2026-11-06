@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The PEP's verifier of a signed native decision response (WP-6.6c,
-//! `3-data-plane/2-data-plane-pdp.md`, signed response).
+//! `4-data-plane/2-data-plane-pdp.md`, signed response).
 //!
 //! ```text
 //! request bytes sent ─┐

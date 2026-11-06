@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The first administrator and recovery (WP-8.2, `1-architecture/1` First administrator and
+//! The first administrator and recovery (WP-8.2, `2-security/4` First administrator and
 //! recovery).
 //!
 //! A Host with no administrator waits for one setup code, and only for as long as nobody

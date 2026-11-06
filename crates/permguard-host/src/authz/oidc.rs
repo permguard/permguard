@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The OIDC adapter: one verifier per identity provider, authentication only, everything pinned
-//! (`1-architecture/1` Identity providers).
+//! (`2-security/2` Identity providers).
 //!
 //! Issuer, audience, algorithms, accepted token types and clients, and the claim that names the
 //! subject come from the rule. The verification keys come from exactly one source:

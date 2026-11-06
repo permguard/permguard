@@ -1,8 +1,8 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Password sign-in (WP-8.1, `1-architecture/1` Local users and authentication methods, and
-//! `6-contracts/8` Sign-in): a name, a password and, when the user has a second factor or the
+//! Password sign-in (WP-8.1, `2-security/3` Local users, and
+//! `2-security/5` Sign-in): a name, a password and, when the user has a second factor or the
 //! deployment requires one, a code, for a session.
 //!
 //! | Rule        | Here                                                                                   |

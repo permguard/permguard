@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The signed native decision response (WP-6.6b, `3-data-plane/2-data-plane-pdp.md`).
+//! The signed native decision response (WP-6.6b, `4-data-plane/2-data-plane-pdp.md`).
 //!
 //! ```text
 //! request_nonce + authenticated audience

@@ -7848,7 +7848,7 @@
           },
           "code": {
             "type": "string",
-            "description": "The stable name of the exact condition; the Host API's own codes are owned by 6-contracts/8-contract-host-api.md.",
+            "description": "The stable name of the exact condition; the Host API's own codes are owned by 7-contracts/8-contract-host-api.md.",
             "x-grpc-field": null,
             "x-grpc-note": "gRPC carries the code as the `permguard-error-code` metadata of the status."
           },

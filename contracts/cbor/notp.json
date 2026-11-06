@@ -1,6 +1,6 @@
 {
   "artifact": "NOTP message bodies (application/vnd.permguard.notp.v1+cbor)",
-  "authority": "6-contracts/6-contract-ledger-notp.md#refs-and-head-statement and #messages (the target, WP-7.1); crates/permguard-objects/src/refstate.rs (RefState), crates/permguard-notp/src/push.rs, pull.rs, mirror.rs and codec.rs (each encode and decode)",
+  "authority": "7-contracts/6-contract-ledger-notp.md#refs-and-head-statement and #messages (the target, WP-7.1); crates/permguard-objects/src/refstate.rs (RefState), crates/permguard-notp/src/push.rs, pull.rs, mirror.rs and codec.rs (each encode and decode)",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "ref_state": {

@@ -1,6 +1,6 @@
 {
   "artifact": "Plan receipt and approval (WP-3.9): the payloads of a COSE_Sign1 `permguard.operation.plan.v1` and of a COSE_Sign1 `permguard.operation.approval.v1`, each of the profile in crates/permguard-objects/src/cose.rs and signed by the Host's host.operations key under its <ring>:<thumbprint> kid; and the plan body whose digest both name",
-  "authority": "1-architecture/9-architecture-patterns.md P9, 6-contracts/8-contract-host-api.md (plan receipt, dual control), owner decisions of 2026-10-11 (labels, types, approvals); crates/permguard-host/src/operations/plan.rs (PlanReceipt, Approval, plan_digest)",
+  "authority": "1-architecture/9-architecture-patterns.md P9, 7-contracts/8-contract-host-api.md (plan receipt, dual control), owner decisions of 2026-10-11 (labels, types, approvals); crates/permguard-host/src/operations/plan.rs (PlanReceipt, Approval, plan_digest)",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "plan_receipt": {

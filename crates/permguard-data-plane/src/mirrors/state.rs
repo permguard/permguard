@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! A task mirror's verified state, switched through one journal (WP-7.2c,
-//! `3-data-plane/3-data-plane-mirrors-notp.md`, atomic checkpoint).
+//! `4-data-plane/3-data-plane-mirrors-notp.md`, atomic checkpoint).
 //!
 //! ```text
 //! FORMAT              the mirror's layout version, a storage view written with its first switch

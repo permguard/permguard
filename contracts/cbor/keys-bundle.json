@@ -1,6 +1,6 @@
 {
   "artifact": "Verification bundle: its items, its frontier and the payload of its manifest; the manifest is a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by a host.operations key, content type permguard.keys.bundle.v1, its kid that key's <ring>:<thumbprint>, the key active at the frontier; the bundle digest is SHA-256 of \"permguard.keys.bundle.v1\\n\" and every item's SHA-256 in ascending order",
-  "authority": "1-architecture/4-architecture-server-host-keys.md#library-and-api, 6-contracts/8-contract-host-api.md (GET /host/v1/keys/bundle), owner decisions of 2026-10-09 (peer projection, encoding, signer, frontier, bindings per epoch, resource, anchor); crates/permguard-host/src/keys/bundle.rs",
+  "authority": "1-architecture/4-architecture-server-host-keys.md#library-and-api, 7-contracts/8-contract-host-api.md (GET /host/v1/keys/bundle), owner decisions of 2026-10-09 (peer projection, encoding, signer, frontier, bindings per epoch, resource, anchor); crates/permguard-host/src/keys/bundle.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "identity_item": {

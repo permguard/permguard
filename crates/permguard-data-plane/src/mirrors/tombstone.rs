@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! A task mirror's reap candidacy (WP-7.2d, `3-data-plane/3-data-plane-mirrors-notp.md`,
+//! A task mirror's reap candidacy (WP-7.2d, `4-data-plane/3-data-plane-mirrors-notp.md`,
 //! contention and reaping).
 //!
 //! ```text

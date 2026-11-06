@@ -1,6 +1,6 @@
 {
   "artifact": "Ledger manifest (application/vnd.permguard.manifest.v1+cbor)",
-  "authority": "6-contracts/6-contract-ledger-notp.md#objects (manifest and the partition row); crates/permguard-objects/src/manifest.rs (KEY_*, META_*, REQ_*, RUNTIME_*, PARTITION_*, ARTIFACT_*, INPUT_*, PROFILE_* constants)",
+  "authority": "7-contracts/6-contract-ledger-notp.md#objects (manifest and the partition row); crates/permguard-objects/src/manifest.rs (KEY_*, META_*, REQ_*, RUNTIME_*, PARTITION_*, ARTIFACT_*, INPUT_*, PROFILE_* constants)",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "manifest": {

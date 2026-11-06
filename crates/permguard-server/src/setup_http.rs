@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! `/auth/v1/setup` on the Server Host surface (WP-8.2, `6-contracts/8` Sign-in): the first
+//! `/auth/v1/setup` on the Server Host surface (WP-8.2, `2-security/5` Sign-in): the first
 //! administrator, made with the setup code a Host without one waits for.
 //!
 //! | Route                    | Answers                                                                |

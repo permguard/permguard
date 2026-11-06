@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Password sign-in on a Server Host surface (WP-8.1, `6-contracts/8` Sign-in): what `permguard
+//! Password sign-in on a Server Host surface (WP-8.1, `2-security/5` Sign-in): what `permguard
 //! login`, `logout`, `password` and `factor` reach. A password travels only in a request body;
 //! the session token comes back once and is the caller's to keep.
 
