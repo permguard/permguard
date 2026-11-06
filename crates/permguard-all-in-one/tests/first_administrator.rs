@@ -22,6 +22,11 @@ fn binary() -> Command {
 
 /// The status and body of one request with curl.
 fn curl(method: &str, url: &str, body: Option<&str>) -> (u16, String) {
+    curl_as(method, url, body, None)
+}
+
+/// The same, carrying `bearer` as its session.
+fn curl_as(method: &str, url: &str, body: Option<&str>, bearer: Option<&str>) -> (u16, String) {
     let mut command = Command::new("curl");
     command.args([
         "-sS",
@@ -34,6 +39,9 @@ fn curl(method: &str, url: &str, body: Option<&str>) -> (u16, String) {
     ]);
     if let Some(body) = body {
         command.args(["-H", "content-type: application/json", "--data", body]);
+    }
+    if let Some(bearer) = bearer {
+        command.args(["-H", &format!("authorization: Bearer {bearer}")]);
     }
     let output = command.arg(url).output().expect("curl runs");
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -66,7 +74,10 @@ fn a_fresh_host_makes_its_first_administrator_with_the_setup_code_once() {
             "development_mode: true\nautogenerate: true\nassurance:\n  profile: development\n",
             "log:\n  level: info\n  format: json\n",
             "host:\n  addr: 127.0.0.1:0\n",
+            "  authentication:\n    methods: [password]\n",
+            "    password: { mfa: optional, factor_key: { ref: mfa-seal } }\n",
             "runtime:\n  planes: []\n",
+            "operations:\n  secrets: { provider: directory }\n",
         ),
     )
     .expect("the config writes");
@@ -123,12 +134,32 @@ fn a_fresh_host_makes_its_first_administrator_with_the_setup_code_once() {
             )),
         );
         let after = curl("GET", &url, None);
-        Ok::<_, String>((code, waiting, wrong, made, after))
+        // The administrator signs in, and enrolls a second factor under the key the development
+        // volume generated for it.
+        let base = url.trim_end_matches("/setup");
+        let opened = curl(
+            "POST",
+            &format!("{base}/sessions"),
+            Some(r#"{"name":"alice","password":"alice's first password"}"#),
+        );
+        let token = opened
+            .1
+            .split_once("\"token\":\"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map(|(token, _)| token.to_owned())
+            .ok_or(format!("no session: {}", opened.1))?;
+        let factor = curl_as(
+            "POST",
+            &format!("{base}/factor"),
+            Some(r#"{"password":"alice's first password"}"#),
+            Some(&token),
+        );
+        Ok::<_, String>((code, waiting, wrong, made, after, factor))
     })();
 
     let _ = child.kill();
     let _ = child.wait();
-    let (code, waiting, wrong, made, after) =
+    let (code, waiting, wrong, made, after, factor) =
         outcome.unwrap_or_else(|reason| panic!("{reason}: {seen}"));
 
     assert!(seen.contains("host.setup_waiting"), "{seen}");
@@ -143,4 +174,6 @@ fn a_fresh_host_makes_its_first_administrator_with_the_setup_code_once() {
         made.1
     );
     assert_eq!(after.0, 404, "the route is gone: {}", after.1);
+    assert_eq!(factor.0, 200, "a factor enrolls: {}", factor.1);
+    assert!(factor.1.contains("otpauth://totp/"), "{}", factor.1);
 }

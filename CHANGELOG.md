@@ -17,7 +17,11 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A development volume generates the second factor's key.**
+  With `autogenerate`, a directory secret store and `host.authentication.password.factor_key`, the server generates the secret the key names when it is missing, as it generates the audit pseudonym and the coordinator root.
+  Before, such a deployment refused to start, and one without `factor_key` could enroll no second factor.
 
 ## [0.1.20] - 2026-11-06
 

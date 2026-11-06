@@ -234,6 +234,19 @@ fn prepare_secrets(config: &Config, volume: &Volume) -> Result<()> {
     Ok(())
 }
 
+/// Writes the secret `reference` names into the store's directory, unless it is there, when the
+/// deployment generates its own material: for a secret a structured setting names, which
+/// [`prepare`] reads no configuration file to see, as the second factor's key (WP-8.1). Nothing
+/// otherwise: a deployment that supplies its material is told at start what is missing.
+pub fn prepare_secret(config: &Config, reference: &str) -> Result<()> {
+    if !config.autogenerate() || config.secrets_provider() != SecretProvider::Directory {
+        return Ok(());
+    }
+    let directory = config.secrets_directory();
+    create_directory(&directory)?;
+    generate_secret(&directory.join(reference), reference)
+}
+
 /// Writes `SECRET_BYTES` of random material to `path`, unless something is already there.
 ///
 /// Never overwrites: a file that exists is one somebody meant to put there, and regenerating a

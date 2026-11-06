@@ -1466,6 +1466,12 @@ impl App {
         let auth = file
             .host_auth()
             .with_context(|| format!("in the configuration file {}", config_file.display()))?;
+        // The second factor's key is named by a structured setting the volume's preparation does
+        // not read: a development deployment that generates its material generates it here.
+        if let Some((reference, _)) = &auth.authentication.factor_key {
+            permguard_std::provision::prepare_secret(config, reference.name())
+                .context("generating the second factor's key")?;
+        }
         let (store, recovery) = GrantStore::open(volume).with_context(|| {
             format!(
                 "opening the grant store on {}",
