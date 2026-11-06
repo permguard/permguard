@@ -165,6 +165,14 @@ pub struct DecisionLine {
     /// an empty one.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub absent_inputs: Vec<String>,
+    /// The context members the data plane's decision log names in `include.context`, in clear:
+    /// absent when it names none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<Value>,
+    /// The keyed commitment over the caller's whole context, which the record always carries
+    /// when there was one: it proves what was asked without saying it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_commitment: Option<String>,
     /// The decision's own identifier.
     pub id: String,
     /// How long the plane took.
@@ -351,6 +359,19 @@ pub fn report(
                         .collect()
                 })
                 .unwrap_or_default(),
+            context: record
+                .get("context")
+                .filter(|context| {
+                    context
+                        .as_object()
+                        .is_some_and(|members| !members.is_empty())
+                })
+                .cloned(),
+            context_commitment: record
+                .get("inputs")
+                .and_then(|inputs| inputs.get("context"))
+                .and_then(Value::as_str)
+                .map(str::to_owned),
             id: string(&record, "id"),
             latency_us: record
                 .get("latency_us")

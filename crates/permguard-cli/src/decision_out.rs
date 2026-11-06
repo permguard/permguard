@@ -132,6 +132,21 @@ impl Report for DecisionsReport {
                     style::id(name)
                 )?;
             }
+            for (name, value) in line
+                .context
+                .as_ref()
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+            {
+                writeln!(
+                    out,
+                    "         {} {} = {}",
+                    style::dim("context"),
+                    style::id(name),
+                    value
+                )?;
+            }
         }
 
         if let Some(verified) = &self.verified {
@@ -425,6 +440,8 @@ mod tests {
             commit: "sha256:ec1773bf".to_owned(),
             policies: Vec::new(),
             absent_inputs: Vec::new(),
+            context: None,
+            context_commitment: None,
             id: format!("id-{seq}"),
             latency_us: 1,
         }
@@ -505,6 +522,60 @@ mod tests {
         assert!(
             shown.contains("evaluation_deadline_exceeded, evaluation_failed"),
             "the causes, by code: {shown}"
+        );
+    }
+
+    /// A record's context reaches the report: the members the data plane wrote in clear, and the
+    /// commitment over the whole context, each only when the record carries it.
+    #[test]
+    fn the_report_carries_the_recorded_context_and_its_commitment() {
+        use crate::decisions::{Filter, Page, report};
+        use permguard_control_client::decisions::ReadScope;
+
+        let decision = |seq: u64, extra: Value| {
+            let mut record = json!({
+                "kind": "decision", "seq": seq, "at": "2026-10-03T10:00:00Z",
+                "decision": true, "outcome": "permit",
+            });
+            for (key, value) in extra.as_object().expect("an object") {
+                record[key] = value.clone();
+            }
+            record
+        };
+        let built = report(
+            &ReadScope::Tenant {
+                zone: "acme".to_owned(),
+                ledger: "main-ledger".to_owned(),
+            },
+            Page {
+                records: vec![
+                    decision(
+                        1,
+                        json!({"context": {"ip": "10.0.0.1"}, "inputs": {"context": "hmac:ab"}}),
+                    ),
+                    decision(2, json!({"context": {}, "inputs": {"context": "hmac:cd"}})),
+                    decision(3, json!({})),
+                ],
+                ..Page::default()
+            },
+            &Filter::default(),
+            None,
+        );
+        let [first, second, third] = &built.decisions[..] else {
+            panic!("three decisions: {built:?}");
+        };
+        assert_eq!(first.context, Some(json!({"ip": "10.0.0.1"})));
+        assert_eq!(first.context_commitment.as_deref(), Some("hmac:ab"));
+        assert_eq!(second.context, None, "an empty object says nothing");
+        assert_eq!(second.context_commitment.as_deref(), Some("hmac:cd"));
+        assert_eq!((&third.context, &third.context_commitment), (&None, &None));
+
+        let json = serde_json::to_value(third).expect("serialises");
+        assert!(json.get("context").is_none() && json.get("context_commitment").is_none());
+        assert!(
+            terminal(&built).contains("context ip = \"10.0.0.1\""),
+            "{}",
+            terminal(&built)
         );
     }
 }
