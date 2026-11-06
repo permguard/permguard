@@ -2446,7 +2446,7 @@ impl App {
                     event.name = "host.setup_waiting",
                     component = "server",
                     origin = waiting.origin.as_str(),
-                    code = %place,
+                    code_file = %place,
                     expires_at = %at,
                     "no administrator: the first one is made with the setup code (`permguard setup`)"
                 );
@@ -2456,6 +2456,31 @@ impl App {
                     format!(
                         "a setup code waits for the first administrator: in {place}, until {at}"
                     ),
+                );
+            }
+            permguard_host::setup::Prepared::Orphaned => {
+                tracing::error!(
+                    event.name = "host.setup_orphaned",
+                    component = "server",
+                    "nobody administers this Host any more, and it was administered before: no setup \
+                     code is made again by itself; run `permguard host recovery start` on the stopped server"
+                );
+                context.health().lifecycle().degrade(
+                    permguard_core::lifecycle::HOST,
+                    permguard_host::setup::CAPABILITY,
+                    "nobody administers this Host: start a recovery (`permguard host recovery start`)",
+                );
+            }
+            permguard_host::setup::Prepared::Expired => {
+                tracing::error!(
+                    event.name = "host.setup_expired",
+                    component = "server",
+                    "the setup code host.setup.code_ref supplies expired: supply a new value, or start a recovery"
+                );
+                context.health().lifecycle().degrade(
+                    permguard_core::lifecycle::HOST,
+                    permguard_host::setup::CAPABILITY,
+                    "the supplied setup code expired: supply a new one in host.setup.code_ref",
                 );
             }
             permguard_host::setup::Prepared::Closed => {}

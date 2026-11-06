@@ -39,6 +39,8 @@ pub const STATE: &str = "state.json";
 pub const CODE: &str = "code";
 /// A recovery waiting to be acknowledged.
 pub const RECOVERY: &str = "recovery.json";
+/// Written once the Host is administered: from then on only a recovery makes a code.
+pub const ADMINISTERED: &str = "administered";
 /// What every code the Host makes begins with.
 pub const CODE_PREFIX: &str = "pgsetup_";
 /// The fewest characters a code supplied by a secret may have.
@@ -101,6 +103,10 @@ pub struct RecoveryRecord {
     /// Unix seconds.
     pub started_at: u64,
     pub reason: String,
+    /// The administrator the recovery's code made: it does not acknowledge the recovery while
+    /// another administrator exists, who has to see it.
+    #[serde(default)]
+    pub made: Option<String>,
 }
 
 /// What a start serves.
@@ -113,12 +119,19 @@ pub enum Prepared {
         waiting: Waiting,
         code_file: Option<PathBuf>,
     },
+    /// The Host was administered once and nobody administers it now: no code is made again by
+    /// itself, a recovery is the way back.
+    Orphaned,
+    /// The code the deployment supplied expired: a new secret value, or a recovery, is needed.
+    Expired,
 }
 
 /// The setup folder of one volume.
 #[derive(Debug)]
 pub struct Setup {
     dir: Dir,
+    /// Held across a setup: one code makes one administrator, however many ask at once.
+    taking: std::sync::Mutex<()>,
 }
 
 fn corrupt(what: &str, error: impl std::fmt::Display) -> StorageError {
@@ -152,6 +165,7 @@ impl Setup {
     pub fn open(volume: &Volume) -> Result<Self, StorageError> {
         Ok(Self {
             dir: volume.host().subdir(DIRECTORY, true)?,
+            taking: std::sync::Mutex::new(()),
         })
     }
 
@@ -204,9 +218,23 @@ impl Setup {
         Ok(())
     }
 
-    /// What a start serves: a code when no administrator exists, or when a recovery made one
-    /// that has not expired; nothing otherwise. `supplied` is the secret `host.setup.code_ref`
-    /// names, when the deployment supplies the code.
+    /// Whether the Host was ever administered.
+    pub fn was_administered(&self) -> Result<bool, StorageError> {
+        self.dir.exists(ADMINISTERED)
+    }
+
+    fn mark_administered(&self) -> Result<(), StorageError> {
+        if !self.dir.exists(ADMINISTERED)? {
+            crate::storage::write::replace_bytes(&self.dir, ADMINISTERED, b"")?;
+        }
+        Ok(())
+    }
+
+    /// What a start serves. A code only the first time the Host has no administrator, or after a
+    /// recovery started offline; nothing once an administrator exists; and, when the Host was
+    /// administered before and nobody administers it now, nothing either: a recovery is the way
+    /// back, never a code that reappears by itself. `supplied` is the secret
+    /// `host.setup.code_ref` names; its expiry runs from the first start that armed it.
     pub fn prepare(
         &self,
         administered: bool,
@@ -216,15 +244,21 @@ impl Setup {
     ) -> Result<Prepared, StorageError> {
         let held = self.waiting()?;
         let live = held.as_ref().filter(|waiting| waiting.expires_at > now);
+        let recovering = live.filter(|waiting| waiting.origin == Origin::Recovery);
+        if let Some(waiting) = recovering {
+            return Ok(Prepared::Waiting {
+                waiting: waiting.clone(),
+                code_file: Some(self.code_path()),
+            });
+        }
         if administered {
-            if let Some(waiting) = live.filter(|waiting| waiting.origin == Origin::Recovery) {
-                return Ok(Prepared::Waiting {
-                    waiting: waiting.clone(),
-                    code_file: Some(self.code_path()),
-                });
-            }
+            self.mark_administered()?;
             self.close()?;
             return Ok(Prepared::Closed);
+        }
+        if self.was_administered()? {
+            self.close()?;
+            return Ok(Prepared::Orphaned);
         }
         if let Some(code) = supplied {
             let code = code.trim();
@@ -235,11 +269,16 @@ impl Setup {
                 ));
             }
             let wanted = digest(code);
-            if let Some(waiting) =
-                live.filter(|waiting| waiting.origin == Origin::Secret && waiting.digest == wanted)
+            // The same secret keeps the expiry of the start that first armed it.
+            if let Some(armed) = held
+                .as_ref()
+                .filter(|waiting| waiting.origin == Origin::Secret && waiting.digest == wanted)
             {
+                if armed.expires_at <= now {
+                    return Ok(Prepared::Expired);
+                }
                 return Ok(Prepared::Waiting {
-                    waiting: waiting.clone(),
+                    waiting: armed.clone(),
                     code_file: None,
                 });
             }
@@ -257,7 +296,7 @@ impl Setup {
                 code_file: None,
             });
         }
-        if let Some(waiting) = live.filter(|waiting| waiting.origin != Origin::Secret)
+        if let Some(waiting) = live.filter(|waiting| waiting.origin == Origin::Generated)
             && self.dir.exists(CODE)?
         {
             return Ok(Prepared::Waiting {
@@ -307,6 +346,7 @@ impl Setup {
         let record = RecoveryRecord {
             started_at: now,
             reason: reason.to_owned(),
+            made: None,
         };
         let bytes = serde_json::to_vec_pretty(&record).map_err(|error| corrupt(RECOVERY, error))?;
         crate::storage::write::replace_bytes(&self.dir, RECOVERY, &bytes)?;
@@ -333,17 +373,6 @@ pub enum Refused {
     Invalid(String),
     /// The Host could not record it.
     Unavailable(String),
-}
-
-impl Refused {
-    /// The word the audit and the answer carry.
-    pub fn reason(&self) -> &'static str {
-        match self {
-            Self::Code => "code",
-            Self::Invalid(_) => "invalid",
-            Self::Unavailable(_) => "unavailable",
-        }
-    }
 }
 
 /// The first administrator a setup made.
@@ -381,10 +410,21 @@ pub fn complete(
     use permguard_core::authz::{Principal, Resource, Selector, operations, resource_types};
 
     let unavailable = |error: &dyn std::fmt::Display| Refused::Unavailable(error.to_string());
+    // One setup at a time, the code read again under the lock: two requests with one code make
+    // one administrator, and the second finds the code gone.
+    let _taking = setup
+        .taking
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let waiting = setup
         .accepts(request.code, now)
         .map_err(|error| unavailable(&error))?
         .ok_or(Refused::Code)?;
+    // Only a recovery's code makes an administrator beside others.
+    if waiting.origin != Origin::Recovery && administered(store, now) {
+        setup.close().map_err(|error| unavailable(&error))?;
+        return Err(Refused::Code);
+    }
     let name = request.name.trim().to_ascii_lowercase();
     if !is_user_name(&name) {
         return Err(Refused::Invalid(format!(
@@ -461,6 +501,18 @@ pub fn complete(
             .to_string(),
         )
     };
+    // A recovery's administrator is named on the recovery, which it does not acknowledge alone.
+    if waiting.origin == Origin::Recovery
+        && let Some(mut record) = setup.recovery().map_err(|error| unavailable(&error))?
+    {
+        record.made = Some(principal.clone());
+        let bytes = serde_json::to_vec_pretty(&record).map_err(|error| unavailable(&error))?;
+        crate::storage::write::replace_bytes(&setup.dir, RECOVERY, &bytes)
+            .map_err(|error| unavailable(&error))?;
+    }
+    setup
+        .mark_administered()
+        .map_err(|error| unavailable(&error))?;
     setup.close().map_err(|error| unavailable(&error))?;
     Ok(Completed {
         user: name,
@@ -528,6 +580,10 @@ mod tests {
         std::fs::create_dir_all(&root).expect("scratch");
         let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
         (Setup::open(&volume).expect("opened"), volume)
+    }
+
+    fn setup_named(tag: &str) -> (Setup, Volume) {
+        setup(tag)
     }
 
     fn code_of(setup: &Setup) -> String {
@@ -705,6 +761,93 @@ mod tests {
             setup.recovery().expect("read").is_some(),
             "acknowledged separately"
         );
+    }
+
+    /// Once administered, a Host never makes a code by itself again, even with nobody
+    /// administering it: a recovery is the way back. A supplied code keeps its first expiry.
+    #[test]
+    fn a_code_appears_only_the_first_time_and_a_supplied_one_expires_for_good() {
+        let (setup, _volume) = setup("once");
+        setup.prepare(false, None, DAY, 10).expect("first");
+        assert_eq!(
+            setup.prepare(true, None, DAY, 20).expect("closed"),
+            Prepared::Closed
+        );
+        assert_eq!(
+            setup.prepare(false, None, DAY, 30).expect("orphaned"),
+            Prepared::Orphaned
+        );
+        assert!(!setup.code_path().exists(), "no code reappears");
+        setup
+            .start_recovery("the grants expired", DAY, 40)
+            .expect("recovery");
+        assert!(matches!(
+            setup.prepare(false, None, DAY, 50).expect("recovering"),
+            Prepared::Waiting { .. }
+        ));
+
+        let (secret, _volume) = setup_named("secret-expiry");
+        let supplied = "a-code-the-deployment-keeps-in-a-secret-0123";
+        secret
+            .prepare(false, Some(supplied), DAY, 10)
+            .expect("armed");
+        assert!(matches!(
+            secret
+                .prepare(false, Some(supplied), DAY, 10 + DAY.as_secs() / 2)
+                .expect("again"),
+            Prepared::Waiting { .. }
+        ));
+        assert_eq!(
+            secret
+                .prepare(false, Some(supplied), DAY, 11 + DAY.as_secs())
+                .expect("expired"),
+            Prepared::Expired,
+            "a restart does not re-arm the same secret"
+        );
+    }
+
+    /// Two setups at once with one code: one administrator.
+    #[test]
+    fn two_setups_with_one_code_make_one_administrator() {
+        let (setup, volume) = setup("race");
+        let (store, _) = crate::authz::GrantStore::open(&volume).expect("the grants");
+        let (directory, _) =
+            crate::authz::directory::Directory::open(&volume).expect("the directory");
+        let mutations =
+            crate::operations::mutation::Mutations::open_offline(&volume, "test").expect("engine");
+        let now = crate::authz::store::now();
+        setup.prepare(false, None, DAY, now).expect("prepared");
+        let code = code_of(&setup);
+        let made: Vec<bool> = std::thread::scope(|scope| {
+            let handles: Vec<_> = ["alice", "mallory"]
+                .into_iter()
+                .map(|name| {
+                    let (setup, mutations, directory, store, code) =
+                        (&setup, &mutations, &directory, &store, &code);
+                    scope.spawn(move || {
+                        complete(
+                            setup,
+                            mutations,
+                            directory,
+                            store,
+                            Request {
+                                code,
+                                name,
+                                email: Some(format!("{name}@acme.example")),
+                                password: None,
+                            },
+                            now,
+                        )
+                        .is_ok()
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("joined"))
+                .collect()
+        });
+        assert_eq!(made.iter().filter(|made| **made).count(), 1, "{made:?}");
     }
 
     #[test]

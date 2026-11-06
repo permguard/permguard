@@ -1055,7 +1055,8 @@ async fn test_a_clock_set_back_across_a_restart_degrades_time_and_is_recorded() 
         .await
         .expect("the server serves through the anomaly");
 
-    assert_eq!(journal.entries(), vec!["time"]);
+    // A fresh Host also waits for its first administrator (WP-8.2).
+    assert_eq!(journal.entries(), vec!["setup", "time"]);
     for _ in 0..50 {
         if actions
             .lock()

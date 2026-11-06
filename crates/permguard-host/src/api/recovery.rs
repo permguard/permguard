@@ -72,6 +72,19 @@ impl HostApi {
         let admitted = self.admit(actor, operations::AUTHZ_ADMIN)?;
         let setup = self.setup_folder()?;
         let held = setup.recovery().map_err(unavailable)?;
+        // The administrator a recovery made does not acknowledge it alone: another one, when there
+        // is one, has to see it.
+        if let Some(made) = held.as_ref().and_then(|record| record.made.as_deref())
+            && made == admitted.principal.as_str()
+            && let Some(store) = self.store.as_ref()
+            && crate::setup::administered_by_another(store, made, self.time.now_secs())
+        {
+            return Err(Refusal::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                "the administrator this recovery made does not acknowledge it: another administrator does",
+            ));
+        }
         if let Some(record) = &held {
             // Recorded first: a recovery acknowledged without a record would leave no trace.
             if let Some(audit) = self.audit.as_ref() {

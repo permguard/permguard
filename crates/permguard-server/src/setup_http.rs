@@ -134,17 +134,21 @@ fn closed(state: &SetupRoutes) -> bool {
     refusals.len() >= REFUSALS
 }
 
+/// A refusal, recorded; only a wrong code counts toward closing the route, so an operator who
+/// had the code and mistyped a name is not locked out.
 fn refused(
     state: &SetupRoutes,
     reason: &'static str,
     status: StatusCode,
     message: &str,
 ) -> Response {
-    state
-        .refusals
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .push_back(Instant::now());
+    if reason == "code" {
+        state
+            .refusals
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(Instant::now());
+    }
     tracing::warn!(
         event.name = "host.setup_refused",
         component = "server",

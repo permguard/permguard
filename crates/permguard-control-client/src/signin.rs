@@ -87,6 +87,22 @@ impl SignIn {
                 "`{url}` is a gRPC address: sign-in is on the Server Host surface, http or https"
             ));
         }
+        // A password and a setup code cross only TLS or a loopback address: refused here, before
+        // anything is sent, rather than by the server after it crossed the network.
+        let host = endpoint
+            .host()
+            .trim_start_matches('[')
+            .trim_end_matches(']');
+        let loopback = host == "localhost"
+            || host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| address.is_loopback());
+        if !endpoint.is_tls() && !loopback {
+            return Err(format!(
+                "`{url}` is plain http to another machine: a password or a setup code crosses only \
+                 https, or http on a loopback address"
+            ));
+        }
         let client = Client::new(
             std::time::Duration::from_secs(30),
             tls.clone(),

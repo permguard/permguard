@@ -2148,7 +2148,8 @@ fn the_grant_and_identity_commands_answer_over_both_transports() {
     assert!(
         refusal["message"]
             .as_str()
-            .is_some_and(|text| text.contains("another recovery administrator")),
+            // A second administrator is a recovery, not a bootstrap (WP-8.2).
+            .is_some_and(|text| text.contains("host recovery start")),
         "{refusal}"
     );
 }

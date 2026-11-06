@@ -171,7 +171,7 @@ host:
   #       audience: "permguard"
   #       jwks_file: "./login.example.com.jwks.json"   # re-read when it changes, never fetched
   # The first administrator (WP-8.2). While nobody administers the Host, it waits for one setup
-  # code: written to <volume>/host/setup/code, private to the volume's owner, never logged, or
+  # code, written to <volume>/host/setup/code private to the volume's owner and never logged, or
   # taken from a secret. `permguard setup https://<host>:5443 --code-file <file> --name <user>
   # --password-stdin` (or --email, for a user a provider signs in) makes it, once; the route is
   # then gone. If every administrator is lost: `permguard host recovery start --reason <why>`
