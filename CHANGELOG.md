@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.19] - 2026-11-06
+
 ### Added
 
 - **The first administrator by setup code.**
