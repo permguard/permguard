@@ -19,6 +19,14 @@ is cut.
 
 Nothing yet.
 
+## [0.1.20] - 2026-11-06
+
+### Added
+
+- **The decision's context in `permguard decisions`.**
+  Each decision line carries `context`, the members the data plane's decision log names in `include.context`, in clear, and `context_commitment`, the keyed commitment over the whole context the record always holds when there was one; each is left out when the record has none.
+  The text output lists the clear members under the decision as `context <name> = <value>`.
+
 ## [0.1.19] - 2026-11-06
 
 ### Added
