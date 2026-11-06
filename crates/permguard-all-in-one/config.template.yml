@@ -170,6 +170,15 @@ host:
   #       issuer: "https://login.example.com"
   #       audience: "permguard"
   #       jwks_file: "./login.example.com.jwks.json"   # re-read when it changes, never fetched
+  # The first administrator (WP-8.2). While nobody administers the Host, it waits for one setup
+  # code: written to <volume>/host/setup/code, private to the volume's owner, never logged, or
+  # taken from a secret. `permguard setup https://<host>:5443 --code-file <file> --name <user>
+  # --password-stdin` (or --email, for a user a provider signs in) makes it, once; the route is
+  # then gone. If every administrator is lost: `permguard host recovery start --reason <why>`
+  # on the stopped server's volume, then setup again, then `host recovery acknowledge`.
+  # setup:
+  #   expires: 24h                            # how long a code serves
+  #   code_ref: permguard-setup-code          # a secret of operations.secrets, at least 32 characters
   # How people sign in with the Host's own local users (WP-8.1). Without this block, `oidc` when a
   # provider is configured, and nothing else; a method not listed is refused whatever else is
   # configured. Password sign-in is `POST /auth/v1/sessions` on this surface, over TLS only

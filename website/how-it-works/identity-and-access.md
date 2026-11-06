@@ -167,14 +167,28 @@ A disabled user signs in by no method, its linked subjects included.
 
 ### The first administrator
 
-When only a provider signs people in, nobody can grant the first grant online.
-Create the first administrator offline, on the Host's volume, before it starts:
+A Host that nobody administers waits for one setup code, and only until somebody uses it.
+The code is written to `host/setup/code` on the volume, readable by the volume's owner only, and never to the log; a deployment can supply it instead from a secret, `host.setup.code_ref`.
 
 ```sh
-permguard host users bootstrap --volume /var/lib/permguard --name alice --email alice@acme.com
+permguard setup https://pg.example.com:5443 --check                     # does it wait?
+printf '%s' "$PASSWORD" | permguard setup https://pg.example.com:5443 \
+  --code-file setup-code --name alice --password-stdin                  # or --email alice@acme.com
 ```
 
-With `--password-stdin` the user can sign in with a password; with only an email, its first sign-in through a provider with `link: email` acts as it.
+The code serves once and expires after 24 hours; the setup route is then gone for good, and the Host reports `degraded: setup` for as long as a code waits.
+With `--email` and no password, alice signs in through a provider with `link: email`.
+
+When every administrator is lost, recovery is explicit and recorded, and deletes nothing:
+
+```sh
+permguard --volume /var/lib/permguard host recovery start --reason "every administrator left"   # server stopped
+# start the server, then setup with the new code, then:
+permguard host recovery acknowledge
+```
+
+The Host stays `degraded: recovery` until an administrator acknowledges it.
+`permguard host users bootstrap --volume …` still makes the first administrator offline, for an air-gapped install, and refuses a second one.
 
 ## Roles
 

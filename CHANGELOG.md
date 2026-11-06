@@ -17,7 +17,22 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **The first administrator by setup code.**
+  A Host that nobody administers waits for one setup code: 256 random bits, written to `<volume>/host/setup/code` private to the volume's owner, or taken from the secret `host.setup.code_ref`, never logged, expiring after `host.setup.expires` (24h by default).
+  `permguard setup https://<host>:5443 --code-file <file> --name <user> --password-stdin` (or `--email` for a user an identity provider signs in) makes the first administrator over `POST /auth/v1/setup`, once; the route then answers `404`.
+  The Host reports `degraded: setup` while the code waits, and every attempt is audited; ten refusals in fifteen minutes close the route.
+  `permguard setup <url> --check` and `GET /auth/v1/setup` say whether a Host waits, without the code.
+- **An explicit recovery.**
+  When every administrator is lost, `permguard host recovery start --reason <why>`, on the volume of a stopped server, makes a new setup code although administrators exist and records `host.recovery.started`; the Host stays `degraded: recovery` until an administrator runs `permguard host recovery acknowledge` (`POST /host/v1/recovery/acknowledge`, gRPC `AcknowledgeRecovery`).
+  Nothing is deleted: ledgers, keys and the trail stay.
+- The setup and recovery are library calls Permguard Admin uses as the CLI does: `permguard_host::setup`, and the control client's `SignIn::setup_status`, `SignIn::setup`, `Directory::recovery` and `Directory::acknowledge_recovery`.
+
+### Changed
+
+- **The offline bootstraps make only the first administrator.**
+  `permguard host users bootstrap` and `permguard host grants bootstrap` still run again for the same administrator changing nothing, and now refuse a second one, naming `host recovery start`.
 
 ## [0.1.18] - 2026-11-05
 
