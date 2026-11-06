@@ -880,6 +880,19 @@ struct TelemetrySection {
     /// Which sign-in methods the Host admits (WP-8.1). Structured, so file only.
     #[serde(default)]
     authentication: AuthenticationSection,
+    /// How the first administrator's setup code is made (WP-8.2). Structured, so file only.
+    #[serde(default)]
+    setup: SetupSection,
+}
+
+/// `host.setup`.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetupSection {
+    #[serde(default)]
+    expires: Option<String>,
+    #[serde(default)]
+    code_ref: Option<String>,
 }
 
 /// `host.authentication`.
@@ -1866,10 +1879,22 @@ impl ConfigFile {
             .filter(|rule| matches!(rule, PrincipalRule::Oidc(_)))
             .count();
         let authentication = authentication(&self.host.authentication, providers)?;
+        let mut setup = crate::authz::Setup::default();
+        if let Some(expires) = self.host.setup.expires.as_deref().map(str::trim) {
+            setup.expires =
+                crate::config::parse_duration(expires).context("reading host.setup.expires")?;
+        }
+        if let Some(reference) = self.host.setup.code_ref.as_deref().map(str::trim) {
+            if reference.is_empty() {
+                bail!("host.setup.code_ref names a secret");
+            }
+            setup.code_ref = Some(crate::secrets::SecretRef::new(reference));
+        }
         Ok(crate::authz::HostAuth {
             principals,
             public,
             authentication,
+            setup,
         })
     }
 

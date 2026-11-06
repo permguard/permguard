@@ -227,6 +227,10 @@ service OperationsService {
   rpc ListPlans(ListPlansRequest) returns (ListPlansResponse);
   // `POST /host/v1/plans/{id}/approve`.
   rpc ApprovePlan(ApprovePlanRequest) returns (ApprovePlanResponse);
+  // `GET /host/v1/recovery` (WP-8.2).
+  rpc GetRecovery(GetRecoveryRequest) returns (GetRecoveryResponse);
+  // `POST /host/v1/recovery/acknowledge` (WP-8.2).
+  rpc AcknowledgeRecovery(AcknowledgeRecoveryRequest) returns (AcknowledgeRecoveryResponse);
 }
 
 // A frame of the peer channel (WP-2.3): one message of the session protocol, its bytes the
@@ -1713,4 +1717,21 @@ message Provider {
 message ProviderKey {
   optional string kid = 1;
   string algorithm = 2;
+}
+
+// The recovery started offline, waiting to be acknowledged (WP-8.2).
+message GetRecoveryRequest {}
+message GetRecoveryResponse {
+  bool waiting = 1;
+  // RFC 3339.
+  optional string started_at = 2;
+  optional string reason = 3;
+}
+message AcknowledgeRecoveryRequest {}
+message AcknowledgeRecoveryResponse {
+  // Whether a recovery was waiting, and is now acknowledged.
+  bool acknowledged = 1;
+  // RFC 3339.
+  optional string started_at = 2;
+  optional string reason = 3;
 }

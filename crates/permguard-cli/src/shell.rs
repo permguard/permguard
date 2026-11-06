@@ -309,6 +309,23 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Factor { url, action } => {
             commands::directory::factor(&globals, &url, action, &trace)
         }
+        Command::Setup {
+            url,
+            check,
+            code_file,
+            name,
+            email,
+            password_stdin,
+        } => commands::directory::setup(
+            &globals,
+            &url,
+            check,
+            code_file.as_deref(),
+            name.as_deref(),
+            email,
+            password_stdin,
+            &trace,
+        ),
         Command::Init { name, language } => {
             let languages: Vec<&str> = language.iter().map(String::as_str).collect();
             workspace_command(
@@ -418,6 +435,7 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Logout { .. } => ("logout", Class::Local),
         Command::Password { .. } => ("password", Class::Local),
         Command::Factor { .. } => ("factor", Class::Local),
+        Command::Setup { .. } => ("setup", Class::Local),
         Command::Host { action, .. } => {
             let class = match action {
                 HostAction::Identity {
@@ -428,6 +446,9 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
                 }
                 | HostAction::Users {
                     action: crate::args::UsersAction::Bootstrap { .. },
+                }
+                | HostAction::Recovery {
+                    action: crate::args::RecoveryAction::Start { .. },
                 }
                 | HostAction::Holds { .. } => Class::Volume,
                 HostAction::Identity {
@@ -440,6 +461,7 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
                 | HostAction::Roles { .. }
                 | HostAction::Users { .. }
                 | HostAction::Providers { .. }
+                | HostAction::Recovery { .. }
                 | HostAction::Keys { .. }
                 | HostAction::Audit { .. }
                 | HostAction::Config { .. }

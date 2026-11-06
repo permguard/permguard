@@ -492,6 +492,7 @@ fn bootstrap(
         })?;
     let now = permguard_host::authz::store::now();
     let principal = user_principal(name);
+    super::host::refuse_second_administrator(&store, &principal, now)?;
     let created = if directory.user(name).is_some() {
         false
     } else {
@@ -683,6 +684,149 @@ pub fn factor(
         FactorAction::Confirm { code } => {
             signin.confirm_factor(&code).map_err(client)?;
             render_json(&serde_json::json!({"confirmed": true}), globals, trace)?;
+        }
+    }
+    Ok(ExitCode::from(EXIT_READY))
+}
+
+/// `permguard setup <url>` (WP-8.2): the first administrator, made with the Host's setup code;
+/// with `--check`, whether the Host waits for one. The code is read from a file and never printed.
+#[allow(clippy::too_many_arguments)]
+pub fn setup(
+    globals: &Globals,
+    url: &str,
+    check: bool,
+    code_file: Option<&std::path::Path>,
+    name: Option<&str>,
+    email: Option<String>,
+    password_stdin: bool,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    let surface = signin_at(globals, url, false, trace)?;
+    if check {
+        let status = surface.setup_status().map_err(client)?;
+        render_json(
+            &match status {
+                Some(status) => serde_json::to_value(status)
+                    .map_err(|error| Failure::internal(error.to_string()))?,
+                None => serde_json::json!({"waiting": false}),
+            },
+            globals,
+            trace,
+        )?;
+        return Ok(ExitCode::from(EXIT_READY));
+    }
+    let (Some(code_file), Some(name)) = (code_file, name) else {
+        return Err(Failure::usage(
+            "name the code's file and the user: --code-file and --name",
+        ));
+    };
+    let code_file = super::host::rooted_file(globals, code_file);
+    let bytes = crate::confirm::read_bytes(Some(&code_file), "setup code", 4 * 1024)?;
+    let code = String::from_utf8(bytes)
+        .map_err(|_| Failure::usage(format!("{} is not text", code_file.display())))?
+        .trim()
+        .to_owned();
+    if code.is_empty() {
+        return Err(Failure::usage(format!(
+            "{} holds no code",
+            code_file.display()
+        )));
+    }
+    if email.is_none() && !password_stdin {
+        return Err(Failure::usage(
+            "the first administrator signs in somehow: --password-stdin, --email, or both",
+        ));
+    }
+    let password = if password_stdin {
+        Some(password_from_stdin()?)
+    } else {
+        None
+    };
+    let made = surface
+        .setup(&permguard_control_client::signin::SetupRequest {
+            code,
+            name: name.to_owned(),
+            email,
+            password,
+        })
+        .map_err(client)?;
+    render_json(&made, globals, trace)?;
+    Ok(ExitCode::from(EXIT_READY))
+}
+
+/// `permguard host recovery …` (WP-8.2): `start` offline, on the volume of a stopped server;
+/// `show` and `acknowledge` online, as an administrator.
+pub(super) fn recovery(
+    globals: &Globals,
+    server_config: Option<&std::path::Path>,
+    action: crate::args::RecoveryAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    use crate::args::RecoveryAction;
+    match action {
+        RecoveryAction::Start { reason, expires } => {
+            let reason = reason.trim().to_owned();
+            if reason.is_empty() || reason.len() > 256 || reason.chars().any(char::is_control) {
+                return Err(Failure::usage(
+                    "--reason says why, in at most 256 printable characters",
+                ));
+            }
+            let expires = match expires.as_deref() {
+                Some(text) => permguard_core::config::parse_duration(text)
+                    .map_err(|error| Failure::usage(format!("--expires: {error}")))?,
+                None => permguard_core::authz::DEFAULT_SETUP_EXPIRES,
+            };
+            let volume = super::host::volume_of(globals)?;
+            let held = super::host::claim(&volume, trace)?;
+            let setup = permguard_host::setup::Setup::open(&held)
+                .map_err(|error| Failure::unavailable(error.to_string()))?;
+            let mutations = super::host::offline_engine(&held, server_config, trace)?;
+            let now = permguard_host::authz::store::now();
+            // Recorded first: a recovery that cannot be recorded is not started.
+            let target = format!("reason={reason}");
+            mutations
+                .project(
+                    &permguard_core::AuditEvent::new(
+                        permguard_host::setup::AUDIT_RECOVERY_STARTED,
+                        permguard_core::Subject::System("recovery"),
+                    )
+                    .on(&target),
+                )
+                .map_err(|error| {
+                    Failure::unavailable(format!("recording the recovery: {error}"))
+                })?;
+            let waiting = setup
+                .start_recovery(&reason, expires, now)
+                .map_err(|error| Failure::unavailable(error.to_string()))?;
+            trace.say(format!(
+                "a setup code is in {}: start the server, then `permguard setup`",
+                setup.code_path().display()
+            ));
+            std::mem::forget(held);
+            render_json(
+                &serde_json::json!({
+                    "code_file": setup.code_path(),
+                    "expires_at": permguard_core::time::to_rfc3339(
+                        i64::try_from(waiting.expires_at).unwrap_or(i64::MAX)
+                    ),
+                    "reason": reason,
+                }),
+                globals,
+                trace,
+            )?;
+        }
+        RecoveryAction::Show => {
+            let backend = online_host(globals, trace, false)?;
+            render_json(&backend.recovery().map_err(client)?, globals, trace)?;
+        }
+        RecoveryAction::Acknowledge => {
+            let backend = online_host(globals, trace, false)?;
+            render_json(
+                &backend.acknowledge_recovery().map_err(client)?,
+                globals,
+                trace,
+            )?;
         }
     }
     Ok(ExitCode::from(EXIT_READY))

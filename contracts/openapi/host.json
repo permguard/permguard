@@ -7467,6 +7467,120 @@
         },
         "x-grpc-rpc": "permguard.host.v1.ProviderService/RefreshProvider"
       }
+    },
+    "/host/v1/recovery": {
+      "get": {
+        "operationId": "getRecovery",
+        "summary": "The recovery waiting to be acknowledged",
+        "description": "Under `authz.admin` on the Host. A recovery is started offline, `permguard host recovery start`, when every administrator is lost; the Host is `degraded: recovery` until it is acknowledged.",
+        "responses": {
+          "200": {
+            "description": "Whether a recovery waits, when it was started and why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This process composes no setup folder, or it cannot be read (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/GetRecovery"
+      }
+    },
+    "/host/v1/recovery/acknowledge": {
+      "post": {
+        "operationId": "acknowledgeRecovery",
+        "summary": "Acknowledge the recovery",
+        "description": "Under `authz.admin` on the Host. Recorded as `host.recovery.acknowledged` naming the administrator, then the Host leaves `degraded: recovery`. Acknowledging when none waits changes nothing.",
+        "responses": {
+          "200": {
+            "description": "Whether a recovery was waiting, and is now acknowledged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryAcknowledged"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This process composes no setup folder, or it cannot be read (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/AcknowledgeRecovery"
+      }
     }
   },
   "components": {
@@ -14061,6 +14175,74 @@
         "additionalProperties": false,
         "description": "What `GET /host/v1/providers` answers.",
         "x-grpc-message": "permguard.host.v1.ListProvidersResponse"
+      },
+      "RecoveryView": {
+        "type": "object",
+        "properties": {
+          "waiting": {
+            "type": "boolean",
+            "description": "Whether a recovery waits.",
+            "x-grpc-field": "waiting"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When it was started, RFC 3339; `null` when none waits.",
+            "x-grpc-field": "started_at"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why, as the operator wrote it; `null` when none waits.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "waiting",
+          "started_at",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/recovery` answers.",
+        "x-grpc-message": "permguard.host.v1.GetRecoveryResponse"
+      },
+      "RecoveryAcknowledged": {
+        "type": "object",
+        "properties": {
+          "acknowledged": {
+            "type": "boolean",
+            "description": "Whether a recovery was waiting, and is now acknowledged.",
+            "x-grpc-field": "acknowledged"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When it was started, RFC 3339.",
+            "x-grpc-field": "started_at"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why, as the operator wrote it.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "acknowledged",
+          "started_at",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/recovery/acknowledge` answers.",
+        "x-grpc-message": "permguard.host.v1.AcknowledgeRecoveryResponse"
       }
     }
   },
@@ -14161,6 +14343,16 @@
       "fields": [
         "roles"
       ]
+    },
+    {
+      "message": "permguard.host.v1.GetRecoveryRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.AcknowledgeRecoveryRequest",
+      "note": "an empty request",
+      "fields": []
     }
   ],
   "x-grpc-unmapped-rpcs": [

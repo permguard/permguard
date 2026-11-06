@@ -61,12 +61,12 @@ const HASHING: usize = 8;
 static HASHERS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(HASHING);
 
 /// A slot to hash in, when one is free.
-fn hashing_slot() -> Option<tokio::sync::SemaphorePermit<'static>> {
+pub(crate) fn hashing_slot() -> Option<tokio::sync::SemaphorePermit<'static>> {
     HASHERS.try_acquire().ok()
 }
 
 /// The answer when every slot is taken: come back in a second.
-fn busy() -> Response {
+pub(crate) fn busy() -> Response {
     let mut busy = answer(
         StatusCode::SERVICE_UNAVAILABLE,
         "auth.busy",
@@ -79,11 +79,11 @@ fn busy() -> Response {
     busy
 }
 
-fn answer(status: StatusCode, code: &str, message: &str) -> Response {
+pub(crate) fn answer(status: StatusCode, code: &str, message: &str) -> Response {
     (status, Json(json!({"code": code, "message": message}))).into_response()
 }
 
-fn insecure() -> Response {
+pub(crate) fn insecure() -> Response {
     answer(
         StatusCode::FORBIDDEN,
         "auth.insecure",

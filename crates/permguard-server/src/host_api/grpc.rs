@@ -862,6 +862,34 @@ impl OperationsService for Served {
         }))
     }
 
+    async fn get_recovery(
+        &self,
+        request: Request<v1::GetRecoveryRequest>,
+    ) -> Answer<v1::GetRecoveryResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let view = self.blocking(move |api| api.recovery(&actor)).await?;
+        Ok(Response::new(v1::GetRecoveryResponse {
+            waiting: view.waiting,
+            started_at: view.started_at,
+            reason: view.reason,
+        }))
+    }
+
+    async fn acknowledge_recovery(
+        &self,
+        request: Request<v1::AcknowledgeRecoveryRequest>,
+    ) -> Answer<v1::AcknowledgeRecoveryResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let done = self
+            .blocking(move |api| api.acknowledge_recovery(&actor))
+            .await?;
+        Ok(Response::new(v1::AcknowledgeRecoveryResponse {
+            acknowledged: done.acknowledged,
+            started_at: done.started_at,
+            reason: done.reason,
+        }))
+    }
+
     async fn list_backups(
         &self,
         request: Request<v1::ListBackupsRequest>,

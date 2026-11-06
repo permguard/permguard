@@ -202,6 +202,9 @@ struct HostAuthz {
     directory: Arc<permguard_host::authz::directory::Directory>,
     /// The password sign-in, when `password` is among the methods.
     signin: Option<Arc<permguard_host::authz::signin::SignIn>>,
+    /// `host.setup`, and the password policy's length a first administrator's password meets.
+    setup: permguard_core::authz::Setup,
+    min_length: usize,
 }
 
 /// Builds one of the Host's rings (WP-3.1): laid out on the volume, a legacy ring migrated
@@ -1631,6 +1634,8 @@ impl App {
             store,
             directory,
             signin,
+            setup: auth.setup.clone(),
+            min_length: auth.authentication.min_length,
         })
     }
 
@@ -2334,6 +2339,8 @@ impl App {
             store: grants,
             directory,
             signin,
+            setup: setup_config,
+            min_length,
         } = self.authorization_for(
             config,
             config_file,
@@ -2345,14 +2352,16 @@ impl App {
             host_identity.host_id(),
         )?;
         context = context.with_authenticator(authenticator);
-        // The password sign-in on the Server Host surface (WP-8.1): a password crosses only TLS
-        // or a loopback address.
+        // What the Server Host surface adds: the password sign-in (WP-8.1) and the first
+        // administrator's setup (WP-8.2). A password or a setup code crosses only TLS or a
+        // loopback address.
+        let secure = config.telemetry_tls().is_some()
+            || config
+                .telemetry_addr()
+                .and_then(|address| address.parse::<std::net::SocketAddr>().ok())
+                .is_some_and(|address| address.ip().is_loopback());
+        let mut host_routes = axum::Router::new();
         if let Some(signin) = &signin {
-            let secure = config.telemetry_tls().is_some()
-                || config
-                    .telemetry_addr()
-                    .and_then(|address| address.parse::<std::net::SocketAddr>().ok())
-                    .is_some_and(|address| address.ip().is_loopback());
             let profile = config.assurance().profile();
             if !secure && profile != permguard_core::assurance::AssuranceProfile::Development {
                 bail!(
@@ -2378,19 +2387,116 @@ impl App {
                      loopback address: every sign-in is refused until it is"
                 );
             }
-            context = context.with_extension(Arc::new(permguard_telemetry::host::HostRoutes(
-                crate::signin_http::router(crate::signin_http::SignInRoutes {
+            host_routes = host_routes.merge(crate::signin_http::router(
+                crate::signin_http::SignInRoutes {
                     signin: Arc::clone(signin),
                     secure,
                     recorder: Some(recorder.clone()),
-                }),
-            )));
+                },
+            ));
             // Its sessions are the surface's credentials: the routes that take one are reached.
             context =
                 context.with_extension(Arc::new(permguard_telemetry::host::HostAuthenticator(
                     Arc::new(crate::signin_http::SessionBearers(Arc::clone(signin))),
                 )));
         }
+
+        // The first administrator (WP-8.2): a setup code while nobody administers the Host, or
+        // while a recovery started offline waits; the route answers `404` otherwise.
+        let setup = Arc::new(
+            permguard_host::setup::Setup::open(&volume)
+                .map_err(|error| anyhow::anyhow!("{error}"))
+                .context("opening host/setup/")?,
+        );
+        let supplied = match &setup_config.code_ref {
+            Some(reference) => {
+                let secrets = secrets.context(
+                    "host.setup.code_ref names a secret and this build resolved no secret store",
+                )?;
+                let secret = secrets.resolve(reference).with_context(|| {
+                    format!("resolving host.setup.code_ref `{}`", reference.name())
+                })?;
+                Some(zeroize::Zeroizing::new(
+                    String::from_utf8(secret.expose().to_vec())
+                        .context("host.setup.code_ref is not text")?,
+                ))
+            }
+            None => None,
+        };
+        let now = time.now_secs();
+        match setup
+            .prepare(
+                permguard_host::setup::administered(&grants, now),
+                supplied.as_ref().map(|code| code.as_str()),
+                setup_config.expires,
+                now,
+            )
+            .map_err(|error| anyhow::anyhow!("{error}"))
+            .context("preparing the setup code")?
+        {
+            permguard_host::setup::Prepared::Waiting { waiting, code_file } => {
+                let at = permguard_core::time::to_rfc3339(
+                    i64::try_from(waiting.expires_at).unwrap_or(i64::MAX),
+                );
+                let place = code_file.map_or_else(
+                    || "the secret host.setup.code_ref names".to_owned(),
+                    |path| path.display().to_string(),
+                );
+                tracing::warn!(
+                    event.name = "host.setup_waiting",
+                    component = "server",
+                    origin = waiting.origin.as_str(),
+                    code = %place,
+                    expires_at = %at,
+                    "no administrator: the first one is made with the setup code (`permguard setup`)"
+                );
+                context.health().lifecycle().degrade(
+                    permguard_core::lifecycle::HOST,
+                    permguard_host::setup::CAPABILITY,
+                    format!(
+                        "a setup code waits for the first administrator: in {place}, until {at}"
+                    ),
+                );
+            }
+            permguard_host::setup::Prepared::Closed => {}
+        }
+        if let Some(recovery) = setup
+            .recovery()
+            .map_err(|error| anyhow::anyhow!("{error}"))
+            .context("reading host/setup/recovery.json")?
+        {
+            let at = permguard_core::time::to_rfc3339(
+                i64::try_from(recovery.started_at).unwrap_or(i64::MAX),
+            );
+            tracing::warn!(
+                event.name = "host.recovery_waiting",
+                component = "server",
+                started_at = %at,
+                "a recovery was started offline: an administrator acknowledges it"
+            );
+            context.health().lifecycle().degrade(
+                permguard_core::lifecycle::HOST,
+                permguard_host::setup::RECOVERY_CAPABILITY,
+                format!(
+                    "a recovery was started offline at {at}: {}; acknowledge it (`permguard host recovery acknowledge`)",
+                    recovery.reason
+                ),
+            );
+        }
+        host_routes =
+            host_routes.merge(crate::setup_http::router(crate::setup_http::SetupRoutes {
+                setup: Arc::clone(&setup),
+                mutations: Arc::clone(&mutations),
+                directory: Arc::clone(&directory),
+                store: Arc::clone(&grants),
+                secure,
+                min_length,
+                health: context.health().clone(),
+                recorder: Some(recorder.clone()),
+                refusals: Arc::default(),
+            }));
+        context =
+            context.with_extension(Arc::new(permguard_telemetry::host::HostRoutes(host_routes)));
 
         // The Host API facade (WP-2.5), when the deployment has a Host listener: the replay
         // journal on the volume, the grant store, every ring this process composes and the
@@ -2701,6 +2807,8 @@ impl App {
                     |signin| signin.policy().min_length,
                 ),
             });
+            // The recovery an administrator acknowledges (WP-8.2).
+            let api = api.with_setup(Arc::clone(&setup));
             let api = Arc::new(api);
             serving = Some(Arc::clone(&api));
             context = context.with_host_handles(api);

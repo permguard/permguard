@@ -796,6 +796,29 @@ pub struct HostAuth {
     pub principals: Vec<PrincipalRule>,
     pub public: Vec<PublicGrantRule>,
     pub authentication: Authentication,
+    pub setup: Setup,
+}
+
+/// `host.setup` (WP-8.2, `1-architecture/1` First administrator and recovery): how the setup
+/// code a Host without an administrator waits for is made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Setup {
+    /// How long a code serves after it was made.
+    pub expires: std::time::Duration,
+    /// The secret that is the code, instead of one the Host makes and writes to its volume.
+    pub code_ref: Option<crate::secrets::SecretRef>,
+}
+
+/// How long a setup code serves by default.
+pub const DEFAULT_SETUP_EXPIRES: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
+impl Default for Setup {
+    fn default() -> Self {
+        Self {
+            expires: DEFAULT_SETUP_EXPIRES,
+            code_ref: None,
+        }
+    }
 }
 
 /// `host.authentication` (WP-8.1, `1-architecture/1` Local users and authentication methods):

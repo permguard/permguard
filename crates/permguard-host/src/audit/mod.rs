@@ -200,6 +200,15 @@ pub const REGISTRY: &[ActionSchema] = &[
         max_bytes: 8 * 1024,
         phases: false,
     },
+    // The first administrator and recovery (WP-8.2): never the code.
+    action(crate::setup::AUDIT_COMPLETED, Class::Security, HOST),
+    action(crate::setup::AUDIT_REFUSED, Class::Security, HOST),
+    action(crate::setup::AUDIT_RECOVERY_STARTED, Class::Security, HOST),
+    action(
+        crate::setup::AUDIT_RECOVERY_ACKNOWLEDGED,
+        Class::Security,
+        HOST,
+    ),
     // Password sign-in (WP-8.1): who, from where, how, and why a refusal; never a secret.
     ActionSchema {
         action: "host.signin.accepted",

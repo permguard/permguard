@@ -6301,7 +6301,7 @@ pub fn check_client_auth(tls: &TlsSettings, key: &str) -> Result<()> {
 ///
 /// Zero is refused rather than accepted as "no budget": a shutdown budget of nothing would mean the
 /// process kills itself before anything can be released, which nobody configures on purpose.
-pub(crate) fn parse_duration(value: &str) -> Result<Duration> {
+pub fn parse_duration(value: &str) -> Result<Duration> {
     const MILLISECOND: u64 = 1;
     const SECOND: u64 = 1_000;
     const MINUTE: u64 = 60 * SECOND;

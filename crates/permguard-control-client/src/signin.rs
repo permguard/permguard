@@ -37,6 +37,37 @@ pub struct Enrollment {
     pub uri: String,
 }
 
+/// A Host waiting for its first administrator (WP-8.2): never the code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetupStatus {
+    pub waiting: bool,
+    /// `generated`, `secret` or `recovery`.
+    pub origin: String,
+    /// RFC 3339.
+    pub expires_at: String,
+}
+
+/// What a setup asks: the code, and the first administrator it makes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetupRequest {
+    pub code: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+}
+
+/// The first administrator a setup made.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetupCompleted {
+    pub user: String,
+    pub principal: String,
+    /// The grant of `authz.admin` on `host`.
+    pub grant: Option<String>,
+    pub origin: String,
+}
+
 /// The Server Host surface at `url`, signing in.
 pub struct SignIn {
     client: Client,
@@ -118,6 +149,28 @@ impl SignIn {
             detail: format!("the answer to {what} was unreadable: {error}"),
             usage: false,
         })
+    }
+
+    /// `GET /auth/v1/setup`: whether the Host waits for its first administrator, `None` when it
+    /// does not. What Permguard Admin asks before it offers a setup.
+    pub fn setup_status(&self) -> Result<Option<SetupStatus>, Failure> {
+        match self.send("GET", "/auth/v1/setup", None) {
+            Ok(answer) => Self::read(answer, "the setup status").map(Some),
+            Err(failure) if failure.reason == "setup.closed" => Ok(None),
+            Err(failure) => Err(failure),
+        }
+    }
+
+    /// `POST /auth/v1/setup`: the first administrator, made with the Host's setup code.
+    pub fn setup(&self, request: &SetupRequest) -> Result<SetupCompleted, Failure> {
+        let body = serde_json::to_string(request).map_err(|error| Failure {
+            class: "internal".to_owned(),
+            reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
+            detail: error.to_string(),
+            usage: false,
+        })?;
+        let answer = self.send("POST", "/auth/v1/setup", Some(&body))?;
+        Self::read(answer, "the setup")
     }
 
     /// `POST /auth/v1/sessions`.

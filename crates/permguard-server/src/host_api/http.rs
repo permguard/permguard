@@ -72,6 +72,8 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/users/{name}/links", post(link_user))
         .route("/host/v1/users/{name}/links/remove", post(unlink_user))
         .route("/host/v1/users/{name}/delete", post(delete_user))
+        .route("/host/v1/recovery", get(recovery))
+        .route("/host/v1/recovery/acknowledge", post(acknowledge_recovery))
         .route("/host/v1/providers", get(list_providers))
         .route("/host/v1/providers/{name}/refresh", post(refresh_provider))
         .route("/host/v1/keys", get(list_rings))
@@ -1219,6 +1221,18 @@ async fn delete_user(
         StatusCode::OK,
         served.api.delete_user(&actor, &name, delete).await,
     )
+}
+
+async fn recovery(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    answer(&served, StatusCode::OK, served.api.recovery(&actor))
+}
+
+async fn acknowledge_recovery(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    let api = Arc::clone(&served.api);
+    let done = tokio::task::spawn_blocking(move || api.acknowledge_recovery(&actor))
+        .await
+        .unwrap_or_else(|_| Err(blocking_failed()));
+    answer(&served, StatusCode::OK, done)
 }
 
 async fn list_providers(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {

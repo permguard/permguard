@@ -171,6 +171,9 @@ The **State** cell is one of:
 | `host users unlink`         | `authz.admin`  | present |     |
 | `host users delete`         | `authz.admin`  | present |     |
 | `host users bootstrap`      | offline        | present |     |
+| `host recovery start`       | offline        | present |     |
+| `host recovery show`        | `authz.admin`  | present |     |
+| `host recovery acknowledge` | `authz.admin`  | present |     |
 | `host providers list`       | `authz.admin`  | present |     |
 | `host providers refresh`    | `authz.admin`  | present |     |
 | `login`                     | the user's own | present |     |
@@ -178,6 +181,7 @@ The **State** cell is one of:
 | `password`                  | the user's own | present |     |
 | `factor begin`              | the user's own | present |     |
 | `factor confirm`            | the user's own | present |     |
+| `setup`                     | the setup code | present |     |
 
 ## Audit
 

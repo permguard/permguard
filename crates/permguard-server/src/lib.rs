@@ -29,6 +29,7 @@ pub mod oidc_refresh;
 pub mod plane;
 pub mod prestop;
 pub mod repin;
+pub mod setup_http;
 pub mod shipping;
 pub mod signal;
 pub mod signin_http;

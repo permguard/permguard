@@ -67,6 +67,9 @@ pub fn host_command(
             super::directory::users(globals, server_config, action, trace)
         }
         HostAction::Providers { action } => super::directory::providers(globals, action, trace),
+        HostAction::Recovery { action } => {
+            super::directory::recovery(globals, server_config, action, trace)
+        }
         HostAction::Holds { action } => holds(globals, server_config, action, trace),
         HostAction::Identity { action } => identity(globals, server_config, action, trace),
         HostAction::Members { action } => members(globals, action, trace),
@@ -80,6 +83,30 @@ pub fn host_command(
     }
 }
 
+/// An offline bootstrap makes the first administrator of a volume, and runs again for the same
+/// principal changing nothing; when another administrator exists it is refused (WP-8.2): adding
+/// one then is a recovery, explicit and recorded.
+pub(super) fn refuse_second_administrator(
+    store: &GrantStore,
+    principal: &str,
+    now: u64,
+) -> Result<(), Failure> {
+    let admin = permguard_core::authz::Principal::new(principal).map_err(Failure::usage)?;
+    let holds = store.allows_at(now).permits(
+        &admin,
+        permguard_core::authz::operations::AUTHZ_ADMIN,
+        &permguard_core::authz::Resource::host(),
+    );
+    if !holds && permguard_host::setup::administered_by_another(store, principal, now) {
+        return Err(Failure::usage(
+            "another administrator already administers this Host: a bootstrap makes only the \
+             first one. To add one, ask an administrator; if every administrator is lost, run \
+             `permguard host recovery start --volume <dir> --reason <why>` on the stopped server",
+        ));
+    }
+    Ok(())
+}
+
 fn grants(
     globals: &Globals,
     server_config: Option<&Path>,
@@ -91,6 +118,9 @@ fn grants(
         GrantsAction::Bootstrap { fingerprint } => {
             let volume = volume_of(globals)?;
             let (store, mutations) = open_mutable(&volume, server_config, trace)?;
+            let principal = permguard_host::authz::store::bootstrap_principal(&fingerprint)
+                .map_err(|error| Failure::usage(error.to_string()))?;
+            refuse_second_administrator(&store, principal.as_str(), now)?;
             let (commitment, grant) =
                 grants::bootstrap(&mutations, &store, &fingerprint, now).map_err(refused)?;
             render(

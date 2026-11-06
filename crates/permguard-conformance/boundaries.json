@@ -1383,6 +1383,11 @@
       "reason": "a configuration value the operator sets"
     },
     {
+      "source": "crates/permguard-host/src/setup.rs",
+      "item": "Setup::open",
+      "reason": "the Host's own setup folder on its volume, written by this process and by the offline recovery, closed JSON shapes"
+    },
+    {
       "source": "crates/permguard-decisions/src/spool.rs",
       "item": "Spool::open",
       "reason": "the store's own directory on the Host's volume, written by this process"

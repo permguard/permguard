@@ -597,6 +597,31 @@ pub enum Command {
         #[command(subcommand)]
         action: FactorAction,
     },
+    /// Make the Host's first administrator with its setup code (WP-8.2), or, with `--check`,
+    /// say whether the Host waits for one. The code is read from a file, a password from
+    /// standard input: never an argument.
+    #[command(after_help = "Examples:
+  printf '%s' \"$PASSWORD\" | permguard setup https://pg.example:5443 --code-file setup-code --name alice --password-stdin
+  permguard setup https://pg.example:5443 --check -o json")]
+    Setup {
+        /// The Server Host surface: `https://host:port`.
+        url: String,
+        /// Only say whether the Host waits for its first administrator.
+        #[arg(long)]
+        check: bool,
+        /// The file holding the setup code: the Host's `host/setup/code`, or the secret's value.
+        #[arg(long, value_name = "FILE", required_unless_present = "check")]
+        code_file: Option<PathBuf>,
+        /// The first administrator's user name.
+        #[arg(long, required_unless_present = "check")]
+        name: Option<String>,
+        /// Its email, which a provider with `link: email` signs in as this user.
+        #[arg(long)]
+        email: Option<String>,
+        /// Read its password from standard input: never an argument.
+        #[arg(long)]
+        password_stdin: bool,
+    },
     /// Walk the discovery chain from one address: the process, each plane, each interface.
     ///
     /// The address is a process's telemetry listener or a plane's public one; every link is
@@ -1885,6 +1910,12 @@ pub enum HostAction {
         #[command(subcommand)]
         action: ProvidersAction,
     },
+    /// The recovery that makes a new setup code when every administrator is lost (WP-8.2):
+    /// started offline, acknowledged online.
+    Recovery {
+        #[command(subcommand)]
+        action: RecoveryAction,
+    },
     /// The Host identity; provisioning and emergency reset remain offline.
     Identity {
         #[command(subcommand)]
@@ -2907,6 +2938,34 @@ pub enum RolesAction {
         #[command(subcommand)]
         action: RolesApplyAction,
     },
+}
+
+/// `permguard host recovery …`.
+#[derive(Debug, Subcommand)]
+pub enum RecoveryAction {
+    /// Make a new setup code although administrators exist: offline, on the volume of a stopped
+    /// server, recorded with its reason; the Host is `degraded: recovery` until acknowledged.
+    #[command(
+        after_help = "Examples:\n  permguard --volume /var/lib/permguard host recovery start --reason \"every administrator left\"\n  permguard --volume ./volume host recovery start --reason \"the identity provider was retired\" --expires 2h -o json"
+    )]
+    Start {
+        /// Why: written to the audit trail and shown until the recovery is acknowledged.
+        #[arg(long)]
+        reason: String,
+        /// How long the code serves; `host.setup.expires`, 24h, when left out.
+        #[arg(long, value_name = "DURATION")]
+        expires: Option<String>,
+    },
+    /// The recovery waiting to be acknowledged, if any.
+    #[command(
+        after_help = "Examples:\n  permguard host recovery show\n  permguard host recovery show -o json"
+    )]
+    Show,
+    /// Acknowledge the recovery: the Host leaves `degraded: recovery`.
+    #[command(
+        after_help = "Examples:\n  permguard host recovery acknowledge\n  permguard host recovery acknowledge -o json"
+    )]
+    Acknowledge,
 }
 
 /// `permguard host roles apply …`.

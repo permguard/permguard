@@ -12,6 +12,8 @@ use permguard_host::api::directory::{
     Users,
 };
 
+use permguard_host::api::recovery::{RecoveryAcknowledged, RecoveryView};
+
 use super::{GrpcHost, RestHost, json, segment};
 use crate::catalog::Failure;
 use crate::host_proto as map;
@@ -44,6 +46,10 @@ pub trait Directory {
     fn delete_user(&self, name: &str, request: &Plain) -> Result<Changed, Failure>;
     fn providers(&self) -> Result<Providers, Failure>;
     fn refresh_provider(&self, name: &str) -> Result<ProviderView, Failure>;
+    /// The recovery started offline, waiting to be acknowledged (WP-8.2).
+    fn recovery(&self) -> Result<RecoveryView, Failure>;
+    /// Acknowledges it: the Host leaves `degraded: recovery`.
+    fn acknowledge_recovery(&self) -> Result<RecoveryAcknowledged, Failure>;
 }
 
 impl Directory for RestHost {
@@ -173,6 +179,14 @@ impl Directory for RestHost {
             &format!("/host/v1/providers/{}/refresh", segment(name)?),
             "{}",
         )
+    }
+
+    fn recovery(&self) -> Result<RecoveryView, Failure> {
+        self.get("/host/v1/recovery")
+    }
+
+    fn acknowledge_recovery(&self) -> Result<RecoveryAcknowledged, Failure> {
+        self.post("/host/v1/recovery/acknowledge", "{}")
     }
 }
 
@@ -564,5 +578,37 @@ impl Directory for GrpcHost {
             )
             .map(provider_in)
             .map_err(crate::grpc::failure_of)
+    }
+
+    fn recovery(&self) -> Result<RecoveryView, Failure> {
+        let answer = self
+            .0
+            .run(
+                "GetRecovery",
+                proto::operations_service_client::OperationsServiceClient::new(self.0.channel())
+                    .get_recovery(proto::GetRecoveryRequest {}),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(RecoveryView {
+            waiting: answer.waiting,
+            started_at: answer.started_at,
+            reason: answer.reason,
+        })
+    }
+
+    fn acknowledge_recovery(&self) -> Result<RecoveryAcknowledged, Failure> {
+        let answer = self
+            .0
+            .run(
+                "AcknowledgeRecovery",
+                proto::operations_service_client::OperationsServiceClient::new(self.0.channel())
+                    .acknowledge_recovery(proto::AcknowledgeRecoveryRequest {}),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(RecoveryAcknowledged {
+            acknowledged: answer.acknowledged,
+            started_at: answer.started_at,
+            reason: answer.reason,
+        })
     }
 }

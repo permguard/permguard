@@ -34,6 +34,7 @@ pub mod identity;
 pub mod keys;
 pub mod members;
 pub mod plans;
+pub mod recovery;
 pub mod replay;
 pub mod reset;
 pub mod sessions;
@@ -281,6 +282,8 @@ pub struct HostApi {
     local_shipping: Option<Arc<crate::membership::local::LocalShipping>>,
     /// Roles, local users and identity providers (WP-8.1), given once the server built them.
     identities: Option<directory::Identities>,
+    /// The setup folder, whose recovery an administrator acknowledges (WP-8.2).
+    setup: Option<Arc<crate::setup::Setup>>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -320,6 +323,7 @@ impl HostApi {
             volume: None,
             local_shipping: None,
             identities: None,
+            setup: None,
         }
     }
 
@@ -328,6 +332,12 @@ impl HostApi {
     /// Serves roles, local users and identity providers (WP-8.1).
     pub fn with_identities(mut self, identities: directory::Identities) -> Self {
         self.identities = Some(identities);
+        self
+    }
+
+    /// The setup folder of the volume, whose recovery an administrator acknowledges (WP-8.2).
+    pub fn with_setup(mut self, setup: Arc<crate::setup::Setup>) -> Self {
+        self.setup = Some(setup);
         self
     }
 
