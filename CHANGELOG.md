@@ -27,6 +27,12 @@ Nothing yet.
   Every command's description is one short sentence, with no internal work-package or tracking reference such as `(WP-8.1)` or `(TD-2)`.
   `reclaim` reads as what it does, reclaiming the storage of data plane replicas removed from a group once each is drained; `reclaim run` says it runs on Kubernetes.
 
+### Fixed
+
+- **Changing your own password keeps your session.**
+  A password change ends every other session of the user, and was meant to keep the one that made it; a session opened in an earlier second than the change was ended too, so `permguard password` or Admin's *My account* signed the user out at the next call.
+  The session that changes the password now records that it proved the new one.
+
 ## [0.1.22] - 2026-11-07
 
 ### Added

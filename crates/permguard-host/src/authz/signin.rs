@@ -284,7 +284,7 @@ impl SignIn {
         let current = user.status == UserStatus::Active
             && user
                 .password_set_at
-                .is_none_or(|set| set <= session.opened_at);
+                .is_none_or(|set| set <= session.proven_at);
         if !current {
             self.sessions.end(token);
             return None;
@@ -321,6 +321,14 @@ impl SignIn {
             },
         )?;
         let ended = self.sessions.end_user(&session.user, Some(token));
+        // The session that changed it proved the new password: it goes on, the others end.
+        if let Some(set) = self
+            .directory
+            .user(&session.user)
+            .and_then(|user| user.password_set_at)
+        {
+            self.sessions.proven(token, set);
+        }
         tracing::info!(
             event.name = "host.password_changed",
             component = "host",
@@ -664,6 +672,12 @@ mod tests {
         assert!(
             world.signin.session(&other).is_none(),
             "the other session ended"
+        );
+        // The session that changed it goes on, a second later as at once.
+        world.wall.jump(1);
+        assert!(
+            world.signin.session(&kept).is_some(),
+            "the session that changed the password goes on"
         );
         assert!(
             world

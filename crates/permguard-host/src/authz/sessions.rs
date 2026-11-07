@@ -52,8 +52,11 @@ impl Opened {
 pub struct Session {
     pub user: String,
     pub opened: Opened,
-    /// Unix seconds it opened at: a password set after it ends it.
+    /// Unix seconds it opened at.
     pub opened_at: u64,
+    /// Unix seconds its user last proved the password, at the sign-in or at a change of its own
+    /// password: a password set after it ends the session.
+    pub proven_at: u64,
     /// Unix seconds it ends at, whatever its use.
     pub expires_at: u64,
 }
@@ -123,6 +126,7 @@ impl Sessions {
             user: user.to_owned(),
             opened,
             opened_at: wall,
+            proven_at: wall,
             expires_at: wall + self.lifetime.as_secs(),
         };
         let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
@@ -197,6 +201,17 @@ impl Sessions {
     }
 
     /// Ends every session of `user`, but the one `keep` names; how many ended.
+    /// Records that the user of the session `token` proved the password again at `at`, as a change
+    /// of its own password does: a password set up to then no longer ends it. Its lifetime is
+    /// not extended.
+    pub fn proven(&self, token: &str, at: u64) {
+        let key = digest(token);
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(held) = held.get_mut(&key) {
+            held.session.proven_at = held.session.proven_at.max(at);
+        }
+    }
+
     pub fn end_user(&self, user: &str, keep: Option<&str>) -> usize {
         let keep = keep.map(digest);
         let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
