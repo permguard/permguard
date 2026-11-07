@@ -415,8 +415,16 @@ mod tests {
             &tokio::runtime::Handle::current(),
         );
 
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        assert!(matches!(held.admits(KEY), Admits::No { overruns: 3, .. }));
+        // Polled rather than slept once: a timer fires on the platform's tick, about 15.6 ms on
+        // Windows, so one short sleep can wake before the watchdog has.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !matches!(held.admits(KEY), Admits::No { overruns: 3, .. }) {
+            assert!(
+                Instant::now() < deadline,
+                "the watchdog never recorded the overrun"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     }
 
     /// A reserved probe that never runs gives the reservation back.
