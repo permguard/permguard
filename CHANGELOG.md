@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.23] - 2026-11-07
+
 ### Changed
 
 - **The command line's help says what a command does, for any deployment.**
