@@ -1,0 +1,37 @@
+{
+  "artifact": "Directory transition: roles, their members, local users, service accounts and their credentials",
+  "authority": "1-architecture/1-architecture-server.md#authorization-store, 2-security/3-security-local-users.md, 2-security/8-security-iam.md#service-accounts (labels 15 to 23, iteration 02 WP-11.2); crates/permguard-host/src/authz/directory.rs (DirectoryTransition)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "directory_transition": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "text", "occurs": "required", "note": "role.create, role.update, role.delete, member.add, member.remove, user.create, user.update, user.password, user.factor, user.status, user.link, user.unlink, user.delete, sa.create, sa.update, sa.status, sa.delete, credential.add, credential.revoke" },
+        { "label": 2, "name": "revision", "type": "uint", "occurs": "required", "note": "the directory revision the transition is" },
+        { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "seconds UTC" },
+        { "label": 4, "name": "by", "type": "text", "occurs": "required", "note": "who made it" },
+        { "label": 5, "name": "operation_id", "type": "bytes", "occurs": "optional", "note": "exactly 16 bytes: the security mutation that made it" },
+        { "label": 6, "name": "name", "type": "text", "occurs": "required", "note": "the role, the user or the service account" },
+        { "label": 7, "name": "description", "type": "text", "occurs": "optional", "note": "role.create, role.update, sa.create, sa.update" },
+        { "label": 8, "name": "member", "type": "text", "occurs": "optional", "note": "member.add, member.remove" },
+        { "label": 9, "name": "email", "type": "text", "occurs": "optional", "note": "user.create, user.update" },
+        { "label": 10, "name": "display", "type": "text", "occurs": "optional", "note": "user.create, user.update" },
+        { "label": 11, "name": "password", "type": "text", "occurs": "optional", "note": "user.create, user.password: an Argon2id PHC string" },
+        { "label": 12, "name": "factor", "type": "bytes", "occurs": "optional", "note": "user.factor: the sealed secret; absent resets it" },
+        { "label": 13, "name": "status", "type": "text", "occurs": "optional", "note": "user.status: active or disabled; sa.status: active or suspended" },
+        { "label": 14, "name": "subject", "type": "text", "occurs": "optional", "note": "user.link, user.unlink" },
+        { "label": 15, "name": "owner", "type": "text", "occurs": "optional", "note": "sa.create, sa.update: the team accountable for the account" },
+        { "label": 16, "name": "credential_id", "type": "bytes", "occurs": "optional", "note": "credential.add, credential.revoke: exactly 16 bytes" },
+        { "label": 17, "name": "credential_kind", "type": "text", "occurs": "optional", "note": "credential.add: client_secret, private_key_jwt or tls_client_auth" },
+        { "label": 18, "name": "secret", "type": "text", "occurs": "optional", "note": "credential.add of a client_secret: an Argon2id PHC string" },
+        { "label": 19, "name": "public_key", "type": "bytes", "occurs": "optional", "note": "credential.add of a private_key_jwt: 32 bytes Ed25519, or a 65-byte uncompressed P-256 point" },
+        { "label": 20, "name": "algorithm", "type": "text", "occurs": "optional", "note": "credential.add of a private_key_jwt: EdDSA or ES256" },
+        { "label": 21, "name": "key_id", "type": "text", "occurs": "optional", "note": "credential.add of a private_key_jwt: the RFC 7638 thumbprint of the key" },
+        { "label": 22, "name": "binding", "type": "text", "occurs": "optional", "note": "credential.add of a tls_client_auth: spki:sha256:<64 lowercase hex> or a SAN URI" },
+        { "label": 23, "name": "expires_at", "type": "uint", "occurs": "optional", "note": "credential.add: seconds UTC" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": "directory_transition"
+}

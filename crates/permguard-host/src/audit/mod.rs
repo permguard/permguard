@@ -186,6 +186,15 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.user.linked", HOST),
     mutation("host.user.unlinked", HOST),
     mutation("host.user.deleted", HOST),
+    // The IAM Host's service accounts and their credentials (iteration 02, WP-11.2); a client
+    // secret, its hash or a key is never a fact.
+    mutation("iam.service_account.created", HOST),
+    mutation("iam.service_account.updated", HOST),
+    mutation("iam.service_account.suspended", HOST),
+    mutation("iam.service_account.resumed", HOST),
+    mutation("iam.service_account.deleted", HOST),
+    mutation("iam.credential.created", HOST),
+    mutation("iam.credential.revoked", HOST),
     // A Host API call a role's or an issuer's grant allowed (WP-8.1): the principal is the
     // record's subject, the grant's holder a fact, so a role-derived access is never anonymous
     // in the trail.

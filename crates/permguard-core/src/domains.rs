@@ -368,6 +368,7 @@ pub mod grpc {
     pub const IAM_USER_SERVICE: &str = "permguard.iam.v1.UserService";
     pub const IAM_PROVIDER_SERVICE: &str = "permguard.iam.v1.ProviderService";
     pub const IAM_RECOVERY_SERVICE: &str = "permguard.iam.v1.RecoveryService";
+    pub const IAM_SERVICE_ACCOUNT_SERVICE: &str = "permguard.iam.v1.ServiceAccountService";
 }
 
 /// Labels inside HKDF `info` tuples.
@@ -747,6 +748,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("grpc.IAM_USER_SERVICE", grpc::IAM_USER_SERVICE),
         ("grpc.IAM_PROVIDER_SERVICE", grpc::IAM_PROVIDER_SERVICE),
         ("grpc.IAM_RECOVERY_SERVICE", grpc::IAM_RECOVERY_SERVICE),
+        (
+            "grpc.IAM_SERVICE_ACCOUNT_SERVICE",
+            grpc::IAM_SERVICE_ACCOUNT_SERVICE,
+        ),
     ]
 }
 

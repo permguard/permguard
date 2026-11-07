@@ -236,7 +236,7 @@ fn invalid(message: impl Into<String>) -> Refusal {
     )
 }
 
-fn refusal_of(error: DirectoryError) -> Refusal {
+pub(super) fn refusal_of(error: DirectoryError) -> Refusal {
     match error {
         DirectoryError::Invalid(detail) => invalid(detail),
         DirectoryError::NotFound(detail) => {
@@ -284,7 +284,7 @@ fn provider_view(verifier: &Verifier) -> ProviderView {
 }
 
 impl HostApi {
-    fn identities(&self) -> Result<&Identities, Refusal> {
+    pub(super) fn identities(&self) -> Result<&Identities, Refusal> {
         self.identities.as_ref().ok_or_else(|| {
             Refusal::new(
                 ErrorClass::Unavailable,
@@ -295,7 +295,7 @@ impl HostApi {
     }
 
     /// The active grants `principal` holds, in revision order.
-    fn grants_of(&self, principal: &str) -> Vec<GrantView> {
+    pub(super) fn grants_of(&self, principal: &str) -> Vec<GrantView> {
         let now = self.time.now_secs();
         let mut grants: Vec<GrantView> = self
             .store
@@ -484,7 +484,7 @@ impl HostApi {
     }
 
     /// Applies one directory change as one security mutation.
-    async fn change_directory<R: Serialize>(
+    pub(super) async fn change_directory<R: Serialize>(
         &self,
         actor: &Actor,
         request: &R,
@@ -538,7 +538,7 @@ impl HostApi {
     }
 
     /// Refuses deleting `principal` while it holds active grants, naming them.
-    fn holds_no_grants(&self, principal: &str) -> Result<(), Refusal> {
+    pub(super) fn holds_no_grants(&self, principal: &str) -> Result<(), Refusal> {
         let held = self.grants_of(principal);
         if held.is_empty() {
             return Ok(());
@@ -660,7 +660,7 @@ impl HostApi {
     /// Authorizes before a password is looked at: a caller without the grant learns nothing of
     /// the policy and never makes the Host spend an Argon2id hash. The mutation admits again,
     /// with its bound.
-    fn authorized_first(&self, actor: &Actor) -> Result<(), Refusal> {
+    pub(super) fn authorized_first(&self, actor: &Actor) -> Result<(), Refusal> {
         self.authorization.authorize(
             actor,
             operations::AUTHZ_ADMIN,

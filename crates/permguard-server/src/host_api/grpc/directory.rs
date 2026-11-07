@@ -17,7 +17,7 @@ use super::super::iam_v1::user_service_server::UserService;
 use super::super::v1;
 use super::{Answer, Served, grant, receipt};
 
-fn changed(changed: Changed) -> v1::DirectoryChangeResponse {
+pub(super) fn changed(changed: Changed) -> v1::DirectoryChangeResponse {
     v1::DirectoryChangeResponse {
         receipt: Some(receipt(changed.receipt)),
         revision: changed.revision,

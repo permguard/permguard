@@ -4496,6 +4496,290 @@ async fn a_member_serves_no_directory_on_either_binding() {
     assert!(rpcs >= 20, "{rpcs} directory methods checked");
 }
 
+/// Every file under `root`, read whole: what a secret must never be found in.
+fn volume_holds(root: &std::path::Path, needle: &[u8]) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir).expect("the volume reads").flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if std::fs::read(&path)
+                .is_ok_and(|bytes| bytes.windows(needle.len()).any(|window| window == needle))
+            {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+/// WP-11.2: a service account and its three kinds of credential over REST. A client secret is
+/// answered once, by the call that drew it: a retry answers the same credential without it, no
+/// read shows it, and no file of the volume holds it. A binding names one account; a revoked
+/// credential is listed `revoked`; an account holding a grant is not deleted.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_service_account_secret_is_answered_once_and_never_kept() {
+    let root = std::env::temp_dir().join(format!(
+        "permguard-host-api-service-accounts-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let rest = Transport::Rest(
+        host_api::http::routes(facade("service-accounts"), Disclosure::Minimal)
+            .layer(ActorLayer::new(Arc::new(Bearers))),
+    );
+    let answered = |outcome: Outcome| match outcome {
+        Outcome::Answered(body) => body,
+        Outcome::Refused { code, .. } => panic!("refused: {code}"),
+    };
+    let refused = |outcome: Outcome| match outcome {
+        Outcome::Refused { code, .. } => code,
+        Outcome::Answered(body) => panic!("answered: {body}"),
+    };
+    let post = |path: &'static str, body: Value| rest.rest("POST", path, Some(ADMIN), Some(body));
+    for name in ["billing", "reports"] {
+        answered(
+            rest.rest(
+                "POST",
+                "/iam/v1/service-accounts",
+                Some(ADMIN),
+                Some(
+                    json!({"request_id": format!("sa-{name}"), "name": name, "owner": "payments"}),
+                ),
+            )
+            .await,
+        );
+    }
+    // A stranger makes nothing, and learns nothing of the account.
+    assert_eq!(
+        refused(
+            rest.rest(
+                "POST",
+                "/iam/v1/service-accounts/billing/credentials",
+                Some(STRANGER),
+                Some(json!({"request_id": "c0", "kind": "client_secret"})),
+            )
+            .await
+        ),
+        "forbidden"
+    );
+
+    let first = answered(
+        post(
+            "/iam/v1/service-accounts/billing/credentials",
+            json!({"request_id": "c1", "kind": "client_secret"}),
+        )
+        .await,
+    );
+    let secret = first["client_secret"]
+        .as_str()
+        .expect("the secret, once")
+        .to_owned();
+    assert!(secret.starts_with("pgc_") && secret.len() == 47, "{secret}");
+    assert_eq!(first["credential"]["kind"], "client_secret");
+    assert_eq!(first["credential"]["status"], "active");
+    let retried = answered(
+        post(
+            "/iam/v1/service-accounts/billing/credentials",
+            json!({"request_id": "c1", "kind": "client_secret"}),
+        )
+        .await,
+    );
+    assert_eq!(retried["credential"]["id"], first["credential"]["id"]);
+    assert_eq!(
+        retried["client_secret"],
+        Value::Null,
+        "a retry never answers the secret"
+    );
+
+    let key = answered(
+        post(
+            "/iam/v1/service-accounts/billing/credentials",
+            json!({"request_id": "c2", "kind": "private_key_jwt", "public_key": {
+                "kty": "OKP", "crv": "Ed25519", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+            }}),
+        )
+        .await,
+    );
+    assert_eq!(
+        key["credential"]["key_id"],
+        "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k"
+    );
+    assert_eq!(key["client_secret"], Value::Null);
+    assert_eq!(
+        refused(
+            post(
+                "/iam/v1/service-accounts/billing/credentials",
+                json!({"request_id": "c3", "kind": "private_key_jwt", "public_key": {
+                    "kty": "OKP", "crv": "Ed25519", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+                    "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A"
+                }}),
+            )
+            .await
+        ),
+        "invalid_argument",
+        "a private key is never taken"
+    );
+    answered(
+        post(
+            "/iam/v1/service-accounts/billing/credentials",
+            json!({"request_id": "c4", "kind": "tls_client_auth", "certificate": "spiffe://acme/jobs"}),
+        )
+        .await,
+    );
+    assert_eq!(
+        refused(
+            post(
+                "/iam/v1/service-accounts/reports/credentials",
+                json!({"request_id": "c5", "kind": "tls_client_auth", "certificate": "spiffe://acme/jobs"}),
+            )
+            .await
+        ),
+        "conflict",
+        "one binding names one account"
+    );
+
+    let id = first["credential"]["id"]
+        .as_str()
+        .expect("an id")
+        .to_owned();
+    let revoke = format!("/iam/v1/service-accounts/billing/credentials/{id}/revoke");
+    answered(
+        rest.rest(
+            "POST",
+            &revoke,
+            Some(ADMIN),
+            Some(json!({"request_id": "r1"})),
+        )
+        .await,
+    );
+    let detail = answered(
+        rest.rest("GET", "/iam/v1/service-accounts/billing", Some(ADMIN), None)
+            .await,
+    );
+    assert_eq!(detail["service_account"]["credentials"], 2, "two live");
+    assert_eq!(detail["credentials"][0]["status"], "revoked");
+    let listed = answered(
+        rest.rest(
+            "GET",
+            "/iam/v1/service-accounts/billing/credentials",
+            Some(ADMIN),
+            None,
+        )
+        .await,
+    );
+    for read in [&detail, &listed] {
+        let text = read.to_string();
+        assert!(
+            !text.contains(&secret) && !text.contains("argon2"),
+            "{text}"
+        );
+    }
+    assert!(
+        volume_holds(&root, secret.as_bytes()).is_empty(),
+        "the secret reached the volume"
+    );
+
+    answered(
+        post(
+            "/iam/v1/grants",
+            json!({"request_id": "g1", "principal": "sa:billing", "operations": ["catalog.read"],
+                   "selector": "plane/control/*", "resource_types": ["*"]}),
+        )
+        .await,
+    );
+    assert_eq!(
+        refused(
+            post(
+                "/iam/v1/service-accounts/billing/delete",
+                json!({"request_id": "d1"}),
+            )
+            .await
+        ),
+        "conflict",
+        "an account holding a grant is not deleted"
+    );
+    answered(
+        post(
+            "/iam/v1/service-accounts/reports/delete",
+            json!({"request_id": "d2"}),
+        )
+        .await,
+    );
+    assert_eq!(
+        refused(
+            rest.rest("GET", "/iam/v1/service-accounts/reports", Some(ADMIN), None)
+                .await
+        ),
+        "not_found"
+    );
+}
+
+/// The same over gRPC: the secret is answered by the call that drew it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_service_account_secret_is_answered_once_over_grpc() {
+    let mut grpc = tonic::service::RoutesBuilder::default();
+    let served = host_api::grpc::Served::new(facade("service-accounts-grpc"), Disclosure::Minimal);
+    use permguard_server::host_api::iam_v1 as served_iam;
+    grpc.add_service(
+        served_iam::service_account_service_server::ServiceAccountServiceServer::with_interceptor(
+            served,
+            bearer_interceptor,
+        ),
+    );
+    let served = serve(axum::Router::new(), grpc.routes());
+    let url = format!("http://{}", served.grpc.trim_start_matches("grpc://"));
+    let mut accounts =
+        iam_v1::service_account_service_client::ServiceAccountServiceClient::connect(url)
+            .await
+            .expect("the gRPC endpoint answers");
+    accounts
+        .create_service_account(Transport::grpc_request(
+            Some(ADMIN),
+            iam_v1::CreateServiceAccountRequest {
+                request_id: "sa".to_owned(),
+                expected_revision: None,
+                name: "billing".to_owned(),
+                owner: "payments".to_owned(),
+                description: String::new(),
+            },
+        ))
+        .await
+        .expect("an account");
+    let create = || iam_v1::CreateCredentialRequest {
+        name: "billing".to_owned(),
+        request_id: "c1".to_owned(),
+        expected_revision: None,
+        kind: "client_secret".to_owned(),
+        public_key: std::collections::HashMap::new(),
+        certificate: None,
+        expires_at: None,
+    };
+    let first = accounts
+        .create_credential(Transport::grpc_request(Some(ADMIN), create()))
+        .await
+        .expect("a credential")
+        .into_inner();
+    assert!(
+        first
+            .client_secret
+            .as_deref()
+            .is_some_and(|secret| secret.starts_with("pgc_"))
+    );
+    let retried = accounts
+        .create_credential(Transport::grpc_request(Some(ADMIN), create()))
+        .await
+        .expect("the same credential")
+        .into_inner();
+    assert_eq!(retried.client_secret, None);
+    assert_eq!(
+        retried.credential.map(|credential| credential.id),
+        first.credential.map(|credential| credential.id)
+    );
+}
+
 /// A password is looked at only once the caller is authorized: without the grant, a password the
 /// policy refuses is answered `401` or `403`, never the policy, and the Host spends no Argon2id
 /// hash on it (WP-8.1).

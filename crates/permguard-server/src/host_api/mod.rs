@@ -86,8 +86,11 @@ pub fn grpc_routes(api: Arc<HostApi>, disclosure: Disclosure) -> tonic::service:
             served.clone(),
         ));
         routes.add_service(iam_v1::recovery_service_server::RecoveryServiceServer::new(
-            served,
+            served.clone(),
         ));
+        routes.add_service(
+            iam_v1::service_account_service_server::ServiceAccountServiceServer::new(served),
+        );
     }
     routes.routes()
 }

@@ -7701,10 +7701,1512 @@
         },
         "x-grpc-rpc": "permguard.iam.v1.RecoveryService/AcknowledgeRecovery"
       }
+    },
+    "/iam/v1/service-accounts": {
+      "get": {
+        "operationId": "listServiceAccounts",
+        "summary": "The service accounts",
+        "description": "Under `authz.admin` on the IAM Host. Never a credential's secret.",
+        "responses": {
+          "200": {
+            "description": "Every service account and the directory revision they were read at.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccountList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/ListServiceAccounts"
+      },
+      "post": {
+        "operationId": "createServiceAccount",
+        "summary": "Create a service account",
+        "description": "Under `authz.admin` on the IAM Host. Mutation `directory.service_account.create`, audited `iam.service_account.created`.",
+        "requestBody": {
+          "required": true,
+          "description": "The account's name, its owner and an optional description.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServiceAccountBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A service account of that name exists (`conflict`), or the directory revision differs from `expected_revision` (`revision_mismatch`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/CreateServiceAccount"
+      }
+    },
+    "/iam/v1/service-accounts/{name}": {
+      "get": {
+        "operationId": "getServiceAccount",
+        "summary": "A service account",
+        "description": "Under `authz.admin` on the IAM Host. Its roles, its active grants and its credentials, never a secret.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The service account's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`; its principal is `sa:<name>`.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account, its grants and credentials, and the directory revision they were read at.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccountDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No service account has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/GetServiceAccount"
+      },
+      "patch": {
+        "operationId": "updateServiceAccount",
+        "summary": "Update a service account",
+        "description": "Under `authz.admin` on the IAM Host. Mutation `directory.service_account.update`, audited `iam.service_account.updated`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The service account's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`; its principal is `sa:<name>`.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The owner or the description to set; an absent member is left as it is.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateServiceAccountBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No service account has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/UpdateServiceAccount"
+      }
+    },
+    "/iam/v1/service-accounts/{name}/suspend": {
+      "post": {
+        "operationId": "suspendServiceAccount",
+        "summary": "Suspend a service account",
+        "description": "Under `authz.admin` on the IAM Host. Mutation `directory.service_account.suspend`, audited `iam.service_account.suspended`. A suspended account obtains no token.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The service account's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`; its principal is `sa:<name>`.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and, optionally, the directory revision read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetServiceAccountStatusBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No service account has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user holds active grants, named in the message (`conflict`), or the directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/SetServiceAccountStatus"
+      }
+    },
+    "/iam/v1/service-accounts/{name}/resume": {
+      "post": {
+        "operationId": "resumeServiceAccount",
+        "summary": "Resume a service account",
+        "description": "Under `authz.admin` on the IAM Host. Mutation `directory.service_account.resume`, audited `iam.service_account.resumed`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The service account's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`; its principal is `sa:<name>`.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and, optionally, the directory revision read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetServiceAccountStatusBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No service account has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user holds active grants, named in the message (`conflict`), or the directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/SetServiceAccountStatus"
+      }
+    },
+    "/iam/v1/service-accounts/{name}/delete": {
+      "post": {
+        "operationId": "deleteServiceAccount",
+        "summary": "Delete a service account",
+        "description": "Under `authz.admin` on the IAM Host. Mutation `directory.service_account.delete`, audited `iam.service_account.deleted`. Refused while it holds active grants; its credentials go with it, and it leaves every role.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The service account's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`; its principal is `sa:<name>`.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and, optionally, the directory revision read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceAccountPlainBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No service account has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "It holds active grants, which the refusal names (`conflict`), or the directory revision differs from `expected_revision` (`revision_mismatch`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/DeleteServiceAccount"
+      }
+    },
+    "/iam/v1/service-accounts/{name}/credentials": {
+      "get": {
+        "operationId": "listCredentials",
+        "summary": "A service account's credentials",
+        "description": "Under `authz.admin` on the IAM Host. Each credential's kind, how it stands and what proves it, never a secret.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The service account's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`; its principal is `sa:<name>`.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every credential of the account, live or not.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No service account has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/ListCredentials"
+      },
+      "post": {
+        "operationId": "createCredential",
+        "summary": "Make a credential",
+        "description": "Under `authz.admin` on the IAM Host. Mutation `directory.credential.create`, audited `iam.credential.created`. A `client_secret` is drawn by the Host and answered once, here; a retry with the same request id answers the credential without it.",
+        "requestBody": {
+          "required": true,
+          "description": "The credential's kind and what proves it.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCredentialBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The credential, its receipt and the directory revision after it; the client secret when this call drew it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No service account has that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The key or the binding is held already (`conflict`), or the directory revision differs from `expected_revision` (`revision_mismatch`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/CreateCredential",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The service account's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`; its principal is `sa:<name>`.",
+            "x-grpc-field": "name"
+          }
+        ]
+      }
+    },
+    "/iam/v1/service-accounts/{name}/credentials/{id}/revoke": {
+      "post": {
+        "operationId": "revokeCredential",
+        "summary": "Revoke a credential",
+        "description": "Under `authz.admin` on the IAM Host. Mutation `directory.credential.revoke`, audited `iam.credential.revoked`. It proves nothing from then on; revoking it again writes nothing.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The service account's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`; its principal is `sa:<name>`.",
+            "x-grpc-field": "name"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The credential's id, a UUID.",
+            "x-grpc-field": "id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and, optionally, the directory revision read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeCredentialBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The change, its receipt and the directory revision after it; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No service account has that name, or it has no such credential (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user holds active grants, named in the message (`conflict`), or the directory revision differs from `expected_revision` (`revision_mismatch`, carrying the current one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/RevokeCredential"
+      }
     }
   },
   "components": {
     "schemas": {
+      "ServiceAccountSummary": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The account's name; its principal is `sa:<name>`.",
+            "x-grpc-field": "name"
+          },
+          "owner": {
+            "type": "string",
+            "description": "The team accountable for it.",
+            "x-grpc-field": "owner"
+          },
+          "description": {
+            "type": "string",
+            "description": "What it is for; empty when none.",
+            "x-grpc-field": "description"
+          },
+          "status": {
+            "type": "string",
+            "description": "`active` or `suspended`.",
+            "x-grpc-field": "status",
+            "enum": [
+              "active",
+              "suspended"
+            ]
+          },
+          "credentials": {
+            "type": "integer",
+            "description": "Its live credentials: active and not expired.",
+            "x-grpc-field": "credentials",
+            "minimum": 0
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The roles it is a member of.",
+            "x-grpc-field": "roles"
+          },
+          "revision": {
+            "type": "integer",
+            "description": "The directory revision of its last transition.",
+            "x-grpc-field": "revision",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "owner",
+          "description",
+          "status",
+          "credentials",
+          "roles",
+          "revision"
+        ],
+        "additionalProperties": false,
+        "description": "One service account, never a secret.",
+        "x-grpc-message": "permguard.iam.v1.ServiceAccountSummary"
+      },
+      "ServiceAccountList": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "description": "The directory revision the list was read at.",
+            "x-grpc-field": "revision",
+            "minimum": 0
+          },
+          "service_accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceAccountSummary"
+            },
+            "description": "Every service account, by name.",
+            "x-grpc-field": "service_accounts"
+          }
+        },
+        "required": [
+          "revision",
+          "service_accounts"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /iam/v1/service-accounts` answers.",
+        "x-grpc-message": "permguard.iam.v1.ListServiceAccountsResponse"
+      },
+      "Credential": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The credential's id, a UUID.",
+            "x-grpc-field": "id"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`client_secret`, `private_key_jwt` or `tls_client_auth`.",
+            "x-grpc-field": "kind",
+            "enum": [
+              "client_secret",
+              "private_key_jwt",
+              "tls_client_auth"
+            ]
+          },
+          "key_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A `private_key_jwt`'s RFC 7638 thumbprint, the `kid` its assertions name; `null` otherwise.",
+            "x-grpc-field": "key_id"
+          },
+          "algorithm": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A `private_key_jwt`'s algorithm, `EdDSA` or `ES256`; `null` otherwise.",
+            "x-grpc-field": "algorithm"
+          },
+          "binding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A `tls_client_auth`'s binding, `spki:sha256:<hex>` or a SAN URI; `null` otherwise.",
+            "x-grpc-field": "binding"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "When it was made, RFC 3339.",
+            "x-grpc-field": "created_at"
+          },
+          "created_by": {
+            "type": "string",
+            "description": "Who made it.",
+            "x-grpc-field": "created_by"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When it expires, RFC 3339; `null` when it does not.",
+            "x-grpc-field": "expires_at"
+          },
+          "status": {
+            "type": "string",
+            "description": "`active`, `expired` or `revoked`.",
+            "x-grpc-field": "status",
+            "enum": [
+              "active",
+              "expired",
+              "revoked"
+            ]
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When it was revoked, RFC 3339; `null` while it is not.",
+            "x-grpc-field": "revoked_at"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "key_id",
+          "algorithm",
+          "binding",
+          "created_at",
+          "created_by",
+          "expires_at",
+          "status",
+          "revoked_at"
+        ],
+        "additionalProperties": false,
+        "description": "One credential, never its secret.",
+        "x-grpc-message": "permguard.iam.v1.Credential"
+      },
+      "CredentialList": {
+        "type": "object",
+        "properties": {
+          "credentials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Credential"
+            },
+            "description": "Every credential of the account, live or not, oldest first.",
+            "x-grpc-field": "credentials"
+          }
+        },
+        "required": [
+          "credentials"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /iam/v1/service-accounts/{name}/credentials` answers.",
+        "x-grpc-message": "permguard.iam.v1.ListCredentialsResponse"
+      },
+      "ServiceAccountDetail": {
+        "type": "object",
+        "properties": {
+          "service_account": {
+            "$ref": "#/components/schemas/ServiceAccountSummary",
+            "description": "The account.",
+            "x-grpc-field": "service_account"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Grant"
+            },
+            "description": "The active grants `sa:<name>` holds.",
+            "x-grpc-field": "grants"
+          },
+          "credentials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Credential"
+            },
+            "description": "Its credentials, live or not, oldest first.",
+            "x-grpc-field": "credentials"
+          },
+          "directory_revision": {
+            "type": "integer",
+            "description": "The directory revision it was read at.",
+            "x-grpc-field": "directory_revision",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "service_account",
+          "grants",
+          "credentials",
+          "directory_revision"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /iam/v1/service-accounts/{name}` answers.",
+        "x-grpc-message": "permguard.iam.v1.GetServiceAccountResponse"
+      },
+      "CreateServiceAccountBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          },
+          "name": {
+            "type": "string",
+            "description": "The service account's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`; its principal is `sa:<name>`.",
+            "x-grpc-field": "name"
+          },
+          "owner": {
+            "type": "string",
+            "description": "The team accountable for it: 1 to 256 bytes, on one line.",
+            "x-grpc-field": "owner"
+          },
+          "description": {
+            "type": "string",
+            "description": "What it is for, at most 1,024 bytes on one line. Optional; empty when absent.",
+            "x-grpc-field": "description"
+          }
+        },
+        "required": [
+          "request_id",
+          "name",
+          "owner"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /iam/v1/service-accounts` carries. A closed body.",
+        "x-grpc-message": "permguard.iam.v1.CreateServiceAccountRequest"
+      },
+      "UpdateServiceAccountBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The owner to set. Optional: absent leaves it.",
+            "x-grpc-field": "owner"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The description to set. Optional: absent leaves it.",
+            "x-grpc-field": "description"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `PATCH /iam/v1/service-accounts/{name}` carries. A closed body.",
+        "x-grpc-message": "permguard.iam.v1.UpdateServiceAccountRequest",
+        "x-grpc-only": [
+          "name"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST."
+      },
+      "SetServiceAccountStatusBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /iam/v1/service-accounts/{name}/suspend` and `…/resume` carry; the route says which. A closed body.",
+        "x-grpc-message": "permguard.iam.v1.SetServiceAccountStatusRequest",
+        "x-grpc-only": [
+          "name",
+          "active"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST, and `active` is the path's last segment."
+      },
+      "ServiceAccountPlainBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /iam/v1/service-accounts/{name}/delete` carries. A closed body.",
+        "x-grpc-message": "permguard.iam.v1.ServiceAccountPlainRequest",
+        "x-grpc-only": [
+          "name"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST."
+      },
+      "RevokeCredentialBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /iam/v1/service-accounts/{name}/credentials/{id}/revoke` carries. A closed body.",
+        "x-grpc-message": "permguard.iam.v1.RevokeCredentialRequest",
+        "x-grpc-only": [
+          "name",
+          "id"
+        ],
+        "x-grpc-note": "`name` and `id` travel in the path on REST."
+      },
+      "CreateCredentialBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The directory revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`client_secret`, `private_key_jwt` or `tls_client_auth`.",
+            "x-grpc-field": "kind",
+            "enum": [
+              "client_secret",
+              "private_key_jwt",
+              "tls_client_auth"
+            ]
+          },
+          "public_key": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "A `private_key_jwt`'s public JWK, its members as text: `OKP` `Ed25519` or `EC` `P-256`, no private member. Given for that kind only.",
+            "x-grpc-field": "public_key"
+          },
+          "certificate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A `tls_client_auth`'s `spki:sha256:<64 lowercase hex>` or SAN URI. Given for that kind only.",
+            "x-grpc-field": "certificate"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When it expires, RFC 3339 and in the future. Optional.",
+            "x-grpc-field": "expires_at"
+          }
+        },
+        "required": [
+          "request_id",
+          "kind"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /iam/v1/service-accounts/{name}/credentials` carries. A closed body.",
+        "x-grpc-message": "permguard.iam.v1.CreateCredentialRequest",
+        "x-grpc-only": [
+          "name"
+        ],
+        "x-grpc-note": "`name` travels in the path on REST."
+      },
+      "CredentialCreated": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The mutation's receipt.",
+            "x-grpc-field": "receipt"
+          },
+          "revision": {
+            "type": "integer",
+            "description": "The directory revision after it.",
+            "x-grpc-field": "revision",
+            "minimum": 0
+          },
+          "credential": {
+            "$ref": "#/components/schemas/Credential",
+            "description": "The credential.",
+            "x-grpc-field": "credential"
+          },
+          "client_secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A `client_secret`, answered by the call that drew it and never again; `null` otherwise.",
+            "x-grpc-field": "client_secret"
+          }
+        },
+        "required": [
+          "receipt",
+          "revision",
+          "credential",
+          "client_secret"
+        ],
+        "additionalProperties": false,
+        "description": "What making a credential answers.",
+        "x-grpc-message": "permguard.iam.v1.CreateCredentialResponse"
+      },
       "PrepareBackupBody": {
         "type": "object",
         "properties": {},

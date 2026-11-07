@@ -55,7 +55,8 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
     router.with_state(Served { api, disclosure })
 }
 
-/// The directory of the IAM Host: grants, roles, users, identity providers and the recovery.
+/// The directory of the IAM Host: grants, roles, users, identity providers, the recovery, and the
+/// service accounts with their credentials.
 fn iam_routes() -> Router<Served> {
     Router::new()
         .route("/iam/v1/grants", get(list_grants).post(create_grant))
@@ -81,6 +82,34 @@ fn iam_routes() -> Router<Served> {
         .route("/iam/v1/recovery/acknowledge", post(acknowledge_recovery))
         .route("/iam/v1/providers", get(list_providers))
         .route("/iam/v1/providers/{name}/refresh", post(refresh_provider))
+        .route(
+            "/iam/v1/service-accounts",
+            get(list_service_accounts).post(create_service_account),
+        )
+        .route(
+            "/iam/v1/service-accounts/{name}",
+            get(get_service_account).patch(update_service_account),
+        )
+        .route(
+            "/iam/v1/service-accounts/{name}/suspend",
+            post(suspend_service_account),
+        )
+        .route(
+            "/iam/v1/service-accounts/{name}/resume",
+            post(resume_service_account),
+        )
+        .route(
+            "/iam/v1/service-accounts/{name}/delete",
+            post(delete_service_account),
+        )
+        .route(
+            "/iam/v1/service-accounts/{name}/credentials",
+            get(list_credentials).post(create_credential),
+        )
+        .route(
+            "/iam/v1/service-accounts/{name}/credentials/{id}/revoke",
+            post(revoke_credential),
+        )
 }
 
 /// What every Host serves about itself.
@@ -1238,6 +1267,148 @@ async fn unlink_user(
         &served,
         StatusCode::OK,
         served.api.link_user(&actor, &name, link, false).await,
+    )
+}
+
+async fn list_service_accounts(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    answer(&served, StatusCode::OK, served.api.service_accounts(&actor))
+}
+
+async fn get_service_account(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.service_account(&actor, &name),
+    )
+}
+
+async fn create_service_account(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(create): Closed<permguard_host::api::service_accounts::CreateServiceAccount>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::CREATED,
+        served.api.create_service_account(&actor, create).await,
+    )
+}
+
+async fn update_service_account(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(update): Closed<permguard_host::api::service_accounts::UpdateServiceAccount>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .update_service_account(&actor, &name, update)
+            .await,
+    )
+}
+
+async fn suspend_service_account(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(plain): Closed<permguard_host::api::directory::Plain>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .set_account_status(&actor, &name, false, plain)
+            .await,
+    )
+}
+
+async fn resume_service_account(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(plain): Closed<permguard_host::api::directory::Plain>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .set_account_status(&actor, &name, true, plain)
+            .await,
+    )
+}
+
+async fn delete_service_account(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(delete): Closed<permguard_host::api::directory::Plain>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .delete_service_account(&actor, &name, delete)
+            .await,
+    )
+}
+
+async fn list_credentials(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.credentials(&actor, &name),
+    )
+}
+
+async fn create_credential(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(name): Path<String>,
+    Closed(create): Closed<permguard_host::api::service_accounts::CreateCredential>,
+) -> Response {
+    // A client secret's Argon2id runs off the runtime's threads.
+    let api = Arc::clone(&served.api);
+    let handle = tokio::runtime::Handle::current();
+    let created = tokio::task::spawn_blocking(move || {
+        handle.block_on(async move { api.create_credential(&actor, &name, create).await })
+    })
+    .await
+    .unwrap_or_else(|_| Err(blocking_failed()));
+    // The one answer that may carry a secret: no cache along the way keeps it.
+    let mut response = answer(&served, StatusCode::CREATED, created);
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+async fn revoke_credential(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path((name, id)): Path<(String, String)>,
+    Closed(plain): Closed<permguard_host::api::directory::Plain>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served
+            .api
+            .revoke_credential(&actor, &name, &id, plain)
+            .await,
     )
 }
 

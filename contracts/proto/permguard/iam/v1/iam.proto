@@ -84,3 +84,120 @@ service RecoveryService {
   rpc AcknowledgeRecovery(permguard.host.v1.AcknowledgeRecoveryRequest)
       returns (permguard.host.v1.AcknowledgeRecoveryResponse);
 }
+
+// REST group: service accounts and their credentials (iteration 02, WP-11.2).
+service ServiceAccountService {
+  // `GET /iam/v1/service-accounts`.
+  rpc ListServiceAccounts(ListServiceAccountsRequest) returns (ListServiceAccountsResponse);
+  // `GET /iam/v1/service-accounts/{name}`.
+  rpc GetServiceAccount(GetServiceAccountRequest) returns (GetServiceAccountResponse);
+  // `POST /iam/v1/service-accounts`.
+  rpc CreateServiceAccount(CreateServiceAccountRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `PATCH /iam/v1/service-accounts/{name}`.
+  rpc UpdateServiceAccount(UpdateServiceAccountRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `POST /iam/v1/service-accounts/{name}/suspend` and `…/resume`.
+  rpc SetServiceAccountStatus(SetServiceAccountStatusRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `POST /iam/v1/service-accounts/{name}/delete`.
+  rpc DeleteServiceAccount(ServiceAccountPlainRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `GET /iam/v1/service-accounts/{name}/credentials`.
+  rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
+  // `POST /iam/v1/service-accounts/{name}/credentials`.
+  rpc CreateCredential(CreateCredentialRequest) returns (CreateCredentialResponse);
+  // `POST /iam/v1/service-accounts/{name}/credentials/{id}/revoke`.
+  rpc RevokeCredential(RevokeCredentialRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+}
+
+message ServiceAccountSummary {
+  string name = 1;
+  string owner = 2;
+  string description = 3;
+  // `active` or `suspended`.
+  string status = 4;
+  // Its live credentials.
+  uint64 credentials = 5;
+  repeated string roles = 6;
+  uint64 revision = 7;
+}
+message ListServiceAccountsRequest {}
+message ListServiceAccountsResponse {
+  uint64 revision = 1;
+  repeated ServiceAccountSummary service_accounts = 2;
+}
+message GetServiceAccountRequest {
+  string name = 1;
+}
+message Credential {
+  string id = 1;
+  // `client_secret`, `private_key_jwt` or `tls_client_auth`.
+  string kind = 2;
+  optional string key_id = 3;
+  optional string algorithm = 4;
+  optional string binding = 5;
+  string created_at = 6;
+  string created_by = 7;
+  optional string expires_at = 8;
+  // `active`, `expired` or `revoked`.
+  string status = 9;
+  optional string revoked_at = 10;
+}
+message GetServiceAccountResponse {
+  ServiceAccountSummary service_account = 1;
+  repeated permguard.host.v1.Grant grants = 2;
+  repeated Credential credentials = 3;
+  uint64 directory_revision = 4;
+}
+message CreateServiceAccountRequest {
+  string request_id = 1;
+  optional uint64 expected_revision = 2;
+  string name = 3;
+  string owner = 4;
+  string description = 5;
+}
+message UpdateServiceAccountRequest {
+  string name = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+  optional string owner = 4;
+  optional string description = 5;
+}
+message SetServiceAccountStatusRequest {
+  string name = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+  bool active = 4;
+}
+message ServiceAccountPlainRequest {
+  string name = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+}
+message ListCredentialsRequest {
+  string name = 1;
+}
+message ListCredentialsResponse {
+  repeated Credential credentials = 1;
+}
+message CreateCredentialRequest {
+  string name = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+  string kind = 4;
+  // A `private_key_jwt`'s public JWK, its members as text.
+  map<string, string> public_key = 5;
+  // A `tls_client_auth`'s `spki:sha256:<hex>` or SAN URI.
+  optional string certificate = 6;
+  optional string expires_at = 7;
+}
+message CreateCredentialResponse {
+  permguard.host.v1.Receipt receipt = 1;
+  uint64 revision = 2;
+  Credential credential = 3;
+  // A `client_secret`, answered once.
+  optional string client_secret = 4;
+}
+message RevokeCredentialRequest {
+  string name = 1;
+  string id = 2;
+  string request_id = 3;
+  optional uint64 expected_revision = 4;
+}

@@ -17,6 +17,7 @@
 //! answered as [`Authorization::not_found_or_forbidden`] says — not found only for a caller whose
 //! grants cover the whole Plane, the same refusal as out of scope for everybody else.
 
+pub mod credentials;
 pub mod directory;
 pub mod factor;
 pub mod lockout;

@@ -38,8 +38,9 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 22] = [
+const REGISTRIES: [&str; 23] = [
     "audit.json",
+    "directory.json",
     "drain-receipt.json",
     "grant.json",
     "head-statement.json",
@@ -697,6 +698,160 @@ fn grant_samples() -> Vec<Sample> {
             &["transition.operation_id"],
             Some(Box::new(|bytes: &[u8]| verdict(Transition::decode(bytes)))),
         ),
+    ]
+}
+
+fn directory_samples() -> Vec<Sample> {
+    use permguard_host::authz::directory::{DirectoryTransition, kinds};
+    use permguard_host::operations::journal::OperationId;
+
+    const PHC: &str = "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaA";
+    let at = |mut transition: DirectoryTransition, revision: u64| {
+        transition.revision = revision;
+        transition.at = 1_800_000_000;
+        transition.by = "user:admin".to_owned();
+        transition
+    };
+    let mut role = at(DirectoryTransition::new(kinds::ROLE_CREATE, "operators"), 1);
+    role.operation_id = Some(OperationId::from_bytes(ZONE_ID));
+    role.description = Some("who runs it".to_owned());
+    let mut member = at(DirectoryTransition::new(kinds::MEMBER_ADD, "operators"), 2);
+    member.member = Some("sa:billing".to_owned());
+    let mut user = at(DirectoryTransition::new(kinds::USER_CREATE, "paperino"), 3);
+    user.email = Some("paperino@acme.com".to_owned());
+    user.display = Some("Paperino".to_owned());
+    user.password = Some(PHC.to_owned());
+    let mut factor = at(DirectoryTransition::new(kinds::USER_FACTOR, "paperino"), 4);
+    factor.factor = Some(vec![1; 48]);
+    let mut status = at(DirectoryTransition::new(kinds::SA_STATUS, "billing"), 5);
+    status.status = Some("suspended".to_owned());
+    let mut link = at(DirectoryTransition::new(kinds::USER_LINK, "paperino"), 6);
+    link.subject = Some("oidc:https://login.example#0042".to_owned());
+    let mut account = at(DirectoryTransition::new(kinds::SA_CREATE, "billing"), 7);
+    account.owner = Some("payments team".to_owned());
+    account.description = Some(String::new());
+    let mut secret = at(
+        DirectoryTransition::new(kinds::CREDENTIAL_ADD, "billing"),
+        8,
+    );
+    secret.credential_id = Some(SCOPE_ID);
+    secret.credential_kind = Some("client_secret".to_owned());
+    secret.secret = Some(PHC.to_owned());
+    secret.expires_at = Some(1_900_000_000);
+    let mut key = at(
+        DirectoryTransition::new(kinds::CREDENTIAL_ADD, "billing"),
+        9,
+    );
+    key.credential_id = Some(HOST_ID);
+    key.credential_kind = Some("private_key_jwt".to_owned());
+    key.public_key = Some(vec![7; 32]);
+    key.algorithm = Some("EdDSA".to_owned());
+    key.key_id = Some(THUMBPRINT_A.to_owned());
+    let mut bound = at(
+        DirectoryTransition::new(kinds::CREDENTIAL_ADD, "billing"),
+        10,
+    );
+    bound.credential_id = Some(ZONE_ID);
+    bound.credential_kind = Some("tls_client_auth".to_owned());
+    bound.binding = Some("spiffe://acme/billing".to_owned());
+    let bare = at(
+        DirectoryTransition::new(kinds::ROLE_DELETE, "operators"),
+        11,
+    );
+    let decoder = || -> Option<Decoder> {
+        Some(Box::new(|bytes: &[u8]| {
+            verdict(DirectoryTransition::decode(bytes))
+        }))
+    };
+    let root = "directory_transition";
+    let encoded = |transition: &DirectoryTransition| transition.encode().expect("encodes");
+    vec![
+        sample(
+            root,
+            encoded(&role),
+            &[
+                "directory_transition.operation_id",
+                "directory_transition.description",
+            ],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&member),
+            &["directory_transition.member"],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&user),
+            &[
+                "directory_transition.email",
+                "directory_transition.display",
+                "directory_transition.password",
+            ],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&factor),
+            &["directory_transition.factor"],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&status),
+            &["directory_transition.status"],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&link),
+            &["directory_transition.subject"],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&account),
+            &[
+                "directory_transition.owner",
+                "directory_transition.description",
+            ],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&secret),
+            &[
+                "directory_transition.credential_id",
+                "directory_transition.credential_kind",
+                "directory_transition.secret",
+                "directory_transition.expires_at",
+            ],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&key),
+            &[
+                "directory_transition.credential_id",
+                "directory_transition.credential_kind",
+                "directory_transition.public_key",
+                "directory_transition.algorithm",
+                "directory_transition.key_id",
+            ],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&bound),
+            &[
+                "directory_transition.credential_id",
+                "directory_transition.credential_kind",
+                "directory_transition.binding",
+            ],
+            decoder(),
+        ),
+        sample(root, encoded(&bare), &[], decoder()),
     ]
 }
 
@@ -3124,6 +3279,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "objects.json" => objects_samples(),
         "sealed-key.json" => sealed_key_samples(),
         "grant.json" => grant_samples(),
+        "directory.json" => directory_samples(),
         "layout.json" => layout_samples(),
         "journal.json" => journal_samples(),
         "audit.json" => audit_samples(),
@@ -3803,6 +3959,16 @@ fn assert_type_resolves(file: &str, registry: &Json, ty: &str) {
             }
         }
     }
+}
+
+#[test]
+fn test_directory_transitions_match_their_registry() {
+    assert_samples_match("directory.json");
+}
+
+#[test]
+fn test_directory_transitions_refuse_unknown_labels() {
+    assert_unknown_labels_refused("directory.json");
 }
 
 #[test]

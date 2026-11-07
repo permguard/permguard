@@ -37,6 +37,7 @@ pub mod plans;
 pub mod recovery;
 pub mod replay;
 pub mod reset;
+pub mod service_accounts;
 pub mod sessions;
 pub mod status;
 pub mod streams;

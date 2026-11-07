@@ -390,7 +390,7 @@ impl Labelled {
         }
     }
 
-    fn optional_uint(&mut self, label: i64) -> Result<Option<u64>, RecordError> {
+    pub(super) fn optional_uint(&mut self, label: i64) -> Result<Option<u64>, RecordError> {
         match self.pairs.remove(&label) {
             None => Ok(None),
             Some(Value::Int(value)) if value >= 0 => Ok(Some(value as u64)),

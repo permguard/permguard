@@ -116,6 +116,7 @@
     "grpc.IAM_PROVIDER_SERVICE": "permguard.iam.v1.ProviderService",
     "grpc.IAM_RECOVERY_SERVICE": "permguard.iam.v1.RecoveryService",
     "grpc.IAM_ROLE_SERVICE": "permguard.iam.v1.RoleService",
+    "grpc.IAM_SERVICE_ACCOUNT_SERVICE": "permguard.iam.v1.ServiceAccountService",
     "grpc.IAM_USER_SERVICE": "permguard.iam.v1.UserService",
     "grpc.POLICY_DECISION_POINT": "permguard.data.v1.PolicyDecisionPoint",
     "grpc.TEMPORAL_POLICY_DECISION_POINT": "permguard.data.v1.TemporalPolicyDecisionPoint",

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The Host's directory (WP-8.1): roles, their members, local users and the provider subjects
-//! linked to them, in a journal of their own beside the grants (`1-architecture/1` Authorization
+//! linked to them, and the service accounts with their credentials (iteration 02, WP-11.2), in a
+//! journal of their own beside the grants (`1-architecture/1` Authorization
 //! store, Local users and authentication methods).
 //!
 //! ```text
@@ -11,22 +12,31 @@
 //!
 //! A transition is a closed CBOR map with integer labels (`contracts/cbor/directory.json`):
 //!
-//! | Label | Member         | Type                | In                                                  |
-//! | ----- | -------------- | ------------------- | --------------------------------------------------- |
-//! | 1     | `kind`         | text                | every transition                                    |
-//! | 2     | `revision`     | uint                | every transition: the directory revision it is      |
-//! | 3     | `at`           | uint, seconds UTC   | every transition                                    |
-//! | 4     | `by`           | text                | every transition: who made it                       |
-//! | 5     | `operation_id` | bytes, 16           | optional: the security mutation that made it        |
-//! | 6     | `name`         | text                | every transition: the role or the user              |
-//! | 7     | `description`  | text                | optional: `role.create`, `role.update`              |
-//! | 8     | `member`       | text                | `member.add`, `member.remove`                       |
-//! | 9     | `email`        | text                | optional: `user.create`, `user.update`              |
-//! | 10    | `display`      | text                | optional: `user.create`, `user.update`              |
-//! | 11    | `password`     | text                | optional: `user.create`, `user.password`: a PHC string |
-//! | 12    | `factor`       | bytes               | optional: `user.factor`: the sealed secret; absent resets it |
-//! | 13    | `status`       | text                | `user.status`: `active` or `disabled`               |
-//! | 14    | `subject`      | text                | `user.link`, `user.unlink`                          |
+//! | Label | Member            | Type              | In                                                           |
+//! | ----- | ----------------- | ----------------- | ------------------------------------------------------------ |
+//! | 1     | `kind`            | text              | every transition                                             |
+//! | 2     | `revision`        | uint              | every transition: the directory revision it is               |
+//! | 3     | `at`              | uint, seconds UTC | every transition                                             |
+//! | 4     | `by`              | text              | every transition: who made it                                |
+//! | 5     | `operation_id`    | bytes, 16         | optional: the security mutation that made it                 |
+//! | 6     | `name`            | text              | every transition: the role, the user or the service account  |
+//! | 7     | `description`     | text              | optional: `role.create`, `role.update`, `sa.*`               |
+//! | 8     | `member`          | text              | `member.add`, `member.remove`                                |
+//! | 9     | `email`           | text              | optional: `user.create`, `user.update`                       |
+//! | 10    | `display`         | text              | optional: `user.create`, `user.update`                       |
+//! | 11    | `password`        | text              | optional: `user.create`, `user.password`: a PHC string       |
+//! | 12    | `factor`          | bytes             | optional: `user.factor`: the sealed secret; absent resets it |
+//! | 13    | `status`          | text              | `user.status`, `sa.status`                                   |
+//! | 14    | `subject`         | text              | `user.link`, `user.unlink`                                   |
+//! | 15    | `owner`           | text              | optional: `sa.create`, `sa.update`                           |
+//! | 16    | `credential_id`   | bytes, 16         | `credential.add`, `credential.revoke`                        |
+//! | 17    | `credential_kind` | text              | `credential.add`                                             |
+//! | 18    | `secret`          | text              | `credential.add` of a `client_secret`: a PHC string          |
+//! | 19    | `public_key`      | bytes             | `credential.add` of a `private_key_jwt`                      |
+//! | 20    | `algorithm`       | text              | `credential.add` of a `private_key_jwt`                      |
+//! | 21    | `key_id`          | text              | `credential.add` of a `private_key_jwt`                      |
+//! | 22    | `binding`         | text              | `credential.add` of a `tls_client_auth`                      |
+//! | 23    | `expires_at`      | uint, seconds     | optional: `credential.add`                                   |
 //!
 //! The journal is the truth: it is replayed at every start, and what it holds is small. A
 //! decision reads the directory at its revision; nothing here grants: a role acts through the
@@ -39,6 +49,7 @@ use permguard_core::authz::{ANONYMOUS, Principal};
 use permguard_objects::cbor::{self, Value};
 
 use super::record::{Labelled, RecordError, uint};
+use crate::identity::record::uuid_text;
 use crate::operations::journal::OperationId;
 use crate::operations::mutation::Applying;
 use crate::storage::StorageError;
@@ -63,6 +74,30 @@ pub const MAX_USERS: usize = 100_000;
 pub const ROLE_PREFIX: &str = "role:";
 /// The prefix of a local user's principal.
 pub const USER_PREFIX: &str = "user:";
+/// The prefix of a service account's principal.
+pub const SERVICE_ACCOUNT_PREFIX: &str = "sa:";
+/// The principal prefixes the Host mints itself, for its roles, local users, providers' subjects,
+/// keys and service accounts: no certificate rule and no credential binding may name one, or it
+/// would act as somebody the Host vouches for (WP-8.1, WP-11.2). Compared without case.
+pub const RESERVED_PREFIXES: &[&str] = &["role:", "user:", "oidc:", "spki:", "sa:"];
+
+/// Whether `principal` begins with a prefix the Host reserves, in any case.
+pub fn is_reserved(principal: &str) -> bool {
+    RESERVED_PREFIXES.iter().any(|reserved| {
+        principal
+            .get(..reserved.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(reserved))
+    })
+}
+
+/// The most service accounts a Host holds.
+pub const MAX_SERVICE_ACCOUNTS: usize = 10_000;
+/// The most live credentials of one service account: room for a rotation's overlap.
+pub const MAX_LIVE_CREDENTIALS: usize = 8;
+/// The most credentials, live or not, one service account keeps: revoked and expired ones stay
+/// listed, and the oldest of them is dropped when a new one would pass this bound, so a rotation
+/// never runs out of room.
+pub const MAX_CREDENTIALS: usize = 256;
 
 /// The kinds of transition.
 pub mod kinds {
@@ -79,6 +114,12 @@ pub mod kinds {
     pub const USER_LINK: &str = "user.link";
     pub const USER_UNLINK: &str = "user.unlink";
     pub const USER_DELETE: &str = "user.delete";
+    pub const SA_CREATE: &str = "sa.create";
+    pub const SA_UPDATE: &str = "sa.update";
+    pub const SA_STATUS: &str = "sa.status";
+    pub const SA_DELETE: &str = "sa.delete";
+    pub const CREDENTIAL_ADD: &str = "credential.add";
+    pub const CREDENTIAL_REVOKE: &str = "credential.revoke";
     /// Every kind, as the journal spells it.
     pub const ALL: &[&str] = &[
         ROLE_CREATE,
@@ -94,6 +135,12 @@ pub mod kinds {
         USER_LINK,
         USER_UNLINK,
         USER_DELETE,
+        SA_CREATE,
+        SA_UPDATE,
+        SA_STATUS,
+        SA_DELETE,
+        CREDENTIAL_ADD,
+        CREDENTIAL_REVOKE,
     ];
 }
 
@@ -137,8 +184,13 @@ pub fn user_principal(name: &str) -> String {
     format!("{USER_PREFIX}{name}")
 }
 
+/// `sa:<name>`.
+pub fn service_account_principal(name: &str) -> String {
+    format!("{SERVICE_ACCOUNT_PREFIX}{name}")
+}
+
 /// One directory transition, as the journal holds it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct DirectoryTransition {
     pub kind: String,
     pub revision: u64,
@@ -154,6 +206,46 @@ pub struct DirectoryTransition {
     pub factor: Option<Vec<u8>>,
     pub status: Option<String>,
     pub subject: Option<String>,
+    pub owner: Option<String>,
+    pub credential_id: Option<[u8; 16]>,
+    pub credential_kind: Option<String>,
+    pub secret: Option<String>,
+    pub public_key: Option<Vec<u8>>,
+    pub algorithm: Option<String>,
+    pub key_id: Option<String>,
+    pub binding: Option<String>,
+    pub expires_at: Option<u64>,
+}
+
+/// Never a password, a factor or a client secret's hash: whether the transition holds one.
+impl std::fmt::Debug for DirectoryTransition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let held = |value: bool| value.then_some("<set>");
+        f.debug_struct("DirectoryTransition")
+            .field("kind", &self.kind)
+            .field("revision", &self.revision)
+            .field("at", &self.at)
+            .field("by", &self.by)
+            .field("operation_id", &self.operation_id)
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("member", &self.member)
+            .field("email", &self.email)
+            .field("display", &self.display)
+            .field("password", &held(self.password.is_some()))
+            .field("factor", &held(self.factor.is_some()))
+            .field("status", &self.status)
+            .field("subject", &self.subject)
+            .field("owner", &self.owner)
+            .field("credential_id", &self.credential_id)
+            .field("credential_kind", &self.credential_kind)
+            .field("secret", &held(self.secret.is_some()))
+            .field("algorithm", &self.algorithm)
+            .field("key_id", &self.key_id)
+            .field("binding", &self.binding)
+            .field("expires_at", &self.expires_at)
+            .finish_non_exhaustive()
+    }
 }
 
 impl DirectoryTransition {
@@ -174,6 +266,15 @@ impl DirectoryTransition {
             factor: None,
             status: None,
             subject: None,
+            owner: None,
+            credential_id: None,
+            credential_kind: None,
+            secret: None,
+            public_key: None,
+            algorithm: None,
+            key_id: None,
+            binding: None,
+            expires_at: None,
         }
     }
 
@@ -213,6 +314,34 @@ impl DirectoryTransition {
         if let Some(subject) = &self.subject {
             pairs.push((Value::Int(14), Value::Text(subject.clone())));
         }
+        if let Some(owner) = &self.owner {
+            pairs.push((Value::Int(15), Value::Text(owner.clone())));
+        }
+        if let Some(credential_id) = &self.credential_id {
+            pairs.push((Value::Int(16), Value::Bytes(credential_id.to_vec())));
+        }
+        let texts = [(17, &self.credential_kind), (18, &self.secret)];
+        for (label, value) in texts {
+            if let Some(value) = value {
+                pairs.push((Value::Int(label), Value::Text(value.clone())));
+            }
+        }
+        if let Some(public_key) = &self.public_key {
+            pairs.push((Value::Int(19), Value::Bytes(public_key.clone())));
+        }
+        let texts = [
+            (20, &self.algorithm),
+            (21, &self.key_id),
+            (22, &self.binding),
+        ];
+        for (label, value) in texts {
+            if let Some(value) = value {
+                pairs.push((Value::Int(label), Value::Text(value.clone())));
+            }
+        }
+        if let Some(expires_at) = self.expires_at {
+            pairs.push((Value::Int(23), uint(expires_at)?));
+        }
         cbor::encode(&Value::Map(pairs)).map_err(|error| RecordError::Cbor(error.to_string()))
     }
 
@@ -224,7 +353,7 @@ impl DirectoryTransition {
         }
         let value =
             cbor::decode_canonical(bytes).map_err(|error| RecordError::Cbor(error.to_string()))?;
-        let mut map = Labelled::new(value, 14)?;
+        let mut map = Labelled::new(value, 23)?;
         let transition = Self {
             kind: map.text(1)?,
             revision: map.uint(2)?,
@@ -240,6 +369,22 @@ impl DirectoryTransition {
             factor: map.optional_bytes(12)?,
             status: map.optional_text(13)?,
             subject: map.optional_text(14)?,
+            owner: map.optional_text(15)?,
+            credential_id: map
+                .optional_bytes(16)?
+                .map(|bytes| {
+                    <[u8; 16]>::try_from(bytes.as_slice()).map_err(|_| {
+                        RecordError::Malformed("a credential id is 16 bytes".to_owned())
+                    })
+                })
+                .transpose()?,
+            credential_kind: map.optional_text(17)?,
+            secret: map.optional_text(18)?,
+            public_key: map.optional_bytes(19)?,
+            algorithm: map.optional_text(20)?,
+            key_id: map.optional_text(21)?,
+            binding: map.optional_text(22)?,
+            expires_at: map.optional_uint(23)?,
         };
         map.finish()?;
         if !kinds::ALL.contains(&transition.kind.as_str()) {
@@ -324,6 +469,121 @@ impl User {
     /// `user:<name>`.
     pub fn principal(&self) -> String {
         user_principal(&self.name)
+    }
+}
+
+/// Whether a service account may obtain tokens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountStatus {
+    Active,
+    Suspended,
+}
+
+impl AccountStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Suspended => "suspended",
+        }
+    }
+
+    fn parse(text: &str) -> Option<Self> {
+        match text {
+            "active" => Some(Self::Active),
+            "suspended" => Some(Self::Suspended),
+            _ => None,
+        }
+    }
+}
+
+/// What a credential proves with, as the directory keeps it: never a secret, only its hash.
+#[derive(Clone, PartialEq, Eq)]
+pub enum CredentialMaterial {
+    /// A `client_secret`: its Argon2id PHC string.
+    Secret { phc: String },
+    /// A `private_key_jwt`: the public key, its algorithm and its RFC 7638 `kid`.
+    Key {
+        algorithm: String,
+        key: Vec<u8>,
+        key_id: String,
+    },
+    /// A `tls_client_auth`: `spki:sha256:<hex>` or a SAN URI.
+    Binding { binding: String },
+}
+
+impl CredentialMaterial {
+    /// The kind, as the directory spells it.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Secret { .. } => super::credentials::CLIENT_SECRET,
+            Self::Key { .. } => super::credentials::PRIVATE_KEY_JWT,
+            Self::Binding { .. } => super::credentials::TLS_CLIENT_AUTH,
+        }
+    }
+}
+
+impl std::fmt::Debug for CredentialMaterial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Secret { .. } => f.write_str("Secret(<hash>)"),
+            Self::Key {
+                algorithm, key_id, ..
+            } => write!(f, "Key({algorithm}, {key_id})"),
+            Self::Binding { binding } => write!(f, "Binding({binding})"),
+        }
+    }
+}
+
+/// One credential of a service account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Credential {
+    pub id: [u8; 16],
+    pub material: CredentialMaterial,
+    /// The directory revision that made it.
+    pub created_revision: u64,
+    pub created_at: u64,
+    pub created_by: String,
+    pub expires_at: Option<u64>,
+    /// When it was revoked; `None` while it is active.
+    pub revoked_at: Option<u64>,
+}
+
+impl Credential {
+    /// Whether it proves anything at `now`: not revoked, not expired.
+    pub fn is_live_at(&self, now: u64) -> bool {
+        self.revoked_at.is_none() && self.expires_at.is_none_or(|expires| now < expires)
+    }
+
+    /// Its id, as a UUID.
+    pub fn id_text(&self) -> String {
+        uuid_text(&self.id)
+    }
+}
+
+/// A service account, as the directory holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceAccount {
+    pub name: String,
+    pub owner: String,
+    pub description: String,
+    pub status: AccountStatus,
+    pub credentials: Vec<Credential>,
+    pub revision: u64,
+    pub created_at: u64,
+    pub created_by: String,
+}
+
+impl ServiceAccount {
+    /// `sa:<name>`.
+    pub fn principal(&self) -> String {
+        service_account_principal(&self.name)
+    }
+
+    /// The credentials live at `now`.
+    pub fn live_credentials(&self, now: u64) -> impl Iterator<Item = &Credential> {
+        self.credentials
+            .iter()
+            .filter(move |credential| credential.is_live_at(now))
     }
 }
 
@@ -434,10 +694,39 @@ pub enum Change {
     DeleteUser {
         name: String,
     },
+    CreateServiceAccount {
+        name: String,
+        owner: String,
+        description: String,
+    },
+    /// `None` leaves a field as it is.
+    UpdateServiceAccount {
+        name: String,
+        owner: Option<String>,
+        description: Option<String>,
+    },
+    SetAccountStatus {
+        name: String,
+        active: bool,
+    },
+    DeleteServiceAccount {
+        name: String,
+    },
+    /// The material is already what the directory keeps: a secret arrives hashed.
+    AddCredential {
+        account: String,
+        id: [u8; 16],
+        material: CredentialMaterial,
+        expires_at: Option<u64>,
+    },
+    RevokeCredential {
+        account: String,
+        id: [u8; 16],
+    },
 }
 
 impl Change {
-    /// What the change names: the role or the user.
+    /// What the change names: the role, the user or the service account.
     pub fn target(&self) -> &str {
         match self {
             Self::CreateRole { name, .. }
@@ -450,8 +739,13 @@ impl Change {
             | Self::SetStatus { name, .. }
             | Self::Link { name, .. }
             | Self::Unlink { name, .. }
-            | Self::DeleteUser { name } => name,
+            | Self::DeleteUser { name }
+            | Self::CreateServiceAccount { name, .. }
+            | Self::UpdateServiceAccount { name, .. }
+            | Self::SetAccountStatus { name, .. }
+            | Self::DeleteServiceAccount { name } => name,
             Self::AddMember { role, .. } | Self::RemoveMember { role, .. } => role,
+            Self::AddCredential { account, .. } | Self::RevokeCredential { account, .. } => account,
         }
     }
 }
@@ -473,6 +767,9 @@ struct State {
     links: BTreeMap<String, String>,
     /// Lowercased email to user name.
     emails: BTreeMap<String, String>,
+    accounts: BTreeMap<String, ServiceAccount>,
+    /// An unrevoked `tls_client_auth` binding to its account: one binding names one account.
+    bindings: BTreeMap<String, String>,
     /// The revision each operation produced and what it named.
     operations: BTreeMap<OperationId, (u64, String)>,
 }
@@ -568,6 +865,24 @@ impl Directory {
             .cloned()
     }
 
+    pub fn service_accounts(&self) -> Vec<ServiceAccount> {
+        self.read().accounts.values().cloned().collect()
+    }
+
+    pub fn service_account(&self, name: &str) -> Option<ServiceAccount> {
+        self.read().accounts.get(name).cloned()
+    }
+
+    /// The service account a `tls_client_auth` binding names.
+    pub fn account_of_binding(&self, binding: &str) -> Option<ServiceAccount> {
+        let state = self.read();
+        state
+            .bindings
+            .get(binding)
+            .and_then(|name| state.accounts.get(name))
+            .cloned()
+    }
+
     /// The roles `principal` is a member of.
     pub fn roles_of(&self, principal: &str) -> Vec<String> {
         self.read()
@@ -624,7 +939,7 @@ impl Directory {
                 applying.operation_id()
             )));
         }
-        let Some(mut transition) = plan(&state, &change)? else {
+        let Some(mut transition) = plan(&state, &change, now)? else {
             return Ok(Written {
                 revision: state.revision,
                 changed: false,
@@ -642,6 +957,8 @@ impl Directory {
             users: state.users.clone(),
             links: state.links.clone(),
             emails: state.emails.clone(),
+            accounts: state.accounts.clone(),
+            bindings: state.bindings.clone(),
             operations: BTreeMap::new(),
         };
         replay(&mut next, &transition)?;
@@ -656,7 +973,11 @@ impl Directory {
 
 /// The transition `change` writes against `state`, `None` when it changes nothing, or why it is
 /// refused.
-fn plan(state: &State, change: &Change) -> Result<Option<DirectoryTransition>, DirectoryError> {
+fn plan(
+    state: &State,
+    change: &Change,
+    now: u64,
+) -> Result<Option<DirectoryTransition>, DirectoryError> {
     use kinds::*;
     let role = |name: &str| {
         state
@@ -669,6 +990,19 @@ fn plan(state: &State, change: &Change) -> Result<Option<DirectoryTransition>, D
             .users
             .get(name)
             .ok_or_else(|| DirectoryError::NotFound(format!("there is no user `{name}`")))
+    };
+    let account = |name: &str| {
+        state.accounts.get(name).ok_or_else(|| {
+            DirectoryError::NotFound(format!("there is no service account `{name}`"))
+        })
+    };
+    let owner = |text: &str| -> Result<(), DirectoryError> {
+        if text.trim().is_empty() || text.len() > 256 || text.chars().any(char::is_control) {
+            return invalid(
+                "an owner is the accountable team: 1 to 256 bytes, on one line".to_owned(),
+            );
+        }
+        Ok(())
     };
     let description = |text: &str| -> Result<(), DirectoryError> {
         if text.len() > 1_024 || text.chars().any(char::is_control) {
@@ -865,6 +1199,170 @@ fn plan(state: &State, change: &Change) -> Result<Option<DirectoryTransition>, D
             user(name)?;
             DirectoryTransition::new(USER_DELETE, name)
         }
+        Change::CreateServiceAccount {
+            name,
+            owner: team,
+            description: text,
+        } => {
+            if !is_role_name(name) {
+                return invalid(format!(
+                    "`{name}` is not a service account name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`"
+                ));
+            }
+            if state.accounts.contains_key(name) {
+                return Err(DirectoryError::Exists(format!(
+                    "the service account `{name}` exists"
+                )));
+            }
+            if state.accounts.len() >= MAX_SERVICE_ACCOUNTS {
+                return invalid(format!(
+                    "a Host holds at most {MAX_SERVICE_ACCOUNTS} service accounts"
+                ));
+            }
+            owner(team)?;
+            description(text)?;
+            let mut transition = DirectoryTransition::new(SA_CREATE, name);
+            transition.owner = Some(team.clone());
+            transition.description = Some(text.clone());
+            transition
+        }
+        Change::UpdateServiceAccount {
+            name,
+            owner: team,
+            description: text,
+        } => {
+            let held = account(name)?;
+            if let Some(team) = team {
+                owner(team)?;
+            }
+            if let Some(text) = text {
+                description(text)?;
+            }
+            if team.as_ref().is_none_or(|team| *team == held.owner)
+                && text.as_ref().is_none_or(|text| *text == held.description)
+            {
+                return Ok(None);
+            }
+            let mut transition = DirectoryTransition::new(SA_UPDATE, name);
+            transition.owner = team.clone();
+            transition.description = text.clone();
+            transition
+        }
+        Change::SetAccountStatus { name, active } => {
+            let status = if *active {
+                AccountStatus::Active
+            } else {
+                AccountStatus::Suspended
+            };
+            if account(name)?.status == status {
+                return Ok(None);
+            }
+            let mut transition = DirectoryTransition::new(SA_STATUS, name);
+            transition.status = Some(status.as_str().to_owned());
+            transition
+        }
+        Change::DeleteServiceAccount { name } => {
+            account(name)?;
+            DirectoryTransition::new(SA_DELETE, name)
+        }
+        Change::AddCredential {
+            account: name,
+            id,
+            material,
+            expires_at,
+        } => {
+            let held = account(name)?;
+            if held
+                .credentials
+                .iter()
+                .any(|credential| credential.id == *id)
+            {
+                return Err(DirectoryError::Exists(format!(
+                    "the credential {} exists",
+                    uuid_text(id)
+                )));
+            }
+            if held.live_credentials(now).count() >= MAX_LIVE_CREDENTIALS {
+                return invalid(format!(
+                    "the service account `{name}` holds {MAX_LIVE_CREDENTIALS} live credentials: revoke one first"
+                ));
+            }
+            if let Some(expires_at) = expires_at
+                && *expires_at <= now
+            {
+                return invalid("a credential's expiry is in the future".to_owned());
+            }
+            let mut transition = DirectoryTransition::new(CREDENTIAL_ADD, name);
+            transition.credential_id = Some(*id);
+            transition.credential_kind = Some(material.kind().to_owned());
+            transition.expires_at = *expires_at;
+            match material {
+                CredentialMaterial::Secret { phc } => {
+                    if !phc.starts_with("$argon2id$") || phc.len() > 512 {
+                        return invalid(
+                            "a client secret is kept only as an Argon2id PHC string".to_owned(),
+                        );
+                    }
+                    transition.secret = Some(phc.clone());
+                }
+                CredentialMaterial::Key {
+                    algorithm,
+                    key,
+                    key_id,
+                } => {
+                    // The kid is the key's thumbprint, recomputed here: never the caller's word.
+                    if super::credentials::thumbprint(algorithm, key).as_ref() != Some(key_id) {
+                        return invalid(format!(
+                            "not an {algorithm} public key with the thumbprint `{key_id}`"
+                        ));
+                    }
+                    if algorithm == super::credentials::EDDSA
+                        && super::credentials::has_small_order(key)
+                    {
+                        return invalid("an Ed25519 key of small order is never kept".to_owned());
+                    }
+                    if held.credentials.iter().any(|credential| {
+                        matches!(&credential.material, CredentialMaterial::Key { key_id: held, .. } if held == key_id)
+                    }) {
+                        return Err(DirectoryError::Exists(format!(
+                            "the service account `{name}` holds the key `{key_id}` already"
+                        )));
+                    }
+                    transition.public_key = Some(key.clone());
+                    transition.algorithm = Some(algorithm.clone());
+                    transition.key_id = Some(key_id.clone());
+                }
+                CredentialMaterial::Binding { binding } => {
+                    super::credentials::binding(binding).map_err(DirectoryError::Invalid)?;
+                    if let Some(holder) = state.bindings.get(binding) {
+                        return Err(DirectoryError::Exists(format!(
+                            "`{binding}` is bound to the service account `{holder}`"
+                        )));
+                    }
+                    transition.binding = Some(binding.clone());
+                }
+            }
+            transition
+        }
+        Change::RevokeCredential { account: name, id } => {
+            let held = account(name)?;
+            let credential = held
+                .credentials
+                .iter()
+                .find(|credential| credential.id == *id)
+                .ok_or_else(|| {
+                    DirectoryError::NotFound(format!(
+                        "the service account `{name}` has no credential {}",
+                        uuid_text(id)
+                    ))
+                })?;
+            if credential.revoked_at.is_some() {
+                return Ok(None);
+            }
+            let mut transition = DirectoryTransition::new(CREDENTIAL_REVOKE, name);
+            transition.credential_id = Some(*id);
+            transition
+        }
     };
     Ok(Some(transition))
 }
@@ -883,11 +1381,11 @@ pub fn is_linkable_subject(subject: &str) -> bool {
 }
 
 /// A member is a principal as the mapper produces it, or an issuer principal; never the reserved
-/// `anonymous`, never a role; a local user that exists.
+/// `anonymous`, never a role; a local user or a service account that exists.
 fn check_member(state: &State, member: &str) -> Result<(), DirectoryError> {
     if member == ANONYMOUS || member.starts_with(ROLE_PREFIX) {
         return Err(DirectoryError::Invalid(format!(
-            "`{member}` cannot be a member: a member is a user, a certificate or a provider subject"
+            "`{member}` cannot be a member: a member is a user, a service account, a certificate or a provider subject"
         )));
     }
     Principal::new(member)
@@ -897,6 +1395,13 @@ fn check_member(state: &State, member: &str) -> Result<(), DirectoryError> {
     {
         return Err(DirectoryError::NotFound(format!(
             "there is no user `{name}`"
+        )));
+    }
+    if let Some(name) = member.strip_prefix(SERVICE_ACCOUNT_PREFIX)
+        && !state.accounts.contains_key(name)
+    {
+        return Err(DirectoryError::NotFound(format!(
+            "there is no service account `{name}`"
         )));
     }
     Ok(())
@@ -1077,6 +1582,166 @@ fn replay(state: &mut State, transition: &DirectoryTransition) -> Result<(), Dir
                     role.revision = at;
                 }
             }
+        }
+        SA_CREATE => {
+            if state.accounts.contains_key(&name) {
+                return Err(corrupt(format!("the service account `{name}` exists")));
+            }
+            state.accounts.insert(
+                name.clone(),
+                ServiceAccount {
+                    name: name.clone(),
+                    owner: transition
+                        .owner
+                        .clone()
+                        .ok_or_else(|| corrupt("a service account names no owner".to_owned()))?,
+                    description: transition.description.clone().unwrap_or_default(),
+                    status: AccountStatus::Active,
+                    credentials: Vec::new(),
+                    revision: at,
+                    created_at: transition.at,
+                    created_by: transition.by.clone(),
+                },
+            );
+        }
+        SA_UPDATE => {
+            let account = state
+                .accounts
+                .get_mut(&name)
+                .ok_or_else(|| missing("the service account"))?;
+            if let Some(owner) = &transition.owner {
+                account.owner = owner.clone();
+            }
+            if let Some(description) = &transition.description {
+                account.description = description.clone();
+            }
+            account.revision = at;
+        }
+        SA_STATUS => {
+            let status = transition
+                .status
+                .as_deref()
+                .and_then(AccountStatus::parse)
+                .ok_or_else(|| corrupt("a status transition names no status".to_owned()))?;
+            let account = state
+                .accounts
+                .get_mut(&name)
+                .ok_or_else(|| missing("the service account"))?;
+            account.status = status;
+            account.revision = at;
+        }
+        SA_DELETE => {
+            let account = state
+                .accounts
+                .remove(&name)
+                .ok_or_else(|| missing("the service account"))?;
+            state.bindings.retain(|_, holder| *holder != name);
+            let principal = account.principal();
+            for role in state.roles.values_mut() {
+                if role.members.remove(&principal) {
+                    role.revision = at;
+                }
+            }
+        }
+        CREDENTIAL_ADD => {
+            let id = transition
+                .credential_id
+                .ok_or_else(|| corrupt("a credential names no id".to_owned()))?;
+            let material = match transition.credential_kind.as_deref() {
+                Some(super::credentials::CLIENT_SECRET) => CredentialMaterial::Secret {
+                    phc: transition
+                        .secret
+                        .clone()
+                        .ok_or_else(|| corrupt("a client secret holds no hash".to_owned()))?,
+                },
+                Some(super::credentials::PRIVATE_KEY_JWT) => CredentialMaterial::Key {
+                    algorithm: transition
+                        .algorithm
+                        .clone()
+                        .ok_or_else(|| corrupt("a key names no algorithm".to_owned()))?,
+                    key: transition
+                        .public_key
+                        .clone()
+                        .ok_or_else(|| corrupt("a key credential holds no key".to_owned()))?,
+                    key_id: transition
+                        .key_id
+                        .clone()
+                        .ok_or_else(|| corrupt("a key names no id".to_owned()))?,
+                },
+                Some(super::credentials::TLS_CLIENT_AUTH) => CredentialMaterial::Binding {
+                    binding: transition.binding.clone().ok_or_else(|| {
+                        corrupt("a certificate credential holds no binding".to_owned())
+                    })?,
+                },
+                _ => return Err(corrupt("a credential of no known kind".to_owned())),
+            };
+            let account = state
+                .accounts
+                .get_mut(&name)
+                .ok_or_else(|| missing("the service account"))?;
+            if account
+                .credentials
+                .iter()
+                .any(|credential| credential.id == id)
+            {
+                return Err(corrupt(format!("the credential {} exists", uuid_text(&id))));
+            }
+            if let CredentialMaterial::Binding { binding } = &material {
+                if state.bindings.contains_key(binding) {
+                    return Err(corrupt(format!("`{binding}` is bound already")));
+                }
+                state.bindings.insert(binding.clone(), name.clone());
+            }
+            // The oldest credentials that prove nothing at this transition make room: at most
+            // MAX_LIVE_CREDENTIALS are live, so there is always one to drop.
+            while account.credentials.len() >= MAX_CREDENTIALS {
+                let Some(oldest) = account
+                    .credentials
+                    .iter()
+                    .position(|credential| !credential.is_live_at(transition.at))
+                else {
+                    return Err(corrupt(format!(
+                        "the service account `{name}` holds {MAX_CREDENTIALS} live credentials"
+                    )));
+                };
+                let dropped = account.credentials.remove(oldest);
+                if let CredentialMaterial::Binding { binding } = &dropped.material
+                    && state.bindings.get(binding) == Some(&name)
+                {
+                    state.bindings.remove(binding);
+                }
+            }
+            account.credentials.push(Credential {
+                id,
+                material,
+                created_revision: at,
+                created_at: transition.at,
+                created_by: transition.by.clone(),
+                expires_at: transition.expires_at,
+                revoked_at: None,
+            });
+            account.revision = at;
+        }
+        CREDENTIAL_REVOKE => {
+            let id = transition
+                .credential_id
+                .ok_or_else(|| corrupt("a revocation names no credential".to_owned()))?;
+            let account = state
+                .accounts
+                .get_mut(&name)
+                .ok_or_else(|| missing("the service account"))?;
+            let credential = account
+                .credentials
+                .iter_mut()
+                .find(|credential| credential.id == id)
+                .ok_or_else(|| {
+                    corrupt(format!("the credential {} does not exist", uuid_text(&id)))
+                })?;
+            credential.revoked_at = Some(transition.at);
+            if let CredentialMaterial::Binding { binding } = &credential.material {
+                state.bindings.remove(binding);
+            }
+            account.revision = at;
         }
         other => return Err(corrupt(format!("`{other}` is not a directory transition"))),
     }
@@ -1635,12 +2300,408 @@ mod tests {
         let Value::Map(mut pairs) = cbor::decode_canonical(&bytes).expect("canonical") else {
             panic!("a map")
         };
-        pairs.push((Value::Int(15), Value::Text("x".to_owned())));
+        pairs.push((Value::Int(24), Value::Text("x".to_owned())));
         let extended = cbor::encode(&Value::Map(pairs)).expect("encodes");
         assert!(DirectoryTransition::decode(&extended).is_err());
         let unknown = DirectoryTransition::new("user.promote", "eve")
             .encode()
             .expect("encodes");
         assert!(DirectoryTransition::decode(&unknown).is_err());
+    }
+
+    /// The thumbprint of the test key, 32 bytes of 7.
+    fn kid() -> String {
+        super::super::credentials::thumbprint("EdDSA", &[7; 32]).expect("a thumbprint")
+    }
+
+    fn account(name: &str) -> Change {
+        Change::CreateServiceAccount {
+            name: name.to_owned(),
+            owner: "payments team".to_owned(),
+            description: "billing jobs".to_owned(),
+        }
+    }
+
+    fn secret(account: &str, id: u8) -> Change {
+        Change::AddCredential {
+            account: account.to_owned(),
+            id: [id; 16],
+            material: CredentialMaterial::Secret {
+                phc: PHC.to_owned(),
+            },
+            expires_at: None,
+        }
+    }
+
+    fn bound(account: &str, id: u8, binding: &str) -> Change {
+        Change::AddCredential {
+            account: account.to_owned(),
+            id: [id; 16],
+            material: CredentialMaterial::Binding {
+                binding: binding.to_owned(),
+            },
+            expires_at: None,
+        }
+    }
+
+    /// WP-11.2: a service account, its status, its three kinds of credential and a revocation are
+    /// journaled, and a reopen replays them to the same state.
+    #[test]
+    fn service_accounts_and_their_credentials_survive_a_reopen() {
+        let root = scratch("accounts-reopen");
+        let key = Change::AddCredential {
+            account: "billing".to_owned(),
+            id: [2; 16],
+            material: CredentialMaterial::Key {
+                algorithm: "EdDSA".to_owned(),
+                key: vec![7; 32],
+                key_id: kid(),
+            },
+            expires_at: Some(1_900_000_000),
+        };
+        let held = {
+            let directory = open(&root);
+            apply(&directory, 1, account("billing")).expect("an account");
+            apply(&directory, 2, secret("billing", 1)).expect("a secret");
+            apply(&directory, 3, key).expect("a key");
+            apply(&directory, 4, bound("billing", 3, "spiffe://acme/billing")).expect("a binding");
+            apply(
+                &directory,
+                5,
+                Change::RevokeCredential {
+                    account: "billing".to_owned(),
+                    id: [1; 16],
+                },
+            )
+            .expect("a revocation");
+            apply(
+                &directory,
+                6,
+                Change::SetAccountStatus {
+                    name: "billing".to_owned(),
+                    active: false,
+                },
+            )
+            .expect("suspended");
+            apply(
+                &directory,
+                7,
+                Change::UpdateServiceAccount {
+                    name: "billing".to_owned(),
+                    owner: Some("platform team".to_owned()),
+                    description: None,
+                },
+            )
+            .expect("updated");
+            directory.service_account("billing").expect("held")
+        };
+        let directory = open(&root);
+        let reopened = directory.service_account("billing").expect("replayed");
+        assert_eq!(reopened, held);
+        assert_eq!(reopened.status, AccountStatus::Suspended);
+        assert_eq!(reopened.owner, "platform team");
+        assert_eq!(reopened.description, "billing jobs");
+        assert_eq!(reopened.credentials.len(), 3);
+        assert_eq!(reopened.credentials[0].revoked_at, Some(1_800_000_000));
+        assert_eq!(reopened.credentials[1].created_revision, 3);
+        assert_eq!(reopened.live_credentials(1_800_000_000).count(), 2);
+        // The key expires: at its expiry it is no longer live.
+        assert_eq!(reopened.live_credentials(1_900_000_000).count(), 1);
+        assert_eq!(
+            directory
+                .account_of_binding("spiffe://acme/billing")
+                .map(|account| account.name),
+            Some("billing".to_owned())
+        );
+    }
+
+    /// The bound of 8 counts live credentials only: a revoked one makes room for the next.
+    #[test]
+    fn at_most_eight_live_credentials_and_a_revoked_one_makes_room() {
+        let directory = open(&scratch("accounts-bound"));
+        apply(&directory, 1, account("billing")).expect("an account");
+        for id in 0..8u8 {
+            apply(&directory, 10 + id, secret("billing", id)).expect("a credential");
+        }
+        let refused = apply(&directory, 30, secret("billing", 8)).expect_err("a ninth");
+        assert!(
+            refused.to_string().contains("8 live credentials"),
+            "{refused}"
+        );
+        apply(
+            &directory,
+            31,
+            Change::RevokeCredential {
+                account: "billing".to_owned(),
+                id: [0; 16],
+            },
+        )
+        .expect("revoked");
+        apply(&directory, 32, secret("billing", 8)).expect("room again");
+        // Revoking twice writes nothing.
+        let again = apply(
+            &directory,
+            33,
+            Change::RevokeCredential {
+                account: "billing".to_owned(),
+                id: [0; 16],
+            },
+        )
+        .expect("idempotent");
+        assert!(!again.changed);
+    }
+
+    /// Past MAX_CREDENTIALS kept, the oldest credential that proves nothing is dropped: a
+    /// rotation never runs out of room, and every live credential stays.
+    #[test]
+    fn the_oldest_dead_credentials_make_room_for_a_rotation() {
+        let directory = open(&scratch("accounts-rotation"));
+        apply(&directory, 1, account("billing")).expect("an account");
+        let mut op = 0u64;
+        let mut next = |directory: &Directory, change: Change| {
+            op += 1;
+            directory.apply(
+                &Applying::for_tests_numbered(op),
+                change,
+                "admin",
+                1_800_000_000,
+                None,
+            )
+        };
+        // Two keys stay live throughout; every secret is made and revoked.
+        let live_secret = |id: u8| Change::AddCredential {
+            account: "billing".to_owned(),
+            id: [id; 16],
+            material: CredentialMaterial::Secret {
+                phc: PHC.to_owned(),
+            },
+            expires_at: None,
+        };
+        next(&directory, live_secret(0)).expect("live");
+        let mut id = [0u8; 16];
+        for round in 0..300u16 {
+            id[..2].copy_from_slice(&(round + 1).to_be_bytes());
+            next(
+                &directory,
+                Change::AddCredential {
+                    account: "billing".to_owned(),
+                    id,
+                    material: CredentialMaterial::Secret {
+                        phc: PHC.to_owned(),
+                    },
+                    expires_at: None,
+                },
+            )
+            .expect("room for a rotation");
+            next(
+                &directory,
+                Change::RevokeCredential {
+                    account: "billing".to_owned(),
+                    id,
+                },
+            )
+            .expect("revoked");
+        }
+        let held = directory.service_account("billing").expect("held");
+        assert_eq!(held.credentials.len(), MAX_CREDENTIALS);
+        assert!(
+            held.credentials
+                .iter()
+                .any(|credential| credential.id == [0; 16])
+        );
+        assert_eq!(held.live_credentials(1_800_000_000).count(), 1);
+    }
+
+    /// One binding names one account; revoking it frees it, and deleting the account frees its
+    /// bindings and removes it from every role.
+    #[test]
+    fn a_binding_names_one_account_and_deleting_an_account_frees_it() {
+        let directory = open(&scratch("accounts-bindings"));
+        apply(&directory, 1, account("billing")).expect("an account");
+        apply(&directory, 2, account("reports")).expect("another");
+        apply(&directory, 3, bound("billing", 1, "spiffe://acme/jobs")).expect("bound");
+        let taken =
+            apply(&directory, 4, bound("reports", 2, "spiffe://acme/jobs")).expect_err("taken");
+        assert!(matches!(taken, DirectoryError::Exists(_)), "{taken}");
+        apply(
+            &directory,
+            5,
+            Change::RevokeCredential {
+                account: "billing".to_owned(),
+                id: [1; 16],
+            },
+        )
+        .expect("revoked");
+        assert!(directory.account_of_binding("spiffe://acme/jobs").is_none());
+        apply(&directory, 6, bound("reports", 2, "spiffe://acme/jobs")).expect("free again");
+        apply(
+            &directory,
+            7,
+            Change::CreateRole {
+                name: "readers".to_owned(),
+                description: String::new(),
+            },
+        )
+        .expect("a role");
+        apply(
+            &directory,
+            8,
+            Change::AddMember {
+                role: "readers".to_owned(),
+                member: "sa:reports".to_owned(),
+            },
+        )
+        .expect("a member");
+        let unknown = apply(
+            &directory,
+            9,
+            Change::AddMember {
+                role: "readers".to_owned(),
+                member: "sa:nobody".to_owned(),
+            },
+        )
+        .expect_err("no such account");
+        assert!(matches!(unknown, DirectoryError::NotFound(_)), "{unknown}");
+        apply(
+            &directory,
+            10,
+            Change::DeleteServiceAccount {
+                name: "reports".to_owned(),
+            },
+        )
+        .expect("deleted");
+        assert!(directory.account_of_binding("spiffe://acme/jobs").is_none());
+        assert!(directory.roles_of("sa:reports").is_empty());
+        assert!(directory.service_account("reports").is_none());
+    }
+
+    #[test]
+    fn a_bad_account_or_credential_is_refused_before_anything_is_written() {
+        let directory = open(&scratch("accounts-refused"));
+        apply(&directory, 1, account("billing")).expect("an account");
+        let mut refusals = vec![
+            account("Billing"),
+            account("billing"),
+            Change::CreateServiceAccount {
+                name: "jobs".to_owned(),
+                owner: " ".to_owned(),
+                description: String::new(),
+            },
+            secret("nobody", 1),
+            Change::AddCredential {
+                account: "billing".to_owned(),
+                id: [1; 16],
+                material: CredentialMaterial::Secret {
+                    phc: "plain".to_owned(),
+                },
+                expires_at: None,
+            },
+            Change::AddCredential {
+                account: "billing".to_owned(),
+                id: [1; 16],
+                material: CredentialMaterial::Secret {
+                    phc: PHC.to_owned(),
+                },
+                expires_at: Some(1_700_000_000),
+            },
+            Change::AddCredential {
+                account: "billing".to_owned(),
+                id: [1; 16],
+                material: CredentialMaterial::Key {
+                    algorithm: "ES256".to_owned(),
+                    key: vec![4; 32],
+                    key_id: "kid".to_owned(),
+                },
+                expires_at: None,
+            },
+            bound("billing", 1, "not a binding"),
+            Change::AddCredential {
+                account: "billing".to_owned(),
+                id: [1; 16],
+                material: CredentialMaterial::Key {
+                    algorithm: "EdDSA".to_owned(),
+                    key: vec![7; 32],
+                    key_id: "the caller's own kid".to_owned(),
+                },
+                expires_at: None,
+            },
+            Change::AddCredential {
+                account: "billing".to_owned(),
+                id: [1; 16],
+                material: CredentialMaterial::Key {
+                    algorithm: "EdDSA".to_owned(),
+                    key: vec![0; 32],
+                    key_id: super::super::credentials::thumbprint("EdDSA", &[0; 32])
+                        .expect("a thumbprint"),
+                },
+                expires_at: None,
+            },
+            Change::RevokeCredential {
+                account: "billing".to_owned(),
+                id: [9; 16],
+            },
+        ];
+        for (op, change) in refusals.drain(..).enumerate() {
+            let op = u8::try_from(op + 10).expect("small");
+            assert!(apply(&directory, op, change.clone()).is_err(), "{change:?}");
+        }
+        assert_eq!(directory.revision(), 1);
+        // One key once per account.
+        let key = |id| Change::AddCredential {
+            account: "billing".to_owned(),
+            id: [id; 16],
+            material: CredentialMaterial::Key {
+                algorithm: "EdDSA".to_owned(),
+                key: vec![7; 32],
+                key_id: kid(),
+            },
+            expires_at: None,
+        };
+        apply(&directory, 40, key(1)).expect("a key");
+        assert!(apply(&directory, 41, key(2)).is_err());
+        assert!(apply(&directory, 42, key(1)).is_err(), "an id once");
+    }
+
+    #[test]
+    fn a_transition_never_shows_a_password_factor_or_secret_hash() {
+        let mut transition = DirectoryTransition::new(kinds::CREDENTIAL_ADD, "billing");
+        transition.secret = Some(PHC.to_owned());
+        transition.password = Some(PHC.to_owned());
+        transition.factor = Some(vec![42; 8]);
+        let shown = format!("{transition:?}");
+        assert!(
+            !shown.contains("argon2") && !shown.contains("42, 42"),
+            "{shown}"
+        );
+        assert!(shown.contains("<set>"));
+    }
+
+    #[test]
+    fn a_service_account_transition_round_trips_with_every_label() {
+        let mut transition = DirectoryTransition::new(kinds::CREDENTIAL_ADD, "billing");
+        transition.revision = 4;
+        transition.at = 1_800_000_000;
+        transition.by = "admin".to_owned();
+        transition.credential_id = Some([5; 16]);
+        transition.credential_kind = Some("private_key_jwt".to_owned());
+        transition.public_key = Some(vec![7; 32]);
+        transition.algorithm = Some("EdDSA".to_owned());
+        transition.key_id = Some("kid".to_owned());
+        transition.expires_at = Some(1_900_000_000);
+        let bytes = transition.encode().expect("encodes");
+        assert_eq!(
+            DirectoryTransition::decode(&bytes).expect("decodes"),
+            transition
+        );
+        let Value::Map(mut pairs) = cbor::decode_canonical(&bytes).expect("canonical") else {
+            panic!("a map")
+        };
+        for pair in &mut pairs {
+            if pair.0 == Value::Int(16) {
+                pair.1 = Value::Bytes(vec![5; 15]);
+            }
+        }
+        let short = cbor::encode(&Value::Map(pairs)).expect("encodes");
+        assert!(DirectoryTransition::decode(&short).is_err(), "a short id");
     }
 }

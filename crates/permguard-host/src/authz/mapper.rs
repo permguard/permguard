@@ -158,12 +158,10 @@ impl PrincipalMapper {
                             "host.principals[{position}].san_uri `{uri}` is not a URI"
                         )));
                     }
-                    // The Host mints these itself, for its roles, local users and providers' subjects:
-                    // a certificate naming one would act as a role or as somebody else (WP-8.1).
-                    if ["role:", "user:", "oidc:", "spki:"]
-                        .iter()
-                        .any(|reserved| uri.starts_with(reserved))
-                    {
+                    // The Host mints these itself, for its roles, local users, providers' subjects and
+                    // service accounts: a certificate naming one would act as a role or as somebody
+                    // else (WP-8.1), or as a service account without its credential (WP-11.2).
+                    if super::directory::is_reserved(uri) {
                         return Err(MapperError::Invalid(format!(
                             "host.principals[{position}].san_uri `{uri}` names a principal the Host reserves"
                         )));
@@ -592,6 +590,9 @@ mod tests {
             "user:alice",
             "oidc:https://login.example",
             "spki:sha256:00",
+            "sa:billing",
+            "SA:billing",
+            "Role:admins",
         ] {
             assert!(
                 matches!(

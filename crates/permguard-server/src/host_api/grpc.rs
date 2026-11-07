@@ -23,6 +23,7 @@ use super::wire;
 mod directory;
 mod evidence;
 mod members;
+mod service_accounts;
 
 type Answer<T> = Result<Response<T>, Status>;
 

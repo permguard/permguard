@@ -5,23 +5,30 @@
 //! member, a local user or a link is one security mutation, journaled, audited and recovered
 //! after a crash like a grant's.
 //!
-//! | Operation                    | Audit action             |
-//! | ---------------------------- | ------------------------ |
-//! | `directory.role.create`      | `host.role.created`      |
-//! | `directory.role.update`      | `host.role.updated`      |
-//! | `directory.role.delete`      | `host.role.deleted`      |
-//! | `directory.member.add`       | `host.member.added`      |
-//! | `directory.member.remove`    | `host.member.removed`    |
-//! | `directory.user.create`      | `host.user.created`      |
-//! | `directory.user.update`      | `host.user.updated`      |
-//! | `directory.user.password`    | `host.user.password_set` |
-//! | `directory.user.factor`      | `host.user.factor_set`   |
-//! | `directory.user.status`      | `host.user.status_set`   |
-//! | `directory.user.link`        | `host.user.linked`       |
-//! | `directory.user.unlink`      | `host.user.unlinked`     |
-//! | `directory.user.delete`      | `host.user.deleted`      |
+//! | Operation                           | Audit action                    |
+//! | ----------------------------------- | ------------------------------- |
+//! | `directory.role.create`             | `host.role.created`             |
+//! | `directory.role.update`             | `host.role.updated`             |
+//! | `directory.role.delete`             | `host.role.deleted`             |
+//! | `directory.member.add`              | `host.member.added`             |
+//! | `directory.member.remove`           | `host.member.removed`           |
+//! | `directory.user.create`             | `host.user.created`             |
+//! | `directory.user.update`             | `host.user.updated`             |
+//! | `directory.user.password`           | `host.user.password_set`        |
+//! | `directory.user.factor`             | `host.user.factor_set`          |
+//! | `directory.user.status`             | `host.user.status_set`          |
+//! | `directory.user.link`               | `host.user.linked`              |
+//! | `directory.user.unlink`             | `host.user.unlinked`            |
+//! | `directory.user.delete`             | `host.user.deleted`             |
+//! | `directory.service_account.create`  | `iam.service_account.created`   |
+//! | `directory.service_account.update`  | `iam.service_account.updated`   |
+//! | `directory.service_account.suspend` | `iam.service_account.suspended` |
+//! | `directory.service_account.resume`  | `iam.service_account.resumed`   |
+//! | `directory.service_account.delete`  | `iam.service_account.deleted`   |
+//! | `directory.credential.create`       | `iam.credential.created`        |
+//! | `directory.credential.revoke`       | `iam.credential.revoked`        |
 //!
-//! A password, a factor and a token never reach an audit record: the record names the operation
+//! A password, a factor, a client secret and a token never reach an audit record: the record names the operation
 //! and the user, nothing of the secret.
 
 use super::journal::Initiator;
@@ -44,6 +51,30 @@ pub fn names(change: &Change) -> (&'static str, &'static str) {
         Change::Link { .. } => ("directory.user.link", "host.user.linked"),
         Change::Unlink { .. } => ("directory.user.unlink", "host.user.unlinked"),
         Change::DeleteUser { .. } => ("directory.user.delete", "host.user.deleted"),
+        Change::CreateServiceAccount { .. } => (
+            "directory.service_account.create",
+            "iam.service_account.created",
+        ),
+        Change::UpdateServiceAccount { .. } => (
+            "directory.service_account.update",
+            "iam.service_account.updated",
+        ),
+        Change::SetAccountStatus { active: true, .. } => (
+            "directory.service_account.resume",
+            "iam.service_account.resumed",
+        ),
+        Change::SetAccountStatus { active: false, .. } => (
+            "directory.service_account.suspend",
+            "iam.service_account.suspended",
+        ),
+        Change::DeleteServiceAccount { .. } => (
+            "directory.service_account.delete",
+            "iam.service_account.deleted",
+        ),
+        Change::AddCredential { .. } => ("directory.credential.create", "iam.credential.created"),
+        Change::RevokeCredential { .. } => {
+            ("directory.credential.revoke", "iam.credential.revoked")
+        }
     }
 }
 

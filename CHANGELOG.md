@@ -27,6 +27,12 @@ is cut.
   `host members list` and `get` show `member_id`, `name` and `groups`.
   A name another live member Host holds is refused `member_name_taken`, at enrollment, approval or rename; two operations that would give one Host two records, or one record to two Hosts, are refused `member_record_conflict`, nothing written.
 
+- **Service accounts and their credentials on the IAM Host.**
+  A service account (`sa:<name>`, an owner, a description, `active` or `suspended`) is a principal that is not a person: grants name it, roles hold it.
+  `/iam/v1/service-accounts` and `permguard.iam.v1.ServiceAccountService` list, read, create, update, suspend, resume and delete them; deleting one is refused while it holds active grants.
+  Each holds at most 8 live credentials: a `client_secret` the Host draws (`pgc_…`, answered once by the call that made it, only its Argon2id hash kept), a `private_key_jwt` public key (Ed25519 or P-256, its `kid` the RFC 7638 thumbprint), or a `tls_client_auth` binding (an SPKI digest or a SAN URI, naming one account).
+  Every change is a directory transition, audited `iam.service_account.*` or `iam.credential.*`; the transition's labels are registered in `contracts/cbor/directory.json`.
+
 ### Changed
 
 - **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**
