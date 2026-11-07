@@ -535,8 +535,6 @@ fn facade(fixture: &Fixture) -> crate::events::http::EventFacade {
     crate::events::http::EventFacade {
         store: Arc::clone(&fixture.store),
         host: Some(fixture.consumer.clone()),
-        producers: Arc::new(std::sync::RwLock::new(Vec::new())),
-        local: None,
         cursor_key: fixture.keys.clone(),
         catalog: None,
         disclosure: permguard_core::Disclosure::Full,
@@ -612,94 +610,6 @@ fn the_signers_read_answers_each_consumer_run_in_stream_order() {
         .expect("answered");
     assert_eq!(after.streams.len(), 1);
     assert_eq!(after.streams[0].producer, hex(&[2; 16]));
-}
-
-/// The ring of a data plane sharing the process, as the facade reads it.
-struct Ring(Vec<permguard_core::Jwk>);
-
-impl permguard_core::keys::PublicSet for Ring {
-    fn public_keys(&self) -> permguard_core::keys::Result<Vec<permguard_core::Jwk>> {
-        Ok(self.0.clone())
-    }
-}
-
-fn jwk(x: &str) -> permguard_core::Jwk {
-    serde_json::from_value(json!({
-        "kty": "OKP",
-        "crv": "Ed25519",
-        "x": x,
-        "kid": x,
-        "alg": "EdDSA",
-        "use": "sig",
-    }))
-    .expect("a JWK")
-}
-
-/// WP-6.2b (owner decision of 2026-10-18): the ingest route trusts the ring sharing this process,
-/// each of its keys bound to each legacy journal's producer, zone and ledger, read on every batch;
-/// without a legacy journal it expects no batch at all.
-#[test]
-fn the_local_ring_is_trusted_for_each_legacy_journal_and_nothing_else() {
-    let fixture = Fixture::new("local-trust");
-    let mut facade = facade(&fixture);
-    assert!(facade.accepted_producers().is_empty());
-    assert!(
-        !facade.expects_batches(),
-        "nothing to drain, nothing expected"
-    );
-    assert!(!facade.awaits_trust());
-
-    let ring = Arc::new(Ring(vec![jwk("AAAA"), jwk("BBBB")]));
-    facade.local = Some(crate::events::http::LocalTrust {
-        keys: Some(Arc::clone(&ring) as Arc<dyn permguard_core::keys::PublicSet>),
-        bindings: vec![
-            (
-                "plane-before".to_owned(),
-                ZONE.to_owned(),
-                LEDGER.to_owned(),
-            ),
-            (
-                "plane-before".to_owned(),
-                ZONE.to_owned(),
-                "ledger-2".to_owned(),
-            ),
-        ],
-    });
-    assert!(facade.expects_batches());
-    assert!(!facade.awaits_trust(), "every journal has its keys");
-    let trusted = facade.accepted_producers();
-    assert_eq!(trusted.len(), 4, "every key for every journal");
-    assert!(trusted.iter().all(|held| held.producer == "plane-before"
-        && held.zone == ZONE
-        && (held.ledger == LEDGER || held.ledger == "ledger-2")));
-    // Never a wildcard: the ring is bound to exactly what the journals name.
-    assert!(
-        trusted
-            .iter()
-            .all(|held| held.zone != "*" && held.ledger != "*")
-    );
-
-    // An empty binding list trusts nothing and expects nothing.
-    facade.local = Some(crate::events::http::LocalTrust {
-        keys: Some(ring as Arc<dyn permguard_core::keys::PublicSet>),
-        bindings: Vec::new(),
-    });
-    assert!(facade.accepted_producers().is_empty());
-    assert!(!facade.expects_batches());
-
-    // A journal waiting and no ring composed: nothing trusted, and the batches are expected, so
-    // health says the store is degraded rather than waiting quietly.
-    facade.local = Some(crate::events::http::LocalTrust {
-        keys: None,
-        bindings: vec![(
-            "plane-before".to_owned(),
-            ZONE.to_owned(),
-            LEDGER.to_owned(),
-        )],
-    });
-    assert!(facade.accepted_producers().is_empty());
-    assert!(facade.expects_batches());
-    assert!(facade.awaits_trust());
 }
 
 /// WP-6.2b, after the review: a run longer than one page may examine is searched to its end, and

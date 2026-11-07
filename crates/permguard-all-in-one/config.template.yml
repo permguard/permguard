@@ -308,11 +308,8 @@ controlPlane:
   #                              # behind a reader may fall: past it, a consumer is told
   #                              # `offset_expired` and where the remaining records begin, rather
   #                              # than resuming from the wrong place and reporting a clean run.
-  #   producer_keys:              # remote producers: each JWKS bound to the ONE pdp it signs for.
-  #     - path: trust/data-plane-decisions.jwks
-  #       pdp: data-plane-eu-1    # exact, never `*`: the binding is what stops one plane
-  #                               # signing evidence as another. Absent entries mean only the
-  #                               # ring sharing this process (the all-in-one) is accepted.
+  #   # Records arrive over the Host's `decisions.ship`, verified under the members' pinned rings:
+  #   # no producer key file is read (`producer_keys` is retired and refused at start).
   #   # The ceiling on what a decision record may carry in clear to be kept here, whatever its
   #   # producer includes. A record beyond it refuses its whole batch (`batch_not_accepted`): a
   #   # chained, signed record cannot be trimmed. A list left out accepts nothing; `["*"]` accepts
@@ -448,18 +445,8 @@ dataPlane:
   #   log:
   #     enabled: "true"
   #
-  #     # Where a version 1 spool left by an earlier release is shipped until it is empty: since
-  #     # WP-6.1 new records go over the membership's `decisions.ship` task, never here. Described
-  #     # exactly like a mirror source: a server this plane authenticates before it speaks to it.
-  #     server:
-  #       url: "grpcs://control.acme.com:6443"     # exact: this is who you trust
-  #       tls:
-  #         ca_file: tls/control-plane-ca.pem      # absent: the platform trust store
-  #         cert: tls/decision-log-client.pem      # its own identity, deliberately not the mirror's:
-  #         key: tls/decision-log-client.key       # *may ship decision logs* and *may read policy*
-  #                                                # are two authorizations, and a deployment should
-  #                                                # be able to grant one without the other
-  #         server_name: control-plane             # when the address is not the name
+  #     # Shipped by the Host over `decisions.ship` to its coordinator: there is no server to name
+  #     # (`server` is retired and refused at start).
   #
   #     # The bounds of what the Host's stream holds unacknowledged by the required subscriptions:
   #     # past either, decisions are refused `unavailable`, so a coordinator outage costs disk up
@@ -544,13 +531,8 @@ dataPlane:
   #     allowed_lateness: "5m"       # how late an occurrence may arrive and still be recorded
   #     clock_skew: "30s"            # how far a caller's clock may run ahead of this one
   #
-  #   # Where records are shipped. Absent, the decision log's destination is used — one deployment
-  #   # ships both to one control plane, and naming it twice is two settings to keep in step.
-  #   destination:
-  #     url: "grpcs://control.acme.com:6443"
-  #     transport: grpc              # absent: the URL's own scheme decides
-  #     tls:
-  #       ca_file: tls/control-plane-ca.pem
+  #   # Shipped by the Host over `events.ship` to its coordinator: there is no destination to
+  #   # name (`destination` is retired and refused at start).
   #
   #   # Whether this plane also READS history other planes recorded.
   #   #

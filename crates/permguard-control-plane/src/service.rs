@@ -784,12 +784,15 @@ fn decisions_startup_check(config: &permguard_core::Config) -> anyhow::Result<()
     if !config.decision_store_enabled() {
         return Ok(());
     }
-    if config.decision_producer_keys().is_empty() && !local_plane_logs(config) {
+    // Retired (iteration 02, WP-10.4): decisions arrive over the Host's `decisions.ship`, verified
+    // under the membership's pinned rings; no batch is accepted over a public route and no key
+    // file is read. A configuration still naming one is refused, so no deployment believes it is
+    // in force.
+    if !config.decision_producer_keys().is_empty() {
         anyhow::bail!(
-            "the decision store is enabled and this process has neither \
-             `controlPlane.decisions.producer_keys` nor a data plane in the same process with \
-             its decision log on (`dataPlane.decisions.log.enabled`). It would serve no decision \
-             routes because no batch could be verified"
+            "`controlPlane.decisions.producer_keys` is retired: decisions arrive over the Host's \
+             `decisions.ship`, from the members of this plane's Host, verified under their \
+             memberships' pinned rings. Remove it"
         );
     }
 
@@ -858,28 +861,10 @@ fn build_event_facade(
         }
     };
 
-    // The ring of the data plane sharing this process, bound to the producer, zone and ledger of
-    // each legacy journal it may still ship (WP-6.2b): nothing else is trusted on this route.
-    let bindings = legacy_event_producers(config);
-    let local = (!bindings.is_empty()).then(|| {
-        let keys = crate::handles::data_public_keys(context);
-        if keys.is_none() {
-            tracing::warn!(
-                event.name = "events.legacy_untrusted",
-                component = COMPONENT,
-                "a legacy event journal beside this store waits to ship and this process composes \
-                 no data signing ring: its batches are refused"
-            );
-        }
-        crate::events::http::LocalTrust { keys, bindings }
-    });
-
     let facade = crate::events::http::EventFacade {
         catalog: context.catalog().map(std::sync::Arc::clone),
         store,
         host: crate::handles::event_consumer(context),
-        producers: std::sync::Arc::new(std::sync::RwLock::new(Vec::new())),
-        local,
         cursor_key,
         disclosure: config.error_detail(),
         metrics: context.metrics().clone(),
@@ -901,83 +886,12 @@ fn build_event_facade(
     Some(facade)
 }
 
-/// Whether this process contains a data plane keeping a decision log, with the ring that signs
-/// for it.
-fn local_plane_logs(config: &permguard_core::Config) -> bool {
-    config.data_signing_keys_enabled() && config.log_enabled()
-}
-
-/// The producer this process contains whose batches arrive here: a data plane with the decision
-/// log on, the ring that signs for it, and a version 1 spool still naming it (WP-6.1).
-///
-/// Since WP-6.1 a plane records on the Host's stream, and this store receives only what an
-/// upgraded plane's legacy spool still ships, under the name its records carry. The signing ring
-/// alone is not it: a control-plane-only process composes a data signing ring whenever the key
-/// lifecycle is on, and trusting that ring would bind keys to a producer nothing can ever
-/// legitimately claim, dressed as a working fallback.
-fn local_producer(config: &permguard_core::Config) -> Option<String> {
-    if !local_plane_logs(config) {
-        return None;
-    }
-    let spool = config.working_dir().join(config.log_spool_directory());
-    match permguard_decisions::spool::producer_of(&spool) {
-        Ok(producer) => producer.filter(|name| !name.trim().is_empty()),
-        Err(error) => {
-            tracing::warn!(
-                event.name = "decisions.legacy_unreadable",
-                component = COMPONENT,
-                error = %error,
-                "the legacy decision spool beside this store cannot be read: its producer is not \
-                 trusted here"
-            );
-            None
-        }
-    }
-}
-
 fn build_decision_facade(
     context: &PlaneContext<'_>,
     directory: &std::path::Path,
     shared: &std::sync::Arc<std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>>,
 ) -> Option<crate::decisions::http::DecisionFacade> {
     let config = context.config();
-    // Whose signatures this plane accepts. Its own ring is deliberately not
-    // among them: a batch is signed by the plane that decided.
-    let producers = load_producer_keys(config);
-    // The ring sharing this process is trusted only when a local producer actually exists to
-    // bind it to — see `local_producer`.
-    let local_pdp = local_producer(config);
-    let local = local_pdp
-        .is_some()
-        .then(|| crate::handles::data_public_keys(context))
-        .flatten();
-    if producers.is_empty() && local.is_none() {
-        if config.decision_producer_keys().is_empty() && !local_plane_logs(config) {
-            // The startup check reports this before listeners are built. Keep
-            // the composition root fail-closed if it was bypassed in a test or
-            // an embedding application.
-            tracing::error!(
-                event.name = "decisions.disabled",
-                component = COMPONENT,
-                "the decision log is on and this plane has no producer trust source"
-            );
-            return None;
-        }
-        // A configured producer may not have published its first JWKS yet.
-        // Mount the routes with an empty trust set: every batch is refused,
-        // `reload_producers` retries the files, and health names the degraded
-        // capability. Omitting the routes here would make that recoverable
-        // state permanent until restart. A plane in this process records on the
-        // Host's stream (WP-6.1), and expects nothing here.
-        if !config.decision_producer_keys().is_empty() {
-            tracing::warn!(
-                event.name = "decisions.no_producers",
-                component = COMPONENT,
-                "the decision store is ready but no configured producer key set has loaded; \
-                 batches are refused until one is published"
-            );
-        }
-    }
     let store = match crate::decisions::DecisionStore::open(directory) {
         Ok(store) => std::sync::Arc::new(store),
         Err(error) => {
@@ -1017,20 +931,7 @@ fn build_decision_facade(
     let facade = crate::decisions::http::DecisionFacade {
         store,
         ceiling: config.decision_ceiling(),
-        local,
-        // The ring sharing this process signs as the data plane it belongs to: bound to that
-        // plane's own producer identity, never floating free of one.
-        local_pdp: local_pdp.unwrap_or_default(),
         cursor_key,
-        producers: std::sync::Arc::new(std::sync::RwLock::new(producers)),
-        producer_files: config
-            .decision_producer_keys()
-            .iter()
-            .map(|source| crate::decisions::http::ProducerFile {
-                path: config.working_dir().join(&source.path),
-                pdp: source.pdp.clone(),
-            })
-            .collect(),
         disclosure: config.error_detail(),
         metrics: context.metrics().clone(),
         host: crate::handles::decision_consumer(context),
@@ -1048,101 +949,6 @@ fn build_decision_facade(
     }
 
     Some(facade)
-}
-
-/// Reads the producers' published key sets from the paths the file names, each bound to the
-/// producer its entry declares.
-///
-/// A path that cannot be read is reported and skipped rather than fatal: a
-/// deployment with three producers and one unreadable file should keep
-/// accepting the other two, and hear about the third.
-fn load_producer_keys(
-    config: &permguard_core::Config,
-) -> Vec<crate::decisions::ingest::ProducerTrust> {
-    let mut trusted = Vec::new();
-    for source in config.decision_producer_keys() {
-        for key in load_keys_from(config, std::slice::from_ref(&source.path)) {
-            trusted.push(crate::decisions::ingest::ProducerTrust {
-                key,
-                pdp: source.pdp.clone(),
-            });
-        }
-    }
-
-    trusted
-}
-
-/// The `(producer, zone, ledger)` each legacy event journal of the data plane in this process names
-/// (WP-6.2b): what its old shipper may still send here, under the ring it shares with this plane.
-/// None without a data plane keeping events and its signing ring.
-fn legacy_event_producers(config: &permguard_core::Config) -> Vec<(String, String, String)> {
-    if !config.events_enabled() || !config.data_signing_keys_enabled() {
-        return Vec::new();
-    }
-    let root = config.events_directory();
-    let mut found = Vec::new();
-    let Ok(zones) = std::fs::read_dir(&root) else {
-        return found;
-    };
-    for zone in zones.flatten() {
-        let Ok(ledgers) = std::fs::read_dir(zone.path()) else {
-            continue;
-        };
-        for ledger in ledgers.flatten() {
-            let directory = ledger.path();
-            if !directory
-                .join(permguard_events::journal::STATE_FILE)
-                .exists()
-            {
-                continue;
-            }
-            match permguard_events::journal::stream_of(&directory) {
-                Ok(stream) => found.push((stream.producer.id, stream.zone, stream.ledger)),
-                Err(error) => tracing::warn!(
-                    event.name = "events.legacy_unreadable",
-                    component = COMPONENT,
-                    error = %error,
-                    "a legacy event journal beside this store cannot be read: its producer is not \
-                     trusted here"
-                ),
-            }
-        }
-    }
-    found.sort();
-    found.dedup();
-    found
-}
-
-fn load_keys_from(config: &permguard_core::Config, paths: &[String]) -> Vec<permguard_core::Jwk> {
-    let mut keys = Vec::new();
-    for path in paths {
-        let resolved = config.working_dir().join(path);
-        let parsed = std::fs::read_to_string(&resolved)
-            .ok()
-            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
-        let Some(parsed) = parsed else {
-            tracing::error!(
-                event.name = "decisions.producer_keys_unreadable",
-                component = COMPONENT,
-                path = %resolved.display(),
-                "a producer's key set could not be read: its batches will not be accepted"
-            );
-            continue;
-        };
-        let set = parsed.get("keys").cloned().unwrap_or(parsed);
-        match serde_json::from_value::<Vec<permguard_core::Jwk>>(set) {
-            Ok(found) => keys.extend(found),
-            Err(error) => tracing::error!(
-                event.name = "decisions.producer_keys_unreadable",
-                component = COMPONENT,
-                path = %resolved.display(),
-                error = %error,
-                "a producer's key set is not a JWKS"
-            ),
-        }
-    }
-
-    keys
 }
 
 /// What exports a zone or a ledger (WP-7.10): `None` without the Host's `host.operations` signer
@@ -1309,58 +1115,25 @@ async fn info(State(state): State<PlaneState>) -> Json<InfoBody> {
 
 async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
     let mut found = Vec::new();
-    // Served and holding nobody's keys: every batch is refused as unattributable, which from the
-    // outside looks like the producers are at fault. Said here instead.
-    if let Some(events) = &state.events {
-        // Two different failures, and they were being reported as one. A facade that was never
-        // composed — a store that would not open, read offsets that could not be signed — is not a
-        // plane waiting for somebody to publish keys, and saying so would send an operator to fix
-        // the wrong thing while the store's own refusal sits in the log above.
-        let composed = events.lock().ok().and_then(|held| {
-            held.as_ref()
-                .map(crate::events::http::EventFacade::awaits_trust)
-        });
-        match composed {
-            None => found.push(degraded(
-                "events",
-                "the event store did not compose: this plane serves no event routes at \
-                         all, and the reason it could not open them was recorded at startup",
-            )),
-            Some(true) => found.push(degraded(
-                "events",
-                "a legacy event journal beside this store waits to ship and the ring of \
-                         its data plane publishes no key: its batches are refused as \
-                         unattributable until it does",
-            )),
-            Some(false) => {}
-        }
+    // A facade that was never composed — a store that would not open, read offsets that could not
+    // be signed — serves no routes; said here so the cause recorded at startup is looked for.
+    if let Some(events) = &state.events
+        && events.lock().ok().is_none_or(|held| held.is_none())
+    {
+        found.push(degraded(
+            "events",
+            "the event store did not compose: this plane serves no event routes at all, and \
+             the reason it could not open them was recorded at startup",
+        ));
     }
-    if let Some(decisions) = &state.decisions {
-        let composed = decisions.lock().ok().and_then(|held| {
-            held.as_ref().map(|facade| {
-                facade
-                    .accepted_producers()
-                    .map(|keys| keys.len().max(usize::from(!facade.expects_batches())))
-            })
-        });
-        match composed {
-            None => found.push(degraded(
-                "decisions",
-                "the decision store did not compose: this plane serves no decision routes \
-                         and its startup preflight must be corrected before it can become ready",
-            )),
-            Some(Err(_)) => found.push(degraded(
-                "decisions",
-                "the decision store composed but its local producer keys cannot currently \
-                         be published: batches are refused until the signing ring recovers",
-            )),
-            Some(Ok(0)) => found.push(degraded(
-                "decisions",
-                "no decision producer key is available: batches are refused as \
-                         unattributable until a configured key set is published",
-            )),
-            Some(Ok(_)) => {}
-        }
+    if let Some(decisions) = &state.decisions
+        && decisions.lock().ok().is_none_or(|held| held.is_none())
+    {
+        found.push(degraded(
+            "decisions",
+            "the decision store did not compose: this plane serves no decision routes and its \
+             startup preflight must be corrected before it can become ready",
+        ));
     }
 
     let mut lifecycle = state.health.report();
@@ -1442,8 +1215,6 @@ mod tests {
         )
         .expect("the test configuration builds")
     }
-
-    mod legacy_events;
 
     /// `server` with this plane registered on a Host that knows its `host_id`: the salt of the
     /// stores' cursor keys (WP-3.3).

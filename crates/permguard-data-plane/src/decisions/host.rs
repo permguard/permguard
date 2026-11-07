@@ -32,8 +32,8 @@ use permguard_host::composition::{StreamPosition, StreamProducer};
 use permguard_stream::engine::RecordCodec as _;
 use tracing::warn;
 
-use super::journal::{Decided, Epoch, Written, decision_body, keeps_permit, marker_body, now};
 use super::measure;
+use super::record::{Decided, Epoch, Written, decision_body, keeps_permit, marker_body, now};
 
 const COMPONENT: &str = "data-plane";
 

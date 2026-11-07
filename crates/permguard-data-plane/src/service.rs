@@ -295,21 +295,28 @@ impl PlaneModule for DataPlaneModule {
         permguard_languages::registry::check_registry().map_err(|collision| {
             anyhow::anyhow!("this build's language catalogue is inconsistent: {collision}")
         })?;
+        // Retired (iteration 02, WP-10.4): decisions are shipped by the Host over
+        // `decisions.ship`, to the coordinator its membership names; no plane names a server.
+        if config.log_destination().is_some() {
+            anyhow::bail!(
+                "`dataPlane.decisions.log.server` is retired: decisions are shipped by the Host \
+                 over `decisions.ship` to the coordinator of its membership. Remove it"
+            );
+        }
         temporal::startup_check(config)
     }
 
-    /// Two loops, both off by default and both about the volume rather than
-    /// the request: the mirroring loop keeps the policies current, and the
-    /// decision-log loop drains what this plane decided. A plane fed by other
-    /// means, or one that records nothing, is a legitimate deployment.
+    /// Loops about the volume rather than the request, each off by default: the mirroring loop
+    /// keeps the policies current, the decision-log loop measures what this plane decided, and the
+    /// event loop keeps the history's floors. A plane fed by other means, or one that records
+    /// nothing, is a legitimate deployment.
     fn services(&self) -> Vec<Box<dyn permguard_core::PlaneTask>> {
         vec![
             Box::new(crate::mirrors::MirrorService::new()),
             Box::new(crate::decisions::DecisionService::new()),
             Box::new(crate::authz::audit::DecisionAuditService::new()),
-            // The third loop, off unless this plane serves the temporal interface: it drains the
-            // event journals and evicts what neither the control plane nor a loaded policy still
-            // needs.
+            // Off unless this plane serves the temporal interface: it keeps the floors and evicts
+            // what no loaded policy still needs.
             Box::new(crate::temporal::service::EventService::new()),
         ]
     }

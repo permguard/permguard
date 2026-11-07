@@ -16,7 +16,7 @@ A control plane answers all of this on `controlPlane.public`:
 | **mutate** | `POST`/`PATCH`/`DELETE` on zones and ledgers |
 | **push policy** | the NOTP routes — negotiate, upload objects, commit a ref |
 | **read audit** | the decision-log routes |
-| **receive and read events** | `POST /events/v1alpha1/batches` and the event-log read routes, when the store is on |
+| **read events** | the event-log read routes, when the store is on; events arrive over the Host's `events.ship` |
 
 The second listener is the Host listener (WP-2.5): `admin.addr`, over `admin.tls` with `admin.allow` as its peer gate, serves the Host API — `/host/v1` and `permguard.host.v1` — where grants are issued and revoked, the key rings, the lifecycle and the effective configuration are read.
 It is not an administrative surface for the planes: creating a zone, deleting a ledger, pushing a policy version and reading the decision log stay on the public endpoint, authorized by the Host's grants (WP-2.4).

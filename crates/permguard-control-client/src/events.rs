@@ -23,12 +23,6 @@
 use serde::Deserialize;
 use serde_json::Value;
 
-/// Why shipping did not land.
-///
-/// The decision log's own type, re-exported rather than copied: the retry-against-stop
-/// distinction is the same distinction, and two enums would be two chances to map one onto the
-/// other differently.
-pub use crate::decisions::ShipError;
 use crate::encode;
 use crate::endpoint::Endpoint;
 use crate::http::Client;
@@ -39,30 +33,6 @@ use crate::tls::TlsOptions;
 /// Generous next to a decision, tight next to a journal that fills: the point of a deadline here
 /// is that a hung socket must not stop the next round.
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-
-/// Where events are shipped: `POST /events/v1alpha1/batches`.
-pub const BATCHES_PATH: &str = "/events/v1alpha1/batches";
-
-/// What shipping one batch concluded.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Shipped {
-    /// The store holds everything through `acked`, durably.
-    Acknowledged {
-        /// The highest contiguous durable sequence. The producer advances by this and nothing else.
-        acked: u64,
-    },
-    /// The store needs an earlier batch first. Nothing was stored, and nothing is lost.
-    OutOfOrder {
-        /// What to resend from.
-        expected_seq: u64,
-    },
-}
-
-/// Where a data plane ships what it recorded.
-pub trait EventSink: Send + Sync {
-    /// Ships one signed batch.
-    fn ship(&self, batch: &permguard_events::Batch) -> Result<Shipped, ShipError>;
-}
 
 /// The HTTP client.
 pub struct HttpEventSink {
@@ -83,80 +53,6 @@ impl HttpEventSink {
             .with_narrator(narrator);
 
         Ok(Self { endpoint, client })
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct Acknowledgement {
-    acked: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct Ahead {
-    expected_seq: u64,
-}
-
-impl EventSink for HttpEventSink {
-    fn ship(&self, batch: &permguard_events::Batch) -> Result<Shipped, ShipError> {
-        let body = serde_json::to_string(batch).map_err(|error| {
-            ShipError::Unavailable(format!("the batch does not render: {error}"))
-        })?;
-        let response = self
-            .client
-            .request(&self.endpoint, "POST", BATCHES_PATH, Some(&body))
-            .map_err(|error| ShipError::Unavailable(error.to_string()))?;
-
-        if (200..300).contains(&response.status) {
-            let held: Acknowledgement = serde_json::from_str(&response.body).map_err(|error| {
-                ShipError::Unavailable(format!("the acknowledgement was unreadable: {error}"))
-            })?;
-
-            return Ok(Shipped::Acknowledged { acked: held.acked });
-        }
-
-        let parsed: Value = serde_json::from_str(&response.body).unwrap_or(Value::Null);
-        let field = |name: &str| {
-            parsed
-                .get(name)
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned()
-        };
-        // Not an error: the store needs an earlier batch, and the next round reads from what it
-        // acknowledged. Retrying this one unchanged would be refused again for ever.
-        if field("code") == permguard_core::codes::stream::OUT_OF_ORDER
-            && let Ok(ahead) = serde_json::from_str::<Ahead>(&response.body)
-        {
-            return Ok(Shipped::OutOfOrder {
-                expected_seq: ahead.expected_seq,
-            });
-        }
-        // A store that is down, overloaded, or behind a proxy that is: retry.
-        if response.status >= 500 || response.status == 429 {
-            return Err(ShipError::Unavailable(match field("message").as_str() {
-                "" => format!("the control plane answered {}", response.status),
-                message => message.to_owned(),
-            }));
-        }
-
-        Err(ShipError::Rejected {
-            code: match field("code").as_str() {
-                "" => permguard_core::codes::client::HTTP_STATUS.to_owned(),
-                code => code.to_owned(),
-            },
-            detail: match field("message").as_str() {
-                "" => format!(
-                    "status {}: {}",
-                    response.status,
-                    response.body.chars().take(200).collect::<String>()
-                ),
-                // No Permguard refusal: the status is the only fact, and `http_status` promises it.
-                message if field("code").is_empty() => {
-                    format!("status {}: {message}", response.status)
-                }
-                message => message.to_owned(),
-            },
-        })
     }
 }
 
@@ -312,9 +208,9 @@ pub struct SignersAsk {
 }
 
 /// Both halves of the event log, over one connection.
-pub trait EventLog: EventSink + EventReader + Send + Sync {}
+pub trait EventLog: EventReader + Send + Sync {}
 
-impl<T: EventSink + EventReader + Send + Sync> EventLog for T {}
+impl<T: EventReader + Send + Sync> EventLog for T {}
 
 impl EventReader for HttpEventSink {
     fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError> {

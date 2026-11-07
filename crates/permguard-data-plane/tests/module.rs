@@ -521,3 +521,54 @@ fn the_configured_aliases_are_what_the_plane_resolves_through() {
         Some("b".repeat(32).as_str())
     );
 }
+
+/// Iteration 02, WP-10.4: a Data Plane is linked to its coordinator by membership alone. A
+/// configuration still naming a decision log server or an event destination is refused by name,
+/// never believed in force.
+#[test]
+fn a_decision_log_server_or_an_event_destination_is_refused_as_retired() {
+    use permguard_core::config::{SETTING_EVENTS_ENABLED, SETTING_EXPERIMENTAL_DOGWOOD};
+
+    let module = permguard_data_plane::module();
+    let plain = deployed_with(&[]);
+    module
+        .startup_check(&plain)
+        .expect("a plane with neither starts");
+    let server = plain
+        .clone()
+        .with_log_destination(
+            Some(permguard_core::decisions::LogDestination {
+                url: "https://control.example:6443".to_owned(),
+                tls: permguard_core::mirrors::MirrorTls::default(),
+            }),
+            permguard_core::decisions::IncludeSection::default(),
+        )
+        .expect("the server parses");
+    let said = module
+        .startup_check(&server)
+        .expect_err("the retired server is refused")
+        .to_string();
+    assert!(said.contains("dataPlane.decisions.log.server"), "{said}");
+    assert!(said.contains("retired"), "{said}");
+
+    let temporal = deployed_with(&[
+        (SETTING_EVENTS_ENABLED, "true"),
+        (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
+    ]);
+    module
+        .startup_check(&temporal)
+        .expect("the temporal interface starts with no destination");
+    let destination = temporal
+        .with_events_destination(Some(permguard_core::decisions::EventDestination {
+            url: "https://control.example:6443".to_owned(),
+            transport: "http".to_owned(),
+            tls: permguard_core::mirrors::MirrorTls::default(),
+        }))
+        .expect("the destination parses");
+    let said = module
+        .startup_check(&destination)
+        .expect_err("the retired destination is refused")
+        .to_string();
+    assert!(said.contains("dataPlane.events.destination"), "{said}");
+    assert!(said.contains("retired"), "{said}");
+}

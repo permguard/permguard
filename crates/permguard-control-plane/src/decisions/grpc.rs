@@ -22,112 +22,20 @@
 
 use permguard_core::metrics::labels;
 use permguard_core::{ApiError, ErrorClass, codes};
-use permguard_decisions::envelope::Batch;
 use serde_json::Value;
 use tonic::{Request, Response, Status};
 
 use super::http::DecisionFacade;
 use super::store::Scope;
-use super::{Accepted, Refused, ingest, measure, read};
+use super::{measure, read};
 use crate::v1::decision_log_server::DecisionLog;
 use crate::v1::{
     DecisionSignerSpan, GetDecisionSignersRequest, GetDecisionSignersResponse, ReadRequest,
-    ReadResponse, ShipRequest, ShipResponse,
+    ReadResponse,
 };
 
 #[tonic::async_trait]
 impl DecisionLog for DecisionFacade {
-    async fn ship(&self, request: Request<ShipRequest>) -> Result<Response<ShipResponse>, Status> {
-        let started = std::time::Instant::now();
-        let batch: Batch = Batch::decode(&request.into_inner().batch).map_err(|error| {
-            self.metrics
-                .count(&measure::REFUSALS, &[(labels::REASON, "malformed")]);
-
-            api_status(
-                &ApiError::new(
-                    ErrorClass::Validation,
-                    codes::stream::MALFORMED_BATCH,
-                    format!("this is not a decision batch: {error}"),
-                ),
-                self.disclosure,
-            )
-        })?;
-
-        let keys = self.accepted_producers().map_err(|error| {
-            api_status(
-                &ApiError::new(
-                    ErrorClass::Unavailable,
-                    codes::stream::KEYS_UNAVAILABLE,
-                    format!("this plane cannot verify signatures right now: {error}"),
-                ),
-                self.disclosure,
-            )
-        })?;
-
-        // Off the runtime's threads, exactly as on HTTP: accepting a batch is
-        // appends and fsyncs across several files.
-        let outcome = {
-            let (facade, batch) = (self.clone(), batch.clone());
-            tokio::task::spawn_blocking(move || {
-                match ingest::accept_under(&facade.store, &batch, &keys, facade.ceiling.as_ref()) {
-                    // A rotated producer ring is a file to re-read, not a
-                    // plane to restart.
-                    Err(Refused::Unattributable(_)) => ingest::accept_under(
-                        &facade.store,
-                        &batch,
-                        &facade.reload_producers(),
-                        facade.ceiling.as_ref(),
-                    ),
-                    other => other,
-                }
-            })
-            .await
-            .unwrap_or_else(|error| Err(Refused::Unavailable(error.to_string())))
-        };
-        self.metrics.observe(
-            &measure::INGEST_SECONDS,
-            &[],
-            started.elapsed().as_secs_f64(),
-        );
-
-        match outcome {
-            Ok(Accepted::Ok { acked, stored }) => {
-                self.metrics.count(
-                    &measure::BATCHES,
-                    &[(labels::OUTCOME, if stored == 0 { "replay" } else { "ok" })],
-                );
-                self.count_records(&batch.records);
-
-                Ok(Response::new(ShipResponse {
-                    acked,
-                    stored,
-                    out_of_order: false,
-                    expected_seq: 0,
-                }))
-            }
-            Ok(Accepted::OutOfOrder { expected_seq }) => {
-                self.metrics
-                    .count(&measure::BATCHES, &[(labels::OUTCOME, "out_of_order")]);
-
-                Ok(Response::new(ShipResponse {
-                    acked: 0,
-                    stored: 0,
-                    out_of_order: true,
-                    expected_seq,
-                }))
-            }
-            Err(refused) => {
-                self.metrics
-                    .count(&measure::REFUSALS, &[(labels::REASON, reason_of(&refused))]);
-                if matches!(refused, Refused::Conflict { .. }) {
-                    self.metrics.count(&measure::CLOSED, &[]);
-                }
-
-                Err(api_status(&api_error_of(&refused), self.disclosure))
-            }
-        }
-    }
-
     /// The same signers document the HTTP binding serves, field for field.
     async fn get_signers(
         &self,
@@ -327,68 +235,10 @@ impl DecisionLog for DecisionFacade {
     }
 }
 
-impl DecisionFacade {
-    fn count_records(&self, records: &[Value]) {
-        for record in records {
-            if super::store::tenancy(record).is_some() {
-                self.metrics.count(&measure::RECORDS, &[]);
-            }
-        }
-    }
-}
+impl DecisionFacade {}
 
 fn render(value: &Value) -> Vec<u8> {
     serde_json::to_vec(value).unwrap_or_default()
-}
-
-fn reason_of(refused: &Refused) -> &'static str {
-    match refused {
-        Refused::Unattributable(_) => "unattributable",
-        Refused::Unverifiable(_) => "unverifiable",
-        Refused::Conflict { .. } => "conflict",
-        Refused::Closed(_) => "closed",
-        Refused::Unavailable(_) => "unavailable",
-        Refused::NotAccepted(_) => "not_accepted",
-    }
-}
-
-/// The refusal as the taxonomy states it, so the gRPC and HTTP answers derive from one value.
-fn api_error_of(refused: &Refused) -> ApiError {
-    match refused {
-        Refused::Unattributable(detail) => ApiError::new(
-            ErrorClass::Validation,
-            codes::stream::BATCH_UNATTRIBUTABLE,
-            detail.clone(),
-        ),
-        Refused::Unverifiable(detail) => ApiError::new(
-            ErrorClass::Validation,
-            codes::stream::BATCH_UNVERIFIABLE,
-            detail.clone(),
-        ),
-        Refused::Conflict { .. } => ApiError::new(
-            ErrorClass::Conflict,
-            codes::stream::STREAM_CONFLICT,
-            refused.to_string(),
-        ),
-        Refused::Closed(_) => ApiError::new(
-            ErrorClass::Conflict,
-            codes::stream::STREAM_CLOSED,
-            refused.to_string(),
-        ),
-        // The one a shipper must treat as *retry*, never as *drop*.
-        Refused::Unavailable(detail) => ApiError::new(
-            ErrorClass::Unavailable,
-            codes::stream::STORE_UNAVAILABLE,
-            detail.clone(),
-        ),
-        // Never retried as it stands: the same records would be refused again. The producer
-        // stops until its inclusion or this store's ceiling changes.
-        Refused::NotAccepted(_) => ApiError::new(
-            ErrorClass::Validation,
-            codes::stream::BATCH_NOT_ACCEPTED,
-            refused.to_string(),
-        ),
-    }
 }
 
 /// A refused read: an offset of another read is `forged`, any other one `offset_invalid`, both

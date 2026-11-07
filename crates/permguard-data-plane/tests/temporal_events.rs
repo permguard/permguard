@@ -21,6 +21,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+mod recorder;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -426,23 +427,14 @@ fn plane_built_bounded(
     )
     .with_profile(profile);
     let decider = Arc::new(if journalled {
-        let journal = permguard_data_plane::decisions::journal::Journal::open(
+        let journal = recorder::TestRecorder::open(
             &decisions,
-            "plane",
-            permguard_data_plane::decisions::journal::Epoch {
-                version: "0.1.0".to_owned(),
-                build: None,
-                engines: BTreeMap::new(),
-                sampling: "1.0".to_owned(),
-            },
-            permguard_data_plane::decisions::journal::WhenFull::Open,
+            recorder::WhenFull::Open,
             permguard_decisions::spool::Bounds {
                 bytes: 64 * 1024 * 1024,
                 age: std::time::Duration::from_secs(3600),
                 segment_bytes: 1024 * 1024,
             },
-            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
-            Metrics::none(),
         )
         .expect("the journal opens");
         decider.with_journal(

@@ -17,15 +17,13 @@ use tonic::{Request, Response, Status};
 use permguard_core::{ApiError, Disclosure, ErrorClass};
 
 use super::http::EventFacade;
-use super::ingest::{Accepted, Batch, Refused};
 use super::read::{self, Filters};
 use super::store::Scope;
 use crate::v1::event_log_server::EventLog;
 use crate::v1::{
     EventCoverage, EventEndpoints, EventOffsets, GetEventConfigurationRequest,
     GetEventConfigurationResponse, GetRecordRequest, GetRecordResponse, GetSignersRequest,
-    GetSignersResponse, IngestBatchRequest, IngestBatchResponse, ListRecordsRequest,
-    ListRecordsResponse, SignerSpan, StreamSigners,
+    GetSignersResponse, ListRecordsRequest, ListRecordsResponse, SignerSpan, StreamSigners,
 };
 
 /// The gRPC metadata keys carrying the structured half of a refusal.
@@ -33,44 +31,6 @@ pub use crate::wire::{GRPC_ERROR_CLASS, GRPC_ERROR_CODE};
 
 #[tonic::async_trait]
 impl EventLog for EventFacade {
-    async fn ingest_batch(
-        &self,
-        request: Request<IngestBatchRequest>,
-    ) -> Result<Response<IngestBatchResponse>, Status> {
-        let asked = request.into_inner();
-        let batch = Batch::from_wire_parts(&asked.envelope, &asked.records).map_err(|error| {
-            status_of(
-                &ApiError::new(
-                    ErrorClass::Validation,
-                    permguard_core::codes::notp::PAYLOAD_MALFORMED,
-                    format!("the request is not a signed batch: {error}"),
-                ),
-                self.disclosure,
-            )
-        })?;
-
-        let facade = self.clone();
-        let answered = tokio::task::spawn_blocking(move || facade.ingest(&batch))
-            .await
-            .unwrap_or_else(|error| Err(Refused::Unavailable(error.to_string())));
-
-        match answered {
-            Ok(Accepted::Ok { acked, stored }) => Ok(Response::new(IngestBatchResponse {
-                acked,
-                stored,
-                expected_seq: 0,
-            })),
-            // Not an error: the shipper ran ahead and is being told exactly where to resume, which
-            // is an answer it acts on rather than a failure it retries blindly.
-            Ok(Accepted::OutOfOrder { expected_seq }) => Ok(Response::new(IngestBatchResponse {
-                acked: expected_seq.saturating_sub(1),
-                stored: 0,
-                expected_seq,
-            })),
-            Err(refused) => Err(status_of(&api_error(&refused), self.disclosure)),
-        }
-    }
-
     async fn list_records(
         &self,
         request: Request<ListRecordsRequest>,
@@ -311,7 +271,6 @@ impl EventLog for EventFacade {
             r#interface: document.interface,
             store: document.store,
             endpoints: Some(EventEndpoints {
-                ingest: document.endpoints.ingest,
                 records: document.endpoints.records,
                 record: document.endpoints.record,
                 tenant_records: document.endpoints.tenant_records,
@@ -402,18 +361,6 @@ fn filters_of(asked: &ListRecordsRequest) -> Filters {
         until_time: some(&asked.until_time),
         history: some(&asked.history),
     }
-}
-
-fn api_error(refused: &Refused) -> ApiError {
-    let class = match refused {
-        Refused::Unattributable(_) | Refused::Unverifiable(_) | Refused::Unregistered(_) => {
-            ErrorClass::Validation
-        }
-        Refused::Fork { .. } | Refused::Closed(_) => ErrorClass::Conflict,
-        Refused::Unavailable(_) => ErrorClass::Unavailable,
-    };
-
-    ApiError::new(class, refused.code(), refused.to_string())
 }
 
 /// A read refusal, as gRPC says it.

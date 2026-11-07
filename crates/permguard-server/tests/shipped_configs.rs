@@ -439,11 +439,13 @@ fn the_dogwood_variants_are_the_only_shipped_configurations_that_turn_it_on() {
             let control = file
                 .section("controlPlane")
                 .expect("the standalone control plane configures its plane");
+            // Decisions arrive over the Host's `decisions.ship` (iteration 02, WP-10.4): no shipped
+            // file names a producer key, which the plane refuses as retired.
             assert!(
-                !producer_keys(control)
+                producer_keys(control)
                     .expect("the decision producer bindings parse")
                     .is_empty(),
-                "{} enables the standalone decision store without trusting any exact producer",
+                "{} names retired producer key files",
                 path.display()
             );
         }

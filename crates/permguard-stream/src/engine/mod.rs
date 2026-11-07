@@ -75,7 +75,7 @@ pub use state::State;
 
 /// The Plane-side stream engines that predate this one, adopted by WP-6.1 and WP-6.2 (owner
 /// decision): the only Plane sources that may keep a journal, a STATE or a reserve of their own.
-pub const LEGACY_ENGINES: [&str; 11] = [
+pub const LEGACY_ENGINES: [&str; 10] = [
     // The producers the owner's decision named. The decision spool is only drained since WP-6.1,
     // until its archive: the plane records on this engine.
     "crates/permguard-decisions/src/spool.rs",
@@ -88,7 +88,6 @@ pub const LEGACY_ENGINES: [&str; 11] = [
     "crates/permguard-control-plane/src/events/store.rs",
     // The Data Plane code driving them, adopted with them.
     "crates/permguard-data-plane/src/decisions/mod.rs",
-    "crates/permguard-data-plane/src/decisions/shipper.rs",
     "crates/permguard-data-plane/src/temporal/streams.rs",
     "crates/permguard-data-plane/src/temporal/submit.rs",
 ];

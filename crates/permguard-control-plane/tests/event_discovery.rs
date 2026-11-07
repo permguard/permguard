@@ -167,27 +167,9 @@ async fn the_chain_leads_from_the_plane_to_the_endpoints_a_producer_ships_to() {
 
     // And every endpoint it named is answered by this plane rather than being a `404` a producer
     // would only discover when it tried to ship.
-    let ingest = path_of(
-        document["endpoints"]["ingest"]
-            .as_str()
-            .expect("an ingest endpoint"),
-    );
-    let answered = module
-        .http_routes(&context)
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(&ingest)
-                .header("content-type", "application/json")
-                .body(axum::body::Body::from("{}"))
-                .expect("a request builds"),
-        )
-        .await
-        .expect("the router answers");
-    assert_ne!(
-        answered.status().as_u16(),
-        404,
-        "the advertised ingest path `{ingest}` is mounted"
+    assert!(
+        document["endpoints"]["ingest"].is_null(),
+        "no public route accepts a batch: they arrive over `events.ship`"
     );
 
     let records = path_of(

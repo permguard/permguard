@@ -7,72 +7,6 @@
     "description": "The event log on the control plane, `permguard.api.events.native.v1alpha1`: shipping signed batches, reading blocks of records, signer histories and the discovery document."
   },
   "paths": {
-    "/events/v1alpha1/batches": {
-      "post": {
-        "operationId": "ingestEventBatch",
-        "summary": "Ship a signed event batch",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Batch"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The batch is stored, or was already held.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Acknowledgement"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Not a signed batch, or unattributable, unverifiable or carrying an unregistered type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "common.json#/components/schemas/WireError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Out of order (`OutOfOrder`), or the stream forked or is closed (WireError).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/OutOfOrder"
-                    },
-                    {
-                      "$ref": "common.json#/components/schemas/WireError"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "The store is unavailable; the shipper retries.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "common.json#/components/schemas/WireError"
-                }
-              }
-            }
-          }
-        },
-        "x-grpc-rpc": "permguard.control.v1.EventLog/IngestBatch"
-      }
-    },
     "/events/v1alpha1/records": {
       "get": {
         "operationId": "readEventStream",
@@ -1214,103 +1148,6 @@
         "x-grpc-message": null,
         "x-grpc-note": "The signed envelope as one JSON document: the `envelope` bytes of permguard.control.v1.IngestBatchRequest, and an element of `proof` of permguard.control.v1.ListRecordsResponse."
       },
-      "Batch": {
-        "type": "object",
-        "description": "One batch: the signed envelope and the records verbatim, in sequence order.",
-        "properties": {
-          "signature": {
-            "$ref": "#/components/schemas/Signed",
-            "x-grpc-field": "envelope",
-            "x-grpc-note": "The signed envelope (`Signed`) as its canonical JSON bytes."
-          },
-          "records": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Record"
-            },
-            "minItems": 1,
-            "x-grpc-field": "records",
-            "x-grpc-note": "Elements are `bytes` holding each record verbatim."
-          }
-        },
-        "required": [
-          "signature",
-          "records"
-        ],
-        "additionalProperties": false,
-        "x-grpc-message": "permguard.control.v1.IngestBatchRequest",
-        "x-grpc-note": "On gRPC the signed envelope and each record are `bytes` holding their JSON text (decoded by Batch::from_wire_parts); on REST they are JSON values of one body."
-      },
-      "Acknowledgement": {
-        "type": "object",
-        "description": "The 200 answer of a batch (built inline in the handler).",
-        "properties": {
-          "acked": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The highest contiguous durable sequence.",
-            "x-grpc-field": "acked"
-          },
-          "stored": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "How many records this call added.",
-            "x-grpc-field": "stored"
-          }
-        },
-        "required": [
-          "acked",
-          "stored"
-        ],
-        "additionalProperties": false,
-        "x-grpc-message": "permguard.control.v1.IngestBatchResponse",
-        "x-grpc-only": [
-          "expected_seq"
-        ],
-        "x-grpc-note": "The REST 200 answer. gRPC answers a run-ahead with the same message and an OK status (acked = expected_seq - 1, stored 0, expected_seq set); REST answers it with a 409 (OutOfOrder)."
-      },
-      "OutOfOrder": {
-        "type": "object",
-        "description": "The 409 answer of a producer that ran ahead: the shared refusal envelope plus where to resume.",
-        "properties": {
-          "class": {
-            "type": "string",
-            "const": "conflict",
-            "x-grpc-field": null,
-            "x-grpc-note": "REST-only: gRPC carries the error class in status metadata, and a run-ahead is not an error on gRPC."
-          },
-          "code": {
-            "type": "string",
-            "const": "out_of_order",
-            "x-grpc-field": null,
-            "x-grpc-note": "REST-only: gRPC carries the code in status metadata, and a run-ahead is not an error on gRPC."
-          },
-          "message": {
-            "type": "string",
-            "x-grpc-field": null,
-            "x-grpc-note": "REST-only: gRPC carries the message in the status."
-          },
-          "expected_seq": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The sequence to resend from.",
-            "x-grpc-field": "expected_seq"
-          }
-        },
-        "required": [
-          "class",
-          "code",
-          "message",
-          "expected_seq"
-        ],
-        "additionalProperties": false,
-        "x-grpc-message": "permguard.control.v1.IngestBatchResponse",
-        "x-grpc-only": [
-          "acked",
-          "stored"
-        ],
-        "x-grpc-note": "The REST 409 body. gRPC answers a run-ahead with an OK status and IngestBatchResponse{acked: expected_seq - 1, stored: 0, expected_seq}; `acked` and `stored` have no member in the 409. `class`, `code` and `message` are the shared refusal envelope, which gRPC carries as status and metadata instead."
-      },
       "EventBlock": {
         "type": "object",
         "description": "One page of event records: the common stream block with typed records.",
@@ -1492,12 +1329,8 @@
       },
       "Endpoints": {
         "type": "object",
-        "description": "Absolute URLs where batches are delivered and records are read.",
+        "description": "Absolute URLs where records are read; batches arrive over the Host's `events.ship` only.",
         "properties": {
-          "ingest": {
-            "type": "string",
-            "x-grpc-field": "ingest"
-          },
           "records": {
             "type": "string",
             "x-grpc-field": "records"
@@ -1514,7 +1347,6 @@
           }
         },
         "required": [
-          "ingest",
           "records",
           "record",
           "tenant_records"

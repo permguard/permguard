@@ -44,35 +44,29 @@ fn the_decision_store_is_preflighted_instead_of_disappearing_behind_health() {
         .expect("the test configuration builds")
     };
 
-    let no_trust = configured("decisions");
-    let refused = module
-        .startup_check(&no_trust)
-        .expect_err("an enabled receiver with no producer authority does not start");
-    assert!(refused.to_string().contains("producer_keys"), "{refused}");
+    // Decisions arrive over the Host's `decisions.ship` (iteration 02, WP-10.4): a store starts
+    // with no producer authority of its own, and its read offsets are keyed.
+    let store = configured("decisions");
+    module
+        .startup_check(&store)
+        .expect("a usable store starts with no producer key files");
+    assert!(root.join("decisions/CURSOR_KEY").is_file());
 
-    // The producer may publish its file after this process: the facade mounts
-    // fail-closed and reloads it, but the configured path is enough to state
-    // where that authority will come from.
-    let waiting =
-        no_trust.with_decision_producer_keys([permguard_core::decisions::DecisionProducerSource {
+    // A configuration still naming producer key files is refused, not believed in force.
+    let retired =
+        store.with_decision_producer_keys([permguard_core::decisions::DecisionProducerSource {
             path: "producer.jwks".to_owned(),
             pdp: "plane-a".to_owned(),
         }]);
-    module
-        .startup_check(&waiting)
-        .expect("a usable store and a declared trust source start");
-    assert!(root.join("decisions/CURSOR_KEY").is_file());
+    let refused = module
+        .startup_check(&retired)
+        .expect_err("a retired setting is refused");
+    assert!(refused.to_string().contains("is retired"), "{refused}");
 
     let blocked = root.join("blocked");
     std::fs::write(&blocked, b"not a directory").expect("the path is blocked");
-    let broken = configured("blocked").with_decision_producer_keys([
-        permguard_core::decisions::DecisionProducerSource {
-            path: "producer.jwks".to_owned(),
-            pdp: "plane-a".to_owned(),
-        },
-    ]);
     let refused = module
-        .startup_check(&broken)
+        .startup_check(&configured("blocked"))
         .expect_err("an unusable configured store stops startup");
     assert!(refused.to_string().contains("decision store"), "{refused}");
 

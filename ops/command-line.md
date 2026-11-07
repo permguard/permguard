@@ -113,6 +113,7 @@ The **State** cell is one of:
 | `host members suspend`       | `membership.admin` | present |     |
 | `host members resume`        | `membership.admin` | present |     |
 | `host members fence`         | `membership.admin` | present |     |
+| `host members record`        | `membership.admin` | present |     |
 | `host members revoke plan`   | `membership.admin` | present |     |
 | `host members revoke run`    | `membership.admin` | present |     |
 | `host members sessions`      | `membership.read`  | present |     |

@@ -385,15 +385,6 @@ pub(crate) fn own_public_keys(context: &PlaneContext<'_>) -> Option<Arc<dyn Publ
     Some(Arc::new(signer))
 }
 
-/// The data plane's public set, to verify a local producer with, when that ring is composed.
-pub(crate) fn data_public_keys(context: &PlaneContext<'_>) -> Option<Arc<dyn PublicSet>> {
-    let keys = registration(context)?
-        .public_keys(DATA_ATTEST)
-        .ok()
-        .flatten()?;
-    Some(Arc::new(keys))
-}
-
 /// An audit handle over `recorder`, for a test that needs one without composing a server.
 #[cfg(test)]
 pub(crate) fn audit_for_tests(recorder: permguard_core::AuditRecorder) -> Audit {

@@ -190,6 +190,32 @@ ring of a data plane in the same process for what its legacy journals still ship
 {{- end }}
 
 {{- /*
+The configured link between Planes, retired (iteration 02, WP-10.4): a decision store naming
+producer key files, a data plane naming a decision log server or an event destination. Decisions and
+events travel over the Host's `decisions.ship` and `events.ship` only; the server refuses each at
+start, and the chart refuses them at install.
+*/ -}}
+{{- range $component, $plane := dict "controlPlane" .Values.controlPlane "allInOne" .Values.allInOne }}
+{{- if $plane.enabled }}
+{{- $decisions := dig "controlPlane" "decisions" dict ($plane.extraConfig | default dict) | default dict }}
+{{- if dig "producer_keys" list $decisions }}
+{{- fail (printf "%s sets controlPlane.decisions.producer_keys, which is retired: decisions arrive over the Host's decisions.ship. Remove it." $component) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- range $component, $plane := dict "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- if $plane.enabled }}
+{{- $extra := $plane.extraConfig | default dict }}
+{{- if dig "dataPlane" "decisions" "log" "server" "" $extra }}
+{{- fail (printf "%s sets dataPlane.decisions.log.server, which is retired: decisions are shipped by the Host over decisions.ship. Remove it." $component) }}
+{{- end }}
+{{- if dig "dataPlane" "events" "destination" "" $extra }}
+{{- fail (printf "%s sets dataPlane.events.destination, which is retired: events are shipped by the Host over events.ship. Remove it." $component) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /*
 An event interface turned on, and the contract behind it not accepted.
 
 `events.enabled` is a statement about disks: this plane keeps, or receives, a durable event history.

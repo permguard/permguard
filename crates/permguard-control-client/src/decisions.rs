@@ -31,56 +31,10 @@ use crate::tls::TlsOptions;
 /// that the control plane is fast.
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// What the control plane said about a batch.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Shipped {
-    /// Durable through `acked`. The producer may truncate by it.
-    Acknowledged {
-        /// The highest contiguous durable sequence.
-        acked: u64,
-        /// How many records this call added. Zero for a replay.
-        stored: u64,
-    },
-    /// The shipper ran ahead. Nothing was stored, and nothing was lost.
-    OutOfOrder {
-        /// Where to resume from.
-        expected_seq: u64,
-    },
-}
-
-/// Why a shipment did not land.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ShipError {
-    /// The store could not take it right now, or could not be reached.
-    ///
-    /// **Retry.** The records are still on the producer's disk.
-    Unavailable(String),
-    /// The batch was refused on its merits: a signature that does not verify,
-    /// a chain that does not hold, a conflict, a closed stream.
-    ///
-    /// **Stop and alarm.** Retrying cannot change any of those answers, and a
-    /// shipper spinning on one is a shipper that never notices the incident.
-    Rejected {
-        /// The code the server used, so an operator can search for it.
-        code: String,
-        /// What it said.
-        detail: String,
-    },
-}
-
-impl std::fmt::Display for ShipError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Unavailable(detail) => write!(formatter, "{detail}"),
-            Self::Rejected { code, detail } => write!(formatter, "{detail} ({code})"),
-        }
-    }
-}
-
 /// Both halves of the decision log, over whichever transport the URL names.
-pub trait DecisionLog: DecisionSink + DecisionReader {}
+pub trait DecisionLog: DecisionReader + Send + Sync {}
 
-impl<T: DecisionSink + DecisionReader> DecisionLog for T {}
+impl<T: DecisionReader + Send + Sync> DecisionLog for T {}
 
 /// The client for an endpoint, chosen by its scheme.
 ///
@@ -100,12 +54,6 @@ pub fn client(
     }
 
     Ok(Box::new(HttpSink::connect(url, tls, narrator)?))
-}
-
-/// Where a data plane ships what it decided.
-pub trait DecisionSink: Send + Sync {
-    /// Ships one signed batch.
-    fn ship(&self, batch: &Value) -> Result<Shipped, ShipError>;
 }
 
 /// Which records a reader is asking for.
@@ -312,78 +260,6 @@ impl HttpSink {
             .with_narrator(narrator);
 
         Ok(Self { endpoint, client })
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct Acknowledgement {
-    acked: u64,
-    stored: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct Ahead {
-    expected_seq: u64,
-}
-
-impl DecisionSink for HttpSink {
-    fn ship(&self, batch: &Value) -> Result<Shipped, ShipError> {
-        let response = self
-            .client
-            .request(
-                &self.endpoint,
-                "POST",
-                "/decisions/v1/batches",
-                Some(&batch.to_string()),
-            )
-            // No answer at all is the retryable case, always: the records are
-            // still here, and the store may simply be restarting.
-            .map_err(|error| ShipError::Unavailable(error.to_string()))?;
-
-        match response.status {
-            200..=299 => serde_json::from_str::<Acknowledgement>(&response.body)
-                .map(|answer| Shipped::Acknowledged {
-                    acked: answer.acked,
-                    stored: answer.stored,
-                })
-                .map_err(|error| {
-                    // An acknowledgement that cannot be read is not an
-                    // acknowledgement: the producer must not truncate on it.
-                    ShipError::Unavailable(format!("the acknowledgement was unreadable: {error}"))
-                }),
-            409 => serde_json::from_str::<Ahead>(&response.body)
-                .map(|answer| Shipped::OutOfOrder {
-                    expected_seq: answer.expected_seq,
-                })
-                .map_err(|error| ShipError::Unavailable(error.to_string())),
-            500..=599 => Err(ShipError::Unavailable(format!(
-                "the control plane answered {}: {}",
-                response.status,
-                first_line(&response.body)
-            ))),
-            status => {
-                let parsed: Value = serde_json::from_str(&response.body).unwrap_or(Value::Null);
-                let field = |name: &str| {
-                    parsed
-                        .get(name)
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_owned()
-                };
-                let code = match field("code").as_str() {
-                    "" => permguard_core::codes::client::HTTP_STATUS.to_owned(),
-                    code => code.to_owned(),
-                };
-                let detail = match field("message").as_str() {
-                    "" => format!("status {status}: {}", first_line(&response.body)),
-                    // No Permguard refusal: the status is the only fact, and `http_status` promises it.
-                    message if field("code").is_empty() => format!("status {}: {message}", status),
-                    message => message.to_owned(),
-                };
-
-                Err(ShipError::Rejected { code, detail })
-            }
-        }
     }
 }
 

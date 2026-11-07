@@ -4,7 +4,6 @@
 //! The decision log's HTTP shape: one route to ship, and scoped routes to read.
 //!
 //! ```text
-//! POST /decisions/v1/batches                                     ship
 //! GET  /decisions/v1/records                                     read, deployment-wide
 //! GET  /zones/{zone}/ledgers/{ledger}/decisions/v1/records       read, one tenant
 //! ```
@@ -20,16 +19,15 @@ use std::sync::Arc;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
 use permguard_core::metrics::labels;
-use permguard_core::{ApiError, Disclosure, ErrorClass, Jwk, Metrics};
-use permguard_decisions::envelope::Batch;
+use permguard_core::{ApiError, Disclosure, ErrorClass, Metrics};
 use permguard_stream::Window;
 use serde::Serialize;
 
 use super::store::{DecisionStore, Scope};
-use super::{Accepted, Refused, ingest, measure, read};
+use super::{measure, read};
 use crate::wire;
 
 /// Everything the routes need, resolved once.
@@ -40,24 +38,6 @@ pub struct DecisionFacade {
     /// What a record may carry in clear to be kept here: `None` leaves it to the producers'
     /// inclusion (see [`permguard_core::Config::decision_ceiling`]).
     pub ceiling: Option<permguard_core::decisions::IncludeSection>,
-    /// The ring of a producer that shares this process — the all-in-one shape.
-    ///
-    /// A batch is signed by the plane that decided, never by this one, so this
-    /// is a *producer's* ring that happens to be here rather than this plane's
-    /// own. A control plane with no such neighbour has none.
-    pub local: Option<Arc<dyn permguard_core::keys::PublicSet>>,
-    /// The producers this plane accepts, each key bound to the one `pdp_id` it may sign for.
-    /// From the file, never fetched: ingestion must not depend on reaching the planes that are
-    /// shipping to it.
-    ///
-    /// Re-read when a batch cannot be attributed, so a producer that rotates
-    /// its ring is a file to update rather than a plane to restart. Behind a
-    /// lock because that re-read happens on a request.
-    pub producers: std::sync::Arc<std::sync::RwLock<Vec<ingest::ProducerTrust>>>,
-    /// Where those sets are read from, each path bound to the producer it speaks for.
-    pub producer_files: Vec<ProducerFile>,
-    /// The producer identity of the ring sharing this process, when one does — the all-in-one.
-    pub local_pdp: String,
     /// The secret read offsets are signed with.
     ///
     /// The server keeps no per-consumer cursor, so the only thing between a consumer and a
@@ -236,34 +216,6 @@ impl DecisionFacade {
         }))
     }
 
-    /// Every producer binding a batch may legitimately verify under.
-    ///
-    /// The union of what the file declares and what a producer sharing this
-    /// process publishes — the latter bound to that producer's own `pdp_id`,
-    /// never floating free. Never this plane's own signing ring: a control
-    /// plane that verified against itself would accept anything it could have
-    /// written, which is the opposite of what the signature is for.
-    pub(crate) fn accepted_producers(&self) -> anyhow::Result<Vec<ingest::ProducerTrust>> {
-        let mut producers = self
-            .producers
-            .read()
-            .map(|held| held.clone())
-            .unwrap_or_default();
-        if let Some(local) = &self.local {
-            producers.extend(
-                local
-                    .public_keys()?
-                    .into_iter()
-                    .map(|key| ingest::ProducerTrust {
-                        key,
-                        pdp: self.local_pdp.clone(),
-                    }),
-            );
-        }
-
-        Ok(producers)
-    }
-
     /// Reads one bounded block of `scope` from the legacy store and the Host's consumer
     /// (WP-6.1b): what both transports answer.
     pub(crate) fn read(
@@ -363,68 +315,8 @@ impl DecisionFacade {
         self.read(&scope, window)
             .map_err(crate::evidence::Gated::Refused)
     }
-
-    /// Whether this store waits for batches over its ingest route: a producer key set is
-    /// configured, or a legacy spool beside it names its producer. Since WP-6.1 a plane in the
-    /// same process records on the Host's stream, and a store expecting nothing is not degraded.
-    pub(crate) fn expects_batches(&self) -> bool {
-        !self.producer_files.is_empty() || !self.local_pdp.is_empty()
-    }
-
-    /// Re-reads the producers' key sets from disk.
-    ///
-    /// Called when, and only when, a batch could not be attributed: a producer
-    /// that rotated its ring publishes a new key, and a control plane that
-    /// only read the file at startup would refuse everything it signs until
-    /// somebody restarts the plane. Doing it on the failure rather than on a
-    /// timer keeps the cost where the need is — a plane whose producers are
-    /// stable never reads the files again.
-    ///
-    /// A forged batch cannot use this to make a plane re-read the world in a
-    /// loop: an unattributable batch is refused either way, and the re-read is
-    /// a handful of small local files.
-    pub(crate) fn reload_producers(&self) -> Vec<ingest::ProducerTrust> {
-        let mut producers = Vec::new();
-        for file in &self.producer_files {
-            let parsed = std::fs::read_to_string(&file.path)
-                .ok()
-                .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
-            let Some(parsed) = parsed else {
-                continue;
-            };
-            let set = parsed.get("keys").cloned().unwrap_or(parsed);
-            if let Ok(found) = serde_json::from_value::<Vec<Jwk>>(set) {
-                producers.extend(found.into_iter().map(|key| ingest::ProducerTrust {
-                    key,
-                    pdp: file.pdp.clone(),
-                }));
-            }
-        }
-        if let Ok(mut held) = self.producers.write() {
-            held.clone_from(&producers);
-        }
-        if let Some(local) = &self.local
-            && let Ok(published) = local.public_keys()
-        {
-            producers.extend(published.into_iter().map(|key| ingest::ProducerTrust {
-                key,
-                pdp: self.local_pdp.clone(),
-            }));
-        }
-
-        producers
-    }
 }
 
-/// One producer's published key set on disk, and the identity it signs for.
-#[derive(Debug, Clone)]
-pub struct ProducerFile {
-    pub path: std::path::PathBuf,
-    pub pdp: String,
-}
-
-/// Where a legacy producer delivers a batch.
-pub const BATCHES_PATH: &str = "/decisions/v1/batches";
 /// One producer stream's records.
 pub const RECORDS_PATH: &str = "/decisions/v1/records";
 /// One tenant's records.
@@ -435,7 +327,6 @@ pub const SIGNERS_PATH: &str = "/decisions/v1/signers";
 /// The routes the control plane answers about decisions.
 pub(crate) fn routes(facade: DecisionFacade) -> Router {
     Router::new()
-        .route(BATCHES_PATH, post(ship))
         .route(RECORDS_PATH, get(records))
         .route(TENANT_RECORDS_PATH, get(tenant_records))
         .route(SIGNERS_PATH, get(signers))
@@ -457,129 +348,6 @@ async fn document(State(facade): State<DecisionFacade>) -> Response {
         ))
         .into_response(),
         Err(refused) => crate::wire::http_error(&refused, facade.disclosure),
-    }
-}
-
-/// What a producer is told about its batch.
-#[derive(Debug, Serialize)]
-struct Acknowledgement {
-    /// The highest contiguous durable sequence. The producer truncates by this.
-    acked: u64,
-    /// How many records this call added.
-    stored: u64,
-}
-
-/// What a producer that ran ahead is told.
-#[derive(Debug, Serialize)]
-struct OutOfOrder {
-    /// The class of the answer, so a client need not match on prose.
-    status: &'static str,
-    /// Where to resume from.
-    expected_seq: u64,
-}
-
-async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> Response {
-    let started = std::time::Instant::now();
-    let batch: Batch = match Batch::decode(&body) {
-        Ok(batch) => batch,
-        Err(error) => {
-            facade
-                .metrics
-                .count(&measure::REFUSALS, &[(labels::REASON, "malformed")]);
-            return refuse(
-                &facade,
-                ApiError::new(
-                    ErrorClass::Validation,
-                    permguard_core::codes::stream::MALFORMED_BATCH,
-                    format!("this is not a decision batch: {error}"),
-                ),
-            );
-        }
-    };
-
-    let keys = match facade.accepted_producers() {
-        Ok(keys) => keys,
-        Err(error) => {
-            return refuse(
-                &facade,
-                ApiError::new(
-                    ErrorClass::Unavailable,
-                    permguard_core::codes::stream::KEYS_UNAVAILABLE,
-                    format!("this plane cannot verify signatures right now: {error}"),
-                ),
-            );
-        }
-    };
-
-    // Off the runtime's threads: accepting a batch is appends and fsyncs
-    // across several files, and a reactor thread that waits on a disk is a
-    // reactor thread every other request is waiting on.
-    let outcome = {
-        let (facade, batch) = (facade.clone(), batch.clone());
-        tokio::task::spawn_blocking(move || {
-            match ingest::accept_under(&facade.store, &batch, &keys, facade.ceiling.as_ref()) {
-                // A key this plane has not seen is the one refusal worth a
-                // second look: a producer that rotated its ring publishes a
-                // new one, and the file on this plane may already say so.
-                Err(Refused::Unattributable(_)) => ingest::accept_under(
-                    &facade.store,
-                    &batch,
-                    &facade.reload_producers(),
-                    facade.ceiling.as_ref(),
-                ),
-                other => other,
-            }
-        })
-        .await
-        .unwrap_or_else(|error| Err(Refused::Unavailable(error.to_string())))
-    };
-    facade.metrics.observe(
-        &measure::INGEST_SECONDS,
-        &[],
-        started.elapsed().as_secs_f64(),
-    );
-
-    match outcome {
-        Ok(Accepted::Ok { acked, stored }) => {
-            facade.metrics.count(
-                &measure::BATCHES,
-                &[(labels::OUTCOME, if stored == 0 { "replay" } else { "ok" })],
-            );
-            for record in &batch.records {
-                if super::store::tenancy(record).is_some() {
-                    facade.metrics.count(&measure::RECORDS, &[]);
-                }
-            }
-
-            (StatusCode::OK, Json(Acknowledgement { acked, stored })).into_response()
-        }
-        Ok(Accepted::OutOfOrder { expected_seq }) => {
-            facade
-                .metrics
-                .count(&measure::BATCHES, &[(labels::OUTCOME, "out_of_order")]);
-
-            // Deliberately a `409`, not a `4xx` the shipper might treat as
-            // fatal: nothing is wrong with the batch, the store simply needs
-            // an earlier one first.
-            (
-                StatusCode::CONFLICT,
-                Json(OutOfOrder {
-                    status: permguard_core::codes::stream::OUT_OF_ORDER,
-                    expected_seq,
-                }),
-            )
-                .into_response()
-        }
-        Err(refused) => {
-            facade
-                .metrics
-                .count(&measure::REFUSALS, &[(labels::REASON, reason_of(&refused))]);
-            if matches!(refused, Refused::Conflict { .. }) {
-                facade.metrics.count(&measure::CLOSED, &[]);
-            }
-
-            refuse(&facade, api_error(&refused))
-        }
     }
 }
 
@@ -810,57 +578,6 @@ async fn serve(
 
 fn refuse(facade: &DecisionFacade, error: ApiError) -> Response {
     wire::http_error(&error, facade.disclosure)
-}
-
-fn reason_of(refused: &Refused) -> &'static str {
-    match refused {
-        Refused::Unattributable(_) => "unattributable",
-        Refused::Unverifiable(_) => "unverifiable",
-        Refused::Conflict { .. } => "conflict",
-        Refused::Closed(_) => "closed",
-        Refused::Unavailable(_) => "unavailable",
-        Refused::NotAccepted(_) => "not_accepted",
-    }
-}
-
-fn api_error(refused: &Refused) -> ApiError {
-    match refused {
-        // A signature that does not verify and a chain that does not hold are
-        // both "the request is malformed": the producer must not retry either.
-        Refused::Unattributable(detail) => ApiError::new(
-            ErrorClass::Validation,
-            permguard_core::codes::stream::BATCH_UNATTRIBUTABLE,
-            detail.clone(),
-        ),
-        Refused::Unverifiable(detail) => ApiError::new(
-            ErrorClass::Validation,
-            permguard_core::codes::stream::BATCH_UNVERIFIABLE,
-            detail.clone(),
-        ),
-        Refused::Conflict { .. } => ApiError::new(
-            ErrorClass::Conflict,
-            permguard_core::codes::stream::STREAM_CONFLICT,
-            refused.to_string(),
-        ),
-        Refused::Closed(_) => ApiError::new(
-            ErrorClass::Conflict,
-            permguard_core::codes::stream::STREAM_CLOSED,
-            refused.to_string(),
-        ),
-        // The one a shipper must treat as *retry*, never as *drop*.
-        Refused::Unavailable(detail) => ApiError::new(
-            ErrorClass::Unavailable,
-            permguard_core::codes::stream::STORE_UNAVAILABLE,
-            detail.clone(),
-        ),
-        // Never retried as it stands: the same records would be refused again. The producer
-        // stops until its inclusion or this store's ceiling changes.
-        Refused::NotAccepted(_) => ApiError::new(
-            ErrorClass::Validation,
-            permguard_core::codes::stream::BATCH_NOT_ACCEPTED,
-            refused.to_string(),
-        ),
-    }
 }
 
 #[cfg(test)]
@@ -1220,26 +937,6 @@ mod openapi {
         let mut newer = values[2].clone();
         newer["added_later"] = json!(true);
         assert!(doc.accepts_json("Record", &newer));
-
-        // The answers of the ship route.
-        doc.check(
-            "Acknowledgement",
-            &Acknowledgement {
-                acked: 5,
-                stored: 5,
-            },
-        );
-        doc.check(
-            "OutOfOrder",
-            &OutOfOrder {
-                status: permguard_core::codes::stream::OUT_OF_ORDER,
-                expected_seq: 6,
-            },
-        );
-        assert!(!doc.accepts_json(
-            "OutOfOrder",
-            &json!({"status": "out_of_order", "expected_seq": 6, "class": "conflict"})
-        ));
 
         // A page with proof, and one without: `proof` and `inclusion` are absent when empty.
         let path = merkle::path(&leaves, 1).expect("a path");
@@ -1652,22 +1349,6 @@ mod strict {
         );
     }
 
-    /// WP-6.1: a store beside a plane recording on the Host's stream expects no batch unless a
-    /// producer key set is configured or a legacy spool names its producer.
-    #[test]
-    fn a_store_expects_batches_only_from_a_named_producer() {
-        let mut held = facade("expects");
-        assert!(!held.expects_batches(), "nothing names a producer");
-        held.local_pdp = "data-plane-local".to_owned();
-        assert!(held.expects_batches(), "a legacy spool names one");
-        held.local_pdp.clear();
-        held.producer_files.push(ProducerFile {
-            path: std::path::PathBuf::from("keys.json"),
-            pdp: "plane-a".to_owned(),
-        });
-        assert!(held.expects_batches(), "a configured key set");
-    }
-
     fn facade(tag: &str) -> DecisionFacade {
         let root = std::env::temp_dir().join(format!(
             "permguard-decisions-strict-{tag}-{}",
@@ -1677,16 +1358,12 @@ mod strict {
         DecisionFacade {
             store: Arc::new(DecisionStore::open(root).expect("it opens")),
             ceiling: None,
-            local: None,
-            local_pdp: String::new(),
             cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
                 ROOT,
                 [1; 16],
                 "decisions",
             )
             .expect("a cursor key"),
-            producers: Arc::new(std::sync::RwLock::new(Vec::new())),
-            producer_files: Vec::new(),
             disclosure: permguard_core::Disclosure::Full,
             metrics: permguard_core::Metrics::none(),
             host: None,

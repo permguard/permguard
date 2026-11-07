@@ -1890,8 +1890,8 @@ pub(crate) struct Evaluated {
 }
 
 impl OwnedDecided {
-    fn borrowed(&self) -> crate::decisions::journal::Decided<'_> {
-        crate::decisions::journal::Decided {
+    fn borrowed(&self) -> crate::decisions::Decided<'_> {
+        crate::decisions::Decided {
             id: self.id.as_str(),
             at: self.at.clone(),
             zone: self.zone.as_str(),

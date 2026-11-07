@@ -10,15 +10,12 @@
 
 use tonic::Request;
 
-use crate::decisions::ShipError;
-use crate::events::{
-    Coverage, EventReader, EventSink, Page, ReadError, ReadScope, ReadWindow, Shipped,
-};
+use crate::events::{Coverage, EventReader, Page, ReadError, ReadScope, ReadWindow};
 use crate::grpc::GrpcChannel;
 use crate::narrate::Narrator;
 use crate::tls::TlsOptions;
 use crate::v1::event_log_client::EventLogClient;
-use crate::v1::{GetRecordRequest, IngestBatchRequest, ListRecordsRequest};
+use crate::v1::{GetRecordRequest, ListRecordsRequest};
 
 /// The metadata a refusal's code travels in.
 const CODE: &str = permguard_core::GRPC_ERROR_CODE;
@@ -56,42 +53,6 @@ impl GrpcEventSink {
             .and_then(|value| value.to_str().ok())
             .unwrap_or("unknown")
             .to_owned()
-    }
-}
-
-impl EventSink for GrpcEventSink {
-    fn ship(&self, batch: &permguard_events::Batch) -> Result<Shipped, ShipError> {
-        let request = IngestBatchRequest {
-            envelope: serde_json::to_vec(&batch.signature).map_err(|error| {
-                ShipError::Unavailable(format!("the envelope does not render: {error}"))
-            })?,
-            records: batch
-                .records
-                .iter()
-                .map(|record| serde_json::to_vec(record).unwrap_or_default())
-                .collect(),
-        };
-
-        let answer = self.endpoint.run(
-            "EventLog/IngestBatch",
-            self.client().ingest_batch(Request::new(request)),
-        );
-
-        match answer {
-            Ok(answer) if answer.expected_seq > 0 => Ok(Shipped::OutOfOrder {
-                expected_seq: answer.expected_seq,
-            }),
-            Ok(answer) => Ok(Shipped::Acknowledged {
-                acked: answer.acked,
-            }),
-            Err(status) if status.code() == tonic::Code::Unavailable => {
-                Err(ShipError::Unavailable(status.message().to_owned()))
-            }
-            Err(status) => Err(ShipError::Rejected {
-                code: Self::code_of(&status),
-                detail: status.message().to_owned(),
-            }),
-        }
     }
 }
 

@@ -95,7 +95,7 @@ fn served(api: permguard_data_plane::authz::grpc::PdpApi) -> ServedPdp {
 fn permissive() -> Arc<permguard_host::composition::Authorization> {
     Arc::new(permguard_host::composition::Authorization::permissive())
 }
-use permguard_data_plane::decisions::journal::{Epoch, Journal, WhenFull};
+mod recorder;
 use permguard_decisions::spool::Bounds;
 use permguard_languages::registry;
 use permguard_objects::manifest::{
@@ -104,6 +104,7 @@ use permguard_objects::manifest::{
 use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND};
 use permguard_objects::semver::Constraint;
+use recorder::{TestRecorder, WhenFull};
 
 /// The authority every mirror of these tests lives under (WP-7.2a): a mirror in a configured URL's
 /// shape is never served since WP-7.7.
@@ -401,7 +402,7 @@ fn decider(root: &Path) -> Arc<Decider> {
     ))
 }
 
-fn decider_with_journal(root: &Path, journal: Journal) -> Arc<Decider> {
+fn decider_with_journal(root: &Path, journal: TestRecorder) -> Arc<Decider> {
     Arc::new(
         Decider::new(
             root.to_path_buf(),
@@ -418,32 +419,8 @@ fn decider_with_journal(root: &Path, journal: Journal) -> Arc<Decider> {
     )
 }
 
-fn journal_with_blocked_next_segment(tag: &str, when_full: WhenFull) -> Journal {
-    let spool = scratch(tag);
-    let journal = Journal::open(
-        &spool,
-        "plane",
-        Epoch {
-            version: "0.1.0".to_owned(),
-            build: None,
-            engines: BTreeMap::new(),
-            sampling: "1.0".to_owned(),
-        },
-        when_full,
-        Bounds {
-            bytes: 64 * 1024 * 1024,
-            age: std::time::Duration::from_secs(3600),
-            segment_bytes: 1,
-        },
-        permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
-        Metrics::none(),
-    )
-    .expect("the journal opens");
-
-    std::fs::create_dir(spool.join("seg-00000000000000000002.jsonl"))
-        .expect("the next segment path is made unwritable as a file");
-
-    journal
+fn journal_with_blocked_next_segment(tag: &str, when_full: WhenFull) -> TestRecorder {
+    TestRecorder::failing(scratch(tag), when_full).expect("the recorder opens")
 }
 
 fn ask(zone: &str, ledger: &str, subject: &str, action: &str) -> wire::CheckRequest {
@@ -1081,23 +1058,14 @@ async fn a_plane_that_may_not_decide_unrecorded_refuses_instead_of_answering() {
     );
     // A spool with no room at all, and a plane told to refuse rather than
     // decide unrecorded.
-    let journal = Journal::open(
+    let journal = TestRecorder::open(
         scratch("unrecordable-spool"),
-        "plane",
-        Epoch {
-            version: "0.1.0".to_owned(),
-            build: None,
-            engines: std::collections::BTreeMap::new(),
-            sampling: "1.0".to_owned(),
-        },
         WhenFull::Closed,
         Bounds {
             bytes: 1,
             age: std::time::Duration::from_secs(3600),
             segment_bytes: 512,
         },
-        permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
-        Metrics::none(),
     )
     .expect("the journal opens");
 
@@ -1129,23 +1097,14 @@ async fn a_decision_addressed_by_identity_is_recorded_under_the_public_names() {
         &[("app", vec![&CEDAR_READ], None)],
     );
     let spool = scratch("decision-public-scope-spool");
-    let journal = Journal::open(
+    let journal = TestRecorder::open(
         &spool,
-        "plane",
-        Epoch {
-            version: "0.1.0".to_owned(),
-            build: None,
-            engines: BTreeMap::new(),
-            sampling: "1.0".to_owned(),
-        },
         WhenFull::Closed,
         Bounds {
             bytes: 64 * 1024 * 1024,
             age: std::time::Duration::from_secs(3600),
             segment_bytes: 1024 * 1024,
         },
-        permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
-        Metrics::none(),
     )
     .expect("the journal opens");
     let decider = decider_with_journal(&root, journal);
@@ -1203,23 +1162,14 @@ async fn a_subject_without_its_zone_key_is_never_recorded_raw() {
         &[("app", vec![&CEDAR_READ], None)],
     );
     let spool = scratch("decision-no-zone-key-spool");
-    let journal = Journal::open(
+    let journal = TestRecorder::open(
         &spool,
-        "plane",
-        Epoch {
-            version: "0.1.0".to_owned(),
-            build: None,
-            engines: BTreeMap::new(),
-            sampling: "1.0".to_owned(),
-        },
         WhenFull::Closed,
         Bounds {
             bytes: 64 * 1024 * 1024,
             age: std::time::Duration::from_secs(3600),
             segment_bytes: 1024 * 1024,
         },
-        permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
-        Metrics::none(),
     )
     .expect("the journal opens");
     let decider = Arc::new(
@@ -2683,23 +2633,14 @@ mod adversarial_ids {
         let registry = Arc::new(permguard_std::metrics::Registry::new());
         // With a journal, so the line that leads from a log to the audit record is exercised too.
         let spool = scratch("adversarial-ids-spool");
-        let journal = Journal::open(
+        let journal = TestRecorder::open(
             &spool,
-            "plane",
-            Epoch {
-                version: "0.1.0".to_owned(),
-                build: None,
-                engines: BTreeMap::new(),
-                sampling: "1.0".to_owned(),
-            },
             WhenFull::Open,
             Bounds {
                 bytes: 64 * 1024 * 1024,
                 age: std::time::Duration::from_secs(3600),
                 segment_bytes: 1024 * 1024,
             },
-            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
-            Metrics::none(),
         )
         .expect("the journal opens");
         let decider = Arc::new(
@@ -3047,24 +2988,15 @@ mod indeterminate {
     }
 
     /// A journal that records every decision, permits included.
-    fn journal(spool: &Path) -> Journal {
-        Journal::open(
+    fn journal(spool: &Path) -> TestRecorder {
+        TestRecorder::open(
             spool,
-            "plane",
-            Epoch {
-                version: "0.1.0".to_owned(),
-                build: None,
-                engines: BTreeMap::new(),
-                sampling: "1.0".to_owned(),
-            },
             WhenFull::Open,
             Bounds {
                 bytes: 64 * 1024 * 1024,
                 age: std::time::Duration::from_secs(3600),
                 segment_bytes: 1024 * 1024,
             },
-            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
-            Metrics::none(),
         )
         .expect("the journal opens")
     }
@@ -3349,7 +3281,6 @@ mod host_log {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_core::authz::{Resource, Selector};
     use permguard_data_plane::decisions::host::Bounds;
-    use permguard_data_plane::decisions::journal::Epoch;
     use permguard_data_plane::decisions::{Decided, HostLog, Written};
     use permguard_decisions::record::{GENESIS, digest_of};
     use permguard_decisions::stream::{Codec, STREAM};
@@ -3438,6 +3369,16 @@ mod host_log {
 
         /// The log a data plane composed on this Host records with, appending to `producer`.
         pub(super) fn log(&self, producer: &Arc<Producer<Codec>>, bounds: Bounds) -> HostLog {
+            self.log_sampled(producer, bounds, "1.0")
+        }
+
+        /// [`Self::log`], keeping permits at `sampling`.
+        pub(super) fn log_sampled(
+            &self,
+            producer: &Arc<Producer<Codec>>,
+            bounds: Bounds,
+            sampling: &str,
+        ) -> HostLog {
             let registration = Host::builder()
                 .streams(Arc::new(
                     Served::default().with(STREAM, Arc::clone(producer)),
@@ -3452,11 +3393,11 @@ mod host_log {
                     .expect("declared")
                     .expect("composed"),
                 self.identity.host_id(),
-                Epoch {
+                permguard_data_plane::decisions::Epoch {
                     version: "0.1.0".to_owned(),
                     build: None,
                     engines: std::collections::BTreeMap::new(),
-                    sampling: "1.0".to_owned(),
+                    sampling: sampling.to_owned(),
                 },
                 permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
                 bounds,
@@ -3626,6 +3567,32 @@ mod host_log {
         );
     }
 
+    /// WP-6.1: a permit may be sampled out; a denial or an error never is, however low the rate.
+    #[test]
+    fn a_deny_is_never_sampled_out_and_only_a_permit_is() {
+        let host = HostStream::new("host-log-sampling");
+        let resource = ledger("zone-1", "ledger-1");
+        let producer = host.producer();
+        let log = host.log_sampled(&producer, LOOSE, "0.0");
+        assert_eq!(
+            log.record(&decided("p-1", true)).expect("answered"),
+            Written::SampledOut
+        );
+        assert_eq!(
+            log.record(&decided("d-1", false)).expect("recorded"),
+            Written::Recorded { seq: 2 },
+            "a marker, then the denial"
+        );
+        let records = records(&producer, &resource);
+        assert_eq!(records.len(), 2);
+        assert!(
+            records
+                .iter()
+                .all(|(_, record)| record["id"] != json!("p-1"))
+        );
+        assert_eq!(records[1].1["id"], json!("d-1"));
+    }
+
     /// WP-6.1: a run the engine rolls over to starts at sequence 1 with its own marker, and so
     /// does the first decision a restarted process writes, in the run it resumes.
     #[test]
@@ -3770,7 +3737,7 @@ mod host_log {
                 .expect("declared")
                 .expect("composed"),
             [1; 16],
-            Epoch {
+            permguard_data_plane::decisions::Epoch {
                 version: "0.1.0".to_owned(),
                 build: None,
                 engines: std::collections::BTreeMap::new(),
@@ -3813,7 +3780,7 @@ mod host_log {
                 .expect("declared")
                 .expect("composed"),
             [1; 16],
-            Epoch {
+            permguard_data_plane::decisions::Epoch {
                 version: "0.1.0".to_owned(),
                 build: None,
                 engines: std::collections::BTreeMap::new(),
@@ -5398,23 +5365,14 @@ async fn records_wait_for_their_flush_on_slots_of_their_own() {
         &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
     );
     let spool = scratch("evidence-pool-spool");
-    let journal = Journal::open(
+    let journal = TestRecorder::open(
         &spool,
-        "plane",
-        Epoch {
-            version: "0.1.0".to_owned(),
-            build: None,
-            engines: BTreeMap::new(),
-            sampling: "1.0".to_owned(),
-        },
         WhenFull::Closed,
         Bounds {
             bytes: 64 * 1024 * 1024,
             age: std::time::Duration::from_secs(3600),
             segment_bytes: 1024 * 1024,
         },
-        permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
-        Metrics::none(),
     )
     .expect("the journal opens");
     let storage = Blocking::new(2, Metrics::none());

@@ -16,9 +16,6 @@ syntax = "proto3";
 package permguard.control.v1;
 
 service DecisionLog {
-  // Ship one signed batch. At-least-once: a batch the producer already sent is
-  // deduplicated by (stream, seq) and the acknowledgement does not move.
-  rpc Ship(ShipRequest) returns (ShipResponse);
   // Read one page, from an offset the consumer keeps.
   rpc Read(ReadRequest) returns (ReadResponse);
   // Which key signed which stretch of one producer stream, public keys
@@ -48,28 +45,6 @@ message GetDecisionSignersResponse {
   // The receiver's durable frontier: everything through this sequence is here.
   uint64 acked = 1;
   repeated DecisionSignerSpan spans = 2;
-}
-
-message ShipRequest {
-  // The signed batch, as its JSON bytes: `{signature, records}`.
-  bytes batch = 1;
-}
-
-// What the store concluded.
-//
-// `out_of_order` is not an error: nothing was lost, the shipper simply ran
-// ahead, and `expected_seq` says where to resume. Every other refusal arrives
-// as a gRPC status with the taxonomy's class and code in its metadata.
-message ShipResponse {
-  // The highest CONTIGUOUS DURABLE sequence. The producer truncates its spool
-  // by this number, so it is never the highest accepted.
-  uint64 acked = 1;
-  // How many records this call added. Zero for a replay.
-  uint64 stored = 2;
-  // Set when the store needs an earlier batch first.
-  bool out_of_order = 3;
-  // Where to resume from, when it does.
-  uint64 expected_seq = 4;
 }
 
 message ReadRequest {

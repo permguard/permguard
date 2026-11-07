@@ -113,11 +113,9 @@ pub struct Limits {
     pub max_examined: u64,
 }
 
-/// Where batches are delivered and records are read.
+/// Where records are read.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Endpoints {
-    /// Where a producer delivers a batch.
-    pub ingest: String,
     /// The operator's view: every record this store holds, across producers.
     pub records: String,
     /// One occurrence, by the identifier its caller stated.
@@ -154,7 +152,6 @@ pub fn document(
         store: store.to_owned(),
         endpoints: Endpoints {
             // Built from the constants the router mounts, so the two cannot drift.
-            ingest: format!("{base}{}", super::http::BATCHES_PATH),
             records: format!("{base}{}", super::http::RECORDS_PATH),
             record: format!("{base}{}", super::http::RECORD_PATH),
             tenant_records: format!("{base}{}", super::http::TENANT_RECORDS_PATH),
@@ -212,10 +209,6 @@ mod tests {
     fn every_endpoint_is_a_path_the_router_mounts() {
         let document = parsed("http://host/");
 
-        assert_eq!(
-            document["endpoints"]["ingest"],
-            format!("http://host{}", super::super::http::BATCHES_PATH)
-        );
         assert_eq!(
             document["endpoints"]["records"],
             format!("http://host{}", super::super::http::RECORDS_PATH)

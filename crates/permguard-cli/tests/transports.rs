@@ -641,13 +641,6 @@ impl PolicyDecisionPoint for Plane {
 
 #[tonic::async_trait]
 impl DecisionLog for Plane {
-    async fn ship(
-        &self,
-        _request: Request<proto::ShipRequest>,
-    ) -> Result<Response<proto::ShipResponse>, Status> {
-        unserved()
-    }
-
     async fn read(
         &self,
         _request: Request<proto::ReadRequest>,
@@ -671,13 +664,6 @@ impl DecisionLog for Plane {
 
 #[tonic::async_trait]
 impl EventLog for Plane {
-    async fn ingest_batch(
-        &self,
-        _request: Request<proto::IngestBatchRequest>,
-    ) -> Result<Response<proto::IngestBatchResponse>, Status> {
-        unserved()
-    }
-
     async fn list_records(
         &self,
         _request: Request<proto::ListRecordsRequest>,

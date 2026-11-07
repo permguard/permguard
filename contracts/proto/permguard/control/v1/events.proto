@@ -20,8 +20,6 @@ package permguard.control.v1;
 
 // Shipping events, and reading them back.
 service EventLog {
-  // One signed batch of contiguous records from one producer stream.
-  rpc IngestBatch(IngestBatchRequest) returns (IngestBatchResponse);
   // One bounded, filtered block of a scope.
   rpc ListRecords(ListRecordsRequest) returns (ListRecordsResponse);
   // One occurrence, by the identifier its caller stated.
@@ -97,7 +95,9 @@ message GetEventConfigurationRequest {}
 // producer that reads this is configured with one endpoint and has to arrive
 // at four.
 message EventEndpoints {
-  string ingest = 1;
+  // Field 1 was `ingest`, removed with the public batch route (iteration 02, WP-10.4).
+  reserved 1;
+  reserved "ingest";
   string records = 2;
   string record = 3;
   string tenant_records = 4;
@@ -136,26 +136,6 @@ message GetEventConfigurationResponse {
   optional string sunset = 11;
   // The interface's ceilings, by name; empty when it publishes none.
   map<string, uint64> limits = 12;
-}
-
-message IngestBatchRequest {
-  // The signed envelope, as its canonical JSON bytes.
-  bytes envelope = 1;
-  // The records it covers, verbatim, in sequence order.
-  repeated bytes records = 2;
-}
-
-message IngestBatchResponse {
-  // The highest contiguous durable sequence. The producer deletes by this and
-  // by nothing else: a number with a hole behind it is how a gap becomes
-  // permanent, and for events a gap changes what future decisions mean.
-  uint64 acked = 1;
-  // How many records this batch added. Zero for a replay.
-  uint64 stored = 2;
-  // Set when the shipper ran ahead and nothing was stored: resend from here.
-  // Not an error — an answer the shipper acts on rather than a failure it
-  // retries blindly.
-  uint64 expected_seq = 3;
 }
 
 message ListRecordsRequest {

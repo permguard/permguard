@@ -63,11 +63,9 @@ pub struct Document {
     pub limits: Limits,
 }
 
-/// Where batches are delivered, records read and signers answered.
+/// Where records are read and signers answered.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Endpoints {
-    /// Where a legacy producer delivers a batch.
-    pub batches: String,
     /// One producer stream's records, named by `pdp` and `instance`.
     pub records: String,
     /// A tenant's records, a template with `{zone}` and `{ledger}`.
@@ -106,7 +104,6 @@ pub fn document(base: &str, store: &str, header: permguard_core::stages::Header)
         store: store.to_owned(),
         endpoints: Endpoints {
             // Built from the constants the router mounts, so the two cannot drift.
-            batches: format!("{base}{}", super::http::BATCHES_PATH),
             records: format!("{base}{}", super::http::RECORDS_PATH),
             tenant_records: format!("{base}{}", super::http::TENANT_RECORDS_PATH),
             signers: format!("{base}{}", super::http::SIGNERS_PATH),

@@ -24,13 +24,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
-use permguard_control_client::decisions;
 use permguard_core::{BoxFuture, PlaneContext, PlaneTask, future::ready};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
-use tracing::{error, info};
-
-use super::shipper::{Round, Shipper, backoff};
+use tracing::error;
 
 const COMPONENT: &str = "data-plane";
 
@@ -81,18 +78,6 @@ impl PlaneTask for DecisionService {
         Box::pin(async move {
             let config = context.config();
             if !config.log_enabled() {
-                // Records an earlier release left are shipped only while the log is on: said, so
-                // turning it off is never how they are lost unnoticed.
-                let spool = config.working_dir().join(config.log_spool_directory());
-                if super::holds_segments(&spool).unwrap_or(true) {
-                    tracing::warn!(
-                        event.name = "decisions.legacy_stranded",
-                        component = COMPONENT,
-                        spool = %spool.display(),
-                        "the decision log is off and a legacy decision spool is on the volume: \
-                         what it holds unshipped is shipped only while the log is on"
-                    );
-                }
                 return Ok(());
             }
             let Some(log) = super::host_log(context) else {
@@ -138,11 +123,7 @@ impl PlaneTask for DecisionService {
                 ));
             }
             let (stop, stopped) = watch::channel(false);
-            let mut tasks = vec![tokio::spawn(measure(log, stopped.clone()))];
-            match super::legacy_spool(context).map_err(|error| anyhow!(error))? {
-                Some(journal) => tasks.push(self.ship_legacy(context, journal, stopped)?),
-                None => drop(stopped),
-            }
+            let tasks = vec![tokio::spawn(measure(log, stopped))];
 
             *self
                 .running
@@ -174,96 +155,6 @@ impl PlaneTask for DecisionService {
     }
 }
 
-impl DecisionService {
-    /// Starts shipping the legacy spool `journal` to the configured destination until it is
-    /// empty (WP-6.1, owner decision of 2026-10-16).
-    fn ship_legacy(
-        &self,
-        context: &PlaneContext<'_>,
-        journal: Arc<super::Journal>,
-        mut stopped: watch::Receiver<bool>,
-    ) -> Result<JoinHandle<()>> {
-        let config = context.config();
-        let Some(keys) = crate::handles::decision_signer(context) else {
-            // Records that leave unattributable are records nobody can act on.
-            error!(
-                event.name = "decisions.unsigned",
-                component = COMPONENT,
-                "a legacy decision spool holds records and no signing ring is composed \
-                 (dataPlane.keys)"
-            );
-
-            return Err(anyhow!(
-                "a legacy decision spool holds records and no signing ring is composed \
-                 (dataPlane.keys): they would leave unattributable"
-            ));
-        };
-        // Where records go: the server the file names, and nothing inferred (WP-7.7: a mirror names
-        // no server to infer one from).
-        let (url, tls) = destination(context)?;
-        // Whichever transport the URL names: a deployment that terminates gRPC and one behind an
-        // HTTP proxy ship the same records.
-        let sink = decisions::client(
-            &url,
-            &tls,
-            Box::new(permguard_control_client::narrate::Silent),
-        )
-        .map_err(|error| anyhow!("reaching the decision log at {url}: {error}"))?;
-
-        let interval = self.tick.unwrap_or_else(|| config.log_batch_interval());
-        let shipper = Arc::new(Shipper::new(
-            Arc::clone(&journal),
-            sink,
-            keys,
-            config.log_batch_bytes(),
-            super::rate(config.log_sample_permits()),
-            context.metrics().clone(),
-        ));
-        info!(
-            event.name = "decisions.legacy_shipping",
-            component = COMPONENT,
-            server = url.as_str(),
-            interval.seconds = interval.as_secs(),
-            "a legacy decision spool is shipped until it is empty; new decisions are recorded on \
-             the Host's stream"
-        );
-
-        Ok(tokio::spawn(async move {
-            let mut failures = 0u32;
-            loop {
-                let wait = if failures == 0 {
-                    interval
-                } else {
-                    backoff(interval, failures)
-                };
-                tokio::select! {
-                    _ = tokio::time::sleep(wait) => {
-                        // Blocking: the spool is files, and a round reads and flushes them. Off
-                        // the runtime's threads.
-                        let shipper = Arc::clone(&shipper);
-                        let outcome = tokio::task::spawn_blocking(move || shipper.round()).await;
-                        match outcome {
-                            Ok(Round::Shipped { .. }) => failures = 0,
-                            Ok(Round::Idle) => {
-                                info!(
-                                    event.name = "decisions.legacy_drained",
-                                    component = COMPONENT,
-                                    "the legacy decision spool is empty: nothing more is shipped \
-                                     from it"
-                                );
-                                break;
-                            }
-                            Ok(Round::Deferred(_)) | Err(_) => failures = failures.saturating_add(1),
-                            Ok(Round::Stopped { .. }) => break,
-                        }
-                    }
-                    _ = stopped.changed() => break,
-                }
-            }
-        }))
-    }
-}
-
 /// Measures `log`'s pressure every [`MEASURE_EVERY`] until stopped, off the runtime's threads:
 /// the measure reads journals.
 async fn measure(log: Arc<super::HostLog>, mut stopped: watch::Receiver<bool>) {
@@ -276,50 +167,4 @@ async fn measure(log: Arc<super::HostLog>, mut stopped: watch::Receiver<bool>) {
             _ = stopped.changed() => break,
         }
     }
-}
-
-/// Where records go, and how that server is trusted.
-/// Where a plane ships what it produced.
-///
-/// Shared with the event shipper: one deployment ships both to one control plane, and asking it to
-/// name that plane twice would be asking it to keep two settings in step.
-pub fn destination(
-    context: &PlaneContext<'_>,
-) -> Result<(String, permguard_control_client::TlsOptions)> {
-    let config = context.config();
-    if let Some(destination) = config.log_destination() {
-        return Ok((
-            destination.url.clone(),
-            tls_of(&destination.tls, config.working_dir()),
-        ));
-    }
-
-    // No server named: mirrors name none since WP-7.7, so there is nothing to take one from.
-    Err(anyhow!(
-        "the decision log is on and names no server: say where records go under \
-         `dataPlane.decisions.log.server`"
-    ))
-}
-
-/// The trust material for the log's server, resolved against the volume.
-///
-/// A relative path in a configuration file means "next to the volume this
-/// process was given", exactly as it does for a listener's certificate and for
-/// a mirror source.
-fn tls_of(
-    tls: &permguard_core::mirrors::MirrorTls,
-    working_dir: &std::path::Path,
-) -> permguard_control_client::TlsOptions {
-    permguard_control_client::TlsOptions {
-        ca_file: tls.ca_file.as_ref().map(Into::into),
-        cert_file: tls.cert.as_ref().map(Into::into),
-        key_file: tls.key.as_ref().map(Into::into),
-        server_name: tls.server_name.clone(),
-        // Never: see `permguard_core::mirrors::MirrorTls`.
-        skip_verify: false,
-        // A shipper or a mirror presents mutual TLS, never an operator's token (TC-1).
-        key_pem: None,
-        token: None,
-    }
-    .rooted_at(working_dir)
 }

@@ -382,12 +382,7 @@ dataPlane:
   #       # the log is on, and its `mode`, come from each group's `evidence.mode`: stating them here
   #       # as well is refused.
   #       log:
-  #         server:
-  #           url: "grpcs://permguard-control-plane:6443"
-  #           tls:
-  #             ca_file: tls/control-plane-ca.pem
-  #             cert: tls/decision-log-client.pem   # its own identity, not the mirror's
-  #             key: tls/decision-log-client.key
+  #         # Shipped by the Host over `decisions.ship` to its coordinator: there is no server to name.
   #         spool:
   #           directory: "data/decisions/spool"  # on a persistent volume: it is the copy that survives a restart
   #           bytes: "512M"             # decision records only; the terminal record is reserved apart

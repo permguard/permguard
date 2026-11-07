@@ -41,14 +41,10 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
-use super::shipper::{Backoff, Round, Shipper};
-
 const COMPONENT: &str = "temporal";
 
-/// How often a round runs when nothing is failing.
+/// How often a round keeps the floors and evicts.
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(5);
-/// The most bytes one batch carries.
-pub const DEFAULT_BATCH_BYTES: u64 = 4 * 1024 * 1024;
 
 /// The running loop, and the way to ask it to stop.
 struct Running {
@@ -109,52 +105,21 @@ impl PlaneTask for EventService {
             // The stream is sealed under the plane's `data.attest` ring, and nothing unsealed is
             // ever shipped: a log without it would grow until its bounds refused every
             // submission and reach no coordinator.
-            let Some(keys) = crate::handles::event_signer(context) else {
+            if crate::handles::event_signer(context).is_none() {
                 return Err(anyhow!(
                     "the temporal interface is enabled and no signing ring is composed \
                      (dataPlane.keys): event records would leave this plane unattributable, and \
                      an unattributable history is one nobody can act on"
                 ));
-            };
+            }
 
             let interval = self.tick.unwrap_or(DEFAULT_INTERVAL);
             let streams = Arc::clone(submitter.streams());
             // The origins the member Host imports, whose floor this loop keeps too (WP-6.2c2b1).
             let imported = submitter.imported().cloned();
             let retention = streams.bounds().retention_minimum;
-            // Recorded on the Host's producer and shipped by it over `events.ship` (WP-6.2a); this
-            // loop keeps the floor the producer deletes above current. The old shipper runs only
-            // while a legacy journal holds anything unshipped, which it sends until it is empty.
-            let legacy_pending = legacy_unshipped(&streams);
-            // An event-specific destination wins. Only its absence falls back to the decision
-            // log's endpoint, so a value written under `events.destination` can never be accepted
-            // by configuration and then ignored by the running service.
-            // The HTTP pull is retired (WP-6.2c2b2): only a legacy journal still draining reaches
-            // the Control Plane over it.
-            let remote = if legacy_pending {
-                Some(destination(context)?)
-            } else {
-                None
-            };
-            let shipper = match (&remote, legacy_pending) {
-                (Some((url, tls)), true) => {
-                    info!(
-                        event.name = "events.legacy_shipping",
-                        component = COMPONENT,
-                        server = url.as_str(),
-                        "a legacy event journal is shipped until it is empty; new events are \
-                         recorded on the Host's stream"
-                    );
-                    Some(Arc::new(Shipper::new(
-                        Arc::clone(&streams),
-                        event_sink(url, tls)?,
-                        keys,
-                        DEFAULT_BATCH_BYTES,
-                        context.metrics().clone(),
-                    )))
-                }
-                _ => None,
-            };
+            // Recorded on the Host's producer and shipped by it over `events.ship` (WP-6.2a): this
+            // loop keeps the floor the producer deletes above current, and nothing else ships.
             info!(
                 event.name = "events.recording",
                 component = COMPONENT,
@@ -164,52 +129,18 @@ impl PlaneTask for EventService {
             );
 
             let (stop, mut stopped) = watch::channel(false);
-            let backoff = Backoff::default();
             let task = tokio::spawn(async move {
-                let mut ship_failures = 0u32;
-                let mut next_ship = tokio::time::Instant::now() + interval;
                 loop {
-                    let deadline = next_ship;
                     tokio::select! {
-                        _ = tokio::time::sleep_until(deadline) => {
-                            let now = tokio::time::Instant::now();
-                            if now >= next_ship {
-                                // Blocking: a round reads and flushes files. Off the runtime's threads.
-                                let shipper = shipper.clone();
-                                let streams = Arc::clone(&streams);
-                                let imported = imported.clone();
-                                let outcome = tokio::task::spawn_blocking(move || {
-                                    keep_floors(&streams, imported.as_deref(), retention);
-                                    let rounds = shipper
-                                        .map(|shipper| shipper.round())
-                                        .unwrap_or_default();
-                                    evict(&streams, retention);
-                                    rounds
-                                }).await;
-                                match outcome {
-                                    Ok(rounds) => {
-                                        if rounds.iter().any(|(_, round)| {
-                                            matches!(round, Round::Stopped { .. })
-                                        }) {
-                                            break;
-                                        }
-                                        ship_failures = match rounds
-                                            .iter()
-                                            .any(|(_, round)| matches!(round, Round::Deferred(_)))
-                                        {
-                                            true => ship_failures.saturating_add(1),
-                                            false => 0,
-                                        };
-                                    }
-                                    Err(_) => ship_failures = ship_failures.saturating_add(1),
-                                }
-                                let wait = match ship_failures {
-                                    0 => interval,
-                                    held => backoff.wait(held, jitter()),
-                                };
-                                next_ship = tokio::time::Instant::now() + wait;
-                            }
-
+                        () = tokio::time::sleep(interval) => {
+                            // Blocking: a round reads and flushes files. Off the runtime's threads.
+                            let streams = Arc::clone(&streams);
+                            let imported = imported.clone();
+                            let _ = tokio::task::spawn_blocking(move || {
+                                keep_floors(&streams, imported.as_deref(), retention);
+                                evict(&streams, retention);
+                            })
+                            .await;
                         }
                         _ = stopped.changed() => break,
                     }
@@ -242,40 +173,6 @@ impl PlaneTask for EventService {
             Ok(())
         })
     }
-}
-
-/// Where this plane exchanges event records, using the event destination when one is declared and
-/// the decision-log endpoint otherwise for deployments that send both streams to one control
-/// plane.
-fn destination(
-    context: &PlaneContext<'_>,
-) -> Result<(String, permguard_control_client::TlsOptions)> {
-    let config = context.config();
-    if let Some(destination) = config.events_destination() {
-        return Ok((
-            destination.url.clone(),
-            tls_of(&destination.tls, config.working_dir()),
-        ));
-    }
-
-    crate::decisions::service::destination(context)
-}
-
-fn tls_of(
-    tls: &permguard_core::mirrors::MirrorTls,
-    working_dir: &std::path::Path,
-) -> permguard_control_client::TlsOptions {
-    permguard_control_client::TlsOptions {
-        ca_file: tls.ca_file.as_ref().map(Into::into),
-        cert_file: tls.cert.as_ref().map(Into::into),
-        key_file: tls.key.as_ref().map(Into::into),
-        server_name: tls.server_name.clone(),
-        skip_verify: false,
-        // A shipper or a mirror presents mutual TLS, never an operator's token (TC-1).
-        key_pem: None,
-        token: None,
-    }
-    .rooted_at(working_dir)
 }
 
 /// Evicts what the control plane holds and no loaded policy could still read.
@@ -343,15 +240,6 @@ fn evict(streams: &Arc<super::streams::Streams>, retention: Duration) {
     }
 }
 
-/// Whether a legacy journal holds anything its shipper has still to send.
-fn legacy_unshipped(streams: &super::streams::Streams) -> bool {
-    streams.ledgers().iter().any(|(zone, ledger)| {
-        streams
-            .state(zone, ledger)
-            .map_or(true, |state| state.acked_through < state.durable_through)
-    })
-}
-
 /// Keeps the floor the Host's producer deletes above current: what no loaded window reads, plus
 /// what lateness and skew may add (WP-6.2a); and the one its consumer deletes the imported
 /// origins' runs above (WP-6.2c2b1).
@@ -386,41 +274,4 @@ fn keep_floors(
             "the event stream's retention floor could not be measured"
         );
     }
-}
-
-/// The client for whichever transport the URL names.
-fn event_sink(
-    url: &str,
-    tls: &permguard_control_client::TlsOptions,
-) -> Result<Box<dyn permguard_control_client::events::EventSink>> {
-    let narrator = || Box::new(permguard_control_client::narrate::Silent);
-    let sink: Box<dyn permguard_control_client::events::EventSink> = if url.starts_with("grpc") {
-        Box::new(
-            permguard_control_client::events_grpc::GrpcEventSink::connect(url, tls, narrator())
-                .map_err(|error| anyhow!("reaching the event store at {url}: {error}"))?,
-        )
-    } else {
-        Box::new(
-            permguard_control_client::events::HttpEventSink::connect(url, tls, narrator())
-                .map_err(|error| anyhow!("reaching the event store at {url}: {error}"))?,
-        )
-    };
-
-    Ok(sink)
-}
-
-/// A fresh jitter fraction for one backoff.
-///
-/// From the same source the instance identifiers come from, so a fleet does not share a sequence:
-/// a deterministic jitter would be no jitter at all once every plane ran the same build.
-fn jitter() -> f64 {
-    use ring::rand::SecureRandom as _;
-
-    let mut bytes = [0u8; 2];
-    if ring::rand::SystemRandom::new().fill(&mut bytes).is_err() {
-        // No randomness is a reason to wait the full window rather than to hammer.
-        return 1.0;
-    }
-
-    f64::from(u16::from_be_bytes(bytes)) / f64::from(u16::MAX)
 }

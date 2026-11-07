@@ -14,12 +14,12 @@
 use serde_json::Value;
 use tonic::Request;
 
-use crate::decisions::{DecisionReader, DecisionSink, Page, ReadError, ShipError, Shipped};
+use crate::decisions::{DecisionReader, Page, ReadError};
 use crate::grpc::GrpcChannel;
 use crate::narrate::Narrator;
 use crate::tls::TlsOptions;
+use crate::v1::ReadRequest;
 use crate::v1::decision_log_client::DecisionLogClient;
-use crate::v1::{ReadRequest, ShipRequest};
 
 /// The metadata a refusal's code travels in.
 const CODE: &str = permguard_core::GRPC_ERROR_CODE;
@@ -55,49 +55,6 @@ impl GrpcSink {
             .and_then(|value| value.to_str().ok())
             .unwrap_or("unknown")
             .to_owned()
-    }
-}
-
-impl DecisionSink for GrpcSink {
-    fn ship(&self, batch: &Value) -> Result<Shipped, ShipError> {
-        let request = ShipRequest {
-            batch: serde_json::to_vec(batch).unwrap_or_default(),
-        };
-        let answer = self.endpoint.run(
-            "DecisionLog/Ship",
-            self.client().ship(Request::new(request)),
-        );
-
-        match answer {
-            Ok(answer) => {
-                if answer.out_of_order {
-                    return Ok(Shipped::OutOfOrder {
-                        expected_seq: answer.expected_seq,
-                    });
-                }
-
-                Ok(Shipped::Acknowledged {
-                    acked: answer.acked,
-                    stored: answer.stored,
-                })
-            }
-            // Unavailable and "no answer at all" are the retryable cases: the
-            // records are still on this plane's disk either way.
-            Err(status)
-                if matches!(
-                    status.code(),
-                    tonic::Code::Unavailable
-                        | tonic::Code::DeadlineExceeded
-                        | tonic::Code::ResourceExhausted
-                ) =>
-            {
-                Err(ShipError::Unavailable(status.message().to_owned()))
-            }
-            Err(status) => Err(ShipError::Rejected {
-                code: Self::code_of(&status),
-                detail: status.message().to_owned(),
-            }),
-        }
     }
 }
 

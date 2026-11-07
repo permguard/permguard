@@ -13,7 +13,6 @@
 //! # Routes
 //!
 //! ```text
-//! POST /events/v1alpha1/batches                                  a producer ships
 //! GET  /events/v1alpha1/records                                  the administrative read
 //! GET  /events/v1alpha1/records/{event-id}                       one occurrence
 //! GET  /v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records one tenant's
@@ -39,21 +38,18 @@ use std::sync::Arc;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
 
 use permguard_core::metrics::labels;
 use permguard_core::{ApiError, Disclosure, ErrorClass, Jwk, Metrics};
 use permguard_stream::Window;
 
-use super::ingest::{self, Accepted, Batch, ProducerTrust, Refused};
 use super::measure;
 use super::read::{self, Filters};
 use super::store::{EventStore, Scope};
 use crate::wire;
 
-/// Where a producer ships a signed batch.
-pub const BATCHES_PATH: &str = "/events/v1alpha1/batches";
 /// The administrative read.
 pub const RECORDS_PATH: &str = "/events/v1alpha1/records";
 /// One occurrence, by the identifier its caller stated.
@@ -71,12 +67,6 @@ pub struct EventFacade {
     /// The Host's consumer of the event stream, which the public reads answer from beside the
     /// store (WP-6.2b); `None` when no engine consumes it.
     pub host: Option<permguard_host::composition::StreamConsumer>,
-    /// Producers bound by whoever composes the facade: empty in a served deployment, where the
-    /// in-process ring is the only trust (WP-6.2b); what a test or an embedding names directly.
-    pub producers: Arc<std::sync::RwLock<Vec<ProducerTrust>>>,
-    /// The ring of the data plane sharing this process, bound to the legacy journals it may
-    /// still ship (WP-6.2b): no key file is read.
-    pub local: Option<LocalTrust>,
     /// The secret read offsets are signed with.
     pub cursor_key: crate::decisions::cursorkey::CursorKeys,
     /// The catalog, for turning the scope a reader named into the one records are keyed by.
@@ -99,17 +89,6 @@ pub struct EventFacade {
     /// The Host's authorization, every evidence read decides with before it looks anything up
     /// (WP-6.3c).
     pub authorization: Arc<permguard_host::composition::Authorization>,
-}
-
-/// The `data.attest` ring of the data plane sharing this process, and the legacy journals beside
-/// it that its old shipper may still send here (WP-6.2b, owner decision of 2026-10-18).
-#[derive(Clone)]
-pub struct LocalTrust {
-    /// The ring; `None` when this process composes no `data.attest` ring, which leaves the
-    /// journals' batches refused and the store degraded rather than silently waiting.
-    pub keys: Option<Arc<dyn permguard_core::keys::PublicSet>>,
-    /// `(producer, zone, ledger)` of each legacy journal.
-    pub bindings: Vec<(String, String, String)>,
 }
 
 impl EventFacade {
@@ -153,86 +132,13 @@ impl EventFacade {
         }
     }
 
-    /// The keys a **new** batch may be signed under: what the producers publish today, and nothing
-    /// else.
-    ///
-    /// # Why the archive is not in here
-    ///
-    /// It used to be, and that made rotation meaningless. Verifying stored evidence and admitting
-    /// new evidence are different questions that happen to use the same operation: a batch signed
-    /// last year must still verify after the key that signed it has been rotated out, or history
-    /// stops being checkable the first time somebody rotates — but a key that has been *retired*
-    /// must not be able to sign anything new, or retiring it achieved nothing. A compromised key
-    /// withdrawn from a producer's published set would have gone on being accepted for as long as
-    /// the archive kept it, which is for ever.
-    ///
-    /// So ingest asks this, and a reader checking what is already stored asks
-    /// [`EventFacade::verification_keys`].
-    pub fn accepted_producers(&self) -> Vec<ProducerTrust> {
-        let mut producers = self
-            .producers
-            .read()
-            .map(|held| held.clone())
-            .unwrap_or_default();
-        // Read on every batch, so the ring's rotation needs no reload: what it publishes now.
-        if let Some(local) = &self.local
-            && let Some(keys) = &local.keys
-        {
-            match keys.public_keys() {
-                Ok(keys) => {
-                    for key in keys {
-                        for (producer, zone, ledger) in &local.bindings {
-                            producers.push(ProducerTrust {
-                                key: key.clone(),
-                                producer: producer.clone(),
-                                zone: zone.clone(),
-                                ledger: ledger.clone(),
-                            });
-                        }
-                    }
-                }
-                Err(error) => tracing::warn!(
-                    event.name = "events.local_keys_unreadable",
-                    error = %error,
-                    "the ring of the data plane in this process cannot publish its keys: batches \
-                     of its legacy journals are refused until it can"
-                ),
-            }
-        }
-        producers
-    }
-
-    /// Whether this store waits for batches over its ingest route: a bound producer, or a
-    /// legacy journal beside it (WP-6.2b). A plane in this process records on the Host's stream,
-    /// and a store expecting nothing is not degraded.
-    pub fn expects_batches(&self) -> bool {
-        self.local
-            .as_ref()
-            .is_some_and(|local| !local.bindings.is_empty())
-            || self
-                .producers
-                .read()
-                .map(|held| !held.is_empty())
-                .unwrap_or(true)
-    }
-
-    /// Whether this store expects batches it can accept from nobody: a legacy journal or a bound
-    /// producer waits, and no key is trusted. Health reports the store degraded then.
-    pub fn awaits_trust(&self) -> bool {
-        self.expects_batches() && self.accepted_producers().is_empty()
-    }
-
     /// Every key that may verify evidence this store already holds.
     ///
     /// The published sets plus the archive. Read-only by construction: nothing that reaches this
     /// admits a record, it only re-checks records admitted earlier under keys that were current
     /// then.
     pub fn verification_keys(&self) -> Result<Vec<Jwk>, String> {
-        let mut keys: Vec<Jwk> = self
-            .accepted_producers()
-            .into_iter()
-            .map(|held| held.key)
-            .collect();
+        let mut keys: Vec<Jwk> = Vec::new();
         let archived = self
             .store
             .archived_keys()
@@ -457,42 +363,6 @@ impl EventFacade {
         })
     }
 
-    pub fn ingest(&self, batch: &Batch) -> Result<Accepted, Refused> {
-        let started = std::time::Instant::now();
-        let types = self.accepted_types();
-        let answered = ingest::accept(&self.store, batch, &self.accepted_producers(), &types);
-        self.metrics.observe(
-            &measure::INGEST_SECONDS,
-            &[],
-            started.elapsed().as_secs_f64(),
-        );
-        match &answered {
-            Ok(Accepted::Ok { stored, .. }) => {
-                self.metrics.count(
-                    &measure::BATCHES,
-                    &[(
-                        labels::OUTCOME,
-                        if *stored > 0 { "accepted" } else { "replayed" },
-                    )],
-                );
-                self.metrics.add(&measure::RECORDS, &[], *stored as f64);
-            }
-            Ok(Accepted::OutOfOrder { .. }) => {
-                self.metrics
-                    .count(&measure::BATCHES, &[(labels::OUTCOME, "out_of_order")]);
-            }
-            Err(refused) => {
-                self.metrics
-                    .count(&measure::BATCHES, &[(labels::OUTCOME, "refused")]);
-                if matches!(refused, Refused::Fork { .. }) {
-                    self.metrics.count(&measure::FORKS, &[]);
-                }
-            }
-        }
-
-        answered
-    }
-
     /// Reads one bounded, filtered block.
     pub fn read(
         &self,
@@ -542,7 +412,6 @@ pub fn routes(facade: EventFacade) -> Router {
     // Mounted from the interface's own constants, which is also what the configuration document
     // advertises — so the document cannot name a path this plane does not answer.
     Router::new()
-        .route(BATCHES_PATH, post(batches))
         .route(RECORDS_PATH, get(records))
         .route(RECORD_PATH, get(record))
         .route(TENANT_RECORDS_PATH, get(tenant_records))
@@ -719,66 +588,6 @@ async fn document(State(facade): State<EventFacade>) -> Response {
         .into_response(),
         Err(refused) => crate::wire::http_error(&refused, facade.disclosure),
     }
-}
-
-async fn batches(State(facade): State<EventFacade>, body: axum::body::Bytes) -> Response {
-    let batch = match Batch::decode(&body) {
-        Ok(batch) => batch,
-        Err(rejection) => {
-            return refuse(
-                &facade,
-                ApiError::new(
-                    ErrorClass::Validation,
-                    permguard_core::codes::notp::PAYLOAD_MALFORMED,
-                    format!("the request body is not a signed batch: {rejection}"),
-                ),
-            );
-        }
-    };
-
-    // Off the runtime's threads: verifying a batch is signature work and file writes, and a
-    // shipper landing a large one must not stall the reactor the reads are answered on.
-    let answered = {
-        let facade = facade.clone();
-        tokio::task::spawn_blocking(move || facade.ingest(&batch))
-            .await
-            .unwrap_or_else(|error| Err(Refused::Unavailable(error.to_string())))
-    };
-
-    match answered {
-        Ok(Accepted::Ok { acked, stored }) => (
-            StatusCode::OK,
-            Json(serde_json::json!({"acked": acked, "stored": stored})),
-        )
-            .into_response(),
-        Ok(Accepted::OutOfOrder { expected_seq }) => (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({
-                "class": "conflict",
-                "code": permguard_core::codes::stream::OUT_OF_ORDER,
-                "message": format!(
-                    "this store holds through {} and this batch begins later: resend from {expected_seq}",
-                    expected_seq.saturating_sub(1)
-                ),
-                "expected_seq": expected_seq,
-            })),
-        )
-            .into_response(),
-        Err(refused) => refuse(&facade, api_error(&refused)),
-    }
-}
-
-/// The refusal, in the taxonomy every surface here shares.
-fn api_error(refused: &Refused) -> ApiError {
-    let class = match refused {
-        Refused::Unattributable(_) | Refused::Unverifiable(_) | Refused::Unregistered(_) => {
-            ErrorClass::Validation
-        }
-        Refused::Fork { .. } | Refused::Closed(_) => ErrorClass::Conflict,
-        Refused::Unavailable(_) => ErrorClass::Unavailable,
-    };
-
-    ApiError::new(class, refused.code(), refused.to_string())
 }
 
 /// How far a reader wants to go, from where, and narrowed to what.
@@ -1094,7 +903,7 @@ mod openapi {
 
     use permguard_conformance::schema::Document;
     use permguard_core::KeyManager;
-    use permguard_events::envelope::{Batch, Envelope, Signed};
+    use permguard_events::envelope::{Envelope, Signed};
     use permguard_events::record::{
         GENESIS, HistoryKey, PRODUCER_CLASS_DATA_PLANE, Producer, RECORD_TYPE, Record, Stream,
         VERSION, digest_of, occurrence_digest_of,
@@ -1216,24 +1025,7 @@ mod openapi {
         );
         doc.check("Envelope", &signed.envelope().expect("the payload decodes"));
 
-        let batch = Batch {
-            signature: signed.clone(),
-            records: values.clone(),
-        };
-        doc.check("Batch", &batch);
-        let sent = serde_json::to_value(&batch).expect("a batch serialises");
-        assert!(Batch::decode(sent.to_string().as_bytes()).is_ok());
-
-        // Closed envelopes refuse a member the contract does not name.
-        let mut extra = sent.clone();
-        extra["unexpected"] = json!(1);
-        assert!(!doc.accepts_json("Batch", &extra));
-        let mut extra_header = sent.clone();
-        extra_header["signature"]["kid"] = json!("k");
-        assert!(!doc.accepts_json("Batch", &extra_header));
-        let mut empty = sent.clone();
-        empty["records"] = json!([]);
-        assert!(!doc.accepts_json("Batch", &empty));
+        // Closed envelopes refuse a header the contract does not name.
         assert!(!doc.accepts_json(
             "Protected",
             &json!({"alg": "EdDSA", "typ": "permguard.decision.batch.v1", "kid": "k"})
@@ -1251,26 +1043,6 @@ mod openapi {
         let mut newer = values[1].clone();
         newer["added_later"] = json!(true);
         assert!(doc.accepts_json("Record", &newer));
-
-        // The 200 and 409 answers are built inline in `batches`; these are the same objects.
-        doc.check_json("Acknowledgement", &json!({"acked": 2, "stored": 2}));
-        let expected_seq = 3_u64;
-        doc.check_json(
-            "OutOfOrder",
-            &json!({
-                "class": "conflict",
-                "code": permguard_core::codes::stream::OUT_OF_ORDER,
-                "message": format!(
-                    "this store holds through {} and this batch begins later: resend from {expected_seq}",
-                    expected_seq.saturating_sub(1)
-                ),
-                "expected_seq": expected_seq,
-            }),
-        );
-        assert!(!doc.accepts_json(
-            "OutOfOrder",
-            &json!({"class": "conflict", "code": "out_of_order", "message": "m"})
-        ));
 
         // A page with proof, and one without.
         let path = permguard_stream::merkle::path(&leaves, 0).expect("a path");
@@ -1450,8 +1222,6 @@ mod openapi {
             host: None,
             catalog: None,
             store: std::sync::Arc::new(crate::events::EventStore::open(&root).expect("it opens")),
-            producers: std::sync::Arc::new(std::sync::RwLock::new(Vec::new())),
-            local: None,
             cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
                 b"a-test-cursor-key-of-32-bytes!!!!",
                 [1; 16],
@@ -1520,8 +1290,6 @@ mod gate {
             host: None,
             catalog: None,
             store: Arc::new(crate::events::EventStore::open(&root).expect("it opens")),
-            producers: Arc::new(std::sync::RwLock::new(Vec::new())),
-            local: None,
             cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
                 b"a-test-cursor-key-of-32-bytes!!!!",
                 [1; 16],

@@ -30,10 +30,9 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 /// The subsystems the upgrade migrates, every one the baseline's volume holds.
-const SUBSYSTEMS: [&str; 6] = [
+const SUBSYSTEMS: [&str; 5] = [
     "audit-legacy",
     "decisions-legacy",
-    "events-legacy",
     "keys-control-attest",
     "keys-data-attest",
     "keys-host-operations",
@@ -42,9 +41,6 @@ const SUBSYSTEMS: [&str; 6] = [
 /// The event journal's retention: the least this build admits, what its temporal runtimes look
 /// back (a day) with the lateness and the skew below.
 const RETENTION_SECONDS: u64 = 86_400 + 5 * 60 + 30;
-/// How far behind now the legacy history's archive reads it as drained: the retention, the
-/// lateness and the skew again (`permguard_events::archive::horizon`).
-const ARCHIVE_HORIZON: Duration = Duration::from_secs(RETENTION_SECONDS + 5 * 60 + 30);
 
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/legacy/baseline-8390f612")
@@ -158,7 +154,6 @@ dataPlane:
   decisions:
     log:
       enabled: \"true\"
-      server: {{ url: \"http://127.0.0.1:{control}\" }}
       spool: {{ directory: data/decisions/spool, bytes: 64M, age: 24h }}
       batch: {{ bytes: 256k, interval: 1s }}
       mode: required
@@ -167,7 +162,6 @@ dataPlane:
     enabled: \"true\"
     directory: data/events
     retention: {{ minimum: {RETENTION_SECONDS}s, allowed_lateness: 5m, clock_skew: 30s }}
-    destination: {{ url: \"http://127.0.0.1:{control}\" }}
     pull: {{ mode: local }}
 operations:
   keys: {{ enabled: true, publish_ahead: 5m, rotate_every: 1h, retain: 1d }}
@@ -177,34 +171,6 @@ operations:
     pseudonym: {{ enabled: true, key_ref: audit-pseudonym, key_version: \"{pseudonym}\" }}
 ",
                 volume = self.volume.display(),
-            ),
-        )
-        .expect("the configuration writes");
-    }
-
-    /// The operator's step the archive asks for: the baseline kept the Control Plane's event store
-    /// inside the legacy event history, which `migrate finalize` removes whole, so the store moves
-    /// out of it, and the configuration with it.
-    /// The last lines of the server's log: what a failure on a machine nobody can log into shows.
-    fn log_tail(&self) -> String {
-        let log = std::fs::read_to_string(self.dir.join("server.log")).unwrap_or_default();
-        let lines: Vec<&str> = log.lines().collect();
-        lines[lines.len().saturating_sub(40)..].join("\n")
-    }
-
-    fn move_the_event_store_out(&self) {
-        std::fs::rename(
-            self.volume.join("data/events/store"),
-            self.volume.join("data/events-store"),
-        )
-        .expect("the event store moves");
-        let config = std::fs::read_to_string(&self.config).expect("the configuration");
-        assert!(config.contains("directory: data/events/store,"));
-        std::fs::write(
-            &self.config,
-            config.replace(
-                "directory: data/events/store,",
-                "directory: data/events-store,",
             ),
         )
         .expect("the configuration writes");
@@ -487,83 +453,9 @@ fn test_the_baseline_volume_recovers_through_every_migration() {
         "one authority, this Host's own"
     );
 
-    // The legacy event history, once its shipper sent it, is archived offline: the production
-    // path, which declares the backup. The shipper runs on its own schedule and says nothing when
-    // the journal is empty, so a history not yet sent gets the server back for a few more rounds.
-    let archive = || {
-        upgrade.offline(&[
-            "migrate",
-            "events",
-            "--volume",
-            upgrade.volume(),
-            "--backup",
-            "the test's copy of the baseline volume",
-            "--config",
-            upgrade.config.to_str().expect("UTF-8"),
-        ])
-    };
-    // It is archived only once older than the archive's horizon, a day and some past the capture.
-    // The capture is fixed in the past, so every run from then on takes the whole path; a run
-    // inside that first day can only prove the refusal, and stops there.
-    let captured = captured()["captured_at"]
-        .as_u64()
-        .expect("the capture's time");
-    let drained_at = std::time::UNIX_EPOCH
-        + Duration::from_secs(captured)
-        + ARCHIVE_HORIZON
-        + Duration::from_secs(60);
-    if std::time::SystemTime::now() < drained_at {
-        let refused = archive();
-        assert!(!refused.status.success(), "archived inside the horizon");
-        assert!(
-            text(&refused).contains("a loaded window may still read"),
-            "{}",
-            text(&refused)
-        );
-        eprintln!(
-            "the capture is inside the archive's horizon until {drained_at:?}: the refusal is \
-             proven, the rest waits for it"
-        );
-        return;
-    }
-    // Until the shipper sent it the history is refused as undrained, and the server comes back for
-    // a few more rounds; once drained, it is refused while the Control Plane's store sits inside
-    // it, naming the store, until the operator moves the store out.
-    let mut moved = false;
-    let mut archived = archive();
-    for _ in 0..6 {
-        if archived.status.success() {
-            break;
-        }
-        if text(&archived).contains("move them out of it") {
-            assert!(!moved, "{}", text(&archived));
-            assert!(
-                text(&archived).contains("store/CURSOR_KEY"),
-                "{}",
-                text(&archived)
-            );
-            upgrade.move_the_event_store_out();
-            moved = true;
-        } else {
-            assert!(
-                text(&archived).contains("a loaded window may still read"),
-                "{}",
-                text(&archived)
-            );
-            let server = upgrade.start().expect("the upgraded server starts");
-            std::thread::sleep(Duration::from_secs(5));
-            server.stop();
-        }
-        archived = archive();
-    }
-    assert!(
-        moved,
-        "the store inside the history was never refused; the archive said: {}\nthe server's log \
-         ends with:\n{}",
-        text(&archived),
-        upgrade.log_tail()
-    );
-    assert!(archived.status.success(), "{}", text(&archived));
+    // The legacy event history is not archived: its shipper is gone with the configured link
+    // (iteration 02, WP-10.4, owner decision D18: no deployment is in use), so what it holds is
+    // never sent and `migrate events` refuses it; its subsystem is left out below.
 
     let status = upgrade.offline(&["migrate", "status", "--volume", upgrade.volume()]);
     assert!(status.status.success(), "{}", text(&status));

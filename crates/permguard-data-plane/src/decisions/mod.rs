@@ -25,18 +25,16 @@
 //! than a belief.
 //!
 //! [`host`] is the writing half since WP-6.1: the Host's engine owns the run, the sequence, the
-//! flush, the reserve and the shipping. [`mod@journal`] and [`shipper`] are the version 1 spool's,
-//! kept to ship what an upgraded plane's spool still holds until it is empty (owner decision of
-//! 2026-10-16); nothing new is written there. [`measure`] is what the log reports about itself.
+//! flush, the reserve and the shipping over the membership. [`record`] is what a record is made
+//! of, and [`measure`] what the log reports about itself.
 
 pub mod host;
-pub mod journal;
 pub mod measure;
+pub mod record;
 pub mod service;
-pub mod shipper;
 
 pub use host::HostLog;
-pub use journal::{Decided, Journal, Written};
+pub use record::{Decided, Epoch, Written};
 pub use service::DecisionService;
 
 use std::sync::{Arc, OnceLock};
@@ -59,43 +57,9 @@ pub trait DecisionRecorder: Send + Sync {
     fn refuses_unrecorded(&self) -> bool;
 }
 
-impl DecisionRecorder for Journal {
-    fn record(&self, decided: &Decided<'_>) -> Result<Written, String> {
-        Journal::record(self, decided).map_err(|error| error.to_string())
-    }
-
-    /// The version 1 spool's stream: its plane id and instance, as its records name them.
-    fn record_located(
-        &self,
-        decided: &Decided<'_>,
-    ) -> Result<(Written, Option<permguard_languages::attestation::Position>), String> {
-        let written = Journal::record(self, decided).map_err(|error| error.to_string())?;
-        let position = match (&written, self.stream()) {
-            // A retry answered from the journal may sit in an instance that has since ended: only
-            // a record this call wrote is named in the instance live now.
-            (Written::Recorded { seq }, Some(stream)) => {
-                Some(permguard_languages::attestation::Position {
-                    host_id: stream.id,
-                    run: stream.instance,
-                    sequence: seq.to_string(),
-                })
-            }
-            _ => None,
-        };
-        Ok((written, position))
-    }
-
-    fn refuses_unrecorded(&self) -> bool {
-        Journal::refuses_unrecorded(self)
-    }
-}
-
 /// The log this plane records to, when it keeps one: a singleton, so one process marks each run
 /// once and measures each stream once.
 static HOST_LOG: OnceLock<Option<Arc<HostLog>>> = OnceLock::new();
-
-/// The version 1 spool an upgraded plane still ships from, when it holds anything unshipped.
-static LEGACY: OnceLock<Result<Option<Arc<Journal>>, String>> = OnceLock::new();
 
 /// The scheme input tags are taken under: the Host's zone keys of `decision.commitment`, one key
 /// per ledger (WP-3.3). Held by the Host, derived in memory or read at start, so the decision path
@@ -272,8 +236,8 @@ fn rate(value: f64) -> String {
 }
 
 /// The epoch this process records under: its version, its engines and its permit sampling.
-fn epoch_of(config: &permguard_core::Config) -> journal::Epoch {
-    journal::Epoch {
+fn epoch_of(config: &permguard_core::Config) -> Epoch {
+    Epoch {
         version: config.version().to_owned(),
         build: None,
         // What the manifest's load gate constrains as a range, the marker records as the build
@@ -365,70 +329,4 @@ pub fn host_log(context: &PlaneContext<'_>) -> Option<Arc<HostLog>> {
 /// What the decision path records with: the [`host_log`].
 pub fn recorder(context: &PlaneContext<'_>) -> Option<Arc<dyn DecisionRecorder>> {
     host_log(context).map(|log| log as Arc<dyn DecisionRecorder>)
-}
-
-/// The version 1 spool an upgraded plane left, opened for its shipper alone when it holds
-/// anything unshipped (WP-6.1, owner decision of 2026-10-16); `None` when there is none or it is
-/// empty. Never written: decisions are recorded on the Host's stream.
-///
-/// An error is a spool that exists and cannot be read: records nobody would ship, which the
-/// plane refuses to start over rather than strand.
-pub fn legacy_spool(context: &PlaneContext<'_>) -> Result<Option<Arc<Journal>>, String> {
-    LEGACY
-        .get_or_init(|| {
-            let config = context.config();
-            let directory = config.working_dir().join(config.log_spool_directory());
-            open_legacy(
-                &directory,
-                permguard_decisions::spool::Bounds {
-                    bytes: config.log_spool_bytes(),
-                    age: config.log_spool_age(),
-                    segment_bytes: 8 * 1024 * 1024,
-                },
-                context.metrics().clone(),
-            )
-        })
-        .clone()
-}
-
-/// The legacy spool at `directory`, when it holds anything unshipped.
-pub fn open_legacy(
-    directory: &std::path::Path,
-    bounds: permguard_decisions::spool::Bounds,
-    metrics: permguard_core::Metrics,
-) -> Result<Option<Arc<Journal>>, String> {
-    if !holds_segments(directory)? {
-        return Ok(None);
-    }
-    let journal = Journal::drain(directory, bounds, metrics).map_err(|error| {
-        format!(
-            "the legacy decision spool at {} cannot be read: {error}",
-            directory.display()
-        )
-    })?;
-    if !journal
-        .holds_unshipped()
-        .map_err(|error| error.to_string())?
-    {
-        return Ok(None);
-    }
-    Ok(Some(Arc::new(journal)))
-}
-
-/// Whether `directory` holds a version 1 spool's segments, opening nothing.
-pub(crate) fn holds_segments(directory: &std::path::Path) -> Result<bool, String> {
-    let entries = match std::fs::read_dir(directory) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => return Err(format!("listing {}: {error}", directory.display())),
-    };
-    for entry in entries {
-        let path = entry
-            .map_err(|error| format!("listing {}: {error}", directory.display()))?
-            .path();
-        if path.extension().and_then(std::ffi::OsStr::to_str) == Some("jsonl") {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
