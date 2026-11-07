@@ -128,6 +128,8 @@ async fn zoned(c: &Side, m: &Side, task: Task) -> [u8; 16] {
                 expires: None,
                 expected_fingerprint: Some(m.host.identity.first_fingerprint().to_owned()),
                 min_assurance: None,
+                groups: None,
+                name: None,
             },
             "operator",
             now,

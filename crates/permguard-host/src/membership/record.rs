@@ -216,7 +216,9 @@ impl Status {
             (self, next),
             (Pending, Active | Rejected | Expired)
                 | (Active, Suspended | Expired | Revoked | Active)
-                | (Suspended, Active | Expired | Revoked)
+                // A suspended membership is revised in place when its member is renamed or
+                // regrouped (WP-10.3); an operator's suspension of it is refused before this.
+                | (Suspended, Active | Expired | Revoked | Suspended)
         ) || (next == Orphaned && !self.is_terminal())
     }
 }
@@ -651,6 +653,119 @@ impl LeasePolicy {
     }
 }
 
+/// The most groups one member belongs to.
+pub const MAX_GROUPS: usize = 16;
+
+/// Whether `name` is a member or group name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`.
+pub fn is_member_name(name: &str) -> bool {
+    (1..=63).contains(&name.len())
+        && name.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
+        })
+}
+
+/// A member name, checked.
+pub fn member_name(text: String) -> Result<String, RecordError> {
+    if is_member_name(&text) {
+        Ok(text)
+    } else {
+        Err(RecordError(format!(
+            "`{text}` is not a member or group name: 1 to 63 of a-z, 0-9, `-`, `_`, `.`"
+        )))
+    }
+}
+
+/// A member's groups, checked: at most [`MAX_GROUPS`] names, sorted, each once.
+pub fn member_groups(groups: Vec<String>) -> Result<Vec<String>, RecordError> {
+    if groups.len() > MAX_GROUPS {
+        return Err(RecordError(format!(
+            "a member belongs to at most {MAX_GROUPS} groups"
+        )));
+    }
+    let groups = groups
+        .into_iter()
+        .map(member_name)
+        .collect::<Result<Vec<_>, _>>()?;
+    if !sorted_unique(&groups) {
+        return Err(RecordError(
+            "a member's groups are sorted, each once".to_owned(),
+        ));
+    }
+    Ok(groups)
+}
+
+fn groups_value(groups: &[String]) -> Value {
+    Value::Array(
+        groups
+            .iter()
+            .map(|group| Value::Text(group.clone()))
+            .collect(),
+    )
+}
+
+fn read_groups(values: Vec<Value>) -> Result<Vec<String>, RecordError> {
+    member_groups(
+        values
+            .into_iter()
+            .map(|value| match value {
+                Value::Text(text) => Ok(text),
+                _ => Err(RecordError("a group is text".to_owned())),
+            })
+            .collect::<Result<_, _>>()?,
+    )
+}
+
+/// The member a membership belongs to (iteration 02, WP-10.1): one record per member Host, which
+/// every manifest of that Host carries and every access token addresses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberRecord {
+    /// A UUIDv7 the coordinator made at the Host's first approval, bound to its `host_id` for life.
+    pub member_id: [u8; 16],
+    /// Unique among the coordinator's active members.
+    pub name: String,
+    /// Decided by the coordinator only, sorted, each once.
+    pub groups: Vec<String>,
+}
+
+impl MemberRecord {
+    pub(crate) fn value(&self) -> Result<Value, RecordError> {
+        Ok(Value::Map(vec![
+            (Value::Int(1), Value::Bytes(self.member_id.to_vec())),
+            (Value::Int(2), Value::Text(self.name.clone())),
+            (Value::Int(3), groups_value(&self.groups)),
+        ]))
+    }
+
+    pub(crate) fn read(value: Value) -> Result<Self, RecordError> {
+        let mut map = Labelled::from_value(value, "a member record")?;
+        let record = Self {
+            member_id: map.id(1)?,
+            name: member_name(map.text(2)?)?,
+            groups: read_groups(map.array(3)?)?,
+        };
+        map.finish()?;
+        if !is_uuid_v7(&record.member_id) {
+            return Err(RecordError("a member id is a UUIDv7".to_owned()));
+        }
+        Ok(record)
+    }
+}
+
+#[cfg(test)]
+impl MemberRecord {
+    /// A record for tests: `dp-test`, in no group.
+    pub(crate) fn test() -> Self {
+        Self {
+            member_id: [
+                0x01, 0x9a, 0x00, 0x00, 0x00, 0x00, 0x70, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x6d,
+            ],
+            name: "dp-test".to_owned(),
+            groups: Vec::new(),
+        }
+    }
+}
+
 /// A ring a membership pins: whose, which, at what epoch and set, and the identity-signed
 /// binding that vouches for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -799,6 +914,8 @@ pub struct Manifest {
     pub issued_at: u64,
     pub not_after: u64,
     pub status: Status,
+    /// The member this membership belongs to, as the coordinator approved it.
+    pub member_record: MemberRecord,
 }
 
 impl Manifest {
@@ -837,6 +954,7 @@ impl Manifest {
         pairs.push((Value::Int(13), uint(self.issued_at)?));
         pairs.push((Value::Int(14), uint(self.not_after)?));
         pairs.push((Value::Int(15), Value::Text(self.status.as_str().to_owned())));
+        pairs.push((Value::Int(16), self.member_record.value()?));
         encode(pairs)
     }
 
@@ -879,6 +997,7 @@ impl Manifest {
                 }
                 status => status,
             },
+            member_record: MemberRecord::read(map.value(16)?)?,
         };
         map.finish()?;
         if !is_uuid_v7(&manifest.membership_id) || manifest.epoch == 0 {
@@ -1251,6 +1370,10 @@ pub struct Invitation {
     pub max_uses: u64,
     pub created_at: u64,
     pub created_by: String,
+    /// The member name requested, or fixed by the invitation; the approval decides.
+    pub name: Option<String>,
+    /// The groups requested, or fixed by the invitation; the approval decides.
+    pub groups: Option<Vec<String>>,
 }
 
 impl Invitation {
@@ -1273,6 +1396,12 @@ impl Invitation {
             (Value::Int(9), uint(self.created_at)?),
             (Value::Int(10), Value::Text(self.created_by.clone())),
         ]);
+        if let Some(name) = &self.name {
+            pairs.push((Value::Int(11), Value::Text(name.clone())));
+        }
+        if let Some(groups) = &self.groups {
+            pairs.push((Value::Int(12), groups_value(groups)));
+        }
         encode(pairs)
     }
 
@@ -1290,6 +1419,8 @@ impl Invitation {
             max_uses: map.uint(8)?,
             created_at: map.uint(9)?,
             created_by: map.text(10)?,
+            name: map.optional_text(11)?.map(member_name).transpose()?,
+            groups: map.optional_array(12)?.map(read_groups).transpose()?,
         };
         map.finish()?;
         if invitation.max_uses != 1 {
@@ -1311,11 +1442,15 @@ pub struct EnrollRequest {
     pub ring_statements: Vec<RingStatement>,
     /// The contracts the member registered (WP-4.4).
     pub capabilities: Vec<Capability>,
+    /// The member name requested, or fixed by the invitation; the approval decides.
+    pub name: Option<String>,
+    /// The groups requested, or fixed by the invitation; the approval decides.
+    pub groups: Option<Vec<String>>,
 }
 
 impl EnrollRequest {
     pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
-        encode(vec![
+        let mut pairs = vec![
             (Value::Int(1), Value::Bytes(self.invite_id.to_vec())),
             (Value::Int(2), Value::Bytes(self.token_proof.to_vec())),
             (Value::Int(3), Value::Text(self.selector.to_string())),
@@ -1323,7 +1458,14 @@ impl EnrollRequest {
             (Value::Int(5), self.member.value()?),
             (Value::Int(6), statements_value(&self.ring_statements)?),
             (Value::Int(7), capabilities_value(&self.capabilities)?),
-        ])
+        ];
+        if let Some(name) = &self.name {
+            pairs.push((Value::Int(8), Value::Text(name.clone())));
+        }
+        if let Some(groups) = &self.groups {
+            pairs.push((Value::Int(9), groups_value(groups)));
+        }
+        encode(pairs)
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
@@ -1337,6 +1479,8 @@ impl EnrollRequest {
             member: HostRef::read(map.value(5)?)?,
             ring_statements: read_statements(map.array(6)?)?,
             capabilities: read_capabilities(map.array(7)?)?,
+            name: map.optional_text(8)?.map(member_name).transpose()?,
+            groups: map.optional_array(9)?.map(read_groups).transpose()?,
         };
         map.finish()?;
         Ok(request)
@@ -1369,6 +1513,10 @@ pub struct Pending {
     pub identity: Option<Vec<u8>>,
     /// The contracts the member declared in its request (WP-4.4).
     pub capabilities: Vec<Capability>,
+    /// The member name requested, or fixed by the invitation; the approval decides.
+    pub name: Option<String>,
+    /// The groups requested, or fixed by the invitation; the approval decides.
+    pub groups: Option<Vec<String>>,
 }
 
 impl Pending {
@@ -1394,6 +1542,12 @@ impl Pending {
             pairs.push((Value::Int(11), Value::Bytes(identity.clone())));
         }
         pairs.push((Value::Int(12), capabilities_value(&self.capabilities)?));
+        if let Some(name) = &self.name {
+            pairs.push((Value::Int(13), Value::Text(name.clone())));
+        }
+        if let Some(groups) = &self.groups {
+            pairs.push((Value::Int(14), groups_value(groups)));
+        }
         encode(pairs)
     }
 
@@ -1413,6 +1567,8 @@ impl Pending {
             coordinator_address: map.optional_text(10)?,
             identity: map.optional_bytes(11)?,
             capabilities: read_capabilities(map.array(12)?)?,
+            name: map.optional_text(13)?.map(member_name).transpose()?,
+            groups: map.optional_array(14)?.map(read_groups).transpose()?,
         };
         map.finish()?;
         Ok(pending)

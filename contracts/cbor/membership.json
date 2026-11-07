@@ -84,7 +84,16 @@
         { "label": 12, "name": "previous", "type": "digest", "occurs": "optional", "note": "the digest of the predecessor's envelope under `permguard.membership.manifest.v1\\n`; absent exactly at epoch 1" },
         { "label": 13, "name": "issued_at", "type": "uint", "occurs": "required" },
         { "label": 14, "name": "not_after", "type": "uint", "occurs": "required" },
-        { "label": 15, "name": "status", "type": "text", "occurs": "required", "note": "active, suspended, revoked, rejected or expired" }
+        { "label": 15, "name": "status", "type": "text", "occurs": "required", "note": "active, suspended, revoked, rejected or expired" },
+        { "label": 16, "name": "member_record", "type": "map:member_record", "occurs": "required", "note": "the member this membership belongs to, as the coordinator approved it: shared by every membership of one member Host" }
+      ]
+    },
+    "member_record": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "member_id", "type": "bytes", "occurs": "required", "note": "16 bytes, a UUIDv7 the coordinator created at the member's first approval; bound to one `host_id`" },
+        { "label": 2, "name": "name", "type": "text", "occurs": "required", "note": "1 to 63 of `a-z`, `0-9`, `-`, `_`, `.`; unique among the coordinator's active members" },
+        { "label": 3, "name": "groups", "type": "array<text>", "occurs": "required", "note": "0 to 16 names of the same grammar, sorted, each once; decided by the coordinator" }
       ]
     },
     "invitation": {
@@ -99,7 +108,9 @@
         { "label": 7, "name": "min_assurance", "type": "text", "occurs": "optional" },
         { "label": 8, "name": "max_uses", "type": "uint", "occurs": "required", "note": "1" },
         { "label": 9, "name": "created_at", "type": "uint", "occurs": "required" },
-        { "label": 10, "name": "created_by", "type": "text", "occurs": "required", "note": "the principal that issued it" }
+        { "label": 10, "name": "created_by", "type": "text", "occurs": "required", "note": "the principal that issued it" },
+        { "label": 11, "name": "name", "type": "text", "occurs": "optional", "note": "the member name the invitation fixes; an enrollment requesting another is refused" },
+        { "label": 12, "name": "groups", "type": "array<text>", "occurs": "optional", "note": "the groups the invitation fixes, sorted, each once" }
       ]
     },
     "enroll_request": {
@@ -111,7 +122,9 @@
         { "label": 4, "name": "tasks", "type": "array<map:task>", "occurs": "required" },
         { "label": 5, "name": "member", "type": "map:host_ref", "occurs": "required" },
         { "label": 6, "name": "ring_statements", "type": "array<map:ring_statement>", "occurs": "required" },
-        { "label": 7, "name": "capabilities", "type": "array<map:capability>", "occurs": "required", "note": "the contracts the member registered, in order, each once, at most 64 (WP-4.4)" }
+        { "label": 7, "name": "capabilities", "type": "array<map:capability>", "occurs": "required", "note": "the contracts the member registered, in order, each once, at most 64 (WP-4.4)" },
+        { "label": 8, "name": "name", "type": "text", "occurs": "optional", "note": "the member name requested; the approval decides" },
+        { "label": 9, "name": "groups", "type": "array<text>", "occurs": "optional", "note": "the groups requested, sorted, each once; the approval decides" }
       ]
     },
     "pending": {
@@ -128,7 +141,9 @@
         { "label": 9, "name": "requested_at", "type": "uint", "occurs": "required" },
         { "label": 10, "name": "coordinator_address", "type": "text", "occurs": "optional", "note": "the member's copy: `https://<host>:<port>`" },
         { "label": 11, "name": "identity", "type": "bytes", "occurs": "optional", "note": "the coordinator's copy: the member's presentation its enrollment session proved (session.json presentation)" },
-        { "label": 12, "name": "capabilities", "type": "array<map:capability>", "occurs": "required", "note": "the contracts the member declared in its request (WP-4.4)" }
+        { "label": 12, "name": "capabilities", "type": "array<map:capability>", "occurs": "required", "note": "the contracts the member declared in its request (WP-4.4)" },
+        { "label": 13, "name": "name", "type": "text", "occurs": "optional", "note": "the member name the invitation fixed or the request asked for" },
+        { "label": 14, "name": "groups", "type": "array<text>", "occurs": "optional", "note": "the groups the invitation fixed or the request asked for" }
       ]
     },
     "enroll_answer": {

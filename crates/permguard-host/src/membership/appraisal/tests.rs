@@ -182,6 +182,7 @@ fn manifest(tasks: Vec<Task>, binding: Option<AssuranceBinding>) -> Manifest {
         issued_at: NOW,
         not_after: NOW + 365 * 86_400,
         status: Status::Active,
+        member_record: crate::membership::record::MemberRecord::test(),
     }
 }
 

@@ -247,6 +247,10 @@ const SHAPED: &[&str] = &[
     // The recovery an administrator acknowledges (WP-8.2).
     "GetRecoveryResponse",
     "AcknowledgeRecoveryResponse",
+    // A member's name and groups (iteration 02, WP-10.1, WP-10.3).
+    "MemberGroups",
+    "ChangeMemberRecordRequest",
+    "ChangeMemberRecordResponse",
 ];
 
 /// Every message outside [`SHAPED`] is empty: no field number is assigned ahead of the contract.

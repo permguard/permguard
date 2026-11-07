@@ -65,6 +65,8 @@ fn joined(api: &HostApi, coordinator: &Host) -> [u8; 16] {
                 requested_at: crate::authz::store::now(),
                 coordinator_address: Some("https://coordinator.invalid:7443".to_owned()),
                 identity: None,
+                groups: None,
+                name: None,
             },
             crate::authz::store::now(),
         )
@@ -92,6 +94,8 @@ async fn a_normal_reset_refuses_while_a_coordinator_is_unreached_and_an_emergenc
             narrow: None,
             lease_policy: None,
             assurance: None,
+            groups: None,
+            name: None,
         },
     )
     .await

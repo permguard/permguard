@@ -302,6 +302,10 @@ pub struct Join {
     pub token: Vec<u8>,
     pub selector: Selector,
     pub tasks: Vec<Task>,
+    /// The member name to ask for; the coordinator's approval decides (WP-10.1).
+    pub name: Option<String>,
+    /// The groups to ask for; the coordinator's approval decides (WP-10.1).
+    pub groups: Option<Vec<String>>,
 }
 
 /// The member's memberships, and what reaching their coordinators takes.
@@ -419,6 +423,17 @@ impl Member<'_> {
         let request_statements = statements.clone();
         let capabilities = self.capabilities.list();
         let request_capabilities = capabilities.clone();
+        let name = join
+            .name
+            .clone()
+            .map(super::record::member_name)
+            .transpose()?;
+        let groups = join
+            .groups
+            .clone()
+            .map(super::record::member_groups)
+            .transpose()?;
+        let (request_name, request_groups) = (name.clone(), groups.clone());
         let build: super::member::Build = Box::new(move |exporter| {
             EnrollRequest {
                 invite_id,
@@ -433,6 +448,8 @@ impl Member<'_> {
                 member: request_member,
                 ring_statements: request_statements,
                 capabilities: request_capabilities.clone(),
+                name: request_name.clone(),
+                groups: request_groups.clone(),
             }
             .encode()
             .map_err(|error| Refusal {
@@ -478,6 +495,8 @@ impl Member<'_> {
             coordinator_address: Some(join.coordinator.address),
             identity: None,
             capabilities,
+            name,
+            groups,
         };
         let id = pending.membership_id;
         let outcome = self

@@ -1208,6 +1208,7 @@ fn membership_samples() -> Vec<Sample> {
         issued_at: 1_800_000_000,
         not_after: 1_831_536_000,
         status: Status::Active,
+        member_record: member_record(),
     };
     let lease = |optional: bool| Lease {
         membership_id: SCOPE_ID,
@@ -1236,6 +1237,8 @@ fn membership_samples() -> Vec<Sample> {
         max_uses: 1,
         created_at: 1_800_000_000,
         created_by: "spiffe://acme/operators/root".to_owned(),
+        name: optional.then(|| "dp-eu-1".to_owned()),
+        groups: optional.then(|| vec!["eu".to_owned()]),
     };
     let pending = |optional: bool| Pending {
         capabilities: vec![permguard_host::membership::record::Capability {
@@ -1254,6 +1257,8 @@ fn membership_samples() -> Vec<Sample> {
         requested_at: 1_800_000_000,
         coordinator_address: optional.then(|| "https://coordinator:7443".to_owned()),
         identity: optional.then(|| vec![0xA0]),
+        name: optional.then(|| "dp-eu-1".to_owned()),
+        groups: optional.then(|| vec!["eu".to_owned()]),
     };
     let entry = |optional: bool| Entry {
         seq: 2,
@@ -1792,6 +1797,8 @@ fn membership_samples() -> Vec<Sample> {
             &[
                 "invitation.expected_fingerprint",
                 "invitation.min_assurance",
+                "invitation.name",
+                "invitation.groups",
             ],
             decoder(|bytes| verdict(Invitation::decode(bytes))),
         ),
@@ -1815,6 +1822,30 @@ fn membership_samples() -> Vec<Sample> {
                 tasks: vec![task.clone()],
                 member: host(ZONE_ID),
                 ring_statements: vec![statement.clone()],
+                name: Some("dp-eu-1".to_owned()),
+                groups: Some(vec!["eu".to_owned()]),
+            }
+            .encode()
+            .expect("encodes"),
+            &["enroll_request.name", "enroll_request.groups"],
+            decoder(|bytes| verdict(EnrollRequest::decode(bytes))),
+        ),
+        sample(
+            "enroll_request",
+            EnrollRequest {
+                capabilities: vec![permguard_host::membership::record::Capability {
+                    task_type: permguard_host::membership::record::TaskType::DecisionsShip,
+                    version: 1,
+                    role: permguard_host::membership::record::ContractRole::Provider,
+                }],
+                invite_id: SCOPE_ID,
+                token_proof: [1; 64],
+                selector: Selector::parse("plane/data/*").expect("a selector"),
+                tasks: vec![task.clone()],
+                member: host(ZONE_ID),
+                ring_statements: vec![statement.clone()],
+                name: None,
+                groups: None,
             }
             .encode()
             .expect("encodes"),
@@ -1824,7 +1855,12 @@ fn membership_samples() -> Vec<Sample> {
         sample(
             "pending",
             pending(true).encode().expect("encodes"),
-            &["pending.coordinator_address", "pending.identity"],
+            &[
+                "pending.coordinator_address",
+                "pending.identity",
+                "pending.name",
+                "pending.groups",
+            ],
             decoder(|bytes| verdict(Pending::decode(bytes))),
         ),
         sample(
@@ -3946,5 +3982,17 @@ fn zone_tuple() -> zone::Tuple {
         zone: ZONE_ID,
         scope: ZONE_ID,
         version: 1,
+    }
+}
+
+/// A member record (iteration 02, WP-10.1).
+fn member_record() -> permguard_host::membership::record::MemberRecord {
+    permguard_host::membership::record::MemberRecord {
+        member_id: [
+            0x01, 0x9a, 0x00, 0x00, 0x00, 0x00, 0x70, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x6d,
+        ],
+        name: "dp-eu-1".to_owned(),
+        groups: vec!["eu".to_owned()],
     }
 }

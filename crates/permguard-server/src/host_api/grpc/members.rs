@@ -11,9 +11,9 @@ use tonic::{Request, Response, Status};
 
 use permguard_host::api::members::{
     AppraiseMember, ApprovalView, ApproveMember, AssuranceOffer, AssuranceView, ChangeMember,
-    CoordinatorView, CreateInvite, EvidenceView, JoinMembership, LeasePolicyView, LimitsView,
-    MemberChanged, MemberView, NarrowView, PlanMemberRevoke, RevokeBinding, RunMemberRevoke,
-    SyncMembership, TaskView, VerifyMember,
+    ChangeMemberRecord, CoordinatorView, CreateInvite, EvidenceView, JoinMembership,
+    LeasePolicyView, LimitsView, MemberChanged, MemberView, NarrowView, PlanMemberRevoke,
+    RevokeBinding, RunMemberRevoke, SyncMembership, TaskView, VerifyMember,
 };
 
 use super::super::v1;
@@ -160,6 +160,9 @@ fn member_out(view: MemberView) -> Result<v1::Member, Status> {
         last_session_at: view.last_session_at,
         assurance: view.assurance.map(assurance_out),
         held_epoch: view.held_epoch,
+        member_id: view.member_id,
+        name: view.name,
+        groups: view.groups,
         task_progress: view
             .task_progress
             .into_iter()
@@ -282,6 +285,8 @@ impl MembershipService for Served {
                     expected_fingerprint: asked.expected_fingerprint,
                     min_assurance: asked.min_assurance,
                     max_uses: asked.max_uses.unwrap_or(1),
+                    name: asked.name,
+                    groups: asked.groups.map(|groups| groups.names),
                 },
             )
             .await
@@ -393,6 +398,8 @@ impl MembershipService for Served {
                         approvals: approvals_in(offer.approvals),
                         evidence: evidence_in(offer.evidence),
                     }),
+                    name: asked.name,
+                    groups: asked.groups.map(|groups| groups.names),
                 },
             )
             .await
@@ -528,6 +535,40 @@ impl MembershipService for Served {
             manifest,
         } = changed(answer)?;
         Ok(Response::new(v1::FenceMemberResponse {
+            receipt,
+            status,
+            epoch,
+            manifest,
+        }))
+    }
+
+    async fn change_member_record(
+        &self,
+        request: Request<v1::ChangeMemberRecordRequest>,
+    ) -> Answer<v1::ChangeMemberRecordResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let answer = self
+            .api
+            .change_member_record(
+                &actor,
+                &asked.membership_id,
+                ChangeMemberRecord {
+                    request_id: asked.request_id,
+                    expected_revision: asked.expected_revision,
+                    name: asked.name,
+                    groups: asked.groups.map(|groups| groups.names),
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        let Changed {
+            receipt,
+            status,
+            epoch,
+            manifest,
+        } = changed(answer)?;
+        Ok(Response::new(v1::ChangeMemberRecordResponse {
             receipt,
             status,
             epoch,
@@ -680,6 +721,8 @@ impl MembershipService for Served {
                     invite_id: asked.invite_id,
                     token: URL_SAFE_NO_PAD.encode(&asked.token),
                     requested: scope_in(asked.requested.unwrap_or_default()),
+                    name: asked.name,
+                    groups: asked.groups.map(|groups| groups.names),
                 },
             )
             .await
@@ -782,6 +825,9 @@ mod tests {
         let nonce = [0xA7_u8; 32];
         let view = MemberView {
             task_progress: Vec::new(),
+            member_id: None,
+            name: None,
+            groups: Vec::new(),
             membership_id: "0190a5c3-0000-7000-8000-000000000044".to_owned(),
             role: "coordinator".to_owned(),
             status: "active".to_owned(),

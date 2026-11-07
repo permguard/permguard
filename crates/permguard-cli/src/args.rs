@@ -2395,6 +2395,12 @@ pub enum MembersAction {
         /// pin for the canonical URL and Host id is required.
         #[arg(long)]
         pin_fingerprint: Option<String>,
+        /// The member name: lowercase letters, digits, `-`, `_`, `.`.
+        #[arg(long)]
+        name: Option<String>,
+        /// A group of the member; repeat for several.
+        #[arg(long = "group", value_name = "GROUP")]
+        groups: Vec<String>,
     },
     /// List pending enrollment requests.
     #[command(
@@ -2417,6 +2423,29 @@ pub enum MembersAction {
         /// A closed JSON `AssuranceOffer` file.
         #[arg(long, value_name = "FILE")]
         assurance_result: Option<PathBuf>,
+        /// The member name: lowercase letters, digits, `-`, `_`, `.`.
+        #[arg(long)]
+        name: Option<String>,
+        /// A group of the member; repeat for several.
+        #[arg(long = "group", value_name = "GROUP")]
+        groups: Vec<String>,
+    },
+    /// Rename a member or change its groups.
+    #[command(
+        after_help = "Examples:\n  permguard host members record 0198f2aa-0000-7000-8000-000000000002 --expected-revision 2 --name dp-eu-1\n  permguard host members record 0198f2aa-0000-7000-8000-000000000002 --expected-revision 2 --group eu --group payments -o json"
+    )]
+    Record {
+        /// The UUID of one of the member's memberships.
+        id: String,
+        /// The membership revision read by the operator.
+        #[arg(long)]
+        expected_revision: u64,
+        /// The member name: lowercase letters, digits, `-`, `_`, `.`.
+        #[arg(long)]
+        name: Option<String>,
+        /// A group of the member; repeat for several.
+        #[arg(long = "group", value_name = "GROUP")]
+        groups: Vec<String>,
     },
     /// Reject a pending membership.
     #[command(
@@ -2521,6 +2550,12 @@ pub enum InviteAction {
         /// The minimum assurance profile the member must prove.
         #[arg(long)]
         min_assurance: Option<String>,
+        /// The member name: lowercase letters, digits, `-`, `_`, `.`.
+        #[arg(long)]
+        name: Option<String>,
+        /// A group of the member; repeat for several.
+        #[arg(long = "group", value_name = "GROUP")]
+        groups: Vec<String>,
     },
     /// List invitations without revealing their tokens.
     #[command(

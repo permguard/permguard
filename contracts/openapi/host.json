@@ -3034,6 +3034,126 @@
         "x-grpc-rpc": "permguard.host.v1.MembershipService/FenceMember"
       }
     },
+    "/host/v1/members/{id}/record": {
+      "post": {
+        "operationId": "changeMemberRecord",
+        "summary": "Rename a member or change its groups",
+        "description": "Under `membership.admin` on the Host (iteration 02, WP-10.3). Every live membership of the member Host is revised in place: an active one stays active, a suspended one suspended, each at a new epoch. The answer is the revision of the membership named.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id, the revision read, and the name, the groups or both.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeMemberRecordBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and the manifest issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRecordChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the reason is malformed (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`); the membership is held for review, which only a revocation leaves (`membership_held`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ChangeMemberRecord"
+      }
+    },
     "/host/v1/members/{id}/appraise": {
       "post": {
         "operationId": "appraiseMember",
@@ -9659,6 +9779,26 @@
             "maximum": 1,
             "description": "Always 1: an invitation is used once. 1 when absent.",
             "x-grpc-field": "max_uses"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The member name the invitation fixes (WP-10.1); an enrollment asking for another is refused. Optional; `null` is absent.",
+            "x-grpc-field": "name"
+          },
+          "groups": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "description": "The groups the invitation fixes (WP-10.1). Each 1 to 63 of `a-z`, `0-9`, `-`, `_`, `.`; sorted, each once, at most 16. Optional; `null` is absent.",
+            "x-grpc-field": "groups"
           }
         },
         "required": [
@@ -10042,6 +10182,30 @@
             },
             "description": "Per task, what the coordinator observed: its last session and the member's last report, labelled member-reported (WP-4.4); empty on a member.",
             "x-grpc-field": "task_progress"
+          },
+          "member_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The member record the manifest signs (WP-10.1): a UUIDv7 the coordinator made, shared by every membership of the member Host; `null` while pending.",
+            "x-grpc-field": "member_id"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The member's name: the manifest's, or while pending the one requested; `null` when none.",
+            "x-grpc-field": "name"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The member's groups: the manifest's, or while pending the ones requested.",
+            "x-grpc-field": "groups"
           }
         },
         "required": [
@@ -10061,7 +10225,10 @@
           "last_session_at",
           "assurance",
           "appraisal",
-          "held_epoch"
+          "held_epoch",
+          "member_id",
+          "name",
+          "groups"
         ],
         "additionalProperties": false,
         "description": "One membership, as an operator reads it: per task, the coordinator's last session and the member-reported progress (WP-4.4); dormancy arrives with WP-4.6.",
@@ -10345,6 +10512,26 @@
             ],
             "description": "What the tasks' controls are appraised with (WP-4.2). Optional; `null` brings nothing, which only a task requiring no control, or controls the declaration meets as the policy allows, needs.",
             "x-grpc-field": "assurance"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of a new member (WP-10.1); a live member keeps its own (`invalid_argument` when another is given). Optional; `null` is absent.",
+            "x-grpc-field": "name"
+          },
+          "groups": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "description": "The groups of a new member (WP-10.1). Each 1 to 63 of `a-z`, `0-9`, `-`, `_`, `.`; sorted, each once, at most 16. Optional; `null` is absent.",
+            "x-grpc-field": "groups"
           }
         },
         "required": [
@@ -10686,6 +10873,90 @@
         "description": "What a fence answers: the successor manifest, still active, a new epoch.",
         "x-grpc-message": "permguard.host.v1.FenceMemberResponse"
       },
+      "ChangeMemberRecordBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers the stored receipt and manifest.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The membership revision the caller read; another is a `conflict` carrying the current.",
+            "x-grpc-field": "expected_revision"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The member's new name (WP-10.3); refused while another live member Host holds it (`member_name_taken`). Optional; `null` is absent.",
+            "x-grpc-field": "name"
+          },
+          "groups": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "description": "The member's new groups (WP-10.3). Each 1 to 63 of `a-z`, `0-9`, `-`, `_`, `.`; sorted, each once, at most 16. Optional; `null` is absent.",
+            "x-grpc-field": "groups"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/members/{id}/record` carries: the member of membership `{id}` renamed, regrouped or both (WP-10.3). A closed body.",
+        "x-grpc-message": "permguard.host.v1.ChangeMemberRecordRequest",
+        "x-grpc-only": [
+          "membership_id"
+        ],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "MemberRecordChanged": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the membership's.",
+            "x-grpc-field": "receipt"
+          },
+          "status": {
+            "type": "string",
+            "description": "The status the manifest states.",
+            "x-grpc-field": "status"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The manifest's epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The manifest issued, COSE_Sign1 `permguard.membership.manifest.v1`, base64url.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "receipt",
+          "status",
+          "epoch",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "What a member record change answers: the successor manifest of the membership named, its status kept, a new epoch.",
+        "x-grpc-message": "permguard.host.v1.ChangeMemberRecordResponse"
+      },
       "MemberRevoked": {
         "type": "object",
         "properties": {
@@ -10901,6 +11172,26 @@
             "$ref": "#/components/schemas/MembershipScope",
             "description": "What this Host asks for, inside the invitation.",
             "x-grpc-field": "requested"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The member name asked for (WP-10.1); the coordinator's approval decides. Optional; `null` is absent.",
+            "x-grpc-field": "name"
+          },
+          "groups": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "description": "The groups asked for (WP-10.1); the coordinator's approval decides. Each 1 to 63 of `a-z`, `0-9`, `-`, `_`, `.`; sorted, each once, at most 16. Optional; `null` is absent.",
+            "x-grpc-field": "groups"
           }
         },
         "required": [
@@ -14353,6 +14644,13 @@
       "message": "permguard.host.v1.AcknowledgeRecoveryRequest",
       "note": "an empty request",
       "fields": []
+    },
+    {
+      "message": "permguard.host.v1.MemberGroups",
+      "note": "a gRPC wrapper that tells absent groups from an empty list; REST carries the names as the `groups` array itself, `null` when absent (WP-10.1)",
+      "fields": [
+        "names"
+      ]
     }
   ],
   "x-grpc-unmapped-rpcs": [

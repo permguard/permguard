@@ -41,6 +41,8 @@ fn create(request_id: &str, member: Option<&Host>) -> CreateInvite {
         expected_fingerprint: member.map(|m| m.identity.first_fingerprint().to_owned()),
         min_assurance: Some("production".to_owned()),
         max_uses: 1,
+        groups: None,
+        name: None,
     }
 }
 
@@ -279,6 +281,8 @@ pub(crate) async fn enrolled_requiring(
         tasks: vec![task],
         member: member.host_ref(),
         ring_statements: vec![member.statement(DATA_ATTEST)],
+        groups: None,
+        name: None,
     };
     let store = &api.memberships.as_deref().expect("memberships").store;
     let pending = store
@@ -419,6 +423,8 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
                 narrow: None,
                 lease_policy: None,
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -448,6 +454,8 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
                 }),
                 lease_policy: None,
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -470,6 +478,8 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
                     revoke_after_seconds: 7200,
                 }),
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -675,6 +685,8 @@ async fn a_pending_membership_is_rejected_by_a_genesis_and_is_never_resumed_into
                 narrow: None,
                 lease_policy: None,
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -722,6 +734,8 @@ async fn the_routes_are_gated_and_the_member_side_needs_a_connector() {
             selector: "plane/data/*".to_owned(),
             tasks: vec![task_view()],
         },
+        groups: None,
+        name: None,
     };
     let unconfigured = api
         .join_membership(&admin(), join)
@@ -827,6 +841,8 @@ async fn one_bundle_verifies_the_coordinator_and_its_pinned_member() {
             narrow: None,
             lease_policy: None,
             assurance: None,
+            groups: None,
+            name: None,
         },
     )
     .await
@@ -1106,6 +1122,8 @@ async fn every_admin_route_is_denied_without_membership_admin() {
                     narrow: None,
                     lease_policy: None,
                     assurance: None,
+                    groups: None,
+                    name: None,
                 },
             )
             .await
@@ -1224,6 +1242,8 @@ async fn a_later_page_rebuilds_the_same_peers_after_the_memberships_moved() {
             narrow: None,
             lease_policy: None,
             assurance: None,
+            groups: None,
+            name: None,
         },
     )
     .await
@@ -1329,6 +1349,8 @@ async fn an_approval_without_the_evidence_its_tasks_need_is_refused_and_audited(
         narrow: None,
         lease_policy: None,
         assurance,
+        groups: None,
+        name: None,
     };
     // A control's name is spelled exactly.
     let spaced = api
@@ -1612,6 +1634,8 @@ async fn attested_evidence_is_appraised_against_the_nonce_the_member_view_shows(
         narrow: None,
         lease_policy: None,
         assurance: Some(assurance),
+        groups: None,
+        name: None,
     };
     let unknown = api
         .approve_member(&admin(), &id, approve("a-1", offer("tpm", &nonce)))
@@ -1740,6 +1764,8 @@ async fn a_held_membership_shows_the_epoch_it_was_held_at() {
             narrow: None,
             lease_policy: None,
             assurance: None,
+            groups: None,
+            name: None,
         },
     )
     .await
@@ -1809,6 +1835,8 @@ async fn the_member_view_shows_member_reported_progress_apart_from_receipt() {
                 tasks: vec![mirror],
                 member: member.host_ref(),
                 ring_statements: Vec::new(),
+                groups: None,
+                name: None,
             },
             now(),
         )
@@ -1828,6 +1856,8 @@ async fn the_member_view_shows_member_reported_progress_apart_from_receipt() {
             narrow: None,
             lease_policy: None,
             assurance: None,
+            groups: None,
+            name: None,
         },
     )
     .await
@@ -2008,6 +2038,8 @@ async fn shipping_events(api: &HostApi, member: &Host, request_id: &str) -> Pend
                 tasks: vec![events],
                 member: member.host_ref(),
                 ring_statements: vec![member.statement(DATA_ATTEST)],
+                groups: None,
+                name: None,
             },
             now(),
         )
@@ -2030,6 +2062,8 @@ async fn approved(api: &HostApi, id: &str, request_id: &str) {
             narrow: None,
             lease_policy: None,
             assurance: None,
+            groups: None,
+            name: None,
         },
     )
     .await

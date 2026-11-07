@@ -132,6 +132,9 @@ pub const APPRAISE: &str = "members.appraise";
 pub const DORMANT: &str = "members.dormant";
 /// A membership silent past its `revoke_after`, revoked by the coordinator (WP-4.6).
 pub const REVOKE_DORMANT: &str = "members.revoke.dormant";
+/// A member renamed, or its groups changed: a successor for each of its live memberships
+/// (iteration 02, WP-10.3).
+pub const MEMBER_RECORD: &str = "members.record";
 
 /// The audit actions.
 pub const AUDIT_INVITED: &str = "host.membership.invited";
@@ -144,6 +147,8 @@ pub const AUDIT_SUSPENDED: &str = "host.membership.suspended";
 pub const AUDIT_DORMANT: &str = "host.membership.dormant";
 pub const AUDIT_RESUMED: &str = "host.membership.resumed";
 pub const AUDIT_FENCED: &str = "host.membership.fenced";
+/// A member renamed or regrouped (WP-10.3).
+pub const AUDIT_MEMBER_RECORD: &str = "host.membership.member_record";
 pub const AUDIT_REVOKE_PLANNED: &str = "host.membership.revoke_planned";
 pub const AUDIT_REVOKED: &str = "host.membership.revoked";
 pub const AUDIT_JOINED: &str = "host.membership.joined";
@@ -212,6 +217,8 @@ pub enum MembershipError {
     Held(String),
     /// A progress report not above the one held (WP-4.4).
     OutOfOrder(String),
+    /// A member name another live member Host holds (iteration 02, WP-10.2).
+    NameTaken(String),
 }
 
 impl fmt::Display for MembershipError {
@@ -241,6 +248,11 @@ impl fmt::Display for MembershipError {
             }
             Self::Held(detail) => write!(f, "held for review: {detail}"),
             Self::OutOfOrder(detail) => write!(f, "out of order: {detail}"),
+            Self::NameTaken(name) => write!(
+                f,
+                "the member name `{name}` is held by another member Host: revoke its memberships \
+                 first, or choose another"
+            ),
         }
     }
 }
@@ -596,6 +608,13 @@ fn random<const N: usize>() -> Result<[u8; N], MembershipError> {
         .fill(&mut bytes)
         .map_err(|_| MembershipError::Invalid("the OS random source refused".to_owned()))?;
     Ok(bytes)
+}
+
+/// The name a member gets when neither its invitation, its request nor its approval named one:
+/// `member-` and the twelve hex digits of its Host id's random tail. Never its leading digits: a
+/// UUIDv7 begins with its time, which Hosts made in the same second share.
+fn default_member_name(member: &HostRef) -> String {
+    format!("member-{}", hex(&member.host_id[10..]))
 }
 
 fn fresh_id(now: u64) -> Result<[u8; 16], MembershipError> {
@@ -1033,6 +1052,10 @@ pub struct NewInvite {
     pub expires: Option<u64>,
     pub expected_fingerprint: Option<String>,
     pub min_assurance: Option<AssuranceProfile>,
+    /// The member name the invitation fixes (WP-10.1).
+    pub name: Option<String>,
+    /// The groups the invitation fixes (WP-10.1).
+    pub groups: Option<Vec<String>>,
 }
 
 /// What an enrolling peer brings: its verified chain, its declared profile and the connection's
@@ -1050,6 +1073,10 @@ pub struct Enrolling<'a> {
 pub struct Narrow {
     pub selector: Selector,
     pub tasks: Vec<Task>,
+    /// The member name the approval gives a new member (WP-10.1).
+    pub name: Option<String>,
+    /// The groups the approval gives a new member (WP-10.1).
+    pub groups: Option<Vec<String>>,
 }
 
 /// What an approval or an appraisal brings for the controls the tasks require (WP-4.2): the
@@ -1615,6 +1642,8 @@ impl Store {
                 )
             })?;
         }
+        let name = new.name.map(record::member_name).transpose()?;
+        let groups = new.groups.map(record::member_groups).transpose()?;
         let token = random::<32>()?;
         let invitation = Invitation {
             invite_id: fresh_id(now)?,
@@ -1627,6 +1656,8 @@ impl Store {
             max_uses: 1,
             created_at: now,
             created_by: by.to_owned(),
+            name,
+            groups,
         };
         let bytes = invitation.encode()?;
         self.commit(
@@ -1741,6 +1772,16 @@ impl Store {
             Some((&invitation.selector, &invitation.tasks)),
         )
         .map_err(|error| MembershipError::Enrollment(error.to_string()))?;
+        // What the invitation fixes, the request may repeat but never change (WP-10.1).
+        if invitation.name.is_some() && request.name.is_some() && invitation.name != request.name {
+            return Err(refused("the invitation fixes another member name"));
+        }
+        if invitation.groups.is_some()
+            && request.groups.is_some()
+            && invitation.groups != request.groups
+        {
+            return Err(refused("the invitation fixes other groups"));
+        }
         let mut rings = BTreeSet::new();
         for statement in &request.ring_statements {
             if !rings.insert(statement.ring.clone()) {
@@ -1774,6 +1815,8 @@ impl Store {
             coordinator_address: None,
             identity: Some(presented(enrolling)?),
             capabilities: request.capabilities.clone(),
+            name: invitation.name.clone().or_else(|| request.name.clone()),
+            groups: invitation.groups.clone().or_else(|| request.groups.clone()),
         })
         .and_then(|pending| {
             // What the journal keeps stays within a record's bound, its entry's fields included.
@@ -1826,6 +1869,85 @@ impl Store {
                 expected,
                 current: held.revision,
             });
+        }
+        Ok(())
+    }
+
+    /// The member record of `host_id` among the memberships this Host coordinates that are live
+    /// (active or suspended): the record every one of them carries.
+    pub fn live_member(&self, host_id: &[u8; 16]) -> Option<record::MemberRecord> {
+        self.read()
+            .memberships
+            .values()
+            .filter(|held| held.role == Role::Coordinator)
+            .filter(|held| matches!(held.status, Status::Active | Status::Suspended))
+            .filter_map(|held| held.manifest.as_ref())
+            .find(|(manifest, ..)| manifest.member.host_id == *host_id)
+            .map(|(manifest, ..)| manifest.member_record.clone())
+    }
+
+    /// Every live member this Host coordinates, once each.
+    pub fn live_members(&self) -> Vec<(record::MemberRecord, HostRef)> {
+        let mut seen = BTreeSet::new();
+        self.read()
+            .memberships
+            .values()
+            .filter(|held| held.role == Role::Coordinator)
+            .filter(|held| matches!(held.status, Status::Active | Status::Suspended))
+            .filter_map(|held| held.manifest.as_ref())
+            .filter(|(manifest, ..)| seen.insert(manifest.member_record.member_id))
+            .map(|(manifest, ..)| (manifest.member_record.clone(), manifest.member.clone()))
+            .collect()
+    }
+
+    /// The member record an approval of `pending` carries (WP-10.1, WP-10.2): the live record of
+    /// its Host when it has one, which an approval neither renames nor regroups; otherwise a new
+    /// member, its name and groups from the approval, then the request, then a default, refused
+    /// while another live member Host holds the name.
+    fn member_for(
+        &self,
+        pending: &Pending,
+        narrow: Option<&Narrow>,
+        now: u64,
+    ) -> Result<record::MemberRecord, MembershipError> {
+        let name = narrow.and_then(|narrow| narrow.name.clone());
+        let groups = narrow.and_then(|narrow| narrow.groups.clone());
+        if let Some(live) = self.live_member(&pending.member.host_id) {
+            if name.as_ref().is_some_and(|name| *name != live.name)
+                || groups.as_ref().is_some_and(|groups| *groups != live.groups)
+            {
+                return Err(MembershipError::Invalid(format!(
+                    "`{}` is already a member: rename it or change its groups on its own",
+                    live.name
+                )));
+            }
+            return Ok(live);
+        }
+        let name = record::member_name(
+            name.or_else(|| pending.name.clone())
+                .unwrap_or_else(|| default_member_name(&pending.member)),
+        )?;
+        let groups = record::member_groups(
+            groups
+                .or_else(|| pending.groups.clone())
+                .unwrap_or_default(),
+        )?;
+        self.check_name_free(&name, &pending.member.host_id)?;
+        Ok(record::MemberRecord {
+            member_id: fresh_id(now)?,
+            name,
+            groups,
+        })
+    }
+
+    /// Refuses `name` when a live member Host other than `host_id` holds it.
+    fn check_name_free(&self, name: &str, host_id: &[u8; 16]) -> Result<(), MembershipError> {
+        if self
+            .live_members()
+            .iter()
+            .any(|(record, host)| record.name == name && host.host_id != *host_id)
+        {
+            return Err(MembershipError::NameTaken(name.to_owned()));
         }
         Ok(())
     }
@@ -1908,6 +2030,7 @@ impl Store {
             now,
         })?;
         let (pins, statements) = self.pins_for(coordinator, &held.request, &tasks)?;
+        let member_record = self.member_for(&held.request, narrow, now)?;
         Ok((
             Manifest {
                 membership_id: *id,
@@ -1929,6 +2052,7 @@ impl Store {
                 issued_at: now,
                 not_after: now + MANIFEST_LIFETIME_SECONDS,
                 status: Status::Active,
+                member_record,
             },
             statements,
             outcome.approvals,
@@ -2121,9 +2245,37 @@ impl Store {
                     issued_at: now,
                     not_after: now + MANIFEST_LIFETIME_SECONDS,
                     status: to,
+                    // A refused enrollment never makes a live member: its record is provisional.
+                    member_record: record::MemberRecord {
+                        member_id: fresh_id(now)?,
+                        name: held
+                            .request
+                            .name
+                            .clone()
+                            .unwrap_or_else(|| default_member_name(&held.request.member)),
+                        groups: held.request.groups.clone().unwrap_or_default(),
+                    },
                 })
             }
             Some((manifest, _, digest)) => {
+                self.next_manifest(coordinator, &held, manifest, digest, to, now)
+            }
+        }
+    }
+
+    /// The successor of `manifest`, its `status` `to`: one more epoch, the coordinator's pins
+    /// as its rings are now and the member's as its last re-pin left them.
+    fn next_manifest(
+        &self,
+        coordinator: &Coordinator<'_>,
+        held: &Held,
+        manifest: &Manifest,
+        digest: &Digest,
+        to: Status,
+        now: u64,
+    ) -> Result<Manifest, MembershipError> {
+        {
+            {
                 let mut next = manifest.clone();
                 next.epoch += 1;
                 next.previous = Some(digest.clone());
@@ -2148,6 +2300,65 @@ impl Store {
                 Ok(next)
             }
         }
+    }
+
+    /// The successors that rename the member of `id`, or change its groups (WP-10.3): one for
+    /// each live membership of its Host, each keeping its status and carrying the new record.
+    /// A membership already carrying it is left out, so a change interrupted half-way completes
+    /// when asked again.
+    pub fn check_member_record(
+        &self,
+        coordinator: &Coordinator<'_>,
+        id: &[u8; 16],
+        name: Option<String>,
+        groups: Option<Vec<String>>,
+        now: u64,
+    ) -> Result<Vec<Manifest>, MembershipError> {
+        let held = self.held(id)?;
+        let Some((manifest, ..)) = held.manifest.as_ref().filter(|_| {
+            held.role == Role::Coordinator
+                && matches!(held.status, Status::Active | Status::Suspended)
+        }) else {
+            return Err(MembershipError::Invalid(
+                "only a live membership this Host coordinates names a member".to_owned(),
+            ));
+        };
+        let host_id = manifest.member.host_id;
+        let current = self
+            .live_member(&host_id)
+            .unwrap_or_else(|| manifest.member_record.clone());
+        let record = record::MemberRecord {
+            member_id: current.member_id,
+            name: name
+                .map(record::member_name)
+                .transpose()?
+                .unwrap_or_else(|| current.name.clone()),
+            groups: groups
+                .map(record::member_groups)
+                .transpose()?
+                .unwrap_or_else(|| current.groups.clone()),
+        };
+        if record.name != current.name {
+            self.check_name_free(&record.name, &host_id)?;
+        }
+        let mut successors = Vec::new();
+        for (_, held) in self.memberships() {
+            let Some((manifest, _, digest)) = held.manifest.as_ref() else {
+                continue;
+            };
+            if held.role != Role::Coordinator
+                || !matches!(held.status, Status::Active | Status::Suspended)
+                || manifest.member.host_id != host_id
+                || manifest.member_record == record
+            {
+                continue;
+            }
+            let mut next =
+                self.next_manifest(coordinator, &held, manifest, digest, held.status, now)?;
+            next.member_record = record.clone();
+            successors.push(next);
+        }
+        Ok(successors)
     }
 
     /// Issues a successor checked by [`Self::check_successor`].

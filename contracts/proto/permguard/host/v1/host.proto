@@ -71,6 +71,8 @@ service MembershipService {
   rpc ResumeMember(ResumeMemberRequest) returns (ResumeMemberResponse);
   // `POST /host/v1/members/{id}/fence`.
   rpc FenceMember(FenceMemberRequest) returns (FenceMemberResponse);
+  // `POST /host/v1/members/{id}/record`: the member renamed or regrouped (WP-10.3).
+  rpc ChangeMemberRecord(ChangeMemberRecordRequest) returns (ChangeMemberRecordResponse);
   // `POST /host/v1/members/{id}/appraise`: the assurance binding renewed or revoked (WP-4.2).
   rpc AppraiseMember(AppraiseMemberRequest) returns (AppraiseMemberResponse);
   // `POST /host/v1/members/{id}/revoke/plan`.
@@ -378,6 +380,14 @@ message CreateInviteRequest {
   optional string min_assurance = 6;
   // 1 when absent: an invitation is used once.
   optional uint64 max_uses = 7;
+  // The member name the invitation fixes (WP-10.1).
+  optional string name = 8;
+  // The groups the invitation fixes, sorted, each once (WP-10.1); absent when not fixed.
+  optional MemberGroups groups = 9;
+}
+// A member's groups: present only when stated, so an empty list is distinct from none.
+message MemberGroups {
+  repeated string names = 1;
 }
 message CreateInviteResponse {
   Receipt receipt = 1;
@@ -486,6 +496,11 @@ message Member {
   optional uint64 held_epoch = 17;
   // Per task, the coordinator's last session and the member's last report (WP-4.4).
   repeated TaskObserved task_progress = 18;
+  // The member record the manifest signs (WP-10.1); absent while pending.
+  optional string member_id = 19;
+  // The manifest's member name, or while pending the one requested.
+  optional string name = 20;
+  repeated string groups = 21;
 }
 // What a coordinator observed of one task (WP-4.4).
 message TaskObserved {
@@ -623,6 +638,9 @@ message ApproveMemberRequest {
   LeasePolicy lease_policy = 5;
   // What the tasks' controls are appraised with (WP-4.2).
   AssuranceOffer assurance = 6;
+  // The name and groups of a new member (WP-10.1); a live member keeps its own.
+  optional string name = 7;
+  optional MemberGroups groups = 8;
 }
 message ApproveMemberResponse {
   Receipt receipt = 1;
@@ -678,6 +696,21 @@ message FenceMemberRequest {
   optional string reason = 4;
 }
 message FenceMemberResponse {
+  Receipt receipt = 1;
+  string status = 2;
+  uint64 epoch = 3;
+  bytes manifest = 4;
+}
+// `POST /host/v1/members/{id}/record` (WP-10.3), under `membership.admin`: every live
+// membership of the member's Host revised in place.
+message ChangeMemberRecordRequest {
+  string membership_id = 1;
+  string request_id = 2;
+  uint64 expected_revision = 3;
+  optional string name = 4;
+  optional MemberGroups groups = 5;
+}
+message ChangeMemberRecordResponse {
   Receipt receipt = 1;
   string status = 2;
   uint64 epoch = 3;
@@ -760,6 +793,10 @@ message JoinMembershipRequest {
   // Never kept.
   bytes token = 4;
   MembershipScope requested = 5;
+  // The member name asked for; the coordinator's approval decides (WP-10.1).
+  optional string name = 6;
+  // The groups asked for; the coordinator's approval decides (WP-10.1).
+  optional MemberGroups groups = 7;
 }
 // Where and who the coordinator is.
 message MembershipCoordinator {

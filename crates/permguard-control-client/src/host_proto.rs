@@ -181,6 +181,9 @@ pub(crate) fn member_in(member: proto::Member) -> MemberView {
                 .collect(),
         }),
         held_epoch: member.held_epoch,
+        member_id: member.member_id,
+        name: member.name,
+        groups: member.groups,
         task_progress: member
             .task_progress
             .into_iter()

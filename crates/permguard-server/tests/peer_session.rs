@@ -959,6 +959,8 @@ fn join_of(
             selector: "plane/data/*".to_owned(),
             tasks: vec![decisions()],
         },
+        groups: None,
+        name: None,
     }
 }
 
@@ -1009,6 +1011,8 @@ async fn a_member_joins_a_coordinator_over_mutual_tls_and_follows_its_manifests(
                 expected_fingerprint: Some(member.host.identity.first_fingerprint().to_owned()),
                 min_assurance: Some("production".to_owned()),
                 max_uses: 1,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -1077,6 +1081,8 @@ async fn a_member_joins_a_coordinator_over_mutual_tls_and_follows_its_manifests(
                 narrow: None,
                 lease_policy: None,
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -1194,6 +1200,8 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
                 expected_fingerprint: None,
                 min_assurance: None,
                 max_uses: 1,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -1220,6 +1228,8 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
                 narrow: None,
                 lease_policy: None,
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -1376,6 +1386,8 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
                 expected_fingerprint: None,
                 min_assurance: None,
                 max_uses: 1,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -1510,6 +1522,8 @@ async fn approved_pair(coordinator: &Side, member: &Side) -> String {
                 expected_fingerprint: None,
                 min_assurance: None,
                 max_uses: 1,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -1532,6 +1546,8 @@ async fn approved_pair(coordinator: &Side, member: &Side) -> String {
                 narrow: None,
                 lease_policy: None,
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -1766,6 +1782,8 @@ async fn a_member_opens_a_task_session_over_mutual_tls_and_the_coordinator_lists
                 expected_fingerprint: Some(member.host.identity.first_fingerprint().to_owned()),
                 min_assurance: None,
                 max_uses: 1,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -1788,6 +1806,8 @@ async fn a_member_opens_a_task_session_over_mutual_tls_and_the_coordinator_lists
                 narrow: None,
                 lease_policy: None,
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -2027,6 +2047,8 @@ async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
                 expected_fingerprint: Some(member.host.identity.first_fingerprint().to_owned()),
                 min_assurance: None,
                 max_uses: 1,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -2049,6 +2071,8 @@ async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
                 narrow: None,
                 lease_policy: None,
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -2400,6 +2424,8 @@ async fn exporting_pair_as(coordinator: &Side, member: &Side, tag: &str) -> Stri
                 expected_fingerprint: None,
                 min_assurance: None,
                 max_uses: 1,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -2429,6 +2455,8 @@ async fn exporting_pair_as(coordinator: &Side, member: &Side, tag: &str) -> Stri
                 narrow: None,
                 lease_policy: None,
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -2984,6 +3012,8 @@ async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
                 expected_fingerprint: None,
                 min_assurance: None,
                 max_uses: 1,
+                groups: None,
+                name: None,
             },
         )
         .await
@@ -3012,6 +3042,8 @@ async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
                 narrow: None,
                 lease_policy: None,
                 assurance: None,
+                groups: None,
+                name: None,
             },
         )
         .await

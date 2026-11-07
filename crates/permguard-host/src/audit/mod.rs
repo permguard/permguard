@@ -309,6 +309,8 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.membership.dormant", HOST),
     mutation("host.membership.resumed", HOST),
     mutation("host.membership.fenced", HOST),
+    // A member renamed or regrouped (iteration 02, WP-10.3).
+    mutation("host.membership.member_record", HOST),
     mutation("host.membership.revoke_planned", HOST),
     mutation("host.membership.revoked", HOST),
     mutation("host.membership.joined", HOST),

@@ -76,6 +76,7 @@ fn manifest(epoch: u64) -> Manifest {
         issued_at: 10,
         not_after: 20,
         status: Status::Active,
+        member_record: crate::membership::record::MemberRecord::test(),
     }
 }
 
@@ -110,6 +111,8 @@ fn every_record_reads_back_and_refuses_a_foreign_label() {
         requested_at: 5,
         coordinator_address: Some("https://coordinator:7443".to_owned()),
         identity: Some(vec![0xA0]),
+        groups: None,
+        name: None,
     };
     let request = EnrollRequest {
         capabilities: crate::membership::tests::member_capabilities(),
@@ -119,6 +122,8 @@ fn every_record_reads_back_and_refuses_a_foreign_label() {
         tasks: vec![task("decisions", TaskType::DecisionsShip, "plane/data/*")],
         member: host(0x22),
         ring_statements: vec![statement],
+        groups: None,
+        name: None,
     };
     let invitation = Invitation {
         invite_id: host(0x33).host_id,
@@ -131,6 +136,8 @@ fn every_record_reads_back_and_refuses_a_foreign_label() {
         max_uses: 1,
         created_at: 1,
         created_by: "operator".to_owned(),
+        groups: None,
+        name: None,
     };
     let entry = Entry {
         seq: 1,
@@ -248,6 +255,8 @@ fn only_the_transitions_of_the_table_are_allowed() {
         (Suspended, Active),
         (Suspended, Expired),
         (Suspended, Revoked),
+        // A revision in place: the member renamed or regrouped (WP-10.3).
+        (Suspended, Suspended),
         (Pending, Orphaned),
         (Active, Orphaned),
         (Suspended, Orphaned),

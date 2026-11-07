@@ -1034,8 +1034,8 @@ fn peer_address(address: &str) -> Result<String, Failure> {
 fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<ExitCode, Failure> {
     use permguard_control_client::host::Change;
     use permguard_host::api::members::{
-        ApproveMember, AssuranceOffer, CreateInvite, JoinMembership, PlanMemberRevoke,
-        RunMemberRevoke, TaskView, VerifyMember,
+        ApproveMember, AssuranceOffer, ChangeMemberRecord, CreateInvite, JoinMembership,
+        PlanMemberRevoke, RunMemberRevoke, TaskView, VerifyMember,
     };
 
     match action {
@@ -1046,6 +1046,8 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                 expires,
                 expect_fingerprint,
                 min_assurance,
+                name,
+                groups,
             } => {
                 let tasks: Vec<TaskView> =
                     read_json(&rooted_file(globals, &tasks), "membership tasks")?;
@@ -1063,6 +1065,8 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                         expected_fingerprint: expect_fingerprint,
                         min_assurance,
                         max_uses: 1,
+                        name,
+                        groups: (!groups.is_empty()).then_some(groups),
                     })
                     .map_err(|failure| Failure::from_client(&failure))?;
                 let store = crate::session::open_store(globals, trace)?;
@@ -1106,6 +1110,8 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
         MembersAction::Join {
             coordinator_url,
             pin_fingerprint,
+            name,
+            groups,
         } => {
             // Resolve and classify both channels before opening the secret handoff. In
             // particular, a misspelled or clear-text target must not become an oracle for a
@@ -1161,6 +1167,8 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                     invite_id: handoff.invite_id,
                     token: handoff.token,
                     requested: handoff.requested,
+                    name,
+                    groups: (!groups.is_empty()).then_some(groups),
                 })
                 .map_err(|failure| Failure::from_client(&failure))?;
             render_json(&answer, globals, trace)?;
@@ -1176,6 +1184,8 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
             expected_revision,
             narrow,
             assurance_result,
+            name,
+            groups,
         } => {
             let narrow = narrow
                 .as_deref()
@@ -1194,6 +1204,27 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                         narrow,
                         lease_policy: None,
                         assurance,
+                        name,
+                        groups: (!groups.is_empty()).then_some(groups),
+                    },
+                )
+                .map_err(|failure| Failure::from_client(&failure))?;
+            render_json(&answer, globals, trace)?;
+        }
+        MembersAction::Record {
+            id,
+            expected_revision,
+            name,
+            groups,
+        } => {
+            let answer = online_host(globals, trace, false)?
+                .change_member_record(
+                    &id,
+                    &ChangeMemberRecord {
+                        request_id: request_id(),
+                        expected_revision,
+                        name,
+                        groups: (!groups.is_empty()).then_some(groups),
                     },
                 )
                 .map_err(|failure| Failure::from_client(&failure))?;

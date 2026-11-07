@@ -460,6 +460,7 @@ fn an_origins_pins_are_every_set_its_history_held_once_the_latest_kept() {
             issued_at: 1,
             not_after: 2,
             status: Status::Active,
+            member_record: crate::membership::record::MemberRecord::test(),
         }
     };
     let history = vec![

@@ -272,6 +272,8 @@ fn invite(coordinator: &Host, expected: Option<String>) -> (Invitation, [u8; 32]
                 expires: None,
                 expected_fingerprint: expected,
                 min_assurance: Some(AssuranceProfile::Production),
+                groups: None,
+                name: None,
             },
             "operator",
             now(),
@@ -300,6 +302,8 @@ fn request(
         tasks: vec![decisions("plane/data/*")],
         member: member.host_ref(),
         ring_statements: vec![member.statement(DATA_ATTEST)],
+        groups: None,
+        name: None,
     }
 }
 
@@ -769,6 +773,8 @@ fn approval_narrows_and_never_widens() {
     let wider = Narrow {
         selector: Selector::parse("plane/control/*").expect("a selector"),
         tasks: vec![decisions("plane/control/*")],
+        groups: None,
+        name: None,
     };
     assert!(matches!(
         approve(Some(wider), &capabilities()),
@@ -781,6 +787,8 @@ fn approval_narrows_and_never_widens() {
             Some(Narrow {
                 selector: Selector::parse("plane/data/*").expect("a selector"),
                 tasks: vec![more],
+                groups: None,
+                name: None,
             }),
             &capabilities()
         ),
@@ -789,6 +797,8 @@ fn approval_narrows_and_never_widens() {
     let narrower = Narrow {
         selector: Selector::parse("plane/data/zone/z1/*").expect("a selector"),
         tasks: vec![decisions("plane/data/zone/z1/*")],
+        groups: None,
+        name: None,
     };
     let (manifest, _, _) = approve(Some(narrower), &capabilities()).expect("narrowed");
     assert_eq!(manifest.selector.to_string(), "plane/data/zone/z1/*");
@@ -818,6 +828,8 @@ fn a_task_requiring_a_control_is_approved_only_on_the_evidence_the_policy_wants(
         expires: None,
         expected_fingerprint: None,
         min_assurance: None,
+        groups: None,
+        name: None,
     };
     task.assurance_requirements = vec!["hsm".to_owned()];
     assert!(matches!(
@@ -1494,6 +1506,8 @@ pub(crate) mod protocol {
                     expires: None,
                     expected_fingerprint: Some(m.host.identity.first_fingerprint().to_owned()),
                     min_assurance: None,
+                    groups: None,
+                    name: None,
                 },
                 "operator",
                 now(),
@@ -1593,6 +1607,8 @@ pub(crate) mod protocol {
             token: token.to_vec(),
             selector: Selector::parse("plane/data/*").expect("a selector"),
             tasks: vec![decisions("plane/data/*")],
+            groups: None,
+            name: None,
         }
     }
 
@@ -1811,6 +1827,8 @@ fn an_invitation_lives_at_most_seven_days_and_an_expired_one_enrolls_nobody() {
         expires,
         expected_fingerprint: None,
         min_assurance: None,
+        groups: None,
+        name: None,
     };
     let at = now();
     for expires in [Some(at), Some(at + INVITE_MAX_SECONDS + 1)] {
@@ -1948,6 +1966,8 @@ fn an_invitation_naming_a_task_twice_is_refused_before_anything_is_written() {
             expires: None,
             expected_fingerprint: None,
             min_assurance: None,
+            groups: None,
+            name: None,
         },
         "operator",
         now(),
@@ -2180,6 +2200,8 @@ fn enroll_task(
                 expires: None,
                 expected_fingerprint: Some(member.identity.first_fingerprint().to_owned()),
                 min_assurance: Some(AssuranceProfile::Production),
+                groups: None,
+                name: None,
             },
             "operator",
             now(),
@@ -2203,6 +2225,8 @@ fn enroll_task(
         tasks: vec![task],
         member: member.host_ref(),
         ring_statements: statements,
+        groups: None,
+        name: None,
     };
     let verified = member.verified();
     let pending = coordinator
@@ -2373,6 +2397,8 @@ fn approval_refuses_a_version_the_provider_did_not_register() {
             Some(&Narrow {
                 selector: Selector::parse("plane/data/*").expect("a selector"),
                 tasks: vec![decisions("plane/data/*")],
+                groups: None,
+                name: None,
             })
         ),
         Err(MembershipError::Widened(_))
@@ -2436,5 +2462,256 @@ fn the_control_attest_pin_in_force_is_chosen_with_its_matching_statement() {
     assert!(
         super::verified_control_attest(&[current], &statements, &stranger.verified()).is_none(),
         "a binding is the coordinator's or nothing"
+    );
+}
+
+/// Approves `id` on `c`, naming the member when `name` is given (WP-10.1).
+fn approve_named(
+    c: &Host,
+    id: &[u8; 16],
+    name: Option<&str>,
+    groups: Option<&[&str]>,
+) -> Result<Manifest, MembershipError> {
+    let held = c.store.membership(id).expect("held");
+    let narrow = (name.is_some() || groups.is_some()).then(|| Narrow {
+        selector: held.request.selector.clone(),
+        tasks: held.request.tasks.clone(),
+        name: name.map(str::to_owned),
+        groups: groups.map(|groups| groups.iter().map(|g| (*g).to_owned()).collect()),
+    });
+    let (manifest, _, _) = c.store.check_approve(
+        &c.coordinator(),
+        &capabilities(),
+        id,
+        narrow.as_ref(),
+        None,
+        &offered_nothing(),
+        None,
+        now(),
+    )?;
+    c.store
+        .approve(&Applying::for_tests(40), &c.coordinator(), &manifest, now())
+        .expect("approved");
+    Ok(manifest)
+}
+
+#[test]
+fn a_member_host_is_one_member_record_and_its_name_is_held_by_it_alone() {
+    let c = Host::new("record-c");
+    let (m1, m2) = (Host::new("record-m1"), Host::new("record-m2"));
+
+    let first = enroll(&c, &m1).membership_id;
+    let manifest = approve_named(&c, &first, Some("dp-a"), Some(&["eu"])).expect("approvable");
+    assert_eq!(manifest.member_record.name, "dp-a");
+    assert_eq!(manifest.member_record.groups, vec!["eu".to_owned()]);
+    let member_id = manifest.member_record.member_id;
+    assert!(
+        identity::record::is_uuid_v7(&member_id),
+        "the coordinator makes a UUIDv7"
+    );
+
+    // A second membership of the same Host is the same member: its record, as it stands.
+    let second = enroll(&c, &m1).membership_id;
+    let again = approve_named(&c, &second, None, None).expect("approvable");
+    assert_eq!(again.member_record, manifest.member_record);
+    let third = enroll(&c, &m1).membership_id;
+    assert!(
+        matches!(
+            approve_named(&c, &third, Some("dp-z"), None),
+            Err(MembershipError::Invalid(_))
+        ),
+        "an approval never renames a live member"
+    );
+
+    // Another Host may not take the name while the first holds it.
+    let other = enroll(&c, &m2).membership_id;
+    assert!(matches!(
+        approve_named(&c, &other, Some("dp-a"), None),
+        Err(MembershipError::NameTaken(name)) if name == "dp-a"
+    ));
+    let named = approve_named(&c, &other, Some("dp-b"), Some(&["eu", "us"])).expect("approvable");
+    assert_ne!(named.member_record.member_id, member_id);
+    assert_eq!(c.store.live_members().len(), 2);
+}
+
+#[test]
+fn a_member_whose_memberships_all_ended_frees_its_name_and_returns_as_a_new_member() {
+    let c = Host::new("retire-c");
+    let (m1, m2) = (Host::new("retire-m1"), Host::new("retire-m2"));
+    let id = enroll(&c, &m1).membership_id;
+    let old = approve_named(&c, &id, Some("dp-a"), None).expect("approvable");
+    let revoked = c
+        .store
+        .check_successor(&c.coordinator(), &id, Status::Revoked, None, now())
+        .expect("a successor");
+    assert_eq!(
+        revoked.member_record, old.member_record,
+        "a successor keeps its member"
+    );
+    c.store
+        .transition(&Applying::for_tests(41), &c.coordinator(), &revoked, now())
+        .expect("issued");
+    assert!(c.store.live_member(&m1.identity.host_id()).is_none());
+
+    // The name is free for another Host, and the first returns as a new member: every token
+    // addressed to its old record stops being valid.
+    let taken = enroll(&c, &m2).membership_id;
+    approve_named(&c, &taken, Some("dp-a"), None).expect("the name is free");
+    let back = enroll(&c, &m1).membership_id;
+    let returned = approve_named(&c, &back, Some("dp-c"), None).expect("approvable");
+    assert_ne!(
+        returned.member_record.member_id,
+        old.member_record.member_id
+    );
+}
+
+#[test]
+fn an_invitation_fixes_the_name_and_groups_an_enrollment_may_only_repeat() {
+    let (c, m) = (Host::new("fixed-c"), Host::new("fixed-m"));
+    let (invitation, token) = c
+        .store
+        .invite(
+            &Applying::for_tests(1),
+            NewInvite {
+                selector: Selector::parse("plane/data/*").expect("a selector"),
+                tasks: vec![decisions("plane/data/*")],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                name: Some("dp-fixed".to_owned()),
+                groups: Some(vec!["eu".to_owned()]),
+            },
+            "operator",
+            now(),
+        )
+        .expect("invited");
+    let verified = m.verified();
+    let enrolling = Enrolling {
+        peer: &verified,
+        presentation: &m.presentation(),
+        declared_assurance: AssuranceProfile::Production,
+        exporter: &EXPORTER,
+    };
+    let mut asked = request(&c, &m, &invitation, &token, &EXPORTER);
+    asked.name = Some("dp-other".to_owned());
+    assert!(matches!(
+        c.store
+            .check_enroll(&c.coordinator(), &enrolling, &asked, now()),
+        Err(MembershipError::Enrollment(_))
+    ));
+    asked.name = None;
+    asked.groups = Some(vec!["us".to_owned()]);
+    assert!(matches!(
+        c.store
+            .check_enroll(&c.coordinator(), &enrolling, &asked, now()),
+        Err(MembershipError::Enrollment(_))
+    ));
+    asked.groups = None;
+    let pending = c
+        .store
+        .check_enroll(&c.coordinator(), &enrolling, &asked, now())
+        .expect("what the invitation fixes is taken");
+    assert_eq!(pending.name.as_deref(), Some("dp-fixed"));
+    assert_eq!(pending.groups, Some(vec!["eu".to_owned()]));
+    // A name or groups out of the grammar never reach an invitation.
+    assert!(
+        c.store
+            .invite(
+                &Applying::for_tests(2),
+                NewInvite {
+                    selector: Selector::parse("plane/data/*").expect("a selector"),
+                    tasks: vec![decisions("plane/data/*")],
+                    expires: None,
+                    expected_fingerprint: None,
+                    min_assurance: None,
+                    name: Some("DP Upper".to_owned()),
+                    groups: None,
+                },
+                "operator",
+                now(),
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn renaming_or_regrouping_a_member_revises_every_live_membership_of_its_host() {
+    let c = Host::new("rename-c");
+    let (m1, m2) = (Host::new("rename-m1"), Host::new("rename-m2"));
+    let first = enroll(&c, &m1).membership_id;
+    let before = approve_named(&c, &first, Some("dp-a"), Some(&["eu"])).expect("approvable");
+    let second = enroll(&c, &m1).membership_id;
+    approve_named(&c, &second, None, None).expect("approvable");
+    // One of them suspended: a rename keeps each status as it is.
+    let suspended = c
+        .store
+        .check_successor(&c.coordinator(), &second, Status::Suspended, None, now())
+        .expect("a successor");
+    c.store
+        .transition(
+            &Applying::for_tests(50),
+            &c.coordinator(),
+            &suspended,
+            now(),
+        )
+        .expect("issued");
+    let other = enroll(&c, &m2).membership_id;
+    approve_named(&c, &other, Some("dp-b"), None).expect("approvable");
+
+    assert!(matches!(
+        c.store.check_member_record(
+            &c.coordinator(),
+            &first,
+            Some("dp-b".to_owned()),
+            None,
+            now()
+        ),
+        Err(MembershipError::NameTaken(_))
+    ));
+    let successors = c
+        .store
+        .check_member_record(
+            &c.coordinator(),
+            &first,
+            Some("dp-renamed".to_owned()),
+            Some(vec!["eu".to_owned(), "us".to_owned()]),
+            now(),
+        )
+        .expect("a change");
+    assert_eq!(
+        successors.len(),
+        2,
+        "both memberships of the Host, not the other Host's"
+    );
+    for (op, next) in successors.iter().enumerate() {
+        assert_eq!(next.member_record.member_id, before.member_record.member_id);
+        c.store
+            .transition(
+                &Applying::for_tests(51 + u8::try_from(op).expect("small")),
+                &c.coordinator(),
+                next,
+                now(),
+            )
+            .expect("issued");
+    }
+    assert_eq!(
+        c.store.membership(&second).expect("held").status,
+        Status::Suspended
+    );
+    let record = c.store.live_member(&m1.identity.host_id()).expect("live");
+    assert_eq!(record.name, "dp-renamed");
+    assert_eq!(record.groups, vec!["eu".to_owned(), "us".to_owned()]);
+    // Asked again, nothing is left to revise.
+    assert!(
+        c.store
+            .check_member_record(
+                &c.coordinator(),
+                &first,
+                Some("dp-renamed".to_owned()),
+                None,
+                now()
+            )
+            .expect("a change")
+            .is_empty()
     );
 }

@@ -1332,6 +1332,8 @@ impl Transport {
                                     evidence,
                                 }],
                             }),
+                            groups: None,
+                            name: None,
                         },
                     ))
                     .await,
@@ -1433,6 +1435,8 @@ impl Transport {
                                 selector: "plane/data/*".to_owned(),
                                 tasks: vec![grpc],
                             }),
+                            groups: None,
+                            name: None,
                         },
                     ))
                     .await,

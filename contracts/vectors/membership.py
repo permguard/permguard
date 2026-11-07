@@ -109,7 +109,7 @@ ring_binding = sign1(_MEMBER_KEY, "permguard.host.ring-binding.v1", b"1",
 ring_statement = {1: RING, 2: 1, 3: SUITE, 4: [ring_jwk], 5: ring_binding}
 
 request = cbor({1: INVITE_ID, 2: token_proof, 3: "plane/data/*", 4: [task], 5: member_ref,
-                6: [ring_statement], 7: capabilities})
+                6: [ring_statement], 7: capabilities, 8: "dp-eu-1", 9: ["eu"]})
 request_digest = digest(b"permguard.membership.request.v1\n", request)
 
 # The member's hello and the transcript of an enrollment session: 9 request_digest in the hello,
@@ -127,11 +127,14 @@ transcript = cbor({1: "permguard.host.session.v1", 2: MEMBER, 3: COORDINATOR, 4:
 # The genesis manifest and its successor, under the coordinator's operations key.
 operations_kid = ("host.operations:" + thumbprint(OPERATIONS_PUB)).encode()
 pin = {1: "member", 2: RING, 3: 1, 4: ring_digest, 5: ring_binding}
+# The member record (iteration 02, WP-10.1): one per member Host, carried by each of its manifests.
+MEMBER_ID = uuid_v7(0x6D)
+member_record = {1: MEMBER_ID, 2: "dp-eu-1", 3: ["eu"]}
 
 def manifest(epoch, status, previous):
     payload = {1: MEMBERSHIP_ID, 2: coordinator_ref, 3: member_ref, 4: "plane/data/*", 5: [task],
                6: "production", 9: [pin], 10: epoch, 11: lease_policy, 13: AT + epoch,
-               14: AT + 365 * 86_400, 15: status}
+               14: AT + 365 * 86_400, 15: status, 16: member_record}
     if previous is not None:
         payload[12] = previous
     return cbor(payload)
@@ -145,7 +148,7 @@ successor = sign1(OPERATIONS, "permguard.membership.manifest.v1", operations_kid
 # The pending membership an enrollment creates.
 pending = cbor({1: MEMBERSHIP_ID, 2: INVITE_ID, 3: coordinator_ref, 4: member_ref,
                 5: "plane/data/*", 6: [task], 7: "production", 8: [ring_statement], 9: AT + 1,
-                12: capabilities})
+                12: capabilities, 13: "dp-eu-1", 14: ["eu"]})
 
 # Three journal entries, each carrying the record it concerns and chained to the one before; the
 # first to the digest of an empty journal.
@@ -192,7 +195,7 @@ pending_nonce = hashlib.sha256(b"permguard.membership.assurance-nonce.v1\n" + CO
 assured_payload = {1: MEMBERSHIP_ID, 2: coordinator_ref, 3: member_ref, 4: "plane/data/*",
                    5: [assured_task], 6: "production", 8: binding, 9: [pin], 10: 2,
                    11: lease_policy, 12: genesis_digest, 13: APPROVED_AT, 14: AT + 365 * 86_400,
-                   15: "active"}
+                   15: "active", 16: member_record}
 assured_payload = cbor(assured_payload)
 assured = sign1(OPERATIONS, "permguard.membership.manifest.v1", operations_kid, assured_payload)
 
@@ -261,7 +264,7 @@ retiring_pin = dict(pin); retiring_pin[6] = True
 repinned_payload = cbor({1: MEMBERSHIP_ID, 2: coordinator_ref, 3: member_ref, 4: "plane/data/*",
                          5: [task], 6: "production", 9: [pin2, retiring_pin], 10: 2,
                          11: lease_policy, 12: genesis_digest, 13: AT + 101,
-                         14: AT + 101 + 365 * 86_400, 15: "active"})
+                         14: AT + 101 + 365 * 86_400, 15: "active", 16: member_record})
 repinned = sign1(OPERATIONS, "permguard.membership.manifest.v1", operations_kid, repinned_payload)
 cutover = cbor({1: RING, 2: 2, 3: [{1: "permguard.decisions", 2: 41}, {1: "permguard.events", 2: 7}]})
 cutover_message = cbor({1: MEMBERSHIP_ID, 2: "decisions", 3: 2, 4: "cutover-data.attest-2",
@@ -279,6 +282,7 @@ out = {"comment": "Membership records (WP-4.1), assurance appraisal (WP-4.2), ta
        "invite_id": INVITE_ID.hex(), "membership_id": MEMBERSHIP_ID.hex(),
        "token": TOKEN.hex(), "token_key": TOKEN_PUB.hex(), "exporter": EXPORTER.hex(),
        "invitation": invitation.hex(),
+       "member_record": {"bytes": cbor(member_record).hex(), "member_id": MEMBER_ID.hex()},
        "token_proof": token_proof.hex(),
        "ring_statement": {"jwk": ring_jwk, "binding": ring_binding.hex(), "digest": ring_digest.hex()},
        "request": {"bytes": request.hex(), "digest": request_digest},

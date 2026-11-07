@@ -48,10 +48,11 @@ use crate::membership::record::{
 use crate::membership::service::code_of;
 use crate::membership::{
     APPRAISE, APPROVE, AUDIT_APPRAISED, AUDIT_APPROVED, AUDIT_ASSURANCE_APPROVED,
-    AUDIT_ASSURANCE_REVOKED, AUDIT_FENCED, AUDIT_INVITE_REVOKED, AUDIT_INVITED, AUDIT_REJECTED,
-    AUDIT_RESUMED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED, AUDIT_SUSPENDED, AUDIT_VERIFIED,
-    Capabilities, Coordinator, DOMAIN, FENCE, Held, INVITE, INVITE_REVOKE, MembershipError, Narrow,
-    NewInvite, Offered, REJECT, RESUME, REVOKE_PLAN, REVOKE_RUN, SUSPEND, Store, VERIFY,
+    AUDIT_ASSURANCE_REVOKED, AUDIT_FENCED, AUDIT_INVITE_REVOKED, AUDIT_INVITED,
+    AUDIT_MEMBER_RECORD, AUDIT_REJECTED, AUDIT_RESUMED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED,
+    AUDIT_SUSPENDED, AUDIT_VERIFIED, Capabilities, Coordinator, DOMAIN, FENCE, Held, INVITE,
+    INVITE_REVOKE, MEMBER_RECORD, MembershipError, Narrow, NewInvite, Offered, REJECT, RESUME,
+    REVOKE_PLAN, REVOKE_RUN, SUSPEND, Store, VERIFY,
 };
 use crate::operations::journal::Initiator;
 use crate::operations::mutation::{Applied, Applying, Failure};
@@ -270,6 +271,12 @@ pub struct CreateInvite {
     /// Always 1: an invitation is used once.
     #[serde(default = "one")]
     pub max_uses: u64,
+    /// The member name (WP-10.1): 1 to 63 of `a-z`, `0-9`, `-`, `_`, `.`.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The member's groups (WP-10.1), sorted, each once.
+    #[serde(default)]
+    pub groups: Option<Vec<String>>,
 }
 
 fn one() -> u64 {
@@ -429,6 +436,15 @@ pub struct MemberView {
     /// labelled member-reported (WP-4.4); empty on a member.
     #[serde(default)]
     pub task_progress: Vec<TaskObservedView>,
+    /// The member record the manifest signs (WP-10.1); `null` while pending.
+    #[serde(default)]
+    pub member_id: Option<String>,
+    /// The member's name: the manifest's, or while pending the one requested; `null` when none.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The member's groups: the manifest's, or while pending the ones requested.
+    #[serde(default)]
+    pub groups: Vec<String>,
 }
 
 /// One resource of a member's report, as the member stated it.
@@ -794,6 +810,18 @@ impl MemberView {
             appraisal,
             held_epoch: held.held_epoch,
             task_progress,
+            member_id: held
+                .manifest
+                .as_ref()
+                .map(|(manifest, ..)| uuid_text(&manifest.member_record.member_id)),
+            name: match &held.manifest {
+                Some((manifest, ..)) => Some(manifest.member_record.name.clone()),
+                None => held.request.name.clone(),
+            },
+            groups: match &held.manifest {
+                Some((manifest, ..)) => manifest.member_record.groups.clone(),
+                None => held.request.groups.clone().unwrap_or_default(),
+            },
         }
     }
 }
@@ -818,6 +846,12 @@ pub struct ApproveMember {
     /// What the tasks' controls are appraised with (WP-4.2).
     #[serde(default)]
     pub assurance: Option<AssuranceOffer>,
+    /// The member name (WP-10.1): 1 to 63 of `a-z`, `0-9`, `-`, `_`, `.`.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The member's groups (WP-10.1), sorted, each once.
+    #[serde(default)]
+    pub groups: Option<Vec<String>>,
 }
 
 /// An operator's approval of one control: an accountable risk decision, with its reason and
@@ -939,6 +973,19 @@ pub struct ChangeMember {
     pub reason: Option<String>,
 }
 
+/// `POST …/{id}/record`: the member renamed, its groups changed, or both (WP-10.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChangeMemberRecord {
+    pub request_id: String,
+    /// The revision of the membership `{id}` names.
+    pub expected_revision: u64,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub groups: Option<Vec<String>>,
+}
+
 /// What a transition answers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberChanged {
@@ -979,6 +1026,12 @@ pub struct JoinMembership {
     /// The token the coordinator's operator handed over, base64url; never kept.
     pub token: String,
     pub requested: NarrowView,
+    /// The member name (WP-10.1): 1 to 63 of `a-z`, `0-9`, `-`, `_`, `.`.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The member's groups (WP-10.1), sorted, each once.
+    #[serde(default)]
+    pub groups: Option<Vec<String>>,
 }
 
 /// Where and who the coordinator is: out of band, with the token.
@@ -1254,6 +1307,8 @@ impl HostApi {
                 .transpose()?,
             expected_fingerprint: invite.expected_fingerprint.clone(),
             min_assurance: invite.min_assurance.as_deref().map(profile).transpose()?,
+            name: invite.name.clone(),
+            groups: invite.groups.clone(),
         };
         let mutation = Mutation {
             request_id: invite.request_id.clone(),
@@ -1592,16 +1647,30 @@ impl HostApi {
         let memberships = self.memberships()?;
         let coordinator = self.coordinator()?;
         let membership_id = id_of(id)?;
-        let narrow = approve
+        let mut narrow = approve
             .narrow
             .as_ref()
             .map(|narrow| {
                 Ok::<_, Refusal>(Narrow {
                     selector: selector(&narrow.selector)?,
                     tasks: tasks(&narrow.tasks)?,
+                    name: approve.name.clone(),
+                    groups: approve.groups.clone(),
                 })
             })
             .transpose()?;
+        // A name or groups without a narrowing approve the request as asked, named.
+        if narrow.is_none()
+            && (approve.name.is_some() || approve.groups.is_some())
+            && let Some(held) = memberships.store.membership(&membership_id)
+        {
+            narrow = Some(Narrow {
+                selector: held.request.selector.clone(),
+                tasks: held.request.tasks.clone(),
+                name: approve.name.clone(),
+                groups: approve.groups.clone(),
+            });
+        }
         let lease_policy = approve.lease_policy.map(|view| LeasePolicy {
             max_session_seconds: view.max_session_seconds,
             offline_grace_seconds: view.offline_grace_seconds,
@@ -1782,6 +1851,84 @@ impl HostApi {
             },
             |operation_id, revision, _| {
                 self.reconciled(&membership_id, operation_id, revision, operation)
+            },
+        )
+    }
+
+    /// `POST …/{id}/record`: the member of membership `id` renamed or regrouped, every live
+    /// membership of its Host revised in place, in one operation (WP-10.3). The answer is the
+    /// revision of the membership named.
+    pub async fn change_member_record(
+        &self,
+        actor: &Actor,
+        id: &str,
+        change: ChangeMemberRecord,
+    ) -> Result<MemberChanged, Refusal> {
+        let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
+        let memberships = self.memberships()?;
+        let coordinator = self.coordinator()?;
+        let membership_id = id_of(id)?;
+        if change.name.is_none() && change.groups.is_none() {
+            return Err(invalid("name `name`, `groups` or both"));
+        }
+        let now = self.time.now_secs();
+        let check = || {
+            let held = memberships
+                .store
+                .membership(&membership_id)
+                .ok_or_else(|| MembershipError::Unknown(format!("no membership `{id}`")))?;
+            if held.revision != change.expected_revision {
+                return Err(MembershipError::Conflict {
+                    expected: change.expected_revision,
+                    current: held.revision,
+                });
+            }
+            memberships.store.check_member_record(
+                &coordinator,
+                &membership_id,
+                change.name.clone(),
+                change.groups.clone(),
+                now,
+            )
+        };
+        let mutation = Mutation {
+            request_id: change.request_id.clone(),
+            expected_revision: Some(change.expected_revision),
+        };
+        self.transact(
+            DOMAIN,
+            &admitted.principal,
+            MEMBER_RECORD,
+            AUDIT_MEMBER_RECORD,
+            &mutation,
+            &(id, MEMBER_RECORD, &change),
+            Some(id.to_owned()),
+            || match check() {
+                Ok(successors) if successors.is_empty() => {
+                    Err(invalid("the member already has that name and those groups"))
+                }
+                Ok(_) => Ok(()),
+                Err(error) => Err(refusal_of(error)),
+            },
+            |applying| {
+                let successors = check().map_err(failure)?;
+                let mut answer = None;
+                for manifest in &successors {
+                    let (envelope, _) = memberships
+                        .store
+                        .transition(applying, &coordinator, manifest, now)
+                        .map_err(failure)?;
+                    if manifest.membership_id == membership_id {
+                        answer =
+                            Some(self.changed(applying, &membership_id, manifest, &envelope)?);
+                    }
+                }
+                answer.ok_or_else(|| {
+                    Failure::Refused(invalid("the membership named already carries that record"))
+                })
+            },
+            |operation_id, revision, _| {
+                self.reconciled(&membership_id, operation_id, revision, MEMBER_RECORD)
             },
         )
     }
@@ -2691,6 +2838,8 @@ impl HostApi {
                     token,
                     selector: selector(&join.requested.selector)?,
                     tasks: tasks(&join.requested.tasks)?,
+                    name: join.name.clone(),
+                    groups: join.groups.clone(),
                 },
             )
             .await

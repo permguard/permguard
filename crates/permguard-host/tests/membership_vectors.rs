@@ -106,6 +106,8 @@ fn the_membership_records_are_the_bytes_the_independent_generator_computed() {
         max_uses: 1,
         created_at: AT,
         created_by: "spiffe://acme/operators/root".to_owned(),
+        groups: None,
+        name: None,
     };
     assert_eq!(invitation.encode().expect("encodes"), hex(&v["invitation"]));
     assert_eq!(
@@ -132,6 +134,8 @@ fn the_membership_records_are_the_bytes_the_independent_generator_computed() {
         tasks: vec![task()],
         member: member.clone(),
         ring_statements: vec![statement.clone()],
+        groups: Some(vec!["eu".to_owned()]),
+        name: Some("dp-eu-1".to_owned()),
     };
     let request_bytes = request.encode().expect("encodes");
     assert_eq!(request_bytes, hex(&v["request"]["bytes"]));
@@ -193,6 +197,7 @@ fn the_membership_records_are_the_bytes_the_independent_generator_computed() {
         issued_at: AT + epoch,
         not_after: AT + 365 * 86_400,
         status,
+        member_record: member_record(&v),
     };
     let genesis = manifest(1, Status::Active, None);
     assert_eq!(
@@ -235,6 +240,8 @@ fn the_membership_records_are_the_bytes_the_independent_generator_computed() {
         requested_at: AT + 1,
         coordinator_address: None,
         identity: None,
+        groups: Some(vec!["eu".to_owned()]),
+        name: Some("dp-eu-1".to_owned()),
     };
     assert_eq!(pending.encode().expect("encodes"), hex(&v["pending"]));
 
@@ -878,4 +885,14 @@ fn the_zone_secrets_records_are_the_bytes_the_independent_generator_computed() {
     let bytes = receipt.encode().expect("encodes");
     assert_eq!(bytes, hex(&z["receipt"]));
     assert_eq!(Receipt::decode(&bytes).expect("decodes"), receipt);
+}
+
+/// The member record the vectors sign (WP-10.1).
+fn member_record(v: &serde_json::Value) -> permguard_host::membership::record::MemberRecord {
+    let id = hex(&v["member_record"]["member_id"]);
+    permguard_host::membership::record::MemberRecord {
+        member_id: id.try_into().expect("16 bytes"),
+        name: "dp-eu-1".to_owned(),
+        groups: vec!["eu".to_owned()],
+    }
 }

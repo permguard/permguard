@@ -21,9 +21,9 @@ use permguard_host::api::identity::{
     IdentityRotated, IdentityVerified, IdentityView, RotateIdentity, VerifyIdentity,
 };
 use permguard_host::api::members::{
-    ApproveMember, ChangeMember, CreateInvite, InviteCreated, InviteDeleted, Invites,
-    JoinMembership, MemberChanged, MemberSessions, MemberVerification, MemberView, Members,
-    PlanMemberRevoke, RunMemberRevoke, SyncMembership, VerifyMember,
+    ApproveMember, ChangeMember, ChangeMemberRecord, CreateInvite, InviteCreated, InviteDeleted,
+    Invites, JoinMembership, MemberChanged, MemberSessions, MemberVerification, MemberView,
+    Members, PlanMemberRevoke, RunMemberRevoke, SyncMembership, VerifyMember,
 };
 use permguard_host::api::sessions::PeerSessionsView;
 use permguard_host::api::status::{
@@ -123,6 +123,13 @@ pub trait Host: Operations + Directory {
         change: Change,
         membership_id: &str,
         request: &ChangeMember,
+    ) -> Result<MemberChanged, Failure>;
+    /// `POST /host/v1/members/{id}/record`, `MembershipService.ChangeMemberRecord`: the member
+    /// renamed or regrouped (WP-10.3).
+    fn change_member_record(
+        &self,
+        membership_id: &str,
+        request: &ChangeMemberRecord,
     ) -> Result<MemberChanged, Failure>;
     /// `POST /host/v1/members/{id}/revoke/plan`, `MembershipService.PlanMemberRevoke`.
     fn plan_member_revoke(
@@ -354,6 +361,17 @@ impl Host for RestHost {
                 segment(membership_id)?,
                 change.verb()
             ),
+            &json(request)?,
+        )
+    }
+
+    fn change_member_record(
+        &self,
+        membership_id: &str,
+        request: &ChangeMemberRecord,
+    ) -> Result<MemberChanged, Failure> {
+        self.post(
+            &format!("/host/v1/members/{}/record", segment(membership_id)?),
             &json(request)?,
         )
     }
@@ -769,6 +787,11 @@ impl Host for GrpcHost {
                         expected_fingerprint: request.expected_fingerprint.clone(),
                         min_assurance: request.min_assurance.clone(),
                         max_uses: Some(request.max_uses),
+                        name: request.name.clone(),
+                        groups: request
+                            .groups
+                            .clone()
+                            .map(|names| proto::MemberGroups { names }),
                     }),
             )
             .map_err(crate::grpc::failure_of)?;
@@ -884,6 +907,11 @@ impl Host for GrpcHost {
                         narrow: request.narrow.as_ref().map(map::scope_out),
                         lease_policy: request.lease_policy.as_ref().map(map::lease_out),
                         assurance,
+                        name: request.name.clone(),
+                        groups: request
+                            .groups
+                            .clone()
+                            .map(|names| proto::MemberGroups { names }),
                     }),
             )
             .map_err(crate::grpc::failure_of)?;
@@ -960,6 +988,36 @@ impl Host for GrpcHost {
         }
         .map_err(crate::grpc::failure_of)?;
         Ok(map::changed(answer.0, answer.1, answer.2, &answer.3))
+    }
+
+    fn change_member_record(
+        &self,
+        membership_id: &str,
+        request: &ChangeMemberRecord,
+    ) -> Result<MemberChanged, Failure> {
+        let answer = self
+            .0
+            .run(
+                "ChangeMemberRecord",
+                self.members_client()
+                    .change_member_record(proto::ChangeMemberRecordRequest {
+                        membership_id: membership_id.to_owned(),
+                        request_id: request.request_id.clone(),
+                        expected_revision: request.expected_revision,
+                        name: request.name.clone(),
+                        groups: request
+                            .groups
+                            .clone()
+                            .map(|names| proto::MemberGroups { names }),
+                    }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(map::changed(
+            answer.receipt,
+            answer.status,
+            answer.epoch,
+            &answer.manifest,
+        ))
     }
 
     fn plan_member_revoke(
@@ -1049,6 +1107,11 @@ impl Host for GrpcHost {
                         invite_id: request.invite_id.clone(),
                         token,
                         requested: Some(map::scope_out(&request.requested)),
+                        name: request.name.clone(),
+                        groups: request
+                            .groups
+                            .clone()
+                            .map(|names| proto::MemberGroups { names }),
                     }),
             )
             .map_err(crate::grpc::failure_of)?;
