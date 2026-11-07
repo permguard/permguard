@@ -17,7 +17,11 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **The command line's help says what a command does, for any deployment.**
+  Every command's description is one short sentence, with no internal work-package or tracking reference such as `(WP-8.1)` or `(TD-2)`.
+  `reclaim` reads as what it does, reclaiming the storage of data plane replicas removed from a group once each is drained; `reclaim run` says it runs on Kubernetes.
 
 ## [0.1.22] - 2026-11-07
 

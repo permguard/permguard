@@ -343,8 +343,10 @@ pub enum Command {
         #[command(subcommand)]
         action: HostAction,
     },
-    /// Restore a Server Host's volume from a snapshot, offline: the server stopped, the previous
-    /// owner fenced with `volume claim`, the volume scanned, then the mode's identity transition.
+    /// Restore a Server Host's volume from a snapshot, offline.
+    ///
+    /// The server is stopped and the previous owner fenced with `volume claim`; the volume is
+    /// scanned, then the mode's identity transition runs.
     Restore {
         /// The server's configuration file, read with the environment as the server reads them:
         /// where the volume's keys are kept and how they are opened.
@@ -353,14 +355,18 @@ pub enum Command {
         #[command(subcommand)]
         action: RestoreAction,
     },
-    /// Verify a snapshot against its signed manifest, offline: every file the manifest's
-    /// inventory binds, under the keys bundle exported from the Host and its identity pin.
+    /// Verify a snapshot against its signed manifest, offline.
+    ///
+    /// Every file the manifest's inventory binds is checked, under the keys bundle exported from
+    /// the Host and its identity pin.
     Backup {
         #[command(subcommand)]
         action: BackupVerifyAction,
     },
-    /// The layout migrations of a stopped server's volume (WP-1.9), offline: planned, then run
-    /// from the plan; their status, and the rollback of a committed one.
+    /// Migrate a stopped server's volume to the current layout, offline.
+    ///
+    /// Migrations are planned, then run from the plan; `status` shows them, and a committed one
+    /// can be rolled back.
     Migrate {
         /// The server's configuration file, read with the environment as the server reads them:
         /// where the volume's keys are kept, and where the event history is.
@@ -369,20 +375,26 @@ pub enum Command {
         #[command(subcommand)]
         action: MigrateAction,
     },
-    /// A ledger's evidence as the Host keeps it: the retained prefix anchors of its decision and
-    /// event streams, through the Host listener.
+    /// Read a ledger's evidence as the Host keeps it.
+    ///
+    /// The retained prefix anchors of its decision and event streams, through the Host listener.
     Evidence {
         #[command(subcommand)]
         action: EvidenceAction,
     },
-    /// Garbage collection on demand, through the Host listener: planned, then run from the plan,
-    /// each run printing what it removed, what it kept and why, and its receipt.
+    /// Run garbage collection on demand: planned, then run from the plan.
+    ///
+    /// Planned, then run from the plan, through the Host listener; each run prints what it
+    /// removed, what it kept and why, and its receipt.
     Gc {
         #[command(subcommand)]
         action: GcAction,
     },
-    /// The drain controller of a data plane group in a cluster: the retained volume claims of
-    /// ordinals above the replicas, drained by a fenced Job and deleted only on proof (TD-2).
+    /// Reclaim the storage of data plane replicas removed from a group, once each is drained.
+    ///
+    /// A replica's storage is deleted only after a drain proves that every record it held reached
+    /// the coordinator. The controller runs on Kubernetes: the retained volume claims above the
+    /// replica count, each drained by a Job made from a template.
     Reclaim {
         #[command(subcommand)]
         action: ReclaimAction,
@@ -558,9 +570,10 @@ pub enum Command {
         #[command(subcommand)]
         action: EventsAction,
     },
-    /// Sign in with a password on a Server Host surface and keep the session in the token file
-    /// (`--token-file`, or `~/.permguard/session`), private to its owner. The password is read
-    /// from standard input, never an argument.
+    /// Sign in with a password, read from standard input, and keep the session in the token file.
+    ///
+    /// The session goes to `--token-file`, or `~/.permguard/session`, private to its owner. The
+    /// password is read from standard input, never an argument.
     #[command(after_help = "Examples:
   printf '%s' \"$PASSWORD\" | permguard login https://pg.example:5443 --user paperino
   printf '%s' \"$PASSWORD\" | permguard login https://pg.example:5443 --user paperino --code 123456")]
@@ -597,9 +610,10 @@ pub enum Command {
         #[command(subcommand)]
         action: FactorAction,
     },
-    /// Make the Host's first administrator with its setup code (WP-8.2), or, with `--check`,
-    /// say whether the Host waits for one. The code is read from a file, a password from
-    /// standard input: never an argument.
+    /// Make the Host's first administrator with its setup code, or check whether it waits for one.
+    ///
+    /// With `--check`, say whether the Host waits for one. The code is read from a file, a
+    /// password from standard input: never an argument.
     #[command(after_help = "Examples:
   printf '%s' \"$PASSWORD\" | permguard setup https://pg.example:5443 --code-file setup-code --name alice --password-stdin
   permguard setup https://pg.example:5443 --check -o json")]
@@ -1894,24 +1908,26 @@ pub enum HostAction {
         #[command(subcommand)]
         action: GrantsAction,
     },
-    /// Roles: named sets of grants their members act with (WP-8.1).
+    /// Roles: named sets of grants their members act with.
     Roles {
         #[command(subcommand)]
         action: RolesAction,
     },
-    /// Local users, who sign in with a password or through a linked identity provider; the
-    /// first administrator is created offline (WP-8.1).
+    /// Local users, who sign in with a password or through a linked identity provider.
+    ///
+    /// The first administrator is created with `setup`, or offline.
     Users {
         #[command(subcommand)]
         action: UsersAction,
     },
-    /// The identity providers and the keys the Host fetched for each (WP-8.1).
+    /// The identity providers and the keys the Host fetched for each.
     Providers {
         #[command(subcommand)]
         action: ProvidersAction,
     },
-    /// The recovery that makes a new setup code when every administrator is lost (WP-8.2):
-    /// started offline, acknowledged online.
+    /// Recover administration when every administrator is lost: started offline, acknowledged online.
+    ///
+    /// A new setup code is made offline, and the recovery acknowledged online.
     Recovery {
         #[command(subcommand)]
         action: RecoveryAction,
@@ -2313,10 +2329,12 @@ pub enum IdentityAction {
         #[arg(long)]
         expected_epoch: u64,
     },
-    /// Reset the Host identity, offline and in an emergency only (WP-4.1): no coordinator is
-    /// reached, so every membership this Host is a member of is marked `orphaned` and its
-    /// coordinator named, every one it coordinates is ended here, and a new identity replaces
-    /// the old. The normal reset, with revocation receipts, runs through the Host API.
+    /// Reset the Host identity, offline and in an emergency only.
+    ///
+    /// No coordinator is reached, so every membership this Host is a member of is marked
+    /// `orphaned` and its coordinator named, every one it coordinates is ended here, and a new
+    /// identity replaces the old. The normal reset, with revocation receipts, runs through the
+    /// Host API.
     Reset {
         #[command(subcommand)]
         action: ResetAction,
@@ -2418,8 +2436,10 @@ pub enum MembersAction {
         /// The membership UUID.
         id: String,
     },
-    /// On the member: fetch and record the coordinator's manifests since the one held, which is
-    /// how an approved membership becomes active on its member (TD-3).
+    /// On the member: fetch the coordinator's manifests, activating an approved membership.
+    ///
+    /// The manifests since the one held are fetched and recorded; this is how an approved
+    /// membership becomes active on its member.
     #[command(
         after_help = "Examples:\n  permguard --host-endpoint https://member.example:5444 host members sync 0198f2aa-0000-7000-8000-000000000002\n  permguard --host-endpoint https://member.example:5444 host members sync 0198f2aa-0000-7000-8000-000000000002 -o json"
     )]
@@ -2706,10 +2726,12 @@ pub enum EvidenceAction {
 /// `permguard reclaim …` (TD-2).
 #[derive(Debug, Subcommand)]
 pub enum ReclaimAction {
-    /// One pass: create the drain Job of each retained claim above the replicas, and delete a
-    /// claim only when its Job printed a drain receipt that verifies under the member's pin the
-    /// coordinator holds and the coordinator's frontier acknowledges every stream it names. Prints
-    /// one JSON line per claim; `--host-endpoint` names the coordinator's Host listener.
+    /// One pass, on Kubernetes: drain each removed replica's storage, delete it only on proof.
+    ///
+    /// Creates the drain Job of each retained claim above the replicas, and deletes a claim only
+    /// when its Job printed a drain receipt that verifies under the member's pin the coordinator
+    /// holds and the coordinator's frontier acknowledges every stream it names. Prints one JSON
+    /// line per claim; `--host-endpoint` names the coordinator's Host listener.
     #[command(
         after_help = "Examples:\n  permguard --host-endpoint https://pg-permguard-control-plane-host:5444 reclaim run --selector app.kubernetes.io/instance=pg,app.kubernetes.io/component=data-plane,permguard.com/group=billing --job-template /etc/permguard-reclaim/job.json\n  permguard --host-endpoint https://coordinator.example:5444 --tls-ca-file ca.crt --tls-cert-file operator.crt --tls-key-file operator.key reclaim run --namespace permguard --kube-api https://127.0.0.1:6443 --kube-token-file token --kube-ca kube-ca.crt --selector permguard.com/group=billing --job-template job.json"
     )]
