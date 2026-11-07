@@ -126,11 +126,15 @@ pub mod resource_types {
     pub const PLANE: &str = "plane";
     pub const ZONE: &str = "zone";
     pub const LEDGER: &str = "ledger";
+    /// The member Hosts of the IAM Host, `member`, and one of them, `member/<member_id>`
+    /// (iteration 02, `2-security/8` Who may obtain what).
+    pub const MEMBERS: &str = "members";
+    pub const MEMBER: &str = "member";
     /// Every type: the one wildcard a grant may carry.
     pub const ANY: &str = "*";
 
     /// Every registered type, the wildcard included.
-    pub const ALL: &[&str] = &[HOST, PLANE, ZONE, LEDGER, ANY];
+    pub const ALL: &[&str] = &[HOST, PLANE, ZONE, LEDGER, MEMBERS, MEMBER, ANY];
 
     /// Whether `resource_type` is registered.
     pub fn is_registered(resource_type: &str) -> bool {
@@ -156,6 +160,13 @@ pub enum Resource {
         plane: String,
         zone_id: String,
         ledger_id: String,
+    },
+    /// Every member Host of the IAM Host: `member`, what `member/*` selects below.
+    Members,
+    /// One member Host, administered through the IAM Host: `member/<member_id>`. It is never a
+    /// resource on the member itself, which names its own Host `host`.
+    Member {
+        member_id: String,
     },
 }
 
@@ -193,9 +204,18 @@ impl Resource {
         }
     }
 
+    /// A member Host, by its `member_id`.
+    pub fn member(member_id: impl Into<String>) -> Self {
+        Self::Member {
+            member_id: member_id.into(),
+        }
+    }
+
     /// The registered type of this resource.
     pub fn resource_type(&self) -> &'static str {
         match self {
+            Self::Members => resource_types::MEMBERS,
+            Self::Member { .. } => resource_types::MEMBER,
             Self::Host => resource_types::HOST,
             Self::Plane { .. } => resource_types::PLANE,
             Self::Zone { .. } => resource_types::ZONE,
@@ -206,7 +226,7 @@ impl Resource {
     /// The Plane this resource belongs to; `None` for the Host.
     pub fn plane_id(&self) -> Option<&str> {
         match self {
-            Self::Host => None,
+            Self::Host | Self::Members | Self::Member { .. } => None,
             Self::Plane { plane } | Self::Zone { plane, .. } | Self::Ledger { plane, .. } => {
                 Some(plane)
             }
@@ -216,6 +236,8 @@ impl Resource {
     /// The path components, in order.
     fn components(&self) -> Vec<&str> {
         match self {
+            Self::Members => vec!["member"],
+            Self::Member { member_id } => vec!["member", member_id],
             Self::Host => vec!["host"],
             Self::Plane { plane } => vec!["plane", plane],
             Self::Zone { plane, zone_id } => vec!["plane", plane, "zone", zone_id],
@@ -228,7 +250,7 @@ impl Resource {
     }
 
     /// Reads a resource from its text form, refusing anything that is not exactly one of the
-    /// four shapes.
+    /// six shapes.
     pub fn parse(text: &str) -> Result<Self, ParseError> {
         let parts: Vec<&str> = text.split('/').collect();
         for part in &parts {
@@ -236,6 +258,8 @@ impl Resource {
         }
         match parts.as_slice() {
             ["host"] => Ok(Self::Host),
+            ["member"] => Ok(Self::Members),
+            ["member", member_id] => Ok(Self::member(*member_id)),
             ["plane", plane] => Ok(Self::plane(*plane)),
             ["plane", plane, "zone", zone] => Ok(Self::zone(*plane, *zone)),
             ["plane", plane, "zone", zone, "ledger", ledger] => {

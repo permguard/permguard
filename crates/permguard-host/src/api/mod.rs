@@ -41,6 +41,7 @@ pub mod service_accounts;
 pub mod sessions;
 pub mod status;
 pub mod streams;
+pub mod token_endpoint;
 pub mod tokens;
 
 use std::sync::Arc;

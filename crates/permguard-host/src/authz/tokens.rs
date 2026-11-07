@@ -401,16 +401,7 @@ impl TokenRegistry {
             dir.subdir(JOURNAL, true)?,
             volume.journal_options(Options::default()),
         )?;
-        let mut state = State::default();
-        for frame in journal.frames()? {
-            if frame.kind != FRAME_TRANSITION {
-                return Err(TokenError::Invalid(format!(
-                    "the token journal holds a frame of kind {}",
-                    frame.kind
-                )));
-            }
-            replay(&mut state, &TokenTransition::decode(&frame.payload)?)?;
-        }
+        let state = rebuilt(&journal)?;
         Ok((
             Arc::new(Self {
                 journal: Mutex::new(journal),
@@ -429,26 +420,29 @@ impl TokenRegistry {
         self.read().revision
     }
 
-    /// Writes `transitions` in order, each checked against a copy first: what the replay would
-    /// refuse is never journaled.
+    /// Writes `transitions` in order. Each is applied to the state, which refuses what the replay
+    /// would, then journaled. The state is not copied first: a token write is the hot path and a
+    /// list holds `2^20` entries. On any failure the state is read again from the journal, so the
+    /// memory never holds what the journal does not.
     fn write(
         &self,
         journal: &mut Journal,
         state: &mut State,
         transitions: Vec<TokenTransition>,
     ) -> Result<(), TokenError> {
-        let mut next = state.clone();
-        let mut encoded = Vec::with_capacity(transitions.len());
-        for mut transition in transitions {
-            transition.revision = next.revision + 1;
-            replay(&mut next, &transition)?;
-            encoded.push(transition);
+        let written = (|| {
+            for mut transition in transitions {
+                transition.revision = state.revision + 1;
+                let bytes = transition.encode()?;
+                replay(state, &transition)?;
+                journal.append(FRAME_TRANSITION, &bytes)?;
+            }
+            Ok(())
+        })();
+        if written.is_err() {
+            *state = rebuilt(journal)?;
         }
-        for transition in encoded {
-            journal.append(FRAME_TRANSITION, &transition.encode()?)?;
-            replay(state, &transition)?;
-        }
-        Ok(())
+        written
     }
 
     /// Records a token for `draft`, issued by `by` at `now`: its `jti` and the list entry its
@@ -643,8 +637,24 @@ impl TokenRegistry {
     }
 }
 
-/// Applies one journaled transition to `state`: at start, and on a copy before every write. A
-/// transition out of order, or naming what is not there, is corruption.
+/// The state the journal holds, replayed from its first frame.
+fn rebuilt(journal: &Journal) -> Result<State, TokenError> {
+    let mut state = State::default();
+    for frame in journal.frames()? {
+        if frame.kind != FRAME_TRANSITION {
+            return Err(TokenError::Invalid(format!(
+                "the token journal holds a frame of kind {}",
+                frame.kind
+            )));
+        }
+        replay(&mut state, &TokenTransition::decode(&frame.payload)?)?;
+    }
+    Ok(state)
+}
+
+/// Applies one journaled transition to `state`: at start, and before every write. A transition
+/// out of order, or naming what is not there, is refused; what it changed of `state` by then is
+/// undone by the writer, which reads the state again from the journal.
 fn replay(state: &mut State, transition: &TokenTransition) -> Result<(), TokenError> {
     let at = transition.revision;
     let corrupt = |detail: String| {

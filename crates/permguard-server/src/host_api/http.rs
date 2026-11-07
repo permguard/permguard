@@ -110,6 +110,12 @@ fn iam_routes() -> Router<Served> {
             "/iam/v1/service-accounts/{name}/credentials/{id}/revoke",
             post(revoke_credential),
         )
+        .route(TOKEN_PATH, post(token))
+        .route("/iam/v1/keys", get(iam_keys))
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(authorization_server),
+        )
         .route("/iam/v1/status-lists/{id}", get(status_list))
         .route("/iam/v1/tokens", get(list_tokens))
         .route("/iam/v1/tokens/{jti}/revoke", post(revoke_token))
@@ -1413,6 +1419,165 @@ async fn revoke_credential(
             .revoke_credential(&actor, &name, &id, plain)
             .await,
     )
+}
+
+/// The token endpoint's path: the one where `Authorization: Basic` is the client's own credential,
+/// which the listener's boundary passes to it unread.
+pub const TOKEN_PATH: &str = "/iam/v1/token";
+
+/// The most bytes a token request's form takes.
+const MAX_TOKEN_FORM_BYTES: usize = 16 * 1024;
+
+/// `client_secret_basic` (RFC 6749 §2.3.1): the id and secret form-encoded, then Basic.
+fn basic_client(headers: &axum::http::HeaderMap) -> Result<Option<(String, String)>, ()> {
+    use base64::Engine as _;
+    let Some(value) = headers.get(header::AUTHORIZATION) else {
+        return Ok(None);
+    };
+    let (scheme, encoded) = value
+        .to_str()
+        .ok()
+        .and_then(|value| value.split_once(' '))
+        .ok_or(())?;
+    if !scheme.eq_ignore_ascii_case("basic") {
+        return Err(());
+    }
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded.trim())
+        .map_err(|_| ())?;
+    let text = String::from_utf8(decoded).map_err(|_| ())?;
+    let (id, secret) = text.split_once(':').ok_or(())?;
+    Ok(Some((percent_decode(id), percent_decode(secret))))
+}
+
+/// RFC 6749's error answer: `no-store`, and `WWW-Authenticate: Basic` on a failed client proof.
+fn token_refused(refusal: &permguard_host::api::token_endpoint::TokenRefusal) -> Response {
+    let status = StatusCode::from_u16(refusal.status()).unwrap_or(StatusCode::BAD_REQUEST);
+    let mut response = (
+        status,
+        Json(serde_json::json!({
+            "error": refusal.error(),
+            "error_description": refusal.description(),
+        })),
+    )
+        .into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    if status == StatusCode::UNAUTHORIZED {
+        headers.insert(
+            header::WWW_AUTHENTICATE,
+            HeaderValue::from_static("Basic realm=\"permguard\""),
+        );
+    }
+    if let permguard_host::api::token_endpoint::TokenRefusal::TooManyRequests(seconds) = refusal
+        && let Ok(value) = HeaderValue::from_str(&seconds.to_string())
+    {
+        headers.insert(header::RETRY_AFTER, value);
+    }
+    response
+}
+
+/// `POST /iam/v1/token`: a form, as RFC 6749 requires; the client's proof in the Basic header,
+/// the form or the connection's certificate.
+async fn token(State(served): State<Served>, request: Request) -> Response {
+    use permguard_host::api::token_endpoint::{ClientProof, TokenRefusal, TokenRequest};
+
+    let form = request
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|media| {
+            media
+                .trim()
+                .eq_ignore_ascii_case("application/x-www-form-urlencoded")
+        });
+    if !form {
+        return token_refused(&TokenRefusal::InvalidRequest(
+            "the request is `application/x-www-form-urlencoded`".to_owned(),
+        ));
+    }
+    let Ok(basic) = basic_client(request.headers()) else {
+        return token_refused(&TokenRefusal::InvalidClient(
+            "the Authorization header is not client_secret_basic".to_owned(),
+        ));
+    };
+    let peer = request
+        .extensions()
+        .get::<Arc<permguard_core::PeerIdentity>>()
+        .cloned();
+    // The address the listener accepted the connection from, as its TLS acceptor recorded it.
+    let source = request
+        .extensions()
+        .get::<Arc<permguard_transport::PeerAddress>>()
+        .map(|address| address.0.to_string());
+    let Ok(body) = axum::body::to_bytes(request.into_body(), MAX_TOKEN_FORM_BYTES).await else {
+        return token_refused(&TokenRefusal::InvalidRequest(format!(
+            "the form is at most {MAX_TOKEN_FORM_BYTES} bytes"
+        )));
+    };
+    let Ok(text) = std::str::from_utf8(&body) else {
+        return token_refused(&TokenRefusal::InvalidRequest(
+            "the form is not UTF-8".to_owned(),
+        ));
+    };
+    let pairs = text
+        .split('&')
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| {
+            let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
+            (percent_decode(name), percent_decode(value))
+        })
+        .collect();
+    let parsed = match TokenRequest::from_form(pairs) {
+        Ok(parsed) => parsed,
+        Err(refusal) => return token_refused(&refusal),
+    };
+    let proof = ClientProof {
+        basic,
+        spki: peer
+            .as_ref()
+            .and_then(|peer| peer.spki_sha256())
+            .map(|digest| format!("spki:sha256:{digest}")),
+        san_uris: peer
+            .as_ref()
+            .map(|peer| peer.san_uris().to_vec())
+            .unwrap_or_default(),
+        certificate_sha256: peer.as_ref().map(|peer| peer.fingerprint().to_owned()),
+        source,
+    };
+    // A client secret's Argon2id runs off the runtime's threads, within the bound every hashing
+    // route shares: past it the request is answered `429` rather than queued.
+    let Some(_slot) = crate::signin_http::hashing_slot() else {
+        return token_refused(&TokenRefusal::TooManyRequests(1));
+    };
+    let api = Arc::clone(&served.api);
+    let answered = tokio::task::spawn_blocking(move || api.issue_token(&parsed, &proof))
+        .await
+        .unwrap_or_else(|_| {
+            Err(TokenRefusal::Unavailable(
+                "the token request was cut short".to_owned(),
+            ))
+        });
+    match answered {
+        Ok(issued) => {
+            let mut response = (StatusCode::OK, Json(issued)).into_response();
+            let headers = response.headers_mut();
+            headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+            response
+        }
+        Err(refusal) => token_refused(&refusal),
+    }
+}
+
+async fn iam_keys(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    answer(&served, StatusCode::OK, served.api.iam_keys(&actor))
+}
+
+async fn authorization_server(State(served): State<Served>) -> Response {
+    answer(&served, StatusCode::OK, served.api.authorization_server())
 }
 
 /// The signed list itself, as `application/statuslist+jwt`: what a verifier outside the cluster

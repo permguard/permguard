@@ -16,6 +16,8 @@ use std::path::Path;
 const ENTRY_POINTS: &[&str] = &[
     "/",
     "/.well-known/server-configuration",
+    // RFC 8414 fixes it: an OAuth client finds the IAM Host's token endpoint there (WP-11.4).
+    "/.well-known/oauth-authorization-server",
     "/health",
     "/healthz",
     "/readyz",

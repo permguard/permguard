@@ -88,6 +88,8 @@ permguard-conformance.workspace = true
 http-body-util.workspace = true
 # Two Hosts' listeners and their peers' client certificates, over loopback mutual TLS (WP-2.3).
 rcgen.workspace = true
+# The status list an access token's entry is read from, decoded as a member would (WP-11.4).
+permguard-objects.workspace = true
 
 [[bench]]
 name = "server_host"

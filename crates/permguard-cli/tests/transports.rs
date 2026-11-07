@@ -1471,6 +1471,7 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
             directory,
             signin: None,
             providers: Vec::new(),
+            exchange_provider_tokens: false,
             min_length: 12,
         })
         // The IAM Host's listener, serving the directory at `/iam/v1` (WP-11.1).

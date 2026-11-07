@@ -205,6 +205,8 @@ struct HostAuthz {
     /// `host.setup`, and the password policy's length a first administrator's password meets.
     setup: permguard_core::authz::Setup,
     min_length: usize,
+    /// Whether `oidc` is among the methods: what a provider's token is exchanged under (WP-11.4).
+    oidc: bool,
 }
 
 /// Builds one of the Host's rings (WP-3.1): laid out on the volume, a legacy ring migrated
@@ -1664,6 +1666,7 @@ impl App {
             signin,
             setup: auth.setup.clone(),
             min_length: auth.authentication.min_length,
+            oidc: auth.authentication.oidc,
         })
     }
 
@@ -2407,6 +2410,7 @@ impl App {
             signin,
             setup: setup_config,
             min_length,
+            oidc,
         } = self.authorization_for(
             config,
             config_file,
@@ -2893,6 +2897,7 @@ impl App {
                 directory: Arc::clone(&directory),
                 signin: signin.clone(),
                 providers: mapper.providers(),
+                exchange_provider_tokens: oidc,
                 min_length: signin.as_ref().map_or(
                     permguard_host::authz::password::DEFAULT_MIN_LENGTH,
                     |signin| signin.policy().min_length,
@@ -2913,10 +2918,10 @@ impl App {
                     );
                     api.with_tokens(Arc::new(permguard_host::api::tokens::Tokens::new(
                         registry,
-                        ring as Arc<dyn permguard_core::keys::Sign>,
+                        ring as Arc<dyn permguard_core::keys::SigningRing>,
                         &host_identity.host_id(),
                         &base,
-                        permguard_host::api::tokens::ListTiming::of(config.assurance().profile()),
+                        config.assurance().profile(),
                     )))
                 }
                 _ => api,
@@ -3401,6 +3406,7 @@ pub(crate) fn custodian_for(
     .into_iter()
     .map(|ring| (ring, config.keys_custody_of(ring)))
     .collect();
+    let host_custody = config.keys_custody();
     let uses = |wanted: KeyCustody| {
         config
             .keys_custodies()
@@ -3437,7 +3443,8 @@ pub(crate) fn custodian_for(
             custodies
                 .iter()
                 .find(|(held, _)| *held == ring)
-                .map_or(KeyCustody::Development, |(_, custody)| *custody)
+                // A ring this list does not name takes the Host's custody, never plaintext.
+                .map_or(host_custody, |(_, custody)| *custody)
         },
         keks,
     );

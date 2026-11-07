@@ -44,6 +44,13 @@ is cut.
   `GET /iam/v1/status-lists/{id}` (`keys.read`) answers the signed `statuslist+jwt`, signed again on a change or after its `ttl`, its lifetime set by the profile; `GET /iam/v1/tokens` lists the live tokens and `POST /iam/v1/tokens/{jti}/revoke` revokes one, audited `iam.token.revoked`, over `permguard.iam.v1.TokenService` too.
   A service account's tokens follow the directory: suspended, resumed, deleted or its credential revoked, checked again at every start.
 
+- **Access tokens from the IAM Host: `POST /iam/v1/token`.**
+  RFC 6749 with the profile of RFC 9068: `client_credentials` proves a service account by `client_secret_basic`, a `private_key_jwt` assertion used once (RFC 7523) or the connection's certificate (RFC 8705); a token exchange (RFC 8693) issues a person's token from a password session or a provider's token.
+  A token is an `at+jwt` signed under `iam.tokens`, carrying one family, `application` (`decision.evaluate`, `event.submit`, on targets of a member's Planes) or `administration` (a member's per-Host operations, to exactly one `member:<member_id>`, for a service account only by a grant of its own), only what its subject may do now in the IAM Host's grants, and its status list entry.
+  `member` and `member/<member_id>` are resources of the IAM Host's tree, what an administration grant names.
+  Lifetimes by family and profile, `cnf` binding an administration token to the client's certificate (required under `regulated`), rate limits per client and source (`429 slow_down`), RFC 6749 errors that never name the grant missing, `no-store`.
+  `GET /iam/v1/keys` publishes the token keys and `GET /.well-known/oauth-authorization-server` the metadata (RFC 8414); `Authorization: Basic` is read by the token endpoint alone.
+
 ### Changed
 
 - **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**

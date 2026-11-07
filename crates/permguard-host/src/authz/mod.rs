@@ -212,6 +212,33 @@ impl Authorization {
             .ok_or_else(|| actor.without_grant())
     }
 
+    /// Whose grant lets `principal` do `operation` on exactly `resource`, when one does: what the
+    /// IAM Host checks before it issues a token for a subject that is not the caller (WP-11.4).
+    pub fn granted_to(
+        &self,
+        principal: &Principal,
+        operation: &str,
+        resource: &Resource,
+    ) -> Option<Principal> {
+        let allows = self.allows();
+        self.subjects_of(principal)
+            .into_iter()
+            .find(|subject| allows.permits(subject, operation, resource))
+    }
+
+    /// Whether `principal` may do `operation` on everything under `scope`, whole (WP-11.4).
+    pub fn principal_covers_whole(
+        &self,
+        principal: &Principal,
+        operation: &str,
+        scope: &Resource,
+    ) -> bool {
+        let allows = self.allows();
+        self.subjects_of(principal)
+            .iter()
+            .any(|subject| allows.permits_whole(subject, operation, scope))
+    }
+
     /// The first stage of a lookup by name: whether `actor` holds anything for `operation` at or
     /// under `scope`. A caller with nothing there is refused before any resource is resolved.
     pub fn may_act_under(

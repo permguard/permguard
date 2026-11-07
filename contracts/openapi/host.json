@@ -8907,10 +8907,289 @@
         },
         "x-grpc-rpc": "permguard.iam.v1.TokenService/RevokeToken"
       }
+    },
+    "/iam/v1/token": {
+      "post": {
+        "operationId": "issueToken",
+        "summary": "Issue an access token",
+        "description": "RFC 6749 with the profile of RFC 9068, on the IAM Host only. `client_credentials` proves a service account by `client_secret_basic`, a `private_key_jwt` assertion (RFC 7523) or the connection's certificate (RFC 8705, `client_id` in the form); `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693) exchanges a person's password session or a provider's token. A token carries one family, application or administration, and only what its subject may do now, in the IAM Host's grants; `Authorization: Basic` is read here and nowhere else. Every answer is `Cache-Control: no-store`.",
+        "requestBody": {
+          "required": true,
+          "description": "The form: `grant_type`, `scope`, `audience` (repeatable), `target` (repeatable), `requested_lifetime`, and the proof's members.",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grant_type": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "audience": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "target": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "requested_lifetime": {
+                    "type": "string"
+                  },
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "client_assertion_type": {
+                    "type": "string"
+                  },
+                  "client_assertion": {
+                    "type": "string"
+                  },
+                  "subject_token": {
+                    "type": "string"
+                  },
+                  "subject_token_type": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "grant_type"
+                ],
+                "additionalProperties": true,
+                "description": "RFC 6749 asks a server to ignore a member it does not know: the form is open."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "What may not be issued, or a request that is not the protocol's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The client's proof failed (`invalid_client`), with `WWW-Authenticate: Basic`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests from this client or this source (`slow_down`), with `Retry-After`.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No token registry is open (`temporarily_unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "the token endpoint is RFC 6749's, a form over HTTP: no client of it speaks gRPC"
+      }
+    },
+    "/iam/v1/keys": {
+      "get": {
+        "operationId": "iamKeys",
+        "summary": "The token keys",
+        "description": "Under `keys.read` on the IAM Host, which a deployment may declare public. The `iam.tokens` public keys as a JWKS: what access tokens and status lists are verified with.",
+        "responses": {
+          "200": {
+            "description": "The JWKS.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "keys": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "required": [
+                    "keys"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without `keys.read`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No token registry is open, or the ring publishes no key yet (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "a JWKS is fetched over HTTP, as RFC 8414's `jwks_uri` names it"
+      }
+    },
+    "/.well-known/oauth-authorization-server": {
+      "get": {
+        "operationId": "authorizationServerMetadata",
+        "summary": "The authorization server's metadata",
+        "description": "RFC 8414, open to every caller: the issuer, the token endpoint, the JWKS, the grant types and the client authentication methods.",
+        "responses": {
+          "200": {
+            "description": "The metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No token registry is open (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "RFC 8414's metadata is a well-known HTTP document"
+      }
     }
   },
   "components": {
     "schemas": {
+      "TokenAnswer": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "The compact `at+jwt`."
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ],
+            "description": "`Bearer`."
+          },
+          "expires_in": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Seconds until it expires."
+          },
+          "scope": {
+            "type": "string",
+            "description": "The operations it carries, space separated."
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "scope"
+        ],
+        "additionalProperties": false,
+        "description": "RFC 6749 §5.1's answer.",
+        "x-grpc-message": null,
+        "x-grpc-note": "RFC 6749's token answer, over HTTP only: the token endpoint has no gRPC binding"
+      },
+      "OAuthError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "The RFC 6749 §5.2 code: `invalid_request`, `invalid_client`, `invalid_grant`, `invalid_scope`, `invalid_target`, `unsupported_grant_type`, `slow_down` or `temporarily_unavailable`."
+          },
+          "error_description": {
+            "type": "string",
+            "description": "The rule that failed, never the grant that is missing."
+          }
+        },
+        "required": [
+          "error",
+          "error_description"
+        ],
+        "additionalProperties": false,
+        "description": "RFC 6749's error answer.",
+        "x-grpc-message": null,
+        "x-grpc-note": "RFC 6749's error answer, over HTTP only: the token endpoint has no gRPC binding"
+      },
       "TokenSummary": {
         "type": "object",
         "properties": {

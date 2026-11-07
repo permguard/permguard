@@ -71,6 +71,9 @@ pub struct Listener<'a> {
     metrics: Metrics,
     authenticator: Option<std::sync::Arc<dyn permguard_core::authz::Authenticator>>,
     streaming: Vec<String>,
+    /// Paths whose `Authorization: Basic` is the route's own client credential (an OAuth token
+    /// endpoint), passed to it unread by the boundary.
+    client_authentication: Vec<String>,
     /// An ingress or a sidecar terminates TLS in front of this listener (`upstream_tls`).
     upstream_tls: bool,
 }
@@ -81,6 +84,14 @@ impl<'a> Listener<'a> {
     /// `limits.body_bytes()` in total. The service behind each bounds every message itself.
     pub fn streaming(mut self, paths: impl IntoIterator<Item = String>) -> Self {
         self.streaming = paths.into_iter().collect();
+
+        self
+    }
+
+    /// Paths where `Authorization: Basic` is the route's own client credential, an OAuth token
+    /// endpoint's `client_secret_basic`: the boundary passes it unread there and only there.
+    pub fn client_authentication(mut self, paths: impl IntoIterator<Item = String>) -> Self {
+        self.client_authentication = paths.into_iter().collect();
 
         self
     }
@@ -140,6 +151,7 @@ impl<'a> Listener<'a> {
             metrics,
             authenticator,
             streaming,
+            client_authentication,
             upstream_tls,
         } = self;
 
@@ -210,7 +222,8 @@ impl<'a> Listener<'a> {
                 .unwrap_or_else(|| std::sync::Arc::new(permguard_core::authz::NoRules));
             let router = router.layer(
                 crate::actor::ActorLayer::new(authenticator)
-                    .refusing_clear_bearer(clear_bearer_refused),
+                    .refusing_clear_bearer(clear_bearer_refused)
+                    .client_authentication(client_authentication),
             );
             // Between the handlers and everything else: nothing below this line runs for a peer the
             // list does not name. Applied conditionally because an empty list means the handshake is
@@ -338,6 +351,7 @@ impl Surface {
             metrics: Metrics::none(),
             authenticator: None,
             streaming: Vec::new(),
+            client_authentication: Vec::new(),
             upstream_tls: false,
         }
     }

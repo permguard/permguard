@@ -225,10 +225,10 @@ fn facade_of(tag: &str, iam_host: bool) -> Arc<HostApi> {
         permguard_host::authz::tokens::TokenRegistry::open(&volume).expect("the registry opens");
     let tokens = Arc::new(permguard_host::api::tokens::Tokens::new(
         token_registry,
-        Arc::clone(&ring) as Arc<dyn permguard_core::keys::Sign>,
+        Arc::clone(&ring) as Arc<dyn permguard_core::keys::SigningRing>,
         &[7; 16],
         "https://iam.example:7443",
-        permguard_host::api::tokens::ListTiming::of(AssuranceProfile::Development),
+        AssuranceProfile::Development,
     ));
     let keys = Arc::new(permguard_host::keys::registry::Registry::new(
         Some(Arc::clone(&identity)),
@@ -346,6 +346,7 @@ fn facade_of(tag: &str, iam_host: bool) -> Arc<HostApi> {
             directory,
             signin: None,
             providers: Vec::new(),
+            exchange_provider_tokens: false,
             min_length: 12,
         })
         .serving_iam(iam_host)
@@ -4153,6 +4154,21 @@ const OPEN_ROUTES: &[(&str, Open, &str)] = &[
         "keys.read is public in this facade",
     ),
     (
+        "POST /iam/v1/token",
+        Open::RefusedToEveryone,
+        "the token endpoint authenticates its clients itself; asked with no form, it refuses everyone alike",
+    ),
+    (
+        "GET /iam/v1/keys",
+        Open::Public,
+        "keys.read is public in this facade, and the token keys are read as every key set is",
+    ),
+    (
+        "GET /.well-known/oauth-authorization-server",
+        Open::Public,
+        "RFC 8414's metadata is open to every caller, as discovery is",
+    ),
+    (
         "GET /iam/v1/status-lists/{id}",
         Open::Public,
         "keys.read is public in this facade, and a list is read as the keys are",
@@ -4480,7 +4496,7 @@ async fn a_member_serves_no_directory_on_either_binding() {
             let body = (method != "GET").then(|| json!({}));
             let ask = |router| walk_rest(router, &method, &concrete, body.as_ref(), Some(STRANGER));
             let (on_member, on_iam) = (ask(&member).await, ask(&iam_host).await);
-            if path.starts_with("/iam/v1/") {
+            if path.starts_with("/iam/v1/") || path == "/.well-known/oauth-authorization-server" {
                 iam_paths += 1;
                 assert_eq!(on_member.0, 404, "{method} {path} on a member");
                 // A public route refuses no stranger, and answers the list it does not hold
@@ -4807,6 +4823,129 @@ async fn a_service_account_secret_is_answered_once_over_grpc() {
         retried.credential.map(|credential| credential.id),
         first.credential.map(|credential| credential.id)
     );
+}
+
+/// WP-11.4: the token endpoint over HTTP. `Authorization: Basic` reaches it through the
+/// boundary, which refuses the scheme everywhere else; a wrong secret is `401 invalid_client` with
+/// `WWW-Authenticate: Basic`, a request that is not a form `400 invalid_request`, and every answer
+/// is `no-store`. Proven by the client's own secret: with no live member, the request then fails on
+/// its audience, `invalid_target`, after the proof held.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_token_endpoint_reads_basic_and_answers_rfc_6749() {
+    use base64::Engine as _;
+
+    let router = host_api::routes(facade("token-endpoint"), Disclosure::Minimal).layer(
+        ActorLayer::new(Arc::new(Bearers))
+            .client_authentication([host_api::http::TOKEN_PATH.to_owned()]),
+    );
+    let rest = Transport::Rest(router.clone());
+    let created = |outcome: Outcome| match outcome {
+        Outcome::Answered(body) => body,
+        Outcome::Refused { code, .. } => panic!("refused: {code}"),
+    };
+    created(
+        rest.rest(
+            "POST",
+            "/iam/v1/service-accounts",
+            Some(ADMIN),
+            Some(json!({"request_id": "sa", "name": "billing", "owner": "payments"})),
+        )
+        .await,
+    );
+    let secret = created(
+        rest.rest(
+            "POST",
+            "/iam/v1/service-accounts/billing/credentials",
+            Some(ADMIN),
+            Some(json!({"request_id": "c1", "kind": "client_secret"})),
+        )
+        .await,
+    )["client_secret"]
+        .as_str()
+        .expect("the secret")
+        .to_owned();
+    let ask = |content_type: &'static str, basic: Option<String>, body: &'static str| {
+        let router = router.clone();
+        async move {
+            let mut request = Request::builder()
+                .method("POST")
+                .uri(host_api::http::TOKEN_PATH)
+                .header("content-type", content_type);
+            if let Some(basic) = basic {
+                request = request.header(
+                    "authorization",
+                    format!(
+                        "Basic {}",
+                        base64::engine::general_purpose::STANDARD.encode(basic)
+                    ),
+                );
+            }
+            let response = router
+                .oneshot(
+                    request
+                        .body(axum::body::Body::from(body))
+                        .expect("a request"),
+                )
+                .await
+                .expect("answered");
+            let headers = response.headers().clone();
+            let status = response.status().as_u16();
+            let bytes = response
+                .into_body()
+                .collect()
+                .await
+                .expect("a body")
+                .to_bytes();
+            let body: Value = serde_json::from_slice(&bytes).expect("JSON");
+            (status, headers, body)
+        }
+    };
+    let form = "application/x-www-form-urlencoded";
+    let grant = "grant_type=client_credentials&scope=decision.evaluate&audience=member%3Anobody&target=plane%2Fdata%2F*";
+    let (status, headers, body) = ask(form, Some(format!("billing:{secret}")), grant).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (400, Some("invalid_target")),
+        "{body}"
+    );
+    assert_eq!(headers["cache-control"], "no-store");
+    let (status, headers, body) =
+        ask(form, Some(format!("billing:pgc_{}", "A".repeat(43))), grant).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (401, Some("invalid_client")),
+        "{body}"
+    );
+    assert_eq!(headers["www-authenticate"], "Basic realm=\"permguard\"");
+    let (status, _, body) = ask("application/json", None, "{}").await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (400, Some("invalid_request"))
+    );
+    let (status, _, body) = ask(form, None, "grant_type=password").await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (400, Some("unsupported_grant_type"))
+    );
+    // Basic stays refused by the boundary on every other route.
+    let refused = router
+        .oneshot(
+            Request::builder()
+                .uri("/iam/v1/service-accounts")
+                .header(
+                    "authorization",
+                    format!(
+                        "Basic {}",
+                        base64::engine::general_purpose::STANDARD
+                            .encode(format!("billing:{secret}"))
+                    ),
+                )
+                .body(axum::body::Body::empty())
+                .expect("a request"),
+        )
+        .await
+        .expect("answered");
+    assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
 }
 
 /// A password is looked at only once the caller is authorized: without the grant, a password the

@@ -33,6 +33,9 @@ pub struct Identities {
     pub directory: Arc<Directory>,
     pub signin: Option<Arc<SignIn>>,
     pub providers: Vec<Arc<Verifier>>,
+    /// Whether `oidc` is among the deployment's methods: only then is a provider's token
+    /// exchanged for an access token (WP-11.4), as only then does the mapper accept one.
+    pub exchange_provider_tokens: bool,
     /// The password policy's `min_length`, for a password an administrator sets.
     pub min_length: usize,
 }
@@ -782,6 +785,8 @@ impl HostApi {
         if !active {
             self.end_sessions(name);
         }
+        // Its tokens follow: `SUSPENDED` while disabled, `VALID` again once enabled (WP-11.5).
+        self.sync_token_statuses(&user_principal(name))?;
         Ok(changed)
     }
 
@@ -858,6 +863,8 @@ impl HostApi {
             )
             .await?;
         self.end_sessions(name);
+        // Every live token of the user is `INVALID` (WP-11.5).
+        self.sync_token_statuses(&principal)?;
         Ok(changed)
     }
 

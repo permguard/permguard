@@ -133,7 +133,7 @@ fn within(plane: &str, resource: &Resource) -> bool {
         Resource::Plane { plane: of }
         | Resource::Zone { plane: of, .. }
         | Resource::Ledger { plane: of, .. } => of == plane,
-        Resource::Host => false,
+        Resource::Host | Resource::Members | Resource::Member { .. } => false,
     }
 }
 

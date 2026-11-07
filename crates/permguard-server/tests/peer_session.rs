@@ -854,8 +854,24 @@ async fn side_with(
             )) as Arc<dyn permguard_host::membership::member::Connector>
         });
     assert!(connector.is_some(), "a client CA makes a peer client");
-    let api = Arc::new(HostApi::new(Composition {
-        authorization: Arc::new(Authorization::new(Arc::clone(&store), &[])),
+    // The directory and the access tokens, as the IAM Host composes them (WP-11.4): the ring
+    // signs tokens here, kept out of the key registry the other tests read.
+    let (directory, _) =
+        permguard_host::authz::directory::Directory::open(&host.volume).expect("the directory");
+    let (token_registry, _) =
+        permguard_host::authz::tokens::TokenRegistry::open(&host.volume).expect("the tokens");
+    let tokens = Arc::new(permguard_host::api::tokens::Tokens::new(
+        token_registry,
+        open_ring(permguard_host::keys::ring::IAM_TOKENS)
+            as Arc<dyn permguard_core::keys::SigningRing>,
+        &host.identity.host_id(),
+        "https://iam.example:7443",
+        AssuranceProfile::Production,
+    ));
+    let api = HostApi::new(Composition {
+        authorization: Arc::new(
+            Authorization::new(Arc::clone(&store), &[]).with_directory(Arc::clone(&directory)),
+        ),
         store: Some(store),
         replay,
         keys: Arc::clone(&keys),
@@ -892,7 +908,17 @@ async fn side_with(
                 .map(|served| served as Arc<dyn permguard_host::composition::StreamShipping>),
             importing: None,
         })),
-    }));
+    })
+    .with_identities(permguard_host::api::directory::Identities {
+        directory,
+        signin: None,
+        providers: Vec::new(),
+        exchange_provider_tokens: false,
+        min_length: 12,
+    })
+    .serving_iam(true)
+    .with_tokens(tokens);
+    let api = Arc::new(api);
     let listener = Surface::listener(
         "host-api",
         "127.0.0.1:0",
@@ -3149,4 +3175,451 @@ async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
         .watch_mirror(task, vec![("zone/ledger/main".to_owned(), 0)])
         .await
         .expect("the watch opens");
+}
+
+/// The claims of a compact JWS, decoded, not verified.
+fn jws_part(compact: &str, at: usize) -> serde_json::Value {
+    use base64::Engine as _;
+    serde_json::from_slice(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(compact.split('.').nth(at).expect("a part"))
+            .expect("base64url"),
+    )
+    .expect("JSON")
+}
+
+/// WP-11.4: the IAM Host issues a service account's token for a member it really approved,
+/// within the account's grants, one family at a time; the token is an `at+jwt` its published key
+/// verifies, its status entry is in a signed list, and the account's suspension and the
+/// credential's revocation reach that entry. A wrong proof, a mixed scope, a target the account
+/// holds nothing on, a member it does not know, a role-derived administration and a replayed
+/// assertion are refused.
+#[tokio::test]
+async fn the_iam_host_issues_tokens_within_the_grants_for_its_live_members() {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use permguard_host::api::directory::{CreateRole, Member, Plain};
+    use permguard_host::api::grants::CreateGrant;
+    use permguard_host::api::service_accounts::{CreateCredential, CreateServiceAccount};
+    use permguard_host::api::token_endpoint::{ClientProof, TokenRefusal, TokenRequest};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+    use ring::signature::KeyPair as _;
+
+    let root = scratch("token-endpoint");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    approved_pair(&coordinator, &member).await;
+    let (record, _) = coordinator
+        .members
+        .live_members()
+        .into_iter()
+        .next()
+        .expect("a live member");
+    let member_id = permguard_host::identity::record::uuid_text(&record.member_id);
+    let api = &coordinator.api;
+    let grant = |id: &str, principal: &str, operation: &str, selector: &str| CreateGrant {
+        request_id: id.to_owned(),
+        expected_revision: None,
+        principal: principal.to_owned(),
+        operations: vec![operation.to_owned()],
+        selector: selector.to_owned(),
+        resource_types: vec!["*".to_owned()],
+        constraints: Default::default(),
+        expires_at: None,
+    };
+    api.create_service_account(
+        &admin(),
+        CreateServiceAccount {
+            request_id: "sa".to_owned(),
+            expected_revision: None,
+            name: "billing".to_owned(),
+            owner: "payments".to_owned(),
+            description: String::new(),
+        },
+    )
+    .await
+    .expect("an account");
+    let secret = api
+        .create_credential(
+            &admin(),
+            "billing",
+            CreateCredential {
+                request_id: "secret".to_owned(),
+                expected_revision: None,
+                kind: "client_secret".to_owned(),
+                public_key: None,
+                certificate: None,
+                expires_at: None,
+            },
+        )
+        .await
+        .expect("a secret");
+    let client_secret = secret.client_secret.clone().expect("drawn");
+    for (id, operation, selector) in [
+        ("g1", "decision.evaluate", "plane/data/zone/billing/*"),
+        ("g2", "identity.read", &*format!("member/{member_id}")),
+    ] {
+        api.create_grant(&admin(), grant(id, "sa:billing", operation, selector))
+            .await
+            .expect("granted");
+    }
+    let basic = ClientProof {
+        basic: Some(("billing".to_owned(), client_secret.clone())),
+        ..ClientProof::default()
+    };
+    let asking = |scope: &str, audience: &str, targets: &[&str]| TokenRequest {
+        grant_type: "client_credentials".to_owned(),
+        scope: Some(scope.to_owned()),
+        audience: vec![audience.to_owned()],
+        target: targets.iter().map(|target| (*target).to_owned()).collect(),
+        ..TokenRequest::default()
+    };
+    let audience = format!("member:{member_id}");
+
+    // An application token, verified against the published key, its status entry valid.
+    let issued = api
+        .issue_token(
+            &asking(
+                "decision.evaluate",
+                &audience,
+                &["plane/data/zone/billing/ledger/l1"],
+            ),
+            &basic,
+        )
+        .expect("issued");
+    assert_eq!(issued.token_type, "Bearer");
+    assert_eq!(issued.expires_in, 3_600);
+    let header = jws_part(&issued.access_token, 0);
+    assert_eq!(header["typ"], "at+jwt");
+    let claims = jws_part(&issued.access_token, 1);
+    assert_eq!(claims["sub"], "sa:billing");
+    assert_eq!(claims["aud"], serde_json::json!([audience]));
+    assert_eq!(claims["permguard_family"], "application");
+    assert_eq!(claims["permguard_tenant"], "default");
+    assert_eq!(claims["scope"], "decision.evaluate");
+    assert_eq!(
+        claims["permguard_target"],
+        serde_json::json!(["plane/data/zone/billing/ledger/l1"])
+    );
+    assert_eq!(claims["client_id"], secret.credential.id);
+    assert!(
+        claims["iss"]
+            .as_str()
+            .is_some_and(|iss| iss.starts_with("urn:permguard:iam:"))
+    );
+    let keys = api.iam_keys(&admin()).expect("the keys");
+    let key = keys["keys"]
+        .as_array()
+        .expect("keys")
+        .iter()
+        .find(|key| key["kid"] == header["kid"])
+        .expect("the kid is published");
+    let (signed, signature) = issued.access_token.rsplit_once('.').expect("three parts");
+    ring::signature::UnparsedPublicKey::new(
+        &ring::signature::ED25519,
+        URL_SAFE_NO_PAD
+            .decode(key["x"].as_str().expect("x"))
+            .expect("base64url"),
+    )
+    .verify(
+        signed.as_bytes(),
+        &URL_SAFE_NO_PAD.decode(signature).expect("base64url"),
+    )
+    .expect("the published key verifies the token");
+    let uri = claims["status"]["status_list"]["uri"]
+        .as_str()
+        .expect("uri");
+    let index = usize::try_from(
+        claims["status"]["status_list"]["idx"]
+            .as_u64()
+            .expect("idx"),
+    )
+    .expect("small");
+    let entry = |api: &HostApi| {
+        let list_id = uri.rsplit('/').next().expect("an id");
+        let token = api.status_list(&admin(), list_id).expect("the list");
+        let lst = jws_part(&token, 1)["status_list"]["lst"]
+            .as_str()
+            .expect("lst")
+            .to_owned();
+        permguard_objects::status_list::StatusList::decode(
+            2,
+            &lst,
+            1 << 20,
+            permguard_objects::status_list::ENTRIES,
+        )
+        .expect("decodes")
+        .get(index)
+        .expect("in range")
+    };
+    assert_eq!(entry(api), 0, "VALID");
+
+    // What is refused, each with its RFC 6749 error.
+    let refused = |request: TokenRequest, proof: &ClientProof| {
+        api.issue_token(&request, proof).expect_err("refused")
+    };
+    let wrong = ClientProof {
+        basic: Some(("billing".to_owned(), format!("pgc_{}", "A".repeat(43)))),
+        ..ClientProof::default()
+    };
+    assert_eq!(
+        refused(
+            asking("decision.evaluate", &audience, &["plane/data/*"]),
+            &wrong
+        )
+        .error(),
+        "invalid_client"
+    );
+    for (request, error) in [
+        (
+            asking(
+                "decision.evaluate identity.read",
+                &audience,
+                &["plane/data/zone/billing/*"],
+            ),
+            "invalid_scope",
+        ),
+        (
+            asking(
+                "decision.evaluate",
+                &audience,
+                &["plane/data/zone/payroll/*"],
+            ),
+            "invalid_scope",
+        ),
+        (
+            asking(
+                "decision.evaluate",
+                "member:0198f2aa-0000-7000-8000-00000000dead",
+                &["plane/data/zone/billing/*"],
+            ),
+            "invalid_target",
+        ),
+        (
+            asking("decision.evaluate", "*", &["plane/data/zone/billing/*"]),
+            "invalid_target",
+        ),
+        (
+            asking("decision.evaluate", &audience, &[]),
+            "invalid_target",
+        ),
+    ] {
+        assert_eq!(refused(request, &basic).error(), error);
+    }
+
+    // An administration token: one member, its own Host, ten minutes by default.
+    let administering = api
+        .issue_token(&asking("identity.read", &audience, &[]), &basic)
+        .expect("an administration token");
+    assert_eq!(administering.expires_in, 600);
+    let claims = jws_part(&administering.access_token, 1);
+    assert_eq!(claims["permguard_family"], "administration");
+    assert_eq!(claims["permguard_target"], serde_json::json!(["host"]));
+    assert!(claims.get("cnf").is_none(), "no certificate, no binding");
+    // Asked over mutual TLS, it is bound to the certificate (RFC 8705): `cnf.x5t#S256`.
+    let bound = api
+        .issue_token(
+            &asking("identity.read", &audience, &[]),
+            &ClientProof {
+                certificate_sha256: Some("ab".repeat(32)),
+                ..basic.clone()
+            },
+        )
+        .expect("a bound administration token");
+    assert_eq!(
+        jws_part(&bound.access_token, 1)["cnf"]["x5t#S256"],
+        URL_SAFE_NO_PAD.encode([0xab; 32])
+    );
+    // Through a role only, a service account administers nothing (D20).
+    api.create_role(
+        &admin(),
+        CreateRole {
+            request_id: "role".to_owned(),
+            expected_revision: None,
+            name: "auditors".to_owned(),
+            description: String::new(),
+        },
+    )
+    .await
+    .expect("a role");
+    api.add_member(
+        &admin(),
+        "auditors",
+        Member {
+            request_id: "member".to_owned(),
+            expected_revision: None,
+            member: "sa:billing".to_owned(),
+        },
+    )
+    .await
+    .expect("a member");
+    api.create_grant(
+        &admin(),
+        grant(
+            "g3",
+            "role:auditors",
+            "audit.read",
+            &format!("member/{member_id}"),
+        ),
+    )
+    .await
+    .expect("granted to the role");
+    assert_eq!(
+        refused(asking("audit.read", &audience, &[]), &basic).error(),
+        "invalid_scope"
+    );
+
+    // A private_key_jwt client: its assertion proves it once.
+    let pair = ring::signature::Ed25519KeyPair::from_seed_unchecked(&[11; 32]).expect("a key");
+    let x = URL_SAFE_NO_PAD.encode(pair.public_key().as_ref());
+    let created = api
+        .create_credential(
+            &admin(),
+            "billing",
+            CreateCredential {
+                request_id: "key".to_owned(),
+                expected_revision: None,
+                kind: "private_key_jwt".to_owned(),
+                public_key: Some(
+                    [("kty", "OKP"), ("crv", "Ed25519"), ("x", x.as_str())]
+                        .into_iter()
+                        .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                        .collect(),
+                ),
+                certificate: None,
+                expires_at: None,
+            },
+        )
+        .await
+        .expect("a key");
+    let kid = created.credential.key_id.expect("a kid");
+    let now = permguard_host::authz::store::now();
+    let assertion = {
+        let header = URL_SAFE_NO_PAD
+            .encode(serde_json::json!({"alg": "EdDSA", "kid": kid, "typ": "JWT"}).to_string());
+        let claims = URL_SAFE_NO_PAD.encode(
+            serde_json::json!({
+                "iss": "billing", "sub": "billing", "jti": "assertion-1",
+                "aud": "https://iam.example:7443/iam/v1/token", "exp": now + 60,
+            })
+            .to_string(),
+        );
+        let signature = URL_SAFE_NO_PAD.encode(pair.sign(format!("{header}.{claims}").as_bytes()));
+        format!("{header}.{claims}.{signature}")
+    };
+    let by_assertion = || TokenRequest {
+        client_assertion_type: Some(
+            "urn:ietf:params:oauth:client-assertion-type:jwt-bearer".to_owned(),
+        ),
+        client_assertion: Some(assertion.clone()),
+        ..asking(
+            "decision.evaluate",
+            &audience,
+            &["plane/data/zone/billing/*"],
+        )
+    };
+    api.issue_token(&by_assertion(), &ClientProof::default())
+        .expect("issued by assertion");
+    assert_eq!(
+        api.issue_token(&by_assertion(), &ClientProof::default())
+            .expect_err("replayed")
+            .error(),
+        "invalid_client"
+    );
+
+    // The account suspended: its tokens' entries say so, and it obtains none.
+    api.set_account_status(
+        &admin(),
+        "billing",
+        false,
+        Plain {
+            request_id: "suspend".to_owned(),
+            expected_revision: None,
+        },
+    )
+    .await
+    .expect("suspended");
+    assert_eq!(entry(api), 2, "SUSPENDED");
+    assert!(matches!(
+        api.issue_token(
+            &asking("decision.evaluate", &audience, &["plane/data/*"]),
+            &basic
+        ),
+        Err(TokenRefusal::InvalidClient(_))
+    ));
+    api.set_account_status(
+        &admin(),
+        "billing",
+        true,
+        Plain {
+            request_id: "resume".to_owned(),
+            expected_revision: None,
+        },
+    )
+    .await
+    .expect("resumed");
+    assert_eq!(entry(api), 0, "VALID again");
+    // Its credential revoked: every token it obtained is invalid, for good.
+    api.revoke_credential(
+        &admin(),
+        "billing",
+        &secret.credential.id,
+        Plain {
+            request_id: "revoke".to_owned(),
+            expected_revision: None,
+        },
+    )
+    .await
+    .expect("revoked");
+    assert_eq!(entry(api), 1, "INVALID");
+    assert!(
+        api.issue_token(
+            &asking("decision.evaluate", &audience, &["plane/data/*"]),
+            &basic
+        )
+        .is_err()
+    );
+
+    // An exchange states its subject token's type (RFC 8693).
+    let untyped = TokenRequest {
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange".to_owned(),
+        subject_token: Some("pgs_anything".to_owned()),
+        ..asking(
+            "decision.evaluate",
+            &audience,
+            &["plane/data/zone/billing/*"],
+        )
+    };
+    assert_eq!(
+        api.issue_token(&untyped, &ClientProof::default())
+            .expect_err("no type")
+            .error(),
+        "invalid_request"
+    );
+    // Every token issued and every request refused is in the security trail; never a secret.
+    let actions = security_actions(&coordinator);
+    assert!(
+        actions.iter().any(|action| action == "iam.token.issued"),
+        "{actions:?}"
+    );
+    assert!(
+        actions.iter().any(|action| action == "iam.token.refused"),
+        "{actions:?}"
+    );
 }

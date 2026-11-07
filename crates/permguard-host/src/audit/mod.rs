@@ -152,6 +152,11 @@ const fn mutation(action: &'static str, root: &'static str) -> ActionSchema {
     }
 }
 
+/// A token the IAM Host issued (WP-11.4).
+pub const AUDIT_TOKEN_ISSUED: &str = "iam.token.issued";
+/// A token request the IAM Host refused (WP-11.4).
+pub const AUDIT_TOKEN_REFUSED: &str = "iam.token.refused";
+
 /// The `access` record of a Host API call that a grant held by another subject than the caller's
 /// principal allowed: one of its roles, or its issuer's (WP-8.1).
 pub const AUTHZ_GRANTED: &str = "host.authz.granted";
@@ -197,6 +202,35 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("iam.credential.revoked", HOST),
     // An access token an administrator revoked (WP-11.5).
     mutation("iam.token.revoked", HOST),
+    // The token endpoint (WP-11.4): every token issued and every request refused. Never a token,
+    // a secret, an assertion or a session: who, for what, and why not.
+    ActionSchema {
+        action: AUDIT_TOKEN_ISSUED,
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("client_id", FactType::Text(256)),
+            ("family", FactType::Text(16)),
+            ("scope", FactType::Text(1024)),
+            ("target", FactType::Text(4096)),
+            ("audience", FactType::Text(2048)),
+            ("jti", FactType::Text(64)),
+            ("expires_at", FactType::Uint),
+        ],
+        max_bytes: 16 * 1024,
+        phases: false,
+    },
+    ActionSchema {
+        action: AUDIT_TOKEN_REFUSED,
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("client_id", FactType::Text(256)),
+            ("reason", FactType::Text(64)),
+        ],
+        max_bytes: 4 * 1024,
+        phases: false,
+    },
     // A Host API call a role's or an issuer's grant allowed (WP-8.1): the principal is the
     // record's subject, the grant's holder a fact, so a role-derived access is never anonymous
     // in the trail.

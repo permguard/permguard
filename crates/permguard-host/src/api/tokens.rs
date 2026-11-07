@@ -73,32 +73,41 @@ struct SignedList {
 /// What the facade signs tokens and lists with, given once the server built it on the IAM Host.
 pub struct Tokens {
     pub registry: Arc<TokenRegistry>,
-    /// The `iam.tokens` ring.
-    pub ring: Arc<dyn permguard_core::keys::Sign>,
+    /// The `iam.tokens` ring: what signs, and the keys it publishes.
+    pub ring: Arc<dyn permguard_core::keys::SigningRing>,
     /// `urn:permguard:iam:<host_id>`.
     pub issuer: String,
     /// Where the IAM Host's listener is reached, `https://…`, without a trailing slash: the base
     /// of every list's `uri`.
     pub base_url: String,
     pub timing: ListTiming,
+    /// The access tokens' lifetimes, by family.
+    pub lifetimes: super::token_endpoint::Lifetimes,
     signed: Mutex<BTreeMap<[u8; 16], SignedList>>,
+    /// The token endpoint's requests per client and per source (WP-11.4).
+    pub(super) limiter: super::token_endpoint::Limiter,
+    /// The client assertions already used (WP-11.4).
+    pub(super) replays: super::token_endpoint::Replays,
 }
 
 impl Tokens {
     pub fn new(
         registry: Arc<TokenRegistry>,
-        ring: Arc<dyn permguard_core::keys::Sign>,
+        ring: Arc<dyn permguard_core::keys::SigningRing>,
         host_id: &[u8; 16],
         base_url: &str,
-        timing: ListTiming,
+        profile: permguard_core::assurance::AssuranceProfile,
     ) -> Self {
         Self {
             registry,
             ring,
             issuer: issuer_of(host_id),
             base_url: base_url.trim_end_matches('/').to_owned(),
-            timing,
+            timing: ListTiming::of(profile),
+            lifetimes: super::token_endpoint::Lifetimes::of(profile),
             signed: Mutex::default(),
+            limiter: super::token_endpoint::Limiter::default(),
+            replays: super::token_endpoint::Replays::default(),
         }
     }
 
@@ -120,6 +129,8 @@ impl Tokens {
             return Ok(None);
         };
         let mut signed = self.signed.lock().unwrap_or_else(PoisonError::into_inner);
+        // A retired list's token is never asked for again.
+        signed.retain(|id, _| self.registry.list(id).is_some());
         if let Some(held) = signed.get(list_id)
             && held.changed_at == view.changed_at
             && now < held.iat.saturating_add(self.timing.ttl)
@@ -144,11 +155,10 @@ impl Tokens {
         });
         let bytes =
             serde_json::to_vec(&payload).map_err(|error| TokenError::Invalid(error.to_string()))?;
-        let parts = crate::composition::sign_jws::<crate::composition::StatusListTokenV1>(
-            &bytes,
-            self.ring.as_ref(),
-        )
-        .map_err(|error| TokenError::Invalid(format!("signing the list: {error}")))?;
+        let ring: &dyn permguard_core::keys::Sign = self.ring.as_ref();
+        let parts =
+            crate::composition::sign_jws::<crate::composition::StatusListTokenV1>(&bytes, ring)
+                .map_err(|error| TokenError::Invalid(format!("signing the list: {error}")))?;
         let compact = format!("{}.{}.{}", parts.protected, parts.payload, parts.signature);
         if compact.len() > MAX_LIST_TOKEN_BYTES {
             return Err(TokenError::Invalid(format!(
@@ -255,9 +265,22 @@ fn view(tokens: &Tokens, token: &IssuedToken) -> TokenView {
     }
 }
 
-/// What the directory says `token`'s status must be: `None` when it says nothing, as for a
-/// person's token.
+/// What the directory says `token`'s status must be: a local user's token follows its user,
+/// disabled `SUSPENDED` and deleted `INVALID`; a service account's follows its account and its
+/// credential; `None` for a provider subject's, which the directory does not hold.
 pub fn status_from_directory(directory: &Directory, token: &IssuedToken) -> Option<u8> {
+    if token.account.is_none() {
+        let name = token
+            .subject
+            .strip_prefix(crate::authz::directory::USER_PREFIX)?;
+        return Some(match directory.user(name) {
+            None => status::INVALID,
+            Some(user) if user.status == crate::authz::directory::UserStatus::Active => {
+                status::VALID
+            }
+            Some(_) => status::SUSPENDED,
+        });
+    }
     let name = token.account.as_ref()?;
     let Some(account) = directory.service_account(name) else {
         return Some(status::INVALID);
@@ -330,6 +353,49 @@ impl HostApi {
             .list_token(&id, self.time.now_secs())
             .map_err(refusal_of)?
             .ok_or_else(not_found)
+    }
+
+    /// `GET /iam/v1/keys`: the `iam.tokens` public keys, a JWKS, under `keys.read` as every key
+    /// set is: what a verifier outside the cluster checks tokens and lists with.
+    pub fn iam_keys(&self, actor: &Actor) -> Result<serde_json::Value, Refusal> {
+        self.admit(actor, operations::KEYS_READ)?;
+        let tokens = self.tokens()?;
+        let keys = tokens.ring.public_keys().map_err(|error| {
+            Refusal::Api(
+                permguard_core::ApiError::new(
+                    ErrorClass::Unavailable,
+                    codes::common::UNAVAILABLE,
+                    "the token ring publishes no key yet",
+                )
+                .with_internal(error.to_string()),
+            )
+        })?;
+        Ok(serde_json::json!({ "keys": keys }))
+    }
+
+    /// `GET /.well-known/oauth-authorization-server` (RFC 8414): what a client needs to ask for a
+    /// token, open to every caller as discovery is.
+    pub fn authorization_server(&self) -> Result<serde_json::Value, Refusal> {
+        let tokens = self.tokens()?;
+        Ok(serde_json::json!({
+            "issuer": tokens.issuer,
+            "token_endpoint": format!("{}/iam/v1/token", tokens.base_url),
+            "jwks_uri": format!("{}/iam/v1/keys", tokens.base_url),
+            "grant_types_supported": [
+                super::token_endpoint::CLIENT_CREDENTIALS,
+                super::token_endpoint::TOKEN_EXCHANGE,
+            ],
+            "token_endpoint_auth_methods_supported": [
+                "client_secret_basic",
+                "private_key_jwt",
+                "tls_client_auth",
+            ],
+            "token_endpoint_auth_signing_alg_values_supported": [
+                crate::authz::credentials::EDDSA,
+                crate::authz::credentials::ES256,
+            ],
+            "permguard_tenant": TENANT,
+        }))
     }
 
     /// `GET /iam/v1/tokens`: every live token, newest first, never a token's bytes.
@@ -470,10 +536,10 @@ mod tests {
         (
             Tokens::new(
                 registry,
-                Arc::clone(&ring) as Arc<dyn permguard_core::keys::Sign>,
+                Arc::clone(&ring) as Arc<dyn permguard_core::keys::SigningRing>,
                 &[7; 16],
                 "https://iam.example:7443/",
-                ListTiming::of(AssuranceProfile::Production),
+                AssuranceProfile::Production,
             ),
             ring,
         )
@@ -705,9 +771,41 @@ mod tests {
             Some(status::INVALID),
             "revoked outranks suspended"
         );
+        // A local user's token follows its user; a provider subject's is not the directory's.
         let mut person = token("billing", 1);
         person.account = None;
+        person.credential_id = None;
         person.subject = "user:paperino".to_owned();
+        assert_eq!(
+            status_from_directory(&directory, &person),
+            Some(status::INVALID),
+            "a user that does not exist"
+        );
+        apply(
+            5,
+            Change::CreateUser {
+                name: "paperino".to_owned(),
+                email: None,
+                display: None,
+                password: None,
+            },
+        );
+        assert_eq!(
+            status_from_directory(&directory, &person),
+            Some(status::VALID)
+        );
+        apply(
+            6,
+            Change::SetStatus {
+                name: "paperino".to_owned(),
+                active: false,
+            },
+        );
+        assert_eq!(
+            status_from_directory(&directory, &person),
+            Some(status::SUSPENDED)
+        );
+        person.subject = "oidc:https://login.example#0042".to_owned();
         assert_eq!(status_from_directory(&directory, &person), None);
     }
 }

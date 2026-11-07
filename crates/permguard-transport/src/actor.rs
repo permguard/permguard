@@ -29,6 +29,7 @@ use permguard_core::authz::{Actor, Authenticator};
 pub struct ActorLayer {
     authenticator: Arc<dyn Authenticator>,
     clear_bearer_refused: bool,
+    client_authentication: Arc<[String]>,
 }
 
 impl ActorLayer {
@@ -37,7 +38,17 @@ impl ActorLayer {
         Self {
             authenticator,
             clear_bearer_refused: false,
+            client_authentication: Arc::from(Vec::new()),
         }
+    }
+
+    /// Paths where `Authorization: Basic` is a client's credential the route reads itself, an
+    /// OAuth token endpoint's `client_secret_basic` (RFC 6749 §2.3.1), not a claim to be somebody
+    /// this boundary decides: there the header passes unread, and the request acts as its peer
+    /// certificate maps, or as nobody. Every other path still refuses the scheme.
+    pub fn client_authentication(mut self, paths: impl IntoIterator<Item = String>) -> Self {
+        self.client_authentication = paths.into_iter().collect::<Vec<_>>().into();
+        self
     }
 
     /// Refuses every bearer token, unread: the listener is in the clear, neither on a loopback
@@ -57,6 +68,7 @@ impl<S> tower_layer::Layer<S> for ActorLayer {
             inner,
             authenticator: Arc::clone(&self.authenticator),
             clear_bearer_refused: self.clear_bearer_refused,
+            client_authentication: Arc::clone(&self.client_authentication),
         }
     }
 }
@@ -67,6 +79,7 @@ pub struct Actored<S> {
     inner: S,
     authenticator: Arc<dyn Authenticator>,
     clear_bearer_refused: bool,
+    client_authentication: Arc<[String]>,
 }
 
 impl<S> Service<Request<Body>> for Actored<S>
@@ -93,8 +106,33 @@ where
         // Credentials the server does not understand are refused, not ignored (RFC 7235): an
         // `Authorization` header is a claim to be somebody, and only `Bearer` is a claim this
         // boundary can read.
+        let client_authenticates = self
+            .client_authentication
+            .iter()
+            .any(|path| path == request.uri().path());
         let bearer = match request.headers().get(http::header::AUTHORIZATION) {
             None => None,
+            Some(value)
+                if client_authenticates
+                    && value
+                        .to_str()
+                        .ok()
+                        .and_then(|value| value.split_once(' '))
+                        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("basic")) =>
+            {
+                // A client's secret travels only over TLS, as a bearer token does.
+                if self.clear_bearer_refused {
+                    return Box::pin(async move {
+                        Ok(bearer_refused(
+                            permguard_core::AccessDenial::unauthenticated(
+                                "a client secret travels only over TLS: this listener is in the clear",
+                            ),
+                            grpc,
+                        ))
+                    });
+                }
+                None
+            }
             Some(value) => match value
                 .to_str()
                 .ok()
@@ -291,6 +329,54 @@ mod tests {
         let (status, body) = ask(None, Some("bad")).await;
         assert_eq!(status, http::StatusCode::UNAUTHORIZED);
         assert!(body.contains("unauthenticated"), "{body}");
+    }
+
+    /// An OAuth token endpoint reads `client_secret_basic` itself (iteration 02, WP-11.4): on the
+    /// paths a listener declares, `Basic` passes unread and the request acts as its peer or as
+    /// nobody; on every other path it is still refused.
+    #[tokio::test]
+    async fn basic_passes_unread_only_where_a_route_authenticates_its_clients() {
+        let router = Router::new()
+            .route(
+                "/token",
+                get(|ActorOf(actor): ActorOf| async move { actor.label() }),
+            )
+            .route(
+                "/who",
+                get(|ActorOf(actor): ActorOf| async move { actor.label() }),
+            )
+            .layer(ActorLayer::new(Arc::new(Rules)).client_authentication(["/token".to_owned()]));
+        let basic = |path: &str| {
+            Request::get(path)
+                .header(http::header::AUTHORIZATION, "Basic YWxpY2U6c2VjcmV0")
+                .body(Body::empty())
+                .expect("a request")
+        };
+        let answered = router
+            .clone()
+            .oneshot(basic("/token"))
+            .await
+            .expect("answered");
+        assert_eq!(answered.status(), http::StatusCode::OK);
+        let bytes = axum::body::to_bytes(answered.into_body(), 1 << 16)
+            .await
+            .expect("the body reads");
+        assert_eq!(String::from_utf8_lossy(&bytes), "anonymous");
+        let refused = router.oneshot(basic("/who")).await.expect("answered");
+        assert_eq!(refused.status(), http::StatusCode::UNAUTHORIZED);
+        // In the clear, a client's secret is refused unread there too, as a bearer token is.
+        let clear = Router::new()
+            .route(
+                "/token",
+                get(|ActorOf(actor): ActorOf| async move { actor.label() }),
+            )
+            .layer(
+                ActorLayer::new(Arc::new(Rules))
+                    .refusing_clear_bearer(true)
+                    .client_authentication(["/token".to_owned()]),
+            );
+        let refused = clear.oneshot(basic("/token")).await.expect("answered");
+        assert_eq!(refused.status(), http::StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

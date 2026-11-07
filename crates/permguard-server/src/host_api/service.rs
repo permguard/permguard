@@ -90,6 +90,8 @@ impl Service for HostApiService {
             .authenticator(context.authenticator())
             // The peer channel is one long-lived stream: bounded per frame, not in total.
             .streaming([super::peer::channel_path()])
+            // The token endpoint reads `client_secret_basic` itself (WP-11.4).
+            .client_authentication([super::http::TOKEN_PATH.to_owned()])
             .start()
             .await
             .context("starting the Host listener")?;
