@@ -255,6 +255,7 @@ The configuration a Host's assurance values render (TD-1): `assurance` and, when
 {{- $rings := dict -}}
 {{- if $c.identity }}{{ $_ := set $rings "host.identity" (dict "custody" (toString $c.identity)) }}{{ end -}}
 {{- if $c.operations }}{{ $_ := set $rings "host.operations" (dict "custody" (toString $c.operations)) }}{{ end -}}
+{{- if $c.tokens }}{{ $_ := set $rings "iam.tokens" (dict "custody" (toString $c.tokens)) }}{{ end -}}
 {{- if $rings }}{{ $_ := set $keys "rings" $rings }}{{ end -}}
 {{- with $c.pkcs11 -}}
 {{- $p := dict -}}

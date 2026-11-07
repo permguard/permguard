@@ -533,6 +533,14 @@ impl App {
 
     /// Supplies what a Plane declares to the Host, registered before any service starts: its
     /// handles reach it through [`ServerContext::plane_handles`] and nothing else.
+    /// Whether `config` selects the Plane `id` among the ones this build declares.
+    fn runs_plane(&self, config: &Config, id: &str) -> bool {
+        self.plane_declarations
+            .iter()
+            .filter_map(|declare| declare(config))
+            .any(|(plane, _, _)| plane == id)
+    }
+
     pub fn with_plane_declaration<F>(mut self, declare: F) -> Self
     where
         F: Fn(&Config) -> Option<(&'static str, bool, permguard_host::composition::Declaration)>
@@ -2200,13 +2208,29 @@ impl App {
         let data_signing_keys = self
             .data_signing_keys_for(config, &opener)
             .context("opening the data.attest key ring")?;
+        // The access tokens' ring, on the IAM Host only: the Host of a Server running a Control
+        // Plane (iteration 02, WP-11.3). A member holds none.
+        let iam_host = self.runs_plane(config, "control");
+        let iam_tokens_keys = if iam_host {
+            Some(
+                crate::plane::factories::iam_tokens_keys_for(config, &opener)
+                    .context("opening the iam.tokens key ring")?,
+            )
+        } else {
+            None
+        };
         let key_registry = Arc::new(permguard_host::keys::registry::Registry::new(
             Some(Arc::clone(&host_identity)),
-            [&keys, &control_signing_keys, &data_signing_keys]
-                .into_iter()
-                .flatten()
-                .cloned()
-                .collect(),
+            [
+                &keys,
+                &control_signing_keys,
+                &data_signing_keys,
+                &iam_tokens_keys,
+            ]
+            .into_iter()
+            .flatten()
+            .cloned()
+            .collect(),
         ));
         mutations
             .recover(key_registry.as_ref())
@@ -2857,11 +2881,6 @@ impl App {
             let api = api.with_setup(Arc::clone(&setup));
             // The directory is served at `/iam/v1` only by the IAM Host: the Host of a Server
             // running a Control Plane (WP-11.1). A member holds none.
-            let iam_host = self
-                .plane_declarations
-                .iter()
-                .filter_map(|declare| declare(config))
-                .any(|(plane, _, _)| plane == "control");
             let api = api.serving_iam(iam_host);
             let api = Arc::new(api);
             serving = Some(Arc::clone(&api));
@@ -3050,6 +3069,11 @@ impl App {
                 "this process hosts both Planes and mirrors, but its Control Plane signs under no \
                  `control.attest` ring: its own ledgers cannot be verified, so it does not mirror them"
             );
+        }
+        // The access tokens' ring rotates with the Host's other rings.
+        if let Some(keys) = iam_tokens_keys.clone() {
+            let keys: Arc<dyn KeyManager> = keys;
+            context = context.with_maintained_ring("iam-tokens", keys);
         }
         if let Some(keys) = control_signing_keys {
             let keys: Arc<dyn KeyManager> = keys;
@@ -3304,13 +3328,21 @@ pub(crate) fn custodian_for(
     volume: &permguard_host::storage::volume::Volume,
 ) -> Result<Arc<permguard_host::keys::custody::Custodian>> {
     use permguard_core::config::KeyCustody;
-    use permguard_host::keys::ring::{CONTROL_ATTEST, DATA_ATTEST, HOST_IDENTITY, HOST_OPERATIONS};
+    use permguard_host::keys::ring::{
+        CONTROL_ATTEST, DATA_ATTEST, HOST_IDENTITY, HOST_OPERATIONS, IAM_TOKENS,
+    };
 
-    let custodies: Vec<(&'static str, KeyCustody)> =
-        [HOST_IDENTITY, HOST_OPERATIONS, CONTROL_ATTEST, DATA_ATTEST]
-            .into_iter()
-            .map(|ring| (ring, config.keys_custody_of(ring)))
-            .collect();
+    // Every ring this build may open: a ring missing here would fall to the plaintext custody.
+    let custodies: Vec<(&'static str, KeyCustody)> = [
+        HOST_IDENTITY,
+        HOST_OPERATIONS,
+        CONTROL_ATTEST,
+        DATA_ATTEST,
+        IAM_TOKENS,
+    ]
+    .into_iter()
+    .map(|ring| (ring, config.keys_custody_of(ring)))
+    .collect();
     let uses = |wanted: KeyCustody| {
         config
             .keys_custodies()

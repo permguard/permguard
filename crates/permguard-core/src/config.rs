@@ -873,6 +873,9 @@ pub const SETTING_KEYS_CUSTODY: &str = "PERMGUARD_KEYS_CUSTODY";
 pub const SETTING_KEYS_IDENTITY_CUSTODY: &str = "PERMGUARD_KEYS_IDENTITY_CUSTODY";
 /// Runtime setting key for the custody of the `host.operations` ring, when it differs.
 pub const SETTING_KEYS_OPERATIONS_CUSTODY: &str = "PERMGUARD_KEYS_OPERATIONS_CUSTODY";
+/// Runtime setting key for the custody of the IAM Host's `iam.tokens` ring, when it differs
+/// (iteration 02, WP-11.3).
+pub const SETTING_KEYS_TOKENS_CUSTODY: &str = "PERMGUARD_KEYS_TOKENS_CUSTODY";
 /// Runtime setting key for what holds the key-encryption key of the `file` custody: `secret`
 /// (the secret store), `pkcs11` or `kms`.
 pub const SETTING_KEYS_KEK_PROVIDER: &str = "PERMGUARD_KEYS_KEK_PROVIDER";
@@ -1546,6 +1549,7 @@ pub struct Config {
     keys_maintenance_interval: Duration,
     keys_custody: Option<KeyCustody>,
     keys_identity_custody: Option<KeyCustody>,
+    keys_tokens_custody: Option<KeyCustody>,
     keys_operations_custody: Option<KeyCustody>,
     keys_kek_provider: KekProvider,
     keys_kek_ref: Option<SecretRef>,
@@ -1754,6 +1758,7 @@ impl Default for Config {
             keys_maintenance_interval: DEFAULT_KEYS_MAINTENANCE_INTERVAL,
             keys_custody: None,
             keys_identity_custody: None,
+            keys_tokens_custody: None,
             keys_operations_custody: None,
             keys_kek_provider: KekProvider::Secret,
             keys_kek_ref: None,
@@ -4426,11 +4431,13 @@ produce: use `EdDSA` or `ES256`"
         )
     }
 
-    /// The custody of `ring`: `host.identity` and `host.operations` may override the Host's.
+    /// The custody of `ring`: `host.identity`, `host.operations` and `iam.tokens` may override the
+    /// Host's.
     pub fn keys_custody_of(&self, ring: &str) -> KeyCustody {
         let overridden = match ring {
             "host.identity" => self.keys_identity_custody,
             "host.operations" => self.keys_operations_custody,
+            "iam.tokens" => self.keys_tokens_custody,
             _ => None,
         };
         overridden.unwrap_or_else(|| self.keys_custody())
@@ -4506,7 +4513,17 @@ produce: use `EdDSA` or `ES256`"
         if self.data_signing_keys_enabled() {
             rings.push(("data.attest", self.keys_custody_of("data.attest")));
         }
+        // The IAM Host's ring, when its custody is stated: whether this Host is the IAM Host is
+        // the composition's to know, which checks the ring's custody where it opens it.
+        if self.keys_tokens_custody.is_some() {
+            rings.push(("iam.tokens", self.keys_custody_of("iam.tokens")));
+        }
         rings
+    }
+
+    /// Whether the custody of the `iam.tokens` ring was stated apart from the Host's.
+    pub fn keys_tokens_custody_stated(&self) -> bool {
+        self.keys_tokens_custody.is_some()
     }
 
     /// Returns the effective value of a declared setting, when any layer supplied one.
@@ -4810,6 +4827,9 @@ produce: use `EdDSA` or `ES256`"
             }
             SETTING_KEYS_OPERATIONS_CUSTODY => {
                 Some(self.keys_custody_of("host.operations").as_str().to_owned())
+            }
+            SETTING_KEYS_TOKENS_CUSTODY => {
+                Some(self.keys_custody_of("iam.tokens").as_str().to_owned())
             }
             SETTING_KEYS_KEK_PROVIDER => Some(self.keys_kek_provider.as_str().to_owned()),
             SETTING_KEYS_KEK_REF => self.keys_kek_ref.as_ref().map(|r| r.name().to_owned()),
@@ -6154,6 +6174,7 @@ produce: use `EdDSA` or `ES256`"
                 SETTING_KEYS_OPERATIONS_CUSTODY,
                 &mut self.keys_operations_custody,
             ),
+            (SETTING_KEYS_TOKENS_CUSTODY, &mut self.keys_tokens_custody),
         ] {
             if let Some(value) = settings.get(setting) {
                 *field = Some(KeyCustody::parse(value).with_context(|| {
@@ -6597,6 +6618,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_KEYS_DIRECTORY,
     SETTING_KEYS_ENABLED,
     SETTING_KEYS_IDENTITY_CUSTODY,
+    SETTING_KEYS_TOKENS_CUSTODY,
     SETTING_KEYS_KEK_PROVIDER,
     SETTING_KEYS_KEK_REF,
     SETTING_KEYS_KEK_VERSION,

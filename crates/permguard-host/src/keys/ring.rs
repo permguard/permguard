@@ -82,8 +82,16 @@ pub const HOST_OPERATIONS: &str = "host.operations";
 pub const CONTROL_ATTEST: &str = "control.attest";
 /// The Data Plane's ring.
 pub const DATA_ATTEST: &str = "data.attest";
+/// The IAM Host's ring (iteration 02, WP-11.3): access tokens and status list tokens.
+pub const IAM_TOKENS: &str = "iam.tokens";
 /// The rings this build registers.
-pub const REGISTERED: &[&str] = &[HOST_IDENTITY, HOST_OPERATIONS, CONTROL_ATTEST, DATA_ATTEST];
+pub const REGISTERED: &[&str] = &[
+    HOST_IDENTITY,
+    HOST_OPERATIONS,
+    CONTROL_ATTEST,
+    DATA_ATTEST,
+    IAM_TOKENS,
+];
 
 /// The most bytes a ring binding's envelope takes: its payload's bound, the protected header and
 /// the signature. Checked before the envelope is parsed.

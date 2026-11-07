@@ -441,14 +441,22 @@ above). Dual control is in force by the `regulated` profile itself and has no va
       "host.identity" (get $env "PERMGUARD_KEYS_IDENTITY_CUSTODY" | default (toString (dig "rings" "host.identity" "custody" "" $keys)) | default $host)
       "host.operations" (get $env "PERMGUARD_KEYS_OPERATIONS_CUSTODY" | default (toString (dig "rings" "host.operations" "custody" "" $keys)) | default $host)
 }}
+{{- /* The access tokens' ring is opened only by the IAM Host: a unit that runs a Control Plane. */ -}}
+{{- $iamHost := has (toString $unit.kind) (list "controlPlane" "allInOne") }}
+{{- if $iamHost }}
+{{- $_ := set $rings "iam.tokens" (get $env "PERMGUARD_KEYS_TOKENS_CUSTODY" | default (toString (dig "rings" "iam.tokens" "custody" "" $keys)) | default $host) }}
+{{- end }}
 {{- $custodies := list $host (get $rings "host.identity") (get $rings "host.operations") }}
+{{- if $iamHost }}
+{{- $custodies = append $custodies (get $rings "iam.tokens") }}
+{{- end }}
 {{- if and (ne $profile "development") (has "development" $custodies) }}
 {{- fail (printf "%s: the `development` custody keeps private keys in plaintext files, which the `%s` profile refuses: use `file` (envelope-encrypted) or, better, `pkcs11` or `kms`." $label $profile) }}
 {{- end }}
 {{- /* Two sources of the same custody: the assurance values and the configuration. */ -}}
 {{- $stated := dig "operations" "keys" dict $unit.extraConfig }}
 {{- $values := $unit.assurance.custody | default dict }}
-{{- range $pair := list (list "provider" (dig "custody" "" $stated)) (list "identity" (dig "rings" "host.identity" "custody" "" $stated)) (list "operations" (dig "rings" "host.operations" "custody" "" $stated)) }}
+{{- range $pair := list (list "provider" (dig "custody" "" $stated)) (list "identity" (dig "rings" "host.identity" "custody" "" $stated)) (list "operations" (dig "rings" "host.operations" "custody" "" $stated)) (list "tokens" (dig "rings" "iam.tokens" "custody" "" $stated)) }}
 {{- $fromValues := toString (get $values (index $pair 0)) }}
 {{- $fromConfig := toString (index $pair 1) }}
 {{- if and $fromValues $fromConfig (ne $fromValues $fromConfig) }}
@@ -521,9 +529,9 @@ above). Dual control is in force by the `regulated` profile itself and has no va
 {{- if $.Values.developmentMode }}
 {{- fail (printf "%s: the `regulated` profile is not served in developmentMode, which is somebody's laptop." $label) }}
 {{- end }}
-{{- range $ring := list "host.identity" "host.operations" }}
+{{- range $ring := (ternary (list "host.identity" "host.operations" "iam.tokens") (list "host.identity" "host.operations") $iamHost) }}
 {{- if not (has (get $rings $ring) (list "pkcs11" "kms")) }}
-{{- fail (printf "%s: the `regulated` profile keeps `%s` in HSM or KMS custody (pkcs11 or kms), and its custody is `%s`: state assurance.custody (provider, or the ring's own identity/operations) with its references." $label $ring (get $rings $ring)) }}
+{{- fail (printf "%s: the `regulated` profile keeps `%s` in HSM or KMS custody (pkcs11 or kms), and its custody is `%s`: state assurance.custody (provider, or the ring's own identity/operations/tokens) with its references." $label $ring (get $rings $ring)) }}
 {{- end }}
 {{- end }}
 {{- if and $unit.tls $unit.tls.terminatedUpstream }}

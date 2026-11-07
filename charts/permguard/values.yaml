@@ -259,9 +259,10 @@ dataPlane:
     # The serving floor of every replica (`development`, `production`, `regulated`), rendered into
     # its Host configuration, checked at Bootstrap and published by discovery. `custody` says where
     # the Host's private keys are held: `provider` (`development`, `file`, `pkcs11`, `kms`), the
-    # `identity` and `operations` rings when they differ, and the `pkcs11` (`module`, `tokenLabel`,
-    # `pinRef`) or `kms` (`address`, `mount`, `tokenRef`, `ca`) references. `regulated` keeps
-    # `host.identity` and `host.operations` in `pkcs11` or `kms`, and the chart refuses it otherwise.
+    # `identity`, `operations` and, on a Control Plane, `tokens` (`iam.tokens`) rings when they
+    # differ, and the `pkcs11` (`module`, `tokenLabel`, `pinRef`) or `kms` (`address`, `mount`,
+    # `tokenRef`, `ca`) references. `regulated` keeps `host.identity`, `host.operations` and
+    # `iam.tokens` in `pkcs11` or `kms`, and the chart refuses it otherwise.
     # Where decisions are recorded, `host.operations` stays out of a remote KMS: it signs while a
     # decision waits (TS-4).
     assurance:

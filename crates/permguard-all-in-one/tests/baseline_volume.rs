@@ -488,9 +488,18 @@ fn test_the_baseline_volume_recovers_through_every_migration() {
     assert_eq!(
         status
             .lines()
-            .filter(|line| line.contains("(idle)"))
+            .filter(|line| line.contains("(idle)") && !line.starts_with("keys-iam-tokens"))
             .count(),
         SUBSYSTEMS.len(),
+        "{status}"
+    );
+    // The access tokens' ring (WP-11.3), which the all-in-one opens as the IAM Host, has no
+    // legacy directory: it is laid out at the target version, and nothing migrates it.
+    assert!(
+        status
+            .lines()
+            .any(|line| line
+                == "keys-iam-tokens: version 2 generation 1 in host/keys/iam.tokens (idle)"),
         "{status}"
     );
     for legacy in [

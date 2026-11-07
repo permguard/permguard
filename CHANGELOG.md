@@ -33,6 +33,11 @@ is cut.
   Each holds at most 8 live credentials: a `client_secret` the Host draws (`pgc_…`, answered once by the call that made it, only its Argon2id hash kept), a `private_key_jwt` public key (Ed25519 or P-256, its `kid` the RFC 7638 thumbprint), or a `tls_client_auth` binding (an SPKI digest or a SAN URI, naming one account).
   Every change is a directory transition, audited `iam.service_account.*` or `iam.credential.*`; the transition's labels are registered in `contracts/cbor/directory.json`.
 
+- **The `iam.tokens` key ring on the IAM Host.**
+  The Host of a Server running a Control Plane opens the ring that will sign access tokens and status list tokens, rotates it with its other rings and lists it at `/host/v1/keys`; a member opens none.
+  Its custody is the Host's unless `operations.keys.rings."iam.tokens".custody` (`PERMGUARD_KEYS_TOKENS_CUSTODY`, chart `assurance.custody.tokens`) states another; a KMS is allowed, since it never signs on a decision path.
+  `regulated` keeps it in a PKCS#11 token or a KMS and no profile but `development` keeps it in plaintext, refused at start and by the Helm chart.
+
 ### Changed
 
 - **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**

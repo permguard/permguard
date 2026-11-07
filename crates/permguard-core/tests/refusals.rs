@@ -715,3 +715,40 @@ fn test_the_host_listener_takes_no_upstream_termination() {
     ]));
     assert!(why.contains("public.tls.terminated_upstream"), "{why}");
 }
+
+/// WP-11.3: the `iam.tokens` custody, when stated, is the ring's own and is held to the profile's
+/// rules like any ring: plaintext is a relaxation `production` refuses.
+#[test]
+fn a_stated_iam_tokens_custody_is_read_and_held_to_the_profile() {
+    let config = serving(&[(SETTING_KEYS_TOKENS_CUSTODY, "kms")]);
+    assert_eq!(config.keys_custody_of("iam.tokens"), KeyCustody::Kms);
+    assert!(config.keys_tokens_custody_stated());
+    assert!(
+        config
+            .keys_custodies()
+            .contains(&("iam.tokens", KeyCustody::Kms))
+    );
+    // Unstated, it is the Host's custody and listed nowhere: the composition opens it.
+    let unstated = serving(&[]);
+    assert!(!unstated.keys_tokens_custody_stated());
+    assert!(
+        unstated
+            .keys_custodies()
+            .iter()
+            .all(|(ring, _)| *ring != "iam.tokens")
+    );
+    assert_eq!(
+        unstated.keys_custody_of("iam.tokens"),
+        unstated.keys_custody()
+    );
+    let plaintext = serving(&[
+        (SETTING_ASSURANCE_PROFILE, "production"),
+        (SETTING_KEYS_CUSTODY, "file"),
+        (SETTING_KEYS_TOKENS_CUSTODY, "development"),
+    ]);
+    assert!(
+        plaintext
+            .relaxations_in_force()
+            .contains(&permguard_core::assurance::Relaxation::CustodyPlaintext)
+    );
+}

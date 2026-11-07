@@ -1096,6 +1096,45 @@ dataPlane:
     );
 }
 
+/// WP-11.3: the IAM Host's `iam.tokens` ring follows the same rule, on a unit that runs a Control
+/// Plane only: a data plane group opens no such ring, and its custody is not asked for there.
+#[test]
+fn a_regulated_control_plane_keeps_iam_tokens_in_hsm_or_kms() {
+    refused(
+        "\
+controlPlane:
+  assurance:
+    profile: regulated
+    custody:
+      provider: pkcs11
+      pkcs11: { module: /m.so, tokenLabel: t, pinRef: p }
+      tokens: file
+",
+        "iam.tokens",
+    );
+    refused(
+        "\
+controlPlane:
+  assurance:
+    profile: regulated
+    custody:
+      provider: pkcs11
+      pkcs11: { module: /m.so, tokenLabel: t, pinRef: p }
+  extraEnv: [{ name: PERMGUARD_KEYS_TOKENS_CUSTODY, value: file }]
+",
+        "iam.tokens",
+    );
+    // A data plane group with the same values renders: it holds no token ring.
+    render_verified(&format!(
+        "\
+dataPlane:
+  groups:
+    - name: vault
+      selector: plane/data/*{PKCS11}      extraEnv: [{{ name: PERMGUARD_KEYS_TOKENS_CUSTODY, value: file }}]
+"
+    ));
+}
+
 #[test]
 fn a_regulated_group_with_pkcs11_or_kms_custody_renders() {
     let rendered = render_verified(&format!(
