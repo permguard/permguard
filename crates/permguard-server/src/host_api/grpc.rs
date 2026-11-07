@@ -12,8 +12,9 @@ use tonic::{Request, Response, Status};
 use permguard_core::Disclosure;
 use permguard_host::api::{self, HostApi, Refusal};
 
+use super::iam_v1::grant_service_server::GrantService;
+use super::iam_v1::recovery_service_server::RecoveryService;
 use super::v1;
-use super::v1::grant_service_server::GrantService;
 use super::v1::identity_service_server::IdentityService;
 use super::v1::key_service_server::KeyService;
 use super::v1::operations_service_server::OperationsService;
@@ -862,34 +863,6 @@ impl OperationsService for Served {
         }))
     }
 
-    async fn get_recovery(
-        &self,
-        request: Request<v1::GetRecoveryRequest>,
-    ) -> Answer<v1::GetRecoveryResponse> {
-        let actor = permguard_transport::actor_of(request.extensions());
-        let view = self.blocking(move |api| api.recovery(&actor)).await?;
-        Ok(Response::new(v1::GetRecoveryResponse {
-            waiting: view.waiting,
-            started_at: view.started_at,
-            reason: view.reason,
-        }))
-    }
-
-    async fn acknowledge_recovery(
-        &self,
-        request: Request<v1::AcknowledgeRecoveryRequest>,
-    ) -> Answer<v1::AcknowledgeRecoveryResponse> {
-        let actor = permguard_transport::actor_of(request.extensions());
-        let done = self
-            .blocking(move |api| api.acknowledge_recovery(&actor))
-            .await?;
-        Ok(Response::new(v1::AcknowledgeRecoveryResponse {
-            acknowledged: done.acknowledged,
-            started_at: done.started_at,
-            reason: done.reason,
-        }))
-    }
-
     async fn list_backups(
         &self,
         request: Request<v1::ListBackupsRequest>,
@@ -1021,6 +994,38 @@ impl OperationsService for Served {
         Ok(Response::new(v1::ApprovePlanResponse {
             receipt: Some(receipt(approved.receipt)),
             plan: Some(plan_out(approved.plan)?),
+        }))
+    }
+}
+
+/// Recovery, on the IAM Host (iteration 02, WP-11.1): `permguard.iam.v1.RecoveryService`.
+#[tonic::async_trait]
+impl RecoveryService for Served {
+    async fn get_recovery(
+        &self,
+        request: Request<v1::GetRecoveryRequest>,
+    ) -> Answer<v1::GetRecoveryResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let view = self.blocking(move |api| api.recovery(&actor)).await?;
+        Ok(Response::new(v1::GetRecoveryResponse {
+            waiting: view.waiting,
+            started_at: view.started_at,
+            reason: view.reason,
+        }))
+    }
+
+    async fn acknowledge_recovery(
+        &self,
+        request: Request<v1::AcknowledgeRecoveryRequest>,
+    ) -> Answer<v1::AcknowledgeRecoveryResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let done = self
+            .blocking(move |api| api.acknowledge_recovery(&actor))
+            .await?;
+        Ok(Response::new(v1::AcknowledgeRecoveryResponse {
+            acknowledged: done.acknowledged,
+            started_at: done.started_at,
+            reason: done.reason,
         }))
     }
 }

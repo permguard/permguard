@@ -868,7 +868,7 @@
         "x-grpc-note": "the session messages travel as frames of `IdentityService/PeerChannel`, never as one rpc each"
       }
     },
-    "/host/v1/grants": {
+    "/iam/v1/grants": {
       "get": {
         "operationId": "listGrants",
         "summary": "The grants, with their revisions",
@@ -944,7 +944,7 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.GrantService/ListGrants"
+        "x-grpc-rpc": "permguard.iam.v1.GrantService/ListGrants"
       },
       "post": {
         "operationId": "createGrant",
@@ -1040,10 +1040,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.GrantService/CreateGrant"
+        "x-grpc-rpc": "permguard.iam.v1.GrantService/CreateGrant"
       }
     },
-    "/host/v1/grants/{id}/revoke/plan": {
+    "/iam/v1/grants/{id}/revoke/plan": {
       "post": {
         "operationId": "planGrantRevoke",
         "summary": "Plan the revocation of a grant",
@@ -1160,10 +1160,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.GrantService/PlanGrantRevoke"
+        "x-grpc-rpc": "permguard.iam.v1.GrantService/PlanGrantRevoke"
       }
     },
-    "/host/v1/grants/{id}/revoke/run": {
+    "/iam/v1/grants/{id}/revoke/run": {
       "post": {
         "operationId": "runGrantRevoke",
         "summary": "Run the planned revocation",
@@ -1280,7 +1280,7 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.GrantService/RunGrantRevoke"
+        "x-grpc-rpc": "permguard.iam.v1.GrantService/RunGrantRevoke"
       }
     },
     "/host/v1/keys": {
@@ -5541,7 +5541,7 @@
         "x-grpc-rpc": "permguard.host.v1.OperationsService/RunGc"
       }
     },
-    "/host/v1/roles": {
+    "/iam/v1/roles": {
       "get": {
         "operationId": "listRoles",
         "summary": "The roles",
@@ -5595,7 +5595,7 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.RoleService/ListRoles"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/ListRoles"
       },
       "post": {
         "operationId": "createRole",
@@ -5681,10 +5681,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.RoleService/CreateRole"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/CreateRole"
       }
     },
-    "/host/v1/roles/{name}": {
+    "/iam/v1/roles/{name}": {
       "get": {
         "operationId": "getRole",
         "summary": "One role",
@@ -5760,7 +5760,7 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.RoleService/GetRole"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/GetRole"
       },
       "patch": {
         "operationId": "updateRole",
@@ -5868,10 +5868,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.RoleService/UpdateRole"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/UpdateRole"
       }
     },
-    "/host/v1/roles/{name}/delete": {
+    "/iam/v1/roles/{name}/delete": {
       "post": {
         "operationId": "deleteRole",
         "summary": "Delete a role",
@@ -5978,10 +5978,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.RoleService/DeleteRole"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/DeleteRole"
       }
     },
-    "/host/v1/roles/{name}/members": {
+    "/iam/v1/roles/{name}/members": {
       "post": {
         "operationId": "addRoleMember",
         "summary": "Add a member to a role",
@@ -6088,10 +6088,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.RoleService/AddMember"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/AddMember"
       }
     },
-    "/host/v1/roles/{name}/members/remove": {
+    "/iam/v1/roles/{name}/members/remove": {
       "post": {
         "operationId": "removeRoleMember",
         "summary": "Remove a member from a role",
@@ -6198,10 +6198,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.RoleService/RemoveMember"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/RemoveMember"
       }
     },
-    "/host/v1/principals/{principal}/roles": {
+    "/iam/v1/principals/{principal}/roles": {
       "get": {
         "operationId": "rolesOf",
         "summary": "The roles of a principal",
@@ -6270,10 +6270,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.RoleService/RolesOf"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/RolesOf"
       }
     },
-    "/host/v1/users": {
+    "/iam/v1/users": {
       "get": {
         "operationId": "listUsers",
         "summary": "The local users",
@@ -6327,7 +6327,7 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/ListUsers"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/ListUsers"
       },
       "post": {
         "operationId": "createUser",
@@ -6413,10 +6413,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/CreateUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/CreateUser"
       }
     },
-    "/host/v1/users/{name}": {
+    "/iam/v1/users/{name}": {
       "get": {
         "operationId": "getUser",
         "summary": "One local user",
@@ -6492,7 +6492,7 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/GetUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/GetUser"
       },
       "patch": {
         "operationId": "updateUser",
@@ -6600,10 +6600,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/UpdateUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/UpdateUser"
       }
     },
-    "/host/v1/users/{name}/password": {
+    "/iam/v1/users/{name}/password": {
       "post": {
         "operationId": "setUserPassword",
         "summary": "Set a local user's password",
@@ -6710,10 +6710,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/SetPassword"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/SetPassword"
       }
     },
-    "/host/v1/users/{name}/disable": {
+    "/iam/v1/users/{name}/disable": {
       "post": {
         "operationId": "disableUser",
         "summary": "Disable a local user",
@@ -6820,10 +6820,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/SetUserStatus"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/SetUserStatus"
       }
     },
-    "/host/v1/users/{name}/enable": {
+    "/iam/v1/users/{name}/enable": {
       "post": {
         "operationId": "enableUser",
         "summary": "Enable a local user",
@@ -6930,10 +6930,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/SetUserStatus"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/SetUserStatus"
       }
     },
-    "/host/v1/users/{name}/factor/reset": {
+    "/iam/v1/users/{name}/factor/reset": {
       "post": {
         "operationId": "resetUserFactor",
         "summary": "Reset a local user's second factor",
@@ -7040,10 +7040,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/ResetFactor"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/ResetFactor"
       }
     },
-    "/host/v1/users/{name}/unlock": {
+    "/iam/v1/users/{name}/unlock": {
       "post": {
         "operationId": "unlockUser",
         "summary": "Lift a local user's sign-in lockout",
@@ -7119,10 +7119,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/UnlockUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/UnlockUser"
       }
     },
-    "/host/v1/users/{name}/links": {
+    "/iam/v1/users/{name}/links": {
       "post": {
         "operationId": "linkUser",
         "summary": "Link a local user to an identity provider subject",
@@ -7229,10 +7229,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/LinkUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/LinkUser"
       }
     },
-    "/host/v1/users/{name}/links/remove": {
+    "/iam/v1/users/{name}/links/remove": {
       "post": {
         "operationId": "unlinkUser",
         "summary": "Unlink a local user from a subject",
@@ -7339,10 +7339,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/LinkUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/LinkUser"
       }
     },
-    "/host/v1/users/{name}/delete": {
+    "/iam/v1/users/{name}/delete": {
       "post": {
         "operationId": "deleteUser",
         "summary": "Delete a local user",
@@ -7449,10 +7449,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.UserService/DeleteUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/DeleteUser"
       }
     },
-    "/host/v1/providers": {
+    "/iam/v1/providers": {
       "get": {
         "operationId": "listProviders",
         "summary": "The identity providers",
@@ -7506,10 +7506,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.ProviderService/ListProviders"
+        "x-grpc-rpc": "permguard.iam.v1.ProviderService/ListProviders"
       }
     },
-    "/host/v1/providers/{name}/refresh": {
+    "/iam/v1/providers/{name}/refresh": {
       "post": {
         "operationId": "refreshProvider",
         "summary": "Fetch a provider's keys now",
@@ -7585,10 +7585,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.ProviderService/RefreshProvider"
+        "x-grpc-rpc": "permguard.iam.v1.ProviderService/RefreshProvider"
       }
     },
-    "/host/v1/recovery": {
+    "/iam/v1/recovery": {
       "get": {
         "operationId": "getRecovery",
         "summary": "The recovery waiting to be acknowledged",
@@ -7642,10 +7642,10 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/GetRecovery"
+        "x-grpc-rpc": "permguard.iam.v1.RecoveryService/GetRecovery"
       }
     },
-    "/host/v1/recovery/acknowledge": {
+    "/iam/v1/recovery/acknowledge": {
       "post": {
         "operationId": "acknowledgeRecovery",
         "summary": "Acknowledge the recovery",
@@ -7699,7 +7699,7 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/AcknowledgeRecovery"
+        "x-grpc-rpc": "permguard.iam.v1.RecoveryService/AcknowledgeRecovery"
       }
     }
   },
@@ -8114,7 +8114,7 @@
           "grants"
         ],
         "additionalProperties": false,
-        "description": "What `GET /host/v1/grants` answers.",
+        "description": "What `GET /iam/v1/grants` answers.",
         "x-grpc-message": "permguard.host.v1.ListGrantsResponse"
       },
       "CreateGrantBody": {
@@ -8187,7 +8187,7 @@
           "selector"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/grants` carries: the contract's `{principal, operations[], selector, resource_types[], constraints?, expires_at?}` with the envelope's request id and expected revision. A closed body.",
+        "description": "What `POST /iam/v1/grants` carries: the contract's `{principal, operations[], selector, resource_types[], constraints?, expires_at?}` with the envelope's request id and expected revision. A closed body.",
         "x-grpc-message": "permguard.host.v1.CreateGrantRequest"
       },
       "AuditReference": {
@@ -8298,7 +8298,7 @@
           "request_id"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/grants/{id}/revoke/plan` carries. A closed body.",
+        "description": "What `POST /iam/v1/grants/{id}/revoke/plan` carries. A closed body.",
         "x-grpc-message": "permguard.host.v1.PlanGrantRevokeRequest",
         "x-grpc-only": [
           "grant_id"
@@ -8376,7 +8376,7 @@
           "receipt"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/grants/{id}/revoke/run` carries. A closed body.",
+        "description": "What `POST /iam/v1/grants/{id}/revoke/run` carries. A closed body.",
         "x-grpc-message": "permguard.host.v1.RunGrantRevokeRequest",
         "x-grpc-only": [
           "grant_id"
@@ -13702,7 +13702,7 @@
           "roles"
         ],
         "additionalProperties": false,
-        "description": "What `GET /host/v1/roles` answers.",
+        "description": "What `GET /iam/v1/roles` answers.",
         "x-grpc-message": "permguard.host.v1.ListRolesResponse"
       },
       "RoleDetail": {
@@ -13756,7 +13756,7 @@
           "directory_revision"
         ],
         "additionalProperties": false,
-        "description": "What `GET /host/v1/roles/{name}` answers.",
+        "description": "What `GET /iam/v1/roles/{name}` answers.",
         "x-grpc-message": "permguard.host.v1.GetRoleResponse"
       },
       "DirectoryChanged": {
@@ -13823,7 +13823,7 @@
           "name"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/roles` carries. A closed body.",
+        "description": "What `POST /iam/v1/roles` carries. A closed body.",
         "x-grpc-message": "permguard.host.v1.CreateRoleRequest"
       },
       "UpdateRoleBody": {
@@ -13856,7 +13856,7 @@
           "description"
         ],
         "additionalProperties": false,
-        "description": "What `PATCH /host/v1/roles/{name}` carries. A closed body.",
+        "description": "What `PATCH /iam/v1/roles/{name}` carries. A closed body.",
         "x-grpc-message": "permguard.host.v1.UpdateRoleRequest",
         "x-grpc-only": [
           "name"
@@ -13887,7 +13887,7 @@
           "request_id"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/roles/{name}/delete` carries. A closed body.",
+        "description": "What `POST /iam/v1/roles/{name}/delete` carries. A closed body.",
         "x-grpc-message": "permguard.host.v1.DeleteRoleRequest",
         "x-grpc-only": [
           "name"
@@ -13924,7 +13924,7 @@
           "member"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/roles/{name}/members` and `…/members/remove` carry. A closed body.",
+        "description": "What `POST /iam/v1/roles/{name}/members` and `…/members/remove` carry. A closed body.",
         "x-grpc-message": "permguard.host.v1.MemberRequest",
         "x-grpc-only": [
           "role"
@@ -14045,7 +14045,7 @@
           "users"
         ],
         "additionalProperties": false,
-        "description": "What `GET /host/v1/users` answers.",
+        "description": "What `GET /iam/v1/users` answers.",
         "x-grpc-message": "permguard.host.v1.ListUsersResponse"
       },
       "UserDetail": {
@@ -14077,7 +14077,7 @@
           "directory_revision"
         ],
         "additionalProperties": false,
-        "description": "What `GET /host/v1/users/{name}` answers.",
+        "description": "What `GET /iam/v1/users/{name}` answers.",
         "x-grpc-message": "permguard.host.v1.GetUserResponse"
       },
       "CreateUserBody": {
@@ -14134,7 +14134,7 @@
           "name"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/users` carries. A closed body.",
+        "description": "What `POST /iam/v1/users` carries. A closed body.",
         "x-grpc-message": "permguard.host.v1.CreateUserRequest"
       },
       "UpdateUserBody": {
@@ -14177,7 +14177,7 @@
           "request_id"
         ],
         "additionalProperties": false,
-        "description": "What `PATCH /host/v1/users/{name}` carries. A closed body.",
+        "description": "What `PATCH /iam/v1/users/{name}` carries. A closed body.",
         "x-grpc-message": "permguard.host.v1.UpdateUserRequest",
         "x-grpc-only": [
           "name"
@@ -14205,7 +14205,7 @@
           "password"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/users/{name}/password` carries. A closed body.",
+        "description": "What `POST /iam/v1/users/{name}/password` carries. A closed body.",
         "x-grpc-message": "permguard.host.v1.SetPasswordRequest",
         "x-grpc-only": [
           "name"
@@ -14236,7 +14236,7 @@
           "request_id"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/users/{name}/disable` and `…/enable` carry. A closed body.",
+        "description": "What `POST /iam/v1/users/{name}/disable` and `…/enable` carry. A closed body.",
         "x-grpc-message": "permguard.host.v1.SetUserStatusRequest",
         "x-grpc-only": [
           "name",
@@ -14268,7 +14268,7 @@
           "request_id"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/users/{name}/factor/reset` and `…/delete` carry. A closed body.",
+        "description": "What `POST /iam/v1/users/{name}/factor/reset` and `…/delete` carry. A closed body.",
         "x-grpc-message": "permguard.host.v1.UserPlainRequest",
         "x-grpc-only": [
           "name"
@@ -14288,7 +14288,7 @@
           "unlocked"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/users/{name}/unlock` answers.",
+        "description": "What `POST /iam/v1/users/{name}/unlock` answers.",
         "x-grpc-message": "permguard.host.v1.UnlockUserResponse"
       },
       "LinkUserBody": {
@@ -14312,7 +14312,7 @@
           "subject"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/users/{name}/links` and `…/links/remove` carry. A closed body.",
+        "description": "What `POST /iam/v1/users/{name}/links` and `…/links/remove` carry. A closed body.",
         "x-grpc-message": "permguard.host.v1.LinkUserRequest",
         "x-grpc-only": [
           "name",
@@ -14464,7 +14464,7 @@
           "providers"
         ],
         "additionalProperties": false,
-        "description": "What `GET /host/v1/providers` answers.",
+        "description": "What `GET /iam/v1/providers` answers.",
         "x-grpc-message": "permguard.host.v1.ListProvidersResponse"
       },
       "RecoveryView": {
@@ -14498,7 +14498,7 @@
           "reason"
         ],
         "additionalProperties": false,
-        "description": "What `GET /host/v1/recovery` answers.",
+        "description": "What `GET /iam/v1/recovery` answers.",
         "x-grpc-message": "permguard.host.v1.GetRecoveryResponse"
       },
       "RecoveryAcknowledged": {
@@ -14532,7 +14532,7 @@
           "reason"
         ],
         "additionalProperties": false,
-        "description": "What `POST /host/v1/recovery/acknowledge` answers.",
+        "description": "What `POST /iam/v1/recovery/acknowledge` answers.",
         "x-grpc-message": "permguard.host.v1.AcknowledgeRecoveryResponse"
       }
     }

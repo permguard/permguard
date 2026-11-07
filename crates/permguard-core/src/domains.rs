@@ -360,12 +360,14 @@ pub mod grpc {
     /// The Host API services the Host listener serves (WP-2.5); membership and evidence arrive
     /// with their packages.
     pub const HOST_IDENTITY_SERVICE: &str = "permguard.host.v1.IdentityService";
-    pub const HOST_GRANT_SERVICE: &str = "permguard.host.v1.GrantService";
     pub const HOST_KEY_SERVICE: &str = "permguard.host.v1.KeyService";
-    pub const HOST_ROLE_SERVICE: &str = "permguard.host.v1.RoleService";
-    pub const HOST_USER_SERVICE: &str = "permguard.host.v1.UserService";
-    pub const HOST_PROVIDER_SERVICE: &str = "permguard.host.v1.ProviderService";
     pub const HOST_OPERATIONS_SERVICE: &str = "permguard.host.v1.OperationsService";
+    /// The directory services the IAM Host serves (WP-11.1).
+    pub const IAM_GRANT_SERVICE: &str = "permguard.iam.v1.GrantService";
+    pub const IAM_ROLE_SERVICE: &str = "permguard.iam.v1.RoleService";
+    pub const IAM_USER_SERVICE: &str = "permguard.iam.v1.UserService";
+    pub const IAM_PROVIDER_SERVICE: &str = "permguard.iam.v1.ProviderService";
+    pub const IAM_RECOVERY_SERVICE: &str = "permguard.iam.v1.RecoveryService";
 }
 
 /// Labels inside HKDF `info` tuples.
@@ -735,15 +737,16 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             grpc::TEMPORAL_POLICY_DECISION_POINT,
         ),
         ("grpc.HOST_IDENTITY_SERVICE", grpc::HOST_IDENTITY_SERVICE),
-        ("grpc.HOST_GRANT_SERVICE", grpc::HOST_GRANT_SERVICE),
         ("grpc.HOST_KEY_SERVICE", grpc::HOST_KEY_SERVICE),
-        ("grpc.HOST_ROLE_SERVICE", grpc::HOST_ROLE_SERVICE),
-        ("grpc.HOST_USER_SERVICE", grpc::HOST_USER_SERVICE),
-        ("grpc.HOST_PROVIDER_SERVICE", grpc::HOST_PROVIDER_SERVICE),
         (
             "grpc.HOST_OPERATIONS_SERVICE",
             grpc::HOST_OPERATIONS_SERVICE,
         ),
+        ("grpc.IAM_GRANT_SERVICE", grpc::IAM_GRANT_SERVICE),
+        ("grpc.IAM_ROLE_SERVICE", grpc::IAM_ROLE_SERVICE),
+        ("grpc.IAM_USER_SERVICE", grpc::IAM_USER_SERVICE),
+        ("grpc.IAM_PROVIDER_SERVICE", grpc::IAM_PROVIDER_SERVICE),
+        ("grpc.IAM_RECOVERY_SERVICE", grpc::IAM_RECOVERY_SERVICE),
     ]
 }
 

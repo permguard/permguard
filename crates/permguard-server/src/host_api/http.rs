@@ -1,7 +1,8 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The REST binding of the Host API: `/host/v1/…`, each route one call into the facade.
+//! The REST binding of the Host API: `/host/v1/…` and, on the IAM Host, `/iam/v1/…`, each route
+//! one call into the facade.
 
 use std::sync::Arc;
 
@@ -42,8 +43,48 @@ impl Served {
     }
 }
 
-/// The routes of the Host API.
+/// The routes of the Host API: the directory at `/iam/v1` only on the IAM Host (WP-11.1).
 pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
+    let iam_host = api.is_iam_host();
+    let host = host_routes();
+    let router = if iam_host {
+        host.merge(iam_routes())
+    } else {
+        host
+    };
+    router.with_state(Served { api, disclosure })
+}
+
+/// The directory of the IAM Host: grants, roles, users, identity providers and the recovery.
+fn iam_routes() -> Router<Served> {
+    Router::new()
+        .route("/iam/v1/grants", get(list_grants).post(create_grant))
+        .route("/iam/v1/grants/{id}/revoke/plan", post(plan_revoke))
+        .route("/iam/v1/grants/{id}/revoke/run", post(run_revoke))
+        .route("/iam/v1/roles", get(list_roles).post(create_role))
+        .route("/iam/v1/roles/{name}", get(get_role).patch(update_role))
+        .route("/iam/v1/roles/{name}/delete", post(delete_role))
+        .route("/iam/v1/roles/{name}/members", post(add_member))
+        .route("/iam/v1/roles/{name}/members/remove", post(remove_member))
+        .route("/iam/v1/principals/{principal}/roles", get(roles_of))
+        .route("/iam/v1/users", get(list_users).post(create_user))
+        .route("/iam/v1/users/{name}", get(get_user).patch(update_user))
+        .route("/iam/v1/users/{name}/password", post(set_password))
+        .route("/iam/v1/users/{name}/disable", post(disable_user))
+        .route("/iam/v1/users/{name}/enable", post(enable_user))
+        .route("/iam/v1/users/{name}/factor/reset", post(reset_factor))
+        .route("/iam/v1/users/{name}/unlock", post(unlock_user))
+        .route("/iam/v1/users/{name}/links", post(link_user))
+        .route("/iam/v1/users/{name}/links/remove", post(unlink_user))
+        .route("/iam/v1/users/{name}/delete", post(delete_user))
+        .route("/iam/v1/recovery", get(recovery))
+        .route("/iam/v1/recovery/acknowledge", post(acknowledge_recovery))
+        .route("/iam/v1/providers", get(list_providers))
+        .route("/iam/v1/providers/{name}/refresh", post(refresh_provider))
+}
+
+/// What every Host serves about itself.
+fn host_routes() -> Router<Served> {
     Router::new()
         .route("/host/v1/identity", get(identity))
         .route("/host/v1/identity/verify", post(verify_identity))
@@ -53,29 +94,6 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/ring-bindings", get(ring_bindings))
         .route("/host/v1/sessions/hello", post(session_over_rest))
         .route("/host/v1/sessions/prove", post(session_over_rest))
-        .route("/host/v1/grants", get(list_grants).post(create_grant))
-        .route("/host/v1/grants/{id}/revoke/plan", post(plan_revoke))
-        .route("/host/v1/grants/{id}/revoke/run", post(run_revoke))
-        .route("/host/v1/roles", get(list_roles).post(create_role))
-        .route("/host/v1/roles/{name}", get(get_role).patch(update_role))
-        .route("/host/v1/roles/{name}/delete", post(delete_role))
-        .route("/host/v1/roles/{name}/members", post(add_member))
-        .route("/host/v1/roles/{name}/members/remove", post(remove_member))
-        .route("/host/v1/principals/{principal}/roles", get(roles_of))
-        .route("/host/v1/users", get(list_users).post(create_user))
-        .route("/host/v1/users/{name}", get(get_user).patch(update_user))
-        .route("/host/v1/users/{name}/password", post(set_password))
-        .route("/host/v1/users/{name}/disable", post(disable_user))
-        .route("/host/v1/users/{name}/enable", post(enable_user))
-        .route("/host/v1/users/{name}/factor/reset", post(reset_factor))
-        .route("/host/v1/users/{name}/unlock", post(unlock_user))
-        .route("/host/v1/users/{name}/links", post(link_user))
-        .route("/host/v1/users/{name}/links/remove", post(unlink_user))
-        .route("/host/v1/users/{name}/delete", post(delete_user))
-        .route("/host/v1/recovery", get(recovery))
-        .route("/host/v1/recovery/acknowledge", post(acknowledge_recovery))
-        .route("/host/v1/providers", get(list_providers))
-        .route("/host/v1/providers/{name}/refresh", post(refresh_provider))
         .route("/host/v1/keys", get(list_rings))
         .route("/host/v1/keys/bundle", get(key_bundle))
         .route("/host/v1/keys/{ring}", get(get_ring))
@@ -150,7 +168,6 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/backups", get(list_backups))
         .route("/host/v1/gc/{job}/plan", post(plan_gc))
         .route("/host/v1/gc/{job}/run", post(run_gc))
-        .with_state(Served { api, disclosure })
 }
 
 /// A closed JSON body: declared `application/json`, well formed, no member the shape does not

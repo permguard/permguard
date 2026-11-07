@@ -392,6 +392,8 @@ fn launch_host(
                     })),
                 })
                 .with_streams(Arc::new(FixedStreams))
+                // A coordinator stands for the IAM Host, serving the directory (WP-11.1).
+                .serving_iam(role == Role::Coordinator)
                 // The application-consistent backups (TC-3).
                 .with_backups(
                     Arc::new(

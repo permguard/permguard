@@ -27,6 +27,14 @@ is cut.
   `host members list` and `get` show `member_id`, `name` and `groups`.
   A name another live member Host holds is refused `member_name_taken`, at enrollment, approval or rename; two operations that would give one Host two records, or one record to two Hosts, are refused `member_record_conflict`, nothing written.
 
+### Changed
+
+- **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**
+  Grants, roles, local users, identity providers and the recovery are served by the Host of a Server running a Control Plane, at `/iam/v1/grants`, `/iam/v1/roles`, `/iam/v1/principals/{principal}/roles`, `/iam/v1/users`, `/iam/v1/providers` and `/iam/v1/recovery`, and over gRPC by `permguard.iam.v1.GrantService`, `RoleService`, `UserService`, `ProviderService` and `RecoveryService`.
+  `GetRecovery` and `AcknowledgeRecovery` leave `OperationsService` for `RecoveryService`.
+  A Host running only a Data Plane is a member and serves none of them: its listener answers `404` and `UNIMPLEMENTED`.
+  The `/host/v1` paths of these routes are gone, with no alias.
+
 ### Removed
 
 - **The configured link between Planes.**

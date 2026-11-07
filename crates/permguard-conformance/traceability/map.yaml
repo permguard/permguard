@@ -4244,7 +4244,7 @@ sections:
       - crates/permguard-server/tests/host_api.rs::the_listener_binds_admin_addr_over_tls_and_serves_the_public_ring
       - crates/permguard-server/tests/host_api.rs::the_listener_is_a_no_op_without_an_address_and_refuses_to_start_without_tls_or_facade
       - crates/permguard-telemetry/tests/probes.rs::test_the_keys_route_redirects_to_the_host_listener_once_one_is_named
-      - crates/permguard-conformance/tests/host_api_stub.rs::test_the_host_api_declares_the_six_services_of_the_contract
+      - crates/permguard-conformance/tests/host_api_stub.rs::test_the_host_api_declares_the_five_services_of_every_host
       - crates/permguard-host/src/api/keys/tests.rs::the_ring_is_public_with_its_epoch_digest_and_binding_and_the_list_is_gated
   "1-architecture/1-architecture-server.md#authentication":
     informative: "a pointer to the 2-security folder, stating no rule of its own"

@@ -284,6 +284,9 @@ pub struct HostApi {
     identities: Option<directory::Identities>,
     /// The setup folder, whose recovery an administrator acknowledges (WP-8.2).
     setup: Option<Arc<crate::setup::Setup>>,
+    /// Whether this Host is the IAM Host: the one of a Server running a Control Plane, the only
+    /// one serving the directory at `/iam/v1` (WP-11.1).
+    iam_host: bool,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -324,7 +327,20 @@ impl HostApi {
             local_shipping: None,
             identities: None,
             setup: None,
+            iam_host: false,
         }
+    }
+
+    /// Whether this facade serves the directory at `/iam/v1`: true for the Host of a Server
+    /// running a Control Plane (WP-11.1). A member holds no directory, so it serves none.
+    pub fn serving_iam(mut self, iam_host: bool) -> Self {
+        self.iam_host = iam_host;
+        self
+    }
+
+    /// Whether this facade serves the directory at `/iam/v1`.
+    pub fn is_iam_host(&self) -> bool {
+        self.iam_host
     }
 
     /// This facade shipping its Data Plane's streams to its own Control Plane through `local`

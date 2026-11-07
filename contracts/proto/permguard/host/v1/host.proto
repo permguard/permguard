@@ -87,70 +87,6 @@ service MembershipService {
   rpc SyncMembership(SyncMembershipRequest) returns (SyncMembershipResponse);
 }
 
-// REST group: grants.
-service GrantService {
-  // `GET /host/v1/grants`.
-  rpc ListGrants(ListGrantsRequest) returns (ListGrantsResponse);
-  // `POST /host/v1/grants`.
-  rpc CreateGrant(CreateGrantRequest) returns (CreateGrantResponse);
-  // `POST /host/v1/grants/{id}/revoke/plan`.
-  rpc PlanGrantRevoke(PlanGrantRevokeRequest) returns (PlanGrantRevokeResponse);
-  // `POST /host/v1/grants/{id}/revoke/run`.
-  rpc RunGrantRevoke(RunGrantRevokeRequest) returns (RunGrantRevokeResponse);
-}
-
-// REST group: roles and members (WP-8.1).
-service RoleService {
-  // `GET /host/v1/roles`.
-  rpc ListRoles(ListRolesRequest) returns (ListRolesResponse);
-  // `GET /host/v1/roles/{name}`.
-  rpc GetRole(GetRoleRequest) returns (GetRoleResponse);
-  // `POST /host/v1/roles`.
-  rpc CreateRole(CreateRoleRequest) returns (DirectoryChangeResponse);
-  // `PATCH /host/v1/roles/{name}`.
-  rpc UpdateRole(UpdateRoleRequest) returns (DirectoryChangeResponse);
-  // `POST /host/v1/roles/{name}/delete`.
-  rpc DeleteRole(DeleteRoleRequest) returns (DirectoryChangeResponse);
-  // `POST /host/v1/roles/{name}/members`.
-  rpc AddMember(MemberRequest) returns (DirectoryChangeResponse);
-  // `POST /host/v1/roles/{name}/members/remove`.
-  rpc RemoveMember(MemberRequest) returns (DirectoryChangeResponse);
-  // `GET /host/v1/principals/{principal}/roles`.
-  rpc RolesOf(RolesOfRequest) returns (RolesOfResponse);
-}
-
-// REST group: local users (WP-8.1).
-service UserService {
-  // `GET /host/v1/users`.
-  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
-  // `GET /host/v1/users/{name}`.
-  rpc GetUser(GetUserRequest) returns (GetUserResponse);
-  // `POST /host/v1/users`.
-  rpc CreateUser(CreateUserRequest) returns (DirectoryChangeResponse);
-  // `PATCH /host/v1/users/{name}`.
-  rpc UpdateUser(UpdateUserRequest) returns (DirectoryChangeResponse);
-  // `POST /host/v1/users/{name}/password`.
-  rpc SetPassword(SetPasswordRequest) returns (DirectoryChangeResponse);
-  // `POST /host/v1/users/{name}/disable` and `…/enable`.
-  rpc SetUserStatus(SetUserStatusRequest) returns (DirectoryChangeResponse);
-  // `POST /host/v1/users/{name}/factor/reset`.
-  rpc ResetFactor(UserPlainRequest) returns (DirectoryChangeResponse);
-  // `POST /host/v1/users/{name}/unlock`.
-  rpc UnlockUser(UnlockUserRequest) returns (UnlockUserResponse);
-  // `POST /host/v1/users/{name}/links` and `…/links/remove`.
-  rpc LinkUser(LinkUserRequest) returns (DirectoryChangeResponse);
-  // `POST /host/v1/users/{name}/delete`.
-  rpc DeleteUser(UserPlainRequest) returns (DirectoryChangeResponse);
-}
-
-// REST group: identity providers (WP-8.1).
-service ProviderService {
-  // `GET /host/v1/providers`.
-  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse);
-  // `POST /host/v1/providers/{name}/refresh`.
-  rpc RefreshProvider(RefreshProviderRequest) returns (Provider);
-}
-
 // REST group: keys and secrets.
 service KeyService {
   // `GET /host/v1/keys`.
@@ -229,10 +165,6 @@ service OperationsService {
   rpc ListPlans(ListPlansRequest) returns (ListPlansResponse);
   // `POST /host/v1/plans/{id}/approve`.
   rpc ApprovePlan(ApprovePlanRequest) returns (ApprovePlanResponse);
-  // `GET /host/v1/recovery` (WP-8.2).
-  rpc GetRecovery(GetRecoveryRequest) returns (GetRecoveryResponse);
-  // `POST /host/v1/recovery/acknowledge` (WP-8.2).
-  rpc AcknowledgeRecovery(AcknowledgeRecoveryRequest) returns (AcknowledgeRecoveryResponse);
 }
 
 // A frame of the peer channel (WP-2.3): one message of the session protocol, its bytes the
@@ -829,7 +761,7 @@ message VerifyMemberResponse {
   Member member = 4;
   Receipt receipt = 5;
 }
-// `GET /host/v1/grants?principal&selector`: both filters optional, exact matches.
+// `GET /iam/v1/grants?principal&selector`: both filters optional, exact matches.
 message ListGrantsRequest {
   string principal = 1;
   string selector = 2;
@@ -871,7 +803,7 @@ message AuditReference {
   optional uint64 seq = 2;
   optional string digest = 3;
 }
-// `POST /host/v1/grants`.
+// `POST /iam/v1/grants`.
 message CreateGrantRequest {
   string request_id = 1;
   optional uint64 expected_revision = 2;
@@ -887,7 +819,7 @@ message CreateGrantResponse {
   Receipt receipt = 1;
   Grant grant = 2;
 }
-// `POST /host/v1/grants/{id}/revoke/plan`.
+// `POST /iam/v1/grants/{id}/revoke/plan`.
 message PlanGrantRevokeRequest {
   string grant_id = 1;
   string request_id = 2;
@@ -905,7 +837,7 @@ message PlanGrantRevokeResponse {
   // How many principals other than the planner must approve it before it runs.
   uint64 approvals_required = 6;
 }
-// `POST /host/v1/grants/{id}/revoke/run`.
+// `POST /iam/v1/grants/{id}/revoke/run`.
 message RunGrantRevokeRequest {
   reserved 3, 4;
   string grant_id = 1;

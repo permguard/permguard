@@ -16,6 +16,12 @@ pub mod host_v1 {
     tonic::include_proto!("permguard.host.v1");
 }
 
+/// The generated halves of identity and access, `permguard.iam.v1` (iteration 02, WP-11.1).
+#[allow(clippy::all, missing_docs)]
+pub mod iam_v1 {
+    include!(concat!(env!("OUT_DIR"), "/iam/permguard.iam.v1.rs"));
+}
+
 /// The repository's `contracts/` directory.
 pub fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts")

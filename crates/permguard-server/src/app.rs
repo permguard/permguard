@@ -2855,6 +2855,14 @@ impl App {
             });
             // The recovery an administrator acknowledges (WP-8.2).
             let api = api.with_setup(Arc::clone(&setup));
+            // The directory is served at `/iam/v1` only by the IAM Host: the Host of a Server
+            // running a Control Plane (WP-11.1). A member holds none.
+            let iam_host = self
+                .plane_declarations
+                .iter()
+                .filter_map(|declare| declare(config))
+                .any(|(plane, _, _)| plane == "control");
+            let api = api.serving_iam(iam_host);
             let api = Arc::new(api);
             serving = Some(Arc::clone(&api));
             context = context.with_host_handles(api);

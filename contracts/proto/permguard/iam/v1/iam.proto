@@ -1,0 +1,86 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+// Identity and access, `permguard.iam.v1` (iteration 02, WP-11.1): the directory a Host that runs a
+// Control Plane holds, the IAM Host, served under `/iam/v1` over REST. A Host that runs only a Data
+// Plane serves none of these services. The messages are the Host API's, `permguard.host.v1`: the
+// operations moved, their shapes did not.
+
+syntax = "proto3";
+
+package permguard.iam.v1;
+
+import "permguard/host/v1/host.proto";
+
+// REST group: grants.
+service GrantService {
+  // `GET /iam/v1/grants`.
+  rpc ListGrants(permguard.host.v1.ListGrantsRequest) returns (permguard.host.v1.ListGrantsResponse);
+  // `POST /iam/v1/grants`.
+  rpc CreateGrant(permguard.host.v1.CreateGrantRequest) returns (permguard.host.v1.CreateGrantResponse);
+  // `POST /iam/v1/grants/{id}/revoke/plan`.
+  rpc PlanGrantRevoke(permguard.host.v1.PlanGrantRevokeRequest) returns (permguard.host.v1.PlanGrantRevokeResponse);
+  // `POST /iam/v1/grants/{id}/revoke/run`.
+  rpc RunGrantRevoke(permguard.host.v1.RunGrantRevokeRequest) returns (permguard.host.v1.RunGrantRevokeResponse);
+}
+
+// REST group: roles and members (WP-8.1).
+service RoleService {
+  // `GET /iam/v1/roles`.
+  rpc ListRoles(permguard.host.v1.ListRolesRequest) returns (permguard.host.v1.ListRolesResponse);
+  // `GET /iam/v1/roles/{name}`.
+  rpc GetRole(permguard.host.v1.GetRoleRequest) returns (permguard.host.v1.GetRoleResponse);
+  // `POST /iam/v1/roles`.
+  rpc CreateRole(permguard.host.v1.CreateRoleRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `PATCH /iam/v1/roles/{name}`.
+  rpc UpdateRole(permguard.host.v1.UpdateRoleRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `POST /iam/v1/roles/{name}/delete`.
+  rpc DeleteRole(permguard.host.v1.DeleteRoleRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `POST /iam/v1/roles/{name}/members`.
+  rpc AddMember(permguard.host.v1.MemberRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `POST /iam/v1/roles/{name}/members/remove`.
+  rpc RemoveMember(permguard.host.v1.MemberRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `GET /iam/v1/principals/{principal}/roles`.
+  rpc RolesOf(permguard.host.v1.RolesOfRequest) returns (permguard.host.v1.RolesOfResponse);
+}
+
+// REST group: local users (WP-8.1).
+service UserService {
+  // `GET /iam/v1/users`.
+  rpc ListUsers(permguard.host.v1.ListUsersRequest) returns (permguard.host.v1.ListUsersResponse);
+  // `GET /iam/v1/users/{name}`.
+  rpc GetUser(permguard.host.v1.GetUserRequest) returns (permguard.host.v1.GetUserResponse);
+  // `POST /iam/v1/users`.
+  rpc CreateUser(permguard.host.v1.CreateUserRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `PATCH /iam/v1/users/{name}`.
+  rpc UpdateUser(permguard.host.v1.UpdateUserRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `POST /iam/v1/users/{name}/password`.
+  rpc SetPassword(permguard.host.v1.SetPasswordRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `POST /iam/v1/users/{name}/disable` and `…/enable`.
+  rpc SetUserStatus(permguard.host.v1.SetUserStatusRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `POST /iam/v1/users/{name}/factor/reset`.
+  rpc ResetFactor(permguard.host.v1.UserPlainRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `POST /iam/v1/users/{name}/unlock`.
+  rpc UnlockUser(permguard.host.v1.UnlockUserRequest) returns (permguard.host.v1.UnlockUserResponse);
+  // `POST /iam/v1/users/{name}/links` and `…/links/remove`.
+  rpc LinkUser(permguard.host.v1.LinkUserRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+  // `POST /iam/v1/users/{name}/delete`.
+  rpc DeleteUser(permguard.host.v1.UserPlainRequest) returns (permguard.host.v1.DirectoryChangeResponse);
+}
+
+// REST group: identity providers (WP-8.1).
+service ProviderService {
+  // `GET /iam/v1/providers`.
+  rpc ListProviders(permguard.host.v1.ListProvidersRequest) returns (permguard.host.v1.ListProvidersResponse);
+  // `POST /iam/v1/providers/{name}/refresh`.
+  rpc RefreshProvider(permguard.host.v1.RefreshProviderRequest) returns (permguard.host.v1.Provider);
+}
+
+// REST group: recovery (WP-8.2).
+service RecoveryService {
+  // `GET /iam/v1/recovery`.
+  rpc GetRecovery(permguard.host.v1.GetRecoveryRequest) returns (permguard.host.v1.GetRecoveryResponse);
+  // `POST /iam/v1/recovery/acknowledge`.
+  rpc AcknowledgeRecovery(permguard.host.v1.AcknowledgeRecoveryRequest)
+      returns (permguard.host.v1.AcknowledgeRecoveryResponse);
+}

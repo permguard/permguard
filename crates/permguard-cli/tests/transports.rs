@@ -1472,7 +1472,9 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
             signin: None,
             providers: Vec::new(),
             min_length: 12,
-        }),
+        })
+        // The IAM Host's listener, serving the directory at `/iam/v1` (WP-11.1).
+        .serving_iam(true),
     );
     std::mem::forget(volume);
     let settings = TlsSettings::new(&pki.certificate, &pki.key);

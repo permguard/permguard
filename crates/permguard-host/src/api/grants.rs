@@ -1,8 +1,8 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The grants of the Host API, under `authz.admin` on the Host: `GET /host/v1/grants`,
-//! `POST /host/v1/grants`, and the two-step revocation `revoke/plan` then `revoke/run`.
+//! The grants of the Host API, under `authz.admin` on the Host: `GET /iam/v1/grants`,
+//! `POST /iam/v1/grants`, and the two-step revocation `revoke/plan` then `revoke/run`.
 //!
 //! The plan step keeps the plan in the replay journal and answers its receipt, a COSE_Sign1
 //! `permguard.operation.plan.v1` under `host.operations`; the run step presents the receipt, and
@@ -66,7 +66,7 @@ impl From<GrantRecord> for GrantView {
     }
 }
 
-/// `GET /host/v1/grants`.
+/// `GET /iam/v1/grants`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Grants {
     /// The store revision the list was read at.
@@ -74,7 +74,7 @@ pub struct Grants {
     pub grants: Vec<GrantView>,
 }
 
-/// `POST /host/v1/grants`.
+/// `POST /iam/v1/grants`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateGrant {
@@ -102,7 +102,7 @@ pub struct Created {
     pub grant: GrantView,
 }
 
-/// `POST /host/v1/grants/{id}/revoke/plan`.
+/// `POST /iam/v1/grants/{id}/revoke/plan`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanRevoke {
@@ -128,7 +128,7 @@ pub struct Planned {
     pub approvals_required: u64,
 }
 
-/// `POST /host/v1/grants/{id}/revoke/run`.
+/// `POST /iam/v1/grants/{id}/revoke/run`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunRevoke {
@@ -146,7 +146,7 @@ pub struct Revoked {
 }
 
 impl HostApi {
-    /// `GET /host/v1/grants?principal&selector`.
+    /// `GET /iam/v1/grants?principal&selector`.
     pub fn grants(
         &self,
         actor: &Actor,
@@ -173,7 +173,7 @@ impl HostApi {
         })
     }
 
-    /// `POST /host/v1/grants`.
+    /// `POST /iam/v1/grants`.
     pub async fn create_grant(
         &self,
         actor: &Actor,
@@ -239,7 +239,7 @@ impl HostApi {
         )
     }
 
-    /// `POST /host/v1/grants/{id}/revoke/plan`.
+    /// `POST /iam/v1/grants/{id}/revoke/plan`.
     pub async fn plan_revoke(
         &self,
         actor: &Actor,
@@ -314,7 +314,7 @@ impl HostApi {
         )
     }
 
-    /// `POST /host/v1/grants/{id}/revoke/run`.
+    /// `POST /iam/v1/grants/{id}/revoke/run`.
     pub async fn run_revoke(
         &self,
         actor: &Actor,

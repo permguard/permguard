@@ -53,6 +53,7 @@ mod host_proto;
 /// The generated `permguard.host.v1` stubs (TC-1).
 pub mod host_v1;
 pub mod http;
+pub mod iam_v1;
 pub mod narrate;
 pub mod objects;
 /// The generated `permguard.control.v1` stubs, from the plane's own

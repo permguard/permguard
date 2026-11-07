@@ -21,6 +21,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "../../contracts/proto/permguard/data/v1/data_plane.proto",
         "../../contracts/proto/permguard/data/v1/pdp.proto",
         "../../contracts/proto/permguard/host/v1/host.proto",
+        "../../contracts/proto/permguard/iam/v1/iam.proto",
     ];
 
     for proto in every {
@@ -47,6 +48,24 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build_server(true)
         .type_attribute(".permguard.host.v1", "#[derive(serde::Serialize)]")
         .compile_protos(&protos, &["../../contracts/proto"])?;
+    tonic_prost_build::configure()
+        .build_client(true)
+        .build_server(true)
+        .extern_path(".permguard.host.v1", "crate::contracts::host_v1")
+        // Its own directory: a generation shares none with the Host API's, which it would
+        // otherwise overwrite with the imported package's husk.
+        .out_dir(iam_out()?)
+        .compile_protos(
+            &["../../contracts/proto/permguard/iam/v1/iam.proto"],
+            &["../../contracts/proto"],
+        )?;
 
     Ok(())
+}
+
+/// Where the `permguard.iam.v1` stubs are generated: `OUT_DIR/iam`.
+fn iam_out() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    let out = std::path::PathBuf::from(std::env::var("OUT_DIR")?).join("iam");
+    std::fs::create_dir_all(&out)?;
+    Ok(out)
 }

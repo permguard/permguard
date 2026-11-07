@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt as _;
-use permguard_conformance::contracts::host_v1;
+use permguard_conformance::contracts::{host_v1, iam_v1};
 use permguard_conformance::parity::{Outcome, assert_parity, serve};
 use permguard_core::assurance::AssuranceProfile;
 use permguard_core::authz::{
@@ -138,8 +138,13 @@ fn bearer_interceptor(
 }
 
 /// A facade over its own volume, with one administrator holding every Host operation and
-/// `keys.read` public, as a deployment would declare it.
+/// `keys.read` public, as a deployment would declare it: the IAM Host's, serving the directory.
 fn facade(tag: &str) -> Arc<HostApi> {
+    facade_of(tag, true)
+}
+
+/// [`facade`] for a member, `iam_host` false, or for the IAM Host.
+fn facade_of(tag: &str, iam_host: bool) -> Arc<HostApi> {
     let root = scratch(tag);
     let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
     let (store, _) = GrantStore::open(&volume).expect("the grant store opens");
@@ -331,7 +336,8 @@ fn facade(tag: &str) -> Arc<HostApi> {
             signin: None,
             providers: Vec::new(),
             min_length: 12,
-        }),
+        })
+        .serving_iam(iam_host),
     );
     // The object sweep a Control Plane provides (WP-7.11b), answering fixed reports.
     api.gc_jobs()
@@ -688,8 +694,8 @@ impl Transport {
 
     async fn grants(
         &self,
-    ) -> host_v1::grant_service_client::GrantServiceClient<tonic::transport::Channel> {
-        host_v1::grant_service_client::GrantServiceClient::connect(format!(
+    ) -> iam_v1::grant_service_client::GrantServiceClient<tonic::transport::Channel> {
+        iam_v1::grant_service_client::GrantServiceClient::connect(format!(
             "http://{}",
             self.grpc_url()
         ))
@@ -948,7 +954,7 @@ impl Transport {
 
     async fn list_grants(&self, who: Option<&str>) -> Outcome {
         match self {
-            Self::Rest(_) => self.rest("GET", "/host/v1/grants", who, None).await,
+            Self::Rest(_) => self.rest("GET", "/iam/v1/grants", who, None).await,
             Self::Grpc(_) => reduced_grpc(
                 self.grants()
                     .await
@@ -980,7 +986,7 @@ impl Transport {
                 if let Some(expected) = expected_revision {
                     body["expected_revision"] = json!(expected);
                 }
-                self.rest("POST", "/host/v1/grants", who, Some(body)).await
+                self.rest("POST", "/iam/v1/grants", who, Some(body)).await
             }
             Self::Grpc(_) => reduced_grpc(
                 self.grants()
@@ -1021,7 +1027,7 @@ impl Transport {
             Self::Rest(_) => {
                 self.rest(
                     "POST",
-                    "/host/v1/grants",
+                    "/iam/v1/grants",
                     who,
                     Some(json!({
                         "request_id": request_id,
@@ -1529,7 +1535,7 @@ impl Transport {
             Self::Rest(_) => {
                 self.rest(
                     "POST",
-                    &format!("/host/v1/grants/{grant_id}/revoke/plan"),
+                    &format!("/iam/v1/grants/{grant_id}/revoke/plan"),
                     who,
                     Some(json!({ "request_id": request_id })),
                 )
@@ -1562,7 +1568,7 @@ impl Transport {
             Self::Rest(_) => {
                 self.rest(
                     "POST",
-                    &format!("/host/v1/grants/{grant_id}/revoke/run"),
+                    &format!("/iam/v1/grants/{grant_id}/revoke/run"),
                     who,
                     Some(json!({
                         "request_id": request_id,
@@ -2695,7 +2701,7 @@ async fn both_transports_answer_the_same_vectors_and_replay_the_same_mutations()
     let served = host_api::grpc::Served::new(facade("vectors-grpc"), Disclosure::Minimal);
     // The server halves are the server crate's own; the client halves below are the
     // conformance crate's, generated from the same proto, as any caller's would be.
-    use permguard_server::host_api::v1 as served_v1;
+    use permguard_server::host_api::{iam_v1 as served_iam, v1 as served_v1};
     grpc.add_service(
         served_v1::identity_service_server::IdentityServiceServer::with_interceptor(
             served.clone(),
@@ -2703,7 +2709,7 @@ async fn both_transports_answer_the_same_vectors_and_replay_the_same_mutations()
         ),
     );
     grpc.add_service(
-        served_v1::grant_service_server::GrantServiceServer::with_interceptor(
+        served_iam::grant_service_server::GrantServiceServer::with_interceptor(
             served.clone(),
             bearer_interceptor,
         ),
@@ -2863,7 +2869,7 @@ async fn every_rest_answer_conforms_to_the_host_api_document() {
     };
     let conflict = raw(
         "POST",
-        "/host/v1/grants",
+        "/iam/v1/grants",
         Some(ADMIN),
         Some(json!({
             "request_id": "schema-conflict",
@@ -3298,7 +3304,7 @@ async fn the_rest_binding_carries_the_revision_the_cache_policy_and_refuses_an_o
         };
     let (status, _, body) = send(
         "POST",
-        "/host/v1/grants".to_owned(),
+        "/iam/v1/grants".to_owned(),
         Some(json!({
             "request_id": "s1",
             "expected_revision": 77,
@@ -3319,7 +3325,7 @@ async fn the_rest_binding_carries_the_revision_the_cache_policy_and_refuses_an_o
 
     let (status, _, body) = send(
         "POST",
-        "/host/v1/grants".to_owned(),
+        "/iam/v1/grants".to_owned(),
         Some(json!({
             "request_id": "s2",
             "principal": "spiffe://acme/alice",
@@ -3338,7 +3344,7 @@ async fn the_rest_binding_carries_the_revision_the_cache_policy_and_refuses_an_o
 
     let (status, _, body) = send(
         "POST",
-        "/host/v1/grants".to_owned(),
+        "/iam/v1/grants".to_owned(),
         Some(json!({
             "principal": "spiffe://acme/alice",
             "operations": [operations::CATALOG_READ],
@@ -3625,30 +3631,30 @@ async fn directory_script_rest(transport: &Transport) -> Vec<Step> {
     };
     let changed = |body: &Value| json!({"revision": body["revision"], "changed": body["changed"]});
     vec![
-        rest_step(call("POST", "/host/v1/roles".into(), ADMIN, Some(json!({"request_id": "r1", "name": "operators", "description": "run it"}))).await, changed),
-        rest_step(call("POST", "/host/v1/users".into(), ADMIN, Some(json!({"request_id": "r2", "name": "paperino", "email": "paperino@hotmail.com", "password": "a long enough secret"}))).await, changed),
-        rest_step(call("POST", "/host/v1/roles/operators/members".into(), ADMIN, Some(json!({"request_id": "r3", "member": "user:paperino"}))).await, changed),
-        rest_step(call("POST", "/host/v1/roles/operators/members".into(), ADMIN, Some(json!({"request_id": "r4", "member": "user:paperino"}))).await, changed),
-        rest_step(call("GET", "/host/v1/roles/operators".into(), ADMIN, None).await, |body| json!({"members": body["members"], "description": body["description"]})),
-        rest_step(call("GET", "/host/v1/principals/user%3Apaperino/roles".into(), ADMIN, None).await, Clone::clone),
-        rest_step(call("GET", "/host/v1/users".into(), ADMIN, None).await, |body| json!({"name": body["users"][0]["name"], "password": body["users"][0]["password"], "roles": body["users"][0]["roles"]})),
-        rest_step(call("GET", "/host/v1/roles".into(), "spiffe://acme/stranger", None).await, Clone::clone),
-        rest_step(call("POST", "/host/v1/users".into(), ADMIN, Some(json!({"request_id": "r5", "name": "weak", "password": "short"}))).await, changed),
-        rest_step(call("POST", "/host/v1/grants".into(), ADMIN, Some(json!({"request_id": "r6", "principal": "role:operators", "operations": ["catalog.read"], "selector": "plane/control/*"}))).await, |_| Value::Null),
-        rest_step(call("POST", "/host/v1/roles/operators/delete".into(), ADMIN, Some(json!({"request_id": "r7"}))).await, changed),
-        rest_step(call("POST", "/host/v1/users/paperino/disable".into(), ADMIN, Some(json!({"request_id": "r8"}))).await, changed),
-        rest_step(call("GET", "/host/v1/users/paperino".into(), ADMIN, None).await, |body| json!({"status": body["user"]["status"]})),
-        rest_step(call("POST", "/host/v1/users/paperino/delete".into(), ADMIN, Some(json!({"request_id": "r9"}))).await, changed),
-        rest_step(call("GET", "/host/v1/users/paperino".into(), ADMIN, None).await, Clone::clone),
+        rest_step(call("POST", "/iam/v1/roles".into(), ADMIN, Some(json!({"request_id": "r1", "name": "operators", "description": "run it"}))).await, changed),
+        rest_step(call("POST", "/iam/v1/users".into(), ADMIN, Some(json!({"request_id": "r2", "name": "paperino", "email": "paperino@hotmail.com", "password": "a long enough secret"}))).await, changed),
+        rest_step(call("POST", "/iam/v1/roles/operators/members".into(), ADMIN, Some(json!({"request_id": "r3", "member": "user:paperino"}))).await, changed),
+        rest_step(call("POST", "/iam/v1/roles/operators/members".into(), ADMIN, Some(json!({"request_id": "r4", "member": "user:paperino"}))).await, changed),
+        rest_step(call("GET", "/iam/v1/roles/operators".into(), ADMIN, None).await, |body| json!({"members": body["members"], "description": body["description"]})),
+        rest_step(call("GET", "/iam/v1/principals/user%3Apaperino/roles".into(), ADMIN, None).await, Clone::clone),
+        rest_step(call("GET", "/iam/v1/users".into(), ADMIN, None).await, |body| json!({"name": body["users"][0]["name"], "password": body["users"][0]["password"], "roles": body["users"][0]["roles"]})),
+        rest_step(call("GET", "/iam/v1/roles".into(), "spiffe://acme/stranger", None).await, Clone::clone),
+        rest_step(call("POST", "/iam/v1/users".into(), ADMIN, Some(json!({"request_id": "r5", "name": "weak", "password": "short"}))).await, changed),
+        rest_step(call("POST", "/iam/v1/grants".into(), ADMIN, Some(json!({"request_id": "r6", "principal": "role:operators", "operations": ["catalog.read"], "selector": "plane/control/*"}))).await, |_| Value::Null),
+        rest_step(call("POST", "/iam/v1/roles/operators/delete".into(), ADMIN, Some(json!({"request_id": "r7"}))).await, changed),
+        rest_step(call("POST", "/iam/v1/users/paperino/disable".into(), ADMIN, Some(json!({"request_id": "r8"}))).await, changed),
+        rest_step(call("GET", "/iam/v1/users/paperino".into(), ADMIN, None).await, |body| json!({"status": body["user"]["status"]})),
+        rest_step(call("POST", "/iam/v1/users/paperino/delete".into(), ADMIN, Some(json!({"request_id": "r9"}))).await, changed),
+        rest_step(call("GET", "/iam/v1/users/paperino".into(), ADMIN, None).await, Clone::clone),
     ]
 }
 
 async fn directory_script_grpc(transport: &Transport) -> Vec<Step> {
     let url = format!("http://{}", transport.grpc_url());
-    let mut roles = host_v1::role_service_client::RoleServiceClient::connect(url.clone())
+    let mut roles = iam_v1::role_service_client::RoleServiceClient::connect(url.clone())
         .await
         .expect("roles");
-    let mut users = host_v1::user_service_client::UserServiceClient::connect(url.clone())
+    let mut users = iam_v1::user_service_client::UserServiceClient::connect(url.clone())
         .await
         .expect("users");
     let mut grants = transport.grants().await;
@@ -3861,21 +3867,21 @@ async fn roles_and_users_answer_the_same_over_both_transports() {
     );
     let mut grpc = tonic::service::RoutesBuilder::default();
     let served = host_api::grpc::Served::new(facade("directory-grpc"), Disclosure::Minimal);
-    use permguard_server::host_api::v1 as served_v1;
+    use permguard_server::host_api::iam_v1 as served_iam;
     grpc.add_service(
-        served_v1::role_service_server::RoleServiceServer::with_interceptor(
+        served_iam::role_service_server::RoleServiceServer::with_interceptor(
             served.clone(),
             bearer_interceptor,
         ),
     );
     grpc.add_service(
-        served_v1::user_service_server::UserServiceServer::with_interceptor(
+        served_iam::user_service_server::UserServiceServer::with_interceptor(
             served.clone(),
             bearer_interceptor,
         ),
     );
     grpc.add_service(
-        served_v1::grant_service_server::GrantServiceServer::with_interceptor(
+        served_iam::grant_service_server::GrantServiceServer::with_interceptor(
             served,
             bearer_interceptor,
         ),
@@ -4342,6 +4348,9 @@ async fn every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_th
 
     let proto = std::fs::read_to_string(root.join("proto/permguard/host/v1/host.proto"))
         .expect("host.proto reads");
+    // The directory's services, on the IAM Host (WP-11.1); their messages are host.proto's.
+    let iam = std::fs::read_to_string(root.join("proto/permguard/iam/v1/iam.proto"))
+        .expect("iam.proto reads");
     // The messages' scalar fields, `type name = number;`, by message.
     let mut messages: std::collections::HashMap<String, Vec<(String, String, u32)>> =
         std::collections::HashMap::new();
@@ -4366,9 +4375,108 @@ async fn every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_th
             ));
         }
     }
+    let mut rpcs = 0;
+    for (package, proto) in [("permguard.host.v1", &proto), ("permguard.iam.v1", &iam)] {
+        let mut service = String::new();
+        for line in proto.lines().map(str::trim) {
+            if let Some(name) = line.strip_prefix("service ") {
+                service = name.trim_end_matches('{').trim().to_owned();
+                continue;
+            }
+            let Some(rest) = line.strip_prefix("rpc ") else {
+                continue;
+            };
+            let method = rest.split('(').next().expect("a method").trim();
+            let input = rest
+                .split('(')
+                .nth(1)
+                .and_then(|input| input.split(')').next())
+                .expect("an input")
+                .trim_start_matches("stream ")
+                .trim()
+                .trim_start_matches("permguard.host.v1.");
+            let message = walk_message(messages.get(input).map_or(&[][..], Vec::as_slice));
+            let rpc = format!("{package}.{service}/{method}");
+            rpcs += 1;
+            let nobody = walk_grpc(&router, &rpc, &message, None).await;
+            let stranger = walk_grpc(&router, &rpc, &message, Some(STRANGER)).await;
+            let admin = walk_grpc(&router, &rpc, &message, Some(ADMIN)).await;
+            if let Some(kind) = open(&rpc) {
+                offences.extend(open_offence(
+                    &rpc,
+                    kind,
+                    [&nobody, &stranger, &admin],
+                    [16, 7],
+                    12,
+                ));
+                continue;
+            }
+            // UNAUTHENTICATED is 16, PERMISSION_DENIED 7.
+            if nobody.0 != 16 {
+                offences.push(format!(
+                    "{rpc}: nobody answered {nobody:?}, not UNAUTHENTICATED"
+                ));
+            }
+            if stranger.0 != 7 {
+                offences.push(format!(
+                    "{rpc}: a stranger answered {stranger:?}, not PERMISSION_DENIED"
+                ));
+            }
+            if [16, 7].contains(&admin.0) {
+                offences.push(format!("{rpc}: the administrator answered {admin:?}"));
+            }
+        }
+    }
+    assert!(rpcs >= 70, "{rpcs} gRPC methods walked");
+    assert!(offences.is_empty(), "{}", offences.join("\n"));
+}
+
+/// WP-11.1: a member holds no directory. Its listener serves no `/iam/v1` route and no
+/// `permguard.iam.v1` service, while it answers every Host route as the IAM Host does. Asked by a
+/// stranger, whom a served route refuses before it looks anything up, so a `404` or
+/// `UNIMPLEMENTED` can only mean the route is not served.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_member_serves_no_directory_on_either_binding() {
+    let member = host_api::routes(facade_of("member-directory", false), Disclosure::Minimal)
+        .layer(ActorLayer::new(Arc::new(Bearers)));
+    let iam_host = host_api::routes(facade("iam-host-directory"), Disclosure::Minimal)
+        .layer(ActorLayer::new(Arc::new(Bearers)));
+    let root = permguard_conformance::contracts::root();
+    let document: Value = serde_json::from_slice(
+        &std::fs::read(root.join("openapi/host.json")).expect("host.json reads"),
+    )
+    .expect("host.json is JSON");
+
+    let mut iam_paths = 0;
+    for (path, operations) in document["paths"].as_object().expect("paths") {
+        let concrete = path.replace(['{', '}'], "");
+        for method in operations.as_object().expect("operations").keys() {
+            if !["get", "post", "patch", "delete"].contains(&method.as_str()) {
+                continue;
+            }
+            let method = method.to_uppercase();
+            let body = (method != "GET").then(|| json!({}));
+            let ask = |router| walk_rest(router, &method, &concrete, body.as_ref(), Some(STRANGER));
+            let (on_member, on_iam) = (ask(&member).await, ask(&iam_host).await);
+            if path.starts_with("/iam/v1/") {
+                iam_paths += 1;
+                assert_eq!(on_member.0, 404, "{method} {path} on a member");
+                assert_ne!(on_iam.0, 404, "{method} {path} on the IAM Host");
+            } else {
+                assert_eq!(
+                    on_member, on_iam,
+                    "{method} {path}: a member answers as the IAM Host"
+                );
+            }
+        }
+    }
+    assert!(iam_paths >= 20, "{iam_paths} directory routes checked");
+
+    let iam = std::fs::read_to_string(root.join("proto/permguard/iam/v1/iam.proto"))
+        .expect("iam.proto reads");
     let mut service = String::new();
     let mut rpcs = 0;
-    for line in proto.lines().map(str::trim) {
+    for line in iam.lines().map(str::trim) {
         if let Some(name) = line.strip_prefix("service ") {
             service = name.trim_end_matches('{').trim().to_owned();
             continue;
@@ -4377,46 +4485,15 @@ async fn every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_th
             continue;
         };
         let method = rest.split('(').next().expect("a method").trim();
-        let input = rest
-            .split('(')
-            .nth(1)
-            .and_then(|input| input.split(')').next())
-            .expect("an input")
-            .trim_start_matches("stream ")
-            .trim();
-        let message = walk_message(messages.get(input).map_or(&[][..], Vec::as_slice));
-        let rpc = format!("permguard.host.v1.{service}/{method}");
+        let rpc = format!("permguard.iam.v1.{service}/{method}");
         rpcs += 1;
-        let nobody = walk_grpc(&router, &rpc, &message, None).await;
-        let stranger = walk_grpc(&router, &rpc, &message, Some(STRANGER)).await;
-        let admin = walk_grpc(&router, &rpc, &message, Some(ADMIN)).await;
-        if let Some(kind) = open(&rpc) {
-            offences.extend(open_offence(
-                &rpc,
-                kind,
-                [&nobody, &stranger, &admin],
-                [16, 7],
-                12,
-            ));
-            continue;
-        }
-        // UNAUTHENTICATED is 16, PERMISSION_DENIED 7.
-        if nobody.0 != 16 {
-            offences.push(format!(
-                "{rpc}: nobody answered {nobody:?}, not UNAUTHENTICATED"
-            ));
-        }
-        if stranger.0 != 7 {
-            offences.push(format!(
-                "{rpc}: a stranger answered {stranger:?}, not PERMISSION_DENIED"
-            ));
-        }
-        if [16, 7].contains(&admin.0) {
-            offences.push(format!("{rpc}: the administrator answered {admin:?}"));
-        }
+        // UNIMPLEMENTED is 12, PERMISSION_DENIED 7.
+        let on_member = walk_grpc(&member, &rpc, &walk_message(&[]), Some(STRANGER)).await;
+        assert_eq!(on_member.0, 12, "{rpc} on a member: {on_member:?}");
+        let on_iam = walk_grpc(&iam_host, &rpc, &walk_message(&[]), Some(STRANGER)).await;
+        assert_eq!(on_iam.0, 7, "{rpc} on the IAM Host: {on_iam:?}");
     }
-    assert!(rpcs >= 70, "{rpcs} gRPC methods walked");
-    assert!(offences.is_empty(), "{}", offences.join("\n"));
+    assert!(rpcs >= 20, "{rpcs} directory methods checked");
 }
 
 /// A password is looked at only once the caller is authorized: without the grant, a password the
@@ -4429,8 +4506,8 @@ async fn a_password_is_read_only_after_the_caller_is_authorized() {
     let create = json!({"request_id": "p-1", "name": "paperino", "password": "short"});
     let set = json!({"request_id": "p-2", "password": "short"});
     for (path, body) in [
-        ("/host/v1/users", &create),
-        ("/host/v1/users/paperino/password", &set),
+        ("/iam/v1/users", &create),
+        ("/iam/v1/users/paperino/password", &set),
     ] {
         assert_eq!(
             walk_rest(&router, "POST", path, Some(body), None).await.0,
@@ -4471,7 +4548,7 @@ async fn a_call_a_role_allowed_names_the_role_in_the_access_trail() {
     };
     assert_eq!(
         post(
-            "/host/v1/roles",
+            "/iam/v1/roles",
             json!({"request_id": "g-1", "name": "readers"})
         )
         .await,
@@ -4479,7 +4556,7 @@ async fn a_call_a_role_allowed_names_the_role_in_the_access_trail() {
     );
     assert_eq!(
         post(
-            "/host/v1/roles/readers/members",
+            "/iam/v1/roles/readers/members",
             json!({"request_id": "g-2", "member": READER})
         )
         .await,
@@ -4487,7 +4564,7 @@ async fn a_call_a_role_allowed_names_the_role_in_the_access_trail() {
     );
     assert_eq!(
         post(
-            "/host/v1/grants",
+            "/iam/v1/grants",
             json!({
                 "request_id": "g-3",
                 "principal": "role:readers",

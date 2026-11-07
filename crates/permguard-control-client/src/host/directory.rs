@@ -54,74 +54,71 @@ pub trait Directory {
 
 impl Directory for RestHost {
     fn roles(&self) -> Result<Roles, Failure> {
-        self.get("/host/v1/roles")
+        self.get("/iam/v1/roles")
     }
 
     fn role(&self, name: &str) -> Result<RoleDetail, Failure> {
-        self.get(&format!("/host/v1/roles/{}", segment(name)?))
+        self.get(&format!("/iam/v1/roles/{}", segment(name)?))
     }
 
     fn create_role(&self, request: &CreateRole) -> Result<Changed, Failure> {
-        self.post("/host/v1/roles", &json(request)?)
+        self.post("/iam/v1/roles", &json(request)?)
     }
 
     fn update_role(&self, name: &str, request: &UpdateRole) -> Result<Changed, Failure> {
         self.patch(
-            &format!("/host/v1/roles/{}", segment(name)?),
+            &format!("/iam/v1/roles/{}", segment(name)?),
             &json(request)?,
         )
     }
 
     fn delete_role(&self, name: &str, request: &Plain) -> Result<Changed, Failure> {
         self.post(
-            &format!("/host/v1/roles/{}/delete", segment(name)?),
+            &format!("/iam/v1/roles/{}/delete", segment(name)?),
             &json(request)?,
         )
     }
 
     fn add_member(&self, role: &str, request: &Member) -> Result<Changed, Failure> {
         self.post(
-            &format!("/host/v1/roles/{}/members", segment(role)?),
+            &format!("/iam/v1/roles/{}/members", segment(role)?),
             &json(request)?,
         )
     }
 
     fn remove_member(&self, role: &str, request: &Member) -> Result<Changed, Failure> {
         self.post(
-            &format!("/host/v1/roles/{}/members/remove", segment(role)?),
+            &format!("/iam/v1/roles/{}/members/remove", segment(role)?),
             &json(request)?,
         )
     }
 
     fn roles_of(&self, principal: &str) -> Result<Vec<String>, Failure> {
-        self.get(&format!(
-            "/host/v1/principals/{}/roles",
-            segment(principal)?
-        ))
+        self.get(&format!("/iam/v1/principals/{}/roles", segment(principal)?))
     }
 
     fn users(&self) -> Result<Users, Failure> {
-        self.get("/host/v1/users")
+        self.get("/iam/v1/users")
     }
 
     fn user(&self, name: &str) -> Result<UserDetail, Failure> {
-        self.get(&format!("/host/v1/users/{}", segment(name)?))
+        self.get(&format!("/iam/v1/users/{}", segment(name)?))
     }
 
     fn create_user(&self, request: &CreateUser) -> Result<Changed, Failure> {
-        self.post("/host/v1/users", &json(request)?)
+        self.post("/iam/v1/users", &json(request)?)
     }
 
     fn update_user(&self, name: &str, request: &UpdateUser) -> Result<Changed, Failure> {
         self.patch(
-            &format!("/host/v1/users/{}", segment(name)?),
+            &format!("/iam/v1/users/{}", segment(name)?),
             &json(request)?,
         )
     }
 
     fn set_password(&self, name: &str, request: &SetPassword) -> Result<Changed, Failure> {
         self.post(
-            &format!("/host/v1/users/{}/password", segment(name)?),
+            &format!("/iam/v1/users/{}/password", segment(name)?),
             &json(request)?,
         )
     }
@@ -134,21 +131,21 @@ impl Directory for RestHost {
     ) -> Result<Changed, Failure> {
         let verb = if active { "enable" } else { "disable" };
         self.post(
-            &format!("/host/v1/users/{}/{verb}", segment(name)?),
+            &format!("/iam/v1/users/{}/{verb}", segment(name)?),
             &json(request)?,
         )
     }
 
     fn reset_factor(&self, name: &str, request: &Plain) -> Result<Changed, Failure> {
         self.post(
-            &format!("/host/v1/users/{}/factor/reset", segment(name)?),
+            &format!("/iam/v1/users/{}/factor/reset", segment(name)?),
             &json(request)?,
         )
     }
 
     fn unlock_user(&self, name: &str) -> Result<bool, Failure> {
         let answer: serde_json::Value =
-            self.post(&format!("/host/v1/users/{}/unlock", segment(name)?), "{}")?;
+            self.post(&format!("/iam/v1/users/{}/unlock", segment(name)?), "{}")?;
         Ok(answer
             .get("unlocked")
             .and_then(serde_json::Value::as_bool)
@@ -158,35 +155,35 @@ impl Directory for RestHost {
     fn link_user(&self, name: &str, link: bool, request: &Link) -> Result<Changed, Failure> {
         let path = if link { "links" } else { "links/remove" };
         self.post(
-            &format!("/host/v1/users/{}/{path}", segment(name)?),
+            &format!("/iam/v1/users/{}/{path}", segment(name)?),
             &json(request)?,
         )
     }
 
     fn delete_user(&self, name: &str, request: &Plain) -> Result<Changed, Failure> {
         self.post(
-            &format!("/host/v1/users/{}/delete", segment(name)?),
+            &format!("/iam/v1/users/{}/delete", segment(name)?),
             &json(request)?,
         )
     }
 
     fn providers(&self) -> Result<Providers, Failure> {
-        self.get("/host/v1/providers")
+        self.get("/iam/v1/providers")
     }
 
     fn refresh_provider(&self, name: &str) -> Result<ProviderView, Failure> {
         self.post(
-            &format!("/host/v1/providers/{}/refresh", segment(name)?),
+            &format!("/iam/v1/providers/{}/refresh", segment(name)?),
             "{}",
         )
     }
 
     fn recovery(&self) -> Result<RecoveryView, Failure> {
-        self.get("/host/v1/recovery")
+        self.get("/iam/v1/recovery")
     }
 
     fn acknowledge_recovery(&self) -> Result<RecoveryAcknowledged, Failure> {
-        self.post("/host/v1/recovery/acknowledge", "{}")
+        self.post("/iam/v1/recovery/acknowledge", "{}")
     }
 }
 
@@ -243,20 +240,21 @@ fn count(value: u64) -> usize {
 impl GrpcHost {
     fn roles_client(
         &self,
-    ) -> proto::role_service_client::RoleServiceClient<crate::grpc::AuthChannel> {
-        proto::role_service_client::RoleServiceClient::new(self.0.channel())
+    ) -> crate::iam_v1::role_service_client::RoleServiceClient<crate::grpc::AuthChannel> {
+        crate::iam_v1::role_service_client::RoleServiceClient::new(self.0.channel())
     }
 
     fn users_client(
         &self,
-    ) -> proto::user_service_client::UserServiceClient<crate::grpc::AuthChannel> {
-        proto::user_service_client::UserServiceClient::new(self.0.channel())
+    ) -> crate::iam_v1::user_service_client::UserServiceClient<crate::grpc::AuthChannel> {
+        crate::iam_v1::user_service_client::UserServiceClient::new(self.0.channel())
     }
 
     fn providers_client(
         &self,
-    ) -> proto::provider_service_client::ProviderServiceClient<crate::grpc::AuthChannel> {
-        proto::provider_service_client::ProviderServiceClient::new(self.0.channel())
+    ) -> crate::iam_v1::provider_service_client::ProviderServiceClient<crate::grpc::AuthChannel>
+    {
+        crate::iam_v1::provider_service_client::ProviderServiceClient::new(self.0.channel())
     }
 }
 
@@ -585,8 +583,10 @@ impl Directory for GrpcHost {
             .0
             .run(
                 "GetRecovery",
-                proto::operations_service_client::OperationsServiceClient::new(self.0.channel())
-                    .get_recovery(proto::GetRecoveryRequest {}),
+                crate::iam_v1::recovery_service_client::RecoveryServiceClient::new(
+                    self.0.channel(),
+                )
+                .get_recovery(proto::GetRecoveryRequest {}),
             )
             .map_err(crate::grpc::failure_of)?;
         Ok(RecoveryView {
@@ -601,8 +601,10 @@ impl Directory for GrpcHost {
             .0
             .run(
                 "AcknowledgeRecovery",
-                proto::operations_service_client::OperationsServiceClient::new(self.0.channel())
-                    .acknowledge_recovery(proto::AcknowledgeRecoveryRequest {}),
+                crate::iam_v1::recovery_service_client::RecoveryServiceClient::new(
+                    self.0.channel(),
+                )
+                .acknowledge_recovery(proto::AcknowledgeRecoveryRequest {}),
             )
             .map_err(crate::grpc::failure_of)?;
         Ok(RecoveryAcknowledged {

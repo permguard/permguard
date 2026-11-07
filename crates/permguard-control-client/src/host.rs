@@ -160,13 +160,13 @@ pub trait Host: Operations + Directory {
         request: &VerifyMember,
     ) -> Result<MemberVerification, Failure>;
 
-    /// `GET /host/v1/grants?principal&selector`, `GrantService.ListGrants`.
+    /// `GET /iam/v1/grants?principal&selector`, `GrantService.ListGrants`.
     fn grants(&self, principal: Option<&str>, selector: Option<&str>) -> Result<Grants, Failure>;
-    /// `POST /host/v1/grants`, `GrantService.CreateGrant`.
+    /// `POST /iam/v1/grants`, `GrantService.CreateGrant`.
     fn create_grant(&self, request: &CreateGrant) -> Result<Created, Failure>;
-    /// `POST /host/v1/grants/{id}/revoke/plan`, `GrantService.PlanGrantRevoke`.
+    /// `POST /iam/v1/grants/{id}/revoke/plan`, `GrantService.PlanGrantRevoke`.
     fn plan_grant_revoke(&self, grant_id: &str, request: &PlanRevoke) -> Result<Planned, Failure>;
-    /// `POST /host/v1/grants/{id}/revoke/run`, `GrantService.RunGrantRevoke`.
+    /// `POST /iam/v1/grants/{id}/revoke/run`, `GrantService.RunGrantRevoke`.
     fn run_grant_revoke(&self, grant_id: &str, request: &RunRevoke) -> Result<Revoked, Failure>;
 }
 
@@ -437,26 +437,26 @@ impl Host for RestHost {
             .filter_map(|(name, value)| value.map(|value| format!("{name}={}", query_value(value))))
             .collect();
         if filters.is_empty() {
-            self.get("/host/v1/grants")
+            self.get("/iam/v1/grants")
         } else {
-            self.get(&format!("/host/v1/grants?{}", filters.join("&")))
+            self.get(&format!("/iam/v1/grants?{}", filters.join("&")))
         }
     }
 
     fn create_grant(&self, request: &CreateGrant) -> Result<Created, Failure> {
-        self.post("/host/v1/grants", &json(request)?)
+        self.post("/iam/v1/grants", &json(request)?)
     }
 
     fn plan_grant_revoke(&self, grant_id: &str, request: &PlanRevoke) -> Result<Planned, Failure> {
         self.post(
-            &format!("/host/v1/grants/{}/revoke/plan", segment(grant_id)?),
+            &format!("/iam/v1/grants/{}/revoke/plan", segment(grant_id)?),
             &json(request)?,
         )
     }
 
     fn run_grant_revoke(&self, grant_id: &str, request: &RunRevoke) -> Result<Revoked, Failure> {
         self.post(
-            &format!("/host/v1/grants/{}/revoke/run", segment(grant_id)?),
+            &format!("/iam/v1/grants/{}/revoke/run", segment(grant_id)?),
             &json(request)?,
         )
     }
@@ -1264,8 +1264,8 @@ impl GrpcHost {
 
     fn grants_client(
         &self,
-    ) -> proto::grant_service_client::GrantServiceClient<crate::grpc::AuthChannel> {
-        proto::grant_service_client::GrantServiceClient::new(self.0.channel())
+    ) -> crate::iam_v1::grant_service_client::GrantServiceClient<crate::grpc::AuthChannel> {
+        crate::iam_v1::grant_service_client::GrantServiceClient::new(self.0.channel())
     }
 }
 

@@ -1,12 +1,13 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The Host API proto declares the six services of the Host API contract, each a server trait, and
-//! a message gets its fields only when the package that serves its operation defines the shape.
+//! The Host API proto declares the services of the Host API contract and the IAM proto the
+//! directory's, each a server trait, and a message gets its fields only when the package that
+//! serves its operation defines the shape.
 
 use std::collections::BTreeSet;
 
-use permguard_conformance::contracts::host_v1;
+use permguard_conformance::contracts::{host_v1, iam_v1};
 
 /// Naming a generated server proves the service exists; a missing or renamed one fails to compile.
 fn served<T>() -> &'static str {
@@ -14,27 +15,29 @@ fn served<T>() -> &'static str {
 }
 
 #[test]
-fn test_the_host_api_declares_the_six_services_of_the_contract() {
+fn test_the_host_api_declares_the_five_services_of_every_host() {
     let services = [
         served::<host_v1::identity_service_server::IdentityServiceServer<()>>(),
         served::<host_v1::membership_service_server::MembershipServiceServer<()>>(),
-        served::<host_v1::grant_service_server::GrantServiceServer<()>>(),
         served::<host_v1::key_service_server::KeyServiceServer<()>>(),
         served::<host_v1::evidence_service_server::EvidenceServiceServer<()>>(),
         served::<host_v1::operations_service_server::OperationsServiceServer<()>>(),
     ];
-    assert_eq!(services.len(), 6);
+    assert_eq!(services.len(), 5);
 }
 
-/// The services WP-8.1 added beside the contract's six: roles, local users and identity providers.
+/// The directory the IAM Host serves in `permguard.iam.v1` (WP-11.1): grants, roles, local users,
+/// identity providers and the recovery.
 #[test]
-fn test_the_host_api_serves_roles_users_and_providers() {
+fn test_the_iam_api_declares_the_directory_services() {
     let services = [
-        served::<host_v1::role_service_server::RoleServiceServer<()>>(),
-        served::<host_v1::user_service_server::UserServiceServer<()>>(),
-        served::<host_v1::provider_service_server::ProviderServiceServer<()>>(),
+        served::<iam_v1::grant_service_server::GrantServiceServer<()>>(),
+        served::<iam_v1::role_service_server::RoleServiceServer<()>>(),
+        served::<iam_v1::user_service_server::UserServiceServer<()>>(),
+        served::<iam_v1::provider_service_server::ProviderServiceServer<()>>(),
+        served::<iam_v1::recovery_service_server::RecoveryServiceServer<()>>(),
     ];
-    assert_eq!(services.len(), 3);
+    assert_eq!(services.len(), 5);
 }
 
 /// The messages whose operations the Host listener serves (WP-2.5): the only ones with fields.

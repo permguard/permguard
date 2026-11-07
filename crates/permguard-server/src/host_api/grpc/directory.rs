@@ -11,10 +11,10 @@ use permguard_host::api::directory::{
     UpdateUser, UserSummary,
 };
 
+use super::super::iam_v1::provider_service_server::ProviderService;
+use super::super::iam_v1::role_service_server::RoleService;
+use super::super::iam_v1::user_service_server::UserService;
 use super::super::v1;
-use super::super::v1::provider_service_server::ProviderService;
-use super::super::v1::role_service_server::RoleService;
-use super::super::v1::user_service_server::UserService;
 use super::{Answer, Served, grant, receipt};
 
 fn changed(changed: Changed) -> v1::DirectoryChangeResponse {

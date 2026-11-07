@@ -47,14 +47,14 @@ pub struct RoleSummary {
     pub revision: u64,
 }
 
-/// `GET /host/v1/roles`.
+/// `GET /iam/v1/roles`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Roles {
     pub revision: u64,
     pub roles: Vec<RoleSummary>,
 }
 
-/// `GET /host/v1/roles/{name}`.
+/// `GET /iam/v1/roles/{name}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RoleDetail {
     pub name: String,
@@ -81,14 +81,14 @@ pub struct UserSummary {
     pub revision: u64,
 }
 
-/// `GET /host/v1/users`.
+/// `GET /iam/v1/users`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Users {
     pub revision: u64,
     pub users: Vec<UserSummary>,
 }
 
-/// `GET /host/v1/users/{name}`.
+/// `GET /iam/v1/users/{name}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserDetail {
     pub user: UserSummary,
@@ -106,7 +106,7 @@ pub struct Changed {
     pub changed: bool,
 }
 
-/// `POST /host/v1/roles`.
+/// `POST /iam/v1/roles`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateRole {
@@ -119,7 +119,7 @@ pub struct CreateRole {
     pub description: String,
 }
 
-/// `PATCH /host/v1/roles/{name}`.
+/// `PATCH /iam/v1/roles/{name}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateRole {
@@ -140,7 +140,7 @@ pub struct Plain {
     pub expected_revision: Option<u64>,
 }
 
-/// `POST /host/v1/roles/{name}/members` and `…/members/remove`.
+/// `POST /iam/v1/roles/{name}/members` and `…/members/remove`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Member {
@@ -151,7 +151,7 @@ pub struct Member {
     pub member: String,
 }
 
-/// `POST /host/v1/users`.
+/// `POST /iam/v1/users`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateUser {
@@ -168,7 +168,7 @@ pub struct CreateUser {
     pub password: Option<String>,
 }
 
-/// `PATCH /host/v1/users/{name}`.
+/// `PATCH /iam/v1/users/{name}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateUser {
@@ -182,7 +182,7 @@ pub struct UpdateUser {
     pub display: Option<String>,
 }
 
-/// `POST /host/v1/users/{name}/password`.
+/// `POST /iam/v1/users/{name}/password`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SetPassword {
@@ -191,7 +191,7 @@ pub struct SetPassword {
     pub password: String,
 }
 
-/// `POST /host/v1/users/{name}/links` and `…/links/remove`.
+/// `POST /iam/v1/users/{name}/links` and `…/links/remove`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Link {
@@ -222,7 +222,7 @@ pub struct ProviderKey {
     pub algorithm: String,
 }
 
-/// `GET /host/v1/providers`.
+/// `GET /iam/v1/providers`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Providers {
     pub providers: Vec<ProviderView>,
@@ -335,7 +335,7 @@ impl HostApi {
         }
     }
 
-    /// `GET /host/v1/roles`.
+    /// `GET /iam/v1/roles`.
     pub fn roles(&self, actor: &Actor) -> Result<Roles, Refusal> {
         self.admit(actor, operations::AUTHZ_ADMIN)?;
         let identities = self.identities()?;
@@ -356,7 +356,7 @@ impl HostApi {
         })
     }
 
-    /// `GET /host/v1/roles/{name}`.
+    /// `GET /iam/v1/roles/{name}`.
     pub fn role(&self, actor: &Actor, name: &str) -> Result<RoleDetail, Refusal> {
         self.admit(actor, operations::AUTHZ_ADMIN)?;
         let identities = self.identities()?;
@@ -375,7 +375,7 @@ impl HostApi {
         })
     }
 
-    /// `GET /host/v1/principals/{principal}/roles`.
+    /// `GET /iam/v1/principals/{principal}/roles`.
     pub fn roles_of(&self, actor: &Actor, principal: &str) -> Result<Vec<String>, Refusal> {
         self.admit(actor, operations::AUTHZ_ADMIN)?;
         let identities = self.identities()?;
@@ -388,7 +388,7 @@ impl HostApi {
             .collect())
     }
 
-    /// `GET /host/v1/users`.
+    /// `GET /iam/v1/users`.
     pub fn users(&self, actor: &Actor) -> Result<Users, Refusal> {
         self.admit(actor, operations::AUTHZ_ADMIN)?;
         let identities = self.identities()?;
@@ -403,7 +403,7 @@ impl HostApi {
         })
     }
 
-    /// `GET /host/v1/users/{name}`.
+    /// `GET /iam/v1/users/{name}`.
     pub fn user(&self, actor: &Actor, name: &str) -> Result<UserDetail, Refusal> {
         self.admit(actor, operations::AUTHZ_ADMIN)?;
         let identities = self.identities()?;
@@ -419,7 +419,7 @@ impl HostApi {
         })
     }
 
-    /// `GET /host/v1/providers`.
+    /// `GET /iam/v1/providers`.
     pub fn providers(&self, actor: &Actor) -> Result<Providers, Refusal> {
         self.admit(actor, operations::AUTHZ_ADMIN)?;
         let identities = self.identities()?;
@@ -432,7 +432,7 @@ impl HostApi {
         })
     }
 
-    /// `POST /host/v1/providers/{name}/refresh`: wakes the provider's refresh task and answers
+    /// `POST /iam/v1/providers/{name}/refresh`: wakes the provider's refresh task and answers
     /// how the provider stands once that fetch ended, or after twenty seconds. It waits: a
     /// transport calls it off its runtime's threads.
     pub fn refresh_provider(&self, actor: &Actor, name: &str) -> Result<ProviderView, Refusal> {
@@ -464,7 +464,7 @@ impl HostApi {
         Ok(provider_view(verifier))
     }
 
-    /// `POST /host/v1/users/{name}/unlock`: ends a lockout of failed sign-ins at once.
+    /// `POST /iam/v1/users/{name}/unlock`: ends a lockout of failed sign-ins at once.
     pub fn unlock_user(&self, actor: &Actor, name: &str) -> Result<bool, Refusal> {
         let admitted = self.admit(actor, operations::AUTHZ_ADMIN)?;
         let identities = self.identities()?;
