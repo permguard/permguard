@@ -88,6 +88,34 @@ impl tonic::service::Interceptor for Authorize {
 /// A channel every call on which carries the operator's token, when there is one.
 pub type AuthChannel = InterceptedService<Channel, Authorize>;
 
+/// How long a gRPC endpoint waits: to connect, for one call, and for a peer to answer a ping.
+///
+/// Without them a server that accepted the connection and never answered, or a network that
+/// dropped it silently, held a call for ever: Permguard Admin's sync of decision and event logs
+/// stopped for good, and a data plane shipping its decisions over gRPC stalled. The HTTP client
+/// has its own: a connect timeout, and one on every read and write.
+#[derive(Debug, Clone, Copy)]
+pub struct Limits {
+    pub connect: std::time::Duration,
+    /// A whole call, generous: a push of a large ledger is one call.
+    pub call: std::time::Duration,
+    /// HTTP/2 pings while a call waits, and how long a ping waits for its answer: a peer that
+    /// stopped answering is dropped within the sum, long before `call`.
+    pub ping_every: std::time::Duration,
+    pub ping_within: std::time::Duration,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            connect: std::time::Duration::from_secs(10),
+            call: std::time::Duration::from_secs(300),
+            ping_every: std::time::Duration::from_secs(20),
+            ping_within: std::time::Duration::from_secs(20),
+        }
+    }
+}
+
 /// A connected gRPC endpoint: the channel, the runtime that drives it, and
 /// how exchanges are narrated.
 pub struct GrpcChannel {
@@ -105,6 +133,16 @@ impl GrpcChannel {
         url: &str,
         tls: &TlsOptions,
         narrator: Box<dyn Narrator>,
+    ) -> Result<Self, String> {
+        Self::connect_within(url, tls, narrator, Limits::default())
+    }
+
+    /// [`Self::connect`] with explicit [`Limits`].
+    pub fn connect_within(
+        url: &str,
+        tls: &TlsOptions,
+        narrator: Box<dyn Narrator>,
+        limits: Limits,
     ) -> Result<Self, String> {
         let (scheme, rest) = url
             .split_once("://")
@@ -128,7 +166,14 @@ impl GrpcChannel {
         }
 
         let uri = format!("{}://{rest}", if secure { "https" } else { "http" });
-        let mut endpoint = Channel::from_shared(uri).map_err(|error| error.to_string())?;
+        let mut endpoint = Channel::from_shared(uri)
+            .map_err(|error| error.to_string())?
+            .connect_timeout(limits.connect)
+            .timeout(limits.call)
+            .tcp_keepalive(Some(limits.ping_every))
+            .http2_keep_alive_interval(limits.ping_every)
+            .keep_alive_timeout(limits.ping_within)
+            .keep_alive_while_idle(true);
 
         if secure {
             // The same trust rule as the HTTP client: a named authority

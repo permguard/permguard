@@ -743,3 +743,36 @@ fn a_push_over_grpcs_carries_the_operators_token() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A server that takes the connection and never answers ends the call within its limit, never
+/// holding it for ever: what stopped a client's sync of decision and event logs for good.
+#[test]
+fn a_server_that_never_answers_ends_the_call_within_its_limit() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let url = format!("grpc://{}", listener.local_addr().expect("its address"));
+    let held = std::thread::spawn(move || {
+        // Accepted and held open, never read nor written.
+        let accepted: Vec<_> = listener.incoming().take(3).filter_map(Result::ok).collect();
+        std::thread::sleep(std::time::Duration::from_secs(15));
+        drop(accepted);
+    });
+    let limits = grpc::Limits {
+        connect: std::time::Duration::from_secs(2),
+        call: std::time::Duration::from_secs(2),
+        ping_every: std::time::Duration::from_secs(1),
+        ping_within: std::time::Duration::from_secs(1),
+    };
+    let admin = grpc::GrpcAdmin(
+        grpc::GrpcChannel::connect_within(&url, &TlsOptions::default(), Box::new(Silent), limits)
+            .expect("the endpoint parses"),
+    );
+    let started = std::time::Instant::now();
+    let answered = admin.list_zones(None, None);
+    let took = started.elapsed();
+    assert!(answered.is_err(), "nothing answered, nothing listed");
+    assert!(
+        took < std::time::Duration::from_secs(8),
+        "held for {took:?}"
+    );
+    drop(held);
+}

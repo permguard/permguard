@@ -17,7 +17,11 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A gRPC call never waits for ever.**
+  The gRPC client gives up a connection after 10 s and a call after 5 minutes, and pings the server every 20 s while a call waits, dropping one that stops answering within 20 s more.
+  Before, a server that accepted the connection and never answered, or a network that dropped it silently, held the call for good: a client's read of decision or event logs stopped, and a data plane shipping its decisions over gRPC stalled.
 
 ## [0.1.21] - 2026-11-06
 
