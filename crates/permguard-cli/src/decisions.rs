@@ -169,6 +169,13 @@ pub struct DecisionLine {
     /// absent when it names none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<Value>,
+    /// The subject's properties the data plane's decision log names in `include.subject_properties`,
+    /// in clear: absent when it names none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject_properties: Option<Value>,
+    /// The resource's properties named in `include.resource_properties`, in clear.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_properties: Option<Value>,
     /// The keyed commitment over the caller's whole context, which the record always carries
     /// when there was one: it proves what was asked without saying it.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -177,6 +184,14 @@ pub struct DecisionLine {
     pub id: String,
     /// How long the plane took.
     pub latency_us: u64,
+}
+
+/// An object of members recorded in clear, or `None` when the record carries none: an empty
+/// object says nothing.
+fn members(value: Option<&Value>) -> Option<Value> {
+    value
+        .filter(|value| value.as_object().is_some_and(|members| !members.is_empty()))
+        .cloned()
 }
 
 /// The `outcome` of an indeterminate decision.
@@ -359,14 +374,9 @@ pub fn report(
                         .collect()
                 })
                 .unwrap_or_default(),
-            context: record
-                .get("context")
-                .filter(|context| {
-                    context
-                        .as_object()
-                        .is_some_and(|members| !members.is_empty())
-                })
-                .cloned(),
+            context: members(record.get("context")),
+            subject_properties: members(record.pointer("/subject/properties")),
+            resource_properties: members(record.pointer("/resource/properties")),
             context_commitment: record
                 .get("inputs")
                 .and_then(|inputs| inputs.get("context"))

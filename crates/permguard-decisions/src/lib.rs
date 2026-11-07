@@ -13,6 +13,7 @@
 //! | [`chain`] | `prev(N) = digest(N − 1)`, across a whole stream |
 //! | [`envelope`] | the signed head a batch travels under |
 //! | [`commitment`] | keyed commitments over caller-supplied inputs |
+//! | [`ceiling`] | what a store accepts in clear |
 //! | [`spool`] | the durable local record, and the crash boundaries around it |
 //! | [`instance`] | incarnation identifiers, minted where a stream begins |
 //!
@@ -27,6 +28,7 @@
 //! compute the same digests without agreeing on anything else.
 
 pub mod archive;
+pub mod ceiling;
 pub mod chain;
 pub mod commitment;
 pub mod envelope;

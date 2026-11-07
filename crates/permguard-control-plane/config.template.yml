@@ -164,6 +164,16 @@ controlPlane:
   #       pdp: data-plane-eu-1    # exact, never `*`: the binding is what stops one plane
   #                               # signing evidence as another. Absent entries mean only the
   #                               # ring sharing this process (the all-in-one) is accepted.
+  #   # The ceiling on what a decision record may carry in clear to be kept here, whatever its
+  #   # producer includes. A record beyond it refuses its whole batch (`batch_not_accepted`): a
+  #   # chained, signed record cannot be trimmed. A list left out accepts nothing; `["*"]` accepts
+  #   # every member (the relaxation `decisions.include_all`, refused under `regulated`). Absent,
+  #   # the producers' inclusion is the rule, except under `regulated`, where absent accepts
+  #   # nothing in clear. The keyed commitments are never subject to it.
+  #   accept:
+  #     subject_properties: ["department"]
+  #     resource_properties: []
+  #     context: ["ip", "time"]
 
   # ── The event store ──────────────────────────────────────────────────────────────────────────
   # The receiving end of a data plane's `events` block, and the only supported remote source for

@@ -191,6 +191,10 @@ pub mod stream {
     pub const BATCH_UNVERIFIABLE: &str = "batch_unverifiable";
     pub const BATCH_UNREGISTERED: &str = "batch_unregistered";
     pub const BATCH_REJECTED: &str = "batch_rejected";
+    /// A batch whose records carry in clear what the receiving store does not accept
+    /// (`controlPlane.decisions.accept`): refused whole, never trimmed, since the records are
+    /// chained and the batch is signed.
+    pub const BATCH_NOT_ACCEPTED: &str = "batch_not_accepted";
     pub const MALFORMED_BATCH: &str = "malformed_batch";
     pub const STREAM_FORKED: &str = "stream_forked";
     pub const STREAM_CONFLICT: &str = "stream_conflict";
@@ -668,6 +672,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         stream::BATCH_UNVERIFIABLE,
         stream::BATCH_UNREGISTERED,
         stream::BATCH_REJECTED,
+        stream::BATCH_NOT_ACCEPTED,
         stream::MALFORMED_BATCH,
         stream::STREAM_FORKED,
         stream::STREAM_CONFLICT,

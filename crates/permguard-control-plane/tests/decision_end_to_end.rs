@@ -529,6 +529,7 @@ fn asking_for_the_signers_of_a_stream_nobody_holds_is_not_found() {
     let pair = pair("unknown-signers", bounds());
     let facade = permguard_control_plane::decisions::http::DecisionFacade {
         store: Arc::clone(&pair.store),
+        ceiling: None,
         local: None,
         local_pdp: String::new(),
         cursor_key: permguard_control_plane::decisions::cursorkey::CursorKeys::from_root(

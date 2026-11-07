@@ -132,20 +132,25 @@ impl Report for DecisionsReport {
                     style::id(name)
                 )?;
             }
-            for (name, value) in line
-                .context
-                .as_ref()
-                .and_then(Value::as_object)
-                .into_iter()
-                .flatten()
-            {
-                writeln!(
-                    out,
-                    "         {} {} = {}",
-                    style::dim("context"),
-                    style::id(name),
-                    value
-                )?;
+            for (label, members) in [
+                ("subject", &line.subject_properties),
+                ("resource", &line.resource_properties),
+                ("context", &line.context),
+            ] {
+                for (name, value) in members
+                    .as_ref()
+                    .and_then(Value::as_object)
+                    .into_iter()
+                    .flatten()
+                {
+                    writeln!(
+                        out,
+                        "         {} {} = {}",
+                        style::dim(label),
+                        style::id(name),
+                        value
+                    )?;
+                }
             }
         }
 
@@ -441,6 +446,8 @@ mod tests {
             policies: Vec::new(),
             absent_inputs: Vec::new(),
             context: None,
+            subject_properties: None,
+            resource_properties: None,
             context_commitment: None,
             id: format!("id-{seq}"),
             latency_us: 1,
@@ -551,7 +558,11 @@ mod tests {
                 records: vec![
                     decision(
                         1,
-                        json!({"context": {"ip": "10.0.0.1"}, "inputs": {"context": "hmac:ab"}}),
+                        json!({
+                            "context": {"ip": "10.0.0.1"}, "inputs": {"context": "hmac:ab"},
+                            "subject": {"type": "User", "id": "p", "properties": {"department": "ops"}},
+                            "resource": {"type": "Doc", "id": "d", "properties": {}},
+                        }),
                     ),
                     decision(2, json!({"context": {}, "inputs": {"context": "hmac:cd"}})),
                     decision(3, json!({})),
@@ -566,6 +577,11 @@ mod tests {
         };
         assert_eq!(first.context, Some(json!({"ip": "10.0.0.1"})));
         assert_eq!(first.context_commitment.as_deref(), Some("hmac:ab"));
+        assert_eq!(first.subject_properties, Some(json!({"department": "ops"})));
+        assert_eq!(
+            first.resource_properties, None,
+            "an empty object says nothing"
+        );
         assert_eq!(second.context, None, "an empty object says nothing");
         assert_eq!(second.context_commitment.as_deref(), Some("hmac:cd"));
         assert_eq!((&third.context, &third.context_commitment), (&None, &None));
@@ -573,7 +589,11 @@ mod tests {
         let json = serde_json::to_value(third).expect("serialises");
         assert!(json.get("context").is_none() && json.get("context_commitment").is_none());
         assert!(
-            terminal(&built).contains("context ip = \"10.0.0.1\""),
+            json.get("subject_properties").is_none() && json.get("resource_properties").is_none()
+        );
+        assert!(
+            terminal(&built).contains("context ip = \"10.0.0.1\"")
+                && terminal(&built).contains("subject department = \"ops\""),
             "{}",
             terminal(&built)
         );

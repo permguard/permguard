@@ -1494,6 +1494,7 @@ pub struct Config {
     event_store_retention: Duration,
     decision_store_retention: Duration,
     decision_producer_keys: Vec<crate::decisions::DecisionProducerSource>,
+    decision_accept: Option<crate::decisions::IncludeSection>,
     /// The published key sets of the producers this plane accepts *event* records from.
     ///
     /// Separate from the decision one because they are separate trust decisions: a deployment may
@@ -1710,6 +1711,7 @@ impl Default for Config {
             event_store_retention: DEFAULT_EVENT_STORE_RETENTION,
             decision_store_retention: DEFAULT_DECISION_STORE_RETENTION,
             decision_producer_keys: Vec::new(),
+            decision_accept: None,
             event_producer_keys: Vec::new(),
             mirrors_interval: DEFAULT_MIRRORS_INTERVAL,
             mirrors_timeout: DEFAULT_MIRRORS_TIMEOUT,
@@ -3438,6 +3440,16 @@ produce: use `EdDSA` or `ES256`"
         if self.grpc_evaluation_served() {
             in_force.push(Relaxation::GrpcTransportParityPartial);
         }
+        // A decision log that keeps every member a caller sends in clear, or a decision store that
+        // accepts every one: `["*"]`, stated, so in force whether or not the plane is hosted.
+        if self.log_include.includes_every()
+            || self
+                .decision_accept
+                .as_ref()
+                .is_some_and(crate::decisions::IncludeSection::includes_every)
+        {
+            in_force.push(Relaxation::DecisionsIncludeAll);
+        }
         // What the Host's own state imposes rather than any setting: the identity key's custody.
         in_force.extend(self.host_relaxations.iter().copied());
         in_force
@@ -3970,6 +3982,9 @@ produce: use `EdDSA` or `ES256`"
             crate::mirrors::check_server(&destination.url, &destination.tls)
                 .context("reading the decision log's server")?;
         }
+        include
+            .check("dataPlane.decisions.log.include")
+            .map_err(|refusal| anyhow!(refusal))?;
         self.log_destination = destination;
         self.log_include = include;
 
@@ -4043,6 +4058,41 @@ produce: use `EdDSA` or `ES256`"
         self.decision_producer_keys = keys.into_iter().collect();
 
         self
+    }
+
+    /// What a decision record may carry in clear to be kept here, as `controlPlane.decisions.accept`
+    /// declares it: `None` when it declares nothing.
+    pub fn decision_accept(&self) -> Option<&crate::decisions::IncludeSection> {
+        self.decision_accept.as_ref()
+    }
+
+    /// The ceiling this store holds every producer to: the declared one; under `regulated`,
+    /// nothing in clear when none is declared; otherwise `None`, the producers' own inclusion.
+    pub fn decision_ceiling(&self) -> Option<crate::decisions::IncludeSection> {
+        match &self.decision_accept {
+            Some(accept) => Some(accept.clone()),
+            None if self.assurance_profile == crate::assurance::AssuranceProfile::Regulated => {
+                Some(crate::decisions::IncludeSection::default())
+            }
+            None => None,
+        }
+    }
+
+    /// Records the ceiling on what a decision record may carry in clear.
+    ///
+    /// Structured, so it comes from the file: three lists of names have no single-variable form.
+    pub fn with_decision_accept(
+        mut self,
+        accept: Option<crate::decisions::IncludeSection>,
+    ) -> Result<Self> {
+        if let Some(accept) = &accept {
+            accept
+                .check("controlPlane.decisions.accept")
+                .map_err(|refusal| anyhow!(refusal))?;
+        }
+        self.decision_accept = accept;
+
+        Ok(self)
     }
 
     /// The published key sets of the producers this plane accepts *event* records from.

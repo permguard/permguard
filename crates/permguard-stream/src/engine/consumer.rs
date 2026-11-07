@@ -233,7 +233,13 @@ pub struct Consumer<C> {
     /// The runs held open, by `(resource component, producer, run)`; the lock serializes
     /// admissions, one writer per consumer stream.
     held: Mutex<BTreeMap<RunAt, Held>>,
+    /// What the Plane accepts of a record beyond its type: `None` accepts every record the codec
+    /// reads. A record it refuses refuses its batch, `unverifiable`, before anything is written.
+    admission: Option<std::sync::Arc<Admission>>,
 }
+
+/// A Plane's own rule over the records it keeps: `Err` names why one is refused.
+pub type Admission = dyn Fn(&[u8]) -> Result<(), String> + Send + Sync;
 
 impl<C> std::fmt::Debug for Consumer<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -287,7 +293,21 @@ impl<C: RecordCodec> Consumer<C> {
             lease: super::retention::Lease::default(),
             segment_bytes: permguard_host::storage::journal::DEFAULT_SEGMENT_BYTES,
             held: Mutex::new(BTreeMap::new()),
+            admission: None,
         }
+    }
+
+    /// This consumer's records held to `admission` besides the codec: the decision store's ceiling
+    /// on what a record carries in clear.
+    pub fn with_admission(mut self, admission: std::sync::Arc<Admission>) -> Self {
+        self.admission = Some(admission);
+        self
+    }
+
+    /// The first refusal of the Plane's admission over `records`.
+    fn admission_refuses(&self, records: &[Vec<u8>]) -> Option<String> {
+        let admission = self.admission.as_ref()?;
+        records.iter().find_map(|record| admission(record).err())
     }
 
     /// This consumer's run journals rolling their segments past `bytes` (WP-5.6b).
@@ -478,6 +498,9 @@ impl<C: RecordCodec> Consumer<C> {
         let key = self.descriptor.key(resource, producer)?;
         for record in records {
             self.validate(record)?;
+        }
+        if let Some(refused) = self.admission_refuses(records) {
+            return Err(StreamError::Invalid(refused));
         }
         self.with_held(&key, run_id, true, |held| {
             if first_seq != held.acked + 1 || records.is_empty() {
@@ -736,6 +759,23 @@ impl<C: RecordCodec> Consumer<C> {
             {
                 return forked(first + at as u64);
             }
+        }
+        // The Plane's admission over the records this batch would add, after the replay and the
+        // fork are told apart and before anything is written: a refused batch leaves the run where
+        // it was, and what is already held is never judged again.
+        if last > held.acked
+            && let Some(refused) =
+                self.admission_refuses(&records[(held.acked + 1 - first) as usize..])
+        {
+            tracing::warn!(
+                event.name = "host.stream.not_admitted",
+                component = "stream",
+                stream = %stream,
+                first_seq = first,
+                reason = %refused,
+                "a batch carries a record this Plane does not admit: answered unverifiable"
+            );
+            return Ok((Answer::of(Outcome::Unverifiable, held.acked), None));
         }
         // The span, decided before anything is written: another key over a range the spans
         // already cover is a conflicting transition (after the review).

@@ -667,6 +667,7 @@ impl PlaneServer {
                 app = app.with_structured_section(section.name, |config, value| {
                     let config =
                         config.with_decision_producer_keys(settings::producer_keys(value)?);
+                    let config = config.with_decision_accept(settings::decision_accept(value)?)?;
 
                     Ok(config.with_event_producer_keys(settings::event_producer_keys(value)?))
                 });

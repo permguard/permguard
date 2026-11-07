@@ -313,6 +313,16 @@ controlPlane:
   #       pdp: data-plane-eu-1    # exact, never `*`: the binding is what stops one plane
   #                               # signing evidence as another. Absent entries mean only the
   #                               # ring sharing this process (the all-in-one) is accepted.
+  #   # The ceiling on what a decision record may carry in clear to be kept here, whatever its
+  #   # producer includes. A record beyond it refuses its whole batch (`batch_not_accepted`): a
+  #   # chained, signed record cannot be trimmed. A list left out accepts nothing; `["*"]` accepts
+  #   # every member (the relaxation `decisions.include_all`, refused under `regulated`). Absent,
+  #   # the producers' inclusion is the rule, except under `regulated`, where absent accepts
+  #   # nothing in clear. The keyed commitments are never subject to it.
+  #   accept:
+  #     subject_properties: ["department"]
+  #     resource_properties: []
+  #     context: ["ip", "time"]
 
 dataPlane:
   # The plane's signing ring: it will sign the decision responses this plane returns. Part of
@@ -479,10 +489,14 @@ dataPlane:
   #     # The input commitments are keyed per ledger by the zone keys derived from
   #     # `operations.secrets.coordinator_root_ref` (WP-3.3), required when the log is on: a
   #     # commitment keyed by anything public is a dictionary away from the attribute it hides.
+  #     # `["*"]`, alone in its list, keeps every member the caller sends: a stated choice, published
+  #     # by the assurance profile as the relaxation `decisions.include_all`, and refused under
+  #     # `regulated`, where members are named one at a time. `*` beside other names is refused.
+  #     # What the control plane keeps is bounded again by its `controlPlane.decisions.accept`.
   #     include:
   #       subject_properties: ["department"]
   #       resource_properties: []
-  #       context: ["ip", "time"]
+  #       context: ["ip", "time"]   # or ["*"]: every member, in clear
 
   # ── The temporal interface, and the history it decides against ───────────────────────────────
   # `permguard.api.pdp.temporal.v1alpha1`: an occurrence is recorded into a durable history and

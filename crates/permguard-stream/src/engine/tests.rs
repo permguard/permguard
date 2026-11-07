@@ -2493,6 +2493,46 @@ fn an_acknowledgement_follows_every_durable_write() {
     );
 }
 
+/// A Plane's admission (the decision store's ceiling): a batch adding a record it refuses is
+/// answered `unverifiable` before anything is written; a replay of what is held is not judged
+/// again; nothing refused is held.
+#[test]
+fn a_record_the_plane_does_not_admit_refuses_its_batch_before_any_write() {
+    let host = Host::new("ingest-admission");
+    let (_producer, run, batches) = shipped(&host, 5, 3);
+    let admits_r0_to_r2: std::sync::Arc<super::Admission> =
+        std::sync::Arc::new(|record: &[u8]| match record {
+            b"r0" | b"r1" | b"r2" => Ok(()),
+            _ => Err("beyond the ceiling".to_owned()),
+        });
+    let consumer = consumer_on(&host).with_admission(admits_r0_to_r2);
+    let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("ingested");
+    assert_eq!(answer, Answer::of(Outcome::Ok, 3));
+    // Held already: acknowledged again, whatever the admission says of later records.
+    let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("ingested");
+    assert_eq!(answer, Answer::of(Outcome::Ok, 3));
+    // `r3` is refused: the batch is unverifiable, and the run stays at 3, its batch file unwritten.
+    let (answer, forked) =
+        ingest(&consumer, &host, &ship_of(&host, &batches[1])).expect("answered");
+    assert_eq!(
+        (answer, forked),
+        (Answer::of(Outcome::Unverifiable, 3), None)
+    );
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        3
+    );
+    let dir = consumer_run_dir(&host, &host, &run);
+    assert!(!dir.join("batches").join("4-5.jws").exists());
+    // Without the admission, the same batch is admitted: nothing of the refusal was kept.
+    drop(consumer);
+    let (answer, _) =
+        ingest(&consumer_on(&host), &host, &ship_of(&host, &batches[1])).expect("ingested");
+    assert_eq!(answer, Answer::of(Outcome::Ok, 5));
+}
+
 /// WP-5.3: a batch already held is acknowledged again, the records unchanged; the same range
 /// with another record is a fork, which marks the producer: every later batch is `fork`.
 #[test]

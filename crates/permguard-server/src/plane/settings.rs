@@ -599,6 +599,21 @@ pub fn producer_keys(
     Ok(decisions.producer_keys().to_vec())
 }
 
+/// What a control plane accepts in clear in a decision record: `controlPlane.decisions.accept`.
+///
+/// Structured, so it comes from the file only: an allow-list of names has no single-variable form.
+pub fn decision_accept(value: &Value) -> Result<Option<IncludeSection>> {
+    let section: PlaneSectionConfig =
+        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let Some(decisions) = section.decisions.as_ref() else {
+        return Ok(None);
+    };
+    let decisions: DecisionStoreSection =
+        serde_norway::from_value(decisions.clone()).context("parsing `controlPlane.decisions`")?;
+
+    Ok(decisions.accept().cloned())
+}
+
 /// What `controlPlane.events.producer_keys` declares: retired (WP-6.2b), read only so the control
 /// plane's start can refuse a configuration that still names it.
 pub fn event_producer_keys(
@@ -986,6 +1001,35 @@ mod tests {
 
     fn value(text: &str) -> Value {
         serde_norway::from_str(text).expect("the YAML parses")
+    }
+
+    /// `controlPlane.decisions.accept`: absent is `None`, declared is its three lists, a member the
+    /// block does not know is refused by name, and the plane's `controlPlane` settings still read.
+    #[test]
+    fn the_decision_store_ceiling_is_read_from_its_block() {
+        assert_eq!(
+            decision_accept(&value("decisions:\n  enabled: 'true'\n")).expect("parses"),
+            None
+        );
+        let declared = decision_accept(&value(
+            "decisions:\n  accept:\n    subject_properties: [department]\n    context: ['*']\n",
+        ))
+        .expect("parses")
+        .expect("declared");
+        assert_eq!(declared.subject_properties, ["department"]);
+        assert!(declared.resource_properties.is_empty());
+        assert_eq!(declared.context, ["*"]);
+        assert!(
+            decision_accept(&value(
+                "decisions:\n  accept:\n    principal_properties: [x]\n"
+            ))
+            .is_err()
+        );
+        plane_settings(
+            &value("decisions:\n  enabled: 'true'\n  accept:\n    context: [mfa]\n"),
+            PlaneSettingKeys::CONTROL,
+        )
+        .expect("the plane section still parses");
     }
 
     #[test]

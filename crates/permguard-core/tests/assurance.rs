@@ -448,3 +448,122 @@ fn grpc_evaluation_is_a_published_partial_parity_below_regulated_and_not_served_
     assert!(!strict.grpc_evaluation_permitted());
     assert!(served.grpc_evaluation_permitted());
 }
+
+/// Every member of a decision kept in clear, `["*"]` in the decision log's `include` or the
+/// decision store's `accept`, is the relaxation `decisions.include_all`: published under
+/// `production`, refused under `regulated` and wherever `decisions.include_named` was added.
+#[test]
+fn test_including_every_member_is_a_relaxation_regulated_refuses() {
+    use permguard_core::decisions::IncludeSection;
+
+    let every = IncludeSection {
+        context: vec!["*".to_owned()],
+        ..IncludeSection::default()
+    };
+    let named = IncludeSection {
+        context: vec!["mfa".to_owned()],
+        ..IncludeSection::default()
+    };
+    let logs = |config: Config, include: &IncludeSection| {
+        config
+            .with_log_destination(None, include.clone())
+            .expect("a well-formed include")
+    };
+    let stores = |config: Config, accept: &IncludeSection| {
+        config
+            .with_decision_accept(Some(accept.clone()))
+            .expect("a well-formed accept")
+    };
+
+    for relaxed in [
+        logs(config(&[(SETTING_ASSURANCE_PROFILE, "production")]), &every),
+        stores(config(&[(SETTING_ASSURANCE_PROFILE, "production")]), &every),
+    ] {
+        relaxed.validate().expect("permitted under production");
+        assert_eq!(
+            relaxed
+                .assurance()
+                .report(&relaxed.relaxations_in_force())
+                .relaxations,
+            vec!["decisions.include_all"]
+        );
+    }
+    logs(
+        config(&[(SETTING_ASSURANCE_PROFILE, "development")]),
+        &every,
+    )
+    .validate()
+    .expect("permitted under development");
+    for refused in [logs(regulated(&[]), &every), stores(regulated(&[]), &every)] {
+        let why = refusal(&refused);
+        assert!(
+            why.contains("decisions.include_all") && why.contains("decisions.include_named"),
+            "{why}"
+        );
+    }
+    let ratcheted = config(&[(SETTING_ASSURANCE_ADDED_CONTROLS, "decisions.include_named")]);
+    assert!(refusal(&logs(ratcheted, &every)).contains("decisions.include_all"));
+
+    // Members named one at a time relax nothing, under any profile.
+    let one_at_a_time = logs(regulated(&[]), &named);
+    one_at_a_time
+        .validate()
+        .expect("named members are what regulated asks for");
+    assert!(one_at_a_time.relaxations_in_force().is_empty());
+}
+
+/// `*` stands alone, and a name is never empty: both refused when the block is read.
+#[test]
+fn test_an_include_mixing_the_star_with_names_is_refused() {
+    use permguard_core::decisions::IncludeSection;
+
+    let mixed = IncludeSection {
+        subject_properties: vec!["*".to_owned(), "department".to_owned()],
+        ..IncludeSection::default()
+    };
+    let why = config(&[])
+        .with_log_destination(None, mixed.clone())
+        .expect_err("refused");
+    assert!(
+        why.to_string()
+            .contains("dataPlane.decisions.log.include.subject_properties"),
+        "{why}"
+    );
+    let why = config(&[])
+        .with_decision_accept(Some(mixed))
+        .expect_err("refused");
+    assert!(
+        why.to_string()
+            .contains("controlPlane.decisions.accept.subject_properties"),
+        "{why}"
+    );
+    let empty = IncludeSection {
+        context: vec![" ".to_owned()],
+        ..IncludeSection::default()
+    };
+    assert!(config(&[]).with_log_destination(None, empty).is_err());
+}
+
+/// The ceiling a decision store holds its producers to: the declared one, nothing in clear under
+/// `regulated` when none is declared, and the producers' own inclusion otherwise.
+#[test]
+fn test_the_decision_ceiling_defaults_to_nothing_in_clear_under_regulated() {
+    use permguard_core::decisions::IncludeSection;
+
+    assert_eq!(
+        regulated(&[]).decision_ceiling(),
+        Some(IncludeSection::default())
+    );
+    assert_eq!(
+        config(&[(SETTING_ASSURANCE_PROFILE, "production")]).decision_ceiling(),
+        None
+    );
+    let declared = IncludeSection {
+        context: vec!["mfa".to_owned()],
+        ..IncludeSection::default()
+    };
+    let config = regulated(&[])
+        .with_decision_accept(Some(declared.clone()))
+        .expect("well formed");
+    assert_eq!(config.decision_ceiling(), Some(declared));
+}

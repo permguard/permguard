@@ -37,6 +37,9 @@ use crate::wire;
 pub struct DecisionFacade {
     /// Where records are kept.
     pub store: Arc<DecisionStore>,
+    /// What a record may carry in clear to be kept here: `None` leaves it to the producers'
+    /// inclusion (see [`permguard_core::Config::decision_ceiling`]).
+    pub ceiling: Option<permguard_core::decisions::IncludeSection>,
     /// The ring of a producer that shares this process — the all-in-one shape.
     ///
     /// A batch is signed by the plane that decided, never by this one, so this
@@ -514,13 +517,16 @@ async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> 
     let outcome = {
         let (facade, batch) = (facade.clone(), batch.clone());
         tokio::task::spawn_blocking(move || {
-            match ingest::accept(&facade.store, &batch, &keys) {
+            match ingest::accept_under(&facade.store, &batch, &keys, facade.ceiling.as_ref()) {
                 // A key this plane has not seen is the one refusal worth a
                 // second look: a producer that rotated its ring publishes a
                 // new one, and the file on this plane may already say so.
-                Err(Refused::Unattributable(_)) => {
-                    ingest::accept(&facade.store, &batch, &facade.reload_producers())
-                }
+                Err(Refused::Unattributable(_)) => ingest::accept_under(
+                    &facade.store,
+                    &batch,
+                    &facade.reload_producers(),
+                    facade.ceiling.as_ref(),
+                ),
                 other => other,
             }
         })
@@ -813,6 +819,7 @@ fn reason_of(refused: &Refused) -> &'static str {
         Refused::Conflict { .. } => "conflict",
         Refused::Closed(_) => "closed",
         Refused::Unavailable(_) => "unavailable",
+        Refused::NotAccepted(_) => "not_accepted",
     }
 }
 
@@ -845,6 +852,13 @@ fn api_error(refused: &Refused) -> ApiError {
             ErrorClass::Unavailable,
             permguard_core::codes::stream::STORE_UNAVAILABLE,
             detail.clone(),
+        ),
+        // Never retried as it stands: the same records would be refused again. The producer
+        // stops until its inclusion or this store's ceiling changes.
+        Refused::NotAccepted(_) => ApiError::new(
+            ErrorClass::Validation,
+            permguard_core::codes::stream::BATCH_NOT_ACCEPTED,
+            refused.to_string(),
         ),
     }
 }
@@ -1662,6 +1676,7 @@ mod strict {
         let _ = std::fs::remove_dir_all(&root);
         DecisionFacade {
             store: Arc::new(DecisionStore::open(root).expect("it opens")),
+            ceiling: None,
             local: None,
             local_pdp: String::new(),
             cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(

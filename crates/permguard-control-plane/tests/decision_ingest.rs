@@ -100,6 +100,15 @@ fn store(tag: &str) -> DecisionStore {
 
 /// A stream of `count` records: a marker, then decisions alternating tenants.
 fn stream(instance: &str, count: u64) -> Vec<Value> {
+    stream_carrying(instance, count, None)
+}
+
+/// The same stream, each decision carrying `context` in clear.
+fn stream_carrying(
+    instance: &str,
+    count: u64,
+    context: Option<serde_json::Map<String, Value>>,
+) -> Vec<Value> {
     let mut records = Vec::new();
     let mut prev = GENESIS.to_owned();
     for seq in 1..=count {
@@ -163,7 +172,7 @@ fn stream(instance: &str, count: u64) -> Vec<Value> {
                 },
                 trace: None,
                 request_id: None,
-                context: None,
+                context: context.clone(),
                 latency_us: 143,
                 event: None,
                 interface: None,
@@ -1197,5 +1206,100 @@ fn an_export_cannot_change_or_drop_the_bound_it_declared() {
             Err(read::ReadError::Offset(_))
         ),
         "an export is of one snapshot"
+    );
+}
+
+/// What the decision store accepts in clear (`controlPlane.decisions.accept`): a batch carrying a
+/// member beyond it is refused whole, before anything is stored; a replay of what is held is
+/// acknowledged whatever the ceiling says now.
+#[test]
+fn a_batch_carrying_in_clear_what_the_store_does_not_accept_is_refused_whole() {
+    use permguard_core::decisions::IncludeSection;
+
+    let (keys, store) = (ring("ceiling"), store("ceiling"));
+    let context = json!({"mfa": true, "ip": "10.0.0.7"})
+        .as_object()
+        .cloned()
+        .expect("an object");
+    let records = stream_carrying("inst", 10, Some(context));
+    let only_mfa = IncludeSection {
+        context: vec!["mfa".to_owned()],
+        ..IncludeSection::default()
+    };
+    let first = batch(&records[..5], GENESIS, &keys);
+
+    assert_eq!(
+        ingest::accept_under(&store, &first, &published(&keys), Some(&only_mfa)),
+        Err(Refused::NotAccepted("context.ip".to_owned()))
+    );
+    let refusal = Refused::NotAccepted("context.ip".to_owned()).to_string();
+    assert!(
+        refusal.contains("context.ip") && refusal.contains("controlPlane.decisions.accept"),
+        "{refusal}"
+    );
+
+    // Nothing was stored: the same batch, under a ceiling that accepts every member, starts the
+    // stream from its first record.
+    let every = IncludeSection {
+        context: vec!["*".to_owned()],
+        ..IncludeSection::default()
+    };
+    assert_eq!(
+        ingest::accept_under(&store, &first, &published(&keys), Some(&every)),
+        Ok(Accepted::Ok {
+            acked: 5,
+            stored: 5
+        })
+    );
+
+    // A replay of what is held is acknowledged as before, under the narrower ceiling too.
+    assert_eq!(
+        ingest::accept_under(&store, &first, &published(&keys), Some(&only_mfa)),
+        Ok(Accepted::Ok {
+            acked: 5,
+            stored: 0
+        })
+    );
+
+    // What would advance the stream is judged, and refused, leaving it at 5.
+    let head = record::digest_of(&records[4]).expect("it digests");
+    let second = batch(&records[5..], &head, &keys);
+    assert_eq!(
+        ingest::accept_under(&store, &second, &published(&keys), Some(&only_mfa)),
+        Err(Refused::NotAccepted("context.ip".to_owned()))
+    );
+    assert_eq!(
+        ingest::accept_under(&store, &second, &published(&keys), None),
+        Ok(Accepted::Ok {
+            acked: 10,
+            stored: 5
+        })
+    );
+}
+
+/// The empty ceiling `regulated` holds a store to when it declares none accepts nothing in clear,
+/// and a record that carries nothing in clear is accepted under it.
+#[test]
+fn an_empty_ceiling_accepts_only_what_carries_nothing_in_clear() {
+    use permguard_core::decisions::IncludeSection;
+
+    let (keys, store) = (ring("ceiling-empty"), store("ceiling-empty"));
+    let nothing = IncludeSection::default();
+    let clear = batch(
+        &stream_carrying("clear", 3, json!({"mfa": true}).as_object().cloned()),
+        GENESIS,
+        &keys,
+    );
+    assert_eq!(
+        ingest::accept_under(&store, &clear, &published(&keys), Some(&nothing)),
+        Err(Refused::NotAccepted("context.mfa".to_owned()))
+    );
+    let committed = batch(&stream("committed", 3), GENESIS, &keys);
+    assert_eq!(
+        ingest::accept_under(&store, &committed, &published(&keys), Some(&nothing)),
+        Ok(Accepted::Ok {
+            acked: 3,
+            stored: 3
+        })
     );
 }

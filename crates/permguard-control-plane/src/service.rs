@@ -1016,6 +1016,7 @@ fn build_decision_facade(
 
     let facade = crate::decisions::http::DecisionFacade {
         store,
+        ceiling: config.decision_ceiling(),
         local,
         // The ring sharing this process signs as the data plane it belongs to: bound to that
         // plane's own producer identity, never floating free of one.
@@ -1522,6 +1523,74 @@ mod tests {
             }
             _ => panic!("the same configuration composed differently on two calls"),
         }
+    }
+
+    /// The store is composed with the ceiling the configuration declares
+    /// (`controlPlane.decisions.accept`), and with none where it declares none.
+    #[test]
+    fn the_decision_store_is_composed_with_its_ceiling() {
+        // A store that receives from one named producer, whose key set is not published yet: the
+        // routes are mounted all the same, as a deployment waiting for its first JWKS has them.
+        let storing = |tag: &str| {
+            let file = vec![
+                (
+                    permguard_server::plane::SETTING_CONTROL_HTTP_ADDR.to_owned(),
+                    "127.0.0.1:6443".to_owned(),
+                ),
+                (
+                    SETTING_WORKING_DIR.to_owned(),
+                    scratch(tag).display().to_string(),
+                ),
+                (
+                    permguard_core::config::SETTING_DECISION_STORE_ENABLED.to_owned(),
+                    "true".to_owned(),
+                ),
+            ];
+            permguard_core::Config::from_layers(
+                permguard_server::plane::build_settings("0.0.0-test"),
+                vec![
+                    permguard_server::plane::SETTING_RUNTIME_PLANES,
+                    permguard_server::plane::SETTING_CONTROL_HTTP_ADDR,
+                ],
+                permguard_core::config::Layers {
+                    file,
+                    ..Default::default()
+                },
+            )
+            .expect("the test configuration builds")
+            .with_decision_producer_keys([
+                permguard_core::decisions::DecisionProducerSource {
+                    path: "trust/plane-a.jwks".to_owned(),
+                    pdp: "plane-a".to_owned(),
+                },
+            ])
+        };
+        let composed = |config: &permguard_core::Config| {
+            let storage = MemoryStorage::new();
+            let audit = RecordingAuditSink::new();
+            let server = registered(
+                permguard_core::ServerContext::new(identity(), config, &storage, &audit),
+                config,
+            );
+            let context = PlaneContext::new(&server, PLANE);
+            ControlPlaneModule::default()
+                .decision_facade(&context)
+                .expect("the decision store composes")
+                .ceiling
+        };
+        let accept = permguard_core::decisions::IncludeSection {
+            context: vec!["mfa".to_owned()],
+            ..permguard_core::decisions::IncludeSection::default()
+        };
+        let declared = storing("decision-ceiling")
+            .with_decision_accept(Some(accept.clone()))
+            .expect("a well-formed ceiling");
+        assert_eq!(composed(&declared), Some(accept));
+        assert_eq!(
+            composed(&storing("decision-no-ceiling")),
+            None,
+            "production with no ceiling: the producers' inclusion is the rule"
+        );
     }
 
     #[tokio::test]

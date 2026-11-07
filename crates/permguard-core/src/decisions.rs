@@ -253,6 +253,53 @@ pub struct IncludeSection {
     pub context: Vec<String>,
 }
 
+impl IncludeSection {
+    /// The one name that stands for every member: `["*"]`, alone.
+    pub const EVERY: &str = "*";
+
+    /// The three lists, by the name the file gives them.
+    pub fn lists(&self) -> [(&'static str, &[String]); 3] {
+        [
+            ("subject_properties", &self.subject_properties),
+            ("resource_properties", &self.resource_properties),
+            ("context", &self.context),
+        ]
+    }
+
+    /// Refuses a list that names nothing by mistake: an empty name, or `*` beside other names.
+    ///
+    /// `*` is a statement about the whole list, so it stands alone: `["*", "mfa"]` is two
+    /// statements that disagree, and the deployment is asked which one it meant.
+    pub fn check(&self, block: &str) -> Result<(), String> {
+        for (list, names) in self.lists() {
+            if names.iter().any(|name| name.trim().is_empty()) {
+                return Err(format!("`{block}.{list}` names an empty member"));
+            }
+            if names.len() > 1 && names.iter().any(|name| name == Self::EVERY) {
+                return Err(format!(
+                    "`{block}.{list}` names `*` beside other members: `[\"*\"]` stands alone for \
+                     every member, or the members are named one at a time"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether any list is `["*"]`.
+    pub fn includes_every(&self) -> bool {
+        self.lists()
+            .iter()
+            .any(|(_, names)| names.iter().any(|name| name == Self::EVERY))
+    }
+
+    /// Whether `list` admits the member `name`: named, or the list is `["*"]`.
+    pub fn admits(names: &[String], name: &str) -> bool {
+        names
+            .iter()
+            .any(|named| named == name || named == Self::EVERY)
+    }
+}
+
 /// Where decisions are **kept**, as the `controlPlane.decisions` block of the
 /// file declares it.
 ///
@@ -289,6 +336,14 @@ pub struct DecisionStoreSection {
     /// plane sign an envelope claiming another's identity.
     #[serde(default)]
     producer_keys: Vec<DecisionProducerSource>,
+    /// What a decision record may carry in clear to be kept here: the ceiling over every
+    /// producer's `include`.
+    ///
+    /// A record beyond it refuses its batch, because it cannot be trimmed: the records are
+    /// digest-chained and the batch is signed. Absent, the producers' own inclusion is the rule,
+    /// except under `regulated`, where absent accepts nothing in clear.
+    #[serde(default)]
+    accept: Option<IncludeSection>,
 }
 
 /// One decision producer identity and the published key set that may attest it.
@@ -318,6 +373,11 @@ impl DecisionStoreSection {
     /// The producers' key sets, as declared: each a JWKS path bound to one producer.
     pub fn producer_keys(&self) -> &[DecisionProducerSource] {
         &self.producer_keys
+    }
+
+    /// The ceiling on what a record may carry in clear, as declared.
+    pub fn accept(&self) -> Option<&IncludeSection> {
+        self.accept.as_ref()
     }
 }
 

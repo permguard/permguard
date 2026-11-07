@@ -298,12 +298,14 @@ pub mod assurance {
     pub const IDENTITY_WITNESS: &str = "identity.witness";
     pub const OPERATIONS_DUAL_CONTROL: &str = "operations.dual_control";
     pub const TLS_1_3_ONLY: &str = "tls.1_3_only";
+    pub const DECISIONS_INCLUDE_NAMED: &str = "decisions.include_named";
     pub const RELAX_EVIDENCE_BEST_EFFORT: &str = "evidence.best_effort";
     pub const RELAX_SCHEMA_REGO_INPUT_ABSENT: &str = "schema.rego_input_absent";
     pub const RELAX_GRPC_TRANSPORT_PARITY_PARTIAL: &str = "grpc.transport_parity_partial";
     pub const RELAX_TLS_1_2_COMPAT: &str = "tls.1_2_compat";
     pub const RELAX_CUSTODY_PLAINTEXT: &str = "custody.plaintext";
     pub const RELAX_TLS_TERMINATED_UPSTREAM: &str = "tls.terminated_upstream";
+    pub const RELAX_DECISIONS_INCLUDE_ALL: &str = "decisions.include_all";
 }
 
 /// Format labels of files the Host writes, bound into their associated data.
@@ -667,6 +669,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ),
         ("assurance.TLS_1_3_ONLY", assurance::TLS_1_3_ONLY),
         (
+            "assurance.DECISIONS_INCLUDE_NAMED",
+            assurance::DECISIONS_INCLUDE_NAMED,
+        ),
+        (
             "assurance.RELAX_EVIDENCE_BEST_EFFORT",
             assurance::RELAX_EVIDENCE_BEST_EFFORT,
         ),
@@ -689,6 +695,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         (
             "assurance.RELAX_TLS_TERMINATED_UPSTREAM",
             assurance::RELAX_TLS_TERMINATED_UPSTREAM,
+        ),
+        (
+            "assurance.RELAX_DECISIONS_INCLUDE_ALL",
+            assurance::RELAX_DECISIONS_INCLUDE_ALL,
         ),
         ("format.SEALED_KEY_V1", format::SEALED_KEY_V1),
         ("format.AUTHZ_SNAPSHOT_V1", format::AUTHZ_SNAPSHOT_V1),

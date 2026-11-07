@@ -95,11 +95,12 @@ pub enum Control {
     IdentityWitness,
     OperationsDualControl,
     Tls13Only,
+    DecisionsIncludeNamed,
 }
 
 impl Control {
     /// Every control, in the order of the profile table.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::EvidenceRequired,
         Self::SchemaPartition,
         Self::SchemaWarningsAsErrors,
@@ -117,6 +118,7 @@ impl Control {
         Self::IdentityWitness,
         Self::OperationsDualControl,
         Self::Tls13Only,
+        Self::DecisionsIncludeNamed,
     ];
 
     /// The stable name discovery publishes.
@@ -139,6 +141,7 @@ impl Control {
             Self::IdentityWitness => names::IDENTITY_WITNESS,
             Self::OperationsDualControl => names::OPERATIONS_DUAL_CONTROL,
             Self::Tls13Only => names::TLS_1_3_ONLY,
+            Self::DecisionsIncludeNamed => names::DECISIONS_INCLUDE_NAMED,
         }
     }
 
@@ -151,7 +154,8 @@ impl Control {
             | Self::GrpcStrictDecoder
             | Self::CustodyHsm
             | Self::OperationsDualControl
-            | Self::Tls13Only => AssuranceProfile::Regulated,
+            | Self::Tls13Only
+            | Self::DecisionsIncludeNamed => AssuranceProfile::Regulated,
             _ => AssuranceProfile::Production,
         }
     }
@@ -168,6 +172,7 @@ impl Control {
                 | Self::CustodyEncrypted
                 | Self::IdentityWitness
                 | Self::OperationsDualControl
+                | Self::DecisionsIncludeNamed
         )
     }
 
@@ -201,6 +206,10 @@ impl Control {
             Self::IdentityWitness => "the Host identity (WP-2.2)",
             Self::OperationsDualControl => "the plan receipts of the Host API (WP-3.9)",
             Self::Tls13Only => "Bootstrap (`Config::validate`) over every listener's TLS settings",
+            Self::DecisionsIncludeNamed => {
+                "Bootstrap (`Config::validate`) over the decision log's `include` and the decision \
+                 store's `accept`"
+            }
         }
     }
 }
@@ -288,17 +297,21 @@ pub enum Relaxation {
     /// A Plane public listener serving in the clear behind an ingress or a sidecar that terminates
     /// TLS (WP-2.11).
     TlsTerminatedUpstream,
+    /// A decision log, or a decision store, that keeps in clear every member a caller sends:
+    /// `["*"]` in `dataPlane.decisions.log.include` or `controlPlane.decisions.accept`.
+    DecisionsIncludeAll,
 }
 
 impl Relaxation {
     /// Every relaxation.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::EvidenceBestEffort,
         Self::SchemaRegoInputAbsent,
         Self::GrpcTransportParityPartial,
         Self::Tls12Compat,
         Self::CustodyPlaintext,
         Self::TlsTerminatedUpstream,
+        Self::DecisionsIncludeAll,
     ];
 
     /// The stable name discovery publishes.
@@ -310,6 +323,7 @@ impl Relaxation {
             Self::Tls12Compat => names::RELAX_TLS_1_2_COMPAT,
             Self::CustodyPlaintext => names::RELAX_CUSTODY_PLAINTEXT,
             Self::TlsTerminatedUpstream => names::RELAX_TLS_TERMINATED_UPSTREAM,
+            Self::DecisionsIncludeAll => names::RELAX_DECISIONS_INCLUDE_ALL,
         }
     }
 
@@ -324,6 +338,7 @@ impl Relaxation {
             // A process that terminates no TLS cannot hold its listener to TLS 1.3 end to end
             // (WP-2.11 interpretation): no new control.
             Self::TlsTerminatedUpstream => Control::Tls13Only,
+            Self::DecisionsIncludeAll => Control::DecisionsIncludeNamed,
         }
     }
 

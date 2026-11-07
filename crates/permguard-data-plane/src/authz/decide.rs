@@ -2303,12 +2303,21 @@ impl Decider {
 /// is committed to in every record, and what is kept in clear is only ever what
 /// somebody asked for by name. A field added to a request tomorrow therefore
 /// starts being committed to and does not start being recorded.
+///
+/// `["*"]` is the one exception, and it is stated, never defaulted: every member is kept, the
+/// assurance profile publishes it as `decisions.include_all`, and `regulated` refuses it at start.
 fn named(
     available: &serde_json::Map<String, serde_json::Value>,
     wanted: &[String],
 ) -> Option<serde_json::Map<String, serde_json::Value>> {
     if wanted.is_empty() {
         return None;
+    }
+    if wanted
+        .iter()
+        .any(|name| name == permguard_core::decisions::IncludeSection::EVERY)
+    {
+        return (!available.is_empty()).then(|| available.clone());
     }
     let kept: serde_json::Map<String, serde_json::Value> = wanted
         .iter()
@@ -2649,6 +2658,28 @@ mod tests {
     use super::*;
 
     use permguard_languages::Verdict;
+
+    /// What a record keeps in clear: nothing unless named, the members named, or every member
+    /// under `["*"]` — and nothing when the caller sent nothing, whatever was named.
+    #[test]
+    fn a_record_keeps_in_clear_what_was_named_or_every_member_under_the_star() {
+        let sent = serde_json::json!({"mfa": true, "amountCents": 1200, "ip": "10.0.0.7"});
+        let sent = sent.as_object().expect("an object");
+        let names = |names: &[&str]| {
+            names
+                .iter()
+                .map(|name| (*name).to_owned())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(super::named(sent, &[]), None);
+        assert_eq!(
+            super::named(sent, &names(&["mfa", "absent"])),
+            serde_json::json!({"mfa": true}).as_object().cloned()
+        );
+        assert_eq!(super::named(sent, &names(&["*"])).as_ref(), Some(sent));
+        assert_eq!(super::named(&serde_json::Map::new(), &names(&["*"])), None);
+    }
 
     /// The resolution itself is asserted where it lives — `permguard_languages::
     /// evaluate::resolve`. What is this crate's to keep true is that the decision

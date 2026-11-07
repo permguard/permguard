@@ -231,10 +231,14 @@ dataPlane:
   #     # The input commitments are keyed per ledger by the zone keys derived from
   #     # `operations.secrets.coordinator_root_ref` (WP-3.3), required when the log is on: a
   #     # commitment keyed by anything public is a dictionary away from the attribute it hides.
+  #     # `["*"]`, alone in its list, keeps every member the caller sends: a stated choice, published
+  #     # by the assurance profile as the relaxation `decisions.include_all`, and refused under
+  #     # `regulated`, where members are named one at a time. `*` beside other names is refused.
+  #     # What the control plane keeps is bounded again by its `controlPlane.decisions.accept`.
   #     include:
   #       subject_properties: ["department"]
   #       resource_properties: []
-  #       context: ["ip", "time"]
+  #       context: ["ip", "time"]   # or ["*"]: every member, in clear
 
   # ── The temporal interface, and the history it decides against ───────────────────────────────
   # `permguard.api.pdp.temporal.v1alpha1`: an occurrence is recorded into a durable history and

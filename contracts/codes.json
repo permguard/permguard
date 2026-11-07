@@ -1668,6 +1668,12 @@
       "contract": "7-contracts/3-contract-evidence-decisions.md",
       "kind": "reason"
     },
+    "stream.BATCH_NOT_ACCEPTED": {
+      "code": "batch_not_accepted",
+      "contract": "7-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
     "stream.BATCH_REJECTED": {
       "code": "batch_rejected",
       "contract": "7-contracts/6-contract-ledger-notp.md",

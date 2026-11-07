@@ -1265,6 +1265,7 @@ impl App {
         time: &Arc<permguard_host::time::TimeGuard>,
         members: &Arc<std::sync::OnceLock<Arc<permguard_host::membership::Store>>>,
         acknowledged_retention: std::time::Duration,
+        ceiling: Option<permguard_core::decisions::IncludeSection>,
     ) -> Result<StreamParts, permguard_stream::engine::StreamError> {
         let engine = permguard_stream::engine::Streams::open(
             volume,
@@ -1308,6 +1309,19 @@ impl App {
             .with_retention_source(retention(
                 permguard_host::membership::record::TaskType::DecisionsShip,
             ));
+        // What the decision store accepts in clear, held over what a coordinator ingests exactly
+        // as over the Control Plane's own ingest (`controlPlane.decisions.accept`).
+        let decision_consumer = match ceiling {
+            Some(ceiling) => decision_consumer.with_admission(Arc::new(move |bytes: &[u8]| {
+                let record: serde_json::Value =
+                    serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+                match permguard_decisions::ceiling::beyond(&record, &ceiling) {
+                    Some(member) => Err(permguard_decisions::ceiling::refusal(&member)),
+                    None => Ok(()),
+                }
+            })),
+            None => decision_consumer,
+        };
         // The events' also keeps the origins this Host imports as long as its Data Plane's
         // windows read them (WP-6.2c2b1).
         let event_retention = Arc::new(crate::stream_gc::EventRetention {
@@ -2215,6 +2229,7 @@ impl App {
                         &time,
                         &retention_members,
                         config.stream_acknowledged_retention(),
+                        config.decision_ceiling(),
                     )
                     .map_err(|error| anyhow::anyhow!("{error}"))
                     .context("opening the stream engine")?;

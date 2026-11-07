@@ -69,12 +69,15 @@ impl DecisionLog for DecisionFacade {
         let outcome = {
             let (facade, batch) = (self.clone(), batch.clone());
             tokio::task::spawn_blocking(move || {
-                match ingest::accept(&facade.store, &batch, &keys) {
+                match ingest::accept_under(&facade.store, &batch, &keys, facade.ceiling.as_ref()) {
                     // A rotated producer ring is a file to re-read, not a
                     // plane to restart.
-                    Err(Refused::Unattributable(_)) => {
-                        ingest::accept(&facade.store, &batch, &facade.reload_producers())
-                    }
+                    Err(Refused::Unattributable(_)) => ingest::accept_under(
+                        &facade.store,
+                        &batch,
+                        &facade.reload_producers(),
+                        facade.ceiling.as_ref(),
+                    ),
                     other => other,
                 }
             })
@@ -345,6 +348,7 @@ fn reason_of(refused: &Refused) -> &'static str {
         Refused::Conflict { .. } => "conflict",
         Refused::Closed(_) => "closed",
         Refused::Unavailable(_) => "unavailable",
+        Refused::NotAccepted(_) => "not_accepted",
     }
 }
 
@@ -376,6 +380,13 @@ fn api_error_of(refused: &Refused) -> ApiError {
             ErrorClass::Unavailable,
             codes::stream::STORE_UNAVAILABLE,
             detail.clone(),
+        ),
+        // Never retried as it stands: the same records would be refused again. The producer
+        // stops until its inclusion or this store's ceiling changes.
+        Refused::NotAccepted(_) => ApiError::new(
+            ErrorClass::Validation,
+            codes::stream::BATCH_NOT_ACCEPTED,
+            refused.to_string(),
         ),
     }
 }

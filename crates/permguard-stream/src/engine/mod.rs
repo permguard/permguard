@@ -64,7 +64,7 @@ use permguard_host::time::TimeGuard;
 use permguard_objects::cbor::Value;
 use sha2::{Digest as _, Sha256};
 
-pub use consumer::{Consumer, ConsumerState, ForkMark, MAX_VIEW_BYTES};
+pub use consumer::{Admission, Consumer, ConsumerState, ForkMark, MAX_VIEW_BYTES};
 pub use producer::{
     Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, MAX_SUBSCRIPTION_BYTES, Position,
     PressureBounds, Producer, Receipt, Restored, Sealing, Span, Spans, Subscription,

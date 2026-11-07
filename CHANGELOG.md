@@ -17,6 +17,22 @@ is cut.
 
 ## [Unreleased]
 
+### Added
+
+- **A decision log can keep every member of a caller's request in clear, when the deployment says so.**
+  `["*"]`, alone in a list of `dataPlane.decisions.log.include`, keeps every subject property, resource property or context member the caller sends.
+  Nothing changes by default: every list is still empty until a deployment names members, and the keyed commitment of the whole context is recorded whatever is included.
+  `["*"]` is the relaxation `decisions.include_all`: `development` accepts it, `production` accepts it and publishes it in discovery and `host status`, `regulated` refuses to start with it.
+  `*` beside other names, or an empty name, is refused at start.
+- **A control plane sets a ceiling on what it keeps in clear.**
+  `controlPlane.decisions.accept` lists, as `include` does, the members a decision record may carry in clear to be stored.
+  A batch with a record beyond it is refused whole, `batch_not_accepted`, after the signature and replay checks and before anything is written; the store cannot trim a record, since it is chained and signed.
+  The Host's coordinator applies the same ceiling to what its members ship, answering `unverifiable`.
+  Absent, the producers' inclusion is the rule, except under `regulated`, where absent accepts nothing in clear.
+  A new assurance control, `decisions.include_named`, is in force under `regulated` and can be added to `production`.
+- **`decisions read` shows the properties a record keeps in clear.**
+  Its JSON lines carry `subject_properties` and `resource_properties` beside `context`, each only when the record holds some, and the terminal lists them under the decision.
+
 ### Fixed
 
 - **A gRPC call never waits for ever.**

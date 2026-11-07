@@ -17,6 +17,7 @@
 //! acked + 1          ok, acked moves          the ordinary case
 //! > acked + 1        out_of_order             nothing stored; resend from expected_seq
 //! same seq, other digest   integrity          the stream is closed permanently
+//! beyond the ceiling       not_accepted       nothing stored; the stream stays where it was
 //! ```
 //!
 //! The last one is not a retry and never becomes one. Two different records
@@ -71,6 +72,9 @@ pub enum Refused {
     Closed(String),
     /// The store could not accept right now. A shipper retries this.
     Unavailable(String),
+    /// A record carries in clear what this store does not accept (`controlPlane.decisions.accept`).
+    /// Nothing was stored; the producer stops until its inclusion or this ceiling changes.
+    NotAccepted(String),
 }
 
 impl std::fmt::Display for Refused {
@@ -87,6 +91,13 @@ impl std::fmt::Display for Refused {
                 "this stream was closed permanently ({reason}) and accepts nothing further: open a new incarnation"
             ),
             Self::Unavailable(detail) => write!(formatter, "{detail}"),
+            Self::NotAccepted(member) => {
+                write!(
+                    formatter,
+                    "{}",
+                    permguard_decisions::ceiling::refusal(member)
+                )
+            }
         }
     }
 }
@@ -109,11 +120,27 @@ impl ProducerTrust {
     }
 }
 
-/// Accepts one signed batch into `store`.
+/// Accepts one signed batch into `store`, holding no ceiling: the producers' inclusion is the rule.
 pub fn accept(
     store: &DecisionStore,
     batch: &Batch,
     producers: &[ProducerTrust],
+) -> Result<Accepted, Refused> {
+    accept_under(store, batch, producers, None)
+}
+
+/// Accepts one signed batch into `store`, refusing it whole when a record it would store carries
+/// in clear what `ceiling` does not accept.
+///
+/// The ceiling is checked after the signature, the chain and the replay: a batch nobody can
+/// attribute is refused for that, and a replay of what is already held is acknowledged as before,
+/// whatever the ceiling says now. It is checked before anything is written, so a refused batch
+/// leaves the stream exactly where it was.
+pub fn accept_under(
+    store: &DecisionStore,
+    batch: &Batch,
+    producers: &[ProducerTrust],
+    ceiling: Option<&permguard_core::decisions::IncludeSection>,
 ) -> Result<Accepted, Refused> {
     let protected = batch
         .signature
@@ -180,6 +207,26 @@ pub fn accept(
         return Ok(Accepted::OutOfOrder {
             expected_seq: state.acked + 1,
         });
+    }
+    if let Some(ceiling) = ceiling
+        && let Some(member) = batch
+            .records
+            .iter()
+            .filter(|value| {
+                value.get("seq").and_then(Value::as_u64).unwrap_or_default() > state.acked
+            })
+            .find_map(|value| permguard_decisions::ceiling::beyond(value, ceiling))
+    {
+        warn!(
+            event.name = "decisions.not_accepted",
+            component = COMPONENT,
+            stream.id = envelope.stream.id.as_str(),
+            stream.instance = envelope.stream.instance.as_str(),
+            first_seq = envelope.first_seq,
+            member = member.as_str(),
+            "a decision batch carries in clear what this store does not accept: refused whole"
+        );
+        return Err(Refused::NotAccepted(member));
     }
 
     // The part that makes a chain a chain, checked on the batch that actually
