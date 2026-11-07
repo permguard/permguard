@@ -551,6 +551,23 @@ fn a_decision_log_server_or_an_event_destination_is_refused_as_retired() {
     assert!(said.contains("dataPlane.decisions.log.server"), "{said}");
     assert!(said.contains("retired"), "{said}");
 
+    // Refused with the temporal interface off as much as on.
+    let off = plain
+        .clone()
+        .with_events_destination(Some(permguard_core::decisions::EventDestination {
+            url: "https://control.example:6443".to_owned(),
+            transport: "http".to_owned(),
+            tls: permguard_core::mirrors::MirrorTls::default(),
+        }))
+        .expect("the destination parses");
+    assert!(
+        module
+            .startup_check(&off)
+            .expect_err("refused with events off")
+            .to_string()
+            .contains("dataPlane.events.destination")
+    );
+
     let temporal = deployed_with(&[
         (SETTING_EVENTS_ENABLED, "true"),
         (SETTING_EXPERIMENTAL_DOGWOOD, "true"),

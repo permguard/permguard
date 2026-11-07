@@ -155,7 +155,6 @@ dataPlane:
     log:
       enabled: \"true\"
       spool: {{ directory: data/decisions/spool, bytes: 64M, age: 24h }}
-      batch: {{ bytes: 256k, interval: 1s }}
       mode: required
       sample: {{ permits: \"1.0\" }}
   events:

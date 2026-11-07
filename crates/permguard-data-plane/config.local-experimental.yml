@@ -63,14 +63,10 @@ dataPlane:
 
     log:
       enabled: "true"
-      # only where a version 1 spool left by an earlier release is shipped until empty
-      server:
-        url: "http://127.0.0.1:6443"
       spool:
         directory: "data/decisions/spool"
         bytes: "64M"
         age: "24h"
-      batch: { bytes: "256k", interval: "1s" }
       mode: "required"           # every answered decision has a durable record; one that cannot be is refused
       sample: { permits: "1.0" }
       include:
@@ -104,12 +100,6 @@ dataPlane:
       minimum: "48h"
       allowed_lateness: "5m"
       clock_skew: "30s"
-
-    # Absent, the decision log's destination is used — one deployment ships both to one control
-    # plane, and naming it twice is two settings to keep in step. Named here anyway, because this
-    # file exists to be read.
-    destination:
-      url: "http://127.0.0.1:6443"
 
     # `local` is the default and it is not a lesser mode: a decision ranges over what this plane
     # recorded, which is exactly reproducible. A shared mode ranges over what had *arrived*, which

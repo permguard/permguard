@@ -63,6 +63,25 @@ fn the_decision_store_is_preflighted_instead_of_disappearing_behind_health() {
         .expect_err("a retired setting is refused");
     assert!(refused.to_string().contains("is retired"), "{refused}");
 
+    // Refused with the store off as much as on.
+    let off = permguard_core::Config::from_layers(
+        permguard_server::plane::build_settings("0.0.0-test"),
+        vec![permguard_server::plane::SETTING_RUNTIME_PLANES],
+        permguard_core::config::Layers::default(),
+    )
+    .expect("the test configuration builds")
+    .with_decision_producer_keys([permguard_core::decisions::DecisionProducerSource {
+        path: "producer.jwks".to_owned(),
+        pdp: "plane-a".to_owned(),
+    }]);
+    assert!(
+        module
+            .startup_check(&off)
+            .expect_err("refused with the store off")
+            .to_string()
+            .contains("is retired")
+    );
+
     let blocked = root.join("blocked");
     std::fs::write(&blocked, b"not a directory").expect("the path is blocked");
     let refused = module

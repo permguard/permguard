@@ -203,9 +203,19 @@ start, and the chart refuses them at install.
 {{- end }}
 {{- end }}
 {{- end }}
+{{- $sources := dict }}
 {{- range $component, $plane := dict "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
 {{- if $plane.enabled }}
-{{- $extra := $plane.extraConfig | default dict }}
+{{- $_ := set $sources $component ($plane.extraConfig | default dict) }}
+{{- end }}
+{{- end }}
+{{- if .Values.dataPlane.enabled }}
+{{- range $group := (.Values.dataPlane.groups | default list) }}
+{{- $_ := set $sources (printf "dataPlane.groups[%s]" $group.name) ($group.extraConfig | default dict) }}
+{{- end }}
+{{- end }}
+{{- range $component, $extra := $sources }}
+{{- if true }}
 {{- if dig "dataPlane" "decisions" "log" "server" "" $extra }}
 {{- fail (printf "%s sets dataPlane.decisions.log.server, which is retired: decisions are shipped by the Host over decisions.ship. Remove it." $component) }}
 {{- end }}

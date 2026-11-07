@@ -219,6 +219,8 @@ pub enum MembershipError {
     OutOfOrder(String),
     /// A member name another live member Host holds (iteration 02, WP-10.2).
     NameTaken(String),
+    /// One member Host with two member records, or one record on two Hosts (WP-10.2).
+    RecordConflict(String),
 }
 
 impl fmt::Display for MembershipError {
@@ -248,6 +250,7 @@ impl fmt::Display for MembershipError {
             }
             Self::Held(detail) => write!(f, "held for review: {detail}"),
             Self::OutOfOrder(detail) => write!(f, "out of order: {detail}"),
+            Self::RecordConflict(detail) => write!(f, "member record conflict: {detail}"),
             Self::NameTaken(name) => write!(
                 f,
                 "the member name `{name}` is held by another member Host: revoke its memberships \
@@ -1802,6 +1805,13 @@ impl Store {
                 "the ring statements are not the rings the requested tasks need",
             ));
         }
+        // A name another live member Host holds is refused now, not left for the approval: the
+        // approving operator decides the name, never which of two Hosts keeps it.
+        if let Some(name) = invitation.name.as_ref().or(request.name.as_ref())
+            && self.check_name_free(name, &peer.host_id).is_err()
+        {
+            return Err(refused("the member name is held by another member Host"));
+        }
         Ok(Pending {
             membership_id: fresh_id(now)?,
             invite_id: request.invite_id,
@@ -1942,12 +1952,62 @@ impl Store {
 
     /// Refuses `name` when a live member Host other than `host_id` holds it.
     fn check_name_free(&self, name: &str, host_id: &[u8; 16]) -> Result<(), MembershipError> {
-        if self
-            .live_members()
-            .iter()
-            .any(|(record, host)| record.name == name && host.host_id != *host_id)
-        {
+        // Every live manifest, not one per member: a rename interrupted half-way leaves a Host's
+        // memberships with two names, and both stay held until it completes.
+        if self.live_manifests().iter().any(|manifest| {
+            manifest.member_record.name == name && manifest.member.host_id != *host_id
+        }) {
             return Err(MembershipError::NameTaken(name.to_owned()));
+        }
+        Ok(())
+    }
+
+    /// The manifests of the memberships this Host coordinates that are live: active or suspended.
+    fn live_manifests(&self) -> Vec<Manifest> {
+        self.read()
+            .memberships
+            .values()
+            .filter(|held| held.role == Role::Coordinator)
+            .filter(|held| matches!(held.status, Status::Active | Status::Suspended))
+            .filter_map(|held| {
+                held.manifest
+                    .as_ref()
+                    .map(|(manifest, ..)| manifest.clone())
+            })
+            .collect()
+    }
+
+    /// The member record invariant, checked under the store's writing lock before a live manifest
+    /// is issued (WP-10.2): every other live membership of the same Host carries the same
+    /// `member_id`, no other Host carries it, and no other Host holds the name. The checks made
+    /// before the lock are advisory; this one is what two concurrent operations cannot both pass.
+    fn check_record_issuable(&self, manifest: &Manifest) -> Result<(), MembershipError> {
+        if !matches!(manifest.status, Status::Active | Status::Suspended) {
+            return Ok(());
+        }
+        let host = manifest.member.host_id;
+        let record = &manifest.member_record;
+        for other in self.live_manifests() {
+            if other.membership_id == manifest.membership_id {
+                continue;
+            }
+            if other.member.host_id == host && other.member_record.member_id != record.member_id {
+                return Err(MembershipError::RecordConflict(
+                    "this Host is already a member under another record: read the members again \
+                     and approve again"
+                        .to_owned(),
+                ));
+            }
+            if other.member.host_id != host {
+                if other.member_record.member_id == record.member_id {
+                    return Err(MembershipError::RecordConflict(
+                        "the member record belongs to another Host".to_owned(),
+                    ));
+                }
+                if other.member_record.name == record.name {
+                    return Err(MembershipError::NameTaken(record.name.clone()));
+                }
+            }
         }
         Ok(())
     }
@@ -2180,6 +2240,7 @@ impl Store {
                 to: manifest.status,
             });
         }
+        self.check_record_issuable(manifest)?;
         self.issue(&writing, applying, coordinator, manifest, &[], now)
     }
 
@@ -2353,6 +2414,14 @@ impl Store {
             {
                 continue;
             }
+            // A held membership leaves only by its revocation: a change it cannot take is refused
+            // whole, before any membership is revised.
+            if let Some(seen) = held.held_epoch {
+                return Err(MembershipError::Held(format!(
+                    "a membership of this member is held for review since epoch {seen}: revoke it \
+                     first"
+                )));
+            }
             let mut next =
                 self.next_manifest(coordinator, &held, manifest, digest, held.status, now)?;
             next.member_record = record.clone();
@@ -2399,6 +2468,7 @@ impl Store {
                  enroll again"
             )));
         }
+        self.check_record_issuable(manifest)?;
         self.issue(&writing, applying, coordinator, manifest, presented, now)
     }
 

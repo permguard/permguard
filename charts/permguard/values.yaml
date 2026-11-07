@@ -387,7 +387,6 @@ dataPlane:
   #           directory: "data/decisions/spool"  # on a persistent volume: it is the copy that survives a restart
   #           bytes: "512M"             # decision records only; the terminal record is reserved apart
   #           age: "24h"
-  #         batch: { bytes: "256k", interval: "1s" }
   #         sample: { permits: "1.0" }
   #         commitment:
   #           key_ref: decision-commitment   # required: a commitment keyed by anything public is

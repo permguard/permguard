@@ -770,8 +770,7 @@ fn events_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
     if config.event_producer_keys_declared() {
         anyhow::bail!(
             "`controlPlane.events.producer_keys` is retired: events arrive over the Host's \
-             `events.ship`, and the event store trusts only the signing ring of a data plane in \
-             this process for what its legacy journals still ship. Remove it"
+             `events.ship`, verified under the memberships' pinned rings. Remove it"
         );
     }
 
@@ -781,19 +780,19 @@ fn events_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
 /// A configured decision store is a startup requirement, not an optional
 /// route that may disappear behind a ready health endpoint.
 fn decisions_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
-    if !config.decision_store_enabled() {
-        return Ok(());
-    }
     // Retired (iteration 02, WP-10.4): decisions arrive over the Host's `decisions.ship`, verified
     // under the membership's pinned rings; no batch is accepted over a public route and no key
-    // file is read. A configuration still naming one is refused, so no deployment believes it is
-    // in force.
+    // file is read. A configuration still naming one is refused, the store on or off, so no
+    // deployment believes it is in force.
     if !config.decision_producer_keys().is_empty() {
         anyhow::bail!(
             "`controlPlane.decisions.producer_keys` is retired: decisions arrive over the Host's \
              `decisions.ship`, from the members of this plane's Host, verified under their \
              memberships' pinned rings. Remove it"
         );
+    }
+    if !config.decision_store_enabled() {
+        return Ok(());
     }
 
     let directory = config.working_dir().join(config.decision_store_directory());

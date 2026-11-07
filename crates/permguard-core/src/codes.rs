@@ -500,6 +500,10 @@ pub mod host {
     pub const CLONE_SUSPECTED: &str = "clone_suspected";
     /// The membership is held for review after a message from an epoch the coordinator never issued: no task, no fence and no resumption: only its revocation (WP-4.3).
     pub const MEMBERSHIP_HELD: &str = "membership_held";
+    /// A member name another live member Host holds: refused at enrollment, approval or rename (iteration 02, WP-10.2).
+    pub const MEMBER_NAME_TAKEN: &str = "member_name_taken";
+    /// An operation would give one member Host two member records, or one record to two Hosts: refused, nothing written; read the members again and retry (iteration 02, WP-10.2).
+    pub const MEMBER_RECORD_CONFLICT: &str = "member_record_conflict";
     /// The task already holds as many open sessions as its signed `max_concurrency`: no lease until one closes (WP-4.4).
     pub const TASK_BUSY: &str = "task_busy";
     /// A task message over its task's signed `max_rate_per_minute`: refused, the session kept (WP-4.4).
@@ -861,6 +865,8 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::LEASE_EXPIRED,
         host::CLONE_SUSPECTED,
         host::MEMBERSHIP_HELD,
+        host::MEMBER_NAME_TAKEN,
+        host::MEMBER_RECORD_CONFLICT,
         host::TASK_BUSY,
         host::RATE_LIMITED,
         host::REPORT_OUT_OF_ORDER,

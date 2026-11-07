@@ -2715,3 +2715,172 @@ fn renaming_or_regrouping_a_member_revises_every_live_membership_of_its_host() {
             .is_empty()
     );
 }
+
+/// What an approval checked before the store's lock, issued later: what a concurrent operation
+/// may find changed by then (WP-10.2, after the review of 2026-11-07).
+fn check_named(c: &Host, id: &[u8; 16], name: &str) -> Manifest {
+    let held = c.store.membership(id).expect("held");
+    let narrow = Narrow {
+        selector: held.request.selector.clone(),
+        tasks: held.request.tasks.clone(),
+        name: Some(name.to_owned()),
+        groups: None,
+    };
+    c.store
+        .check_approve(
+            &c.coordinator(),
+            &capabilities(),
+            id,
+            Some(&narrow),
+            None,
+            &offered_nothing(),
+            None,
+            now(),
+        )
+        .expect("the check alone passes")
+        .0
+}
+
+#[test]
+fn two_approvals_checked_together_never_give_one_name_to_two_hosts() {
+    let c = Host::new("race-name-c");
+    let (m1, m2) = (Host::new("race-name-m1"), Host::new("race-name-m2"));
+    let first = enroll(&c, &m1).membership_id;
+    let second = enroll(&c, &m2).membership_id;
+    let (one, two) = (
+        check_named(&c, &first, "edge"),
+        check_named(&c, &second, "edge"),
+    );
+    c.store
+        .approve(&Applying::for_tests(60), &c.coordinator(), &one, now())
+        .expect("the first issues");
+    assert!(matches!(
+        c.store
+            .approve(&Applying::for_tests(61), &c.coordinator(), &two, now()),
+        Err(MembershipError::NameTaken(name)) if name == "edge"
+    ));
+    assert_eq!(
+        c.store.membership(&second).expect("held").status,
+        Status::Pending,
+        "nothing of the refused approval is written"
+    );
+}
+
+#[test]
+fn two_approvals_of_one_host_checked_together_never_make_two_records() {
+    let c = Host::new("race-record-c");
+    let m = Host::new("race-record-m");
+    let first = enroll(&c, &m).membership_id;
+    let second = enroll(&c, &m).membership_id;
+    let (one, two) = (
+        check_named(&c, &first, "edge"),
+        check_named(&c, &second, "edge"),
+    );
+    assert_ne!(one.member_record.member_id, two.member_record.member_id);
+    c.store
+        .approve(&Applying::for_tests(62), &c.coordinator(), &one, now())
+        .expect("the first issues");
+    assert!(matches!(
+        c.store
+            .approve(&Applying::for_tests(63), &c.coordinator(), &two, now()),
+        Err(MembershipError::RecordConflict(_))
+    ));
+    // Checked again, the second carries the first's record.
+    let again = check_named(&c, &second, "edge");
+    assert_eq!(again.member_record, one.member_record);
+    c.store
+        .approve(&Applying::for_tests(64), &c.coordinator(), &again, now())
+        .expect("issued");
+}
+
+#[test]
+fn a_rename_racing_an_approval_never_leaves_a_name_on_two_hosts() {
+    let c = Host::new("race-rename-c");
+    let (m1, m2) = (Host::new("race-rename-m1"), Host::new("race-rename-m2"));
+    let first = enroll(&c, &m1).membership_id;
+    approve_named(&c, &first, Some("dp-a"), None).expect("approvable");
+    let second = enroll(&c, &m2).membership_id;
+    let approval = check_named(&c, &second, "edge");
+    let renames = c
+        .store
+        .check_member_record(
+            &c.coordinator(),
+            &first,
+            Some("edge".to_owned()),
+            None,
+            now(),
+        )
+        .expect("the check alone passes");
+    c.store
+        .approve(&Applying::for_tests(65), &c.coordinator(), &approval, now())
+        .expect("the approval issues first");
+    assert!(matches!(
+        c.store.transition(
+            &Applying::for_tests(66),
+            &c.coordinator(),
+            &renames[0],
+            now()
+        ),
+        Err(MembershipError::NameTaken(_))
+    ));
+}
+
+#[test]
+fn a_member_with_a_held_membership_is_not_renamed_half_way() {
+    let c = Host::new("rename-held-c");
+    let m = Host::new("rename-held-m");
+    let first = enroll(&c, &m).membership_id;
+    approve_named(&c, &first, Some("dp-a"), None).expect("approvable");
+    let second = enroll(&c, &m).membership_id;
+    approve_named(&c, &second, None, None).expect("approvable");
+    c.store
+        .hold(&Applying::for_tests(67), &second, 99, now())
+        .expect("held for review");
+    assert!(matches!(
+        c.store.check_member_record(
+            &c.coordinator(),
+            &first,
+            Some("dp-b".to_owned()),
+            None,
+            now()
+        ),
+        Err(MembershipError::Held(_))
+    ));
+    assert_eq!(
+        c.store
+            .membership(&first)
+            .and_then(|held| held.manifest)
+            .expect("a manifest")
+            .0
+            .member_record
+            .name,
+        "dp-a",
+        "nothing was revised"
+    );
+}
+
+#[test]
+fn an_enrollment_asking_for_a_name_another_host_holds_is_refused() {
+    let c = Host::new("enroll-taken-c");
+    let (m1, m2) = (Host::new("enroll-taken-m1"), Host::new("enroll-taken-m2"));
+    let first = enroll(&c, &m1).membership_id;
+    approve_named(&c, &first, Some("edge"), None).expect("approvable");
+    let (invitation, token) = invite(&c, None);
+    let mut asked = request(&c, &m2, &invitation, &token, &EXPORTER);
+    asked.name = Some("edge".to_owned());
+    let verified = m2.verified();
+    assert!(matches!(
+        c.store.check_enroll(
+            &c.coordinator(),
+            &Enrolling {
+                peer: &verified,
+                presentation: &m2.presentation(),
+                declared_assurance: AssuranceProfile::Production,
+                exporter: &EXPORTER,
+            },
+            &asked,
+            now(),
+        ),
+        Err(MembershipError::Enrollment(_))
+    ));
+}

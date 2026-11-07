@@ -89,7 +89,6 @@ pub fn configuration(ports: (u16, u16, u16), evidence: &str) -> String {
                 "      enabled: \"true\"\n",
                 "      server: {{ url: \"http://127.0.0.1:{control}\" }}\n",
                 "      spool: {{ directory: \"data/decisions/spool\", bytes: \"256M\", age: \"24h\" }}\n",
-                "      batch: {{ bytes: \"256k\", interval: \"1s\" }}\n",
                 "      mode: \"required\"\n",
                 "      sample: {{ permits: \"1.0\" }}\n",
                 "      include: {{ subject_properties: [], resource_properties: [], context: [] }}\n",

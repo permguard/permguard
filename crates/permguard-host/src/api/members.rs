@@ -1111,6 +1111,8 @@ pub fn refusal_of(error: MembershipError) -> Refusal {
         | MembershipError::Equivocation(_)
         | MembershipError::NotSuccessor(_)
         | MembershipError::Held(_)
+        | MembershipError::NameTaken(_)
+        | MembershipError::RecordConflict(_)
         | MembershipError::OutOfOrder(_) => ErrorClass::Conflict,
         MembershipError::AssuranceUnavailable(_)
         | MembershipError::Ring(_)
@@ -1923,9 +1925,21 @@ impl HostApi {
                             Some(self.changed(applying, &membership_id, manifest, &envelope)?);
                     }
                 }
-                answer.ok_or_else(|| {
-                    Failure::Refused(invalid("the membership named already carries that record"))
-                })
+                // The membership named may already carry the record, a change interrupted half-way
+                // and asked again: it answers as it stands.
+                match answer {
+                    Some(answer) => Ok(answer),
+                    None => {
+                        let (manifest, envelope, _) = memberships
+                            .store
+                            .membership(&membership_id)
+                            .and_then(|held| held.manifest)
+                            .ok_or_else(|| {
+                                failure(MembershipError::Unknown(format!("no membership `{id}`")))
+                            })?;
+                        self.changed(applying, &membership_id, &manifest, &envelope)
+                    }
+                }
             },
             |operation_id, revision, _| {
                 self.reconciled(&membership_id, operation_id, revision, MEMBER_RECORD)

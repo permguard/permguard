@@ -1178,8 +1178,6 @@ impl Consistency {
 }
 const DEFAULT_LOG_SPOOL_BYTES: u64 = 512 * 1024 * 1024;
 const DEFAULT_LOG_SPOOL_AGE: Duration = Duration::from_secs(24 * 60 * 60);
-const DEFAULT_LOG_BATCH_BYTES: u64 = 256 * 1024;
-const DEFAULT_LOG_BATCH_INTERVAL: Duration = Duration::from_secs(1);
 const DEFAULT_LOG_SAMPLE_PERMITS: f64 = 1.0;
 const DEFAULT_RESPONSE_SIGNING_VALIDITY: Duration = Duration::from_secs(300);
 const MAX_RESPONSE_SIGNING_VALIDITY: Duration = Duration::from_secs(3600);
@@ -1478,8 +1476,6 @@ pub struct Config {
     events_pull_ledgers: Vec<PullSubscription>,
     events_pull_producer_keys: Vec<crate::decisions::EventProducerSource>,
     log_spool_age: Duration,
-    log_batch_bytes: u64,
-    log_batch_interval: Duration,
     log_sample_permits: f64,
     response_signing_enabled: Option<bool>,
     response_signing_validity: Duration,
@@ -1695,8 +1691,6 @@ impl Default for Config {
             events_pull_ledgers: Vec::new(),
             events_pull_producer_keys: Vec::new(),
             log_spool_age: DEFAULT_LOG_SPOOL_AGE,
-            log_batch_bytes: DEFAULT_LOG_BATCH_BYTES,
-            log_batch_interval: DEFAULT_LOG_BATCH_INTERVAL,
             log_sample_permits: DEFAULT_LOG_SAMPLE_PERMITS,
             response_signing_enabled: None,
             response_signing_validity: DEFAULT_RESPONSE_SIGNING_VALIDITY,
@@ -3920,16 +3914,6 @@ produce: use `EdDSA` or `ES256`"
         self.log_spool_age
     }
 
-    /// How large a batch may grow before it ships.
-    pub fn log_batch_bytes(&self) -> u64 {
-        self.log_batch_bytes
-    }
-
-    /// How long a batch may wait before it ships anyway.
-    pub fn log_batch_interval(&self) -> Duration {
-        self.log_batch_interval
-    }
-
     /// The rate at which permits are recorded. Denies and errors always are.
     pub fn log_sample_permits(&self) -> f64 {
         self.log_sample_permits
@@ -4772,8 +4756,6 @@ produce: use `EdDSA` or `ES256`"
             SETTING_LOG_SPOOL_DIRECTORY => Some(self.log_spool_directory.clone()),
             SETTING_LOG_SPOOL_BYTES => n(self.log_spool_bytes),
             SETTING_LOG_SPOOL_AGE => d(self.log_spool_age),
-            SETTING_LOG_BATCH_BYTES => n(self.log_batch_bytes),
-            SETTING_LOG_BATCH_INTERVAL => d(self.log_batch_interval),
             SETTING_LOG_ON_FULL => Some("closed".to_owned()),
             SETTING_LOG_SAMPLE_PERMITS => n(self.log_sample_permits),
             SETTING_RESPONSE_SIGNING_ENABLED => b(self.response_signing_enabled()),
@@ -5646,20 +5628,14 @@ produce: use `EdDSA` or `ES256`"
                 );
             }
         }
-        if let Some(value) = settings.get(SETTING_LOG_BATCH_BYTES) {
-            self.log_batch_bytes =
-                parse_bytes(value).with_context(|| format!("reading {SETTING_LOG_BATCH_BYTES}"))?;
-            if self.log_batch_bytes == 0 {
-                anyhow::bail!("reading {SETTING_LOG_BATCH_BYTES}: an empty batch is not shipped");
-            }
-        }
-        if let Some(value) = settings.get(SETTING_LOG_BATCH_INTERVAL) {
-            self.log_batch_interval = parse_duration(value)
-                .with_context(|| format!("reading {SETTING_LOG_BATCH_INTERVAL}"))?;
-            if self.log_batch_interval.is_zero() {
+        // Retired (iteration 02, WP-10.4): the Host's engine seals and ships the stream; the
+        // plane batches nothing. A configuration still naming the bounds is refused, so no
+        // deployment believes they are in force.
+        for retired in [SETTING_LOG_BATCH_BYTES, SETTING_LOG_BATCH_INTERVAL] {
+            if settings.contains_key(retired) {
                 anyhow::bail!(
-                    "reading {SETTING_LOG_BATCH_INTERVAL}: a batch every no-time is a batch per \
-                     decision, which is what batching exists to avoid"
+                    "{retired} (`decisions.log.batch`) is retired: the Host's engine seals and \
+                     ships the decision stream over `decisions.ship`. Remove it"
                 );
             }
         }
@@ -6649,8 +6625,6 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_LIMITS_PEER_EXEMPT,
     SETTING_LIMITS_REQUEST_TIMEOUT,
     SETTING_LIMITS_WRITE_STALL_TIMEOUT,
-    SETTING_LOG_BATCH_BYTES,
-    SETTING_LOG_BATCH_INTERVAL,
     SETTING_LOG_ENABLED,
     SETTING_LOG_FORMAT,
     SETTING_LOG_LEVEL,

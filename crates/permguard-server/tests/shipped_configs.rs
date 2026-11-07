@@ -492,3 +492,37 @@ fn every_shipped_configuration_builds_as_the_server_builds_it() {
     }
     assert!(refused.is_empty(), "{}", refused.join("\n"));
 }
+
+/// Iteration 02, WP-10.4: no shipped configuration names the configured link between Planes,
+/// which the planes refuse at start: a decision log server, an event destination, a decision
+/// producer key file or the plane's batch bounds.
+#[test]
+fn no_shipped_configuration_names_the_retired_link() {
+    for path in shipped() {
+        let file = ConfigFile::load(&path).expect("the file parses");
+        if let Some(data) = file.section("dataPlane") {
+            let log = &data["decisions"]["log"];
+            for (what, value) in [
+                ("dataPlane.decisions.log.server", &log["server"]),
+                ("dataPlane.decisions.log.batch", &log["batch"]),
+                (
+                    "dataPlane.events.destination",
+                    &data["events"]["destination"],
+                ),
+            ] {
+                assert!(
+                    value.is_null(),
+                    "{} names the retired `{what}`",
+                    path.display()
+                );
+            }
+        }
+        if let Some(control) = file.section("controlPlane") {
+            assert!(
+                control["decisions"]["producer_keys"].is_null(),
+                "{} names the retired `controlPlane.decisions.producer_keys`",
+                path.display()
+            );
+        }
+    }
+}

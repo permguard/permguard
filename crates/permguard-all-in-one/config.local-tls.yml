@@ -176,16 +176,10 @@ dataPlane:
     # reaching a coordinator; the Host's stream ships it over `decisions.ship`, off the critical path.
     log:
       enabled: "true"
-      # only where a version 1 spool left by an earlier release is shipped until empty
-      server:
-        url: "https://127.0.0.1:6443"
-        tls:
-          ca_file: tls/ca.pem
       spool:
         directory: "data/decisions/spool"
         bytes: "64M"              # unacknowledged by the required subscriptions; past it decisions are refused
         age: "24h"
-      batch: { bytes: "256k", interval: "1s" }
       mode: "required"           # every answered decision has a durable record; one that cannot be is refused
       sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
       include:

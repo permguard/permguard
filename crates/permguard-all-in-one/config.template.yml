@@ -457,7 +457,6 @@ dataPlane:
   #       age: "24h"                   # how old the oldest unacknowledged batch may be
   #
   #     # Latency against efficiency: whichever comes first.
-  #     batch: { bytes: "256k", interval: "1s" }
   #
   #     # What the log promises before an answer (WP-6.1):
   #     #   required  every answered decision has a durable record; one that cannot be recorded is

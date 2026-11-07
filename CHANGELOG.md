@@ -17,7 +17,24 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A member Host is one member record: an id, a name and groups the coordinator decides.**
+  Every membership manifest carries it: a UUIDv7 `member_id` the coordinator makes at the Host's first approval, a `name` unique among the live members, and `groups` only the coordinator sets.
+  An invitation may fix the name and groups (`host members invite create --name --group`), an enrollment may ask for them (`host members join --name --group`), the approval decides (`host members approve --name --group`).
+  A second membership of the same Host carries the same record; a Host whose memberships all ended comes back as a new member, with a new id.
+  `host members record` (`POST /host/v1/members/{id}/record`, `MembershipService/ChangeMemberRecord`) renames a member or changes its groups, revising each of its live memberships in place; a suspended one stays suspended.
+  `host members list` and `get` show `member_id`, `name` and `groups`.
+  A name another live member Host holds is refused `member_name_taken`, at enrollment, approval or rename; two operations that would give one Host two records, or one record to two Hosts, are refused `member_record_conflict`, nothing written.
+
+### Removed
+
+- **The configured link between Planes.**
+  Decisions and events travel over the Host's `decisions.ship` and `events.ship` only, verified under the membership's pinned rings.
+  The data plane's version 1 decision spool and its shipper, and the legacy event shipper, are gone.
+  The control plane no longer accepts batches on a public route: `POST /decisions/v1/batches`, `POST /events/v1alpha1/batches`, `DecisionLog/Ship` and `EventLog/IngestBatch` are removed, with the producer key files and the trust built on them; the discovery documents no longer name an ingest endpoint.
+  `controlPlane.decisions.producer_keys`, `dataPlane.decisions.log.server`, `dataPlane.events.destination` and `dataPlane.decisions.log.batch` are refused at start whether or not their feature is on, and by the Helm chart, a group's `extraConfig` included: remove them.
+  No deployment is in use, so nothing is migrated: a volume holding a version 1 spool or legacy event journals keeps them unsent.
 
 ## [0.1.23] - 2026-11-07
 

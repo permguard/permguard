@@ -589,6 +589,18 @@
       "kind": "refusal",
       "class": "conflict"
     },
+    "host.MEMBER_NAME_TAKEN": {
+      "code": "member_name_taken",
+      "contract": "7-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.MEMBER_RECORD_CONFLICT": {
+      "code": "member_record_conflict",
+      "contract": "7-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
     "host.TASK_BUSY": {
       "code": "task_busy",
       "contract": "7-contracts/8-contract-host-api.md",

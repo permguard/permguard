@@ -314,6 +314,14 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
     permguard_languages::registry::check_opted_in(config.experimental_named())
         .map_err(|error| anyhow::anyhow!(error))?;
 
+    // Retired (iteration 02, WP-10.4): events are shipped by the Host over `events.ship`, to the
+    // coordinator its membership names; no plane names a destination of its own.
+    if config.events_destination().is_some() {
+        anyhow::bail!(
+            "`dataPlane.events.destination` is retired: events are shipped by the Host over \
+             `events.ship` to the coordinator of its membership. Remove it"
+        );
+    }
     if !config.events_enabled() {
         return Ok(());
     }
@@ -348,14 +356,6 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
             "`dataPlane.events.pull.producer_keys` is retired: the history a shared mode decides \
              on is imported by the Host over `events.import`, from its coordinator, verified \
              under the membership's pinned rings. Remove it"
-        );
-    }
-    // Retired (iteration 02, WP-10.4): events are shipped by the Host over `events.ship`, to the
-    // coordinator its membership names; no plane names a destination of its own.
-    if config.events_destination().is_some() {
-        anyhow::bail!(
-            "`dataPlane.events.destination` is retired: events are shipped by the Host over \
-             `events.ship` to the coordinator of its membership. Remove it"
         );
     }
     // One ledger, one import: a ledger named twice is a configuration mistake.
