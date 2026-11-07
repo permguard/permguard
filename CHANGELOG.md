@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.22] - 2026-11-07
+
 ### Added
 
 - **A decision log can keep every member of a caller's request in clear, when the deployment says so.**
