@@ -41,6 +41,7 @@ pub mod service_accounts;
 pub mod sessions;
 pub mod status;
 pub mod streams;
+pub mod tokens;
 
 use std::sync::Arc;
 
@@ -288,6 +289,8 @@ pub struct HostApi {
     /// Whether this Host is the IAM Host: the one of a Server running a Control Plane, the only
     /// one serving the directory at `/iam/v1` (WP-11.1).
     iam_host: bool,
+    /// The IAM Host's tokens and status lists (WP-11.5), given once the server opened them.
+    tokens: Option<Arc<tokens::Tokens>>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -329,7 +332,14 @@ impl HostApi {
             identities: None,
             setup: None,
             iam_host: false,
+            tokens: None,
         }
+    }
+
+    /// Serves the IAM Host's tokens and status lists (WP-11.5).
+    pub fn with_tokens(mut self, tokens: Arc<tokens::Tokens>) -> Self {
+        self.tokens = Some(tokens);
+        self
     }
 
     /// Whether this facade serves the directory at `/iam/v1`: true for the Host of a Server

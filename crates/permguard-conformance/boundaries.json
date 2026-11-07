@@ -1312,6 +1312,26 @@
     },
     {
       "crate": "permguard-host",
+      "source": "crates/permguard-host/src/authz/tokens.rs",
+      "item": "TokenTransition::decode",
+      "entry": "permguard_host::authz::tokens::TokenTransition::decode",
+      "max_input_bytes": 16384,
+      "limit": "`authz::tokens::MAX_TRANSITION_BYTES`, checked by the decoder before it parses; read from the IAM Host's own token journal only",
+      "enforced_at_decoder": true,
+      "fuzz": "token_transition"
+    },
+    {
+      "crate": "permguard-objects",
+      "source": "crates/permguard-objects/src/status_list.rs",
+      "item": "StatusList::decode",
+      "entry": "permguard_objects::status_list::StatusList::decode",
+      "max_input_bytes": 1048576,
+      "limit": "the caller's `max_encoded`, checked before base64url decoding, and `max_entries`, enforced while the ZLIB stream decompresses: a member reads a list token of at most 1 MiB and `2^20` entries (`2-security/9` Delivery)",
+      "enforced_at_decoder": true,
+      "fuzz": "status_list_decode"
+    },
+    {
+      "crate": "permguard-host",
       "source": "crates/permguard-host/src/authz/password.rs",
       "item": "verify",
       "entry": "permguard_host::authz::password::verify",
@@ -1676,6 +1696,11 @@
       "source": "crates/permguard-host/src/authz/directory.rs",
       "item": "Directory::open",
       "reason": "the directory's own journal on the Host's volume, written by this process; every frame is decoded by `DirectoryTransition::decode`, the registered boundary"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/tokens.rs",
+      "item": "TokenRegistry::open",
+      "reason": "the token registry's own journal on the IAM Host's volume, written by this process; every frame is decoded by `TokenTransition::decode`, the registered boundary"
     },
     {
       "source": "crates/permguard-host/src/authz/factor.rs",

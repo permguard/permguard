@@ -245,6 +245,18 @@ pub mod producer {
 pub mod subject {
     /// A Host: `urn:permguard:host:v1:<host_id>` (WP-2.2).
     pub const HOST_V1_PREFIX: &str = "urn:permguard:host:v1:";
+    /// The issuer of the IAM Host's tokens and lists: `urn:permguard:iam:<host_id>` (iteration
+    /// 02, `2-security/8` Access tokens).
+    pub const IAM_ISSUER_PREFIX: &str = "urn:permguard:iam:";
+}
+
+/// The JWT `typ` values the standards fix, which carry no version of Permguard's: the standard is
+/// the version.
+pub mod jwt {
+    /// An access token, RFC 9068 (iteration 02, WP-11.4).
+    pub const ACCESS_TOKEN: &str = "at+jwt";
+    /// A token status list, `draft-ietf-oauth-status-list-21` (iteration 02, WP-11.5).
+    pub const STATUS_LIST_TOKEN: &str = "statuslist+jwt";
 }
 
 /// Capability URNs listed by discovery documents.
@@ -369,6 +381,7 @@ pub mod grpc {
     pub const IAM_PROVIDER_SERVICE: &str = "permguard.iam.v1.ProviderService";
     pub const IAM_RECOVERY_SERVICE: &str = "permguard.iam.v1.RecoveryService";
     pub const IAM_SERVICE_ACCOUNT_SERVICE: &str = "permguard.iam.v1.ServiceAccountService";
+    pub const IAM_TOKEN_SERVICE: &str = "permguard.iam.v1.TokenService";
 }
 
 /// Labels inside HKDF `info` tuples.
@@ -578,6 +591,9 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("event.DOGWOOD_V2", event::DOGWOOD_V2),
         ("producer.DATA_PLANE_V1", producer::DATA_PLANE_V1),
         ("subject.HOST_V1_PREFIX", subject::HOST_V1_PREFIX),
+        ("subject.IAM_ISSUER_PREFIX", subject::IAM_ISSUER_PREFIX),
+        ("jwt.ACCESS_TOKEN", jwt::ACCESS_TOKEN),
+        ("jwt.STATUS_LIST_TOKEN", jwt::STATUS_LIST_TOKEN),
         ("capability.PDP_V1_PREFIX", capability::PDP_V1_PREFIX),
         (
             "capability.PDP_V1_STORE_IN_PAYLOAD",
@@ -752,6 +768,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             "grpc.IAM_SERVICE_ACCOUNT_SERVICE",
             grpc::IAM_SERVICE_ACCOUNT_SERVICE,
         ),
+        ("grpc.IAM_TOKEN_SERVICE", grpc::IAM_TOKEN_SERVICE),
     ]
 }
 

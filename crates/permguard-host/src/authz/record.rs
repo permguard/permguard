@@ -431,6 +431,18 @@ impl Labelled {
         }
     }
 
+    /// An array of text at `label`, when the label is present.
+    pub(super) fn optional_texts(
+        &mut self,
+        label: i64,
+    ) -> Result<Option<Vec<String>>, RecordError> {
+        if self.pairs.contains_key(&label) {
+            self.texts(label).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
     fn texts(&mut self, label: i64) -> Result<Vec<String>, RecordError> {
         match self.take(label)? {
             Value::Array(items) => items

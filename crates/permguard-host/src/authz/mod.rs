@@ -28,6 +28,7 @@ pub mod record;
 pub mod sessions;
 pub mod signin;
 pub mod store;
+pub mod tokens;
 
 use std::sync::Arc;
 

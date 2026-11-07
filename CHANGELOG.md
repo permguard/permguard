@@ -38,6 +38,12 @@ is cut.
   Its custody is the Host's unless `operations.keys.rings."iam.tokens".custody` (`PERMGUARD_KEYS_TOKENS_CUSTODY`, chart `assurance.custody.tokens`) states another; a KMS is allowed, since it never signs on a decision path.
   `regulated` keeps it in a PKCS#11 token or a KMS and no profile but `development` keeps it in plaintext, refused at start and by the Helm chart.
 
+- **Token status lists on the IAM Host.**
+  Every access token will carry an entry of a status list, 2 bits per entry over `2^20` entries, drawn at random and never twice, with the structure of `draft-ietf-oauth-status-list-21`; its codec decodes the draft's appendix C vectors (`contracts/vectors/status-list.json`).
+  The token registry records each token and status change in its own journal (`contracts/cbor/tokens.json`); a list retires once its tokens expired.
+  `GET /iam/v1/status-lists/{id}` (`keys.read`) answers the signed `statuslist+jwt`, signed again on a change or after its `ttl`, its lifetime set by the profile; `GET /iam/v1/tokens` lists the live tokens and `POST /iam/v1/tokens/{jti}/revoke` revokes one, audited `iam.token.revoked`, over `permguard.iam.v1.TokenService` too.
+  A service account's tokens follow the directory: suspended, resumed, deleted or its credential revoked, checked again at every start.
+
 ### Changed
 
 - **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**

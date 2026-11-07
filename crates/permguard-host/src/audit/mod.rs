@@ -195,6 +195,8 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("iam.service_account.deleted", HOST),
     mutation("iam.credential.created", HOST),
     mutation("iam.credential.revoked", HOST),
+    // An access token an administrator revoked (WP-11.5).
+    mutation("iam.token.revoked", HOST),
     // A Host API call a role's or an issuer's grant allowed (WP-8.1): the principal is the
     // record's subject, the grant's holder a fact, so a role-derived access is never anonymous
     // in the trail.

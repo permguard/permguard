@@ -117,6 +117,7 @@
     "grpc.IAM_RECOVERY_SERVICE": "permguard.iam.v1.RecoveryService",
     "grpc.IAM_ROLE_SERVICE": "permguard.iam.v1.RoleService",
     "grpc.IAM_SERVICE_ACCOUNT_SERVICE": "permguard.iam.v1.ServiceAccountService",
+    "grpc.IAM_TOKEN_SERVICE": "permguard.iam.v1.TokenService",
     "grpc.IAM_USER_SERVICE": "permguard.iam.v1.UserService",
     "grpc.POLICY_DECISION_POINT": "permguard.data.v1.PolicyDecisionPoint",
     "grpc.TEMPORAL_POLICY_DECISION_POINT": "permguard.data.v1.TemporalPolicyDecisionPoint",
@@ -182,7 +183,10 @@
     "protected.STREAM_RUN": "permguard.stream.run.v1",
     "record.DECISION_V1": "permguard.decision.v1",
     "record.EVENT_V1": "permguard.event.record.v1",
-    "subject.HOST_V1_PREFIX": "urn:permguard:host:v1:"
+    "subject.HOST_V1_PREFIX": "urn:permguard:host:v1:",
+    "subject.IAM_ISSUER_PREFIX": "urn:permguard:iam:",
+    "jwt.ACCESS_TOKEN": "at+jwt",
+    "jwt.STATUS_LIST_TOKEN": "statuslist+jwt"
   },
   "codes": {
     "catalog.CATALOG_FAILED": "catalog_failed",

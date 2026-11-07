@@ -2292,6 +2292,27 @@ impl App {
         mutations
             .recover(&backups)
             .context("recovering the backup mutations a crash left open")?;
+        // The IAM Host's tokens and their status lists (WP-11.5): a revocation a crash left open
+        // resolved before a list is signed. A member keeps none.
+        let token_registry = if iam_host {
+            let (registry, recovery) = permguard_host::authz::tokens::TokenRegistry::open(&volume)
+                .map_err(|error| anyhow::anyhow!("{error}"))
+                .context("opening the token registry")?;
+            mutations
+                .recover(&permguard_host::authz::tokens::Recovering(&registry))
+                .context("recovering the token revocations a crash left open")?;
+            tracing::info!(
+                event.name = "iam.tokens_opened",
+                component = "server",
+                revision = registry.revision(),
+                lists = registry.lists().len(),
+                recovered_truncated_bytes = recovery.truncated_bytes,
+                "the token registry is open"
+            );
+            Some(registry)
+        } else {
+            None
+        };
         let cut = backups
             .cut(time.now_secs())
             .context("aborting the backups a restart cut short")?;
@@ -2882,7 +2903,39 @@ impl App {
             // The directory is served at `/iam/v1` only by the IAM Host: the Host of a Server
             // running a Control Plane (WP-11.1). A member holds none.
             let api = api.serving_iam(iam_host);
+            // Its tokens, signed under `iam.tokens`, their lists' `uri` on its own listener
+            // (WP-11.5).
+            let api = match (token_registry.clone(), iam_tokens_keys.clone()) {
+                (Some(registry), Some(ring)) => {
+                    let base = config.admin_advertised_url().map_or_else(
+                        || format!("https://{configured}", configured = admin_addr_of(config)),
+                        str::to_owned,
+                    );
+                    api.with_tokens(Arc::new(permguard_host::api::tokens::Tokens::new(
+                        registry,
+                        ring as Arc<dyn permguard_core::keys::Sign>,
+                        &host_identity.host_id(),
+                        &base,
+                        permguard_host::api::tokens::ListTiming::of(config.assurance().profile()),
+                    )))
+                }
+                _ => api,
+            };
             let api = Arc::new(api);
+            // What the directory decides of every live token, applied before anything is served:
+            // a crash between a directory change and the statuses it implies is repaired here.
+            let synced = api
+                .sync_token_statuses("iam")
+                .map_err(|refusal| anyhow::anyhow!("{refusal:?}"))
+                .context("bringing the tokens' statuses to the directory's")?;
+            if synced > 0 {
+                tracing::warn!(
+                    event.name = "iam.tokens_synced",
+                    component = "server",
+                    tokens = synced,
+                    "token statuses a crash left behind the directory were brought to it"
+                );
+            }
             serving = Some(Arc::clone(&api));
             context = context.with_host_handles(api);
         }
@@ -3317,6 +3370,11 @@ fn identity_witness_checked(
         _ => {}
     }
     Ok(witness)
+}
+
+/// The Host listener's address, as the configuration states it.
+fn admin_addr_of(config: &Config) -> String {
+    config.admin_addr().unwrap_or_default().to_owned()
 }
 
 /// Each ring's provider from its custody (WP-3.2, owner decisions of 2026-10-08): the

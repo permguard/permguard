@@ -62,6 +62,9 @@ pub const DATA_ATTEST: RingId = RingId("data.attest");
 /// The Host's own operations ring: it seals the audit trail, and no Plane is handed it. A Plane
 /// may sign under it only [`LedgerExportV1`], whose payload the Host writes (WP-7.10).
 pub const HOST_OPERATIONS: RingId = RingId("host.operations");
+/// The IAM Host's ring (iteration 02, WP-11.3): access tokens and status list tokens, which only
+/// the Host signs; no Plane declares a signer on it.
+pub const IAM_TOKENS: RingId = RingId("iam.tokens");
 
 /// The Plane artifacts allowed on [`HOST_OPERATIONS`]: each a payload the Host writes.
 const OPERATIONS_ARTIFACTS: &[&str] = &[permguard_core::domains::protected::LEDGER_EXPORT];
@@ -562,7 +565,8 @@ impl Host {
         // `host.operations` is the Host's: a Plane signs under it only a payload the Host writes
         // (WP-7.10).
         if let Some((artifact, _)) = declaration.signers.iter().find(|(artifact, ring)| {
-            *ring == HOST_OPERATIONS && !OPERATIONS_ARTIFACTS.contains(artifact)
+            (*ring == HOST_OPERATIONS && !OPERATIONS_ARTIFACTS.contains(artifact))
+                || *ring == IAM_TOKENS
         }) {
             return Err(CompositionError::Reserved {
                 plane,
@@ -1515,6 +1519,43 @@ pub trait JwsArtifact: Artifact + sealed::Sealed {
     /// a signed decision response's contract fixes (WP-6.6b). The batches keep the bytes they
     /// were always signed with.
     const CANONICAL_HEADER: bool = false;
+}
+
+/// An access token (iteration 02, WP-11.4): RFC 9068's `at+jwt`, signed by the IAM Host alone.
+pub struct AccessTokenV1;
+
+impl Artifact for AccessTokenV1 {
+    const TYPE: &'static str = permguard_core::domains::jwt::ACCESS_TOKEN;
+    const RING: RingId = IAM_TOKENS;
+    /// `iat`, `nbf` and `exp` are what a member judges it by.
+    const TIME_SENSITIVE: bool = true;
+}
+
+/// A token status list (iteration 02, WP-11.5): `statuslist+jwt`, signed by the IAM Host alone.
+pub struct StatusListTokenV1;
+
+impl Artifact for StatusListTokenV1 {
+    const TYPE: &'static str = permguard_core::domains::jwt::STATUS_LIST_TOKEN;
+    const RING: RingId = IAM_TOKENS;
+    /// `iat` orders a list's versions and `exp` bounds how long a revocation may go unseen.
+    const TIME_SENSITIVE: bool = true;
+}
+
+impl sealed::Sealed for AccessTokenV1 {}
+impl sealed::Sealed for StatusListTokenV1 {}
+
+/// The access tokens' header is the JCS `{"alg","kid","typ"}`.
+impl JwsArtifact for AccessTokenV1 {
+    const ALGORITHM: &'static str = "EdDSA";
+    const DECLARES_TYPE: bool = true;
+    const CANONICAL_HEADER: bool = true;
+}
+
+/// A status list token's header is the JCS `{"alg","kid","typ"}`.
+impl JwsArtifact for StatusListTokenV1 {
+    const ALGORITHM: &'static str = "EdDSA";
+    const DECLARES_TYPE: bool = true;
+    const CANONICAL_HEADER: bool = true;
 }
 
 impl sealed::Sealed for DecisionBatchV1 {}

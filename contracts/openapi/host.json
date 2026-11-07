@@ -8668,10 +8668,401 @@
         },
         "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/RevokeCredential"
       }
+    },
+    "/iam/v1/status-lists/{id}": {
+      "get": {
+        "operationId": "getStatusList",
+        "summary": "A token status list",
+        "description": "Under `keys.read` on the IAM Host, which a deployment may declare public as it does its keys. The signed `statuslist+jwt` itself, as members receive it over `token.status`: a fresh one once the list changed or its `ttl` elapsed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The list's id, a UUID.",
+            "x-grpc-field": "id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The compact `statuslist+jwt`.",
+            "content": {
+              "application/statuslist+jwt": {
+                "schema": {
+                  "type": "string",
+                  "description": "The compact JWS.",
+                  "x-grpc-field": "token"
+                }
+              }
+            },
+            "x-grpc-message": "permguard.iam.v1.GetStatusListResponse"
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No list of that id is held (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.TokenService/GetStatusList"
+      }
+    },
+    "/iam/v1/tokens": {
+      "get": {
+        "operationId": "listTokens",
+        "summary": "The live tokens",
+        "description": "Under `authz.admin` on the IAM Host. Every token not yet expired, newest first: who it was issued to, for what and how it stands, never the token itself.",
+        "responses": {
+          "200": {
+            "description": "Every live token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.TokenService/ListTokens"
+      }
+    },
+    "/iam/v1/tokens/{jti}/revoke": {
+      "post": {
+        "operationId": "revokeToken",
+        "summary": "Revoke a token",
+        "description": "Under `authz.admin` on the IAM Host. Mutation `tokens.revoke`, audited `iam.token.revoked`. The token is `INVALID` in its list from then on, which members see with the list's next token; revoking it again writes nothing.",
+        "parameters": [
+          {
+            "name": "jti",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The token's `jti`, a UUID.",
+            "x-grpc-field": "jti"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeTokenBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The revocation's receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenRevoked"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a name or a value is invalid (`invalid_argument`), or the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`, and `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No live token has that `jti` (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No directory is open on this Host (`unavailable`), or it could not apply the mutation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.iam.v1.TokenService/RevokeToken"
+      }
     }
   },
   "components": {
     "schemas": {
+      "TokenSummary": {
+        "type": "object",
+        "properties": {
+          "jti": {
+            "type": "string",
+            "description": "The token's id, a UUID.",
+            "x-grpc-field": "jti"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Its `sub`.",
+            "x-grpc-field": "subject"
+          },
+          "client_id": {
+            "type": "string",
+            "description": "Its `client_id`.",
+            "x-grpc-field": "client_id"
+          },
+          "family": {
+            "type": "string",
+            "description": "`application` or `administration`.",
+            "x-grpc-field": "family",
+            "enum": [
+              "application",
+              "administration"
+            ]
+          },
+          "audience": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its `aud`.",
+            "x-grpc-field": "audience"
+          },
+          "scope": {
+            "type": "string",
+            "description": "Its operations, space separated.",
+            "x-grpc-field": "scope"
+          },
+          "issued_at": {
+            "type": "string",
+            "description": "When it was issued, RFC 3339.",
+            "x-grpc-field": "issued_at"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "When it expires, RFC 3339.",
+            "x-grpc-field": "expires_at"
+          },
+          "status": {
+            "type": "string",
+            "description": "`valid`, `invalid` or `suspended`.",
+            "x-grpc-field": "status",
+            "enum": [
+              "valid",
+              "invalid",
+              "suspended"
+            ]
+          },
+          "status_list": {
+            "type": "string",
+            "description": "The `uri` of the list its status is read from.",
+            "x-grpc-field": "status_list"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Its entry in that list.",
+            "x-grpc-field": "index",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "jti",
+          "subject",
+          "client_id",
+          "family",
+          "audience",
+          "scope",
+          "issued_at",
+          "expires_at",
+          "status",
+          "status_list",
+          "index"
+        ],
+        "additionalProperties": false,
+        "description": "One live token, never the token itself.",
+        "x-grpc-message": "permguard.iam.v1.TokenSummary"
+      },
+      "TokenList": {
+        "type": "object",
+        "properties": {
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TokenSummary"
+            },
+            "description": "Every live token, newest first.",
+            "x-grpc-field": "tokens"
+          }
+        },
+        "required": [
+          "tokens"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /iam/v1/tokens` answers.",
+        "x-grpc-message": "permguard.iam.v1.ListTokensResponse"
+      },
+      "RevokeTokenBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /iam/v1/tokens/{jti}/revoke` carries. A closed body.",
+        "x-grpc-message": "permguard.iam.v1.RevokeTokenRequest",
+        "x-grpc-only": [
+          "jti"
+        ],
+        "x-grpc-note": "`jti` travels in the path on REST."
+      },
+      "TokenRevoked": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The mutation's receipt.",
+            "x-grpc-field": "receipt"
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "Whether it wrote anything: a token already invalid writes nothing.",
+            "x-grpc-field": "changed"
+          }
+        },
+        "required": [
+          "receipt",
+          "changed"
+        ],
+        "additionalProperties": false,
+        "description": "What a revocation answers.",
+        "x-grpc-message": "permguard.iam.v1.RevokeTokenResponse"
+      },
       "ServiceAccountSummary": {
         "type": "object",
         "properties": {
@@ -16040,6 +16431,13 @@
     }
   },
   "x-grpc-unmapped": [
+    {
+      "message": "permguard.iam.v1.GetStatusListResponse",
+      "note": "REST answers the compact token itself, as `application/statuslist+jwt`: the HTTP form the status list draft fixes",
+      "fields": [
+        "token"
+      ]
+    },
     {
       "message": "permguard.host.v1.GetIdentityRequest",
       "note": "an empty request",

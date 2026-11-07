@@ -236,6 +236,20 @@ doc = false
 bench = false
 
 [[bin]]
+name = "token_transition"
+path = "fuzz_targets/token_transition.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "status_list_decode"
+path = "fuzz_targets/status_list_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "oidc_key_set"
 path = "fuzz_targets/oidc_key_set.rs"
 test = false

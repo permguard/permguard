@@ -24,6 +24,7 @@ mod directory;
 mod evidence;
 mod members;
 mod service_accounts;
+mod tokens;
 
 type Answer<T> = Result<Response<T>, Status>;
 

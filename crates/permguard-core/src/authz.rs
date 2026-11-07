@@ -704,7 +704,11 @@ impl OidcKeySource {
 }
 
 /// The `typ` values a token is accepted with when the provider names none.
-pub const DEFAULT_TOKEN_TYPES: &[&str] = &["JWT", "at+jwt", "application/at+jwt"];
+pub const DEFAULT_TOKEN_TYPES: &[&str] = &[
+    "JWT",
+    crate::domains::jwt::ACCESS_TOKEN,
+    "application/at+jwt",
+];
 
 /// The default refresh of fetched keys and their default stale window.
 pub const DEFAULT_KEY_REFRESH: std::time::Duration = std::time::Duration::from_secs(3600);

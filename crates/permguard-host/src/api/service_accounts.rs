@@ -335,15 +335,19 @@ impl HostApi {
             name: name.to_owned(),
             active,
         };
-        self.change_directory(
-            actor,
-            &(name, active, &plain),
-            &plain.request_id,
-            plain.expected_revision,
-            change,
-            |_| Ok(()),
-        )
-        .await
+        let changed = self
+            .change_directory(
+                actor,
+                &(name, active, &plain),
+                &plain.request_id,
+                plain.expected_revision,
+                change,
+                |_| Ok(()),
+            )
+            .await?;
+        // Its live tokens follow: `SUSPENDED`, or `VALID` again.
+        self.sync_token_statuses(&service_account_principal(name))?;
+        Ok(changed)
     }
 
     /// Deletes a service account that holds no active grant, with its credentials.
@@ -357,15 +361,19 @@ impl HostApi {
             name: name.to_owned(),
         };
         let principal = service_account_principal(name);
-        self.change_directory(
-            actor,
-            &(name, "delete", &delete),
-            &delete.request_id,
-            delete.expected_revision,
-            change,
-            |_| self.holds_no_grants(&principal),
-        )
-        .await
+        let changed = self
+            .change_directory(
+                actor,
+                &(name, "delete", &delete),
+                &delete.request_id,
+                delete.expected_revision,
+                change,
+                |_| self.holds_no_grants(&principal),
+            )
+            .await?;
+        // Every live token it obtained is `INVALID`.
+        self.sync_token_statuses(&principal)?;
+        Ok(changed)
     }
 
     /// Makes a credential. A `client_secret` is drawn and hashed before the mutation, and
@@ -552,14 +560,18 @@ impl HostApi {
             account: name.to_owned(),
             id: parsed,
         };
-        self.change_directory(
-            actor,
-            &(name, id, "revoke", &plain),
-            &plain.request_id,
-            plain.expected_revision,
-            change,
-            |_| Ok(()),
-        )
-        .await
+        let changed = self
+            .change_directory(
+                actor,
+                &(name, id, "revoke", &plain),
+                &plain.request_id,
+                plain.expected_revision,
+                change,
+                |_| Ok(()),
+            )
+            .await?;
+        // Every live token the credential obtained is `INVALID`.
+        self.sync_token_statuses(&service_account_principal(name))?;
+        Ok(changed)
     }
 }

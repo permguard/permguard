@@ -38,7 +38,7 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 23] = [
+const REGISTRIES: [&str; 24] = [
     "audit.json",
     "directory.json",
     "drain-receipt.json",
@@ -62,6 +62,7 @@ const REGISTRIES: [&str; 23] = [
     "sealed-key.json",
     "session.json",
     "stream.json",
+    "tokens.json",
 ];
 
 /// The one encoding every registry states.
@@ -849,6 +850,91 @@ fn directory_samples() -> Vec<Sample> {
                 "directory_transition.credential_kind",
                 "directory_transition.binding",
             ],
+            decoder(),
+        ),
+        sample(root, encoded(&bare), &[], decoder()),
+    ]
+}
+
+fn token_samples() -> Vec<Sample> {
+    use permguard_host::authz::tokens::{TokenTransition, kinds};
+    use permguard_host::operations::journal::OperationId;
+
+    let at = |mut transition: TokenTransition, revision: u64| {
+        transition.revision = revision;
+        transition.at = 1_800_000_000;
+        transition.by = "iam".to_owned();
+        transition
+    };
+    let mut opened = at(TokenTransition::new(kinds::LIST_OPEN), 1);
+    opened.list_id = Some(ZONE_ID);
+    let mut issued = at(TokenTransition::new(kinds::TOKEN_ISSUE), 2);
+    issued.list_id = Some(ZONE_ID);
+    issued.index = Some(424_242);
+    issued.jti = Some(SCOPE_ID);
+    issued.subject = Some("sa:billing".to_owned());
+    issued.client_id = Some("0198f2aa-0000-7000-8000-000000000001".to_owned());
+    issued.family = Some("application".to_owned());
+    issued.audience = Some(vec![
+        "member:0198f2aa-0000-7000-8000-000000000002".to_owned(),
+    ]);
+    issued.scope = Some("decision.evaluate".to_owned());
+    issued.expires_at = Some(1_800_003_600);
+    issued.account = Some("billing".to_owned());
+    issued.credential_id = Some(HOST_ID);
+    let mut revoked = at(TokenTransition::new(kinds::TOKEN_STATUS), 3);
+    revoked.jti = Some(SCOPE_ID);
+    revoked.status = Some(1);
+    revoked.operation_id = Some(OperationId::from_bytes(HOST_ID));
+    let mut retired = at(TokenTransition::new(kinds::LIST_RETIRE), 4);
+    retired.list_id = Some(ZONE_ID);
+    let bare = at(TokenTransition::new(kinds::LIST_RETIRE), 5);
+    let decoder = || -> Option<Decoder> {
+        Some(Box::new(|bytes: &[u8]| {
+            verdict(TokenTransition::decode(bytes))
+        }))
+    };
+    let root = "token_transition";
+    let encoded = |transition: &TokenTransition| transition.encode().expect("encodes");
+    vec![
+        sample(
+            root,
+            encoded(&opened),
+            &["token_transition.list_id"],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&issued),
+            &[
+                "token_transition.list_id",
+                "token_transition.index",
+                "token_transition.jti",
+                "token_transition.subject",
+                "token_transition.client_id",
+                "token_transition.family",
+                "token_transition.audience",
+                "token_transition.scope",
+                "token_transition.expires_at",
+                "token_transition.account",
+                "token_transition.credential_id",
+            ],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&revoked),
+            &[
+                "token_transition.jti",
+                "token_transition.status",
+                "token_transition.operation_id",
+            ],
+            decoder(),
+        ),
+        sample(
+            root,
+            encoded(&retired),
+            &["token_transition.list_id"],
             decoder(),
         ),
         sample(root, encoded(&bare), &[], decoder()),
@@ -3280,6 +3366,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "sealed-key.json" => sealed_key_samples(),
         "grant.json" => grant_samples(),
         "directory.json" => directory_samples(),
+        "tokens.json" => token_samples(),
         "layout.json" => layout_samples(),
         "journal.json" => journal_samples(),
         "audit.json" => audit_samples(),
@@ -3969,6 +4056,16 @@ fn test_directory_transitions_match_their_registry() {
 #[test]
 fn test_directory_transitions_refuse_unknown_labels() {
     assert_unknown_labels_refused("directory.json");
+}
+
+#[test]
+fn test_token_transitions_match_their_registry() {
+    assert_samples_match("tokens.json");
+}
+
+#[test]
+fn test_token_transitions_refuse_unknown_labels() {
+    assert_unknown_labels_refused("tokens.json");
 }
 
 #[test]

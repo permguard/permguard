@@ -219,6 +219,17 @@ fn facade_of(tag: &str, iam_host: bool) -> Arc<HostApi> {
         .with_binder(identity.clone()),
     );
     permguard_core::KeyManager::maintain(ring.as_ref()).expect("the ring is maintained");
+    // The IAM Host's tokens (WP-11.5): their registry on the same volume, signed here under the
+    // operations ring, which the facade has at hand; what signs them is not what these tests ask.
+    let (token_registry, _) =
+        permguard_host::authz::tokens::TokenRegistry::open(&volume).expect("the registry opens");
+    let tokens = Arc::new(permguard_host::api::tokens::Tokens::new(
+        token_registry,
+        Arc::clone(&ring) as Arc<dyn permguard_core::keys::Sign>,
+        &[7; 16],
+        "https://iam.example:7443",
+        permguard_host::api::tokens::ListTiming::of(AssuranceProfile::Development),
+    ));
     let keys = Arc::new(permguard_host::keys::registry::Registry::new(
         Some(Arc::clone(&identity)),
         vec![Arc::clone(&ring)],
@@ -337,7 +348,8 @@ fn facade_of(tag: &str, iam_host: bool) -> Arc<HostApi> {
             providers: Vec::new(),
             min_length: 12,
         })
-        .serving_iam(iam_host),
+        .serving_iam(iam_host)
+        .with_tokens(tokens),
     );
     // The object sweep a Control Plane provides (WP-7.11b), answering fixed reports.
     api.gc_jobs()
@@ -4141,6 +4153,16 @@ const OPEN_ROUTES: &[(&str, Open, &str)] = &[
         "keys.read is public in this facade",
     ),
     (
+        "GET /iam/v1/status-lists/{id}",
+        Open::Public,
+        "keys.read is public in this facade, and a list is read as the keys are",
+    ),
+    (
+        "permguard.iam.v1.TokenService/GetStatusList",
+        Open::Public,
+        "keys.read is public in this facade, and a list is read as the keys are",
+    ),
+    (
         "permguard.host.v1.KeyService/GetKeyRing",
         Open::Public,
         "keys.read is public in this facade",
@@ -4461,7 +4483,14 @@ async fn a_member_serves_no_directory_on_either_binding() {
             if path.starts_with("/iam/v1/") {
                 iam_paths += 1;
                 assert_eq!(on_member.0, 404, "{method} {path} on a member");
-                assert_ne!(on_iam.0, 404, "{method} {path} on the IAM Host");
+                // A public route refuses no stranger, and answers the list it does not hold
+                // `404` itself: only a route behind a grant tells served from unserved here.
+                let public = OPEN_ROUTES.iter().any(|(open, kind, _)| {
+                    *open == format!("{method} {path}") && *kind == Open::Public
+                });
+                if !public {
+                    assert_ne!(on_iam.0, 404, "{method} {path} on the IAM Host");
+                }
             } else {
                 assert_eq!(
                     on_member, on_iam,
@@ -4487,11 +4516,11 @@ async fn a_member_serves_no_directory_on_either_binding() {
         let method = rest.split('(').next().expect("a method").trim();
         let rpc = format!("permguard.iam.v1.{service}/{method}");
         rpcs += 1;
-        // UNIMPLEMENTED is 12, PERMISSION_DENIED 7.
+        // UNIMPLEMENTED is 12: not served.
         let on_member = walk_grpc(&member, &rpc, &walk_message(&[]), Some(STRANGER)).await;
         assert_eq!(on_member.0, 12, "{rpc} on a member: {on_member:?}");
         let on_iam = walk_grpc(&iam_host, &rpc, &walk_message(&[]), Some(STRANGER)).await;
-        assert_eq!(on_iam.0, 7, "{rpc} on the IAM Host: {on_iam:?}");
+        assert_ne!(on_iam.0, 12, "{rpc} on the IAM Host: {on_iam:?}");
     }
     assert!(rpcs >= 20, "{rpcs} directory methods checked");
 }

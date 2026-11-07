@@ -53,6 +53,10 @@ The head statement moved here from `evidence.json`: its target form replaces tod
 Beside them: the audience, the clock, the advertised validity and skew, and the exact policy state a PEP expects.
 `signed_response.py` computes them under the decisions of 2026-10-22 recorded in `status.md`; `crates/permguard-control-client/src/attestation/tests.rs` reproduces each payload and signature and verifies both responses with the verifier a PEP uses.
 
+`status-list.json` holds the four test vectors of `draft-ietf-oauth-status-list-21` appendix C, 1, 2, 4 and 8 bits over `2^20` entries, as the draft prints them (iteration 02, WP-11.5).
+`status_list.py` checks each with the standard library: its `lst` decodes to exactly the statuses listed, every other entry 0, and ZLIB at level 9 encodes those bytes back to the same `lst`.
+`crates/permguard-objects/tests/status_list_vectors.rs` decodes them with the token status list codec and round-trips its own encoding; its bytes differ from the draft's, since its DEFLATE backend is not zlib, and the draft asks only that a list decode to its entries.
+
 ## How the values were computed
 
 `generate.py` computes every value with Python's standard library and the `cryptography` package, from the published rules, without calling the Rust codecs.

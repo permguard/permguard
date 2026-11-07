@@ -110,6 +110,9 @@ fn iam_routes() -> Router<Served> {
             "/iam/v1/service-accounts/{name}/credentials/{id}/revoke",
             post(revoke_credential),
         )
+        .route("/iam/v1/status-lists/{id}", get(status_list))
+        .route("/iam/v1/tokens", get(list_tokens))
+        .route("/iam/v1/tokens/{jti}/revoke", post(revoke_token))
 }
 
 /// What every Host serves about itself.
@@ -1409,6 +1412,47 @@ async fn revoke_credential(
             .api
             .revoke_credential(&actor, &name, &id, plain)
             .await,
+    )
+}
+
+/// The signed list itself, as `application/statuslist+jwt`: what a verifier outside the cluster
+/// reads; members receive the same token over `token.status`.
+async fn status_list(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+) -> Response {
+    match served.api.status_list(&actor, &id) {
+        Ok(token) => (
+            StatusCode::OK,
+            [
+                (
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static("application/statuslist+jwt"),
+                ),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+            ],
+            token,
+        )
+            .into_response(),
+        Err(refusal) => served.refuse(&refusal),
+    }
+}
+
+async fn list_tokens(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    answer(&served, StatusCode::OK, served.api.token_list(&actor))
+}
+
+async fn revoke_token(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(jti): Path<String>,
+    Closed(revoke): Closed<permguard_host::api::tokens::RevokeToken>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.revoke_token(&actor, &jti, revoke).await,
     )
 }
 
