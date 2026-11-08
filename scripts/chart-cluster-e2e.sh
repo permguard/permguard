@@ -29,8 +29,10 @@ cluster="${CLUSTER:-permguard-cluster-e2e}"
 # own default deploys it (PROFILE=production).
 profile="${PROFILE:-development}"
 case "${profile}" in
-development) development_mode=true evidence=disabled ;;
-production) development_mode=false evidence=required ;;
+development) development_mode=true evidence=disabled autogenerate=true publish_ahead=5m retain=1d ;;
+# A key is published past the key set's cache and the clocks' skew before it signs, and kept
+# as long as the audit trail it seals.
+production) development_mode=false evidence=required autogenerate=false publish_ahead=10m retain=90d ;;
 *) echo "chart-cluster-e2e: PROFILE is development or production" >&2; exit 2 ;;
 esac
 namespace=pg
@@ -48,8 +50,17 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 work="$(mktemp -d)"
 forwards=()
 cleanup() {
+    local status=$?
     for pid in ${forwards[@]+"${forwards[@]}"}; do kill "${pid}" 2>/dev/null || true; done
     wait 2>/dev/null || true
+    # A run that failed says what its pods said before the cluster goes.
+    if [ "${status}" != 0 ] && [ -n "${KUBECONFIG:-}" ]; then
+        kubectl --namespace "${namespace}" get pods -o wide >&2 2>/dev/null || true
+        for pod in $(kubectl --namespace "${namespace}" get pods -o name 2>/dev/null); do
+            echo "--- ${pod}" >&2
+            kubectl --namespace "${namespace}" logs "${pod}" --all-containers --tail 25 >&2 2>/dev/null || true
+        done
+    fi
     if [ "${KEEP:-0}" != "1" ]; then
         kind delete cluster --name "${cluster}" >/dev/null 2>&1 || true
         rm -f "${TMPDIR:-/tmp}/kubeconfig-${cluster}"
@@ -94,6 +105,7 @@ step "an authority, the Hosts' certificates and the operator's"
     issue data-plane "DNS:localhost,IP:127.0.0.1,URI:spiffe://permguard-e2e/data-plane" "serverAuth,clientAuth"
     issue operator "URI:spiffe://permguard-e2e/operator" "clientAuth"
     openssl x509 -in operator.crt -outform DER | openssl dgst -sha256 -r | cut -d' ' -f1 >operator.fp
+    openssl x509 -in data-plane.crt -outform DER | openssl dgst -sha256 -r | cut -d' ' -f1 >data-plane.fp
 )
 for secret in cp-host:control-plane cp-public:control-plane dp-host:data-plane dp-public:data-plane; do
     k create secret generic "${secret%%:*}" --type kubernetes.io/tls \
@@ -101,28 +113,92 @@ for secret in cp-host:control-plane cp-public:control-plane dp-host:data-plane d
         --from-file=ca.crt="${work}/ca.crt" >/dev/null
 done
 log "secrets cp-host, cp-public, dp-host; the operator is $(cat "${work}/operator.fp")"
+if [ "${profile}" = production ]; then
+    (
+        cd "${work}"
+        umask 077
+        for secret in kek audit-pseudonym zone-root backup-recovery; do
+            openssl rand 32 >"${secret}"
+        done
+    )
+    k create secret generic host-secrets --from-file="${work}/kek" \
+        --from-file="${work}/audit-pseudonym" --from-file="${work}/zone-root" \
+        --from-file="${work}/backup-recovery" >/dev/null
+    log "secret host-secrets: the key-encryption key, the audit pseudonym, the zone root, the backup recovery key"
+fi
 
 # Two groups, one zone each, one replica each, joining by themselves once their Secrets exist;
 # none before the zones they serve exist.
+# What `production` requires every Host to declare (TS-5): its storage, qualified by a record that
+# names its encryption at rest, its backups and its service objectives. A kind node's disk is a
+# test's, and the record says so: it qualifies nothing outside this run.
+host_controls() {
+    [ "${profile}" = production ] || return 0
+    # The record names the volume as the Host measures it: the node's kernel, this run's.
+    local kernel="${E2E_KERNEL:-$(docker exec "${cluster}-control-plane" uname -r)}"
+    cat <<CONTROLS
+hostControls:
+  storage:
+    volume: { storage_class: standard, driver: rancher.io/local-path }
+    qualified:
+      - { storage_class: standard, driver: rancher.io/local-path, filesystem: "${E2E_FILESYSTEM:-ext4}",
+          version: "${kernel}", evidence: E2E-KIND, encryption: e2e-host-disk,
+          revision: "1", expires_at: "2099-01-01T00:00:00Z" }
+    quotas: { host: { bytes: 1G } }
+  backup:
+    recovery_key: backup-recovery
+    encryption_profile: e2e-volume-copy
+    retention: 90d
+    destruction: E2E-DESTROY
+  objectives:
+    data_loss: 0s
+    recovery_time: 1h
+    max_volume_size: 1G
+    membership_offline_grace: 24h
+    mirror_staleness: 1h
+    evidence_shipping_lag: 1d
+    spool_headroom: 20%
+    checkpoint_export_lag: 1d
+    backup_interval: 1d
+    restore_test_interval: 30d
+    key_recovery_owner: e2e
+CONTROLS
+}
+
 values() { # pin, replicas, acme zone id, beta zone id
-    local enabled=true
+    local enabled=true secrets_directory="" custody="" secret_volumes="" cp_allow="" dp_allow=""
     [ -z "${3:-}" ] && enabled=false
+    # `production` generates nothing: the secrets come from a Secret, as an operator supplies
+    # them, and every ring is envelope-encrypted under its key-encryption key.
+    if [ "${profile}" = production ]; then
+        # Who may reach each Host listener: the operator, and on the IAM Host its members.
+        cp_allow=", allow: [\"sha256:$(cat "${work}/operator.fp")\", \"sha256:$(cat "${work}/data-plane.fp")\"]"
+        dp_allow=", allow: [\"sha256:$(cat "${work}/operator.fp")\"]"
+        secrets_directory=", directory: /etc/permguard-secrets"
+        custody=", custody: file, kek_provider: secret, kek_ref: kek, kek_version: v1"
+        secret_volumes="  extraVolumes:
+    - { name: host-secrets, secret: { secretName: host-secrets, defaultMode: 288 } }
+  extraVolumeMounts:
+    - { name: host-secrets, mountPath: /etc/permguard-secrets, readOnly: true }"
+    fi
+    host_controls
     cat <<EOF
 developmentMode: ${development_mode}
-autogenerate: true
+autogenerate: ${autogenerate}
 image: { registry: "", pullPolicy: Never, tag: e2e }
 persistence: { enabled: true, size: 128Mi }
 controlPlane:
   repository: permguard/control-plane
   assurance: { profile: ${profile} }
   tls: { secretName: cp-public }
-  hostListener: { enabled: true, tls: { secretName: cp-host } }
+  hostListener: { enabled: true, tls: { secretName: cp-host }${cp_allow} }
+${secret_volumes}
   extraConfig:
     # The Host's rings and secrets, as the Compose lab states them: a coordinator signs its
     # memberships' manifests with \`host.operations\`, and routes no task session without it.
     operations:
-      keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }
-      secrets: { provider: directory, coordinator_root_ref: zone-root }
+      keys: { enabled: "true", publish_ahead: ${publish_ahead}, rotate_every: 1h, retain: ${retain}${custody} }
+      secrets: { provider: directory, coordinator_root_ref: zone-root${secrets_directory} }
       audit: { pseudonym: { enabled: true, key_ref: audit-pseudonym, key_version: "v1" } }
     controlPlane:
       # The signing ring, as values-production.yaml states it: without it no NOTP is served.
@@ -135,11 +211,12 @@ dataPlane:
   repository: permguard/data-plane
   # TLS on the decision listener: a bearer token is never sent in the clear.
   tls: { secretName: dp-public }
-  hostListener: { enabled: true, tls: { secretName: dp-host } }
+  hostListener: { enabled: true, tls: { secretName: dp-host }${dp_allow} }
+${secret_volumes}
   extraConfig:
     operations:
-      keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }
-      secrets: { provider: directory, coordinator_root_ref: zone-root }
+      keys: { enabled: "true", publish_ahead: ${publish_ahead}, rotate_every: 1h, retain: ${retain}${custody} }
+      secrets: { provider: directory, coordinator_root_ref: zone-root${secrets_directory} }
       audit: { pseudonym: { enabled: true, key_ref: audit-pseudonym, key_version: "v1" } }
   groups:
     - name: eu

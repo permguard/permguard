@@ -436,11 +436,12 @@ fn write_private(path: &Path, contents: &[u8]) -> Result<()> {
     restrict(path, 0o600)
 }
 
-/// Writes material that is meant to be readable — a certificate is public by definition. The
-/// library creates it readable by its owner alone; it is opened up afterwards.
+/// Writes a certificate or a revocation list: public by definition, and still kept readable by the
+/// volume's owner alone, as everything on a volume `production` verifies private (WP-2.2); the
+/// server reads it as that owner.
 fn write_public(path: &Path, contents: &[u8]) -> Result<()> {
     write_whole(path, contents)?;
-    restrict(path, 0o644)
+    restrict(path, 0o600)
 }
 
 /// A flushed temporary renamed into place: a crash leaves the previous file or the new one.

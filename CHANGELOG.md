@@ -151,6 +151,8 @@ is cut.
 
 ### Fixed
 
+- **A Host that generates its own certificates starts under `production`.**
+  The certificates and the revocation list it generates are now owner-only, as everything it writes on its volume: `production` verifies the volume private, and refused the 0644 certificates the Host had just written itself.
 - **The status lists are watched.**
   A member fetches them on their own cadence, half the shortest `ttl` it holds, and reports `degraded: token-status`, holds its readiness when one expired, and exposes `permguard_token_status_list_age_seconds` and `permguard_token_status_list_rejected_total`; the IAM Host re-syncs its tokens with its directory every minute, `degraded: token-sync` while it cannot.
   A list the volume does not take no longer leaves the older one to come back after a restart; a restarted IAM Host never signs a list at an `iat` a member already holds; a token can be revoked through the members' clock skew; a list of another length than `2^20`, or one the index no longer names, is no longer held.

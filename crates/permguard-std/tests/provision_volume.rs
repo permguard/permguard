@@ -219,10 +219,16 @@ fn test_generated_material_is_readable_by_nobody_else() {
     ))
     .expect("the volume is prepared");
 
+    // The certificates and the revocation list too: `production` verifies every file of the
+    // volume private, and refused the server's own generated certificates when they were 0644.
     for private in [
         "operations/secrets/audit-pseudonym",
         "tls/server.key",
         "tls/ca.key",
+        "tls/server.pem",
+        "tls/ca.pem",
+        "tls/client.pem",
+        "tls/ca.crl",
     ] {
         let mode = fs::metadata(root.join(private))
             .expect("the file is there")
