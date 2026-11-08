@@ -25,6 +25,7 @@ Permguard separates authentication from authorization.
 | what they may do | the Host                     | the grants the principal holds, and those of every role it is a member of |
 
 A token's groups or roles grant nothing: the provider authenticates, the Host authorizes.
+In a cluster, the Control Plane's Host is the IAM Host: the Data Planes decide by the access tokens it issues, see [Access Tokens & Clusters](./access-tokens).
 The same grants and roles answer on every surface, over REST and over gRPC, and a route without a grant is refused: `401` for nobody, `403` for a principal without the grant.
 
 ## Identity providers
