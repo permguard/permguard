@@ -62,7 +62,8 @@ spec:
       terminationGracePeriodSeconds: 30
       {{- $image := dict "root" $ "repository" $plane.repository "digest" $plane.digest }}
       {{- $persists := include "permguard.persists" (dict "root" $ "plane" $plane) }}
-      {{- if or $persists $.Values.imageVerification.enabled }}
+      {{- $provisions := include "permguard.provisionsIdentity" (dict "assurance" $plane.assurance) }}
+      {{- if or $persists $provisions $.Values.imageVerification.enabled }}
       initContainers:
         {{- with include "permguard.verifyImage" $image | trim }}{{ . | nindent 8 }}{{- end }}
       {{- end }}
@@ -81,6 +82,9 @@ spec:
             - name: state
               mountPath: /var/lib/permguard
       {{- end }}
+      {{- if $provisions }}
+        {{- include "permguard.identityInit" (dict "root" $ "resources" $plane.resources "extraEnv" $plane.extraEnv "extraVolumeMounts" $plane.extraVolumeMounts "publicTls" $plane.tls.secretName "hostTls" $plane.hostListener.enabled) | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ $component }}
           image: {{ include "permguard.image" $image }}
@@ -93,6 +97,11 @@ spec:
             # private: a mounted volume's root belongs to root (TD-1, TD-2).
             - name: PERMGUARD_WORKING_DIR
               value: /var/lib/permguard/volume
+            {{- with ($plane.identity | default dict).witness }}
+            # The witness the `identity` container printed, kept by the operator (TS-10).
+            - name: PERMGUARD_HOST_IDENTITY_WITNESS
+              value: {{ . | quote }}
+            {{- end }}
             {{- with $plane.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -261,7 +270,8 @@ spec:
       terminationGracePeriodSeconds: 30
       {{- $image := dict "root" . "repository" .Values.allInOne.repository "digest" .Values.allInOne.digest }}
       {{- $persists := include "permguard.persists" (dict "root" . "plane" .Values.allInOne) }}
-      {{- if or $persists .Values.imageVerification.enabled }}
+      {{- $provisions := include "permguard.provisionsIdentity" (dict "assurance" .Values.allInOne.assurance) }}
+      {{- if or $persists $provisions .Values.imageVerification.enabled }}
       initContainers:
         {{- with include "permguard.verifyImage" $image | trim }}{{ . | nindent 8 }}{{- end }}
       {{- end }}
@@ -279,6 +289,9 @@ spec:
             - name: state
               mountPath: /var/lib/permguard
       {{- end }}
+      {{- if $provisions }}
+        {{- include "permguard.identityInit" (dict "root" . "resources" .Values.allInOne.resources "extraEnv" .Values.allInOne.extraEnv "extraVolumeMounts" .Values.allInOne.extraVolumeMounts "publicTls" .Values.allInOne.tls.secretName "hostTls" .Values.allInOne.hostListener.enabled) | nindent 8 }}
+      {{- end }}
       containers:
         - name: all-in-one
           image: {{ include "permguard.image" $image }}
@@ -290,6 +303,11 @@ spec:
               value: /var/lib/permguard/volume
             - name: PERMGUARD_RUNTIME_PLANES
               value: "control,data"
+            {{- with (.Values.allInOne.identity | default dict).witness }}
+            # The witness the `identity` container printed, kept by the operator (TS-10).
+            - name: PERMGUARD_HOST_IDENTITY_WITNESS
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.allInOne.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

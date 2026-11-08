@@ -19,6 +19,13 @@ is cut.
 
 ### Added
 
+- **The chart makes every Host's identity offline from `production`, and starts it on its witness.**
+  An init container `identity`, on the release's `cli` image (`cli.repository`, `cli.digest`), runs `permguard host identity provision --if-missing` in every Pod above `development`, in the Host's own custody, and prints the witness in its log once.
+  The operator records it, `controlPlane.identity.witness` or `dataPlane.groups[].identity.witnesses` (one per ordinal), and the Host starts; until then it refuses, and says where to record it.
+  `host identity provision --if-missing` leaves a provisioned volume as it is and prints no witness; `host.identity.witness_file` (`PERMGUARD_HOST_IDENTITY_WITNESS_FILE`) reads the witness from a file at start.
+  Under `imageVerification`, `cli.digest` is required and the `cli` image is verified by a `verify-cli` init container before it runs.
+  A control plane or all-in-one from `production` without `persistence.enabled` is refused at render: its identity would not outlive its Pod.
+
 - **The IAM Host reports `degraded: token-custody` while `production` keeps `iam.tokens` in files.**
   The ring signs every token every member decides by, so `file` custody, envelope-encrypted on the IAM Host's volume, is admitted under `production` and reported for as long as it lasts; a PKCS#11 token or a KMS clears it.
   Plaintext custody stays refused under `production`, and anything but a PKCS#11 token or a KMS under `regulated`.

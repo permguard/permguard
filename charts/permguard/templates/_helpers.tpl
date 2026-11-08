@@ -77,12 +77,13 @@ else with the chart's appVersion as the tag unless one is set.
 {{/*
 The `verify-image` init container (TD-4), first in every Permguard Pod when `imageVerification` is
 on: `gh attestation verify` of the digest the Pod runs, under the release's provenance policy. Takes
-the `permguard.image` dict; renders a list item, or nothing.
+the `permguard.image` dict, with an optional `name` for a second image the Pod runs; renders a list
+item, or nothing.
 */}}
 {{- define "permguard.verifyImage" -}}
 {{- $iv := .root.Values.imageVerification -}}
 {{- if $iv.enabled }}
-- name: verify-image
+- name: {{ .name | default "verify-image" }}
   image: {{ $iv.verifier.image }}
   imagePullPolicy: IfNotPresent
   args:
@@ -270,4 +271,62 @@ configuration: `hostControls.storage` is the `storage` section, `hostControls.ba
 {{- with $controls.backup }}{{- $_ := set $config "operations" (dict "backup" (deepCopy .)) }}{{- end }}
 {{- with $controls.objectives }}{{- $_ := set $config "objectives" (deepCopy .) }}{{- end }}
 {{- toYaml $config }}
+{{- end }}
+
+{{/*
+Whether a unit's Host makes its identity offline, before its first start: every profile but
+`development` (TS-10). Takes `(dict "assurance" $unit.assurance)`; answers "true" or nothing.
+*/}}
+{{- define "permguard.provisionsIdentity" -}}
+{{- if ne (toString (dig "profile" "production" (.assurance | default dict))) "development" }}true{{ end }}
+{{- end }}
+
+{{/*
+The init container that makes a Host's identity where `production` requires it made offline
+(TS-10, `1-architecture/11` The Host identity under `production`): the release's command line,
+on a volume that has no identity, in the custody the Host's own configuration names, its witness
+printed to this container's log; on a volume that has one, it changes and prints nothing. Takes
+`(dict "root" $ "resources" … "extraEnv" … "extraVolumeMounts" … "publicTls" bool "hostTls" bool)`;
+runs after the claim. It mounts what the server mounts, since it checks the configuration the
+server starts with, its TLS material included. Under `imageVerification` the command line's image
+is verified first, by its own `verify-cli` (TD-4).
+*/}}
+{{- define "permguard.identityInit" -}}
+{{- $cli := dict "root" .root "repository" .root.Values.cli.repository "digest" .root.Values.cli.digest "name" "verify-cli" }}
+{{- with include "permguard.verifyImage" $cli | trim }}
+{{ . }}
+{{- end }}
+- name: identity
+  image: {{ include "permguard.image" $cli }}
+  imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+  args: ["host", "identity", "provision", "--if-missing", "--volume", "/var/lib/permguard/volume", "--server-config", "/etc/permguard/config.yml"]
+  {{- with .extraEnv }}
+  env:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  securityContext:
+    {{- toYaml .root.Values.securityContext | nindent 4 }}
+  resources:
+    {{- toYaml .resources | nindent 4 }}
+  volumeMounts:
+    - name: config
+      mountPath: /etc/permguard
+      readOnly: true
+    - name: state
+      mountPath: /var/lib/permguard
+    - name: tmp
+      mountPath: /tmp
+    {{- if .publicTls }}
+    - name: public-tls
+      mountPath: /etc/permguard-tls
+      readOnly: true
+    {{- end }}
+    {{- if .hostTls }}
+    - name: host-tls
+      mountPath: /etc/permguard-host-tls
+      readOnly: true
+    {{- end }}
+    {{- with .extraVolumeMounts }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 {{- end }}

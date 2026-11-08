@@ -26,7 +26,8 @@ securityContext:
 # endpoint removal take, never a second budget after the hook.
 terminationGracePeriodSeconds: {{ add $g.shutdown.timeoutSeconds 5 }}
 {{- $image := dict "root" $root "repository" $dp.repository "digest" $dp.digest }}
-{{- if or $stateful .claim $root.Values.imageVerification.enabled }}
+{{- $provisions := include "permguard.provisionsIdentity" (dict "assurance" $g.assurance) }}
+{{- if or $stateful .claim $provisions $root.Values.imageVerification.enabled }}
 initContainers:
   {{- with include "permguard.verifyImage" $image | trim }}{{ . | nindent 2 }}{{- end }}
 {{- end }}
@@ -50,6 +51,9 @@ initContainers:
       - name: state
         mountPath: /var/lib/permguard
 {{- end }}
+{{- if $provisions }}
+  {{- include "permguard.identityInit" (dict "root" $root "resources" $g.resources "extraEnv" $g.extraEnv "extraVolumeMounts" $dp.extraVolumeMounts "publicTls" $dp.tls.secretName "hostTls" $dp.hostListener.enabled) | nindent 2 }}
+{{- end }}
 containers:
   - name: data-plane
     image: {{ include "permguard.image" $image }}
@@ -63,15 +67,25 @@ containers:
       # environment names the mount, and the environment is read over the file.
       - name: PERMGUARD_WORKING_DIR
         value: /var/lib/permguard/volume
+      {{- if and (not .recover) (or $provisions $g.join) }}
+      # The replica's ordinal: what names its own invitations and its own witness.
+      - name: POD_INDEX
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+      {{- end }}
+      {{- if $provisions }}
+      # Its witness, the one its `identity` container printed, recorded by the operator in the
+      # group's `-identity` ConfigMap; until it is, the replica refuses to start and says so. A
+      # drain Job reads the witness of the ordinal whose claim it drains.
+      - name: PERMGUARD_HOST_IDENTITY_WITNESS_FILE
+        value: {{ ternary "/etc/permguard-identity/witness-__ORDINAL__" "/etc/permguard-identity/witness-$(POD_INDEX)" (eq (toString .recover) "true") | quote }}
+      {{- end }}
       {{- with $g.join }}
       {{- if not $.recover }}
       # TD-5: the replica joins the control plane's Host by itself, from its own invitations, the
       # Secret's `<invitation>-<ordinal>`, its coordinator pinned apart from them. The approval stays
       # the coordinator's; a replica that joined never reads the file again.
-      - name: POD_INDEX
-        valueFrom:
-          fieldRef:
-            fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
       # One invitation per membership the `-membership` ConfigMap states, `control` and `data`.
       {{- $memberships := include "permguard.groupMemberships" $g | fromJson }}
       - name: PERMGUARD_HOST_JOIN_INVITATION_FILE
@@ -141,6 +155,11 @@ containers:
         mountPath: /var/run/permguard/join
         readOnly: true
       {{- end }}
+      {{- if $provisions }}
+      - name: identity
+        mountPath: /etc/permguard-identity
+        readOnly: true
+      {{- end }}
       {{- with $dp.extraVolumeMounts }}
       {{- toYaml . | nindent 6 }}
       {{- end }}
@@ -177,6 +196,14 @@ volumes:
       secretName: {{ $g.join.secret }}
       defaultMode: 288
       # A replica that joined never reads its invitations again: the Secret may then be removed.
+      optional: true
+  {{- end }}
+  {{- if $provisions }}
+  # The replicas' witnesses, `witness-<ordinal>`: optional, since none is recorded before the
+  # first replica printed its own.
+  - name: identity
+    configMap:
+      name: {{ $g.base }}-identity
       optional: true
   {{- end }}
   {{- with $dp.extraVolumes }}

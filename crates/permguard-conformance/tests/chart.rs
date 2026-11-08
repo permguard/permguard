@@ -301,7 +301,9 @@ fn the_host_volume_is_a_directory_inside_the_mount_claimed_by_every_pod() {
     // Before every start, the orchestrator's claim moves forward, on that same directory.
     let init = &rendered.get("StatefulSet", "permguard-data-plane-billing")["spec"]["template"]["spec"]
         ["initContainers"];
-    assert_eq!(init.as_array().unwrap().len(), 1);
+    // Then, from `production`, the identity made offline (TS-10).
+    assert_eq!(init.as_array().unwrap().len(), 2);
+    assert_eq!(init[1]["name"], "identity");
     assert_eq!(
         init[0]["args"],
         json!([
@@ -318,6 +320,142 @@ fn the_host_volume_is_a_directory_inside_the_mount_claimed_by_every_pod() {
         "/var/lib/permguard"
     );
     assert_eq!(init[0]["image"], container["image"]);
+}
+
+/// TS-10: from `production` every Host's identity is made offline, by an `identity` init container
+/// on the release's command line after the claim, in the Host's own custody; its witness reaches
+/// the server as the values record it, the control plane's by value, each replica's from the
+/// group's `-identity` ConfigMap by its ordinal. `development` has none of it.
+#[test]
+fn from_production_every_host_makes_its_identity_offline_and_takes_its_witness() {
+    let witness = format!("sha256:{}", "ab".repeat(32));
+    let rendered = render(&format!(
+        "{TWO_GROUPS}      identity: {{ witnesses: [\"{witness}\"] }}\ncontrolPlane:\n  identity: {{ witness: \"{witness}\" }}\n"
+    ));
+    let pod = |kind: &str, name: &str| rendered.get(kind, name)["spec"]["template"]["spec"].clone();
+    for (kind, name) in [
+        ("Deployment", "permguard-control-plane"),
+        ("StatefulSet", "permguard-data-plane-billing"),
+    ] {
+        let spec = pod(kind, name);
+        let init = spec["initContainers"].as_array().unwrap();
+        let identity = init
+            .iter()
+            .find(|c| c["name"] == "identity")
+            .expect("an identity container");
+        assert!(
+            identity["image"].as_str().unwrap().contains("/cli:"),
+            "{}",
+            identity["image"]
+        );
+        assert_eq!(
+            identity["args"],
+            json!([
+                "host",
+                "identity",
+                "provision",
+                "--if-missing",
+                "--volume",
+                "/var/lib/permguard/volume",
+                "--server-config",
+                "/etc/permguard/config.yml"
+            ])
+        );
+        // After the claim, where the volume persists and has one.
+        let made = init.iter().position(|c| c["name"] == "identity").unwrap();
+        if let Some(claim) = init.iter().position(|c| c["name"] == "claim") {
+            assert!(claim < made, "{name}: after the claim");
+        }
+    }
+    let control = pod("Deployment", "permguard-control-plane")["containers"][0]["env"].clone();
+    assert!(control.as_array().unwrap().contains(&json!({
+        "name": "PERMGUARD_HOST_IDENTITY_WITNESS",
+        "value": witness
+    })));
+    let replica =
+        pod("StatefulSet", "permguard-data-plane-billing")["containers"][0]["env"].clone();
+    assert!(replica.as_array().unwrap().contains(&json!({
+        "name": "PERMGUARD_HOST_IDENTITY_WITNESS_FILE",
+        "value": "/etc/permguard-identity/witness-$(POD_INDEX)"
+    })));
+    assert_eq!(
+        rendered.get("ConfigMap", "permguard-data-plane-people-identity")["data"]["witness-0"],
+        witness
+    );
+
+    // It checks the configuration the server starts with: the same TLS material, mounted.
+    let tls =
+        render("controlPlane:\n  hostListener: { enabled: true, tls: { secretName: cp-host } }\n");
+    let spec = tls.get("Deployment", "permguard-control-plane")["spec"]["template"]["spec"].clone();
+    let identity = spec["initContainers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "identity")
+        .unwrap()
+        .clone();
+    let mounts: Vec<&Value> = identity["volumeMounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|mount| &mount["mountPath"])
+        .collect();
+    for path in ["/etc/permguard-tls", "/etc/permguard-host-tls"] {
+        assert!(mounts.contains(&&json!(path)), "{path}: {mounts:?}");
+    }
+
+    // The all-in-one takes its witness as the control plane does.
+    let all_in_one = render(&format!(
+        "allInOne: {{ enabled: true, tls: {{ secretName: aio-tls }}, identity: {{ witness: \"{witness}\" }} }}\ncontrolPlane: {{ enabled: false }}\ndataPlane: {{ enabled: false }}\n"
+    ));
+    let env = all_in_one.get("Deployment", "permguard-all-in-one")["spec"]["template"]["spec"]
+        ["containers"][0]["env"]
+        .clone();
+    assert!(env.as_array().unwrap().contains(&json!({
+        "name": "PERMGUARD_HOST_IDENTITY_WITNESS",
+        "value": witness
+    })));
+
+    // A drain Job reads the witness of the ordinal whose claim it drains: it has no pod index.
+    let drained = render(&verified(""));
+    let template =
+        drained.get("ConfigMap", "permguard-data-plane-billing-drain-job")["data"]["job.json"]
+            .as_str()
+            .unwrap()
+            .replace("__CLAIM__", "state-permguard-data-plane-billing-2")
+            .replace("__JOB__", "permguard-data-plane-billing-drain-2")
+            .replace("__ORDINAL__", "2");
+    let job: Value = serde_json::from_str(&template).expect("the template is JSON");
+    let env = job["spec"]["template"]["spec"]["containers"][0]["env"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert!(env.contains(&json!({
+        "name": "PERMGUARD_HOST_IDENTITY_WITNESS_FILE",
+        "value": "/etc/permguard-identity/witness-2"
+    })));
+    assert!(env.iter().all(|variable| variable["name"] != "POD_INDEX"));
+
+    // From `production` an identity that would not outlive its Pod is refused.
+    refused(
+        "persistence: { enabled: false }\n",
+        "controlPlane: from `production` the Host starts only on the witness",
+    );
+
+    let development = render(
+        "developmentMode: true\ncontrolPlane:\n  assurance: { profile: development }\ndataPlane:\n  groups:\n    - name: dev\n      selector: plane/data/*\n      assurance: { profile: development }\n",
+    );
+    let spec =
+        development.get("StatefulSet", "permguard-data-plane-dev")["spec"]["template"]["spec"]
+            .clone();
+    assert!(
+        spec["initContainers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["name"] != "identity"),
+        "development makes its identity as it starts"
+    );
 }
 
 #[test]
@@ -425,7 +563,10 @@ fn a_persistent_group_is_a_statefulset_with_one_claim_template_and_retained_clai
         .as_array()
         .unwrap();
     assert!(volumes.iter().all(|volume| volume["name"] != "state"));
-    assert!(rendered.all("PersistentVolumeClaim").is_empty());
+    // The only claim beside the templates is the control plane's.
+    for claim in rendered.all("PersistentVolumeClaim") {
+        assert_eq!(claim["metadata"]["name"], "permguard-control-plane");
+    }
 }
 
 #[test]
@@ -1436,6 +1577,7 @@ imageVerification:
   enabled: true
   verifier: {{ image: \"registry.example/verifier@{DIGEST}\" }}
   tokenSecret: {{ name: gh-token }}
+cli: {{ digest: \"{DIGEST}\" }}
 controlPlane:
   digest: \"{DIGEST}\"
   hostListener: {{ enabled: true, tls: {{ secretName: control-plane-host }} }}
@@ -1471,12 +1613,25 @@ fn starts_verified(what: &str, pod: &Value) {
     for other in init
         .iter()
         .skip(1)
+        .filter(|container| {
+            !["verify-cli", "identity"].contains(&container["name"].as_str().unwrap())
+        })
         .chain(pod["containers"].as_array().unwrap())
     {
         assert_eq!(
             other["image"], image,
             "{what}: every Permguard container runs it"
         );
+    }
+    // The command line that makes the identity (TS-10) is verified too, right before it runs.
+    if let Some(at) = init
+        .iter()
+        .position(|container| container["name"] == "identity")
+    {
+        let cli = format!("docker.io/permguard/cli@{DIGEST}");
+        assert_eq!(init[at]["image"], cli, "{what}");
+        assert_eq!(init[at - 1]["name"], "verify-cli", "{what}");
+        assert_eq!(init[at - 1]["args"][2], format!("oci://{cli}"), "{what}");
     }
     assert_eq!(
         verify["args"],
@@ -1553,6 +1708,7 @@ imageVerification:
   enabled: true
   verifier: {{ image: \"registry.example/verifier@{DIGEST}\" }}
   tokenSecret: {{ name: gh-token }}
+cli: {{ digest: \"{DIGEST}\" }}
 allInOne: {{ enabled: true, digest: \"{DIGEST}\", tls: {{ secretName: aio-tls }} }}
 controlPlane: {{ enabled: false }}
 dataPlane: {{ enabled: false }}
@@ -1600,6 +1756,11 @@ fn image_verification_refuses_a_tag_an_unpinned_verifier_or_no_token() {
         assert_ne!(values, verified(""), "{component}");
         refused(&values, &format!("{component}.digest is \"\""));
     }
+    // The command line an `identity` container runs, from `production` (TS-10).
+    refused(
+        &verified("").replace(&format!("cli: {{ digest: \"{DIGEST}\" }}\n"), ""),
+        "cli.digest is \"\"",
+    );
     refused(
         &verified("").replace(&format!("verifier@{DIGEST}"), "verifier:2.98.0"),
         "name the verifier by digest",
@@ -2254,8 +2415,11 @@ fn every_host_keeps_its_volume_in_a_directory_inside_the_mount_under_its_claim()
         rendered.config("permguard-control-plane")["working_dir"],
         "/var/lib/permguard/volume"
     );
-    // Without a volume there is no claim to move, and the directory is still inside the mount.
-    let rendered = render("{}\n");
+    // Without a volume, which only `development` runs on, there is no claim to move, and the
+    // directory is still inside the mount.
+    let rendered = render(
+        "developmentMode: true\npersistence: { enabled: false }\ncontrolPlane: { assurance: { profile: development } }\n",
+    );
     let pod = &rendered.get("Deployment", "permguard-control-plane")["spec"]["template"]["spec"];
     assert!(pod.get("initContainers").is_none());
     assert!(env_of(&pod["containers"][0]).contains(&working_dir));

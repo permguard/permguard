@@ -138,6 +138,40 @@ The replica picks up its approvals by itself within a minute, and never reads it
 A join needs Kubernetes 1.28 or later, where a Pod's index names its invitations.
 Outside Kubernetes, set `PERMGUARD_HOST_JOIN_INVITATION_FILE`, `PERMGUARD_HOST_JOIN_PIN_FINGERPRINT` and, when the invitation leaves them open, `PERMGUARD_HOST_JOIN_NAME` and `PERMGUARD_HOST_JOIN_GROUPS`.
 
+### The Host identity under `production`
+
+From `production` up a Host never makes its identity as it starts: it is made offline, once, and the Host starts only with the witness that was printed then, kept outside its volume.
+A volume replaced or rolled back holds another identity, and is refused.
+The chart runs that step in every Pod, an init container `identity` on the release's `cli` image, and the first install is attended:
+
+```sh
+# 1. Install: each Host makes its identity and waits for its witness.
+helm install pg charts/permguard -f values.yaml
+kubectl logs deploy/pg-permguard-control-plane -c identity     # witness  sha256:…
+kubectl logs pg-permguard-data-plane-billing-0 -c identity     # one per replica
+```
+
+```yaml
+# 2. Record each witness in the values, then upgrade: the Hosts start.
+controlPlane:
+  identity: { witness: "sha256:…" }
+dataPlane:
+  groups:
+    - name: billing
+      identity: { witnesses: ["sha256:… replica 0", "sha256:… replica 1"] }
+```
+
+The witness is printed once: a later Pod on the same volume says the identity is there and prints nothing.
+It is not a secret, only what checks that the volume is still the one provisioned; keep it in the values, under review like the rest.
+A replica waiting for its witness reads it at its next restart: delete its Pod to start it now.
+A replica added later prints its own, recorded the same way before it starts, and the witnesses of ordinals scaled away stay in the values while their claims are kept: a drain reads them.
+A group's replicas need Kubernetes 1.28 or later, where a Pod's index names its witness.
+
+A witness lost before it was recorded cannot be printed again: if that volume never served, delete its claim, and the next Pod provisions a new identity on a new one.
+A witness printed where one is already recorded means the volume was replaced: find out why before you record the new one.
+With `imageVerification` on, `cli.digest` names the `cli` image, verified before it runs.
+Outside Kubernetes, run `permguard host identity provision --volume <path>` before the first start, and set `PERMGUARD_HOST_IDENTITY_WITNESS`, or `PERMGUARD_HOST_IDENTITY_WITNESS_FILE` for a file holding it.
+
 ## Observing
 
 | Signal                                        | Meaning                                                                             |

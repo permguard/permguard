@@ -135,6 +135,7 @@ either bound turns autoscaling on, unless the group says `enabled: false`.
       "pullMode" (toString (dig "mode" "local" $pull))
       "pullLedgers" (dig "ledgers" list $pull | default list)
       "join" ($g.join | default dict)
+      "identity" ($g.identity | default dict)
 -}}
 {{- $groups = append $groups $resolved -}}
 {{- end -}}

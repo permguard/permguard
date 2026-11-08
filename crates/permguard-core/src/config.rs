@@ -105,6 +105,10 @@ pub const SETTING_HOST_IDENTITY_SUITE: &str = "PERMGUARD_HOST_IDENTITY_SUITE";
 /// the volume and required from the `production` profile up (WP-2.2).
 pub const SETTING_HOST_IDENTITY_WITNESS: &str = "PERMGUARD_HOST_IDENTITY_WITNESS";
 
+/// Runtime setting key for a file holding that witness, read at start: what a replica that reads
+/// its own witness names, its orchestrator mounting one per replica (TS-10).
+pub const SETTING_HOST_IDENTITY_WITNESS_FILE: &str = "PERMGUARD_HOST_IDENTITY_WITNESS_FILE";
+
 /// Runtime setting key for the peer Hosts this one opens sessions with (WP-2.3): one
 /// `<host_id> sha256:<first fingerprint>` per line, each pinned out of band.
 pub const SETTING_HOST_PEERS: &str = "PERMGUARD_HOST_PEERS";
@@ -1411,6 +1415,7 @@ pub struct Config {
     host_join_parts: HostJoinParts,
     host_identity_suite: Option<String>,
     host_identity_witness: Option<String>,
+    host_identity_witness_file: Option<PathBuf>,
     host_peers: Vec<PinnedPeer>,
     admin_peer_sessions: Option<PeerSessions>,
     /// Relaxations the Host's own state imposes, added at start (WP-2.2).
@@ -1637,6 +1642,7 @@ impl Default for Config {
             host_join_parts: HostJoinParts::default(),
             host_identity_suite: None,
             host_identity_witness: None,
+            host_identity_witness_file: None,
             host_peers: Vec::new(),
             admin_peer_sessions: None,
             host_relaxations: Vec::new(),
@@ -2494,6 +2500,12 @@ produce: use `EdDSA` or `ES256`"
                  `pg-ed25519-sha256-v1` or `pg-p256-sha256-v1`"
             );
         }
+        if self.host_identity_witness.is_some() && self.host_identity_witness_file.is_some() {
+            bail!(
+                "`host.identity.witness` and `host.identity.witness_file` both name the witness: \
+                 state one"
+            );
+        }
         if let Some(witness) = self.host_identity_witness() {
             let hex = witness.strip_prefix("sha256:").unwrap_or_default();
             if hex.len() != 64
@@ -3282,6 +3294,11 @@ produce: use `EdDSA` or `ES256`"
     /// The external witness of the Host identity, when stated (WP-2.2).
     pub fn host_identity_witness(&self) -> Option<&str> {
         self.host_identity_witness.as_deref()
+    }
+
+    /// The file holding the external witness, read at start, when stated in place of it.
+    pub fn host_identity_witness_file(&self) -> Option<&Path> {
+        self.host_identity_witness_file.as_deref()
     }
 
     /// The peer Hosts this one opens sessions with, pinned by their first fingerprint (WP-2.3).
@@ -4646,6 +4663,10 @@ produce: use `EdDSA` or `ES256`"
                 .and_then(|join| lines(join.groups.iter().cloned())),
             SETTING_HOST_IDENTITY_SUITE => self.host_identity_suite.clone(),
             SETTING_HOST_IDENTITY_WITNESS => self.host_identity_witness.clone(),
+            SETTING_HOST_IDENTITY_WITNESS_FILE => self
+                .host_identity_witness_file
+                .as_ref()
+                .map(|path| path.display().to_string()),
             SETTING_HOST_PEERS => lines(self.host_peers.iter().map(ToString::to_string)),
             SETTING_ADMIN_PEER_SESSIONS => Some(self.admin_peer_sessions().as_str().to_owned()),
             SETTING_ADMIN_ALLOW => lines(self.admin_allow.iter().map(ToString::to_string)),
@@ -5173,6 +5194,10 @@ produce: use `EdDSA` or `ES256`"
 
         if let Some(value) = settings.get(SETTING_HOST_IDENTITY_WITNESS) {
             self.host_identity_witness = Some(value.clone());
+        }
+
+        if let Some(value) = settings.get(SETTING_HOST_IDENTITY_WITNESS_FILE) {
+            self.host_identity_witness_file = Some(PathBuf::from(value.trim()));
         }
 
         if let Some(value) = settings.get(SETTING_ADMIN_ADDR) {
@@ -6709,6 +6734,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_HOST_JOIN_GROUPS,
     SETTING_HOST_IDENTITY_SUITE,
     SETTING_HOST_IDENTITY_WITNESS,
+    SETTING_HOST_IDENTITY_WITNESS_FILE,
     SETTING_HOST_PEERS,
     SETTING_ADMIN_PEER_SESSIONS,
     SETTING_ADMIN_ADDR,
@@ -6917,6 +6943,7 @@ const STARTUP_SETTINGS: &[&str] = &[
     SETTING_HOST_JOIN_GROUPS,
     SETTING_HOST_IDENTITY_SUITE,
     SETTING_HOST_IDENTITY_WITNESS,
+    SETTING_HOST_IDENTITY_WITNESS_FILE,
     SETTING_PUBLIC_HTTP_ADDR,
     SETTING_PUBLIC_GRPC_ADDR,
     SETTING_TELEMETRY_ADDR,

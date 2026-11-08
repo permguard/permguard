@@ -5,6 +5,8 @@
 # (TS-5), for the chart's CI shapes and conformance tests: a placeholder qualified tuple, and a
 # recovery key by reference. A deployment states its own: its qualified tuple with its evidence,
 # and the secret its recovery key is kept in.
+# A volume that persists: the Host identity made offline outlives its Pod (TS-10).
+persistence: { enabled: true }
 hostControls:
   storage:
     qualified:

@@ -6,6 +6,7 @@
 # Data Planes in two groups that join it by themselves from invitation Secrets, on kind. Each step is
 # named as it runs:
 #
+#   under `production`, each Host's identity made offline, its witness recorded before it starts
 #   the operator is the Control Plane's recovery administrator, bootstrapped offline on its volume
 #   the catalog holds a ledger, its policies applied
 #   each group's replica joins by itself from its Secret, and waits for its approval
@@ -18,7 +19,7 @@
 #   scripts/chart-cluster-e2e.sh                       every Host under `development`
 #   PROFILE=production scripts/chart-cluster-e2e.sh    under `production`, the chart's default
 #
-# The images are `permguard/control-plane:e2e` and `permguard/data-plane:e2e`, built from the lab
+# The images are `permguard/control-plane:e2e`, `permguard/data-plane:e2e` and `permguard/cli:e2e`, built from the lab
 # image (`docker build -f lab/compose/Dockerfile -t permguard/lab:local .`), which also runs the
 # offline bootstrap. It needs docker, kind, kubectl, helm, jq, openssl, curl and the `permguard`
 # CLI of this tree (`cargo build -p permguard-cli`). The cluster is deleted at the end unless KEEP=1.
@@ -77,12 +78,16 @@ for plane in control-plane data-plane; do
         docker build -q -t "permguard/${plane}:e2e" - >/dev/null
     log "permguard/${plane}:e2e"
 done
+# The command line an `identity` init container runs, from `production`.
+printf 'FROM permguard/lab:local\nUSER 65532:65532\nENTRYPOINT ["/usr/local/bin/permguard"]\n' |
+    docker build -q -t permguard/cli:e2e - >/dev/null
+log "permguard/cli:e2e"
 
 step "a disposable cluster, ${cluster}"
 export KUBECONFIG="${TMPDIR:-/tmp}/kubeconfig-${cluster}"
 kind delete cluster --name "${cluster}" >/dev/null 2>&1 || true
 kind create cluster --name "${cluster}" --wait 120s
-for image in permguard/control-plane:e2e permguard/data-plane:e2e permguard/lab:local; do
+for image in permguard/control-plane:e2e permguard/data-plane:e2e permguard/cli:e2e permguard/lab:local; do
     kind load docker-image "${image}" --name "${cluster}"
 done
 kubectl create namespace "${namespace}"
@@ -156,7 +161,8 @@ hostControls:
     max_volume_size: 1G
     membership_offline_grace: 24h
     mirror_staleness: 1h
-    evidence_shipping_lag: 1d
+    # Past the decision spool's age (a day) with its margin: a spool full to its age is late.
+    evidence_shipping_lag: 2d
     spool_headroom: 20%
     checkpoint_export_lag: 1d
     backup_interval: 1d
@@ -186,10 +192,12 @@ values() { # pin, replicas, acme zone id, beta zone id
 developmentMode: ${development_mode}
 autogenerate: ${autogenerate}
 image: { registry: "", pullPolicy: Never, tag: e2e }
+cli: { repository: permguard/cli }
 persistence: { enabled: true, size: 128Mi }
 controlPlane:
   repository: permguard/control-plane
   assurance: { profile: ${profile} }
+  identity: { witness: "${cp_witness}" }
   tls: { secretName: cp-public }
   hostListener: { enabled: true, tls: { secretName: cp-host }${cp_allow} }
 ${secret_volumes}
@@ -218,6 +226,8 @@ ${secret_volumes}
       keys: { enabled: "true", publish_ahead: ${publish_ahead}, rotate_every: 1h, retain: ${retain}${custody} }
       secrets: { provider: directory, coordinator_root_ref: zone-root${secrets_directory} }
       audit: { pseudonym: { enabled: true, key_ref: audit-pseudonym, key_version: "v1" } }
+    # A mirror older than this alarms, inside the declared mirror staleness objective.
+    dataPlane: { mirrors: { stale_after: 30m } }
   groups:
     - name: eu
       selector: plane/data/zone/${3:-none}/*
@@ -226,6 +236,7 @@ ${secret_volumes}
       evidence: { mode: ${evidence} }
       persistence: { enabled: true, size: 64Mi }
       join: { secret: eu-invitations, pinFingerprint: "$1" }
+      identity: { witnesses: ["${eu_witness}"] }
     - name: us
       selector: plane/data/zone/${4:-none}/*
       replicas: $2
@@ -233,43 +244,65 @@ ${secret_volumes}
       evidence: { mode: ${evidence} }
       persistence: { enabled: true, size: 64Mi }
       join: { secret: us-invitations, pinFingerprint: "$1" }
+      identity: { witnesses: ["${us_witness}"] }
 EOF
+}
+# The witness of each Host's identity, as its `identity` container printed it: none before it ran.
+cp_witness="" eu_witness="" us_witness=""
+# Under `production` a Host's identity is made offline, before its first start, by its Pod's
+# `identity` container, which prints the witness once; the Host starts only when the operator
+# recorded it outside the volume, here in the values. The witness of the first Pod that ran.
+witness_of() { # a pod selector
+    local deadline=$((SECONDS + 300)) pod witness
+    while [ "${SECONDS}" -lt "${deadline}" ]; do
+        for pod in $(k get pods -l "$1" -o name 2>/dev/null); do
+            witness="$(k logs "${pod}" -c identity 2>/dev/null | awk '$1 == "witness" { print $2 }')"
+            [ -n "${witness}" ] && { echo "${witness}"; return; }
+        done
+        sleep 3
+    done
+    k get pods >&2
+    fail "no identity container printed a witness for $1"
 }
 placeholder="sha256:$(printf '0%.0s' $(seq 64))"
 values "${placeholder}" 0 >"${work}/values.yaml"
 
 step "the Control Plane, the IAM Host"
-helm install "${release}" charts/permguard --namespace "${namespace}" --values "${work}/values.yaml" --wait --timeout 5m
 cp="${release}-permguard-control-plane"
+if [ "${profile}" = production ]; then
+    # It refuses to start until its witness is recorded: installed without waiting for it.
+    helm install "${release}" charts/permguard --namespace "${namespace}" --values "${work}/values.yaml" --timeout 5m
+    cp_witness="$(witness_of "app.kubernetes.io/component=control-plane")"
+    log "its identity made offline: ${cp_witness}, recorded"
+    values "${placeholder}" 0 >"${work}/values.yaml"
+    helm upgrade "${release}" charts/permguard --namespace "${namespace}" --values "${work}/values.yaml" --wait --timeout 5m
+else
+    helm install "${release}" charts/permguard --namespace "${namespace}" --values "${work}/values.yaml" --wait --timeout 5m
+fi
 k rollout status "deployment/${cp}" --timeout 300s
 
 step "the operator is the Control Plane's recovery administrator, bootstrapped offline on its volume"
 k scale "deployment/${cp}" --replicas 0
 k wait --for=delete pod -l "app.kubernetes.io/component=control-plane" --timeout 120s 2>/dev/null || true
-claim="$(k get pvc -o json | jq -er --arg cp "${cp}" '.items[] | select(.metadata.name | startswith($cp)) | .metadata.name' | head -1)"
-cat <<EOF | k apply -f - >/dev/null
-apiVersion: batch/v1
-kind: Job
-metadata: { name: bootstrap-operator }
-spec:
-  backoffLimit: 0
-  template:
-    spec:
-      restartPolicy: Never
-      securityContext: { runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532 }
-      containers:
-        - name: bootstrap
-          image: permguard/lab:local
-          imagePullPolicy: Never
-          command: ["permguard", "-o", "json", "host", "grants", "bootstrap", "--volume", "/var/lib/permguard/volume", "--fingerprint", "$(cat "${work}/operator.fp")"]
-          volumeMounts: [{ name: state, mountPath: /var/lib/permguard }]
-      volumes: [{ name: state, persistentVolumeClaim: { claimName: ${claim} } }]
-EOF
+# The Job runs as the server would, on its volume, its configuration and its mounts: under
+# `production` the identity's key is sealed under the key-encryption key the configuration names.
+k get "deployment/${cp}" -o json | jq --arg fp "$(cat "${work}/operator.fp")" '{
+    apiVersion: "batch/v1", kind: "Job", metadata: { name: "bootstrap-operator" },
+    spec: { backoffLimit: 0, template: { spec: (.spec.template.spec
+        | del(.initContainers) | .restartPolicy = "Never"
+        | .containers = [.containers[0] | {
+            name: "bootstrap", image: "permguard/lab:local", imagePullPolicy: "Never",
+            securityContext, env, volumeMounts,
+            command: ["permguard", "-o", "json", "host", "grants", "bootstrap",
+                "--volume", "/var/lib/permguard/volume", "--server-config", "/etc/permguard/config.yml",
+                "--fingerprint", $fp]
+        }]) } }
+}' | k apply -f - >/dev/null
 k wait --for=condition=complete job/bootstrap-operator --timeout 120s ||
     { k logs job/bootstrap-operator >&2; fail "the offline bootstrap did not complete"; }
 k scale "deployment/${cp}" --replicas 1
 k rollout status "deployment/${cp}" --timeout 300s
-log "granted offline on ${claim}"
+log "granted offline on the control plane's volume"
 
 forward() { # target, local port, remote port
     # A port another process holds would answer for this cluster: refused rather than reused.
@@ -306,7 +339,25 @@ for name in acme beta; do
     mkdir -p "${workspace}"
     cp -R examples/basics/. "${workspace}"
     rm -rf "${workspace}/.permguard"
-    pg -w "${workspace}" init main --language cedar,rego >/dev/null
+    # The Cedar partition alone, its interface named: from `production` none is inferred
+    # (`interfaces.explicit`), and a Rego partition carries a schema, which the sample's does not.
+    rm -rf "${workspace}/rego"
+    cat >"${workspace}/manifest.yml" <<'MANIFEST'
+metadata: { kind: policy, name: basics, description: The basics' Cedar partition. }
+runtimes:
+  cedar:
+    language: { name: cedar, constraint: ">=4.0.0" }
+    engine: { name: permguard, constraint: ">=0.1.0 <0.2.0" }
+partitions:
+  cedar:
+    runtime: cedar
+    interfaces: [permguard.api.pdp.native.v1]
+    schema: true
+    input: { type: permguard.cedar.entities.v1, required: false }
+profiles:
+  default: { type: permguard.api.pdp.native.v1, partitions: [cedar] }
+MANIFEST
+    pg -w "${workspace}" init main --language cedar >/dev/null
     pg -w "${workspace}" remote add origin "${control}" >/dev/null
     pg -w "${workspace}" checkout "origin/${name}/main" >/dev/null
     pg -w "${workspace}" apply -m "the e2e's basics policies" >/dev/null
@@ -339,6 +390,16 @@ for group in eu us; do
 done
 values "${pin}" 1 "${zone}" "${beta}" >"${work}/values.yaml"
 helm upgrade "${release}" charts/permguard --namespace "${namespace}" --values "${work}/values.yaml" --timeout 5m
+if [ "${profile}" = production ]; then
+    # Each replica's identity made offline by its own `identity` container; recorded in the
+    # group's `-identity` ConfigMap, then the replica restarted rather than left to its back-off.
+    eu_witness="$(witness_of "statefulset.kubernetes.io/pod-name=${release}-permguard-data-plane-eu-0")"
+    us_witness="$(witness_of "statefulset.kubernetes.io/pod-name=${release}-permguard-data-plane-us-0")"
+    log "eu-0 ${eu_witness} and us-0 ${us_witness}, recorded"
+    values "${pin}" 1 "${zone}" "${beta}" >"${work}/values.yaml"
+    helm upgrade "${release}" charts/permguard --namespace "${namespace}" --values "${work}/values.yaml" --timeout 5m >/dev/null
+    k delete pod "${release}-permguard-data-plane-eu-0" "${release}-permguard-data-plane-us-0" --wait=false >/dev/null
+fi
 deadline=$((SECONDS + 300))
 # Both replicas joined: each name among the pending memberships, whatever their number.
 until pg --host-endpoint "${host_api}" host members pending | jq -e '[.members[].name] | index("eu-0") != null and index("us-0") != null' >/dev/null; do
@@ -369,7 +430,8 @@ until [ "$(pg --host-endpoint "${host_api}" host members list | jq '[.members[] 
     [ "${SECONDS}" -lt "${deadline}" ] || fail "the approved memberships are not active"
     sleep 3
 done
-member_of() { pg --host-endpoint "${host_api}" host members list | jq -er --arg name "$1" '.members[] | select(.name == $name) | .member_id'; }
+# One member per Host, however many memberships it holds (`control`, and `data` when it records).
+member_of() { pg --host-endpoint "${host_api}" host members list | jq -er --arg name "$1" '[.members[] | select(.name == $name) | .member_id] | unique | if length == 1 then .[0] else error("not one member") end'; }
 eu="$(member_of eu-0)"
 us="$(member_of us-0)"
 log "members eu-0 ${eu}, us-0 ${us}"

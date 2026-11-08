@@ -624,6 +624,19 @@ The drain controller (TD-2): what it reaches and what it needs.
 {{- end }}
 
 {{- /*
+The Host identity under `production` (TS-10): made offline once, and the Host started on its witness
+only, so the identity must outlive its Pod. A Host on an emptyDir would make a new one in every Pod,
+whose witness nobody could record before it starts. A group is refused that already, by the evidence
+it records from `production`.
+*/ -}}
+{{- if and .Values.controlPlane.enabled (include "permguard.provisionsIdentity" (dict "assurance" .Values.controlPlane.assurance)) (not (include "permguard.persists" (dict "root" $ "plane" .Values.controlPlane))) }}
+{{- fail "controlPlane: from `production` the Host starts only on the witness of an identity made offline, which must outlive its Pod: set persistence.enabled (or controlPlane.persistence.enabled)." }}
+{{- end }}
+{{- if and .Values.allInOne.enabled (include "permguard.provisionsIdentity" (dict "assurance" .Values.allInOne.assurance)) (not (include "permguard.persists" (dict "root" $ "plane" .Values.allInOne))) }}
+{{- fail "allInOne: from `production` the Host starts only on the witness of an identity made offline, which must outlive its Pod: set persistence.enabled (or allInOne.persistence.enabled)." }}
+{{- end }}
+
+{{- /*
 Image verification at deploy (TD-4).
 
 On, the digest verified is the digest that runs: every enabled component names its image by
@@ -651,6 +664,10 @@ workload runs only verified images.
 {{- if .Values.dataPlane.enabled }}{{- $_ := set $components "dataPlane" .Values.dataPlane.digest }}{{- end }}
 {{- if .Values.allInOne.enabled }}{{- $_ := set $components "allInOne" .Values.allInOne.digest }}{{- end }}
 {{- if and .Values.dataPlane.enabled .Values.dataPlane.drainController.enabled }}{{- $_ := set $components "dataPlane.drainController" .Values.dataPlane.drainController.digest }}{{- end }}
+{{- /* The command line that makes a Host's identity offline, from `production`'s side (TS-10). */ -}}
+{{- range $unit := (include "permguard.configUnits" $ | fromJson).units }}
+{{- if ne (toString $unit.assurance.profile) "development" }}{{- $_ := set $components "cli" $.Values.cli.digest }}{{- end }}
+{{- end }}
 {{- range $component, $digest := $components }}
 {{- if not (regexMatch "^sha256:[0-9a-f]{64}$" ($digest | default "")) }}
 {{- fail (printf "%s.digest is %q: with imageVerification on, every image is named by its digest, `sha256:<hex>` — a tag the kubelet resolves later is not what was verified." $component ($digest | default "")) }}

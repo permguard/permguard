@@ -694,7 +694,7 @@ fn identity(
 
     let now = permguard_host::authz::store::now();
     match action {
-        IdentityAction::Provision { suite } => {
+        IdentityAction::Provision { suite, if_missing } => {
             let volume = volume_of(globals)?;
             let suite = Suite::from_name(&suite).ok_or_else(|| {
                 Failure::usage(format!(
@@ -705,6 +705,24 @@ fn identity(
             // Provisioning comes before the first start, so the volume may be created here.
             let held = Volume::claim(&volume, AssuranceProfile::Development)
                 .map_err(|error| Failure::unavailable(format!("claiming the volume: {error}")))?;
+            // An orchestrator runs this before every start: a volume already provisioned is said
+            // so, and its witness is never printed again, since a witness read back from the
+            // volume it is meant to check checks nothing.
+            if if_missing
+                && identity::witness_of(&held)
+                    .map_err(|error| Failure::unavailable(format!("the identity: {error}")))?
+                    .is_some()
+            {
+                render_json(
+                    &serde_json::json!({
+                        "provisioned": false,
+                        "reason": "the volume holds its identity already: its witness was printed when it was provisioned",
+                    }),
+                    globals,
+                    trace,
+                )?;
+                return Ok(ExitCode::SUCCESS);
+            }
             let (_, keys) = identity::directories(&held).map_err(|error| {
                 Failure::unavailable(format!("the identity directory: {error}"))
             })?;

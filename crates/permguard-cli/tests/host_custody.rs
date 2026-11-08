@@ -100,7 +100,8 @@ fn the_identity_is_provisioned_sealed_and_online_operations_refuse_the_volume() 
     let config_arg = config.to_str().expect("utf-8");
     let key = || std::fs::read(volume.join("host/identity/keys/1.key")).expect("held");
 
-    let _provisioned = json(&run(
+    // `--if-missing` on a volume with no identity provisions it, and prints its witness once.
+    let provisioned = json(&run(
         &dir,
         KEK,
         &[
@@ -109,13 +110,50 @@ fn the_identity_is_provisioned_sealed_and_online_operations_refuse_the_volume() 
             "host",
             "identity",
             "provision",
+            "--if-missing",
             "--volume",
             volume_arg,
             "--server-config",
             config_arg,
         ],
     ));
+    assert!(
+        provisioned["witness"]
+            .as_str()
+            .is_some_and(|witness| witness.starts_with("sha256:")),
+        "{provisioned}"
+    );
     assert_ne!(key().first(), Some(&0x30), "never PKCS#8 at rest");
+    // TS-10: an orchestrator runs it before every start: a volume provisioned already is said so,
+    // changed in nothing, and its witness is never printed again.
+    let sealed = key();
+    let again = run(
+        &dir,
+        KEK,
+        &[
+            "-o",
+            "json",
+            "host",
+            "identity",
+            "provision",
+            "--if-missing",
+            "--volume",
+            volume_arg,
+            "--server-config",
+            config_arg,
+        ],
+    );
+    assert!(again.status.success(), "{}", stderr(&again));
+    let said = String::from_utf8_lossy(&again.stdout).into_owned();
+    assert!(
+        said.contains("\"provisioned\": false") || said.contains("\"provisioned\":false"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("sha256:"),
+        "the witness is never printed again: {said}"
+    );
+    assert_eq!(key(), sealed, "nothing changed");
 
     for online in [vec!["show"], vec!["rotate", "--expected-epoch", "1"]] {
         let mut args = vec!["host", "identity"];

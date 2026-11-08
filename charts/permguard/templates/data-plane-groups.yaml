@@ -118,6 +118,27 @@ data:
     {{- .tasks | toPrettyJson | nindent 4 }}
   {{- end }}
 ---
+{{- if include "permguard.provisionsIdentity" (dict "assurance" $g.assurance) }}
+{{- /*
+The witnesses of the group's replicas, `witness-<ordinal>`, as each replica's `identity` container
+printed them and the operator recorded them in `dataPlane.groups[].identity.witnesses` (TS-10):
+a replica whose witness is not here refuses to start, and one whose volume holds another identity
+is refused for good.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $g.base }}-identity
+  labels:
+    {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
+data:
+  {{- range $ordinal, $witness := (($g.identity | default dict).witnesses | default list) }}
+  {{- if $witness }}
+  witness-{{ $ordinal }}: {{ $witness | quote }}
+  {{- end }}
+  {{- end }}
+---
+{{- end }}
 apiVersion: apps/v1
 kind: {{ ternary "StatefulSet" "Deployment" $stateful }}
 metadata:

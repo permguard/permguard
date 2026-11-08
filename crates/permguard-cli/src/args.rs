@@ -2318,12 +2318,16 @@ pub enum IdentityAction {
     /// profile up. Prints the witness to keep outside the volume and give the server as
     /// `host.identity.witness`. Written once; a volume already provisioned is refused.
     #[command(
-        after_help = "Examples:\n  permguard host identity provision --volume /var/lib/permguard\n  permguard host identity provision --volume ./volume --suite pg-p256-sha256-v1 -o json"
+        after_help = "Examples:\n  permguard host identity provision --volume /var/lib/permguard\n  permguard host identity provision --volume ./volume --suite pg-p256-sha256-v1 -o json\n  permguard host identity provision --volume /var/lib/permguard/volume --if-missing --server-config /etc/permguard/config.yml"
     )]
     Provision {
         /// The identity key's suite.
         #[arg(long, default_value = "pg-ed25519-sha256-v1")]
         suite: String,
+        /// Provision only a volume that has no identity yet, and say so of one that has, printing
+        /// nothing of it: what an orchestrator runs before every start (an init container).
+        #[arg(long)]
+        if_missing: bool,
     },
     /// Print the Host identity: its id, subject, epoch and fingerprints. The witness is printed
     /// at provisioning only, never read back from the volume it is meant to check.

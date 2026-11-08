@@ -384,6 +384,20 @@
                     }
                   }
                 }
+              },
+              "identity": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "From production up: the witness each replica's identity init container printed, one per ordinal (TS-10).",
+                "properties": {
+                  "witnesses": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(sha256:[0-9a-f]{64})?$"
+                    }
+                  }
+                }
               }
             },
             "required": [

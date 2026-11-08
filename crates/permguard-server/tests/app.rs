@@ -1547,6 +1547,131 @@ async fn test_a_witness_required_by_an_added_control_must_be_given() {
     );
 }
 
+/// TS-10: a replica reads its witness from the file its orchestrator mounts: a file not there yet
+/// is a witness not recorded yet, and its path is named; a witness that is not this volume's, or
+/// no witness at all, refuses the start.
+#[tokio::test]
+async fn test_the_witness_is_read_from_its_file() {
+    let path = config_file("identity-witness-file", SERVABLE);
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect("provisioned at the first start");
+    let file = volume.with_extension("witness");
+    let _ = fs::remove_file(&file);
+    let configured = |tag: &str| {
+        config_file(
+            tag,
+            &format!(
+                "assurance:\n  profile: development\n  added_controls: [identity.witness]\nworking_dir: {}\nhost:\n  identity:\n    witness_file: {}\n{SERVABLE}",
+                volume.display(),
+                file.display()
+            ),
+        )
+    };
+    let refused = app()
+        .dispatch_to(
+            &serve_action(&configured("identity-witness-file-missing")),
+            &mut Vec::new(),
+        )
+        .await
+        .expect_err("no witness recorded yet");
+    let message = format!("{refused:#}");
+    assert!(
+        message.contains("requires `host.identity.witness`"),
+        "{message}"
+    );
+    assert!(message.contains(&file.display().to_string()), "{message}");
+    fs::write(&file, "not a witness\n").expect("written");
+    let refused = app()
+        .dispatch_to(
+            &serve_action(&configured("identity-witness-file-bad")),
+            &mut Vec::new(),
+        )
+        .await
+        .expect_err("no witness in it");
+    assert!(
+        format!("{refused:#}").contains("holds no witness"),
+        "{refused:#}"
+    );
+    fs::write(&file, format!("sha256:{}\n", "00".repeat(32))).expect("written");
+    let refused = app()
+        .dispatch_to(
+            &serve_action(&configured("identity-witness-file-other")),
+            &mut Vec::new(),
+        )
+        .await
+        .expect_err("another volume's witness");
+    assert!(
+        format!("{refused:#}").contains("does not match"),
+        "{refused:#}"
+    );
+    // A directory, or a file longer than a witness, holds none.
+    fs::remove_file(&file).expect("removed");
+    fs::create_dir_all(&file).expect("a directory");
+    let refused = app()
+        .dispatch_to(
+            &serve_action(&configured("identity-witness-file-dir")),
+            &mut Vec::new(),
+        )
+        .await
+        .expect_err("a directory");
+    assert!(
+        format!("{refused:#}").contains("is not a file holding one witness"),
+        "{refused:#}"
+    );
+    fs::remove_dir(&file).expect("removed");
+    fs::write(&file, "x".repeat(4096)).expect("written");
+    assert!(
+        app()
+            .dispatch_to(
+                &serve_action(&configured("identity-witness-file-long")),
+                &mut Vec::new(),
+            )
+            .await
+            .is_err(),
+        "a file longer than a witness"
+    );
+    // This volume's witness, recorded: the Host starts.
+    let witness = {
+        let held = permguard_host::storage::volume::Volume::claim(
+            &volume,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("opened");
+        permguard_host::identity::witness_of(&held)
+            .expect("read")
+            .expect("provisioned")
+    };
+    fs::write(&file, format!("{witness}\n")).expect("written");
+    app()
+        .dispatch_to(
+            &serve_action(&configured("identity-witness-file-ok")),
+            &mut Vec::new(),
+        )
+        .await
+        .expect("its own witness starts it");
+    // Stated twice, by value and by file, it is refused: one source names the witness.
+    let both = config_file(
+        "identity-witness-file-both",
+        &format!(
+            "working_dir: {}\nhost:\n  identity:\n    witness: {witness}\n    witness_file: {}\n{SERVABLE}",
+            volume.display(),
+            file.display()
+        ),
+    );
+    let refused = app()
+        .dispatch_to(&serve_action(&both), &mut Vec::new())
+        .await
+        .expect_err("both");
+    assert!(
+        format!("{refused:#}").contains("both name the witness"),
+        "{refused:#}"
+    );
+}
+
 /// WP-3.2: under the `file` custody the Host identity's key is sealed at rest under the KEK the
 /// secret store holds, and the Host opens with it at the next start.
 #[tokio::test]

@@ -3607,6 +3607,9 @@ fn qualify_volume(
     Ok(standing)
 }
 
+/// The most bytes a witness file holds: `sha256:`, 64 hex characters, and room for line ends.
+const WITNESS_FILE_MAX_BYTES: u64 = 128;
+
 /// The Host identity's witness on `volume`, checked against `config` before anything is written
 /// to the volume — the key-encryption key's witness included (WP-3.2): a replaced or rolled-back
 /// volume, or one never provisioned where the profile requires it, is refused first.
@@ -3620,6 +3623,47 @@ fn identity_witness_checked(
     let witness = permguard_host::identity::witness_of(volume)
         .map_err(|error| anyhow::anyhow!("{error}"))
         .context("reading the Host identity's INIT")?;
+    // The witness from its file, when the orchestrator mounts one per replica: a file not there
+    // yet is a witness not recorded yet, said below as one. A witness is a line: a file that is
+    // not a regular one, or longer than one, holds none.
+    let from_file = match config.host_identity_witness_file() {
+        Some(path) => match std::fs::metadata(path) {
+            Ok(meta) if !meta.is_file() || meta.len() > WITNESS_FILE_MAX_BYTES => bail!(
+                "`host.identity.witness_file` {} is not a file holding one witness",
+                path.display()
+            ),
+            Ok(_) => Some(
+                std::fs::read_to_string(path)
+                    .with_context(|| {
+                        format!("reading `host.identity.witness_file` {}", path.display())
+                    })?
+                    .trim()
+                    .to_owned(),
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(anyhow::anyhow!(
+                    "reading `host.identity.witness_file` {}: {error}",
+                    path.display()
+                ));
+            }
+        },
+        None => None,
+    };
+    if let Some(stated) = from_file.as_deref() {
+        let hex = stated.strip_prefix("sha256:").unwrap_or_default();
+        if hex.len() != 64
+            || !hex
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        {
+            bail!(
+                "`host.identity.witness_file` holds no witness: `sha256:` and 64 lowercase hex \
+                 characters, as `permguard host identity provision` prints it"
+            );
+        }
+    }
+    let expected = config.host_identity_witness().or(from_file.as_deref());
     if witness.is_none() && assurance.profile() != AssuranceProfile::Development {
         bail!(
             "the Host identity is not provisioned on {}: under the `{}` profile it is \
@@ -3629,7 +3673,7 @@ fn identity_witness_checked(
             assurance.profile()
         );
     }
-    match (config.host_identity_witness(), &witness) {
+    match (expected, &witness) {
         (Some(expected), Some(held)) if expected != held => bail!(
             "`host.identity.witness` does not match this volume's identity: the volume was \
              replaced or rolled back, or the witness is another Host's"
@@ -3638,8 +3682,15 @@ fn identity_witness_checked(
         // checks nothing. It is the one recorded at provisioning, outside the volume.
         (None, Some(_)) if assurance.requires(Control::IdentityWitness) => bail!(
             "the `{}` profile requires `host.identity.witness`, the value `permguard host \
-             identity provision` printed and the operator kept outside the volume",
-            assurance.profile()
+             identity provision` printed and the operator kept outside the volume{}",
+            assurance.profile(),
+            config
+                .host_identity_witness_file()
+                .map(|path| format!(
+                    ", in {}: record it there (a chart prints it in the Pod's `identity` log)",
+                    path.display()
+                ))
+                .unwrap_or_default()
         ),
         _ => {}
     }

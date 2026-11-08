@@ -56,6 +56,14 @@ imageVerification:
     name: ""
     key: token
 
+# The release's command line, the image every Host's `identity` init container runs from
+# `production` up (TS-10): it makes the Host identity on a volume that has none and prints its
+# witness to that container's log. Same registry and tag as the Hosts.
+cli:
+  repository: cli
+  # The image's digest, `sha256:<hex>`, when the Hosts are pinned by digest.
+  digest: ""
+
 controlPlane:
   enabled: true
   repository: control-plane
@@ -72,6 +80,11 @@ controlPlane:
     profile: production
     addedControls: []
     custody: {}
+  # From `production` up the Host identity is made offline, by the Pod's `identity` init container,
+  # which prints its witness to its log on the first install: record it here and upgrade, and the
+  # Host starts; a volume replaced or rolled back is then refused (TS-10).
+  identity:
+    witness: ""
   # The plane's public surface and the Server Host operations surface. The latter serves process
   # discovery, health, readiness and metrics and must never be part of the public API.
   ports:
@@ -205,6 +218,10 @@ dataPlane:
   #         pinFingerprint: sha256:<64 hex of the control plane Host's fingerprint>
   #         namePrefix: people        # the member names `people-0`, `people-1` …; the group's name by default
   #         groups: [people]          # the member groups asked for; the group's name by default
+  #       # From `production` up each replica's `identity` init container makes its Host identity on
+  #       # the first install and prints its witness: record them by ordinal and upgrade (TS-10).
+  #       identity:
+  #         witnesses: ["sha256:<64 hex, replica 0>", "sha256:<64 hex, replica 1>"]
   #       # `host.identity` in the KMS; `host.operations` in the token, since it signs while a
   #       # recorded decision waits and a remote KMS is not allowed there.
   #       assurance:
@@ -425,6 +442,9 @@ allInOne:
     profile: production
     addedControls: []
     custody: {}
+  # The Host identity's witness, as for the control plane: `controlPlane.identity`.
+  identity:
+    witness: ""
   ports:
     controlHttp: 6443
     dataHttp: 7443
