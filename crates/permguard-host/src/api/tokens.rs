@@ -412,8 +412,21 @@ fn view(tokens: &Tokens, token: &IssuedToken) -> TokenView {
 
 /// What the directory says `token`'s status must be: a local user's token follows its user,
 /// disabled `SUSPENDED` and deleted `INVALID`; a service account's follows its account and its
-/// credential; `None` for a provider subject's, which the directory does not hold.
+/// credential; `None` for a provider subject's, which the directory does not hold. A token issued
+/// under a role is `INVALID` once the role is ended or its subject no longer one of its members.
 pub fn status_from_directory(directory: &Directory, token: &IssuedToken) -> Option<u8> {
+    if let Some(role) = token.role.as_deref() {
+        let name = role.strip_prefix(crate::authz::directory::ROLE_PREFIX)?;
+        let issuer = crate::authz::issuer_of(&token.subject);
+        let held = directory.role(name).is_some()
+            && directory
+                .subjects(&token.subject, issuer.as_deref())
+                .iter()
+                .any(|subject| subject.as_str() == role);
+        if !held {
+            return Some(status::INVALID);
+        }
+    }
     if token.account.is_none() {
         let name = token
             .subject
@@ -464,6 +477,8 @@ impl HostApi {
         else {
             return Ok(0);
         };
+        // The system roles first, so a member gone ends its role and its tokens in this pass.
+        self.member_roles_follow();
         let now = self.time.now_secs();
         let directory = &identities.directory;
         let mut changed = 0;
@@ -708,6 +723,7 @@ mod tests {
                     expires_at: NOW + 3_600,
                     account: Some(account.to_owned()),
                     credential_id: Some([1; 16]),
+                    role: None,
                 },
                 "iam",
                 NOW,
@@ -909,6 +925,7 @@ mod tests {
             expires_at: NOW + 60,
             account: Some(account.to_owned()),
             credential_id: Some([credential; 16]),
+            role: None,
             status: status::VALID,
         };
         assert_eq!(

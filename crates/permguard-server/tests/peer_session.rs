@@ -3918,6 +3918,296 @@ async fn the_iam_host_issues_tokens_within_the_grants_for_its_live_members() {
     );
 }
 
+/// `2-security/8` Roles and elevation: every live member has its own role, kept by the IAM Host;
+/// an account elevated to it gets a token for that member alone, `plane/data/*`, the application
+/// operations, the role in `roles`; an operator's role carries its own grants alone, narrower
+/// than the account's; the token ends with the account's place in the role. An operator never
+/// makes or deletes a system role, a scope names one role at most, and a role decides only.
+#[tokio::test]
+async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
+    use permguard_host::api::directory::{CreateRole, Member, Plain};
+    use permguard_host::api::elevation::{DATA_PLANES_ROLE, member_role};
+    use permguard_host::api::grants::CreateGrant;
+    use permguard_host::api::service_accounts::{CreateCredential, CreateServiceAccount};
+    use permguard_host::api::token_endpoint::{ClientProof, TokenRequest};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("elevation");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    approved_pair(&coordinator, &member).await;
+    let (record, _) = coordinator
+        .members
+        .live_members()
+        .into_iter()
+        .next()
+        .expect("a live member");
+    let member_id = permguard_host::identity::record::uuid_text(&record.member_id);
+    let own_role = member_role(&member_id);
+    let api = &coordinator.api;
+
+    // The member's role and the role of every data plane follow the live member, idempotently.
+    api.reconcile_member_roles().expect("reconciled");
+    let roles: Vec<String> = api
+        .roles(&admin())
+        .expect("roles")
+        .roles
+        .into_iter()
+        .map(|role| role.name)
+        .collect();
+    assert!(roles.contains(&own_role), "{roles:?}");
+    assert!(
+        roles.iter().any(|name| name == DATA_PLANES_ROLE),
+        "{roles:?}"
+    );
+    assert_eq!(
+        api.reconcile_member_roles().expect("again"),
+        (Vec::new(), Vec::new())
+    );
+
+    // An operator assigns a system role and never makes, describes or deletes one.
+    let made = api
+        .create_role(
+            &admin(),
+            CreateRole {
+                request_id: "made".to_owned(),
+                expected_revision: None,
+                name: "dp.someone".to_owned(),
+                description: String::new(),
+            },
+        )
+        .await;
+    assert!(made.is_err(), "a system role's name is the IAM Host's");
+    let deleted = api
+        .delete_role(
+            &admin(),
+            DATA_PLANES_ROLE,
+            Plain {
+                request_id: "deleted".to_owned(),
+                expected_revision: None,
+            },
+        )
+        .await;
+    assert!(deleted.is_err(), "a system role is never deleted by hand");
+
+    api.create_service_account(
+        &admin(),
+        CreateServiceAccount {
+            request_id: "sa".to_owned(),
+            expected_revision: None,
+            name: "billing".to_owned(),
+            owner: "payments".to_owned(),
+            description: String::new(),
+        },
+    )
+    .await
+    .expect("an account");
+    let secret = api
+        .create_credential(
+            &admin(),
+            "billing",
+            CreateCredential {
+                request_id: "secret".to_owned(),
+                expected_revision: None,
+                kind: "client_secret".to_owned(),
+                public_key: None,
+                certificate: None,
+                expires_at: None,
+            },
+        )
+        .await
+        .expect("a secret");
+    let basic = ClientProof {
+        basic: Some((
+            "billing".to_owned(),
+            secret.client_secret.clone().expect("drawn"),
+        )),
+        ..ClientProof::default()
+    };
+    let asking = |scope: &str, audience: &[&str], targets: &[&str]| TokenRequest {
+        grant_type: "client_credentials".to_owned(),
+        scope: Some(scope.to_owned()),
+        audience: audience.iter().map(|aud| (*aud).to_owned()).collect(),
+        target: targets.iter().map(|target| (*target).to_owned()).collect(),
+        ..TokenRequest::default()
+    };
+    let error = |request: &TokenRequest| {
+        api.issue_token(request, &basic)
+            .expect_err("refused")
+            .error()
+    };
+    let elevate = format!("role:{own_role}");
+
+    // Not one of its members yet: no elevation.
+    assert_eq!(error(&asking(&elevate, &[], &[])), "invalid_scope");
+    let assign = |id: &str| Member {
+        request_id: id.to_owned(),
+        expected_revision: None,
+        member: "sa:billing".to_owned(),
+    };
+    api.add_member(&admin(), &own_role, assign("assign"))
+        .await
+        .expect("assigned");
+
+    // Elevated: the member alone, its whole data plane, the application operations, the role
+    // named; `sub` stays the account.
+    let issued = api
+        .issue_token(&asking(&elevate, &[], &[]), &basic)
+        .expect("elevated");
+    let claims = jws_part(&issued.access_token, 1);
+    assert_eq!(claims["sub"], "sa:billing");
+    assert_eq!(
+        claims["aud"],
+        serde_json::json!([format!("member:{member_id}")])
+    );
+    assert_eq!(
+        claims["permguard_target"],
+        serde_json::json!(["plane/data/*"])
+    );
+    assert_eq!(claims["scope"], "decision.evaluate event.submit");
+    assert_eq!(claims["roles"], serde_json::json!([own_role]));
+    assert_eq!(issued.scope, "decision.evaluate event.submit");
+    // Narrowed by the scope beside the role, and by a target under the data plane.
+    let narrowed = api
+        .issue_token(
+            &asking(
+                &format!("{elevate} decision.evaluate"),
+                &[],
+                &["plane/data/zone/billing/*"],
+            ),
+            &basic,
+        )
+        .expect("narrowed");
+    let claims = jws_part(&narrowed.access_token, 1);
+    assert_eq!(claims["scope"], "decision.evaluate");
+    assert_eq!(
+        claims["permguard_target"],
+        serde_json::json!(["plane/data/zone/billing/*"])
+    );
+    // Never another member, never the control plane, never an administration, one role.
+    assert_eq!(
+        error(&asking(
+            &elevate,
+            &["member:01a1bc76-7028-717c-8b19-c470f894a0dd"],
+            &[]
+        )),
+        "invalid_target"
+    );
+    assert_eq!(
+        error(&asking(&elevate, &[], &["plane/control/*"])),
+        "invalid_target"
+    );
+    assert_eq!(
+        error(&asking(&format!("{elevate} identity.read"), &[], &[])),
+        "invalid_scope"
+    );
+    assert_eq!(
+        error(&asking(
+            &format!("{elevate} role:{DATA_PLANES_ROLE}"),
+            &[],
+            &[]
+        )),
+        "invalid_scope"
+    );
+
+    // An operator's role carries its own grants alone, never the account's wider ones.
+    api.create_role(
+        &admin(),
+        CreateRole {
+            request_id: "readers".to_owned(),
+            expected_revision: None,
+            name: "readers".to_owned(),
+            description: String::new(),
+        },
+    )
+    .await
+    .expect("a role");
+    let grant = |id: &str, principal: &str, selector: &str| CreateGrant {
+        request_id: id.to_owned(),
+        expected_revision: None,
+        principal: principal.to_owned(),
+        operations: vec!["decision.evaluate".to_owned()],
+        selector: selector.to_owned(),
+        resource_types: vec!["*".to_owned()],
+        constraints: Default::default(),
+        expires_at: None,
+    };
+    api.create_grant(&admin(), grant("g-account", "sa:billing", "plane/data/*"))
+        .await
+        .expect("the account's own");
+    api.create_grant(
+        &admin(),
+        grant("g-role", "role:readers", "plane/data/zone/billing/*"),
+    )
+    .await
+    .expect("the role's");
+    api.add_member(&admin(), "readers", assign("assign-readers"))
+        .await
+        .expect("assigned");
+    let audience = format!("member:{member_id}");
+    let readers = "role:readers decision.evaluate";
+    let held = api
+        .issue_token(
+            &asking(readers, &[&audience], &["plane/data/zone/billing/*"]),
+            &basic,
+        )
+        .expect("within the role");
+    assert_eq!(
+        jws_part(&held.access_token, 1)["roles"],
+        serde_json::json!(["readers"])
+    );
+    assert_eq!(
+        error(&asking(readers, &[&audience], &["plane/data/*"])),
+        "invalid_scope",
+        "the account holds plane/data/*, the role does not"
+    );
+    assert_eq!(
+        error(&asking(
+            "role:readers",
+            &[&audience],
+            &["plane/data/zone/billing/*"]
+        )),
+        "invalid_scope",
+        "an operator's role names its operations"
+    );
+
+    // Out of the role: its tokens are invalid at the next sync; the others stay valid.
+    let status_of = |token: &str| {
+        let jti = jws_part(token, 1)["jti"].as_str().expect("jti").to_owned();
+        api.token_list(&admin())
+            .expect("tokens")
+            .tokens
+            .into_iter()
+            .find(|view| view.jti == jti)
+            .expect("listed")
+            .status
+    };
+    api.remove_member(&admin(), &own_role, assign("unassign"))
+        .await
+        .expect("removed");
+    api.sync_token_statuses("test").expect("synced");
+    assert_eq!(status_of(&issued.access_token), "invalid");
+    assert_eq!(status_of(&narrowed.access_token), "invalid");
+    assert_eq!(status_of(&held.access_token), "valid");
+    assert_eq!(error(&asking(&elevate, &[], &[])), "invalid_scope");
+}
+
 /// WP-12.1: an IAM Host offers `token.status` in every invitation and keeps it in the membership
 /// of a member that can take it, even when its request narrowed it away; the member fetches the
 /// signed lists over the task, verifies them under the pinned `iam.tokens` set, holds them, and

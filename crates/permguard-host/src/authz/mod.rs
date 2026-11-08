@@ -318,6 +318,15 @@ impl Authorization {
             .find(|subject| allows.permits(subject, operation, resource))
     }
 
+    /// Whether `principal` is a member of the role `role`, directly or through its provider's
+    /// issuer: whom an elevation to it is open to (`2-security/8` Roles and elevation).
+    pub fn holds_role(&self, principal: &Principal, role: &str) -> bool {
+        let wanted = directory::role_principal(role);
+        self.token_subjects_of(principal)
+            .iter()
+            .any(|subject| subject.as_str() == wanted)
+    }
+
     /// Whether `principal` may do `operation` on everything under `scope`, whole (WP-11.4). A
     /// public grant never counts.
     pub fn principal_covers_whole(

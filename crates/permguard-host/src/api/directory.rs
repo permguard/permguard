@@ -486,6 +486,22 @@ impl HostApi {
         Ok(unlocked)
     }
 
+    /// A system role is the IAM Host's own (`2-security/8` Roles and elevation): an operator assigns
+    /// it and never makes, describes or deletes it.
+    fn system_role_refused(name: &str) -> Result<(), Refusal> {
+        if super::elevation::is_system_role(name) {
+            return Err(Refusal::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                format!(
+                    "`{name}` is a system role, kept by the IAM Host: assign it, never make, describe \
+                 or delete it"
+                ),
+            ));
+        }
+        Ok(())
+    }
+
     /// Applies one directory change as one security mutation.
     pub(super) async fn change_directory<R: Serialize>(
         &self,
@@ -561,6 +577,7 @@ impl HostApi {
     }
 
     pub async fn create_role(&self, actor: &Actor, create: CreateRole) -> Result<Changed, Refusal> {
+        Self::system_role_refused(create.name.as_str())?;
         let change = Change::CreateRole {
             name: create.name.clone(),
             description: create.description.clone(),
@@ -582,6 +599,7 @@ impl HostApi {
         name: &str,
         update: UpdateRole,
     ) -> Result<Changed, Refusal> {
+        Self::system_role_refused(name)?;
         let change = Change::UpdateRole {
             name: name.to_owned(),
             description: update.description.clone(),
@@ -603,6 +621,7 @@ impl HostApi {
         name: &str,
         delete: Plain,
     ) -> Result<Changed, Refusal> {
+        Self::system_role_refused(name)?;
         let change = Change::DeleteRole {
             name: name.to_owned(),
         };

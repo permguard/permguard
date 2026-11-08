@@ -882,6 +882,7 @@ fn token_samples() -> Vec<Sample> {
     issued.expires_at = Some(1_800_003_600);
     issued.account = Some("billing".to_owned());
     issued.credential_id = Some(HOST_ID);
+    issued.role = Some("role:dp.0198f2aa-0000-7000-8000-000000000002".to_owned());
     let mut revoked = at(TokenTransition::new(kinds::TOKEN_STATUS), 3);
     revoked.jti = Some(SCOPE_ID);
     revoked.status = Some(1);
@@ -918,6 +919,7 @@ fn token_samples() -> Vec<Sample> {
                 "token_transition.expires_at",
                 "token_transition.account",
                 "token_transition.credential_id",
+                "token_transition.role",
             ],
             decoder(),
         ),

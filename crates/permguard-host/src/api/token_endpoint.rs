@@ -25,6 +25,7 @@ use permguard_core::authz::{Resource, Selector, operations};
 use super::HostApi;
 use super::federation::{Subject, client_failed, decode_part};
 use super::tokens::{TENANT, Tokens};
+use crate::authz::directory::role_principal;
 use crate::authz::tokens::{IssuedToken, TokenDraft};
 use crate::identity::record::uuid_text;
 
@@ -379,6 +380,67 @@ fn source_key(source: &str) -> String {
     }
 }
 
+/// The scope word that elevates to a role: `role:<name>`.
+pub const ROLE_SCOPE: &str = "role:";
+
+/// What a token is issued for, once checked: its family, operations, audiences, targets and the
+/// role it was elevated to.
+pub(super) struct Asked {
+    pub(super) family: &'static str,
+    pub(super) scope: Vec<String>,
+    pub(super) audience: Vec<String>,
+    pub(super) targets: Vec<String>,
+    pub(super) role: Option<String>,
+}
+
+/// The one family `operations` belong to (D19).
+pub(super) fn family_of(operations: &[&str]) -> Result<&'static str, TokenRefusal> {
+    if operations.is_empty() {
+        return Err(TokenRefusal::InvalidScope(
+            "the scope names no operation".to_owned(),
+        ));
+    }
+    if operations
+        .iter()
+        .all(|op| APPLICATION_OPERATIONS.contains(op))
+    {
+        Ok(APPLICATION)
+    } else if operations
+        .iter()
+        .all(|op| ADMINISTRATION_OPERATIONS.contains(op))
+    {
+        Ok(ADMINISTRATION)
+    } else {
+        Err(TokenRefusal::InvalidScope(
+            "the scope is one family's operations: application or administration, never both"
+                .to_owned(),
+        ))
+    }
+}
+
+/// An application token's targets: 1 to [`MAX_TARGETS`] selectors of a member's Planes.
+pub(super) fn selectors_of(targets: &[String]) -> Result<Vec<Selector>, TokenRefusal> {
+    if targets.is_empty() || targets.len() > MAX_TARGETS {
+        return Err(TokenRefusal::InvalidTarget(format!(
+            "an application token names 1 to {MAX_TARGETS} targets"
+        )));
+    }
+    targets
+        .iter()
+        .map(|target| {
+            let selector = Selector::parse(target).map_err(|_| {
+                TokenRefusal::InvalidTarget(format!("`{target}` is not a selector"))
+            })?;
+            if selector.prefix().plane_id().is_none() {
+                return Err(TokenRefusal::InvalidTarget(format!(
+                    "`{target}` is not a resource of a member's Planes"
+                )));
+            }
+            Ok(selector)
+        })
+        .collect()
+}
+
 /// What RFC 8693 asks of a request before anything is proved (§2.1): no delegation, an access
 /// token or nothing asked as the issued type, and a `resource` an absolute URI without fragment,
 /// answered `invalid_target` since no resource indicator is served; `audience` names a member.
@@ -555,32 +617,13 @@ impl HostApi {
         proof: &ClientProof,
         now: u64,
     ) -> Result<TokenAnswer, TokenRefusal> {
-        let scope: Vec<&str> = request
-            .scope
-            .as_deref()
-            .unwrap_or_default()
-            .split_whitespace()
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        if scope.is_empty() {
-            return Err(TokenRefusal::InvalidScope(
-                "the scope names no operation".to_owned(),
-            ));
-        }
-        let family = if scope.iter().all(|op| APPLICATION_OPERATIONS.contains(op)) {
-            APPLICATION
-        } else if scope
-            .iter()
-            .all(|op| ADMINISTRATION_OPERATIONS.contains(op))
-        {
-            ADMINISTRATION
-        } else {
-            return Err(TokenRefusal::InvalidScope(
-                "the scope is one family's operations: application or administration, never both"
-                    .to_owned(),
-            ));
-        };
+        let Asked {
+            family,
+            scope,
+            audience,
+            targets,
+            role,
+        } = self.asked(request, subject)?;
         let lifetimes = tokens.lifetimes;
         let (default, max) = if family == APPLICATION {
             (lifetimes.application_default, lifetimes.application_max)
@@ -615,70 +658,6 @@ impl HostApi {
                 TokenRefusal::InvalidRequest("the subject token has expired".to_owned())
             });
         }
-        let audience = self.checked_audience(request, family)?;
-        let denied = || {
-            TokenRefusal::InvalidScope(
-                "the subject may not do what the scope asks on what the target names".to_owned(),
-            )
-        };
-        let targets: Vec<String> = if family == ADMINISTRATION {
-            if !request.target.is_empty() {
-                return Err(TokenRefusal::InvalidTarget(
-                    "an administration token's target is its member's Host: name none".to_owned(),
-                ));
-            }
-            let member = audience[0]
-                .strip_prefix("member:")
-                .ok_or_else(|| TokenRefusal::InvalidTarget("no member".to_owned()))?;
-            let resource = Resource::member(member);
-            for op in &scope {
-                let granted_by = self
-                    .authorization
-                    .granted_to(&subject.principal, op, &resource)
-                    .ok_or_else(denied)?;
-                // D20: a service account administers a member only by a grant of its own, never
-                // through a role or a public grant.
-                if subject.account.is_some() && granted_by != subject.principal {
-                    return Err(denied());
-                }
-            }
-            vec!["host".to_owned()]
-        } else {
-            if request.target.is_empty() || request.target.len() > MAX_TARGETS {
-                return Err(TokenRefusal::InvalidTarget(format!(
-                    "an application token names 1 to {MAX_TARGETS} targets"
-                )));
-            }
-            let mut targets = BTreeSet::new();
-            for target in &request.target {
-                let selector = Selector::parse(target).map_err(|_| {
-                    TokenRefusal::InvalidTarget(format!("`{target}` is not a selector"))
-                })?;
-                if selector.prefix().plane_id().is_none() {
-                    return Err(TokenRefusal::InvalidTarget(format!(
-                        "`{target}` is not a resource of a member's Planes"
-                    )));
-                }
-                for op in &scope {
-                    let held = if selector.covers_descendants() {
-                        self.authorization.principal_covers_whole(
-                            &subject.principal,
-                            op,
-                            selector.prefix(),
-                        )
-                    } else {
-                        self.authorization
-                            .granted_to(&subject.principal, op, selector.prefix())
-                            .is_some()
-                    };
-                    if !held {
-                        return Err(denied());
-                    }
-                }
-                targets.insert(selector.to_string());
-            }
-            targets.into_iter().collect()
-        };
         // An administration token is bound to the certificate of the connection that asked for it,
         // when there is one, and must be under `regulated` (RFC 8705 §3).
         let bound = (family == ADMINISTRATION)
@@ -715,6 +694,7 @@ impl HostApi {
                 expires_at,
                 account: None,
                 credential_id: None,
+                role: role.as_ref().map(|name| role_principal(name)),
                 status: 0,
             };
             largest.expires_at = expires_at;
@@ -741,6 +721,7 @@ impl HostApi {
                     expires_at,
                     account: subject.account.as_ref().map(|account| account.name.clone()),
                     credential_id: subject.credential_id,
+                    role: role.as_ref().map(|name| role_principal(name)),
                 },
                 "iam",
                 now,
@@ -780,15 +761,109 @@ impl HostApi {
         })
     }
 
-    /// The audiences asked, each one this IAM Host may name: an `administration` token exactly
-    /// one live member, an `application` token live members or groups holding one.
-    fn checked_audience(
+    /// What `request` asks for `subject`, checked: within everything the subject holds, or, with
+    /// one `role:<name>` in its scope, within that role alone (`2-security/8` Roles and
+    /// elevation).
+    fn asked(&self, request: &TokenRequest, subject: &Subject) -> Result<Asked, TokenRefusal> {
+        let words: BTreeSet<&str> = request
+            .scope
+            .as_deref()
+            .unwrap_or_default()
+            .split_whitespace()
+            .collect();
+        let roles: Vec<&str> = words
+            .iter()
+            .filter_map(|word| word.strip_prefix(ROLE_SCOPE))
+            .collect();
+        let operations: Vec<&str> = words
+            .iter()
+            .copied()
+            .filter(|word| !word.starts_with(ROLE_SCOPE))
+            .collect();
+        match roles.as_slice() {
+            [] => self.within_grants(request, subject, &subject.principal, &operations),
+            [role] => self.elevated(request, subject, role, &operations),
+            _ => Err(TokenRefusal::InvalidScope(
+                "a scope names at most one role".to_owned(),
+            )),
+        }
+    }
+
+    /// `operations` on what `request` names, each held by `holder`: the subject itself, or the
+    /// role it elevated to. A service account administers only by a grant of its own (D20).
+    pub(super) fn within_grants(
         &self,
         request: &TokenRequest,
+        subject: &Subject,
+        holder: &permguard_core::authz::Principal,
+        operations: &[&str],
+    ) -> Result<Asked, TokenRefusal> {
+        let family = family_of(operations)?;
+        let audience = self.checked_audience(&request.audience, family)?;
+        let denied = || {
+            TokenRefusal::InvalidScope(
+                "the subject may not do what the scope asks on what the target names".to_owned(),
+            )
+        };
+        let targets: Vec<String> = if family == ADMINISTRATION {
+            if !request.target.is_empty() {
+                return Err(TokenRefusal::InvalidTarget(
+                    "an administration token's target is its member's Host: name none".to_owned(),
+                ));
+            }
+            let member = audience[0]
+                .strip_prefix("member:")
+                .ok_or_else(|| TokenRefusal::InvalidTarget("no member".to_owned()))?;
+            let resource = Resource::member(member);
+            for op in operations {
+                let granted_by = self
+                    .authorization
+                    .granted_to(holder, op, &resource)
+                    .ok_or_else(denied)?;
+                // D20: a service account administers a member only by a grant of its own, never
+                // through a role or a public grant.
+                if subject.account.is_some() && granted_by != subject.principal {
+                    return Err(denied());
+                }
+            }
+            vec!["host".to_owned()]
+        } else {
+            let mut targets = BTreeSet::new();
+            for selector in selectors_of(&request.target)? {
+                for op in operations {
+                    let held = if selector.covers_descendants() {
+                        self.authorization
+                            .principal_covers_whole(holder, op, selector.prefix())
+                    } else {
+                        self.authorization
+                            .granted_to(holder, op, selector.prefix())
+                            .is_some()
+                    };
+                    if !held {
+                        return Err(denied());
+                    }
+                }
+                targets.insert(selector.to_string());
+            }
+            targets.into_iter().collect()
+        };
+        Ok(Asked {
+            family,
+            scope: operations.iter().map(|op| (*op).to_owned()).collect(),
+            audience,
+            targets,
+            role: None,
+        })
+    }
+
+    /// The audiences asked, each one this IAM Host may name: an `administration` token exactly
+    /// one live member, an `application` token live members or groups holding one.
+    pub(super) fn checked_audience(
+        &self,
+        audience: &[String],
         family: &str,
     ) -> Result<Vec<String>, TokenRefusal> {
-        let asked: Vec<String> = request
-            .audience
+        let asked: Vec<String> = audience
             .iter()
             .cloned()
             .collect::<BTreeSet<_>>()
@@ -848,7 +923,7 @@ impl HostApi {
         let target = targets.join(" ");
         let audience = issued.audience.join(" ");
         let jti = issued.jti_text();
-        let facts = [
+        let mut facts = vec![
             ("client_id", permguard_core::Fact::Text(&issued.client_id)),
             ("family", permguard_core::Fact::Text(&issued.family)),
             ("scope", permguard_core::Fact::Text(&issued.scope)),
@@ -857,6 +932,10 @@ impl HostApi {
             ("jti", permguard_core::Fact::Text(&jti)),
             ("expires_at", permguard_core::Fact::Uint(issued.expires_at)),
         ];
+        // The role the subject elevated to, when it did (`2-security/8` Roles and elevation).
+        if let Some(role) = issued.role.as_deref() {
+            facts.push(("role", permguard_core::Fact::Text(role)));
+        }
         let event = permguard_core::AuditEvent::new(
             crate::audit::AUDIT_TOKEN_ISSUED,
             permguard_core::Subject::Principal(&issued.subject),
@@ -924,6 +1003,14 @@ fn claims_of(
     });
     if let Some(thumbprint) = bound {
         claims["cnf"] = serde_json::json!({ "x5t#S256": thumbprint });
+    }
+    // RFC 9068 §2.2.3.1: the role the subject elevated to, by its name; `sub` stays the subject.
+    if let Some(role) = issued
+        .role
+        .as_deref()
+        .and_then(|role| role.strip_prefix(crate::authz::directory::ROLE_PREFIX))
+    {
+        claims["roles"] = serde_json::json!([role]);
     }
     claims
 }
