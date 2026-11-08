@@ -178,6 +178,24 @@ impl Tokens {
     }
 }
 
+/// What `token.status` answers from (WP-12.1): the lists held, each signed now.
+impl crate::membership::token_status::ListSource for Tokens {
+    fn list_ids(&self) -> Vec<String> {
+        self.registry
+            .lists()
+            .iter()
+            .map(|view| uuid_text(&view.list_id))
+            .collect()
+    }
+
+    fn signed_list(&self, list_id: &str, now: u64) -> Result<Option<String>, String> {
+        let Some(id) = crate::secrets::parse_uuid(list_id) else {
+            return Ok(None);
+        };
+        self.list_token(&id, now).map_err(|error| error.to_string())
+    }
+}
+
 /// The issuer every token and list of the IAM Host `host_id` names.
 pub fn issuer_of(host_id: &[u8; 16]) -> String {
     format!(

@@ -11,6 +11,7 @@
 //! | `events.import`     | coordinator | member      | Control Plane | Host          | [`super::import`]    |
 //! | `audit.checkpoints` | member      | coordinator | Host          | Host          | the audit export     |
 //! | `zone.secrets`      | coordinator | member      | Host          | Host          | [`super::zone`]      |
+//! | `token.status`      | coordinator | member      | Host          | Host          | [`super::token_status`] |
 //!
 //! Each side of a type has exactly one server: one Plane, or the Host, and no Plane may claim a
 //! side the Host serves (`composition::Host::register` refuses it). `events.import` is served by
@@ -46,7 +47,7 @@ pub struct Contract {
 }
 
 /// The contracts this build speaks: one per task type, version 1.
-pub const CONTRACTS: [Contract; 6] = [
+pub const CONTRACTS: [Contract; 7] = [
     Contract {
         task_type: TaskType::PolicyMirror,
         version: 1,
@@ -105,6 +106,16 @@ pub const CONTRACTS: [Contract; 6] = [
         provided_by: Server::Host,
         consumed_by: Server::Host,
         messages: "permguard_host::membership::zone: request, delivery, confirmation, receipt",
+        served: true,
+    },
+    Contract {
+        task_type: TaskType::TokenStatus,
+        version: super::token_status::VERSION,
+        provider: Role::Coordinator,
+        consumer: Role::Member,
+        provided_by: Server::Host,
+        consumed_by: Server::Host,
+        messages: "permguard_host::membership::token_status: index, list, the signed statuslist+jwt",
         served: true,
     },
 ];

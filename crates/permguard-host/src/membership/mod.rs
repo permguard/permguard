@@ -47,6 +47,7 @@ pub mod replay;
 pub mod reset;
 pub mod service;
 pub mod task;
+pub mod token_status;
 pub mod watch;
 pub mod zone;
 
@@ -512,6 +513,8 @@ pub fn rings_needed(tasks: &[Task]) -> BTreeSet<(Role, &'static str)> {
             TaskType::DecisionsShip | TaskType::EventsShip => (Role::Member, DATA_ATTEST),
             TaskType::AuditCheckpoints => (Role::Member, HOST_OPERATIONS),
             TaskType::ZoneSecrets => (Role::Coordinator, HOST_OPERATIONS),
+            // The lists verify under the IAM Host's token ring (iteration 02, WP-12.1).
+            TaskType::TokenStatus => (Role::Coordinator, crate::keys::ring::IAM_TOKENS),
         });
     }
     needed
@@ -824,6 +827,29 @@ pub fn pinned_control_attest<'a>(
         .iter()
         .find(|statement| statement_matches(statement, pin).is_ok())?;
     Some((pin, statement))
+}
+
+/// The coordinator's `ring` set a manifest pins and the held statement of it: the pin in force,
+/// never a retiring one, its binding verified under `coordinator` (WP-12.1, `iam.tokens`).
+pub fn verified_coordinator_ring(
+    pins: &[RingPin],
+    statements: &[RingStatement],
+    coordinator: &identity::Verified,
+    ring: &str,
+) -> Option<crate::composition::PinnedRing> {
+    let pin = pins
+        .iter()
+        .find(|pin| pin.owner == Role::Coordinator && pin.ring == ring && !pin.retiring)?;
+    let statement = statements
+        .iter()
+        .find(|statement| statement_matches(statement, pin).is_ok())?;
+    verify_statement(statement, coordinator, None).ok()?;
+    Some(crate::composition::PinnedRing {
+        epoch: pin.epoch,
+        key_set_digest: pin.key_set_digest,
+        binding: pin.binding.clone(),
+        keys: statement.keys.clone(),
+    })
 }
 
 /// [`pinned_control_attest`], its binding verified under `coordinator`, the identity a session
@@ -2045,6 +2071,36 @@ impl Store {
             }
             None => (held.request.selector.clone(), held.request.tasks.clone()),
         };
+        // An IAM Host's status lists reach every member that can take them (WP-12.1): offered by
+        // the invitation, kept even when the request narrowed them away, over the selector the
+        // membership ends with. A member that registered no consumer of them holds no list and
+        // refuses every token.
+        let mut tasks = tasks;
+        if !tasks
+            .iter()
+            .any(|task| task.task_type == record::TaskType::TokenStatus)
+            && let Some(offered_status) =
+                self.read()
+                    .invites
+                    .get(&held.request.invite_id)
+                    .and_then(|(invitation, _)| {
+                        invitation
+                            .tasks
+                            .iter()
+                            .find(|task| task.task_type == record::TaskType::TokenStatus)
+                            .cloned()
+                    })
+            && held.request.capabilities.contains(&record::Capability {
+                task_type: record::TaskType::TokenStatus,
+                version: offered_status.version,
+                role: record::ContractRole::of(record::TaskType::TokenStatus, Role::Member),
+            })
+        {
+            tasks.push(record::Task {
+                selector: selector.clone(),
+                ..offered_status
+            });
+        }
         // The task-capability invariant: the coordinator's side registered here, the member's
         // declared in its request, both at the task's exact version.
         for task in &tasks {
@@ -2667,10 +2723,45 @@ impl Store {
                             to: manifest.status,
                         });
                     }
-                    // A coordinator narrows what the member asked for, never widens it.
+                    // A coordinator narrows what the member asked for, never widens it. One task
+                    // may come unasked: `token.status`, the IAM Host's signed status lists, which
+                    // give the member data it verifies itself and no duty or authority, and only
+                    // when the member registered its consumer (WP-12.1).
+                    let asked: Vec<record::Task> = manifest
+                        .tasks
+                        .iter()
+                        .filter(|task| {
+                            task.task_type != record::TaskType::TokenStatus
+                                || held
+                                    .request
+                                    .tasks
+                                    .iter()
+                                    .any(|asked| asked.task_id == task.task_id)
+                                || !held.request.capabilities.contains(&record::Capability {
+                                    task_type: record::TaskType::TokenStatus,
+                                    version: task.version,
+                                    role: record::ContractRole::of(
+                                        record::TaskType::TokenStatus,
+                                        Role::Member,
+                                    ),
+                                })
+                        })
+                        .cloned()
+                        .collect();
+                    if asked.len() < manifest.tasks.len()
+                        && let Some(status) = manifest
+                            .tasks
+                            .iter()
+                            .find(|task| task.task_type == record::TaskType::TokenStatus)
+                        && !selector_within(&status.selector, &manifest.selector)
+                    {
+                        return Err(MembershipError::Widened(
+                            "the status lists reach outside the membership's selector".to_owned(),
+                        ));
+                    }
                     check_tasks(
                         &manifest.selector,
-                        &manifest.tasks,
+                        &asked,
                         Some((&held.request.selector, &held.request.tasks)),
                     )
                     .map_err(|error| match error {

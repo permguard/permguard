@@ -2316,6 +2316,24 @@ impl App {
         } else {
             None
         };
+        // The IAM Host's tokens, signed under `iam.tokens`, their lists' `uri` on its own listener
+        // (WP-11.5): one service, the Host API's and `token.status`'s (WP-12.1).
+        let tokens_service = match (token_registry.clone(), iam_tokens_keys.clone()) {
+            (Some(registry), Some(ring)) => {
+                let base = config.admin_advertised_url().map_or_else(
+                    || format!("https://{configured}", configured = admin_addr_of(config)),
+                    str::to_owned,
+                );
+                Some(Arc::new(permguard_host::api::tokens::Tokens::new(
+                    registry,
+                    ring as Arc<dyn permguard_core::keys::SigningRing>,
+                    &host_identity.host_id(),
+                    &base,
+                    config.assurance().profile(),
+                )))
+            }
+            _ => None,
+        };
         let cut = backups
             .cut(time.now_secs())
             .context("aborting the backups a restart cut short")?;
@@ -2686,6 +2704,21 @@ impl App {
                     .map_err(|error| anyhow::anyhow!("{error}"))?,
                 None => permguard_host::membership::task::TaskHandlers::default(),
             };
+            // The IAM Host delivers its status lists to every member (WP-12.1).
+            let handlers = match tokens_service.clone() {
+                Some(tokens) => handlers
+                    .register(
+                        permguard_host::membership::record::TaskType::TokenStatus,
+                        permguard_host::membership::token_status::VERSION,
+                        Arc::new(permguard_host::membership::token_status::StatusLists {
+                            source: tokens
+                                as Arc<dyn permguard_host::membership::token_status::ListSource>,
+                            time: Arc::clone(&time),
+                        }),
+                    )
+                    .map_err(|error| anyhow::anyhow!("{error}"))?,
+                None => handlers,
+            };
             // The Host keeps the checkpoints its members export (WP-5.9).
             let handlers = handlers
                 .register(
@@ -2908,24 +2941,38 @@ impl App {
             // The directory is served at `/iam/v1` only by the IAM Host: the Host of a Server
             // running a Control Plane (WP-11.1). A member holds none.
             let api = api.serving_iam(iam_host);
-            // Its tokens, signed under `iam.tokens`, their lists' `uri` on its own listener
-            // (WP-11.5).
-            let api = match (token_registry.clone(), iam_tokens_keys.clone()) {
-                (Some(registry), Some(ring)) => {
-                    let base = config.admin_advertised_url().map_or_else(
-                        || format!("https://{configured}", configured = admin_addr_of(config)),
-                        str::to_owned,
-                    );
-                    api.with_tokens(Arc::new(permguard_host::api::tokens::Tokens::new(
-                        registry,
-                        ring as Arc<dyn permguard_core::keys::SigningRing>,
-                        &host_identity.host_id(),
-                        &base,
-                        config.assurance().profile(),
-                    )))
-                }
-                _ => api,
+            // Its tokens (WP-11.5).
+            let api = match tokens_service.clone() {
+                Some(tokens) => api.with_tokens(tokens),
+                None => api,
             };
+            // The status lists this Host holds as a member, kept on its volume and restored, each
+            // verified again, before anything is served (WP-12.1).
+            let held_lists = Arc::new(
+                permguard_host::membership::token_status::HeldLists::kept_in(
+                    volume
+                        .host()
+                        .subdir(permguard_host::membership::DIRECTORY, true)
+                        .and_then(|dir| {
+                            dir.subdir(permguard_host::membership::token_status::DIRECTORY, true)
+                        })
+                        .context("opening the held status lists")?,
+                ),
+            );
+            let restored = permguard_host::membership::token_status::restore_held(
+                &held_lists,
+                &members,
+                time.now_secs(),
+            );
+            if restored > 0 {
+                tracing::info!(
+                    event.name = "host.token_status_restored",
+                    component = "server",
+                    lists = restored,
+                    "the status lists kept on the volume were verified and restored"
+                );
+            }
+            let api = api.with_held_lists(held_lists);
             let api = Arc::new(api);
             // What the directory decides of every live token, applied before anything is served:
             // a crash between a directory change and the statuses it implies is repaired here.

@@ -333,7 +333,7 @@ message CreateInviteResponse {
 message MembershipTask {
   string task_id = 1;
   // `policy.mirror`, `decisions.ship`, `events.ship`, `events.import`, `audit.checkpoints`,
-  // `zone.secrets`.
+  // `zone.secrets`, `token.status`.
   string type = 2;
   // The roles the type fixes: answered; on a request, empty or the type's own.
   string provider_role = 3;

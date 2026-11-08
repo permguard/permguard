@@ -1299,9 +1299,28 @@ impl HostApi {
         if invite.max_uses != 1 {
             return Err(invalid("`max_uses` is 1: an invitation is used once"));
         }
+        let mut offered = tasks(&invite.tasks)?;
+        // An IAM Host offers every member its status lists (WP-12.1): a member without them
+        // refuses every token, so the task is never left to be remembered.
+        if self.tokens.is_some()
+            && !offered
+                .iter()
+                .any(|task| task.task_type == crate::membership::record::TaskType::TokenStatus)
+        {
+            offered.push(crate::membership::record::Task {
+                task_id: "token-status".to_owned(),
+                task_type: crate::membership::record::TaskType::TokenStatus,
+                selector: selector(&invite.selector)?,
+                resource_types: vec!["*".to_owned()],
+                required: true,
+                limits: crate::membership::record::Limits::token_status(),
+                assurance_requirements: Vec::new(),
+                version: crate::membership::token_status::VERSION,
+            });
+        }
         let new = NewInvite {
             selector: selector(&invite.selector)?,
-            tasks: tasks(&invite.tasks)?,
+            tasks: offered,
             expires: invite
                 .expires
                 .as_deref()
@@ -2652,6 +2671,26 @@ impl HostApi {
             ring,
             time: Arc::clone(&self.time),
         }))
+    }
+
+    /// Fetches the status lists this Host's `token.status` tasks deliver (WP-12.1): the server's
+    /// periodic pass, at least every list's `ttl`. Nothing without held lists composed.
+    pub async fn token_status_due(&self) -> usize {
+        let Some(lists) = self.held_lists.clone() else {
+            return 0;
+        };
+        let Ok((memberships, connector)) = self.member_side() else {
+            return 0;
+        };
+        let Ok(member) = self.acting_member(memberships, connector) else {
+            return 0;
+        };
+        member
+            .refresh_token_status(
+                crate::operations::journal::Initiator::System("host".to_owned()),
+                &lists,
+            )
+            .await
     }
 
     /// Imports what this Host's `events.import` tasks have due (WP-6.2c2a): the server's periodic

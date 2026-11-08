@@ -11777,7 +11777,8 @@
               "events.ship",
               "events.import",
               "audit.checkpoints",
-              "zone.secrets"
+              "zone.secrets",
+              "token.status"
             ],
             "description": "The task type, a closed set.",
             "x-grpc-field": "type"

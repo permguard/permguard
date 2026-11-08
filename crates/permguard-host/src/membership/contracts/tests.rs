@@ -5,7 +5,7 @@ use super::*;
 use crate::membership::Capabilities;
 use crate::membership::record::{Capability, ContractRole};
 
-/// WP-4.7: each of the six types has exactly one v1 contract, whose roles are the membership
+/// WP-4.7: each of the seven types has exactly one v1 contract, whose roles are the membership
 /// model's, whose sides each have one server, and the Host's own contracts are the ones it
 /// registers; `events.import` is the Control Plane's to provide and the Host's to consume
 /// (WP-6.2c1, owner decision of 2026-10-19).
@@ -46,6 +46,7 @@ fn every_task_type_has_one_v1_contract_with_its_roles_and_server() {
             matches!(
                 task,
                 TaskType::ZoneSecrets
+                    | TaskType::TokenStatus
                     | TaskType::PolicyMirror
                     | TaskType::AuditCheckpoints
                     | TaskType::EventsImport
@@ -53,16 +54,21 @@ fn every_task_type_has_one_v1_contract_with_its_roles_and_server() {
         );
     }
     let host: Vec<Capability> = Capabilities::host().list();
-    let mut expected: Vec<Capability> = [TaskType::AuditCheckpoints, TaskType::ZoneSecrets]
-        .into_iter()
-        .flat_map(|task| {
-            [ContractRole::Provider, ContractRole::Consumer].map(|role| Capability {
-                task_type: task,
-                version: 1,
-                role,
-            })
+    let mut expected: Vec<Capability> = [
+        TaskType::AuditCheckpoints,
+        TaskType::ZoneSecrets,
+        // The IAM Host's status lists, Host to Host (WP-12.1).
+        TaskType::TokenStatus,
+    ]
+    .into_iter()
+    .flat_map(|task| {
+        [ContractRole::Provider, ContractRole::Consumer].map(|role| Capability {
+            task_type: task,
+            version: 1,
+            role,
         })
-        .collect();
+    })
+    .collect();
     // The member's Host consumes `events.import` (WP-6.2c1).
     expected.push(Capability {
         task_type: TaskType::EventsImport,

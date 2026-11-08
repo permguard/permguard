@@ -243,6 +243,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "token_status_request"
+path = "fuzz_targets/token_status_request.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "status_list_decode"
 path = "fuzz_targets/status_list_decode.rs"
 test = false

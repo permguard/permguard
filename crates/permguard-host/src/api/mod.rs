@@ -292,6 +292,8 @@ pub struct HostApi {
     iam_host: bool,
     /// The IAM Host's tokens and status lists (WP-11.5), given once the server opened them.
     tokens: Option<Arc<tokens::Tokens>>,
+    /// The status lists this Host holds as a member (WP-12.1).
+    held_lists: Option<Arc<crate::membership::token_status::HeldLists>>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -334,7 +336,22 @@ impl HostApi {
             setup: None,
             iam_host: false,
             tokens: None,
+            held_lists: None,
         }
+    }
+
+    /// Keeps the status lists `token.status` delivers to this Host as a member (WP-12.1).
+    pub fn with_held_lists(
+        mut self,
+        lists: Arc<crate::membership::token_status::HeldLists>,
+    ) -> Self {
+        self.held_lists = Some(lists);
+        self
+    }
+
+    /// The status lists this Host holds as a member.
+    pub fn held_lists(&self) -> Option<&Arc<crate::membership::token_status::HeldLists>> {
+        self.held_lists.as_ref()
     }
 
     /// Serves the IAM Host's tokens and status lists (WP-11.5).

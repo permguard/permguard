@@ -82,6 +82,16 @@ pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>, egress: Egress)
                     "this Host's import tasks brought the origins' batches"
                 );
             }
+            // The IAM Host's status lists, refreshed within every list's `ttl` (WP-12.1).
+            let lists = api.token_status_due().await;
+            if lists > 0 {
+                tracing::debug!(
+                    event.name = "host.token_status_refreshed",
+                    component = "host",
+                    lists,
+                    "this Host's token.status tasks brought fresher status lists"
+                );
+            }
             // The audit checkpoints after the streams, then whether they left in time (WP-5.9).
             let exported = api.export_checkpoints_due().await;
             if exported > 0 {

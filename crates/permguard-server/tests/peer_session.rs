@@ -762,11 +762,28 @@ async fn side_with(
             .seal_with(Arc::clone(operations)
                 as Arc<dyn permguard_host::audit::checkpoint::CheckpointSigner>);
     }
+    // The access tokens' ring, as an IAM Host composes it: in the registry, so a manifest granting
+    // `token.status` pins it (WP-12.1).
+    let iam_tokens = open_ring(permguard_host::keys::ring::IAM_TOKENS);
+    rings.push(Arc::clone(&iam_tokens));
     let keys = Arc::new(permguard_host::keys::registry::Registry::new(
         Some(Arc::clone(&host.identity)),
         rings,
     ));
     let members = permguard_host::membership::Store::open(&host.volume).expect("the memberships");
+    // The directory and the access tokens, as the IAM Host composes them (WP-11.4): the ring
+    // signs tokens here, kept out of the key registry the other tests read.
+    let (directory, _) =
+        permguard_host::authz::directory::Directory::open(&host.volume).expect("the directory");
+    let (token_registry, _) =
+        permguard_host::authz::tokens::TokenRegistry::open(&host.volume).expect("the tokens");
+    let tokens = Arc::new(permguard_host::api::tokens::Tokens::new(
+        token_registry,
+        Arc::clone(&iam_tokens) as Arc<dyn permguard_core::keys::SigningRing>,
+        &host.identity.host_id(),
+        "https://iam.example:7443",
+        AssuranceProfile::Production,
+    ));
     let ship: Arc<dyn permguard_host::membership::task::TaskHandler> = match &engine {
         Some((_, consumer)) => Arc::new(permguard_stream::engine::ingest::Ingest {
             consumer: Arc::clone(consumer),
@@ -788,6 +805,18 @@ async fn side_with(
                     permguard_host::membership::record::TaskType::PolicyMirror,
                     1,
                     Arc::new(Echo),
+                )
+            })
+            .and_then(|handlers| {
+                // Its status lists, to every member (WP-12.1).
+                handlers.register(
+                    permguard_host::membership::record::TaskType::TokenStatus,
+                    permguard_host::membership::token_status::VERSION,
+                    Arc::new(permguard_host::membership::token_status::StatusLists {
+                        source: Arc::clone(&tokens)
+                            as Arc<dyn permguard_host::membership::token_status::ListSource>,
+                        time: Arc::clone(&host.time),
+                    }),
                 )
             })
             .and_then(|handlers| {
@@ -854,20 +883,6 @@ async fn side_with(
             )) as Arc<dyn permguard_host::membership::member::Connector>
         });
     assert!(connector.is_some(), "a client CA makes a peer client");
-    // The directory and the access tokens, as the IAM Host composes them (WP-11.4): the ring
-    // signs tokens here, kept out of the key registry the other tests read.
-    let (directory, _) =
-        permguard_host::authz::directory::Directory::open(&host.volume).expect("the directory");
-    let (token_registry, _) =
-        permguard_host::authz::tokens::TokenRegistry::open(&host.volume).expect("the tokens");
-    let tokens = Arc::new(permguard_host::api::tokens::Tokens::new(
-        token_registry,
-        open_ring(permguard_host::keys::ring::IAM_TOKENS)
-            as Arc<dyn permguard_core::keys::SigningRing>,
-        &host.identity.host_id(),
-        "https://iam.example:7443",
-        AssuranceProfile::Production,
-    ));
     let api = HostApi::new(Composition {
         authorization: Arc::new(
             Authorization::new(Arc::clone(&store), &[]).with_directory(Arc::clone(&directory)),
@@ -917,7 +932,10 @@ async fn side_with(
         min_length: 12,
     })
     .serving_iam(true)
-    .with_tokens(tokens);
+    .with_tokens(tokens)
+    .with_held_lists(Arc::new(
+        permguard_host::membership::token_status::HeldLists::in_memory(),
+    ));
     let api = Arc::new(api);
     let listener = Surface::listener(
         "host-api",
@@ -3622,4 +3640,173 @@ async fn the_iam_host_issues_tokens_within_the_grants_for_its_live_members() {
         actions.iter().any(|action| action == "iam.token.refused"),
         "{actions:?}"
     );
+}
+
+/// WP-12.1: an IAM Host offers `token.status` in every invitation and keeps it in the membership
+/// of a member that can take it, even when its request narrowed it away; the member fetches the
+/// signed lists over the task, verifies them under the pinned `iam.tokens` set, holds them, and
+/// sees a revocation once it fetches again; a list it already holds is not accepted twice.
+#[tokio::test]
+async fn a_member_holds_the_iam_hosts_status_lists_over_token_status() {
+    use permguard_host::api::service_accounts::{CreateCredential, CreateServiceAccount};
+    use permguard_host::api::token_endpoint::{ClientProof, TokenRequest};
+    use permguard_host::api::tokens::RevokeToken;
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("token-status");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default()
+            .declare(TaskType::DecisionsShip, Role::Coordinator)
+            .declare(TaskType::TokenStatus, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default()
+            .declare(TaskType::DecisionsShip, Role::Member)
+            .declare(TaskType::TokenStatus, Role::Member),
+    )
+    .await;
+    approved_pair(&coordinator, &member).await;
+    let (record, _) = coordinator
+        .members
+        .live_members()
+        .into_iter()
+        .next()
+        .expect("a live member");
+    let (_, held) = member
+        .members
+        .memberships()
+        .into_iter()
+        .next()
+        .expect("the member's membership");
+    let (manifest, ..) = held.manifest.expect("a manifest");
+    assert!(
+        manifest
+            .tasks
+            .iter()
+            .any(|task| task.task_type == TaskType::TokenStatus),
+        "the narrowed request kept the status lists"
+    );
+    assert!(
+        manifest
+            .ring_pins
+            .iter()
+            .any(|pin| pin.ring == "iam.tokens" && pin.owner == Role::Coordinator),
+        "the manifest pins the token ring"
+    );
+
+    // A token, so the IAM Host holds a list.
+    let api = &coordinator.api;
+    api.create_service_account(
+        &admin(),
+        CreateServiceAccount {
+            request_id: "sa".to_owned(),
+            expected_revision: None,
+            name: "billing".to_owned(),
+            owner: "payments".to_owned(),
+            description: String::new(),
+        },
+    )
+    .await
+    .expect("an account");
+    let secret = api
+        .create_credential(
+            &admin(),
+            "billing",
+            CreateCredential {
+                request_id: "secret".to_owned(),
+                expected_revision: None,
+                kind: "client_secret".to_owned(),
+                public_key: None,
+                certificate: None,
+                expires_at: None,
+            },
+        )
+        .await
+        .expect("a secret")
+        .client_secret
+        .expect("drawn");
+    api.create_grant(
+        &admin(),
+        permguard_host::api::grants::CreateGrant {
+            request_id: "g".to_owned(),
+            expected_revision: None,
+            principal: "sa:billing".to_owned(),
+            operations: vec!["decision.evaluate".to_owned()],
+            selector: "plane/data/*".to_owned(),
+            resource_types: vec!["*".to_owned()],
+            constraints: Default::default(),
+            expires_at: None,
+        },
+    )
+    .await
+    .expect("granted");
+    let issued = api
+        .issue_token(
+            &TokenRequest {
+                grant_type: "client_credentials".to_owned(),
+                scope: Some("decision.evaluate".to_owned()),
+                audience: vec![format!(
+                    "member:{}",
+                    permguard_host::identity::record::uuid_text(&record.member_id)
+                )],
+                target: vec!["plane/data/*".to_owned()],
+                ..TokenRequest::default()
+            },
+            &ClientProof {
+                basic: Some(("billing".to_owned(), secret)),
+                ..ClientProof::default()
+            },
+        )
+        .expect("issued");
+    let claims = jws_part(&issued.access_token, 1);
+    let uri = claims["status"]["status_list"]["uri"]
+        .as_str()
+        .expect("uri")
+        .to_owned();
+    let index = usize::try_from(
+        claims["status"]["status_list"]["idx"]
+            .as_u64()
+            .expect("idx"),
+    )
+    .expect("small");
+    let jti = claims["jti"].as_str().expect("jti").to_owned();
+
+    // The member fetches it, verified, and holds it.
+    assert_eq!(member.api.token_status_due().await, 1);
+    let lists = member.api.held_lists().expect("held lists").clone();
+    let first = lists.get(&uri).expect("the list is held");
+    assert_eq!(first.list.get(index), Ok(0), "VALID");
+    // The same list again is not news.
+    assert_eq!(member.api.token_status_due().await, 0);
+
+    // Revoked at the IAM Host: the next fetch carries it.
+    api.revoke_token(
+        &admin(),
+        &jti,
+        RevokeToken {
+            request_id: "revoke".to_owned(),
+        },
+    )
+    .await
+    .expect("revoked");
+    assert_eq!(member.api.token_status_due().await, 1);
+    let second = lists.get(&uri).expect("still held");
+    assert_eq!(second.list.get(index), Ok(1), "INVALID");
+    assert!(
+        second.iat > first.iat,
+        "a fresher list replaced the held one"
+    );
+    // The older one is refused should it come back.
+    assert!(lists.accept((*first).clone()).is_err());
 }

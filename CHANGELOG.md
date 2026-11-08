@@ -55,6 +55,10 @@ is cut.
   A grant created over the Host API is refused whole, `invalid_selector`, when one of its operations applies to nothing its selector contains: `decision.evaluate` on `host/*`, `authz.admin` on a Plane, `catalog.read` on `plane/data/*`.
   The rules are `2-security/6` Grant coherence: `authz.admin` on the Host; a member's per-Host operations on the Host and on `member/<member_id>`; `keys.read`, `audit.read` and `streams.read` also on the Planes; the catalog, policy and evidence operations under `plane/control`; `decision.evaluate` and `event.submit` under `plane/data`.
 
+- **The status lists reach every member: the `token.status` task.**
+  An IAM Host offers `token.status` in every invitation and keeps it in the membership of every member that can take it; its manifest pins the IAM Host's `iam.tokens` ring.
+  The member fetches the lists every pass, each verified under that pinned set and the coordinator's issuer, a list not fresher than the one held refused as a rollback, and keeps them on its volume, verified again at start, so it keeps deciding through a Control Plane outage until a list expires.
+
 ### Changed
 
 - **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**
