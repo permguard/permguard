@@ -116,12 +116,10 @@ pub struct Limits {
 /// Where records are read.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Endpoints {
-    /// The operator's view: every record this store holds, across producers.
+    /// One ledger's records, or one producer stream of them (`?producer_class&producer&instance`).
     pub records: String,
-    /// One occurrence, by the identifier its caller stated.
+    /// One occurrence of a ledger, by the identifier its caller stated.
     pub record: String,
-    /// A tenant's own view of its own ledger.
-    pub tenant_records: String,
 }
 
 /// How a reader's position is spelled.
@@ -154,7 +152,6 @@ pub fn document(
             // Built from the constants the router mounts, so the two cannot drift.
             records: format!("{base}{}", super::http::RECORDS_PATH),
             record: format!("{base}{}", super::http::RECORD_PATH),
-            tenant_records: format!("{base}{}", super::http::TENANT_RECORDS_PATH),
         },
         event_types: event_types.iter().map(|held| (*held).to_owned()).collect(),
         capabilities: CAPABILITIES.iter().map(|held| (*held).to_owned()).collect(),
@@ -217,10 +214,7 @@ mod tests {
             document["endpoints"]["record"],
             format!("http://host{}", super::super::http::RECORD_PATH)
         );
-        assert_eq!(
-            document["endpoints"]["tenant_records"],
-            format!("http://host{}", super::super::http::TENANT_RECORDS_PATH)
-        );
+        assert!(document["endpoints"].get("tenant_records").is_none());
         assert_eq!(document["interface"], super::super::read::API);
     }
 

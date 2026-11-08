@@ -214,3 +214,54 @@ async fn an_unserved_interface_is_neither_advertised_nor_answered() {
     .await;
     assert_eq!(status, 404, "and not answered either");
 }
+
+/// WP-13.1: the event routes are at their place in the API layout of iteration 02, and the
+/// paths before it answer `404`: moved, never aliased (D18). A route that exists answers `405` to
+/// a method none of them takes.
+#[tokio::test]
+async fn the_event_routes_are_at_their_layout_paths_and_the_old_ones_are_gone() {
+    let config = receiving("layout");
+    let storage = MemoryStorage::new();
+    let audit = RecordingAuditSink::new();
+    let module = permguard_control_plane::module();
+    let registration = permguard_host::composition::Host::builder()
+        .host_id([1; 16])
+        .build()
+        .register(module.declaration(&config))
+        .expect("the control plane registers");
+    let server = ServerContext::new(identity(), &config, &storage, &audit)
+        .with_plane_handles("control", std::sync::Arc::new(registration));
+    let context = PlaneContext::new(&server, "control");
+    let status = |method: &'static str, path: &'static str| {
+        let router = module.http_routes(&context);
+        async move {
+            router
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(path)
+                        .body(axum::body::Body::empty())
+                        .expect("a request builds"),
+                )
+                .await
+                .expect("the router answers")
+                .status()
+                .as_u16()
+        }
+    };
+    for path in [
+        "/events/v1alpha1/zones/z/ledgers/l/records",
+        "/events/v1alpha1/zones/z/ledgers/l/records/e",
+        "/events/v1alpha1/zones/z/ledgers/l/signers",
+    ] {
+        assert_eq!(status("PUT", path).await, 405, "{path} is served");
+    }
+    for path in [
+        "/events/v1alpha1/records",
+        "/events/v1alpha1/records/e",
+        "/v1/zones/z/ledgers/l/events/v1alpha1/records",
+        "/v1/zones/z/ledgers/l/events/v1alpha1/signers",
+    ] {
+        assert_eq!(status("GET", path).await, 404, "{path} is gone");
+    }
+}

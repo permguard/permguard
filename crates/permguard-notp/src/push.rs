@@ -26,7 +26,7 @@ pub struct ObjectClaim {
     pub size: u64,
 }
 
-/// `POST …/notp/push/negotiate`.
+/// `POST …/push/negotiate`.
 ///
 /// `{1 ref, 2 new_head, 4 closure, 5? expected_ref, 6 request_id}`; label 3, today's
 /// `expected_old`, is retired.
@@ -59,7 +59,7 @@ pub struct NegotiatePushResponse {
     pub expiry: u64,
 }
 
-/// `POST …/notp/objects` — one batch of object bytes: `{1 objects, 2? compression,
+/// `POST …/objects` — one batch of object bytes: `{1 objects, 2? compression,
 /// 3 transfer_id}`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UploadObjectsRequest {
@@ -78,7 +78,7 @@ pub struct UploadObjectsResponse {
     pub remaining: u64,
 }
 
-/// `POST …/notp/push/commit`: `{1 ref, 2 new_head, 4? expected_ref, 5 transfer_id,
+/// `POST …/push/commit`: `{1 ref, 2 new_head, 4? expected_ref, 5 transfer_id,
 /// 6 request_id}`; label 3 is retired.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitPushRequest {

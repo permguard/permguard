@@ -506,7 +506,7 @@ fn grpc_message_ceiling(config: &permguard_core::Config) -> usize {
 
 /// The service-config pattern on this plane's own port: the well-known
 /// document describes **this plane and nothing else** — its `jwks_uri` at
-/// `/control-plane/keys` (the plane's signing ring, published as JWKS). The
+/// `/control-plane/v1/keys` (the plane's signing ring, published as JWKS). The
 /// cross-plane registry is the process's business and lives on the telemetry
 /// surface, so nothing ever collapses two planes onto one public port.
 fn discovery_routes(
@@ -585,7 +585,7 @@ fn discovery_routes(
 
     Router::new()
         .route("/.well-known/server-configuration", get(configuration))
-        .route("/control-plane/keys", get(keys))
+        .route("/control-plane/v1/keys", get(keys))
         .with_state(state)
 }
 
@@ -615,7 +615,7 @@ fn control_configuration_document(
         permguard_server::plane::PlaneId::Control,
     )
     .unwrap_or_default();
-    let ledger = format!("{base}/v1/zones/{{zone}}/ledgers/{{ledger}}");
+    let ledger = format!("{base}/notp/v1/zones/{{zone}}/ledgers/{{ledger}}");
 
     // Hand-ordered on purpose: `serde_json` maps sort alphabetically, and a
     // discovery document reads top-down — who I am, my keys, my protocols,
@@ -623,20 +623,20 @@ fn control_configuration_document(
     format!(
         concat!(
             "\"transports\":{{\"http\":{http},\"grpc\":{grpc}}},",
-            "\"jwks_uri\":\"{base}/control-plane/keys\",",
+            "\"jwks_uri\":\"{base}/control-plane/v1/keys\",",
             "\"notp\":{{",
             "\"media_type\":\"{media}\",",
             "\"compression\":\"{compression}\",",
             "\"ref_endpoint\":\"{ledger}/refs/{{ref}}\",",
-            "\"push_negotiation_endpoint\":\"{ledger}/notp/push/negotiate\",",
-            "\"push_commit_endpoint\":\"{ledger}/notp/push/commit\",",
-            "\"pull_negotiation_endpoint\":\"{ledger}/notp/pull/negotiate\",",
-            "\"object_upload_endpoint\":\"{ledger}/notp/objects\",",
-            "\"object_fetch_endpoint\":\"{ledger}/notp/objects/fetch\"",
+            "\"push_negotiation_endpoint\":\"{ledger}/push/negotiate\",",
+            "\"push_commit_endpoint\":\"{ledger}/push/commit\",",
+            "\"pull_negotiation_endpoint\":\"{ledger}/pull/negotiate\",",
+            "\"object_upload_endpoint\":\"{ledger}/objects\",",
+            "\"object_fetch_endpoint\":\"{ledger}/objects/fetch\"",
             "}},",
-            "\"zones_endpoint\":\"{base}/v1/zones\",",
-            "\"ledgers_endpoint\":\"{base}/v1/zones/{{zone}}/ledgers\",",
-            "\"streams_endpoint\":\"{base}/v1/streams\"",
+            "\"zones_endpoint\":\"{base}/catalog/v1/zones\",",
+            "\"ledgers_endpoint\":\"{base}/catalog/v1/zones/{{zone}}/ledgers\",",
+            "\"streams_endpoint\":\"{base}/streams/v1\"",
             "{interfaces}",
             "}}"
         ),
@@ -1456,7 +1456,7 @@ mod tests {
         let mut data = PlaneConfiguration {
             plane: "data-plane".to_owned(),
             state: "serving".to_owned(),
-            jwks_uri: "http://127.0.0.1:7443/data-plane/keys".to_owned(),
+            jwks_uri: "http://127.0.0.1:7443/data-plane/v1/keys".to_owned(),
             streams_endpoint: None,
             interfaces: std::collections::BTreeMap::new(),
             languages: Vec::new(),
@@ -1483,7 +1483,7 @@ mod tests {
                 "served": true, "conformance": {"gate": "permguard.language.conformance.v1",
                 "production_ready": true, "open": []}, "extra": 1})
         ));
-        data.streams_endpoint = Some("http://127.0.0.1:7443/v1/streams".to_owned());
+        data.streams_endpoint = Some("http://127.0.0.1:7443/streams/v1".to_owned());
         data.interfaces.insert(
             "permguard.api.pdp.native.v1".to_owned(),
             InterfaceLink {
@@ -1528,7 +1528,7 @@ mod tests {
                 host_id: Some("01a00000-0000-7000-8000-000000000001".to_owned()),
                 state: "serving".to_owned(),
                 planes,
-                jwks_uri: Some("http://a/server-host/keys".to_owned()),
+                jwks_uri: Some("http://a/server-host/v1/keys".to_owned()),
                 storage: None,
                 objectives: None,
                 // Every member of the block filled: a higher control added and a relaxation.

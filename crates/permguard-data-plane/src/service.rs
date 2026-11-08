@@ -47,7 +47,7 @@ struct HealthBody {
 }
 
 /// The service-config pattern, same shape on every plane: the well-known
-/// document names what this process hosts; `/data-plane/keys` is this plane's
+/// document names what this process hosts; `/data-plane/v1/keys` is this plane's
 /// `jwks_uri` — the data plane's own signing ring (`dataPlane.keys`), which
 /// will sign the decision responses it returns. Until that ring is enabled
 /// the key set is published empty: the endpoint exists from day one so the
@@ -124,7 +124,7 @@ fn discovery_routes(context: &PlaneContext<'_>) -> Router {
 
     Router::new()
         .route("/.well-known/server-configuration", get(configuration))
-        .route("/data-plane/keys", get(keys))
+        .route("/data-plane/v1/keys", get(keys))
         .with_state(state)
 }
 

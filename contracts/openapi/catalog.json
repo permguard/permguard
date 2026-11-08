@@ -7,7 +7,7 @@
     "description": "The Control Plane's zone and ledger catalog over REST. Every refusal is a WireError; a surface gated by an allow list may answer 401 or 403 with a WireDenial before any handler runs."
   },
   "paths": {
-    "/v1/zones": {
+    "/catalog/v1/zones": {
       "get": {
         "operationId": "listZones",
         "summary": "List zones",
@@ -97,7 +97,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ListZones"
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ListZones",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.read",
+          "target": "plane/control"
+        }
       },
       "post": {
         "operationId": "createZone",
@@ -195,10 +202,17 @@
         "x-grpc-body": {
           "name": "name",
           "request_id": "request_id"
+        },
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.write",
+          "target": "plane/control"
         }
       }
     },
-    "/v1/zones/{zone}": {
+    "/catalog/v1/zones/{zone}": {
       "parameters": [
         {
           "name": "zone",
@@ -273,7 +287,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/GetZone"
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/GetZone",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.read",
+          "target": "plane/control/zone/<zone_id>"
+        }
       },
       "patch": {
         "operationId": "renameZone",
@@ -382,6 +403,13 @@
           "name": "name",
           "request_id": "request_id",
           "expected_revision": "expected_revision"
+        },
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.write",
+          "target": "plane/control/zone/<zone_id>"
         }
       },
       "delete": {
@@ -500,10 +528,17 @@
             "description": "The revision the zone was read at; another is `409 revision_conflict`.",
             "x-grpc-field": "expected_revision"
           }
-        ]
+        ],
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.write",
+          "target": "plane/control/zone/<zone_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/ledgers": {
+    "/catalog/v1/zones/{zone}/ledgers": {
       "parameters": [
         {
           "name": "zone",
@@ -615,7 +650,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ListLedgers"
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ListLedgers",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.read",
+          "target": "plane/control/zone/<zone_id>"
+        }
       },
       "post": {
         "operationId": "createLedger",
@@ -723,10 +765,17 @@
         "x-grpc-body": {
           "name": "name",
           "request_id": "request_id"
+        },
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.write",
+          "target": "plane/control/zone/<zone_id>"
         }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}": {
+    "/catalog/v1/zones/{zone}/ledgers/{ledger}": {
       "parameters": [
         {
           "name": "zone",
@@ -811,7 +860,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/GetLedger"
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/GetLedger",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.read",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       },
       "patch": {
         "operationId": "renameLedger",
@@ -920,6 +976,13 @@
           "name": "name",
           "request_id": "request_id",
           "expected_revision": "expected_revision"
+        },
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.write",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
         }
       },
       "delete": {
@@ -1038,10 +1101,17 @@
             "description": "The revision the ledger was read at; another is `409 revision_conflict`.",
             "x-grpc-field": "expected_revision"
           }
-        ]
+        ],
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.write",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}/archive": {
+    "/catalog/v1/zones/{zone}/ledgers/{ledger}/archive": {
       "parameters": [
         {
           "name": "zone",
@@ -1170,10 +1240,17 @@
         "x-grpc-body": {
           "request_id": "request_id",
           "expected_revision": "expected_revision"
+        },
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.write",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
         }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}/restore": {
+    "/catalog/v1/zones/{zone}/ledgers/{ledger}/restore": {
       "parameters": [
         {
           "name": "zone",
@@ -1302,10 +1379,17 @@
         "x-grpc-body": {
           "request_id": "request_id",
           "expected_revision": "expected_revision"
+        },
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.write",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
         }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}/export": {
+    "/catalog/v1/zones/{zone}/ledgers/{ledger}/export": {
       "parameters": [
         {
           "name": "zone",
@@ -1422,10 +1506,17 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ExportLedger",
-        "x-grpc-body": {}
+        "x-grpc-body": {},
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.read",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/export": {
+    "/catalog/v1/zones/{zone}/export": {
       "parameters": [
         {
           "name": "zone",
@@ -1532,10 +1623,17 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ExportZone",
-        "x-grpc-body": {}
+        "x-grpc-body": {},
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.read",
+          "target": "plane/control/zone/<zone_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/import": {
+    "/catalog/v1/zones/{zone}/import": {
       "parameters": [
         {
           "name": "zone",
@@ -1660,6 +1758,13 @@
           "bundle_manifest": "bundle",
           "bundle_items": "bundle",
           "pin": "pin"
+        },
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "catalog",
+          "credential": "credential or access token",
+          "operation": "catalog.write + policy.push",
+          "target": "plane/control/zone/<zone_id>"
         }
       }
     }

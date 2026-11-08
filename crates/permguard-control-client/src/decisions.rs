@@ -272,7 +272,7 @@ impl DecisionReader for HttpSink {
         until_seq: u64,
     ) -> Result<serde_json::Value, ReadError> {
         let mut path = format!(
-            "/decisions/v1/signers?pdp={}&instance={}",
+            "/decisions/v1/streams/{}/{}/signers?",
             crate::encode::value(pdp_id),
             crate::encode::value(instance)
         );
@@ -327,12 +327,12 @@ impl DecisionReader for HttpSink {
         // this is rather than being refused.
         let mut path = match scope {
             ReadScope::Tenant { zone, ledger } => format!(
-                "/zones/{}/ledgers/{}/decisions/v1/records?",
+                "/decisions/v1/zones/{}/ledgers/{}/records?",
                 crate::encode::value(zone),
                 crate::encode::value(ledger)
             ),
             ReadScope::Stream { pdp_id, instance } => format!(
-                "/decisions/v1/records?pdp={}&instance={}",
+                "/decisions/v1/streams/{}/{}/records?",
                 crate::encode::value(pdp_id),
                 crate::encode::value(instance)
             ),

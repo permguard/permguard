@@ -333,7 +333,7 @@ pub enum KeysCommand {
     /// Print a ring's public keys as a JWKS document.
     ///
     /// The *offline* way to obtain the public half of an operations ring — the keys that seal a
-    /// trail. The running server also publishes them at `/server-host/keys` on the Host port, or
+    /// trail. The running server also publishes them at `/server-host/v1/keys` on the Host port, or
     /// at `/host/v1/keys/host.operations` on a Host listener that serves plain TLS, and
     /// the two answer different needs: the endpoint serves the routine case — a dashboard, a
     /// rotation check — while this command reads the ring on disk, so it works with the server

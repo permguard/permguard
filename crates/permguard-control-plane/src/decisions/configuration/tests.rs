@@ -74,7 +74,7 @@ fn the_decision_document_names_its_interface_and_capabilities() {
         document["read_parameters"]
             .as_array()
             .map(|held| held.len()),
-        Some(9)
+        Some(5)
     );
     assert_eq!(
         document["limits"]["max_records"],

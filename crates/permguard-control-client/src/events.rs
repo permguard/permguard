@@ -219,7 +219,7 @@ impl EventReader for HttpEventSink {
         // different route or add a parameter nobody sent.
         let mut path = match scope {
             ReadScope::Tenant { zone, ledger } => format!(
-                "/v1/zones/{}/ledgers/{}/events/v1alpha1/records?",
+                "/events/v1alpha1/zones/{}/ledgers/{}/records?",
                 encode::value(zone),
                 encode::value(ledger)
             ),
@@ -230,7 +230,7 @@ impl EventReader for HttpEventSink {
                 producer,
                 instance,
             } => format!(
-                "/events/v1alpha1/records?zone={}&ledger={}&producer_class={}&producer={}\
+                "/events/v1alpha1/zones/{}/ledgers/{}/records?producer_class={}&producer={}\
                  &instance={}",
                 encode::value(zone),
                 encode::value(ledger),
@@ -293,7 +293,7 @@ impl EventReader for HttpEventSink {
 
     fn signers(&self, zone: &str, ledger: &str, ask: &SignersAsk) -> Result<Value, ReadError> {
         let mut path = format!(
-            "/v1/zones/{}/ledgers/{}/events/v1alpha1/signers?",
+            "/events/v1alpha1/zones/{}/ledgers/{}/signers?",
             encode::value(zone),
             encode::value(ledger)
         );
@@ -340,10 +340,10 @@ impl EventReader for HttpEventSink {
         // would address a different route and `a?x=1` would add a parameter, while the same record
         // stayed perfectly readable over gRPC: one ledger, two answers.
         let path = format!(
-            "/events/v1alpha1/records/{}?zone={}&ledger={}",
-            encode::value(event_id),
+            "/events/v1alpha1/zones/{}/ledgers/{}/records/{}",
             encode::value(zone),
-            encode::value(ledger)
+            encode::value(ledger),
+            encode::value(event_id)
         );
         let response = self
             .client

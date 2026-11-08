@@ -77,7 +77,7 @@ pub fn version_route(body: VersionBody) -> Router {
     )
 }
 
-/// The `/server-host/keys` route: the operations ring, published as a JWKS.
+/// The `/server-host/v1/keys` route: the operations ring, published as a JWKS.
 ///
 /// An unreadable ring is a `503`, never an empty set: `{"keys":[]}` reads as "nothing is published
 /// yet", which is a legitimate state of a young ring, and an error dressed as that state sends a
@@ -111,11 +111,11 @@ pub fn keys_route(keys: Arc<dyn KeyManager>) -> Router {
     }
 
     Router::new()
-        .route("/server-host/keys", get(answer))
+        .route("/server-host/v1/keys", get(answer))
         .with_state(keys)
 }
 
-/// The `/server-host/keys` route once the Host listener serves the ring: `308 Permanent
+/// The `/server-host/v1/keys` route once the Host listener serves the ring: `308 Permanent
 /// Redirect` to `location`, the one the registry's `jwks_uri` names, with `Deprecation: true`
 /// (the HTTP Deprecation header field in the boolean form of its draft; RFC 9745 later made the
 /// value a date) so a client reading the headers learns the route is legacy. `308` keeps the method;
@@ -144,7 +144,7 @@ pub fn keys_moved_route(location: String) -> Router {
     }
 
     Router::new()
-        .route("/server-host/keys", get(answer))
+        .route("/server-host/v1/keys", get(answer))
         .with_state(Arc::new(location))
 }
 
@@ -175,7 +175,7 @@ mod tests {
         let response = router
             .oneshot(
                 axum::http::Request::builder()
-                    .uri("/server-host/keys")
+                    .uri("/server-host/v1/keys")
                     .body(axum::body::Body::empty())
                     .expect("a request"),
             )

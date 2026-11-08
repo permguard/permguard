@@ -107,16 +107,16 @@ curl -s http://127.0.0.1:6443/.well-known/server-configuration | jq
     "http": true,
     "grpc": true
   },
-  "jwks_uri": "http://127.0.0.1:6443/control-plane/keys",
+  "jwks_uri": "http://127.0.0.1:6443/control-plane/v1/keys",
   "notp": {
     "media_type": "application/vnd.permguard.notp.v1+cbor",
     "compression": "deflate",
-    "ref_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/refs/{ref}",
-    "push_negotiation_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/notp/push/negotiate",
-    "push_commit_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/notp/push/commit",
-    "pull_negotiation_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/notp/pull/negotiate",
-    "object_upload_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/notp/objects",
-    "object_fetch_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/notp/objects/fetch"
+    "ref_endpoint": "http://127.0.0.1:6443/notp/v1/zones/{zone}/ledgers/{ledger}/refs/{ref}",
+    "push_negotiation_endpoint": "http://127.0.0.1:6443/notp/v1/zones/{zone}/ledgers/{ledger}/push/negotiate",
+    "push_commit_endpoint": "http://127.0.0.1:6443/notp/v1/zones/{zone}/ledgers/{ledger}/push/commit",
+    "pull_negotiation_endpoint": "http://127.0.0.1:6443/notp/v1/zones/{zone}/ledgers/{ledger}/pull/negotiate",
+    "object_upload_endpoint": "http://127.0.0.1:6443/notp/v1/zones/{zone}/ledgers/{ledger}/objects",
+    "object_fetch_endpoint": "http://127.0.0.1:6443/notp/v1/zones/{zone}/ledgers/{ledger}/objects/fetch"
   },
   "zones_endpoint": "http://127.0.0.1:6443/v1/zones",
   "ledgers_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers"
@@ -136,7 +136,7 @@ curl -s http://127.0.0.1:7443/.well-known/server-configuration | jq
 ```json
 {
   "plane": "data-plane",
-  "jwks_uri": "http://127.0.0.1:7443/data-plane/keys",
+  "jwks_uri": "http://127.0.0.1:7443/data-plane/v1/keys",
   "interfaces": {
     "permguard.api.pdp.native.v1": {
       "configuration": "http://127.0.0.1:7443/.well-known/permguard-pdp-v1-configuration"

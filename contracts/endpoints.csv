@@ -1,0 +1,154 @@
+PLANE,CATEGORY,HTTP VERB,ENDPOINT,AUTH,AZ SCOPE,AZ TARGET
+data,decisions,POST,/access/v1/evaluation,application token,decision.evaluate,plane/data/zone/<zone_id>/ledger/<ledger_id>
+data,decisions,POST,/access/v1/evaluations,application token,decision.evaluate,plane/data/zone/<zone_id>/ledger/<ledger_id>
+data,discovery,GET,/.well-known/permguard-pdp-temporal-v1alpha1-configuration,no,,
+data,discovery,GET,/.well-known/permguard-pdp-v1-configuration,no,,
+data,public keys,GET,/data-plane/v1/keys,no,,
+data,temporal events,POST,/temporal/v1alpha1/events,application token,event.submit,plane/data/zone/<zone_id>/ledger/<ledger_id>
+data,temporal events,GET,/temporal/v1alpha1/zones/{zone}/ledgers/{ledger}/signers,no,,
+control,catalog,GET,/catalog/v1/zones,credential or access token,catalog.read,plane/control
+control,catalog,POST,/catalog/v1/zones,credential or access token,catalog.write,plane/control
+control,catalog,GET,/catalog/v1/zones/{zone},credential or access token,catalog.read,plane/control/zone/<zone_id>
+control,catalog,PATCH,/catalog/v1/zones/{zone},credential or access token,catalog.write,plane/control/zone/<zone_id>
+control,catalog,DELETE,/catalog/v1/zones/{zone},credential or access token,catalog.write,plane/control/zone/<zone_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/export,credential or access token,catalog.read,plane/control/zone/<zone_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/import,credential or access token,catalog.write + policy.push,plane/control/zone/<zone_id>
+control,catalog,GET,/catalog/v1/zones/{zone}/ledgers,credential or access token,catalog.read,plane/control/zone/<zone_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/ledgers,credential or access token,catalog.write,plane/control/zone/<zone_id>
+control,catalog,GET,/catalog/v1/zones/{zone}/ledgers/{ledger},credential or access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,PATCH,/catalog/v1/zones/{zone}/ledgers/{ledger},credential or access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,DELETE,/catalog/v1/zones/{zone}/ledgers/{ledger},credential or access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/ledgers/{ledger}/archive,credential or access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/ledgers/{ledger}/export,credential or access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/ledgers/{ledger}/restore,credential or access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,discovery,GET,/.well-known/permguard-decisions-native-v1-configuration,no,,
+control,discovery,GET,/.well-known/permguard-events-native-v1alpha1-configuration,no,,
+control,evidence,GET,/decisions/v1/zones/{zone}/ledgers/{ledger}/records,credential or access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,evidence,GET,/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records,credential or access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,evidence,GET,/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records/{event_id},credential or access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,evidence,GET,/events/v1alpha1/zones/{zone}/ledgers/{ledger}/signers,no,,
+control,evidence (producer stream),GET,/decisions/v1/streams/{pdp}/{instance}/records,credential or access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id> | plane/control (a legacy stream mixing tenants)
+control,evidence (producer stream),GET,/decisions/v1/streams/{pdp}/{instance}/signers,no,,
+control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/objects,credential or access token,policy.push,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/objects/fetch,credential or access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/pull/negotiate,credential or access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/push/commit,credential or access token,policy.push,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/push/negotiate,credential or access token,policy.push,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),GET,/notp/v1/zones/{zone}/ledgers/{ledger}/refs/{name},credential or access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,public keys,GET,/control-plane/v1/keys,no,,
+iam,credentials,GET,/iam/v1/service-accounts/{name}/credentials,credential (IAM Host),authz.admin,host
+iam,credentials,POST,/iam/v1/service-accounts/{name}/credentials,credential (IAM Host),authz.admin,host
+iam,credentials,POST,/iam/v1/service-accounts/{name}/credentials/{id}/revoke,credential (IAM Host),authz.admin,host
+iam,discovery,GET,/.well-known/oauth-authorization-server,no,,
+iam,grants,GET,/iam/v1/grants,credential (IAM Host),authz.admin,host
+iam,grants,POST,/iam/v1/grants,credential (IAM Host),authz.admin,host
+iam,grants,POST,/iam/v1/grants/{id}/revoke/plan,credential (IAM Host),authz.admin,host
+iam,grants,POST,/iam/v1/grants/{id}/revoke/run,credential (IAM Host),authz.admin,host
+iam,identity providers,GET,/iam/v1/providers,credential (IAM Host),authz.admin,host
+iam,identity providers,POST,/iam/v1/providers/{name}/refresh,credential (IAM Host),authz.admin,host
+iam,recovery,GET,/iam/v1/recovery,credential (IAM Host),authz.admin,host
+iam,recovery,POST,/iam/v1/recovery/acknowledge,credential (IAM Host),authz.admin,host
+iam,roles,GET,/iam/v1/principals/{principal}/roles,credential (IAM Host),authz.admin,host
+iam,roles,GET,/iam/v1/roles,credential (IAM Host),authz.admin,host
+iam,roles,POST,/iam/v1/roles,credential (IAM Host),authz.admin,host
+iam,roles,GET,/iam/v1/roles/{name},credential (IAM Host),authz.admin,host
+iam,roles,PATCH,/iam/v1/roles/{name},credential (IAM Host),authz.admin,host
+iam,roles,POST,/iam/v1/roles/{name}/delete,credential (IAM Host),authz.admin,host
+iam,roles,POST,/iam/v1/roles/{name}/members,credential (IAM Host),authz.admin,host
+iam,roles,POST,/iam/v1/roles/{name}/members/remove,credential (IAM Host),authz.admin,host
+iam,service accounts,GET,/iam/v1/service-accounts,credential (IAM Host),authz.admin,host
+iam,service accounts,POST,/iam/v1/service-accounts,credential (IAM Host),authz.admin,host
+iam,service accounts,GET,/iam/v1/service-accounts/{name},credential (IAM Host),authz.admin,host
+iam,service accounts,PATCH,/iam/v1/service-accounts/{name},credential (IAM Host),authz.admin,host
+iam,service accounts,POST,/iam/v1/service-accounts/{name}/delete,credential (IAM Host),authz.admin,host
+iam,service accounts,POST,/iam/v1/service-accounts/{name}/resume,credential (IAM Host),authz.admin,host
+iam,service accounts,POST,/iam/v1/service-accounts/{name}/suspend,credential (IAM Host),authz.admin,host
+iam,setup,GET,/auth/v1/setup,no (setup code),,
+iam,setup,POST,/auth/v1/setup,no (setup code),setup code,host
+iam,sign-in,POST,/auth/v1/factor,yes (session),own session,the caller's own user
+iam,sign-in,POST,/auth/v1/factor/confirm,yes (session),own session,the caller's own user
+iam,sign-in,POST,/auth/v1/password,yes (session),own session,the caller's own user
+iam,sign-in,GET,/auth/v1/session,yes (session),own session,the caller's own user
+iam,sign-in,POST,/auth/v1/sessions,no (password),,
+iam,sign-in,DELETE,/auth/v1/sessions/current,yes (session),own session,the caller's own user
+iam,tokens,GET,/iam/v1/keys,no where keys.read is public,keys.read,host
+iam,tokens,GET,/iam/v1/status-lists/{id},no where keys.read is public,keys.read,host
+iam,tokens,POST,/iam/v1/token,"client proof (secret, client assertion, certificate) or subject token",,
+iam,tokens,GET,/iam/v1/tokens,credential (IAM Host),authz.admin,host
+iam,tokens,POST,/iam/v1/tokens/{jti}/revoke,credential (IAM Host),authz.admin,host
+iam,users,GET,/iam/v1/users,credential (IAM Host),authz.admin,host
+iam,users,POST,/iam/v1/users,credential (IAM Host),authz.admin,host
+iam,users,GET,/iam/v1/users/{name},credential (IAM Host),authz.admin,host
+iam,users,PATCH,/iam/v1/users/{name},credential (IAM Host),authz.admin,host
+iam,users,POST,/iam/v1/users/{name}/delete,credential (IAM Host),authz.admin,host
+iam,users,POST,/iam/v1/users/{name}/disable,credential (IAM Host),authz.admin,host
+iam,users,POST,/iam/v1/users/{name}/enable,credential (IAM Host),authz.admin,host
+iam,users,POST,/iam/v1/users/{name}/factor/reset,credential (IAM Host),authz.admin,host
+iam,users,POST,/iam/v1/users/{name}/links,credential (IAM Host),authz.admin,host
+iam,users,POST,/iam/v1/users/{name}/links/remove,credential (IAM Host),authz.admin,host
+iam,users,POST,/iam/v1/users/{name}/password,credential (IAM Host),authz.admin,host
+iam,users,POST,/iam/v1/users/{name}/unlock,credential (IAM Host),authz.admin,host
+host,audit,GET,/host/v1/audit/{class}/checkpoints,credential (IAM Host) or administration token (member),audit.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,audit,GET,/host/v1/audit/{class}/export,credential (IAM Host) or administration token (member),audit.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,audit,GET,/host/v1/audit/{class}/records,credential (IAM Host) or administration token (member),audit.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,backup,POST,/host/v1/backup/abort,credential (IAM Host) or administration token (member),backup.manage,host
+host,backup,POST,/host/v1/backup/finalize,credential (IAM Host) or administration token (member),backup.manage,host
+host,backup,POST,/host/v1/backup/prepare,credential (IAM Host) or administration token (member),backup.manage,host
+host,backup,GET,/host/v1/backups,credential (IAM Host) or administration token (member),backup.read,host
+host,configuration,GET,/host/v1/config/effective,credential (IAM Host) or administration token (member),config.read,host
+host,configuration,GET,/host/v1/config/revisions,credential (IAM Host) or administration token (member),config.read,host
+host,garbage collection,POST,/host/v1/gc/{job}/plan,credential (IAM Host) or administration token (member),gc.manage,plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,garbage collection,POST,/host/v1/gc/{job}/run,credential (IAM Host) or administration token (member),gc.manage,plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,identity,GET,/host/v1/identity,credential (IAM Host) or administration token (member),identity.read,host
+host,identity,POST,/host/v1/identity/reset/plan,credential (IAM Host) or administration token (member),identity.admin,host
+host,identity,POST,/host/v1/identity/reset/run,credential (IAM Host) or administration token (member),identity.admin,host
+host,identity,POST,/host/v1/identity/rotate,credential (IAM Host) or administration token (member),identity.admin,host
+host,identity,POST,/host/v1/identity/verify,credential (IAM Host) or administration token (member),identity.read,host
+host,identity,GET,/host/v1/ring-bindings,credential (IAM Host) or administration token (member),identity.read,host
+host,keys,GET,/host/v1/keys,credential (IAM Host) or administration token (member),keys.read,host
+host,keys,GET,/host/v1/keys/bundle,credential (IAM Host) or administration token (member),keys.read,host
+host,keys,GET,/host/v1/keys/{ring},no,,
+host,keys,POST,/host/v1/keys/{ring}/revoke/plan,credential (IAM Host) or administration token (member),keys.admin,host
+host,keys,POST,/host/v1/keys/{ring}/revoke/run,credential (IAM Host) or administration token (member),keys.admin,host
+host,keys,POST,/host/v1/keys/{ring}/rotate,credential (IAM Host) or administration token (member),keys.admin,host
+host,lifecycle,GET,/host/v1/status,credential (IAM Host) or administration token (member),lifecycle.read,host
+host,membership,GET,/host/v1/members,credential (IAM Host) or administration token (member),membership.read,host
+host,membership,GET,/host/v1/members/invites,credential (IAM Host) or administration token (member),membership.read,host
+host,membership,POST,/host/v1/members/invites,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,DELETE,/host/v1/members/invites/{id},credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,GET,/host/v1/members/{id},credential (IAM Host) or administration token (member),membership.read,host
+host,membership,POST,/host/v1/members/{id}/appraise,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,POST,/host/v1/members/{id}/approve,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,POST,/host/v1/members/{id}/fence,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,POST,/host/v1/members/{id}/record,credential (IAM Host),membership.admin,host
+host,membership,POST,/host/v1/members/{id}/reject,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,POST,/host/v1/members/{id}/resume,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,POST,/host/v1/members/{id}/revoke/plan,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,POST,/host/v1/members/{id}/revoke/run,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,GET,/host/v1/members/{id}/sessions,credential (IAM Host) or administration token (member),membership.read,host
+host,membership,POST,/host/v1/members/{id}/suspend,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,POST,/host/v1/members/{id}/verify,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,POST,/host/v1/memberships/join,credential (IAM Host) or administration token (member),membership.admin,host
+host,membership,POST,/host/v1/memberships/{id}/sync,credential (IAM Host) or administration token (member),membership.admin,host
+host,peer,POST,/host/v1/members/enroll,peer session,peer session only,host
+host,peer,POST,/host/v1/sessions/hello,peer session,peer session only,host
+host,peer,POST,/host/v1/sessions/prove,peer session,peer session only,host
+host,peer,POST,/host/v1/tasks/{task}/session,peer session,peer session only,host
+host,plans,GET,/host/v1/plans,credential (IAM Host) or administration token (member),authz.admin | identity.admin | keys.admin | membership.admin,host
+host,plans,POST,/host/v1/plans/{id}/approve,credential (IAM Host) or administration token (member),the plan's own operation,host
+host,streams,GET,/host/v1/streams,credential (IAM Host) or administration token (member),streams.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,streams,GET,/host/v1/streams/{plane}/{stream_type}/anchors,credential (IAM Host) or administration token (member),streams.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,streams,GET,/host/v1/streams/{plane}/{stream_type}/frontier,credential (IAM Host) or administration token (member),streams.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,streams,GET,/host/v1/streams/{plane}/{stream_type}/gaps,credential (IAM Host) or administration token (member),streams.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,streams,GET,/host/v1/streams/{plane}/{stream_type}/records,credential (IAM Host) or administration token (member),streams.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,streams,GET,/host/v1/streams/{plane}/{stream_type}/signers,credential (IAM Host) or administration token (member),streams.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,streams,GET,/host/v1/streams/{plane}/{stream_type}/subscriptions,credential (IAM Host) or administration token (member),streams.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+every surface,discovery,GET,/.well-known/server-configuration,no,,
+every surface,discovery,GET,/streams/v1,no,,
+every surface,health and metrics,GET,/,no,,
+every surface,health and metrics,GET,/health,no,,
+every surface,health and metrics,GET,/healthz,no,,
+every surface,health and metrics,GET,/metrics,no,,
+every surface,health and metrics,GET,/readyz,no,,
+every surface,health and metrics,GET,/version,no,,
+every surface,public keys,GET,/server-host/v1/keys,no,,

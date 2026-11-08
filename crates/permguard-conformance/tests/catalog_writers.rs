@@ -71,7 +71,7 @@ fn a_seeded_write_is_found_however_it_is_called() {
         }
 
         fn routes() -> Router {
-            Router::new().route("/v1/zones", get(list_zones).post(create_zone))
+            Router::new().route("/catalog/v1/zones", get(list_zones).post(create_zone))
         }
 
         #[cfg(test)]

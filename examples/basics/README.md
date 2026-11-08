@@ -345,7 +345,7 @@ task cli -- --control-endpoint grpc://127.0.0.1:6443 decisions list --zone acme 
 **Verify it yourself**, without trusting the server that served it:
 
 ```bash
-curl -s http://127.0.0.1:7443/data-plane/keys -o /tmp/pdp-keys.json
+curl -s http://127.0.0.1:7443/data-plane/v1/keys -o /tmp/pdp-keys.json
 permguard decisions list --zone acme --ledger main-ledger --verify --keys /tmp/pdp-keys.json
 ```
 
@@ -353,7 +353,7 @@ permguard decisions list --zone acme --ledger main-ledger --verify --keys /tmp/p
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-curl -s http://127.0.0.1:7443/data-plane/keys -o /tmp/pdp-keys.json
+curl -s http://127.0.0.1:7443/data-plane/v1/keys -o /tmp/pdp-keys.json
 task cli -- decisions list --zone acme --ledger main-ledger --verify --keys /tmp/pdp-keys.json
 ```
 

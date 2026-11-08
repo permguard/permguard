@@ -51,7 +51,7 @@ pg() { PERMGUARD_CONFIG="${work}/cli.yml" "${cli}" --control-endpoint http://127
 
 # Event trust, as the example's step 2: the data plane's public keys where the control plane reads them.
 mkdir -p "${work}/volume/trust"
-curl -fsS http://127.0.0.1:27443/data-plane/keys -o "${work}/volume/trust/data-plane-events.jwks"
+curl -fsS http://127.0.0.1:27443/data-plane/v1/keys -o "${work}/volume/trust/data-plane-events.jwks"
 
 pg zones create acme >/dev/null
 pg ledgers create main-ledger --zone acme >/dev/null

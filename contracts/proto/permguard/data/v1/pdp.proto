@@ -282,7 +282,7 @@ service TemporalPolicyDecisionPoint {
       returns (GetTemporalConfigurationResponse);
   // This plane's own journal watermarks and signer history for one ledger —
   // which key signed which stretch, public keys included. The same document
-  // the HTTP binding serves at `/events/v1alpha1/signers`.
+  // the HTTP binding serves at `/temporal/v1alpha1/zones/{zone}/ledgers/{ledger}/signers`.
   rpc GetSigners(GetTemporalSignersRequest) returns (GetTemporalSignersResponse);
 }
 

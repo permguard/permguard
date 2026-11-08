@@ -50,7 +50,7 @@ pub struct GetRefResponse {
     pub ref_digest: Digest,
 }
 
-/// `POST …/notp/pull/negotiate`: `{1 ref, 2? at, 3 have, 4? checkpoint}`.
+/// `POST …/pull/negotiate`: `{1 ref, 2? at, 3 have, 4? checkpoint}`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NegotiatePullRequest {
     pub r#ref: String,
@@ -80,7 +80,7 @@ pub struct NegotiatePullResponse {
     pub expiry: u64,
 }
 
-/// `POST …/notp/objects/fetch`: `{1 digests, 2? accept_compression, 3 transfer_id}`.
+/// `POST …/objects/fetch`: `{1 digests, 2? accept_compression, 3 transfer_id}`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchObjectsRequest {
     pub digests: Vec<Digest>,

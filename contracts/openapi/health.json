@@ -24,7 +24,12 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetInfo",
-        "x-grpc-note": "The data plane answers the same document over permguard.data.v1.DataPlane/GetInfo (identical GetInfoResponse)."
+        "x-grpc-note": "The data plane answers the same document over permguard.data.v1.DataPlane/GetInfo (identical GetInfoResponse).",
+        "x-permguard-endpoint": {
+          "plane": "every surface",
+          "category": "health and metrics",
+          "credential": "no"
+        }
       }
     },
     "/version": {
@@ -44,7 +49,12 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetInfo",
-        "x-grpc-note": "Same body as `/`; the data plane answers over permguard.data.v1.DataPlane/GetInfo."
+        "x-grpc-note": "Same body as `/`; the data plane answers over permguard.data.v1.DataPlane/GetInfo.",
+        "x-permguard-endpoint": {
+          "plane": "every surface",
+          "category": "health and metrics",
+          "credential": "no"
+        }
       }
     },
     "/health": {
@@ -72,7 +82,12 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetHealth",
-        "x-grpc-note": "The data plane answers over permguard.data.v1.DataPlane/GetHealth with the same members."
+        "x-grpc-note": "The data plane answers over permguard.data.v1.DataPlane/GetHealth with the same members.",
+        "x-permguard-endpoint": {
+          "plane": "every surface",
+          "category": "health and metrics",
+          "credential": "no"
+        }
       }
     },
     "/healthz": {
@@ -102,7 +117,12 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "Telemetry listener probe; no gRPC counterpart."
+        "x-grpc-note": "Telemetry listener probe; no gRPC counterpart.",
+        "x-permguard-endpoint": {
+          "plane": "every surface",
+          "category": "health and metrics",
+          "credential": "no"
+        }
       }
     },
     "/readyz": {
@@ -132,7 +152,12 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "Telemetry listener probe; no gRPC counterpart."
+        "x-grpc-note": "Telemetry listener probe; no gRPC counterpart.",
+        "x-permguard-endpoint": {
+          "plane": "every surface",
+          "category": "health and metrics",
+          "credential": "no"
+        }
       }
     },
     "/metrics": {
@@ -153,10 +178,15 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "Prometheus text exposition on the telemetry listener; no gRPC counterpart."
+        "x-grpc-note": "Prometheus text exposition on the telemetry listener; no gRPC counterpart.",
+        "x-permguard-endpoint": {
+          "plane": "every surface",
+          "category": "health and metrics",
+          "credential": "no"
+        }
       }
     },
-    "/control-plane/keys": {
+    "/control-plane/v1/keys": {
       "get": {
         "operationId": "getControlPlaneKeys",
         "summary": "The control plane public keys as a JWKS",
@@ -191,10 +221,15 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.GitLikeStore/GetKeyRing",
-        "x-grpc-note": "The response carries the JWKS as JSON bytes (`GetKeyRingResponse.jwks`)."
+        "x-grpc-note": "The response carries the JWKS as JSON bytes (`GetKeyRingResponse.jwks`).",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "public keys",
+          "credential": "no"
+        }
       }
     },
-    "/data-plane/keys": {
+    "/data-plane/v1/keys": {
       "get": {
         "operationId": "getDataPlaneKeys",
         "summary": "The data plane public keys as a JWKS",
@@ -229,10 +264,15 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "The data plane serves no key-ring RPC (permguard.data.v1 has none); keys are HTTP-only there."
+        "x-grpc-note": "The data plane serves no key-ring RPC (permguard.data.v1 has none); keys are HTTP-only there.",
+        "x-permguard-endpoint": {
+          "plane": "data",
+          "category": "public keys",
+          "credential": "no"
+        }
       }
     },
-    "/server-host/keys": {
+    "/server-host/v1/keys": {
       "get": {
         "operationId": "getServerHostKeys",
         "summary": "The Server Host operations ring public keys as a JWKS",
@@ -292,7 +332,12 @@
         },
         "x-grpc-rpc": null,
         "x-grpc-note": "The telemetry listener has no gRPC. The ring's Host API counterpart is `permguard.host.v1.KeyService/GetKeyRing`, served by the Host listener and described in `host.json`; this endpoint redirects to its REST path once a Host listener is configured.",
-        "description": "The legacy route of the operations ring. Without a Host listener (`admin.addr`), or with one that demands a client certificate, it publishes the ring; with a Host listener over plain TLS it answers `308 Permanent Redirect` to that listener's `/host/v1/keys/host.operations`, the place the process registry's `jwks_uri` then names, and publishes nothing itself (WP-2.5)."
+        "description": "The legacy route of the operations ring. Without a Host listener (`admin.addr`), or with one that demands a client certificate, it publishes the ring; with a Host listener over plain TLS it answers `308 Permanent Redirect` to that listener's `/host/v1/keys/host.operations`, the place the process registry's `jwks_uri` then names, and publishes nothing itself (WP-2.5).",
+        "x-permguard-endpoint": {
+          "plane": "every surface",
+          "category": "public keys",
+          "credential": "no"
+        }
       }
     }
   },

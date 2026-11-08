@@ -375,11 +375,17 @@ mod tests {
     #[tokio::test]
     async fn test_every_refusal_answers_the_status_its_class_maps_to_on_both_transports() {
         let facade = facade("raw");
-        raw::rest(&facade, "POST", "/v1/zones", Some(&raw::named("billing"))).await;
         raw::rest(
             &facade,
             "POST",
-            "/v1/zones/billing/ledgers",
+            "/catalog/v1/zones",
+            Some(&raw::named("billing")),
+        )
+        .await;
+        raw::rest(
+            &facade,
+            "POST",
+            "/catalog/v1/zones/billing/ledgers",
             Some(&raw::named("invoices")),
         )
         .await;
@@ -387,17 +393,29 @@ mod tests {
         let cases = [
             (
                 "a taken name",
-                raw::rest(&facade, "POST", "/v1/zones", Some(&raw::named("billing"))).await,
+                raw::rest(
+                    &facade,
+                    "POST",
+                    "/catalog/v1/zones",
+                    Some(&raw::named("billing")),
+                )
+                .await,
                 raw::grpc(raw::create_zone(&facade, "billing").await),
             ),
             (
                 "an invalid name",
-                raw::rest(&facade, "POST", "/v1/zones", Some(&raw::named("Bad Name"))).await,
+                raw::rest(
+                    &facade,
+                    "POST",
+                    "/catalog/v1/zones",
+                    Some(&raw::named("Bad Name")),
+                )
+                .await,
                 raw::grpc(raw::create_zone(&facade, "Bad Name").await),
             ),
             (
                 "an unknown zone",
-                raw::rest(&facade, "GET", "/v1/zones/missing", None).await,
+                raw::rest(&facade, "GET", "/catalog/v1/zones/missing", None).await,
                 raw::grpc(raw::get_zone(&facade, "missing").await),
             ),
             (
@@ -406,7 +424,7 @@ mod tests {
                     &facade,
                     "DELETE",
                     &format!(
-                        "/v1/zones/billing?request_id={}&expected_revision=1",
+                        "/catalog/v1/zones/billing?request_id={}&expected_revision=1",
                         raw::fresh()
                     ),
                     None,
@@ -419,7 +437,7 @@ mod tests {
                 raw::rest(
                     &facade,
                     "POST",
-                    "/v1/zones/missing/ledgers",
+                    "/catalog/v1/zones/missing/ledgers",
                     Some(&raw::named("x")),
                 )
                 .await,

@@ -13,14 +13,16 @@
 //! # Routes
 //!
 //! ```text
-//! GET  /events/v1alpha1/records                                  the administrative read
-//! GET  /events/v1alpha1/records/{event-id}                       one occurrence
-//! GET  /v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records one tenant's
+//! GET  /events/v1alpha1/zones/{zone}/ledgers/{ledger}/records              one tenant's, or one
+//!                                                                          producer stream of it
+//! GET  /events/v1alpha1/zones/{zone}/ledgers/{ledger}/records/{event-id}   one occurrence
+//! GET  /events/v1alpha1/zones/{zone}/ledgers/{ledger}/signers              its signing-key spans
 //! ```
 //!
-//! The global read is administrative and names a producer stream outright. The tenant read is
-//! physically isolated: it is served from that tenant's own view directory, so a bug would have to
-//! be a bug in `open` to cross the boundary.
+//! A read names one ledger, always: `?producer_class&producer&instance` narrow it to one producer
+//! stream, read in that stream's own order. The tenant read is physically isolated: it is served
+//! from that tenant's own view directory, so a bug would have to be a bug in `open` to cross the
+//! boundary.
 //!
 //! # Status codes
 //!
@@ -50,14 +52,13 @@ use super::read::{self, Filters};
 use super::store::{EventStore, Scope};
 use crate::wire;
 
-/// The administrative read.
-pub const RECORDS_PATH: &str = "/events/v1alpha1/records";
-/// One occurrence, by the identifier its caller stated.
-pub const RECORD_PATH: &str = "/events/v1alpha1/records/{event_id}";
-/// One tenant's read.
-pub const TENANT_RECORDS_PATH: &str = "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records";
+/// One ledger's records (iteration 02, D13: `/<interface>/<version>/<resource>`); one producer
+/// stream of it when the query names `producer_class`, `producer` and `instance`.
+pub const RECORDS_PATH: &str = "/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records";
+/// One occurrence of a ledger, by the identifier its caller stated.
+pub const RECORD_PATH: &str = "/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records/{event_id}";
 /// Which key signed which stretch of each producer stream of one ledger.
-pub const SIGNERS_PATH: &str = "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/signers";
+pub const SIGNERS_PATH: &str = "/events/v1alpha1/zones/{zone}/ledgers/{ledger}/signers";
 
 /// Everything a request means, shared by both transports.
 #[derive(Clone)]
@@ -414,7 +415,6 @@ pub fn routes(facade: EventFacade) -> Router {
     Router::new()
         .route(RECORDS_PATH, get(records))
         .route(RECORD_PATH, get(record))
-        .route(TENANT_RECORDS_PATH, get(tenant_records))
         .route(SIGNERS_PATH, get(signers))
         .route(super::configuration::CONFIGURATION_PATH, get(document))
         .with_state(facade)
@@ -670,91 +670,56 @@ fn reading(extra: &[&'static str]) -> Vec<&'static str> {
 async fn records(
     State(facade): State<EventFacade>,
     permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
+    Path((zone, ledger)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let asked = match asked_of(
-        query.as_deref(),
-        &reading(&["zone", "ledger", "producer_class"]),
-    ) {
+    let asked = match asked_of(query.as_deref(), &reading(&["producer_class"])) {
         Ok(asked) => asked,
         Err(error) => return refuse(&facade, error),
     };
     let named = |wanted: &str| asked.value(wanted);
-    let (Some(zone), Some(ledger), Some(class), Some(producer), Some(instance)) = (
-        named("zone"),
-        named("ledger"),
+    // The ledger's records, `producer` and `instance` filtering them; or, `producer_class` named
+    // with both, one producer stream of them, read in its own order.
+    let (scope, shape) = match (
         named("producer_class"),
         named("producer"),
         named("instance"),
-    ) else {
-        return refuse(
-            &facade,
-            ApiError::new(
-                ErrorClass::Validation,
-                permguard_core::codes::stream::STREAM_REQUIRED,
-                "a deployment-wide read names one producer stream: \
-                 `?zone=&ledger=&producer_class=&producer=&instance=`",
-            ),
-        );
+    ) {
+        (None, ..) => (Scope::Tenant { zone, ledger }, "tenant"),
+        (Some(class), Some(producer), Some(instance)) => (
+            Scope::Stream {
+                zone,
+                ledger,
+                class,
+                producer,
+                instance,
+            },
+            "stream",
+        ),
+        (Some(_), ..) => {
+            return refuse(
+                &facade,
+                ApiError::new(
+                    ErrorClass::Validation,
+                    permguard_core::codes::stream::STREAM_REQUIRED,
+                    "one producer stream is named whole: `?producer_class=&producer=&instance=`",
+                ),
+            );
+        }
     };
 
-    serve(
-        facade,
-        actor,
-        Scope::Stream {
-            zone,
-            ledger,
-            class,
-            producer,
-            instance,
-        },
-        asked,
-        "stream",
-    )
-    .await
-}
-
-async fn tenant_records(
-    State(facade): State<EventFacade>,
-    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
-    Path((zone, ledger)): Path<(String, String)>,
-    RawQuery(query): RawQuery,
-) -> Response {
-    let asked = match asked_of(query.as_deref(), &reading(&[])) {
-        Ok(asked) => asked,
-        Err(error) => return refuse(&facade, error),
-    };
-
-    serve(
-        facade,
-        actor,
-        Scope::Tenant { zone, ledger },
-        asked,
-        "tenant",
-    )
-    .await
+    serve(facade, actor, scope, asked, shape).await
 }
 
 async fn record(
     State(facade): State<EventFacade>,
     permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
-    Path(event_id): Path<String>,
+    Path((zone, ledger, event_id)): Path<(String, String, String)>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let asked = match asked_of(query.as_deref(), &["zone", "ledger"]) {
-        Ok(asked) => asked,
-        Err(error) => return refuse(&facade, error),
-    };
-    let (Some(zone), Some(ledger)) = (asked.value("zone"), asked.value("ledger")) else {
-        return refuse(
-            &facade,
-            ApiError::new(
-                ErrorClass::Validation,
-                permguard_core::codes::pdp_temporal::STORE_REQUIRED,
-                "one occurrence is read inside one ledger: `?zone=&ledger=`",
-            ),
-        );
-    };
+    if let Err(error) = asked_of(query.as_deref(), &[]) {
+        return refuse(&facade, error);
+    }
     // Resolved like every other read, and like the gRPC `get` beside it. Without this the two
     // transports answered the same request differently: gRPC found the record by name, REST looked
     // for a directory named after it and reported the occurrence missing.
@@ -1431,21 +1396,21 @@ mod gate {
         let held = facade("ledger", "plane/control/zone/acme/ledger/main");
         let stream = |ledger: &str| {
             format!(
-                "/events/v1alpha1/records?zone=acme&ledger={ledger}&producer_class={}&producer=p&instance=i",
+                "/events/v1alpha1/zones/acme/ledgers/{ledger}/records?producer_class={}&producer=p&instance=i",
                 permguard_events::PRODUCER_CLASS_DATA_PLANE
             )
         };
         for (granted, answered, refused) in [
             (
-                "/v1/zones/acme/ledgers/main/events/v1alpha1/records".to_owned(),
+                "/events/v1alpha1/zones/acme/ledgers/main/records".to_owned(),
                 StatusCode::OK,
-                "/v1/zones/acme/ledgers/audit/events/v1alpha1/records".to_owned(),
+                "/events/v1alpha1/zones/acme/ledgers/audit/records".to_owned(),
             ),
             (stream("main"), StatusCode::NOT_FOUND, stream("audit")),
             (
-                "/events/v1alpha1/records/e-1?zone=acme&ledger=main".to_owned(),
+                "/events/v1alpha1/zones/acme/ledgers/main/records/e-1".to_owned(),
                 StatusCode::NOT_FOUND,
-                "/events/v1alpha1/records/e-1?zone=acme&ledger=audit".to_owned(),
+                "/events/v1alpha1/zones/acme/ledgers/audit/records/e-1".to_owned(),
             ),
         ] {
             assert_eq!(status(&held, &granted).await, answered, "{granted}");
@@ -1515,7 +1480,7 @@ mod gate {
             ..facade("before", "plane/data/*")
         };
         assert_eq!(
-            status(&held, "/v1/zones/acme/ledgers/main/events/v1alpha1/records").await,
+            status(&held, "/events/v1alpha1/zones/acme/ledgers/main/records").await,
             StatusCode::FORBIDDEN
         );
         let mut asked = tonic::Request::new(crate::v1::ListRecordsRequest {
@@ -1584,8 +1549,8 @@ mod gate {
             "unknown-ledger",
             &format!("plane/control/zone/{}/ledger/{}", zone.id, main.id),
         );
-        let records = |name: &str| format!("/v1/zones/acme/ledgers/{name}/events/v1alpha1/records");
-        let record = |name: &str| format!("/events/v1alpha1/records/e-1?zone=acme&ledger={name}");
+        let records = |name: &str| format!("/events/v1alpha1/zones/acme/ledgers/{name}/records");
+        let record = |name: &str| format!("/events/v1alpha1/zones/acme/ledgers/{name}/records/e-1");
         assert_eq!(status(&ledger, &records("main")).await, StatusCode::OK);
         for path in [
             records("audit"),

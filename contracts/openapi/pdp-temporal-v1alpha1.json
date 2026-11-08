@@ -105,7 +105,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.data.v1.TemporalPolicyDecisionPoint/SubmitEvent"
+        "x-grpc-rpc": "permguard.data.v1.TemporalPolicyDecisionPoint/SubmitEvent",
+        "x-permguard-endpoint": {
+          "plane": "data",
+          "category": "temporal events",
+          "credential": "application token",
+          "operation": "event.submit",
+          "target": "plane/data/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
     "/.well-known/permguard-pdp-temporal-v1alpha1-configuration": {
@@ -124,17 +131,22 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.data.v1.TemporalPolicyDecisionPoint/GetTemporalConfiguration"
+        "x-grpc-rpc": "permguard.data.v1.TemporalPolicyDecisionPoint/GetTemporalConfiguration",
+        "x-permguard-endpoint": {
+          "plane": "data",
+          "category": "discovery",
+          "credential": "no"
+        }
       }
     },
-    "/events/v1alpha1/signers": {
+    "/temporal/v1alpha1/zones/{zone}/ledgers/{ledger}/signers": {
       "get": {
         "operationId": "pdpTemporalSigners",
         "summary": "This plane's journal watermarks and signer spans for one ledger.",
         "parameters": [
           {
             "name": "zone",
-            "in": "query",
+            "in": "path",
             "required": true,
             "description": "The zone.",
             "schema": {
@@ -144,7 +156,7 @@
           },
           {
             "name": "ledger",
-            "in": "query",
+            "in": "path",
             "required": true,
             "description": "The ledger.",
             "schema": {
@@ -217,7 +229,12 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.data.v1.TemporalPolicyDecisionPoint/GetSigners"
+        "x-grpc-rpc": "permguard.data.v1.TemporalPolicyDecisionPoint/GetSigners",
+        "x-permguard-endpoint": {
+          "plane": "data",
+          "category": "temporal events",
+          "credential": "no"
+        }
       }
     }
   },

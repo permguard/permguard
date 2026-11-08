@@ -380,7 +380,7 @@ task cli -- decisions list --zone delivery --ledger release-pipeline
 Verify it without trusting the server that served it:
 
 ```bash
-curl -s http://127.0.0.1:7443/data-plane/keys -o /tmp/pdp-keys.json
+curl -s http://127.0.0.1:7443/data-plane/v1/keys -o /tmp/pdp-keys.json
 permguard decisions list --zone delivery --ledger release-pipeline \
   --verify --keys /tmp/pdp-keys.json
 ```
@@ -389,7 +389,7 @@ permguard decisions list --zone delivery --ledger release-pipeline \
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-curl -s http://127.0.0.1:7443/data-plane/keys -o /tmp/pdp-keys.json
+curl -s http://127.0.0.1:7443/data-plane/v1/keys -o /tmp/pdp-keys.json
 task cli -- decisions list --zone delivery --ledger release-pipeline \
   --verify --keys /tmp/pdp-keys.json
 ```

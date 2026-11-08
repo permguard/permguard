@@ -79,7 +79,7 @@ log:
 dataPlane:
   # The plane's signing ring: it will sign the decision responses this plane returns. Part of
   # the model, like the control plane's ring — its own keys, never the operations ring that
-  # seals the audit trail. Published as JWKS at /data-plane/keys and named by
+  # seals the audit trail. Published as JWKS at /data-plane/v1/keys and named by
   # /.well-known/server-configuration. Lifecycle follows operations.keys.
   # keys:
   #   enabled: "true"          # absent: follows operations.keys.enabled
@@ -334,7 +334,7 @@ experimental:
     enabled: "false"
 
 # Server Host operations surface: process discovery, health, readiness, version, metrics — and
-# the operations ring published as a JWKS at /server-host/keys (a redirect to a Host listener
+# the operations ring published as a JWKS at /server-host/v1/keys (a redirect to a Host listener
 # that serves plain TLS; behind a client CA the ring stays here). This surface is what every
 # Permguard deployment exposes identically, so it defaults to 0.0.0.0:5443 even when this
 # section is absent; `addr: off` is the explicit opt-out for a process that must expose nothing.

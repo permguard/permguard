@@ -56,7 +56,7 @@ Consumers page through immutable records with an opaque cursor:
 
 ```sh
 curl -s \
-  'http://127.0.0.1:6443/v1/zones/acme/ledgers/sessions/events/v1alpha1/records?limit_records=100' \
+  'http://127.0.0.1:6443/events/v1alpha1/zones/acme/ledgers/sessions/records?limit_records=100' \
   | jq
 ```
 

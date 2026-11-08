@@ -35,10 +35,15 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetServerConfiguration",
-        "x-grpc-note": "gRPC returns the document as a JSON string (`GetServerConfigurationResponse.document_json`), control plane only; the data plane and the telemetry listener have no gRPC counterpart."
+        "x-grpc-note": "gRPC returns the document as a JSON string (`GetServerConfigurationResponse.document_json`), control plane only; the data plane and the telemetry listener have no gRPC counterpart.",
+        "x-permguard-endpoint": {
+          "plane": "every surface",
+          "category": "discovery",
+          "credential": "no"
+        }
       }
     },
-    "/v1/streams": {
+    "/streams/v1": {
       "get": {
         "operationId": "listStreams",
         "summary": "The evidence streams a plane declares, enabled or not",
@@ -55,7 +60,12 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "No gRPC method lists the declared streams; REST-only."
+        "x-grpc-note": "No gRPC method lists the declared streams; REST-only.",
+        "x-permguard-endpoint": {
+          "plane": "every surface",
+          "category": "discovery",
+          "credential": "no"
+        }
       }
     }
   },
@@ -427,7 +437,7 @@
           "streams"
         ],
         "additionalProperties": false,
-        "description": "The body of `/v1/streams`, built with `json!` in `streams_route`.",
+        "description": "The body of `/streams/v1`, built with `json!` in `streams_route`.",
         "x-grpc-message": null,
         "x-grpc-note": "REST-only: no gRPC method lists streams."
       },

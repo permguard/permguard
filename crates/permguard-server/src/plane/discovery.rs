@@ -162,7 +162,7 @@ fn grpc_only_planes(config: &Config) -> Vec<(&'static str, String)> {
 
 /// What this plane was told to advertise, when it was told anything.
 ///
-/// A trailing slash is trimmed: every caller of this appends a path, and `…//v1/zones` is not the
+/// A trailing slash is trimmed: every caller of this appends a path, and `…//catalog/v1/zones` is not the
 /// address anybody meant.
 fn advertised_url(config: &Config, plane: PlaneId) -> Option<String> {
     config
@@ -244,7 +244,7 @@ pub fn host_api_base(config: &Config) -> Option<String> {
 }
 
 /// Where the operations ring's public set lives once the Host listener serves it to everybody:
-/// the `Location` the telemetry listener's `/server-host/keys` redirects to, and the `jwks_uri`
+/// the `Location` the telemetry listener's `/server-host/v1/keys` redirects to, and the `jwks_uri`
 /// the registry publishes. `None` without a Host listener, and `None` when the Host listener
 /// demands a client certificate (owner decision, 2026-10-06, after the review): a verifier
 /// following `jwks_uri` holds no operator certificate, so the ring stays published where it
@@ -271,7 +271,7 @@ pub fn plane_http_base(config: &Config, plane: PlaneId) -> Option<String> {
         .map(|held| held.http_base)
 }
 
-/// The `GET /v1/streams` discovery route: every evidence stream this plane declares, enabled or
+/// The `GET /streams/v1` discovery route: every evidence stream this plane declares, enabled or
 /// not.
 ///
 /// "Not here" and "here, turned off" are different answers, and a caller deciding where to read
@@ -290,7 +290,7 @@ pub fn streams_route(streams: Vec<permguard_stream::StreamDescriptor>) -> axum::
     .to_string();
 
     axum::Router::new().route(
-        "/v1/streams",
+        "/streams/v1",
         get(move || {
             let document = document.clone();
             async move {
@@ -373,13 +373,13 @@ pub fn plane_configuration(config: &Config, plane: PlaneId) -> PlaneConfiguratio
     let jwks_uri = discovered_planes(config)
         .into_iter()
         .find(|held| held.id == plane.public_name())
-        .map(|held| format!("{}/{}/keys", held.http_base, held.id))
+        .map(|held| format!("{}/{}/v1/keys", held.http_base, held.id))
         .unwrap_or_default();
 
     let streams_endpoint = discovered_planes(config)
         .into_iter()
         .find(|held| held.id == plane.public_name())
-        .map(|held| format!("{}/v1/streams", held.http_base));
+        .map(|held| format!("{}/streams/v1", held.http_base));
 
     PlaneConfiguration {
         plane: plane.public_name().to_owned(),
@@ -460,7 +460,7 @@ pub fn server_configuration_document(
             .keys_enabled()
             .then(|| {
                 host_keys_location(config).or_else(|| {
-                    host_http_base(config).map(|base| format!("{base}/server-host/keys"))
+                    host_http_base(config).map(|base| format!("{base}/server-host/v1/keys"))
                 })
             })
             .flatten(),
@@ -663,7 +663,7 @@ mod document_tests {
             "{document}"
         );
         assert!(
-            document.contains("http://127.0.0.1:6443/control-plane/keys"),
+            document.contains("http://127.0.0.1:6443/control-plane/v1/keys"),
             "{document}"
         );
     }
@@ -703,7 +703,7 @@ mod document_tests {
         let registry =
             server_configuration_document(&config, &permguard_core::lifecycle::Lifecycle::new());
         assert!(
-            registry.contains("\"jwks_uri\":\"http://127.0.0.1:5443/server-host/keys\""),
+            registry.contains("\"jwks_uri\":\"http://127.0.0.1:5443/server-host/v1/keys\""),
             "{registry}"
         );
     }
@@ -905,7 +905,7 @@ mod document_tests {
                 .contains("\"jwks_uri\":\"https://127.0.0.1:5444/host/v1/keys/host.operations\""),
             "{registry}"
         );
-        assert!(!registry.contains("server-host/keys"), "{registry}");
+        assert!(!registry.contains("server-host/v1/keys"), "{registry}");
 
         // Without the listener nothing moved.
         let without = config_with(&[(permguard_core::config::SETTING_KEYS_ENABLED, "true")]);
@@ -963,7 +963,7 @@ mod document_tests {
         assert_eq!(host_keys_location(&mutual), None);
         assert!(
             server_configuration_document(&mutual, &permguard_core::lifecycle::Lifecycle::new())
-                .contains("\"jwks_uri\":\"http://127.0.0.1:5443/server-host/keys\""),
+                .contains("\"jwks_uri\":\"http://127.0.0.1:5443/server-host/v1/keys\""),
             "the registry keeps the legacy route"
         );
     }

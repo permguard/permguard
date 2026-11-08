@@ -140,7 +140,7 @@ const ZONE: &str = "z-1";
 const LEDGER: &str = "l-1";
 
 fn base() -> String {
-    format!("/v1/zones/{ZONE}/ledgers/{LEDGER}")
+    format!("/notp/v1/zones/{ZONE}/ledgers/{LEDGER}")
 }
 
 fn connected(stub: &Stub) -> HttpRemote {
@@ -269,7 +269,7 @@ fn a_push_rides_cbor_and_honours_the_advertised_compression() {
     route(
         &mut routes,
         "POST",
-        &format!("{}/notp/push/negotiate", base()),
+        &format!("{}/push/negotiate", base()),
         200,
         NegotiatePushResponse {
             missing: vec![d1.clone()],
@@ -286,7 +286,7 @@ fn a_push_rides_cbor_and_honours_the_advertised_compression() {
     route(
         &mut routes,
         "POST",
-        &format!("{}/notp/objects", base()),
+        &format!("{}/objects", base()),
         200,
         UploadObjectsResponse {
             received: vec![d1.clone()],
@@ -327,7 +327,7 @@ fn a_push_rides_cbor_and_honours_the_advertised_compression() {
     let seen = stub.seen.lock().expect("the stub recorded");
     let (_, body) = seen
         .iter()
-        .find(|(path, _)| path.ends_with("/notp/objects"))
+        .find(|(path, _)| path.ends_with("/objects"))
         .expect("the upload was seen");
     let decoded = UploadObjectsRequest::decode(body).expect("the body is a NOTP message");
     assert_eq!(decoded.compression.as_deref(), Some("deflate"));
@@ -351,7 +351,7 @@ fn a_pull_undoes_the_compression_the_server_applied() {
     route(
         &mut routes,
         "POST",
-        &format!("{}/notp/pull/negotiate", base()),
+        &format!("{}/pull/negotiate", base()),
         200,
         NegotiatePullResponse {
             head: digest.clone(),
@@ -371,7 +371,7 @@ fn a_pull_undoes_the_compression_the_server_applied() {
     route(
         &mut routes,
         "POST",
-        &format!("{}/notp/objects/fetch", base()),
+        &format!("{}/objects/fetch", base()),
         200,
         permguard_notp::FetchObjectsResponse {
             objects: vec![compress::deflate(&object)],
@@ -415,7 +415,7 @@ fn a_refusal_carries_the_servers_own_words() {
     route(
         &mut routes,
         "POST",
-        &format!("{}/notp/push/commit", base()),
+        &format!("{}/push/commit", base()),
         409,
         br#"{"class":"conflict","code":"ref_conflict","message":"the ref moved: negotiate again from the current head"}"#.to_vec(),
     );
@@ -474,7 +474,7 @@ fn a_token_never_travels_over_rest_in_the_clear() {
     route(
         &mut routes,
         "POST",
-        &format!("{}/notp/push/negotiate", base()),
+        &format!("{}/push/negotiate", base()),
         200,
         NegotiatePushResponse {
             missing: vec![d1.clone()],

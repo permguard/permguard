@@ -4,11 +4,12 @@
 //! The decision log's HTTP shape: one route to ship, and scoped routes to read.
 //!
 //! ```text
-//! GET  /decisions/v1/records                                     read, deployment-wide
-//! GET  /zones/{zone}/ledgers/{ledger}/decisions/v1/records       read, one tenant
+//! GET  /decisions/v1/streams/{pdp}/{instance}/records           read, one producer stream
+//! GET  /decisions/v1/streams/{pdp}/{instance}/signers           its signing-key spans
+//! GET  /decisions/v1/zones/{zone}/ledgers/{ledger}/records       read, one tenant
 //! ```
 //!
-//! The deployment-wide route exists because somebody has to be able to verify a
+//! The producer-stream route exists because somebody has to be able to verify a
 //! whole producer stream. It is the most powerful read in the system — every
 //! tenant's decisions, which is *who accessed what* — and it is the one place
 //! the two dimensions meet. When tokens arrive it must not be reachable by the
@@ -317,12 +318,12 @@ impl DecisionFacade {
     }
 }
 
-/// One producer stream's records.
-pub const RECORDS_PATH: &str = "/decisions/v1/records";
+/// One producer stream's records (iteration 02, D13: `/<interface>/<version>/<resource>`).
+pub const RECORDS_PATH: &str = "/decisions/v1/streams/{pdp}/{instance}/records";
 /// One tenant's records.
-pub const TENANT_RECORDS_PATH: &str = "/zones/{zone}/ledgers/{ledger}/decisions/v1/records";
+pub const TENANT_RECORDS_PATH: &str = "/decisions/v1/zones/{zone}/ledgers/{ledger}/records";
 /// One producer stream's signing-key spans.
-pub const SIGNERS_PATH: &str = "/decisions/v1/signers";
+pub const SIGNERS_PATH: &str = "/decisions/v1/streams/{pdp}/{instance}/signers";
 
 /// The routes the control plane answers about decisions.
 pub(crate) fn routes(facade: DecisionFacade) -> Router {
@@ -397,22 +398,12 @@ fn window_of(
 async fn records(
     State(facade): State<DecisionFacade>,
     permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
+    Path((pdp_id, instance)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let (window, query) = match window_of(query.as_deref(), &["pdp", "instance"]) {
+    let (window, _) = match window_of(query.as_deref(), &[]) {
         Ok(parsed) => parsed,
         Err(error) => return refuse(&facade, error),
-    };
-    let named = |wanted: &str| query.value(wanted);
-    let (Some(pdp_id), Some(instance)) = (named("pdp"), named("instance")) else {
-        return refuse(
-            &facade,
-            ApiError::new(
-                ErrorClass::Validation,
-                permguard_core::codes::stream::STREAM_REQUIRED,
-                "a deployment-wide read names one producer stream: `?pdp=<id>&instance=<id>`",
-            ),
-        );
     };
     let scope = Scope::Stream { pdp_id, instance };
 
@@ -420,26 +411,16 @@ async fn records(
 }
 
 /// Which key signed which stretch of one producer stream, public keys included.
-async fn signers(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery) -> Response {
-    let query = match crate::query::parse(
-        query.as_deref(),
-        &["pdp", "instance", "from_seq", "until_seq"],
-        &[],
-    ) {
+async fn signers(
+    State(facade): State<DecisionFacade>,
+    Path((pdp_id, instance)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let query = match crate::query::parse(query.as_deref(), &["from_seq", "until_seq"], &[]) {
         Ok(query) => query,
         Err(error) => return refuse(&facade, error),
     };
     let named = |wanted: &str| query.value(wanted);
-    let (Some(pdp_id), Some(instance)) = (named("pdp"), named("instance")) else {
-        return refuse(
-            &facade,
-            ApiError::new(
-                ErrorClass::Validation,
-                permguard_core::codes::stream::STREAM_REQUIRED,
-                "a signer manifest belongs to one producer stream: `?pdp=<id>&instance=<id>`",
-            ),
-        );
-    };
     let bound = |name: &str| -> Result<u64, String> {
         match named(name) {
             None => Ok(0),
@@ -1238,6 +1219,51 @@ mod strict {
         }
     }
 
+    /// WP-13.1: the decision routes are at their place in the API layout of iteration 02, and the
+    /// paths before it answer `404`: moved, never aliased (D18).
+    #[tokio::test]
+    async fn the_decision_routes_are_at_their_layout_paths_and_the_old_ones_are_gone() {
+        let router = routes(signing("layout"));
+        let status = |method: &'static str, path: &'static str| {
+            let router = router.clone();
+            async move {
+                router
+                    .oneshot(
+                        axum::http::Request::builder()
+                            .method(method)
+                            .uri(path)
+                            .body(axum::body::Body::empty())
+                            .expect("a request"),
+                    )
+                    .await
+                    .expect("answered")
+                    .status()
+            }
+        };
+        for path in [
+            "/decisions/v1/zones/z/ledgers/l/records",
+            "/decisions/v1/streams/p/i/records",
+            "/decisions/v1/streams/p/i/signers",
+        ] {
+            assert_eq!(
+                status("PUT", path).await,
+                StatusCode::METHOD_NOT_ALLOWED,
+                "{path} is served"
+            );
+        }
+        for path in [
+            "/zones/z/ledgers/l/decisions/v1/records",
+            "/decisions/v1/records",
+            "/decisions/v1/signers",
+        ] {
+            assert_eq!(
+                status("GET", path).await,
+                StatusCode::NOT_FOUND,
+                "{path} is gone"
+            );
+        }
+    }
+
     /// WP-6.3b: `pdp` and `instance` naming a Host run in hex answer its signers from the
     /// consumer, the run's own and no other's, cut to the range asked.
     #[tokio::test]
@@ -1246,7 +1272,7 @@ mod strict {
         let (pdp, instance) = (read::hex(&[0xa1; 16]), read::hex(&[0x01; 16]));
         let (status, body) = get(
             &router,
-            &format!("/decisions/v1/signers?pdp={pdp}&instance={instance}"),
+            &format!("/decisions/v1/streams/{pdp}/{instance}/signers"),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
@@ -1260,7 +1286,7 @@ mod strict {
         assert_eq!(kids, ["k1", "k2"]);
         let (_, later) = get(
             &router,
-            &format!("/decisions/v1/signers?pdp={pdp}&instance={instance}&from_seq=6"),
+            &format!("/decisions/v1/streams/{pdp}/{instance}/signers?from_seq=6"),
         )
         .await;
         assert_eq!(later["spans"][0]["kid"], "k2");
@@ -1319,7 +1345,7 @@ mod strict {
         let (status, body) = get(
             &router,
             &format!(
-                "/decisions/v1/signers?pdp={}&instance={}",
+                "/decisions/v1/streams/{}/{}/signers",
                 read::hex(&[0xa1; 16]),
                 read::hex(&[0x09; 16])
             ),
@@ -1418,9 +1444,9 @@ mod strict {
             ..facade("gate-tenant")
         };
         let router = as_actor(held.clone(), auditor());
-        let (status, body) = get(&router, "/zones/acme/ledgers/main/decisions/v1/records").await;
+        let (status, body) = get(&router, "/decisions/v1/zones/acme/ledgers/main/records").await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        let (status, body) = get(&router, "/zones/acme/ledgers/audit/decisions/v1/records").await;
+        let (status, body) = get(&router, "/decisions/v1/zones/acme/ledgers/audit/records").await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
         assert!(
             body.get("class").is_none(),
@@ -1428,7 +1454,7 @@ mod strict {
         );
         let (status, _) = get(
             &routes(held),
-            "/zones/acme/ledgers/main/decisions/v1/records",
+            "/decisions/v1/zones/acme/ledgers/main/records",
         )
         .await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -1468,18 +1494,18 @@ mod strict {
             "plane/control/zone/{}/ledger/{}",
             zone.id, main.id
         ));
-        let (status, _) = get(&ledger, "/zones/acme/ledgers/main/decisions/v1/records").await;
+        let (status, _) = get(&ledger, "/decisions/v1/zones/acme/ledgers/main/records").await;
         assert_eq!(
             status,
             StatusCode::OK,
             "granted by its ids, asked by its names"
         );
-        let foreign = get(&ledger, "/zones/acme/ledgers/audit/decisions/v1/records").await;
-        let unknown = get(&ledger, "/zones/acme/ledgers/nowhere/decisions/v1/records").await;
+        let foreign = get(&ledger, "/decisions/v1/zones/acme/ledgers/audit/records").await;
+        let unknown = get(&ledger, "/decisions/v1/zones/acme/ledgers/nowhere/records").await;
         assert_eq!(foreign.0, StatusCode::FORBIDDEN);
         assert_eq!(unknown, foreign, "indistinguishable");
         let plane = on("plane/control/*");
-        let (status, body) = get(&plane, "/zones/acme/ledgers/nowhere/decisions/v1/records").await;
+        let (status, body) = get(&plane, "/decisions/v1/zones/acme/ledgers/nowhere/records").await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
         assert_eq!(body["code"], permguard_core::codes::stream::SCOPE_UNKNOWN);
     }
@@ -1489,11 +1515,11 @@ mod strict {
     #[tokio::test]
     async fn a_decision_stream_read_takes_the_runs_ledger_or_the_whole_plane() {
         let host_run = format!(
-            "/decisions/v1/records?pdp={}&instance={}",
+            "/decisions/v1/streams/{}/{}/records",
             read::hex(&[0xa1; 16]),
             read::hex(&[0x01; 16])
         );
-        let legacy = "/decisions/v1/records?pdp=plane-a&instance=i-1";
+        let legacy = "/decisions/v1/streams/plane-a/i-1/records";
         let ledger = as_actor(
             DecisionFacade {
                 authorization: granted("plane/control/zone/acme/ledger/main"),
@@ -1539,7 +1565,7 @@ mod strict {
             ),
             ..facade("gate-before")
         };
-        let path = "/zones/acme/ledgers/main/decisions/v1/records";
+        let path = "/decisions/v1/zones/acme/ledgers/main/records";
         let (status, _) = get(&routes(held.clone()), path).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "nobody");
         let (status, _) = get(&as_actor(held, auditor()), path).await;
@@ -1573,7 +1599,7 @@ mod strict {
         let (status, body) = get(
             &router,
             &format!(
-                "/decisions/v1/signers?pdp={}&instance={}",
+                "/decisions/v1/streams/{}/{}/signers",
                 read::hex(&[0xa1; 16]),
                 read::hex(&[0x01; 16])
             ),
@@ -1582,7 +1608,7 @@ mod strict {
         assert_eq!(status, StatusCode::OK, "{body}");
         let (status, _) = get(&router, super::super::configuration::CONFIGURATION_PATH).await;
         assert_eq!(status, StatusCode::OK);
-        let (status, _) = get(&router, "/zones/acme/ledgers/main/decisions/v1/records").await;
+        let (status, _) = get(&router, "/decisions/v1/zones/acme/ledgers/main/records").await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "the records are");
     }
 
@@ -1662,7 +1688,7 @@ mod strict {
         let facade = facade("query");
         let keys = facade.cursor_key.clone();
         let router = anonymous(routes(facade));
-        let path = "/zones/acme/ledgers/main/decisions/v1/records";
+        let path = "/decisions/v1/zones/acme/ledgers/main/records";
         for query in [
             "color=red",
             "from=a&from=b",

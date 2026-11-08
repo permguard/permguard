@@ -100,7 +100,10 @@ message EventEndpoints {
   reserved "ingest";
   string records = 2;
   string record = 3;
-  string tenant_records = 4;
+  // Field 4 was `tenant_records`: one ledger's records are `records` itself since the API
+  // layout of iteration 02 (WP-13.1).
+  reserved 4;
+  reserved "tenant_records";
 }
 
 // How a reader's position is spelled.

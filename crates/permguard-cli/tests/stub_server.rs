@@ -155,7 +155,7 @@ fn zone_json(id: &str, name: &str) -> String {
 fn zones_commands_speak_to_a_server_end_to_end() {
     let mut routes = HashMap::new();
     routes.insert(
-        ("GET", "/v1/zones"),
+        ("GET", "/catalog/v1/zones"),
         (
             200,
             format!(
@@ -165,15 +165,27 @@ fn zones_commands_speak_to_a_server_end_to_end() {
             ),
         ),
     );
-    routes.insert(("POST", "/v1/zones"), (200, zone_json("z-3", "gamma")));
-    routes.insert(("GET", "/v1/zones/acme"), (200, zone_json("z-1", "acme")));
     routes.insert(
-        ("PATCH", "/v1/zones/acme"),
+        ("POST", "/catalog/v1/zones"),
+        (200, zone_json("z-3", "gamma")),
+    );
+    routes.insert(
+        ("GET", "/catalog/v1/zones/acme"),
+        (200, zone_json("z-1", "acme")),
+    );
+    routes.insert(
+        ("PATCH", "/catalog/v1/zones/acme"),
         (200, zone_json("z-1", "renamed")),
     );
-    routes.insert(("GET", "/v1/zones/z-2"), (200, zone_json("z-2", "beta")));
-    routes.insert(("DELETE", "/v1/zones/z-2"), (200, zone_json("z-2", "beta")));
-    routes.insert(("GET", "/v1/zones/missing"), (
+    routes.insert(
+        ("GET", "/catalog/v1/zones/z-2"),
+        (200, zone_json("z-2", "beta")),
+    );
+    routes.insert(
+        ("DELETE", "/catalog/v1/zones/z-2"),
+        (200, zone_json("z-2", "beta")),
+    );
+    routes.insert(("GET", "/catalog/v1/zones/missing"), (
         404,
         r#"{"class":"not_found","code":"zone_not_found","message":"nothing answers to missing"}"#
             .to_owned(),
@@ -239,20 +251,23 @@ fn ledgers_commands_speak_to_a_server_end_to_end() {
     let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":1,"state":"active"}"#;
     let mut routes = HashMap::new();
     routes.insert(
-        ("GET", "/v1/zones/acme/ledgers"),
+        ("GET", "/catalog/v1/zones/acme/ledgers"),
         (200, format!("[{ledger}]")),
     );
-    routes.insert(("POST", "/v1/zones/acme/ledgers"), (200, ledger.to_owned()));
     routes.insert(
-        ("GET", "/v1/zones/acme/ledgers/main-ledger"),
+        ("POST", "/catalog/v1/zones/acme/ledgers"),
         (200, ledger.to_owned()),
     );
     routes.insert(
-        ("PATCH", "/v1/zones/acme/ledgers/main-ledger"),
+        ("GET", "/catalog/v1/zones/acme/ledgers/main-ledger"),
         (200, ledger.to_owned()),
     );
     routes.insert(
-        ("DELETE", "/v1/zones/acme/ledgers/main-ledger"),
+        ("PATCH", "/catalog/v1/zones/acme/ledgers/main-ledger"),
+        (200, ledger.to_owned()),
+    );
+    routes.insert(
+        ("DELETE", "/catalog/v1/zones/acme/ledgers/main-ledger"),
         (200, ledger.to_owned()),
     );
     let stub = serve(routes);
@@ -306,10 +321,10 @@ fn the_cli_renames_with_the_revision_it_read() {
     let zone = r#"{"id":"z-1","name":"acme","created_at":1,"updated_at":1,"revision":7}"#;
     let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":4}"#;
     let mut routes = HashMap::new();
-    routes.insert(("GET", "/v1/zones/acme"), (200, zone.to_owned()));
-    routes.insert(("PATCH", "/v1/zones/acme"), (200, zone.to_owned()));
-    routes.insert(("DELETE", "/v1/zones/acme"), (200, zone.to_owned()));
-    let path = "/v1/zones/acme/ledgers/main-ledger";
+    routes.insert(("GET", "/catalog/v1/zones/acme"), (200, zone.to_owned()));
+    routes.insert(("PATCH", "/catalog/v1/zones/acme"), (200, zone.to_owned()));
+    routes.insert(("DELETE", "/catalog/v1/zones/acme"), (200, zone.to_owned()));
+    let path = "/catalog/v1/zones/acme/ledgers/main-ledger";
     routes.insert(("GET", path), (200, ledger.to_owned()));
     routes.insert(("PATCH", path), (200, ledger.to_owned()));
     routes.insert(("DELETE", path), (200, ledger.to_owned()));
@@ -330,7 +345,7 @@ fn the_cli_renames_with_the_revision_it_read() {
 
     let read_first = sent(&["zones", "update", "acme", "--name", "renamed"]);
     assert_eq!(read_first.len(), 2, "{read_first:?}");
-    assert!(read_first[0].starts_with("GET /v1/zones/acme "));
+    assert!(read_first[0].starts_with("GET /catalog/v1/zones/acme "));
     let rename = body(&read_first[1]);
     assert_eq!(rename["expected_revision"], 7);
     assert_eq!(rename["name"], "renamed");
@@ -359,7 +374,7 @@ fn the_cli_renames_with_the_revision_it_read() {
 
     let delete = sent(&["zones", "delete", "acme"]);
     assert!(
-        delete[1].starts_with("DELETE /v1/zones/acme?"),
+        delete[1].starts_with("DELETE /catalog/v1/zones/acme?"),
         "{delete:?}"
     );
     assert!(delete[1].contains("expected_revision=7"), "{delete:?}");
@@ -412,7 +427,7 @@ fn the_cli_renames_with_the_revision_it_read() {
 /// report shows the state.
 #[test]
 fn the_cli_archives_and_restores_with_the_revision_it_read() {
-    let path = "/v1/zones/acme/ledgers/main-ledger";
+    let path = "/catalog/v1/zones/acme/ledgers/main-ledger";
     let ledger = |state: &str, revision: u64| {
         format!(
             r#"{{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":{revision},"state":"{state}"}}"#

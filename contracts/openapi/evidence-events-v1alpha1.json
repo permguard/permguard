@@ -7,14 +7,14 @@
     "description": "The event log on the control plane, `permguard.api.events.native.v1alpha1`: shipping signed batches, reading blocks of records, signer histories and the discovery document."
   },
   "paths": {
-    "/events/v1alpha1/records": {
+    "/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records/{event_id}": {
       "get": {
-        "operationId": "readEventStream",
-        "summary": "Read one producer stream, administratively",
+        "operationId": "getEventRecord",
+        "summary": "Read one occurrence by its identifier",
         "parameters": [
           {
             "name": "zone",
-            "in": "query",
+            "in": "path",
             "required": true,
             "description": "The zone.",
             "schema": {
@@ -24,7 +24,7 @@
           },
           {
             "name": "ledger",
-            "in": "query",
+            "in": "path",
             "required": true,
             "description": "The ledger.",
             "schema": {
@@ -32,270 +32,6 @@
             },
             "x-grpc-field": "ledger"
           },
-          {
-            "name": "producer_class",
-            "in": "query",
-            "required": true,
-            "description": "The producer class.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "producer_class"
-          },
-          {
-            "name": "producer",
-            "in": "query",
-            "required": true,
-            "description": "The producer id; also a filter on the tenant read.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "producer"
-          },
-          {
-            "name": "instance",
-            "in": "query",
-            "required": true,
-            "description": "The producer incarnation.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "instance"
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "required": false,
-            "description": "Authenticated offset from a previous page's `next`.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "from"
-          },
-          {
-            "name": "until",
-            "in": "query",
-            "required": false,
-            "description": "The `high_watermark` of an export's first page.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "until"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "description": "Alias of `limit_records`.",
-            "schema": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "x-grpc-field": null,
-            "x-grpc-note": "an alias of `limit_records` kept for older callers; gRPC has only `limit_records`"
-          },
-          {
-            "name": "limit_records",
-            "in": "query",
-            "required": false,
-            "description": "Record bound, clamped by the server.",
-            "schema": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "x-grpc-field": "limit_records"
-          },
-          {
-            "name": "limit_bytes",
-            "in": "query",
-            "required": false,
-            "description": "Byte bound, clamped by the server.",
-            "schema": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "x-grpc-field": "limit_bytes"
-          },
-          {
-            "name": "proof",
-            "in": "query",
-            "required": false,
-            "description": "Include signed envelopes and inclusion paths.",
-            "schema": {
-              "type": "boolean"
-            },
-            "x-grpc-field": "proof"
-          },
-          {
-            "name": "event_type",
-            "in": "query",
-            "required": false,
-            "description": "Exact event type; repeat the parameter to ask for several.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "event_types",
-            "x-grpc-note": "repeated `event_type` query parameters carry the list `event_types`"
-          },
-          {
-            "name": "profile",
-            "in": "query",
-            "required": false,
-            "description": "Exact profile.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "profile"
-          },
-          {
-            "name": "policy_partition",
-            "in": "query",
-            "required": false,
-            "description": "Exact policy partition.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "policy_partition"
-          },
-          {
-            "name": "kind",
-            "in": "query",
-            "required": false,
-            "description": "Exact kind.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "kind"
-          },
-          {
-            "name": "event_id",
-            "in": "query",
-            "required": false,
-            "description": "Exact event identifier.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "event_id"
-          },
-          {
-            "name": "history",
-            "in": "query",
-            "required": false,
-            "description": "Exact history key digest.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "history"
-          },
-          {
-            "name": "since",
-            "in": "query",
-            "required": false,
-            "description": "Occurrence time lower bound (canonical UTC instant).",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "since"
-          },
-          {
-            "name": "until_time",
-            "in": "query",
-            "required": false,
-            "description": "Occurrence time upper bound (canonical UTC instant).",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "until_time"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "One block of event records.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EventBlock"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "A malformed, foreign or tampered offset, or a missing stream selector.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "common.json#/components/schemas/WireError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
-            "headers": {
-              "WWW-Authenticate": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "common.json#/components/schemas/WireDenial"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "A known peer without standing, on a surface gated by an allow list.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "common.json#/components/schemas/WireDenial"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The ledger or scope is not held.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "common.json#/components/schemas/WireError"
-                }
-              }
-            }
-          },
-          "410": {
-            "description": "The offset fell behind retention.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "stream-common.json#/components/schemas/OffsetExpired"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "The store is unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "common.json#/components/schemas/WireError"
-                }
-              }
-            }
-          }
-        },
-        "x-grpc-rpc": "permguard.control.v1.EventLog/ListRecords",
-        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
-      }
-    },
-    "/events/v1alpha1/records/{event_id}": {
-      "get": {
-        "operationId": "getEventRecord",
-        "summary": "Read one occurrence by its identifier",
-        "parameters": [
           {
             "name": "event_id",
             "in": "path",
@@ -305,26 +41,6 @@
               "type": "string"
             },
             "x-grpc-field": "event_id"
-          },
-          {
-            "name": "zone",
-            "in": "query",
-            "required": true,
-            "description": "The zone.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "zone"
-          },
-          {
-            "name": "ledger",
-            "in": "query",
-            "required": true,
-            "description": "The ledger.",
-            "schema": {
-              "type": "string"
-            },
-            "x-grpc-field": "ledger"
           }
         ],
         "responses": {
@@ -397,10 +113,17 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.EventLog/GetRecord",
-        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c).",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "evidence",
+          "credential": "credential or access token",
+          "operation": "evidence.read",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records": {
+    "/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records": {
       "get": {
         "operationId": "readEventTenant",
         "summary": "Read one tenant's events",
@@ -424,6 +147,16 @@
               "type": "string"
             },
             "x-grpc-field": "ledger"
+          },
+          {
+            "name": "producer_class",
+            "in": "query",
+            "required": false,
+            "description": "The producer class. Named with `producer` and `instance`, the read is that one producer stream, in its own order; without it, `producer` and `instance` filter the ledger's records.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "producer_class"
           },
           {
             "name": "producer",
@@ -675,10 +408,17 @@
           "producer_class"
         ],
         "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ListRecordsRequest`: `producer_class`.",
-        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c).",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "evidence",
+          "credential": "credential or access token",
+          "operation": "evidence.read",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/signers": {
+    "/events/v1alpha1/zones/{zone}/ledgers/{ledger}/signers": {
       "get": {
         "operationId": "getEventSigners",
         "summary": "Which key signed which stretch of each producer stream of one ledger",
@@ -835,7 +575,12 @@
         "x-grpc-only": [
           "after"
         ],
-        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.GetSignersRequest`: `after`."
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.GetSignersRequest`: `after`.",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "evidence",
+          "credential": "no"
+        }
       }
     },
     "/.well-known/permguard-events-native-v1alpha1-configuration": {
@@ -854,7 +599,12 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.EventLog/GetEventConfiguration"
+        "x-grpc-rpc": "permguard.control.v1.EventLog/GetEventConfiguration",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "discovery",
+          "credential": "no"
+        }
       }
     }
   },
@@ -1337,23 +1087,18 @@
         "properties": {
           "records": {
             "type": "string",
-            "x-grpc-field": "records"
+            "x-grpc-field": "records",
+            "description": "One ledger's records, or one producer stream of them when the query names `producer_class`, `producer` and `instance`: a template containing `{zone}` and `{ledger}`."
           },
           "record": {
             "type": "string",
-            "description": "A template containing `{event_id}`.",
+            "description": "One occurrence of a ledger: a template containing `{zone}`, `{ledger}` and `{event_id}`.",
             "x-grpc-field": "record"
-          },
-          "tenant_records": {
-            "type": "string",
-            "description": "A template containing `{zone}` and `{ledger}`.",
-            "x-grpc-field": "tenant_records"
           }
         },
         "required": [
           "records",
-          "record",
-          "tenant_records"
+          "record"
         ],
         "additionalProperties": false,
         "x-grpc-message": "permguard.control.v1.EventEndpoints"

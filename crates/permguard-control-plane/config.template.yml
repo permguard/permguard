@@ -92,7 +92,7 @@ log:
 controlPlane:
   # The plane's signing ring: what the control plane serves is attested with these keys —
   # NOTP head statements today. Its own ring, never the operations ring that seals the audit
-  # trail; published as JWKS at /control-plane/keys and named by /.well-known/server-configuration.
+  # trail; published as JWKS at /control-plane/v1/keys and named by /.well-known/server-configuration.
   # Lifecycle (publish_ahead, rotate_every, retain) follows operations.keys.
   # keys:
   #   enabled: "true"          # absent: follows operations.keys.enabled
@@ -216,7 +216,7 @@ experimental:
     enabled: "false"
 
 # Server Host operations surface: process discovery, health, readiness, version, metrics — and
-# the operations ring published as a JWKS at /server-host/keys (a redirect to a Host listener
+# the operations ring published as a JWKS at /server-host/v1/keys (a redirect to a Host listener
 # that serves plain TLS; behind a client CA the ring stays here). This surface is what every
 # Permguard deployment exposes identically, so it defaults to 0.0.0.0:5443 even when this
 # section is absent; `addr: off` is the explicit opt-out for a process that must expose nothing.

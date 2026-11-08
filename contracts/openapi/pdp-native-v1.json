@@ -105,7 +105,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.data.v1.PolicyDecisionPoint/Evaluate"
+        "x-grpc-rpc": "permguard.data.v1.PolicyDecisionPoint/Evaluate",
+        "x-permguard-endpoint": {
+          "plane": "data",
+          "category": "decisions",
+          "credential": "application token",
+          "operation": "decision.evaluate",
+          "target": "plane/data/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
     "/access/v1/evaluations": {
@@ -206,7 +213,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.data.v1.PolicyDecisionPoint/EvaluateMany"
+        "x-grpc-rpc": "permguard.data.v1.PolicyDecisionPoint/EvaluateMany",
+        "x-permguard-endpoint": {
+          "plane": "data",
+          "category": "decisions",
+          "credential": "application token",
+          "operation": "decision.evaluate",
+          "target": "plane/data/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
     "/.well-known/permguard-pdp-v1-configuration": {
@@ -225,7 +239,12 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.data.v1.PolicyDecisionPoint/GetConfiguration"
+        "x-grpc-rpc": "permguard.data.v1.PolicyDecisionPoint/GetConfiguration",
+        "x-permguard-endpoint": {
+          "plane": "data",
+          "category": "discovery",
+          "credential": "no"
+        }
       }
     }
   },

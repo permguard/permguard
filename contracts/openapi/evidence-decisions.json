@@ -7,14 +7,14 @@
     "description": "The decision log on the control plane: shipping signed batches, reading blocks of records, and the signer manifest."
   },
   "paths": {
-    "/decisions/v1/records": {
+    "/decisions/v1/streams/{pdp}/{instance}/records": {
       "get": {
         "operationId": "readDecisionStream",
         "summary": "Read one producer stream, deployment-wide",
         "parameters": [
           {
             "name": "pdp",
-            "in": "query",
+            "in": "path",
             "required": true,
             "description": "The producer's `pdp_id`.",
             "schema": {
@@ -24,7 +24,7 @@
           },
           {
             "name": "instance",
-            "in": "query",
+            "in": "path",
             "required": true,
             "description": "The producer incarnation.",
             "schema": {
@@ -161,10 +161,17 @@
           "ledger"
         ],
         "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `zone`, `ledger`.",
-        "description": "Under `evidence.read` on the ledger of the Host run `pdp` and `instance` name, or on `plane/control` whole for a legacy stream mixing tenants, authorized before any lookup (WP-6.3c)."
+        "description": "Under `evidence.read` on the ledger of the Host run `pdp` and `instance` name, or on `plane/control` whole for a legacy stream mixing tenants, authorized before any lookup (WP-6.3c).",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "evidence (producer stream)",
+          "credential": "credential or access token",
+          "operation": "evidence.read",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id> | plane/control (a legacy stream mixing tenants)"
+        }
       }
     },
-    "/zones/{zone}/ledgers/{ledger}/decisions/v1/records": {
+    "/decisions/v1/zones/{zone}/ledgers/{ledger}/records": {
       "get": {
         "operationId": "readDecisionTenant",
         "summary": "Read one tenant's decisions",
@@ -318,17 +325,24 @@
           "instance"
         ],
         "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `pdp`, `instance`.",
-        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c)."
+        "description": "Under `evidence.read` on the ledger in the Control Plane's tree, `plane/control/zone/{zone_id}/ledger/{ledger_id}`, authorized before any lookup (WP-6.3c).",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "evidence",
+          "credential": "credential or access token",
+          "operation": "evidence.read",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
-    "/decisions/v1/signers": {
+    "/decisions/v1/streams/{pdp}/{instance}/signers": {
       "get": {
         "operationId": "getDecisionSigners",
         "summary": "Which key signed which stretch of one producer stream",
         "parameters": [
           {
             "name": "pdp",
-            "in": "query",
+            "in": "path",
             "required": true,
             "description": "The producer's `pdp_id`, or the `host_id` of a Host run in lowercase hex (WP-6.3b).",
             "schema": {
@@ -338,7 +352,7 @@
           },
           {
             "name": "instance",
-            "in": "query",
+            "in": "path",
             "required": true,
             "description": "The producer incarnation, or the Host run in lowercase hex (WP-6.3b).",
             "schema": {
@@ -411,7 +425,12 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.DecisionLog/GetSigners"
+        "x-grpc-rpc": "permguard.control.v1.DecisionLog/GetSigners",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "evidence (producer stream)",
+          "credential": "no"
+        }
       }
     },
     "/.well-known/permguard-decisions-native-v1-configuration": {
@@ -431,7 +450,12 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "REST-only: the gRPC DecisionLog service names Ship, Read and GetSigners (WP-6.3b)."
+        "x-grpc-note": "REST-only: the gRPC DecisionLog service names Ship, Read and GetSigners (WP-6.3b).",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "discovery",
+          "credential": "no"
+        }
       }
     }
   },
@@ -1440,10 +1464,6 @@
             "items": {
               "type": "string",
               "enum": [
-                "zone",
-                "ledger",
-                "pdp",
-                "instance",
                 "from",
                 "until",
                 "limit_records",
@@ -1479,14 +1499,15 @@
         "properties": {
           "records": {
             "type": "string",
-            "description": "One producer stream's records."
+            "description": "One producer stream's records: a template containing `{pdp}` and `{instance}`."
           },
           "tenant_records": {
             "type": "string",
             "description": "A template containing `{zone}` and `{ledger}`."
           },
           "signers": {
-            "type": "string"
+            "type": "string",
+            "description": "One producer stream's signing-key spans: a template containing `{pdp}` and `{instance}`."
           }
         },
         "required": [

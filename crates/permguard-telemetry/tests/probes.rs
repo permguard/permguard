@@ -272,7 +272,7 @@ async fn test_the_keys_route_redirects_to_the_host_listener_once_one_is_named() 
     // Without a Host listener the legacy route publishes the ring.
     let legacy = TelemetryService::new();
     legacy.start(&context).await.expect("the surface starts");
-    let answered = http_get(legacy.bound().expect("bound"), "/server-host/keys").await;
+    let answered = http_get(legacy.bound().expect("bound"), "/server-host/v1/keys").await;
     assert!(answered.starts_with("HTTP/1.1 200"), "{answered}");
     assert!(answered.contains("\"kid\":\"k1\""), "{answered}");
     legacy.stop(&context).await.expect("the surface stops");
@@ -282,7 +282,7 @@ async fn test_the_keys_route_redirects_to_the_host_listener_once_one_is_named() 
         Some("https://127.0.0.1:5444/host/v1/keys/host.operations".to_owned())
     });
     moved.start(&context).await.expect("the surface starts");
-    let answered = http_get(moved.bound().expect("bound"), "/server-host/keys").await;
+    let answered = http_get(moved.bound().expect("bound"), "/server-host/v1/keys").await;
     assert!(answered.starts_with("HTTP/1.1 308"), "{answered}");
     assert!(
         answered.contains("location: https://127.0.0.1:5444/host/v1/keys/host.operations"),

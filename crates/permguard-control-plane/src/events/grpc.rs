@@ -273,7 +273,6 @@ impl EventLog for EventFacade {
             endpoints: Some(EventEndpoints {
                 records: document.endpoints.records,
                 record: document.endpoints.record,
-                tenant_records: document.endpoints.tenant_records,
             }),
             event_types: document.event_types,
             capabilities: document.capabilities,

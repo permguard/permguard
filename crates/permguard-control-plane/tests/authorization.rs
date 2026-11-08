@@ -230,7 +230,8 @@ async fn send(
 async fn f21_the_catalog_answers_401_to_nobody_and_a_stranger_and_nothing_is_readable_without_a_grant()
  {
     let deployed = deployment("f21", &[]);
-    let (status, headers, body) = send(&deployed.router, "GET", "/v1/zones", None, None).await;
+    let (status, headers, body) =
+        send(&deployed.router, "GET", "/catalog/v1/zones", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
     assert_eq!(
         headers
@@ -249,7 +250,7 @@ async fn f21_the_catalog_answers_401_to_nobody_and_a_stranger_and_nothing_is_rea
     let (status, _, _) = send(
         &deployed.router,
         "GET",
-        "/v1/zones",
+        "/catalog/v1/zones",
         Some(certificate("spiffe://acme/nobody")),
         None,
     )
@@ -270,7 +271,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, body) = send(
         &deployed.router,
         "GET",
-        &format!("/v1/zones/{}", deployed.billing_zone),
+        &format!("/catalog/v1/zones/{}", deployed.billing_zone),
         Some(Arc::clone(&billing)),
         None,
     )
@@ -280,7 +281,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (people_status, _, people_body) = send(
         &deployed.router,
         "GET",
-        &format!("/v1/zones/{}", deployed.people_zone),
+        &format!("/catalog/v1/zones/{}", deployed.people_zone),
         Some(Arc::clone(&billing)),
         None,
     )
@@ -289,7 +290,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (unknown_status, _, unknown_body) = send(
         &deployed.router,
         "GET",
-        "/v1/zones/nowhere",
+        "/catalog/v1/zones/nowhere",
         Some(Arc::clone(&billing)),
         None,
     )
@@ -306,7 +307,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, body) = send(
         &deployed.router,
         "GET",
-        "/v1/zones/people",
+        "/catalog/v1/zones/people",
         Some(Arc::clone(&billing)),
         None,
     )
@@ -315,7 +316,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, body) = send(
         &deployed.router,
         "GET",
-        "/v1/zones",
+        "/catalog/v1/zones",
         Some(Arc::clone(&billing)),
         None,
     )
@@ -334,7 +335,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, body) = send(
         &deployed.router,
         "PATCH",
-        &format!("/v1/zones/{}", deployed.billing_zone),
+        &format!("/catalog/v1/zones/{}", deployed.billing_zone),
         Some(Arc::clone(&billing)),
         Some(r#"{"name":"billing-2","request_id":"r-rename","expected_revision":1}"#),
     )
@@ -343,7 +344,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, body) = send(
         &deployed.router,
         "POST",
-        "/v1/zones",
+        "/catalog/v1/zones",
         Some(Arc::clone(&billing)),
         Some(r#"{"name":"finance","request_id":"r-create"}"#),
     )
@@ -362,11 +363,11 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     .encode()
     .expect("the negotiation encodes");
     let people_push = format!(
-        "/v1/zones/{}/ledgers/main/notp/push/negotiate",
+        "/notp/v1/zones/{}/ledgers/main/push/negotiate",
         deployed.people_zone
     );
     let billing_push = format!(
-        "/v1/zones/{}/ledgers/main/notp/push/negotiate",
+        "/notp/v1/zones/{}/ledgers/main/push/negotiate",
         deployed.billing_zone
     );
     let (status, _, body) = send_notp(
@@ -396,7 +397,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (foreign_status, _, foreign_body) = send(
         &deployed.router,
         "GET",
-        &format!("/v1/zones/{}/ledgers/main", deployed.people_zone),
+        &format!("/catalog/v1/zones/{}/ledgers/main", deployed.people_zone),
         Some(Arc::clone(&billing)),
         None,
     )
@@ -404,7 +405,10 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (unknown_status, _, unknown_body) = send(
         &deployed.router,
         "GET",
-        &format!("/v1/zones/{}/ledgers/nowhere", deployed.billing_zone),
+        &format!(
+            "/catalog/v1/zones/{}/ledgers/nowhere",
+            deployed.billing_zone
+        ),
         Some(Arc::clone(&billing)),
         None,
     )
@@ -417,7 +421,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, body) = send(
         &deployed.router,
         "GET",
-        &format!("/v1/zones/{}/ledgers/nowhere", deployed.people_zone),
+        &format!("/catalog/v1/zones/{}/ledgers/nowhere", deployed.people_zone),
         Some(Arc::clone(&billing)),
         None,
     )
@@ -429,7 +433,10 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, _) = send(
         &deployed.router,
         "GET",
-        &format!("/v1/zones/{}/ledgers/main/refs/main", deployed.people_zone),
+        &format!(
+            "/notp/v1/zones/{}/ledgers/main/refs/main",
+            deployed.people_zone
+        ),
         Some(Arc::clone(&billing)),
         None,
     )
@@ -438,7 +445,10 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, _) = send(
         &deployed.router,
         "GET",
-        &format!("/v1/zones/{}/ledgers/main/refs/main", deployed.billing_zone),
+        &format!(
+            "/notp/v1/zones/{}/ledgers/main/refs/main",
+            deployed.billing_zone
+        ),
         None,
         None,
     )
@@ -447,7 +457,10 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, body) = send(
         &deployed.router,
         "GET",
-        &format!("/v1/zones/{}/ledgers/main/refs/main", deployed.billing_zone),
+        &format!(
+            "/notp/v1/zones/{}/ledgers/main/refs/main",
+            deployed.billing_zone
+        ),
         Some(Arc::clone(&billing)),
         None,
     )
@@ -477,11 +490,11 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     .expect("the fetch encodes");
     for (suffix, body) in [("pull/negotiate", &pull), ("objects/fetch", &fetch)] {
         let people_path = format!(
-            "/v1/zones/{}/ledgers/main/notp/{suffix}",
+            "/notp/v1/zones/{}/ledgers/main/{suffix}",
             deployed.people_zone
         );
         let billing_path = format!(
-            "/v1/zones/{}/ledgers/main/notp/{suffix}",
+            "/notp/v1/zones/{}/ledgers/main/{suffix}",
             deployed.billing_zone
         );
         let (status, _, answered) = send_notp(
@@ -566,25 +579,32 @@ async fn an_explicit_public_grant_opens_exactly_what_it_names_to_anonymous() {
             Selector::parse("plane/control/*").expect("a selector"),
         )],
     );
-    let (status, _, body) = send(&deployed.router, "GET", "/v1/zones", None, None).await;
+    let (status, _, body) = send(&deployed.router, "GET", "/catalog/v1/zones", None, None).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let (status, _, body) = send(
         &deployed.router,
         "POST",
-        "/v1/zones",
+        "/catalog/v1/zones",
         None,
         Some(r#"{"name":"finance","request_id":"r-create"}"#),
     )
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
     // With everything under the plane readable, an unknown zone is honestly not found.
-    let (status, _, _) = send(&deployed.router, "GET", "/v1/zones/nowhere", None, None).await;
+    let (status, _, _) = send(
+        &deployed.router,
+        "GET",
+        "/catalog/v1/zones/nowhere",
+        None,
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     // A stranger's certificate never widens to the public grants.
     let (status, _, body) = send(
         &deployed.router,
         "GET",
-        "/v1/zones",
+        "/catalog/v1/zones",
         Some(certificate("spiffe://acme/nobody")),
         None,
     )
@@ -596,7 +616,7 @@ async fn an_explicit_public_grant_opens_exactly_what_it_names_to_anonymous() {
 async fn a_push_grant_withdrawn_between_negotiation_and_commit_refuses_the_commit() {
     let deployed = deployment("withdrawn", &[]);
     let billing = certificate(BILLING);
-    let base = format!("/v1/zones/{}/ledgers/main/notp/push", deployed.billing_zone);
+    let base = format!("/notp/v1/zones/{}/ledgers/main/push", deployed.billing_zone);
     let new_head = permguard_objects::Digest::compute(b"a commit");
     let negotiation = permguard_notp::NegotiatePushRequest {
         r#ref: "main".to_owned(),
@@ -670,4 +690,50 @@ async fn a_push_grant_withdrawn_between_negotiation_and_commit_refuses_the_commi
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     let denial: serde_json::Value = serde_json::from_str(&body).expect("JSON");
     assert_eq!(denial["code"], "forbidden");
+}
+
+/// WP-13.1: the catalog, NOTP, key and stream routes of the Control Plane are at their place in the
+/// API layout of iteration 02 (`/<interface>/<version>/<resource>`, `endpoints.csv`), and the paths
+/// before it answer `404`: moved, never aliased (D18). A route that exists answers `405` to a
+/// method none of them takes. The evidence routes are `event_discovery`'s.
+#[tokio::test]
+async fn the_routes_are_at_their_layout_paths_and_the_old_ones_are_gone() {
+    let deployment = deployment("layout", &[]);
+    let status = |method: &'static str, path: &'static str| {
+        let router = deployment.router.clone();
+        async move { send(&router, method, path, None, None).await.0.as_u16() }
+    };
+    for path in [
+        "/catalog/v1/zones",
+        "/catalog/v1/zones/z",
+        "/catalog/v1/zones/z/export",
+        "/catalog/v1/zones/z/import",
+        "/catalog/v1/zones/z/ledgers",
+        "/catalog/v1/zones/z/ledgers/l",
+        "/catalog/v1/zones/z/ledgers/l/archive",
+        "/catalog/v1/zones/z/ledgers/l/restore",
+        "/catalog/v1/zones/z/ledgers/l/export",
+        "/notp/v1/zones/z/ledgers/l/refs/main",
+        "/notp/v1/zones/z/ledgers/l/push/negotiate",
+        "/notp/v1/zones/z/ledgers/l/push/commit",
+        "/notp/v1/zones/z/ledgers/l/pull/negotiate",
+        "/notp/v1/zones/z/ledgers/l/objects",
+        "/notp/v1/zones/z/ledgers/l/objects/fetch",
+        "/control-plane/v1/keys",
+        "/streams/v1",
+    ] {
+        assert_eq!(status("PUT", path).await, 405, "{path} is served");
+    }
+    for path in [
+        "/v1/zones",
+        "/v1/zones/z",
+        "/v1/zones/z/ledgers/l",
+        "/v1/zones/z/ledgers/l/refs/main",
+        "/v1/zones/z/ledgers/l/notp/push/negotiate",
+        "/v1/zones/z/ledgers/l/notp/objects/fetch",
+        "/control-plane/keys",
+        "/v1/streams",
+    ] {
+        assert_eq!(status("GET", path).await, 404, "{path} is gone");
+    }
 }

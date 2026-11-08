@@ -7,7 +7,7 @@
     "description": "The ledger content protocol on the control plane. Bodies are `application/vnd.permguard.notp.v1+cbor` (canonical CBOR with integer keys), which JSON Schema cannot describe; refusals are JSON."
   },
   "paths": {
-    "/v1/zones/{zone}/ledgers/{ledger}/refs/{name}": {
+    "/notp/v1/zones/{zone}/ledgers/{ledger}/refs/{name}": {
       "get": {
         "operationId": "getRef",
         "summary": "Read a ref",
@@ -97,10 +97,17 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.control.v1.GitLikeStore/GetRef"
+        "x-grpc-rpc": "permguard.control.v1.GitLikeStore/GetRef",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "policy (notp)",
+          "credential": "credential or access token",
+          "operation": "catalog.read",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}/notp/push/negotiate": {
+    "/notp/v1/zones/{zone}/ledgers/{ledger}/push/negotiate": {
       "post": {
         "operationId": "negotiatePush",
         "summary": "Negotiate a push",
@@ -203,10 +210,17 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.GitLikeStore/NegotiatePush",
-        "x-cbor-request": "negotiate_push_request"
+        "x-cbor-request": "negotiate_push_request",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "policy (notp)",
+          "credential": "credential or access token",
+          "operation": "policy.push",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}/notp/objects": {
+    "/notp/v1/zones/{zone}/ledgers/{ledger}/objects": {
       "post": {
         "operationId": "uploadObjects",
         "summary": "Upload objects",
@@ -309,10 +323,17 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.GitLikeStore/UploadObjects",
-        "x-cbor-request": "upload_objects_request"
+        "x-cbor-request": "upload_objects_request",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "policy (notp)",
+          "credential": "credential or access token",
+          "operation": "policy.push",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}/notp/push/commit": {
+    "/notp/v1/zones/{zone}/ledgers/{ledger}/push/commit": {
       "post": {
         "operationId": "commitPush",
         "summary": "Commit a push",
@@ -415,10 +436,17 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.GitLikeStore/CommitPush",
-        "x-cbor-request": "commit_push_request"
+        "x-cbor-request": "commit_push_request",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "policy (notp)",
+          "credential": "credential or access token",
+          "operation": "policy.push",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}/notp/pull/negotiate": {
+    "/notp/v1/zones/{zone}/ledgers/{ledger}/pull/negotiate": {
       "post": {
         "operationId": "negotiatePull",
         "summary": "Negotiate a pull",
@@ -521,10 +549,17 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.GitLikeStore/NegotiatePull",
-        "x-cbor-request": "negotiate_pull_request"
+        "x-cbor-request": "negotiate_pull_request",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "policy (notp)",
+          "credential": "credential or access token",
+          "operation": "catalog.read",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     },
-    "/v1/zones/{zone}/ledgers/{ledger}/notp/objects/fetch": {
+    "/notp/v1/zones/{zone}/ledgers/{ledger}/objects/fetch": {
       "post": {
         "operationId": "fetchObjects",
         "summary": "Fetch objects",
@@ -627,7 +662,14 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.GitLikeStore/FetchObjects",
-        "x-cbor-request": "fetch_objects_request"
+        "x-cbor-request": "fetch_objects_request",
+        "x-permguard-endpoint": {
+          "plane": "control",
+          "category": "policy (notp)",
+          "credential": "credential or access token",
+          "operation": "catalog.read",
+          "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
+        }
       }
     }
   },
@@ -637,7 +679,7 @@
   "x-grpc-unmapped": [
     {
       "message": "permguard.control.v1.GetKeyRingRequest",
-      "note": "an empty request: `GetKeyRing` has no REST route here; the key set is `/control-plane/keys` in `health.json`",
+      "note": "an empty request: `GetKeyRing` has no REST route here; the key set is `/control-plane/v1/keys` in `health.json`",
       "fields": []
     },
     {

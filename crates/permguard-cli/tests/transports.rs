@@ -188,10 +188,10 @@ fn rest() -> Router {
         format!(r#"{{"records":[{record}],"next":"n-1","more":false,"high_watermark":"h-1"}}"#)
     };
     Router::new()
-        .route("/v1/zones", get(json(zones.to_owned())))
-        .route("/v1/zones/acme/ledgers", get(json(ledgers.to_owned())))
+        .route("/catalog/v1/zones", get(json(zones.to_owned())))
+        .route("/catalog/v1/zones/acme/ledgers", get(json(ledgers.to_owned())))
         .route(
-            "/v1/zones/acme/ledgers/main-ledger",
+            "/catalog/v1/zones/acme/ledgers/main-ledger",
             // The Control Plane's answer, with the members the Host's composition names; the
             // binding carries members a later server may add, which a client reads past.
             get(json(
@@ -223,7 +223,7 @@ fn rest() -> Router {
             )),
         )
         .route(
-            "/v1/zones/acme/import",
+            "/catalog/v1/zones/acme/import",
             post(|body: String| async move {
                 use base64::Engine as _;
                 let sent: Value = serde_json::from_str(&body).expect("JSON");
@@ -255,7 +255,7 @@ fn rest() -> Router {
             }),
         )
         .route(
-            "/v1/zones/acme/ledgers/main-ledger/export",
+            "/catalog/v1/zones/acme/ledgers/main-ledger/export",
             post(|| async {
                 use base64::Engine as _;
                 let answer = exported();
@@ -289,15 +289,15 @@ fn rest() -> Router {
             )),
         )
         .route(
-            "/zones/acme/ledgers/main-ledger/decisions/v1/records",
+            "/decisions/v1/zones/acme/ledgers/main-ledger/records",
             get(json(page(DECISION))),
         )
         .route(
-            "/v1/zones/acme/ledgers/main-ledger/events/v1alpha1/records",
+            "/events/v1alpha1/zones/acme/ledgers/main-ledger/records",
             get(json(page(EVENT))),
         )
         .route(
-            "/v1/zones/z/ledgers/l/notp/push/negotiate",
+            "/notp/v1/zones/z/ledgers/l/push/negotiate",
             post(|| async {
                 (
                     [("content-type", "application/cbor")],

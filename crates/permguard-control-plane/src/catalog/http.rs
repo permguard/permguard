@@ -24,33 +24,33 @@ use crate::wire;
 /// The routes the control plane answers about its catalog.
 pub(crate) fn routes(facade: CatalogFacade) -> Router {
     Router::new()
-        .route("/v1/zones", get(list_zones).post(create_zone))
+        .route("/catalog/v1/zones", get(list_zones).post(create_zone))
         .route(
-            "/v1/zones/{zone}",
+            "/catalog/v1/zones/{zone}",
             get(get_zone).patch(rename_zone).delete(delete_zone),
         )
         .route(
-            "/v1/zones/{zone}/ledgers",
+            "/catalog/v1/zones/{zone}/ledgers",
             get(list_ledgers).post(create_ledger),
         )
         .route(
-            "/v1/zones/{zone}/ledgers/{ledger}",
+            "/catalog/v1/zones/{zone}/ledgers/{ledger}",
             get(get_ledger).patch(rename_ledger).delete(delete_ledger),
         )
         .route(
-            "/v1/zones/{zone}/ledgers/{ledger}/archive",
+            "/catalog/v1/zones/{zone}/ledgers/{ledger}/archive",
             post(archive_ledger),
         )
         .route(
-            "/v1/zones/{zone}/ledgers/{ledger}/restore",
+            "/catalog/v1/zones/{zone}/ledgers/{ledger}/restore",
             post(restore_ledger),
         )
         .route(
-            "/v1/zones/{zone}/ledgers/{ledger}/export",
+            "/catalog/v1/zones/{zone}/ledgers/{ledger}/export",
             post(export_ledger),
         )
-        .route("/v1/zones/{zone}/export", post(export_zone))
-        .route("/v1/zones/{zone}/import", post(import))
+        .route("/catalog/v1/zones/{zone}/export", post(export_zone))
+        .route("/catalog/v1/zones/{zone}/import", post(import))
         .with_state(facade)
 }
 
@@ -627,29 +627,42 @@ mod tests {
     async fn test_every_refusal_is_the_shared_shape_with_the_promised_status() {
         let routes = testing_routes(Disclosure::Minimal);
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, body) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 201, "{body}");
         assert!(body.contains(r#""name":"delivery""#), "{body}");
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, body) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 409, "{body}");
         assert!(body.contains(r#""class":"conflict""#), "{body}");
         assert!(body.contains(r#""code":"name_taken""#), "{body}");
         assert!(body.contains(r#""message":""#), "{body}");
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("Pharma"))).await;
+        let (status, body) =
+            send(&routes, "POST", "/catalog/v1/zones", Some(&named("Pharma"))).await;
         assert_eq!(status, 400, "{body}");
         assert!(body.contains(r#""class":"validation""#), "{body}");
         assert!(body.contains("lowercase"), "{body}");
 
-        let (status, body) = send(&routes, "GET", "/v1/zones/nowhere", None).await;
+        let (status, body) = send(&routes, "GET", "/catalog/v1/zones/nowhere", None).await;
         assert_eq!(status, 404, "{body}");
         assert!(body.contains(r#""class":"not_found""#), "{body}");
 
         let (status, body) = send(
             &routes,
             "POST",
-            "/v1/zones/delivery/ledgers",
+            "/catalog/v1/zones/delivery/ledgers",
             Some(&named("policies")),
         )
         .await;
@@ -658,7 +671,7 @@ mod tests {
         let (status, body) = send(
             &routes,
             "DELETE",
-            "/v1/zones/delivery?request_id=r-delete&expected_revision=1",
+            "/catalog/v1/zones/delivery?request_id=r-delete&expected_revision=1",
             None,
         )
         .await;
@@ -683,7 +696,7 @@ mod tests {
             r#"{"name":"delivery","request_id":"r-1","expected_revision":1}"#,
             r#"{"name":"#,
         ] {
-            let (status, answer) = send(&routes, "POST", "/v1/zones", Some(body)).await;
+            let (status, answer) = send(&routes, "POST", "/catalog/v1/zones", Some(body)).await;
             assert_eq!(status, 400, "{body}: {answer}");
             assert!(
                 answer.contains(r#""class":"validation""#),
@@ -701,7 +714,9 @@ mod tests {
             Some("application/x-www-form-urlencoded"),
             None,
         ] {
-            let mut request = HttpRequest::builder().method("POST").uri("/v1/zones");
+            let mut request = HttpRequest::builder()
+                .method("POST")
+                .uri("/catalog/v1/zones");
             if let Some(media) = media {
                 request = request.header("content-type", media);
             }
@@ -723,7 +738,7 @@ mod tests {
                 "{media:?}: {body}"
             );
         }
-        let (status, answer) = send(&routes, "GET", "/v1/zones/delivery", None).await;
+        let (status, answer) = send(&routes, "GET", "/catalog/v1/zones/delivery", None).await;
         assert_eq!(status, 404, "nothing was created: {answer}");
     }
 
@@ -789,10 +804,22 @@ mod tests {
 
         // A success, then the same name again: the success is the transaction's record, not this
         // trail's (WP-7.3a), the refusal is this trail's.
-        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
-        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
+        send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         // A validation refusal is trail material too, under the switch.
-        send(&routes, "POST", "/v1/zones", Some(&named("Pharma"))).await;
+        send(&routes, "POST", "/catalog/v1/zones", Some(&named("Pharma"))).await;
 
         let recorded = seen.lock().expect("the log lock holds").clone();
 
@@ -918,12 +945,24 @@ mod tests {
                 std::time::Duration::from_secs(1),
             )
             .expect("the barrier");
-        let (status, refused) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, refused) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 503, "{refused}");
         assert!(refused.contains("\"unavailable\""), "{refused}");
         assert!(refused.contains("backup"), "{refused}");
         engine.release();
-        let (status, created) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, created) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 201, "{created}");
     }
 
@@ -939,7 +978,13 @@ mod tests {
             Arc::new(FileCatalog::new(root.join("catalog")));
         let routes = transacted(&root, Arc::clone(&catalog), &trail);
 
-        let (status, created) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, created) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 201, "{created}");
         let created: serde_json::Value = serde_json::from_str(&created).expect("JSON");
         assert_eq!(created["revision"], 1);
@@ -951,13 +996,14 @@ mod tests {
         assert_eq!(stored.operation.as_deref().map(str::len), Some(32));
 
         let rename = r#"{"name":"delivery-eu","request_id":"r-rename","expected_revision":1}"#;
-        let (status, renamed) = send(&routes, "PATCH", "/v1/zones/delivery", Some(rename)).await;
+        let (status, renamed) =
+            send(&routes, "PATCH", "/catalog/v1/zones/delivery", Some(rename)).await;
         assert_eq!(status, 200, "{renamed}");
         assert!(renamed.contains(r#""revision":2"#), "{renamed}");
         let (status, deleted) = send(
             &routes,
             "DELETE",
-            &format!("/v1/zones/{id}?request_id=r-delete&expected_revision=2"),
+            &format!("/catalog/v1/zones/{id}?request_id=r-delete&expected_revision=2"),
             None,
         )
         .await;
@@ -978,7 +1024,13 @@ mod tests {
         assert_eq!(*trail.records.lock().expect("lock"), expected);
 
         // A name the rules refuse is refused before any intent: nothing reaches the trail.
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("Bad Name"))).await;
+        let (status, body) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("Bad Name")),
+        )
+        .await;
         assert_eq!(status, 400, "{body}");
         assert!(body.contains(r#""code":"invalid_name""#), "{body}");
         assert_eq!(trail.records.lock().expect("lock").len(), 6, "no intent");
@@ -995,18 +1047,24 @@ mod tests {
             Arc::new(FileCatalog::new(root.join("catalog"))),
             &trail,
         );
-        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         send(
             &routes,
             "POST",
-            "/v1/zones/delivery/ledgers",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
+        send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones/delivery/ledgers",
             Some(&named("policies")),
         )
         .await;
         send(
             &routes,
             "POST",
-            "/v1/zones/delivery/ledgers",
+            "/catalog/v1/zones/delivery/ledgers",
             Some(&named("rules")),
         )
         .await;
@@ -1022,31 +1080,31 @@ mod tests {
         };
         twice(
             "PATCH",
-            "/v1/zones/delivery/ledgers/policies",
+            "/catalog/v1/zones/delivery/ledgers/policies",
             Some(r#"{"name":"policies-v2","request_id":"r-ledger-rename","expected_revision":1}"#),
         )
         .await;
         twice(
             "DELETE",
-            "/v1/zones/delivery/ledgers/rules?request_id=r-ledger-delete&expected_revision=1",
+            "/catalog/v1/zones/delivery/ledgers/rules?request_id=r-ledger-delete&expected_revision=1",
             None,
         )
         .await;
         twice(
             "DELETE",
-            "/v1/zones/delivery/ledgers/policies-v2?request_id=r-ledger-delete-2&expected_revision=2",
+            "/catalog/v1/zones/delivery/ledgers/policies-v2?request_id=r-ledger-delete-2&expected_revision=2",
             None,
         )
         .await;
         twice(
             "PATCH",
-            "/v1/zones/delivery",
+            "/catalog/v1/zones/delivery",
             Some(r#"{"name":"delivery-eu","request_id":"r-zone-rename","expected_revision":1}"#),
         )
         .await;
         twice(
             "DELETE",
-            "/v1/zones/delivery-eu?request_id=r-zone-delete&expected_revision=2",
+            "/catalog/v1/zones/delivery-eu?request_id=r-zone-delete&expected_revision=2",
             None,
         )
         .await;
@@ -1073,15 +1131,21 @@ mod tests {
             Arc::new(FileCatalog::new(root.join("catalog"))),
             &trail,
         );
-        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         send(
             &routes,
             "POST",
-            "/v1/zones/delivery/ledgers",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
+        send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones/delivery/ledgers",
             Some(&named("policies")),
         )
         .await;
-        let base = "/v1/zones/delivery/ledgers/policies";
+        let base = "/catalog/v1/zones/delivery/ledgers/policies";
 
         let (status, archived) = send(
             &routes,
@@ -1175,7 +1239,7 @@ mod tests {
             exports,
         };
         let base = format!(
-            "/v1/zones/{}/ledgers/{}",
+            "/catalog/v1/zones/{}/ledgers/{}",
             fixture.zone.id, fixture.ledger.id
         );
         let unsigned = routes(facade(None));
@@ -1197,7 +1261,7 @@ mod tests {
         let (status, zone) = send(
             &routes,
             "POST",
-            &format!("/v1/zones/{}/export", fixture.zone.id),
+            &format!("/catalog/v1/zones/{}/export", fixture.zone.id),
             Some("{}"),
         )
         .await;
@@ -1305,7 +1369,7 @@ mod tests {
             metrics: permguard_core::metrics::Metrics::none(),
             exports,
         };
-        let path = format!("/v1/zones/{}/import", fixture.zone.id);
+        let path = format!("/catalog/v1/zones/{}/import", fixture.zone.id);
         let body = |mode: &str, archive: &str| {
             format!(
                 r#"{{"request_id":"r","mode":"{mode}","archive":"{archive}","bundle":{{"manifest":"oA","items":[]}},"pin":"p"}}"#
@@ -1342,18 +1406,24 @@ mod tests {
             metrics: permguard_core::metrics::Metrics::none(),
             exports: None,
         });
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, body) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 503, "{body}");
         assert!(body.contains(r#""code":"unavailable""#), "{body}");
         let (status, body) = send(
             &routes,
             "DELETE",
-            "/v1/zones/delivery?request_id=r-1&expected_revision=1",
+            "/catalog/v1/zones/delivery?request_id=r-1&expected_revision=1",
             None,
         )
         .await;
         assert_eq!(status, 503, "{body}");
-        let (status, body) = send(&routes, "GET", "/v1/zones", None).await;
+        let (status, body) = send(&routes, "GET", "/catalog/v1/zones", None).await;
         assert_eq!((status, body.as_str()), (200, "[]"));
     }
 
@@ -1370,11 +1440,11 @@ mod tests {
         );
 
         let body = r#"{"name":"delivery","request_id":"r-once"}"#;
-        let (first_status, first) = send(&routes, "POST", "/v1/zones", Some(body)).await;
-        let (again_status, again) = send(&routes, "POST", "/v1/zones", Some(body)).await;
+        let (first_status, first) = send(&routes, "POST", "/catalog/v1/zones", Some(body)).await;
+        let (again_status, again) = send(&routes, "POST", "/catalog/v1/zones", Some(body)).await;
         assert_eq!((first_status, again_status), (201, 201), "{again}");
         assert_eq!(first, again, "the first answer, not a second zone");
-        let (_, listed) = send(&routes, "GET", "/v1/zones", None).await;
+        let (_, listed) = send(&routes, "GET", "/catalog/v1/zones", None).await;
         assert_eq!(
             listed.matches(r#""name":"delivery""#).count(),
             1,
@@ -1401,7 +1471,7 @@ mod tests {
         let (status, _) = send(
             &routes,
             "POST",
-            "/v1/zones",
+            "/catalog/v1/zones",
             Some(r#"{"name":"alpha","request_id":"r-same"}"#),
         )
         .await;
@@ -1409,13 +1479,13 @@ mod tests {
         let (status, body) = send(
             &routes,
             "POST",
-            "/v1/zones",
+            "/catalog/v1/zones",
             Some(r#"{"name":"beta","request_id":"r-same"}"#),
         )
         .await;
         assert_eq!(status, 409, "{body}");
         assert!(body.contains(r#""code":"request_id_reused""#), "{body}");
-        let (status, _) = send(&routes, "GET", "/v1/zones/beta", None).await;
+        let (status, _) = send(&routes, "GET", "/catalog/v1/zones/beta", None).await;
         assert_eq!(status, 404, "nothing applied");
     }
 
@@ -1431,11 +1501,17 @@ mod tests {
             Arc::new(FileCatalog::new(root.join("catalog"))),
             &trail,
         );
-        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
         send(
             &routes,
             "POST",
-            "/v1/zones/delivery/ledgers",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
+        send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones/delivery/ledgers",
             Some(&named("policies")),
         )
         .await;
@@ -1446,7 +1522,7 @@ mod tests {
         let (status, body) = send(
             &routes,
             "PATCH",
-            "/v1/zones/delivery",
+            "/catalog/v1/zones/delivery",
             Some(&rename("other", 2, "r-1")),
         )
         .await;
@@ -1456,7 +1532,7 @@ mod tests {
         let (status, body) = send(
             &routes,
             "PATCH",
-            "/v1/zones/delivery",
+            "/catalog/v1/zones/delivery",
             Some(r#"{"name":"other","request_id":"r-2"}"#),
         )
         .await;
@@ -1464,7 +1540,7 @@ mod tests {
         let (status, body) = send(
             &routes,
             "PATCH",
-            "/v1/zones/delivery/ledgers/policies",
+            "/catalog/v1/zones/delivery/ledgers/policies",
             Some(&rename("rules", 3, "r-3")),
         )
         .await;
@@ -1473,24 +1549,29 @@ mod tests {
         let (status, body) = send(
             &routes,
             "DELETE",
-            "/v1/zones/delivery/ledgers/policies?request_id=r-4&expected_revision=2",
+            "/catalog/v1/zones/delivery/ledgers/policies?request_id=r-4&expected_revision=2",
             None,
         )
         .await;
         assert_eq!(status, 409, "{body}");
         assert!(body.contains(r#""code":"revision_conflict""#), "{body}");
 
-        let (_, zone) = send(&routes, "GET", "/v1/zones/delivery", None).await;
+        let (_, zone) = send(&routes, "GET", "/catalog/v1/zones/delivery", None).await;
         assert!(zone.contains(r#""revision":1"#), "unchanged: {zone}");
-        let (status, ledger) =
-            send(&routes, "GET", "/v1/zones/delivery/ledgers/policies", None).await;
+        let (status, ledger) = send(
+            &routes,
+            "GET",
+            "/catalog/v1/zones/delivery/ledgers/policies",
+            None,
+        )
+        .await;
         assert_eq!(status, 200, "still there: {ledger}");
         assert!(ledger.contains(r#""revision":1"#), "unchanged: {ledger}");
 
         let (status, body) = send(
             &routes,
             "PATCH",
-            "/v1/zones/delivery/ledgers/policies",
+            "/catalog/v1/zones/delivery/ledgers/policies",
             Some(&rename("rules", 1, "r-5")),
         )
         .await;
@@ -1503,14 +1584,20 @@ mod tests {
     #[tokio::test]
     async fn an_unknown_duplicated_or_malformed_parameter_is_refused() {
         let routes = testing_routes(Disclosure::Minimal);
-        send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
 
         for uri in [
-            "/v1/zones?pages=1",
-            "/v1/zones?page=1&page=2",
-            "/v1/zones?page=x",
-            "/v1/zones?size=-1",
-            "/v1/zones/delivery/ledgers?limit=1",
+            "/catalog/v1/zones?pages=1",
+            "/catalog/v1/zones?page=1&page=2",
+            "/catalog/v1/zones?page=x",
+            "/catalog/v1/zones?size=-1",
+            "/catalog/v1/zones/delivery/ledgers?limit=1",
         ] {
             let (status, body) = send(&routes, "GET", uri, None).await;
             assert_eq!(status, 400, "{uri}: {body}");
@@ -1520,13 +1607,13 @@ mod tests {
             );
         }
         for uri in [
-            "/v1/zones/delivery",
-            "/v1/zones/delivery?request_id=r-1",
-            "/v1/zones/delivery?expected_revision=1",
-            "/v1/zones/delivery?request_id=r-1&expected_revision=x",
-            "/v1/zones/delivery?request_id=r-1&expected_revision=0",
-            "/v1/zones/delivery?request_id=r-1&request_id=r-2&expected_revision=1",
-            "/v1/zones/delivery?request_id=r-1&expected_revision=1&force=true",
+            "/catalog/v1/zones/delivery",
+            "/catalog/v1/zones/delivery?request_id=r-1",
+            "/catalog/v1/zones/delivery?expected_revision=1",
+            "/catalog/v1/zones/delivery?request_id=r-1&expected_revision=x",
+            "/catalog/v1/zones/delivery?request_id=r-1&expected_revision=0",
+            "/catalog/v1/zones/delivery?request_id=r-1&request_id=r-2&expected_revision=1",
+            "/catalog/v1/zones/delivery?request_id=r-1&expected_revision=1&force=true",
         ] {
             let (status, body) = send(&routes, "DELETE", uri, None).await;
             assert_eq!(status, 400, "{uri}: {body}");
@@ -1535,9 +1622,9 @@ mod tests {
                 "{uri}: {body}"
             );
         }
-        let (status, _) = send(&routes, "GET", "/v1/zones/delivery", None).await;
+        let (status, _) = send(&routes, "GET", "/catalog/v1/zones/delivery", None).await;
         assert_eq!(status, 200, "nothing deleted");
-        let (status, body) = send(&routes, "GET", "/v1/zones?page=0&size=1", None).await;
+        let (status, body) = send(&routes, "GET", "/catalog/v1/zones?page=0&size=1", None).await;
         assert_eq!(status, 200, "{body}");
     }
 
@@ -1660,7 +1747,7 @@ mod tests {
                 Arc::new(LosingAnswers(FileCatalog::new(root.join("catalog")))),
                 &trail,
             );
-            let (status, answer) = send(&losing, "POST", "/v1/zones", Some(body)).await;
+            let (status, answer) = send(&losing, "POST", "/catalog/v1/zones", Some(body)).await;
             assert_eq!(status, 500, "{answer}");
             assert!(
                 answer.contains(r#""code":"mutation_unrecorded""#),
@@ -1685,14 +1772,14 @@ mod tests {
             "{:?}",
             trail.records.lock().expect("lock")
         );
-        let (status, answer) = send(&restarted, "POST", "/v1/zones", Some(body)).await;
+        let (status, answer) = send(&restarted, "POST", "/catalog/v1/zones", Some(body)).await;
         assert_eq!(status, 201, "{answer}");
-        let (_, got) = send(&restarted, "GET", "/v1/zones/delivery", None).await;
+        let (_, got) = send(&restarted, "GET", "/catalog/v1/zones/delivery", None).await;
         let id = |json: &str| {
             serde_json::from_str::<serde_json::Value>(json).expect("JSON")["id"].clone()
         };
         assert_eq!(id(&answer), id(&got), "the zone the lost answer named");
-        let (_, listed) = send(&restarted, "GET", "/v1/zones", None).await;
+        let (_, listed) = send(&restarted, "GET", "/catalog/v1/zones", None).await;
         assert_eq!(
             listed.matches(r#""name":"delivery""#).count(),
             1,
@@ -1705,7 +1792,7 @@ mod tests {
         // the first answer carried no longer existing.
         let id = id(&got);
         let id = id.as_str().expect("an id");
-        let delete = format!("/v1/zones/{id}?request_id=r-gone&expected_revision=1");
+        let delete = format!("/catalog/v1/zones/{id}?request_id=r-gone&expected_revision=1");
         {
             let losing = transacted(
                 &root,
@@ -1750,21 +1837,39 @@ mod tests {
         );
 
         *trail.refuse.lock().expect("lock") = Some("intent");
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, body) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 503, "{body}");
         assert!(body.contains(r#""code":"audit_unavailable""#), "{body}");
-        let (status, _) = send(&routes, "GET", "/v1/zones/delivery", None).await;
+        let (status, _) = send(&routes, "GET", "/catalog/v1/zones/delivery", None).await;
         assert_eq!(status, 404, "nothing was made");
 
         *trail.refuse.lock().expect("lock") = Some("applied");
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, body) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 500, "{body}");
         assert!(body.contains(r#""code":"mutation_unrecorded""#), "{body}");
-        let (status, body) = send(&routes, "GET", "/v1/zones/delivery", None).await;
+        let (status, body) = send(&routes, "GET", "/catalog/v1/zones/delivery", None).await;
         assert_eq!(status, 200, "the zone stands: {body}");
 
         *trail.refuse.lock().expect("lock") = None;
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, body) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 409, "a refusal stays a refusal: {body}");
     }
 
@@ -1775,10 +1880,22 @@ mod tests {
         // regression guard on the default itself.
         let routes = testing_routes(Disclosure::Minimal);
 
-        let (status, _) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, _) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 201);
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(&named("delivery"))).await;
+        let (status, body) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
         assert_eq!(status, 409, "{body}");
         // No recorder is attached in testing_routes, so the assertion above is that the refusal
         // path with audit_refusals=false neither panics nor changes the answer.
@@ -1789,15 +1906,16 @@ mod tests {
     async fn test_name_and_id_answer_the_same_zone() {
         let routes = testing_routes(Disclosure::Minimal);
 
-        let (_, created) = send(&routes, "POST", "/v1/zones", Some(&named("dual"))).await;
+        let (_, created) = send(&routes, "POST", "/catalog/v1/zones", Some(&named("dual"))).await;
         let id = created
             .split(r#""id":""#)
             .nth(1)
             .and_then(|rest| rest.split('"').next())
             .expect("the answer carries an id");
 
-        let (by_name_status, by_name) = send(&routes, "GET", "/v1/zones/dual", None).await;
-        let (by_id_status, by_id) = send(&routes, "GET", &format!("/v1/zones/{id}"), None).await;
+        let (by_name_status, by_name) = send(&routes, "GET", "/catalog/v1/zones/dual", None).await;
+        let (by_id_status, by_id) =
+            send(&routes, "GET", &format!("/catalog/v1/zones/{id}"), None).await;
 
         assert_eq!(by_name_status, 200);
         assert_eq!(by_id_status, 200);
@@ -2079,7 +2197,7 @@ mod tests {
         let (_, created) = send(
             &routes,
             "POST",
-            "/v1/zones",
+            "/catalog/v1/zones",
             Some(&super::tests::named("delivery")),
         )
         .await;
@@ -2087,7 +2205,7 @@ mod tests {
         let (_, created) = send(
             &routes,
             "POST",
-            "/v1/zones/delivery/ledgers",
+            "/catalog/v1/zones/delivery/ledgers",
             Some(&super::tests::named("policies")),
         )
         .await;
@@ -2097,8 +2215,13 @@ mod tests {
             "a create carries none"
         );
 
-        let (status, body) =
-            send(&routes, "GET", "/v1/zones/delivery/ledgers/policies", None).await;
+        let (status, body) = send(
+            &routes,
+            "GET",
+            "/catalog/v1/zones/delivery/ledgers/policies",
+            None,
+        )
+        .await;
         assert_eq!(status, 200, "{body}");
         let got: serde_json::Value = serde_json::from_str(&body).expect("json");
         assert_eq!(got["id"], ledger["id"]);

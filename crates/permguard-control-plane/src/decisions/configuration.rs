@@ -31,18 +31,9 @@ pub const CAPABILITIES: [&str; 6] = [
     "tenant-scoped-reads",
 ];
 
-/// The parameters a read takes, as the contract's read table names them.
-pub const READ_PARAMETERS: [&str; 9] = [
-    "zone",
-    "ledger",
-    "pdp",
-    "instance",
-    "from",
-    "until",
-    "limit_records",
-    "limit_bytes",
-    "proof",
-];
+/// The query parameters a read takes, as the contract's read table names them: the stream or the
+/// tenant it reads is named by its path (WP-13.1).
+pub const READ_PARAMETERS: [&str; 5] = ["from", "until", "limit_records", "limit_bytes", "proof"];
 
 /// What this plane publishes about `permguard.api.decisions.native.v1`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,11 +57,11 @@ pub struct Document {
 /// Where records are read and signers answered.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Endpoints {
-    /// One producer stream's records, named by `pdp` and `instance`.
+    /// One producer stream's records, a template with `{pdp}` and `{instance}`.
     pub records: String,
     /// A tenant's records, a template with `{zone}` and `{ledger}`.
     pub tenant_records: String,
-    /// One producer stream's signing-key spans.
+    /// One producer stream's signing-key spans, a template with `{pdp}` and `{instance}`.
     pub signers: String,
 }
 

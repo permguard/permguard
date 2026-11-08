@@ -709,7 +709,7 @@ impl PlaneServer {
 
         // Every stream every selected plane declares, registered once — a validation pass, by
         // design: the registry lives for this check and is dropped with it, because nothing at
-        // runtime consumes it yet. Discovery serves the descriptors directly (`/v1/streams` on
+        // runtime consumes it yet. Discovery serves the descriptors directly (`/streams/v1` on
         // each plane), and a long-lived registry arrives with the stream runtime itself. What
         // this pass buys today is that the first directory collision is a refusal here, at
         // startup, rather than a runtime surprise on a volume.
@@ -967,10 +967,31 @@ fn always_open(path: &str, grpc: bool) -> bool {
             );
     }
 
-    matches!(path, "/" | "/health" | "/version" | "/v1/streams")
+    // The exact templates, `*` one segment: a suffix would let a ledger or an event named `keys`
+    // or `signers` past the gate (WP-13.1).
+    const OPEN: &[&str] = &[
+        "/control-plane/v1/keys",
+        "/data-plane/v1/keys",
+        "/server-host/v1/keys",
+        "/decisions/v1/streams/*/*/signers",
+        "/events/v1alpha1/zones/*/ledgers/*/signers",
+        "/temporal/v1alpha1/zones/*/ledgers/*/signers",
+    ];
+    let matches = |template: &str| {
+        let mut held = path.split('/');
+        let mut wanted = template.split('/');
+        loop {
+            match (held.next(), wanted.next()) {
+                (None, None) => return true,
+                (Some(segment), Some("*")) if !segment.is_empty() => {}
+                (Some(segment), Some(literal)) if segment == literal => {}
+                _ => return false,
+            }
+        }
+    };
+    matches!(path, "/" | "/health" | "/version" | "/streams/v1")
         || path.starts_with("/.well-known/")
-        || path.ends_with("/keys")
-        || path.ends_with("/signers")
+        || OPEN.iter().any(|template| matches(template))
 }
 
 /// The refusal for a domain route asked before the plane is ready: class `unavailable`, code
@@ -1084,13 +1105,28 @@ mod tests {
             "/health",
             "/version",
             "/.well-known/server-configuration",
-            "/data-plane/keys",
-            "/decisions/v1/signers",
+            "/data-plane/v1/keys",
+            "/decisions/v1/streams/p/i/signers",
         ] {
             assert!(always_open(path, false), "{path}");
         }
-        for path in ["/v1/zones", "/decisions/v1/batches", "/v1/decide"] {
+        for path in [
+            "/catalog/v1/zones",
+            "/decisions/v1/batches",
+            "/v1/decide",
+            // A domain route whose last segment happens to read `keys` or `signers`.
+            "/catalog/v1/zones/keys",
+            "/events/v1alpha1/zones/z/ledgers/l/records/signers",
+            "/decisions/v1/streams/p/signers",
+        ] {
             assert!(!always_open(path, false), "{path}");
+        }
+        for path in [
+            "/server-host/v1/keys",
+            "/events/v1alpha1/zones/z/ledgers/l/signers",
+            "/temporal/v1alpha1/zones/z/ledgers/l/signers",
+        ] {
+            assert!(always_open(path, false), "{path}");
         }
         assert!(always_open("/permguard.data.v1.DataPlane/GetHealth", true));
         assert!(always_open(

@@ -84,6 +84,15 @@ is cut.
 
 ### Changed
 
+- **Every REST path is `/<interface>/<version>/<resource>`; the old paths are gone, not aliased.**
+  The catalog moves to `/catalog/v1/zones…`, NOTP to `/notp/v1/zones/{zone}/ledgers/{ledger}/…` (`refs/{name}`, `push/negotiate`, `push/commit`, `pull/negotiate`, `objects`, `objects/fetch`), the stream list to `/streams/v1` and each surface's key set to `/control-plane/v1/keys`, `/data-plane/v1/keys` and `/server-host/v1/keys`.
+  The decision log reads one producer stream at `/decisions/v1/streams/{pdp}/{instance}/records` and its signers at `…/signers`, one tenant at `/decisions/v1/zones/{zone}/ledgers/{ledger}/records`.
+  The event log reads one ledger at `/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records`, one producer stream of it with `?producer_class&producer&instance`, one occurrence at `…/records/{event_id}` and the signers at `…/signers`; the deployment-wide `/events/v1alpha1/records` is gone, and so is `tenant_records` in the event discovery document and `EventEndpoints.tenant_records` (field 4, reserved) over gRPC.
+  A Data Plane's temporal signers move to `/temporal/v1alpha1/zones/{zone}/ledgers/{ledger}/signers`.
+  The AuthZEN paths `/access/v1/evaluation(s)`, `/.well-known/…` and the probes keep their fixed paths; the gRPC services are unchanged.
+  A stream, tenant or ledger named in the path is answered `404` when a segment is empty, where the query form answered `stream_required` or `store_required`; `pdp`, `instance`, `zone` and `ledger` given in the query are refused as unknown parameters, and the decision log's discovery document lists only the query parameters a read takes.
+  `contracts/openapi/auth.json` documents the sign-in and setup routes, and `contracts/endpoints.csv`, every route with its credential, operation and target, is generated from the contracts and checked; a route off the layout fails the build.
+
 - **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**
   Grants, roles, local users, identity providers and the recovery are served by the Host of a Server running a Control Plane, at `/iam/v1/grants`, `/iam/v1/roles`, `/iam/v1/principals/{principal}/roles`, `/iam/v1/users`, `/iam/v1/providers` and `/iam/v1/recovery`, and over gRPC by `permguard.iam.v1.GrantService`, `RoleService`, `UserService`, `ProviderService` and `RecoveryService`.
   `GetRecovery` and `AcknowledgeRecovery` leave `OperationsService` for `RecoveryService`.

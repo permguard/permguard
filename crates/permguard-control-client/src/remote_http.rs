@@ -110,7 +110,10 @@ impl HttpRemote {
         let (zone, ledger) = ids
             .as_ref()
             .ok_or_else(|| "the remote is not bound to a ledger yet".to_owned())?;
-        Ok(format!("{}/v1/zones/{zone}/ledgers/{ledger}", self.prefix))
+        Ok(format!(
+            "{}/notp/v1/zones/{zone}/ledgers/{ledger}",
+            self.prefix
+        ))
     }
 
     fn get_json(&self, path: &str) -> Result<Vec<u8>, String> {
@@ -182,12 +185,12 @@ fn split_prefix(url: &str) -> Result<(String, String), String> {
 
 impl Remote for HttpRemote {
     fn resolve(&self, zone: &str, ledger: &str) -> Result<(String, String), String> {
-        let zone_body = self.get_json(&format!("{}/v1/zones/{zone}", self.prefix))?;
+        let zone_body = self.get_json(&format!("{}/catalog/v1/zones/{zone}", self.prefix))?;
         let zone_id = serde_json::from_slice::<IdAnswer>(&zone_body)
             .map_err(|error| format!("the zone answer does not parse: {error}"))?
             .id;
         let ledger_body = self.get_json(&format!(
-            "{}/v1/zones/{zone_id}/ledgers/{ledger}",
+            "{}/catalog/v1/zones/{zone_id}/ledgers/{ledger}",
             self.prefix
         ))?;
         let ledger_id = serde_json::from_slice::<IdAnswer>(&ledger_body)
@@ -198,7 +201,7 @@ impl Remote for HttpRemote {
     }
 
     fn keyring(&self) -> Result<Vec<u8>, String> {
-        self.get_json(&format!("{}/control-plane/keys", self.prefix))
+        self.get_json(&format!("{}/control-plane/v1/keys", self.prefix))
     }
 
     fn get_ref(&self, r#ref: &str) -> Result<Option<RefAnswer>, String> {
@@ -229,7 +232,7 @@ impl Remote for HttpRemote {
         request: &NegotiatePushRequest,
     ) -> Result<NegotiatePushResponse, String> {
         let body = self.post_cbor(
-            &format!("{}/notp/push/negotiate", self.ledger_base()?),
+            &format!("{}/push/negotiate", self.ledger_base()?),
             &request.encode().map_err(|error| error.to_string())?,
         )?;
         let response = NegotiatePushResponse::decode(&body).map_err(|error| error.to_string())?;
@@ -251,7 +254,7 @@ impl Remote for HttpRemote {
             None => request.clone(),
         };
         let body = self.post_cbor(
-            &format!("{}/notp/objects", self.ledger_base()?),
+            &format!("{}/objects", self.ledger_base()?),
             &request.encode().map_err(|error| error.to_string())?,
         )?;
         UploadObjectsResponse::decode(&body).map_err(|error| error.to_string())
@@ -259,7 +262,7 @@ impl Remote for HttpRemote {
 
     fn commit_push(&self, request: &CommitPushRequest) -> Result<CommitPushResponse, String> {
         let body = self.post_cbor(
-            &format!("{}/notp/push/commit", self.ledger_base()?),
+            &format!("{}/push/commit", self.ledger_base()?),
             &request.encode().map_err(|error| error.to_string())?,
         )?;
         CommitPushResponse::decode(&body).map_err(|error| error.to_string())
@@ -270,7 +273,7 @@ impl Remote for HttpRemote {
         request: &NegotiatePullRequest,
     ) -> Result<NegotiatePullResponse, String> {
         let body = self.post_cbor(
-            &format!("{}/notp/pull/negotiate", self.ledger_base()?),
+            &format!("{}/pull/negotiate", self.ledger_base()?),
             &request.encode().map_err(|error| error.to_string())?,
         )?;
         let response = NegotiatePullResponse::decode(&body).map_err(|error| error.to_string())?;
@@ -285,7 +288,7 @@ impl Remote for HttpRemote {
             transfer_id: request.transfer_id,
         };
         let body = self.post_cbor(
-            &format!("{}/notp/objects/fetch", self.ledger_base()?),
+            &format!("{}/objects/fetch", self.ledger_base()?),
             &request.encode().map_err(|error| error.to_string())?,
         )?;
         let mut response =

@@ -669,7 +669,7 @@ async fn the_plane_answers_its_own_signers_and_never_its_records() {
         authorization: Arc::clone(&authorization),
     });
 
-    let path = format!("/events/v1alpha1/signers?zone={ZONE_ID}&ledger={LEDGER_ID}");
+    let path = format!("/temporal/v1alpha1/zones/{ZONE_ID}/ledgers/{LEDGER_ID}/signers");
     let (status, answered) = ask(&router, "GET", &path).await;
     assert_eq!(status, 200, "{answered}");
     assert_eq!(answered["producer"]["class"], PRODUCER_CLASS_DATA_PLANE);
@@ -690,7 +690,7 @@ async fn the_plane_answers_its_own_signers_and_never_its_records() {
             {"from": 3, "kid": "k2", "jwk": second},
         ])
     );
-    let (_, later) = ask(&router, "GET", &format!("{path}&from_seq=3")).await;
+    let (_, later) = ask(&router, "GET", &format!("{path}?from_seq=3")).await;
     assert_eq!(
         later["spans"],
         json!([{"from": 3, "kid": "k2", "jwk": second}])
@@ -744,7 +744,7 @@ async fn the_plane_answers_its_own_signers_and_never_its_records() {
     let (status, refused) = ask(
         &router,
         "GET",
-        &format!("/events/v1alpha1/signers?zone={ZONE_ID}&ledger=invented"),
+        &format!("/temporal/v1alpha1/zones/{ZONE_ID}/ledgers/invented/signers"),
     )
     .await;
     assert_eq!(status, 404, "{refused}");
@@ -760,14 +760,14 @@ async fn the_plane_answers_its_own_signers_and_never_its_records() {
             .join("invented")
             .exists()
     );
+    // The path before the API layout of iteration 02 is gone, not aliased (WP-13.1).
     let (status, refused) = ask(&router, "GET", "/events/v1alpha1/signers").await;
-    assert_eq!(status, 400, "{refused}");
+    assert_eq!(status, 404, "{refused}");
 
     // The records stay the Control Plane's to serve.
     for uri in [
-        "/events/v1alpha1/records".to_owned(),
-        format!("/events/v1alpha1/records?zone={ZONE_ID}&ledger={LEDGER_ID}"),
-        format!("/zones/{ZONE_ID}/ledgers/{LEDGER_ID}/events/v1alpha1/records"),
+        format!("/events/v1alpha1/zones/{ZONE_ID}/ledgers/{LEDGER_ID}/records"),
+        format!("/temporal/v1alpha1/zones/{ZONE_ID}/ledgers/{LEDGER_ID}/records"),
     ] {
         let (status, _) = ask(&router, "GET", &uri).await;
         assert_eq!(status, 404, "{uri} is not served here");

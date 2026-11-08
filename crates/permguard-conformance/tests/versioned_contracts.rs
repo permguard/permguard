@@ -5,14 +5,14 @@
 //! path of every OpenAPI document, every protobuf package, and every record type, protected type,
 //! digest domain, interface, artifact and input contract carries its version, so a change is a
 //! new version beside the old one, never an edit under the same name. The unversioned paths are
-//! the operational entry points a client reaches before it knows any version, and are named here.
+//! the operational entry points a client reaches before it knows any version, and are named here;
+//! the key sets are versioned since the API layout of iteration 02 (WP-13.1).
 
 #![allow(clippy::expect_used)]
 
 use std::path::Path;
 
-/// The paths a client reaches before it has chosen a contract: discovery, health, metrics and the
-/// published key sets. Each discovery document is itself named after the version it describes.
+/// The paths a client reaches before it has chosen a contract: discovery, health and metrics. Each discovery document is itself named after the version it describes.
 const ENTRY_POINTS: &[&str] = &[
     "/",
     "/.well-known/server-configuration",
@@ -23,9 +23,6 @@ const ENTRY_POINTS: &[&str] = &[
     "/readyz",
     "/version",
     "/metrics",
-    "/server-host/keys",
-    "/control-plane/keys",
-    "/data-plane/keys",
 ];
 
 /// Whether one segment is a version: `v1`, `v1alpha1`, `v2beta3`.

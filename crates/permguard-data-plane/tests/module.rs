@@ -101,8 +101,15 @@ async fn the_http_surface_answers_info_health_and_discovery() {
 
     // The stream declarations, disabled ones included: "not here" and "here, turned off" are
     // different answers, and this deployment has the temporal interface off.
-    let (status, streams) = get(module.http_routes(&context), "/v1/streams").await;
+    let (status, streams) = get(module.http_routes(&context), "/streams/v1").await;
     assert_eq!(status, 200);
+    // WP-13.1: the paths before the API layout of iteration 02 are gone, never aliased (D18).
+    for gone in ["/v1/streams", "/data-plane/keys"] {
+        let (status, _) = get(module.http_routes(&context), gone).await;
+        assert_eq!(status, 404, "{gone} is gone");
+    }
+    let (status, _) = get(module.http_routes(&context), "/data-plane/v1/keys").await;
+    assert_eq!(status, 200, "the plane's keys at their layout path");
     assert!(
         streams.contains("\"stream_type\":\"decisions\"")
             && streams.contains("\"stream_type\":\"events\""),
@@ -126,7 +133,7 @@ async fn the_http_surface_answers_info_health_and_discovery() {
     assert!(
         discovery["jwks_uri"]
             .as_str()
-            .is_some_and(|uri| uri.ends_with("/data-plane/keys")),
+            .is_some_and(|uri| uri.ends_with("/data-plane/v1/keys")),
         "{discovery}"
     );
 
@@ -168,7 +175,7 @@ async fn the_http_surface_answers_info_health_and_discovery() {
         );
     }
 
-    let (status, keys) = get(module.http_routes(&context), "/data-plane/keys").await;
+    let (status, keys) = get(module.http_routes(&context), "/data-plane/v1/keys").await;
     assert_eq!(status, 200);
     assert!(keys.contains("keys"), "{keys}");
 }

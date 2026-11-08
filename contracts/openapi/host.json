@@ -102,7 +102,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/PrepareBackup"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/PrepareBackup",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "backup",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "backup.manage",
+          "target": "host"
+        }
       }
     },
     "/host/v1/backup/finalize": {
@@ -190,7 +197,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/FinalizeBackup"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/FinalizeBackup",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "backup",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "backup.manage",
+          "target": "host"
+        }
       }
     },
     "/host/v1/backup/abort": {
@@ -278,7 +292,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/AbortBackup"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/AbortBackup",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "backup",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "backup.manage",
+          "target": "host"
+        }
       }
     },
     "/host/v1/backups": {
@@ -335,7 +356,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/ListBackups"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/ListBackups",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "backup",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "backup.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/identity": {
@@ -392,7 +420,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.IdentityService/GetIdentity"
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/GetIdentity",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "identity",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "identity.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/identity/verify": {
@@ -462,7 +497,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.IdentityService/VerifyIdentity"
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/VerifyIdentity",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "identity",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "identity.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/identity/rotate": {
@@ -560,7 +602,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.IdentityService/RotateIdentity"
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/RotateIdentity",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "identity",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "identity.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/identity/reset/plan": {
@@ -658,7 +707,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.IdentityService/PlanIdentityReset"
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/PlanIdentityReset",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "identity",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "identity.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/identity/reset/run": {
@@ -766,7 +822,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.IdentityService/RunIdentityReset"
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/RunIdentityReset",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "identity",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "identity.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/ring-bindings": {
@@ -823,7 +886,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.IdentityService/ListRingBindings"
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/ListRingBindings",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "identity",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "identity.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/sessions/hello": {
@@ -844,7 +914,14 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "the session messages travel as frames of `IdentityService/PeerChannel`, never as one rpc each"
+        "x-grpc-note": "the session messages travel as frames of `IdentityService/PeerChannel`, never as one rpc each",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "peer",
+          "credential": "peer session",
+          "operation": "peer session only",
+          "target": "host"
+        }
       }
     },
     "/host/v1/sessions/prove": {
@@ -865,7 +942,14 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "the session messages travel as frames of `IdentityService/PeerChannel`, never as one rpc each"
+        "x-grpc-note": "the session messages travel as frames of `IdentityService/PeerChannel`, never as one rpc each",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "peer",
+          "credential": "peer session",
+          "operation": "peer session only",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/grants": {
@@ -944,7 +1028,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.GrantService/ListGrants"
+        "x-grpc-rpc": "permguard.iam.v1.GrantService/ListGrants",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "grants",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       },
       "post": {
         "operationId": "createGrant",
@@ -1040,7 +1131,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.GrantService/CreateGrant"
+        "x-grpc-rpc": "permguard.iam.v1.GrantService/CreateGrant",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "grants",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/grants/{id}/revoke/plan": {
@@ -1160,7 +1258,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.GrantService/PlanGrantRevoke"
+        "x-grpc-rpc": "permguard.iam.v1.GrantService/PlanGrantRevoke",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "grants",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/grants/{id}/revoke/run": {
@@ -1280,7 +1385,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.GrantService/RunGrantRevoke"
+        "x-grpc-rpc": "permguard.iam.v1.GrantService/RunGrantRevoke",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "grants",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/keys": {
@@ -1337,7 +1449,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.KeyService/ListKeyRings"
+        "x-grpc-rpc": "permguard.host.v1.KeyService/ListKeyRings",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "keys",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "keys.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/keys/bundle": {
@@ -1458,14 +1577,21 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.KeyService/GetKeyBundle"
+        "x-grpc-rpc": "permguard.host.v1.KeyService/GetKeyBundle",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "keys",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "keys.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/keys/{ring}": {
       "get": {
         "operationId": "getKeyRing",
         "summary": "One ring's public set",
-        "description": "Public: public keys need no grant (owner decision, 2026-10-06). The telemetry listener's `/server-host/keys` redirects here with `308` once a Host listener over plain TLS is configured, at `admin.advertised_url` when the deployment states one, and keeps publishing the ring behind mutual TLS; without one the legacy route stays served.",
+        "description": "Public: public keys need no grant (owner decision, 2026-10-06). The telemetry listener's `/server-host/v1/keys` redirects here with `308` once a Host listener over plain TLS is configured, at `admin.advertised_url` when the deployment states one, and keeps publishing the ring behind mutual TLS; without one the legacy route stays served.",
         "parameters": [
           {
             "name": "ring",
@@ -1518,7 +1644,12 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.KeyService/GetKeyRing"
+        "x-grpc-rpc": "permguard.host.v1.KeyService/GetKeyRing",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "keys",
+          "credential": "no"
+        }
       }
     },
     "/host/v1/keys/{ring}/rotate": {
@@ -1638,7 +1769,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.KeyService/RotateKeyRing"
+        "x-grpc-rpc": "permguard.host.v1.KeyService/RotateKeyRing",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "keys",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "keys.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/keys/{ring}/revoke/plan": {
@@ -1758,7 +1896,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.KeyService/PlanKeyRevoke"
+        "x-grpc-rpc": "permguard.host.v1.KeyService/PlanKeyRevoke",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "keys",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "keys.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/keys/{ring}/revoke/run": {
@@ -1878,7 +2023,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.KeyService/RunKeyRevoke"
+        "x-grpc-rpc": "permguard.host.v1.KeyService/RunKeyRevoke",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "keys",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "keys.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members": {
@@ -1957,7 +2109,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/ListMembers"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ListMembers",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/invites": {
@@ -2014,7 +2173,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/ListInvites"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ListInvites",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.read",
+          "target": "host"
+        }
       },
       "post": {
         "operationId": "createInvite",
@@ -2110,7 +2276,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/CreateInvite"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/CreateInvite",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/invites/{id}": {
@@ -2229,7 +2402,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/DeleteInvite"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/DeleteInvite",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/enroll": {
@@ -2250,7 +2430,14 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "the enrollment travels inside a peer session of `IdentityService/PeerChannel`, never as an rpc of its own"
+        "x-grpc-note": "the enrollment travels inside a peer session of `IdentityService/PeerChannel`, never as an rpc of its own",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "peer",
+          "credential": "peer session",
+          "operation": "peer session only",
+          "target": "host"
+        }
       }
     },
     "/host/v1/tasks/{task}/session": {
@@ -2282,7 +2469,14 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "the task session travels inside a peer session of `IdentityService/PeerChannel`, never as an rpc of its own"
+        "x-grpc-note": "the task session travels inside a peer session of `IdentityService/PeerChannel`, never as an rpc of its own",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "peer",
+          "credential": "peer session",
+          "operation": "peer session only",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}": {
@@ -2371,7 +2565,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/GetMember"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/GetMember",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/verify": {
@@ -2384,7 +2585,9 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "The membership's id.",
             "x-grpc-field": "membership_id"
           }
@@ -2393,7 +2596,9 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/VerifyMemberBody" }
+              "schema": {
+                "$ref": "#/components/schemas/VerifyMemberBody"
+              }
             }
           }
         },
@@ -2402,36 +2607,81 @@
             "description": "Proved immediately or scheduled durably, with its receipt.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MemberVerification" }
+                "schema": {
+                  "$ref": "#/components/schemas/MemberVerification"
+                }
               }
             }
           },
           "400": {
             "description": "The body or membership id is invalid.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
           },
           "401": {
             "description": "No usable operator credential.",
-            "content": { "application/json": { "schema": { "$ref": "common.json#/components/schemas/WireDenial" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
           },
           "403": {
             "description": "The principal lacks `membership.admin`.",
-            "content": { "application/json": { "schema": { "$ref": "common.json#/components/schemas/WireDenial" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
           },
           "404": {
             "description": "No membership of that id.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
           },
           "409": {
             "description": "The request id was reused for another request.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
           },
           "503": {
             "description": "The peer client, mutation journal, audit trail, or membership store is unavailable.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostWireError" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/VerifyMember"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/VerifyMember",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/approve": {
@@ -2551,7 +2801,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/ApproveMember"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ApproveMember",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/reject": {
@@ -2671,7 +2928,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/RejectMember"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/RejectMember",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/suspend": {
@@ -2791,7 +3055,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/SuspendMember"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/SuspendMember",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/resume": {
@@ -2911,7 +3182,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/ResumeMember"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ResumeMember",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/fence": {
@@ -3031,7 +3309,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/FenceMember"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/FenceMember",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/record": {
@@ -3151,7 +3436,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/ChangeMemberRecord"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ChangeMemberRecord",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/appraise": {
@@ -3271,7 +3563,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/AppraiseMember"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/AppraiseMember",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/sessions": {
@@ -3360,7 +3659,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/ListMemberSessions"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ListMemberSessions",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/revoke/plan": {
@@ -3480,7 +3786,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/PlanMemberRevoke"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/PlanMemberRevoke",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/members/{id}/revoke/run": {
@@ -3600,7 +3913,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/RunMemberRevoke"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/RunMemberRevoke",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/memberships/join": {
@@ -3698,7 +4018,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/JoinMembership"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/JoinMembership",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/memberships/{id}/sync": {
@@ -3818,7 +4145,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.MembershipService/SyncMembership"
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/SyncMembership",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/status": {
@@ -3875,7 +4209,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/GetStatus"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/GetStatus",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "lifecycle",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "lifecycle.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/config/effective": {
@@ -3932,7 +4273,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/GetEffectiveConfig"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/GetEffectiveConfig",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "configuration",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "config.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/config/revisions": {
@@ -3989,7 +4337,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/ListConfigRevisions"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/ListConfigRevisions",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "configuration",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "config.read",
+          "target": "host"
+        }
       }
     },
     "/host/v1/audit/{class}/records": {
@@ -4122,7 +4477,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListAuditRecords"
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListAuditRecords",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "audit",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "audit.read",
+          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/audit/{class}/checkpoints": {
@@ -4221,7 +4583,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListAuditCheckpoints"
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListAuditCheckpoints",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "audit",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "audit.read",
+          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/audit/{class}/export": {
@@ -4343,7 +4712,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ExportAudit"
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ExportAudit",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "audit",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "audit.read",
+          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/streams": {
@@ -4400,7 +4776,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreams"
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreams",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "streams",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "streams.read",
+          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/streams/{plane}/{stream_type}/frontier": {
@@ -4509,7 +4892,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.EvidenceService/GetStreamFrontier"
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/GetStreamFrontier",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "streams",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "streams.read",
+          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/streams/{plane}/{stream_type}/records": {
@@ -4661,7 +5051,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamRecords"
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamRecords",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "streams",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "streams.read",
+          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/streams/{plane}/{stream_type}/signers": {
@@ -4770,7 +5167,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamSigners"
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamSigners",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "streams",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "streams.read",
+          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/streams/{plane}/{stream_type}/subscriptions": {
@@ -4879,7 +5283,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamSubscriptions"
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamSubscriptions",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "streams",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "streams.read",
+          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/streams/{plane}/{stream_type}/gaps": {
@@ -4988,7 +5399,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamGaps"
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamGaps",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "streams",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "streams.read",
+          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/streams/{plane}/{stream_type}/anchors": {
@@ -5097,7 +5515,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamAnchors"
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListStreamAnchors",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "streams",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "streams.read",
+          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/plans": {
@@ -5182,7 +5607,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/ListPlans"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/ListPlans",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "plans",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "authz.admin | identity.admin | keys.admin | membership.admin",
+          "target": "host"
+        }
       }
     },
     "/host/v1/plans/{id}/approve": {
@@ -5302,7 +5734,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/ApprovePlan"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/ApprovePlan",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "plans",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "the plan's own operation",
+          "target": "host"
+        }
       }
     },
     "/host/v1/gc/{job}/plan": {
@@ -5415,7 +5854,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/PlanGc"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/PlanGc",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "garbage collection",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "gc.manage",
+          "target": "plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/gc/{job}/run": {
@@ -5538,7 +5984,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.host.v1.OperationsService/RunGc"
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/RunGc",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "garbage collection",
+          "credential": "credential (IAM Host) or administration token (member)",
+          "operation": "gc.manage",
+          "target": "plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/iam/v1/roles": {
@@ -5595,7 +6048,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.RoleService/ListRoles"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/ListRoles",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "roles",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       },
       "post": {
         "operationId": "createRole",
@@ -5681,7 +6141,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.RoleService/CreateRole"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/CreateRole",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "roles",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/roles/{name}": {
@@ -5760,7 +6227,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.RoleService/GetRole"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/GetRole",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "roles",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       },
       "patch": {
         "operationId": "updateRole",
@@ -5868,7 +6342,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.RoleService/UpdateRole"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/UpdateRole",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "roles",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/roles/{name}/delete": {
@@ -5978,7 +6459,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.RoleService/DeleteRole"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/DeleteRole",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "roles",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/roles/{name}/members": {
@@ -6088,7 +6576,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.RoleService/AddMember"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/AddMember",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "roles",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/roles/{name}/members/remove": {
@@ -6198,7 +6693,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.RoleService/RemoveMember"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/RemoveMember",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "roles",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/principals/{principal}/roles": {
@@ -6270,7 +6772,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.RoleService/RolesOf"
+        "x-grpc-rpc": "permguard.iam.v1.RoleService/RolesOf",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "roles",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/users": {
@@ -6327,7 +6836,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/ListUsers"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/ListUsers",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       },
       "post": {
         "operationId": "createUser",
@@ -6413,7 +6929,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/CreateUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/CreateUser",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/users/{name}": {
@@ -6492,7 +7015,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/GetUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/GetUser",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       },
       "patch": {
         "operationId": "updateUser",
@@ -6600,7 +7130,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/UpdateUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/UpdateUser",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/users/{name}/password": {
@@ -6710,7 +7247,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/SetPassword"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/SetPassword",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/users/{name}/disable": {
@@ -6820,7 +7364,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/SetUserStatus"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/SetUserStatus",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/users/{name}/enable": {
@@ -6930,7 +7481,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/SetUserStatus"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/SetUserStatus",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/users/{name}/factor/reset": {
@@ -7040,7 +7598,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/ResetFactor"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/ResetFactor",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/users/{name}/unlock": {
@@ -7119,7 +7684,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/UnlockUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/UnlockUser",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/users/{name}/links": {
@@ -7229,7 +7801,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/LinkUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/LinkUser",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/users/{name}/links/remove": {
@@ -7339,7 +7918,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/LinkUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/LinkUser",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/users/{name}/delete": {
@@ -7449,7 +8035,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.UserService/DeleteUser"
+        "x-grpc-rpc": "permguard.iam.v1.UserService/DeleteUser",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "users",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/providers": {
@@ -7506,7 +8099,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ProviderService/ListProviders"
+        "x-grpc-rpc": "permguard.iam.v1.ProviderService/ListProviders",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "identity providers",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/providers/{name}/refresh": {
@@ -7585,7 +8185,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ProviderService/RefreshProvider"
+        "x-grpc-rpc": "permguard.iam.v1.ProviderService/RefreshProvider",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "identity providers",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/recovery": {
@@ -7642,7 +8249,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.RecoveryService/GetRecovery"
+        "x-grpc-rpc": "permguard.iam.v1.RecoveryService/GetRecovery",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "recovery",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/recovery/acknowledge": {
@@ -7699,7 +8313,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.RecoveryService/AcknowledgeRecovery"
+        "x-grpc-rpc": "permguard.iam.v1.RecoveryService/AcknowledgeRecovery",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "recovery",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/service-accounts": {
@@ -7756,7 +8377,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/ListServiceAccounts"
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/ListServiceAccounts",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "service accounts",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       },
       "post": {
         "operationId": "createServiceAccount",
@@ -7842,7 +8470,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/CreateServiceAccount"
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/CreateServiceAccount",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "service accounts",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/service-accounts/{name}": {
@@ -7921,7 +8556,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/GetServiceAccount"
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/GetServiceAccount",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "service accounts",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       },
       "patch": {
         "operationId": "updateServiceAccount",
@@ -8029,7 +8671,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/UpdateServiceAccount"
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/UpdateServiceAccount",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "service accounts",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/service-accounts/{name}/suspend": {
@@ -8139,7 +8788,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/SetServiceAccountStatus"
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/SetServiceAccountStatus",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "service accounts",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/service-accounts/{name}/resume": {
@@ -8249,7 +8905,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/SetServiceAccountStatus"
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/SetServiceAccountStatus",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "service accounts",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/service-accounts/{name}/delete": {
@@ -8359,7 +9022,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/DeleteServiceAccount"
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/DeleteServiceAccount",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "service accounts",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/service-accounts/{name}/credentials": {
@@ -8438,7 +9108,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/ListCredentials"
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/ListCredentials",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "credentials",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       },
       "post": {
         "operationId": "createCredential",
@@ -8546,7 +9223,14 @@
             "description": "The service account's name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`; its principal is `sa:<name>`.",
             "x-grpc-field": "name"
           }
-        ]
+        ],
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "credentials",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/service-accounts/{name}/credentials/{id}/revoke": {
@@ -8666,7 +9350,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/RevokeCredential"
+        "x-grpc-rpc": "permguard.iam.v1.ServiceAccountService/RevokeCredential",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "credentials",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/status-lists/{id}": {
@@ -8748,7 +9439,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.TokenService/GetStatusList"
+        "x-grpc-rpc": "permguard.iam.v1.TokenService/GetStatusList",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "tokens",
+          "credential": "no where keys.read is public",
+          "operation": "keys.read",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/tokens": {
@@ -8805,7 +9503,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.TokenService/ListTokens"
+        "x-grpc-rpc": "permguard.iam.v1.TokenService/ListTokens",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "tokens",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/tokens/{jti}/revoke": {
@@ -8905,7 +9610,14 @@
             }
           }
         },
-        "x-grpc-rpc": "permguard.iam.v1.TokenService/RevokeToken"
+        "x-grpc-rpc": "permguard.iam.v1.TokenService/RevokeToken",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "tokens",
+          "credential": "credential (IAM Host)",
+          "operation": "authz.admin",
+          "target": "host"
+        }
       }
     },
     "/iam/v1/token": {
@@ -9034,7 +9746,12 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "the token endpoint is RFC 6749's, a form over HTTP: no client of it speaks gRPC"
+        "x-grpc-note": "the token endpoint is RFC 6749's, a form over HTTP: no client of it speaks gRPC",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "tokens",
+          "credential": "client proof (secret, client assertion, certificate) or subject token"
+        }
       }
     },
     "/iam/v1/keys": {
@@ -9097,7 +9814,14 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "a JWKS is fetched over HTTP, as RFC 8414's `jwks_uri` names it"
+        "x-grpc-note": "a JWKS is fetched over HTTP, as RFC 8414's `jwks_uri` names it",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "tokens",
+          "credential": "no where keys.read is public",
+          "operation": "keys.read",
+          "target": "host"
+        }
       }
     },
     "/.well-known/oauth-authorization-server": {
@@ -9128,7 +9852,12 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "RFC 8414's metadata is a well-known HTTP document"
+        "x-grpc-note": "RFC 8414's metadata is a well-known HTTP document",
+        "x-permguard-endpoint": {
+          "plane": "iam",
+          "category": "discovery",
+          "credential": "no"
+        }
       }
     }
   },
@@ -11048,7 +11777,14 @@
             "x-grpc-field": "listeners"
           },
           "storage": {
-            "oneOf": [{ "$ref": "#/components/schemas/HostStorage" }, { "type": "null" }],
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HostStorage"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Where the volume stands (TS-5): its qualification and evidence id, `null` before Bootstrap qualified it. The compatibility mode is published here.",
             "x-grpc-field": "storage"
           }
@@ -11071,18 +11807,28 @@
       "HostStorage": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["qualification", "evidence"],
+        "required": [
+          "qualification",
+          "evidence"
+        ],
         "description": "The volume's qualification as `host status` publishes it (TS-5): nothing about the provider.",
         "x-grpc-message": "permguard.host.v1.HostStorage",
         "properties": {
           "qualification": {
             "type": "string",
-            "enum": ["qualified", "compatibility_mode", "unqualified"],
+            "enum": [
+              "qualified",
+              "compatibility_mode",
+              "unqualified"
+            ],
             "description": "How the volume's storage tuple is qualified under the profile in force.",
             "x-grpc-field": "qualification"
           },
           "evidence": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "The evidence id of a qualified volume.",
             "x-grpc-field": "evidence"
           }
@@ -12596,11 +13342,15 @@
             "x-grpc-field": "request_id"
           }
         },
-        "required": ["request_id"],
+        "required": [
+          "request_id"
+        ],
         "additionalProperties": false,
         "description": "A request to prove one membership.",
         "x-grpc-message": "permguard.host.v1.VerifyMemberRequest",
-        "x-grpc-only": ["membership_id"],
+        "x-grpc-only": [
+          "membership_id"
+        ],
         "x-grpc-note": "`membership_id` travels in the path on REST."
       },
       "MemberVerification": {
@@ -12612,11 +13362,17 @@
           },
           "status": {
             "type": "string",
-            "enum": ["proved", "scheduled"],
+            "enum": [
+              "proved",
+              "scheduled"
+            ],
             "x-grpc-field": "status"
           },
           "scheduled_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "x-grpc-field": "scheduled_at"
           },
@@ -12629,7 +13385,13 @@
             "x-grpc-field": "receipt"
           }
         },
-        "required": ["membership_id", "status", "scheduled_at", "member", "receipt"],
+        "required": [
+          "membership_id",
+          "status",
+          "scheduled_at",
+          "member",
+          "receipt"
+        ],
         "additionalProperties": false,
         "description": "An immediate live proof or a durable proof schedule and its receipt.",
         "x-grpc-message": "permguard.host.v1.VerifyMemberResponse"

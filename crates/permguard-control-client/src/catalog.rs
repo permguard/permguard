@@ -8,7 +8,7 @@
 //! the server tells them apart by shape, and names shaped like GUIDs cannot be created, so the
 //! resolution never guesses. `--zone` on every ledger command is that same rule.
 //!
-//! The commands are thin on purpose: they speak to the control plane's `/v1/zones` routes and print
+//! The commands are thin on purpose: they speak to the control plane's `/catalog/v1/zones` routes and print
 //! what came back. All the semantics — uniqueness, emptiness before deletion, name rules — live on
 //! the server, so the CLI can never disagree with another client about what is allowed.
 
@@ -241,7 +241,7 @@ pub fn create_zone(client: &Client, endpoint: &Endpoint, name: &str) -> Result<Z
         client,
         endpoint,
         "POST",
-        "/v1/zones",
+        "/catalog/v1/zones",
         Some(&name_body(name, None)?),
     )
 }
@@ -256,7 +256,7 @@ pub fn list_zones(
         client,
         endpoint,
         "GET",
-        &paged("/v1/zones", page, size),
+        &paged("/catalog/v1/zones", page, size),
         None,
     )
 }
@@ -277,7 +277,7 @@ pub fn get_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<Zone
         client,
         endpoint,
         "GET",
-        &format!("/v1/zones/{}", crate::encode::value(zone)),
+        &format!("/catalog/v1/zones/{}", crate::encode::value(zone)),
         None,
     )
 }
@@ -293,7 +293,7 @@ pub fn rename_zone(
         client,
         endpoint,
         "PATCH",
-        &format!("/v1/zones/{}", crate::encode::value(zone)),
+        &format!("/catalog/v1/zones/{}", crate::encode::value(zone)),
         Some(&name_body(name, Some(expected_revision))?),
     )
 }
@@ -317,7 +317,7 @@ pub fn delete_zone(
         endpoint,
         "DELETE",
         &format!(
-            "/v1/zones/{}?{}",
+            "/catalog/v1/zones/{}?{}",
             crate::encode::value(zone),
             deletion(expected_revision)?
         ),
@@ -335,7 +335,7 @@ pub fn create_ledger(
         client,
         endpoint,
         "POST",
-        &format!("/v1/zones/{}/ledgers", crate::encode::value(zone)),
+        &format!("/catalog/v1/zones/{}/ledgers", crate::encode::value(zone)),
         Some(&name_body(name, None)?),
     )
 }
@@ -352,7 +352,7 @@ pub fn list_ledgers(
         endpoint,
         "GET",
         &paged(
-            &format!("/v1/zones/{}/ledgers", crate::encode::value(zone)),
+            &format!("/catalog/v1/zones/{}/ledgers", crate::encode::value(zone)),
             page,
             size,
         ),
@@ -371,7 +371,7 @@ pub fn get_ledger(
         endpoint,
         "GET",
         &format!(
-            "/v1/zones/{}/ledgers/{}",
+            "/catalog/v1/zones/{}/ledgers/{}",
             crate::encode::value(zone),
             crate::encode::value(ledger)
         ),
@@ -392,7 +392,7 @@ pub fn rename_ledger(
         endpoint,
         "PATCH",
         &format!(
-            "/v1/zones/{}/ledgers/{}",
+            "/catalog/v1/zones/{}/ledgers/{}",
             crate::encode::value(zone),
             crate::encode::value(ledger)
         ),
@@ -430,7 +430,7 @@ pub fn set_ledger_state(
         endpoint,
         "POST",
         &format!(
-            "/v1/zones/{}/ledgers/{}/{verb}",
+            "/catalog/v1/zones/{}/ledgers/{}/{verb}",
             crate::encode::value(zone),
             crate::encode::value(ledger)
         ),
@@ -450,7 +450,7 @@ pub fn delete_ledger(
         endpoint,
         "DELETE",
         &format!(
-            "/v1/zones/{}/ledgers/{}?{}",
+            "/catalog/v1/zones/{}/ledgers/{}?{}",
             crate::encode::value(zone),
             crate::encode::value(ledger),
             deletion(expected_revision)?
@@ -589,7 +589,7 @@ pub fn import(
         client,
         endpoint,
         "POST",
-        &format!("/v1/zones/{}/import", crate::encode::value(zone)),
+        &format!("/catalog/v1/zones/{}/import", crate::encode::value(zone)),
         Some(&body.to_string()),
     )
 }
@@ -662,7 +662,7 @@ pub fn export_ledger(
         client,
         endpoint,
         &format!(
-            "/v1/zones/{}/ledgers/{}/export",
+            "/catalog/v1/zones/{}/ledgers/{}/export",
             crate::encode::value(zone),
             crate::encode::value(ledger)
         ),
@@ -674,7 +674,7 @@ pub fn export_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<E
     export(
         client,
         endpoint,
-        &format!("/v1/zones/{}/export", crate::encode::value(zone)),
+        &format!("/catalog/v1/zones/{}/export", crate::encode::value(zone)),
     )
 }
 

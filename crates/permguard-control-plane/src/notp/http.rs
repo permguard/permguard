@@ -27,27 +27,27 @@ use crate::wire;
 pub(crate) fn routes(facade: NotpFacade) -> Router {
     Router::new()
         .route(
-            "/v1/zones/{zone}/ledgers/{ledger}/refs/{*name}",
+            "/notp/v1/zones/{zone}/ledgers/{ledger}/refs/{*name}",
             get(get_ref),
         )
         .route(
-            "/v1/zones/{zone}/ledgers/{ledger}/notp/push/negotiate",
+            "/notp/v1/zones/{zone}/ledgers/{ledger}/push/negotiate",
             post(negotiate_push),
         )
         .route(
-            "/v1/zones/{zone}/ledgers/{ledger}/notp/objects",
+            "/notp/v1/zones/{zone}/ledgers/{ledger}/objects",
             post(upload),
         )
         .route(
-            "/v1/zones/{zone}/ledgers/{ledger}/notp/push/commit",
+            "/notp/v1/zones/{zone}/ledgers/{ledger}/push/commit",
             post(commit_push),
         )
         .route(
-            "/v1/zones/{zone}/ledgers/{ledger}/notp/pull/negotiate",
+            "/notp/v1/zones/{zone}/ledgers/{ledger}/pull/negotiate",
             post(negotiate_pull),
         )
         .route(
-            "/v1/zones/{zone}/ledgers/{ledger}/notp/objects/fetch",
+            "/notp/v1/zones/{zone}/ledgers/{ledger}/objects/fetch",
             post(fetch),
         )
         .route_layer(axum::middleware::from_fn_with_state(
@@ -359,7 +359,7 @@ mod tests {
         };
         let (status, body) = post(
             routes,
-            &format!("{base}/notp/push/negotiate"),
+            &format!("{base}/push/negotiate"),
             negotiate.encode().expect("it encodes"),
         )
         .await;
@@ -374,7 +374,7 @@ mod tests {
         };
         let (status, body) = post(
             routes,
-            &format!("{base}/notp/objects"),
+            &format!("{base}/objects"),
             upload.encode().expect("it encodes"),
         )
         .await;
@@ -388,7 +388,7 @@ mod tests {
         };
         let (status, body) = post(
             routes,
-            &format!("{base}/notp/push/commit"),
+            &format!("{base}/push/commit"),
             commit.encode().expect("it encodes"),
         )
         .await;
@@ -405,7 +405,7 @@ mod tests {
 
         let (facade, zone, ledger) = testing_facade_with(None, None);
         let routes = routes(facade.clone());
-        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
         let (objects, head) = build_commit();
         rest_push(&routes, &base, &objects, &head).await;
 
@@ -510,7 +510,7 @@ mod tests {
         // The member's transfer is its membership's: a REST caller naming it learns nothing.
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/objects/fetch"),
+            &format!("{base}/objects/fetch"),
             fetch.encode().expect("it encodes"),
         )
         .await;
@@ -643,7 +643,7 @@ mod tests {
 
         let (facade, zone, ledger) = testing_facade_with(None, None);
         let routes = routes(facade.clone());
-        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
         let (objects, head) = build_commit();
         let negotiated = GitLikeStore::negotiate_push(
             &facade,
@@ -688,7 +688,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/push/commit"),
+            &format!("{base}/push/commit"),
             commit.encode().expect("it encodes"),
         )
         .await;
@@ -752,7 +752,7 @@ mod tests {
             )
             .expect("subscribes");
         let routes = routes(facade);
-        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
         let (objects, head) = build_commit();
         rest_push(&routes, &base, &objects, &head).await;
         assert_eq!(
@@ -771,7 +771,7 @@ mod tests {
     async fn test_a_transfer_negotiated_over_rest_commits_over_grpc() {
         let (facade, zone, ledger) = testing_facade_with(None, None);
         let routes = routes(facade.clone());
-        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
         let (objects, head) = build_commit();
         let negotiate = NegotiatePushRequest {
             r#ref: "main".into(),
@@ -788,7 +788,7 @@ mod tests {
         };
         let (_, body) = post(
             &routes,
-            &format!("{base}/notp/push/negotiate"),
+            &format!("{base}/push/negotiate"),
             negotiate.encode().expect("it encodes"),
         )
         .await;
@@ -802,7 +802,7 @@ mod tests {
         };
         let (status, _) = post(
             &routes,
-            &format!("{base}/notp/objects"),
+            &format!("{base}/objects"),
             upload.encode().expect("it encodes"),
         )
         .await;
@@ -838,7 +838,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/push/commit"),
+            &format!("{base}/push/commit"),
             commit.encode().expect("it encodes"),
         )
         .await;
@@ -864,7 +864,7 @@ mod tests {
         .expect("encodes");
         for media in [Some("text/plain"), Some("application/json"), None] {
             let mut request = HttpRequest::builder().method("POST").uri(format!(
-                "/v1/zones/{zone}/ledgers/{ledger}/notp/pull/negotiate"
+                "/notp/v1/zones/{zone}/ledgers/{ledger}/pull/negotiate"
             ));
             if let Some(media) = media {
                 request = request.header("content-type", media);
@@ -928,7 +928,7 @@ mod tests {
 
         let (facade, zone, ledger) = testing_facade_with(None, None);
         let routes = routes(facade.clone());
-        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
         let (objects, head) = build_commit();
         rest_push(&routes, &base, &objects, &head).await;
         let state = |state| {
@@ -946,7 +946,7 @@ mod tests {
         // A transfer negotiated while the ledger was active, to upload and commit once it is not.
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/push/negotiate"),
+            &format!("{base}/push/negotiate"),
             negotiation(&objects, &head, "push-before"),
         )
         .await;
@@ -962,7 +962,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/push/negotiate"),
+            &format!("{base}/push/negotiate"),
             negotiation(&objects, &head, "push-archived"),
         )
         .await;
@@ -975,7 +975,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/objects"),
+            &format!("{base}/objects"),
             upload.encode().expect("it encodes"),
         )
         .await;
@@ -990,7 +990,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/push/commit"),
+            &format!("{base}/push/commit"),
             commit.encode().expect("it encodes"),
         )
         .await;
@@ -1002,7 +1002,7 @@ mod tests {
         state(LedgerState::Active);
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/push/negotiate"),
+            &format!("{base}/push/negotiate"),
             negotiation(&objects, &head, "push-restored"),
         )
         .await;
@@ -1017,7 +1017,7 @@ mod tests {
 
         let (facade, zone, ledger) = testing_facade_with(None, None);
         let routes = routes(facade.clone());
-        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
         let (objects, head) = build_commit();
         rest_push(&routes, &base, &objects, &head).await;
         let (zone_id, ledger_id) = facade.ledger_ids(&zone, &ledger).expect("the ledger");
@@ -1033,13 +1033,13 @@ mod tests {
         assert_eq!(status, 404);
         let (status, _) = get_of(
             &routes,
-            &format!("/v1/zones/{zone_id}/ledgers/{ledger_id}/refs/main"),
+            &format!("/notp/v1/zones/{zone_id}/ledgers/{ledger_id}/refs/main"),
         )
         .await;
         assert_eq!(status, 404, "not by its ids either");
         let (status, _) = post(
             &routes,
-            &format!("{base}/notp/push/negotiate"),
+            &format!("{base}/push/negotiate"),
             negotiation(&objects, &head, "push-deleted"),
         )
         .await;
@@ -1189,18 +1189,18 @@ mod tests {
     #[tokio::test]
     async fn test_a_deeply_nested_body_is_refused_rather_than_taking_the_process_down() {
         let (routes, zone, ledger) = testing_routes();
-        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
 
         // 50 001 bytes, 50 000 levels: the payload that aborted the process before the limit.
         let mut deep = vec![0x81u8; 50_000];
         deep.push(0x00);
 
         for path in [
-            format!("{base}/notp/push/negotiate"),
-            format!("{base}/notp/objects"),
-            format!("{base}/notp/push/commit"),
-            format!("{base}/notp/pull/negotiate"),
-            format!("{base}/notp/objects/fetch"),
+            format!("{base}/push/negotiate"),
+            format!("{base}/objects"),
+            format!("{base}/push/commit"),
+            format!("{base}/pull/negotiate"),
+            format!("{base}/objects/fetch"),
         ] {
             let (status, body) = post(&routes, &path, deep.clone()).await;
 
@@ -1234,7 +1234,7 @@ mod tests {
         };
         let (status, _) = post(
             &routes,
-            &format!("{base}/notp/push/negotiate"),
+            &format!("{base}/push/negotiate"),
             request.encode().expect("it encodes"),
         )
         .await;
@@ -1245,7 +1245,7 @@ mod tests {
     #[tokio::test]
     async fn test_push_then_pull_over_http() {
         let (routes, zone, ledger) = testing_routes();
-        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
         let (objects, head) = build_commit();
 
         // Negotiate: everything is missing.
@@ -1264,7 +1264,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/push/negotiate"),
+            &format!("{base}/push/negotiate"),
             request.encode().expect("it encodes"),
         )
         .await;
@@ -1280,7 +1280,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/objects"),
+            &format!("{base}/objects"),
             upload.encode().expect("it encodes"),
         )
         .await;
@@ -1303,7 +1303,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/push/commit"),
+            &format!("{base}/push/commit"),
             commit.encode().expect("it encodes"),
         )
         .await;
@@ -1352,7 +1352,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/pull/negotiate"),
+            &format!("{base}/pull/negotiate"),
             pull.encode().expect("it encodes"),
         )
         .await;
@@ -1366,7 +1366,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/objects/fetch"),
+            &format!("{base}/objects/fetch"),
             fetch.encode().expect("it encodes"),
         )
         .await;
@@ -1408,7 +1408,7 @@ mod tests {
         let (routes, zone, ledger) = testing_routes_with(Some(crate::handles::audit_for_tests(
             AuditRecorder::new(Arc::new(Refusing)),
         )));
-        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
         let (objects, head) = build_commit();
         let negotiate = NegotiatePushRequest {
             r#ref: "main".into(),
@@ -1425,7 +1425,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/push/negotiate"),
+            &format!("{base}/push/negotiate"),
             negotiate.encode().expect("it encodes"),
         )
         .await;
@@ -1440,7 +1440,7 @@ mod tests {
         };
         let (status, _) = post(
             &routes,
-            &format!("{base}/notp/objects"),
+            &format!("{base}/objects"),
             upload.encode().expect("it encodes"),
         )
         .await;
@@ -1454,7 +1454,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/push/commit"),
+            &format!("{base}/push/commit"),
             commit.encode().expect("it encodes"),
         )
         .await;
@@ -1492,7 +1492,7 @@ mod tests {
         // what comes OUT, while it comes out — a small wire body cannot
         // become an allocation the sender chose.
         let (routes, zone, ledger) = testing_routes();
-        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
 
         // One legal blob (well under the object limit) whose zlib form is
         // tiny; enough copies that the inflated batch passes 8 MiB.
@@ -1515,7 +1515,7 @@ mod tests {
 
         let (status, body) = post(
             &routes,
-            &format!("{base}/notp/objects"),
+            &format!("{base}/objects"),
             bomb.encode().expect("it encodes"),
         )
         .await;
@@ -1537,7 +1537,7 @@ mod tests {
         };
         let (status, body) = post(
             &routes,
-            &format!("/v1/zones/{zone}/ledgers/ghost/notp/pull/negotiate"),
+            &format!("/notp/v1/zones/{zone}/ledgers/ghost/pull/negotiate"),
             pull.encode().expect("it encodes"),
         )
         .await;
@@ -1547,7 +1547,7 @@ mod tests {
 
         let (status, body) = post(
             &routes,
-            &format!("/v1/zones/{zone}/ledgers/ghost/notp/push/negotiate"),
+            &format!("/notp/v1/zones/{zone}/ledgers/ghost/push/negotiate"),
             b"not cbor".to_vec(),
         )
         .await;

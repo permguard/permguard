@@ -69,7 +69,7 @@ pub fn routes(surface: Surface) -> Router {
     // advertises — so the document cannot name a path this plane does not answer.
     Router::new()
         .route(SUBMISSION_PATH, post(submit))
-        .route("/events/v1alpha1/signers", get(signers))
+        .route(SIGNERS_PATH, get(signers))
         .route(configuration::CONFIGURATION_PATH, get(document))
         .with_state(surface)
 }
@@ -168,14 +168,20 @@ pub(crate) fn unreadable(refused: &dyn std::fmt::Display) -> ApiError {
     )
 }
 
+/// Which key signed which stretch of one ledger's event journal on this plane (iteration 02,
+/// D13: `/<interface>/<version>/<resource>`).
+pub const SIGNERS_PATH: &str = "/temporal/v1alpha1/zones/{zone}/ledgers/{ledger}/signers";
+
 /// This plane's own journal watermarks and signer history for one ledger.
 ///
-/// `?zone=&ledger=` name the journal; `from_seq`/`until_seq` bound the spans, both optional.
+/// The path names the journal by zone and ledger; `from_seq`/`until_seq` bound the spans, both
+/// optional.
 /// Local statements only: what this plane has made durable, signed and had acknowledged, and
 /// which key signed which stretch — public keys included, so a verifier holding shipped records
 /// needs nothing else from here.
 async fn signers(
     State(surface): State<Surface>,
+    axum::extract::Path((zone, ledger)): axum::extract::Path<(String, String)>,
     axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Response {
     let mut asked: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
@@ -184,16 +190,7 @@ async fn signers(
             asked.insert(name.to_owned(), percent_decode(value));
         }
     }
-    let (Some(zone), Some(ledger)) = (asked.get("zone"), asked.get("ledger")) else {
-        return error(
-            &ApiError::new(
-                ErrorClass::Validation,
-                permguard_core::codes::pdp_temporal::STORE_REQUIRED,
-                "a journal is named by its ledger: `?zone=&ledger=`",
-            ),
-            surface.disclosure,
-        );
-    };
+    let (zone, ledger) = (&zone, &ledger);
     let bound = |name: &str| -> Result<u64, String> {
         match asked.get(name) {
             None => Ok(0),

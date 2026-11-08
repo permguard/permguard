@@ -32,7 +32,7 @@ pub struct TelemetryService {
     /// describes itself, never its neighbours.
     configuration: Option<ConfigurationDocument>,
     /// Where the operations ring's public set is served once the Host listener serves it
-    /// (WP-2.5): `/server-host/keys` then redirects there instead of publishing the ring.
+    /// (WP-2.5): `/server-host/v1/keys` then redirects there instead of publishing the ring.
     keys_location: Option<KeysLocation>,
 }
 
@@ -61,7 +61,7 @@ impl TelemetryService {
     }
 
     /// Names where the operations ring's public set is served once a Host listener serves it:
-    /// `/server-host/keys` answers `308 Permanent Redirect` there, as the legacy route it is.
+    /// `/server-host/v1/keys` answers `308 Permanent Redirect` there, as the legacy route it is.
     pub fn with_keys_location<F>(mut self, location: F) -> Self
     where
         F: Fn(&Config) -> Option<String> + Send + Sync + 'static,
