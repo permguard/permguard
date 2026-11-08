@@ -29,6 +29,9 @@ fn anchors() -> &'static [Anchor] {
             }],
             member: "member:0198f2aa-0000-7000-8000-000000000002".to_owned(),
             groups: vec!["group:eu".to_owned()],
+            // As on the IAM Host: no coordinator's mirrors to bound an application token to.
+            authority: None,
+            bound_administration: false,
         }]
     })
 }

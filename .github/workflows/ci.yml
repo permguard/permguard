@@ -79,6 +79,10 @@ jobs:
         run: ./scripts/check-license-headers.sh
       - name: every untrusted decoder is registered, bounded and fuzzed
         run: cargo test -p permguard-conformance --test boundaries --locked
+      # The fuzz targets are their own crate, outside the workspace: nothing above compiles them,
+      # and a target left behind by a changed type broke only the release's fuzzing (v0.1.24).
+      - name: every fuzz target compiles
+        run: cargo check --manifest-path fuzz/Cargo.toml --locked --bins
       - name: the third-party notices match what the build links
         # A dependency change that does not reach THIRD_PARTY_NOTICES.md is a distribution whose
         # notices are wrong, which is why this fails the build rather than warning. The fix it
