@@ -72,9 +72,10 @@ containers:
         valueFrom:
           fieldRef:
             fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
-      # One invitation per membership: the one the `-membership` ConfigMap states by default.
+      # One invitation per membership the `-membership` ConfigMap states, `control` and `data`.
+      {{- $memberships := include "permguard.groupMemberships" $g | fromJson }}
       - name: PERMGUARD_HOST_JOIN_INVITATION_FILE
-        value: {{ $files := list }}{{ range $name := (.invitations | default (list "membership")) }}{{ $files = append $files (printf "/var/run/permguard/join/%s-$(POD_INDEX)" $name) }}{{ end }}{{ join "," $files | quote }}
+        value: {{ $files := list }}{{ range $name := (.invitations | default (ternary (list "control" "data") (list "control") (not (empty $memberships.data)))) }}{{ $files = append $files (printf "/var/run/permguard/join/%s-$(POD_INDEX)" $name) }}{{ end }}{{ join "," $files | quote }}
       - name: PERMGUARD_HOST_JOIN_PIN_FINGERPRINT
         value: {{ .pinFingerprint | quote }}
       - name: PERMGUARD_HOST_JOIN_NAME

@@ -624,6 +624,7 @@ cmd_assert() {
         case "${phase}" in
         "") assert_multi_data_plane ;;
         tokens) assert_tokens ;;
+        latency) assert_latency ;;
         offline) assert_tokens_offline ;;
         *) fail "no multi-data-plane phase ${phase}" ;;
         esac
@@ -1200,6 +1201,41 @@ assert_tokens() {
     log "data-plane-a refuses ${jti} $((SECONDS - started))s after its revocation"
     expect_decision data-plane-a acme main permit.json true >/dev/null
     log "and decides again on a new token"
+}
+
+# WP-14.1: the evaluation latency on a member, its token verified on every request, against the
+# TS-5 objective for its decision log (`required`, `LAB_P99_OBJECTIVE_MS`): one connection, many
+# decisions, as a client with a pool sees it.
+assert_latency() {
+    step "latency: decisions on a member, token verification on, within the TS-5 objective"
+    local token header request zone ledger objective="${LAB_P99_OBJECTIVE_MS:?the objective, from bench/slo.json}"
+    token="$(token_for data-plane-a)"
+    header="${state}/tokens/latency.header"
+    (umask 077 && printf 'authorization: Bearer %s\n' "$(cat "${token}")" >"${header}")
+    zone="$(zone_id control-plane acme)"
+    ledger="$(ledger_id control-plane acme main)"
+    request="$(jq -c --arg zone "${zone}" --arg ledger "${ledger}" '. + {zone: $zone, ledger: $ledger}' \
+        "${examples}/basics/requests/permit.json")"
+    local args=() n=0 count p50 p99
+    # Every option is stated again after `--next`, which resets them, output and timing included.
+    for n in $(seq 1 400); do
+        args+=(--cacert "${pki}/ca.crt" --cert "${pki}/operator.crt" --key "${pki}/operator.key"
+            -o /dev/null -w '%{http_code} %{time_total}\n'
+            -H "@${header}" -H 'content-type: application/json' --data "${request}"
+            "$(data_endpoint data-plane-a)/access/v1/evaluation")
+        [ "${n}" -lt 400 ] && args+=(--next)
+    done
+    curl -sS "${args[@]}" >"${state}/latency.txt"
+    rm -f "${header}"
+    [ "$(grep -vc '^200 ' "${state}/latency.txt")" = 0 ] ||
+        fail "not every decision was answered 200: $(sort "${state}/latency.txt" | cut -d' ' -f1 | uniq -c | tr '\n' ' ')"
+    count="$(wc -l <"${state}/latency.txt" | tr -d ' ')"
+    cut -d' ' -f2 "${state}/latency.txt" | sort -n >"${state}/latency.sorted"
+    p50="$(awk -v n="${count}" 'NR == int(n * 0.50) + 1 { printf "%.1f", $1 * 1000 }' "${state}/latency.sorted")"
+    p99="$(awk -v n="${count}" 'NR == int(n * 0.99) + 1 { printf "%.1f", $1 * 1000 }' "${state}/latency.sorted")"
+    log "${count} decisions on data-plane-a with lab-client's token, decision log required: p50 ${p50} ms, p99 ${p99} ms; objective p99 ${objective} ms"
+    awk -v p="${p99}" -v o="${objective}" 'BEGIN { exit !(p <= o) }' ||
+        fail "p99 ${p99} ms passes the ${objective} ms objective"
 }
 
 # WP-12.6: with the Control Plane stopped, a member still decides by the tokens and lists it holds.

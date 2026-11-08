@@ -617,6 +617,70 @@ fn lifecycle(scheme: &str) {
     );
     assert_eq!(invited["version"], 1);
     assert_eq!(invited["coordinator"]["host_id"], coordinator.host_id);
+    assert_eq!(
+        invited["coordinator"]["address"],
+        coordinator_endpoint
+            .replace("grpcs://", "https://")
+            .as_str(),
+        "without a stated address, where this command reached the Host"
+    );
+    // TD-5: where the members reach the Host, stated when the operator came through another way.
+    let elsewhere = call(
+        &root,
+        &coordinator_endpoint,
+        &tls,
+        &words(&[
+            "host",
+            "members",
+            "invite",
+            "create",
+            "--selector",
+            "plane/data/*",
+            "--tasks",
+            "tasks.json",
+            "--coordinator-address",
+            "https://iam.internal:5444",
+        ]),
+    );
+    assert_eq!(
+        elsewhere["coordinator"]["address"],
+        "https://iam.internal:5444"
+    );
+    let listed_before = call(
+        &root,
+        &coordinator_endpoint,
+        &tls,
+        &words(&["host", "members", "invite", "list"]),
+    );
+    let refused = cli(
+        &root,
+        &coordinator_endpoint,
+        &tls,
+        &words(&[
+            "host",
+            "members",
+            "invite",
+            "create",
+            "--selector",
+            "plane/data/*",
+            "--tasks",
+            "tasks.json",
+            "--coordinator-address",
+            "http://iam.internal:5444",
+        ]),
+    );
+    assert!(!refused.status.success(), "{refused:?}");
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("--coordinator-address"));
+    assert_eq!(
+        call(
+            &root,
+            &coordinator_endpoint,
+            &tls,
+            &words(&["host", "members", "invite", "list"]),
+        ),
+        listed_before,
+        "nothing is created for an address no member could reach"
+    );
     let token = invited["token"].as_str().expect("the one-time token");
     let listed = call(
         &root,

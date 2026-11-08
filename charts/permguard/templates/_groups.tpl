@@ -188,9 +188,11 @@ true
 The membership tasks of a resolved group, as the closed task contract (`host members invite create
 --tasks`, version 1): `{"tasks": [...]}` as JSON, in type order.
 
-The defaults: `policy.mirror` always, `decisions.ship` when evidence is recorded, `events.ship` when
-the group keeps temporal history, each on the group's selector with the CLI vector's limits. A
-stated task of one of those types narrows it; a stated task of another type adds it.
+The defaults: `policy.mirror` always, on the Control Plane's tree the group's selector names (its
+`plane/data` read as `plane/control`: the ledgers it mirrors are the Control Plane's), `decisions.ship`
+when evidence is recorded, `events.ship` when the group keeps temporal history, each of those on the
+group's selector, with the CLI vector's limits. A stated task of one of those types narrows it; a
+stated task of another type adds it.
 */}}
 {{- define "permguard.groupTasks" -}}
 {{- $g := . -}}
@@ -230,7 +232,7 @@ stated task of one of those types narrows it; a stated task of another type adds
       "type" $type
       "provider_role" (index $shape 0)
       "consumer_role" (index $shape 1)
-      "selector" (toString ($stated.selector | default $g.selector))
+      "selector" (toString ($stated.selector | default (ternary (printf "plane/control%s" (trimPrefix "plane/data" $g.selector)) $g.selector (eq $type "policy.mirror"))))
       "resource_types" $resourceTypes
       "required" $required
       "limits" $taskLimits
@@ -238,6 +240,30 @@ stated task of one of those types narrows it; a stated task of another type adds
 ) -}}
 {{- end -}}
 {{- dict "tasks" $out | toJson -}}
+{{- end -}}
+
+{{/*
+A group's memberships (TD-5): a membership's tasks stay inside its selector, so the Control Plane
+tree's tasks (`policy.mirror`) are one membership, `control`, and the group's own (`decisions.ship`,
+`events.ship`, any other) a second, `data`, present only when it has a task. Answers
+`{"control": {"selector", "tasks"}, "data": {"selector", "tasks"} | null}` as JSON.
+*/}}
+{{- define "permguard.groupMemberships" -}}
+{{- $g := . -}}
+{{- $control := list -}}
+{{- $data := list -}}
+{{- range $task := (include "permguard.groupTasks" $g | fromJson).tasks -}}
+{{- if hasPrefix "plane/control" $task.selector -}}
+{{- $control = append $control $task -}}
+{{- else -}}
+{{- $data = append $data $task -}}
+{{- end -}}
+{{- end -}}
+{{- $out := dict "control" (dict "selector" (printf "plane/control%s" (trimPrefix "plane/data" $g.selector)) "tasks" $control) "data" nil -}}
+{{- if $data -}}
+{{- $_ := set $out "data" (dict "selector" $g.selector "tasks" $data) -}}
+{{- end -}}
+{{- $out | toJson -}}
 {{- end -}}
 
 {{/*

@@ -914,3 +914,47 @@ fn a_barrier_that_cannot_drain_is_lowered() {
     });
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// Found by the cluster e2e (TD-5): two Hosts joining one coordinator at the same moment. An
+/// operation that ends while another settles is that other's to wait for, never a reason to call
+/// the first unresolved: every concurrent mutation that applied answers as applied, and nothing is
+/// left pending.
+#[test]
+fn concurrent_operations_that_applied_all_answer_applied() {
+    let root = scratch("concurrent");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let trail = Arc::new(Trail::default());
+    let engine = Arc::new(open(&volume, &trail, &time));
+    let ledger = Arc::new(Ledger::default());
+    let threads: Vec<_> = (0..8)
+        .map(|thread| {
+            let (engine, ledger) = (Arc::clone(&engine), Arc::clone(&ledger));
+            std::thread::spawn(move || {
+                (0..25)
+                    .map(|round| {
+                        let request = format!("t{thread}-r{round}");
+                        engine
+                            .run(begin(Some(&request), &request), |applying| {
+                                // A domain write that takes a moment: the window another
+                                // operation ends in.
+                                std::thread::sleep(Duration::from_micros(200));
+                                Ok::<_, Failure<String>>(ledger.apply(applying, &request))
+                            })
+                            .map(|_| ())
+                            .map_err(|error| error.to_string())
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .collect();
+    let refused: Vec<String> = threads
+        .into_iter()
+        .flat_map(|thread| thread.join().expect("the thread ends"))
+        .filter_map(Result::err)
+        .collect();
+    assert!(refused.is_empty(), "applied, yet answered: {refused:?}");
+    assert_eq!(ledger.applied.lock().expect("lock").len(), 200);
+    assert_eq!(engine.pending(), 0, "every outcome is recorded");
+    let _ = std::fs::remove_dir_all(root);
+}

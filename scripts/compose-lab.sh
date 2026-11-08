@@ -111,6 +111,9 @@ run_profile() {
     if [ "${profile}" = multi-data-plane ]; then
         step "${profile}: decisions by the IAM Host's tokens (WP-12.6)"
         dc run --rm lab assert "${profile}" tokens || failed "a token assertion failed"
+        step "${profile}: evaluation latency with token verification on (WP-14.1)"
+        dc run --rm -e "LAB_P99_OBJECTIVE_MS=$(jq -r '.p99_ms.required' bench/slo.json)" lab assert "${profile}" latency ||
+            failed "the evaluation latency passed its objective"
         step "${profile}: the Control Plane stopped, the members decide on what they hold"
         dc stop control-plane >/dev/null 2>&1 || failed "the Control Plane did not stop"
         dc run --rm lab assert "${profile}" offline || failed "a member stopped deciding without its IAM Host"

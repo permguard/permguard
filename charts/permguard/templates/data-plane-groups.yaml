@@ -59,6 +59,10 @@ spec:
 {{- $_ := set $grpc "tls" $tls }}
 {{- end }}
 {{- $_ := set $config "dataPlane" (dict "public" (dict "http" $http "grpc" $grpc)) }}
+{{- /* A group that joins by itself (TD-5) mirrors what its memberships grant, unless told not to. */ -}}
+{{- if $g.join }}
+{{- $_ := set $config.dataPlane "mirrors" (dict "enabled" "true" "interval" "30s") }}
+{{- end }}
 {{- $merged := mergeOverwrite $config (deepCopy $g.extraConfig) }}
 {{- $merged = mergeOverwrite (include "permguard.hostControlsConfig" $ | fromYaml) $merged }}
 {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" $g.assurance | fromYaml) }}
@@ -91,10 +95,12 @@ data:
     {{- $configText | nindent 4 }}
 ---
 {{- /*
-The membership its replicas are invited with: what `permguard host members invite create` takes
-(`--selector`, `--min-assurance`, `--tasks tasks.json`). The chart cannot enroll a Host; it states
-exactly what each replica of this group may be granted, and nothing wider.
+The memberships its replicas are invited with: what `permguard host members invite create` takes
+(`--selector`, `--min-assurance`, `--tasks`), `control` for the Control Plane tree's tasks and
+`data` for the group's own (TD-5). The chart cannot approve a Host; it states exactly what each
+replica of this group may be granted, and nothing wider.
 */}}
+{{- $memberships := include "permguard.groupMemberships" $g | fromJson }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -102,10 +108,15 @@ metadata:
   labels:
     {{- include "permguard.groupLabels" (dict "root" $ "group" $g) | nindent 4 }}
 data:
-  selector: {{ $g.selector | quote }}
   min_assurance: {{ $g.assurance.profile | quote }}
-  tasks.json: |
-    {{- (include "permguard.groupTasks" $g | fromJson).tasks | toPrettyJson | nindent 4 }}
+  control.selector: {{ $memberships.control.selector | quote }}
+  control.tasks.json: |
+    {{- $memberships.control.tasks | toPrettyJson | nindent 4 }}
+  {{- with $memberships.data }}
+  data.selector: {{ .selector | quote }}
+  data.tasks.json: |
+    {{- .tasks | toPrettyJson | nindent 4 }}
+  {{- end }}
 ---
 apiVersion: apps/v1
 kind: {{ ternary "StatefulSet" "Deployment" $stateful }}

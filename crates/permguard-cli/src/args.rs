@@ -2559,7 +2559,7 @@ pub struct MemberChangeArgs {
 pub enum InviteAction {
     /// Create a one-time invitation and print its private versioned handoff once.
     #[command(
-        after_help = "Examples:\n  permguard host members invite create --selector zone/acme/ledger/main --tasks tasks.json\n  permguard host members invite create --selector zone/acme/ledger/main --tasks tasks.json -o json"
+        after_help = "Examples:\n  permguard host members invite create --selector zone/acme/ledger/main --tasks tasks.json\n  permguard --host-endpoint https://localhost:15444 host members invite create --selector plane/data/* --tasks tasks.json --coordinator-address https://iam.internal:5444"
     )]
     Create {
         /// The maximum resource selector the member may receive.
@@ -2583,6 +2583,10 @@ pub enum InviteAction {
         /// A group of the member; repeat for several.
         #[arg(long = "group", value_name = "GROUP")]
         groups: Vec<String>,
+        /// Where the members reach this Host, `https://host:port`, when not where this command
+        /// reached it (a port-forward, a bastion): the address the handoff names.
+        #[arg(long, value_name = "URL")]
+        coordinator_address: Option<String>,
     },
     /// List invitations without revealing their tokens.
     #[command(

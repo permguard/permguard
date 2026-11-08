@@ -191,15 +191,17 @@ dataPlane:
   #       selector: plane/data/zone/people/*
   #       replicas: 2
   #       # TD-5: each replica joins the control plane's Host by itself at start, with the
-  #       # invitation of its ordinal, `membership-<ordinal>` in the Secret (from `permguard host
-  #       # members invite create` with what the group's `-membership` ConfigMap states), or one
-  #       # per name of `invitations` for a replica holding several, its coordinator pinned by its
-  #       # fingerprint, stated here apart from the Secret. Each join is pending until the
-  #       # coordinator approves it, and is never made twice. Kubernetes 1.28 or later: the Pod's
-  #       # index label names its invitations.
+  #       # invitations of its ordinal in the Secret, one per membership the group's `-membership`
+  #       # ConfigMap states: `control-<ordinal>` (`control.selector`, `control.tasks.json`: the
+  #       # Control Plane tree's `policy.mirror`) and, when the group has tasks of its own,
+  #       # `data-<ordinal>` (`data.selector`, `data.tasks.json`), each from `permguard host members
+  #       # invite create`; its coordinator pinned by its fingerprint, stated here apart from the
+  #       # Secret. Each join is pending until the coordinator approves it, and is never made
+  #       # twice; a joining group mirrors what its memberships grant. Kubernetes 1.28 or later:
+  #       # the Pod's index label names its invitations.
   #       join:
   #         secret: people-invitations
-  #         invitations: [membership]  # the default
+  #         invitations: [control, data]  # the default, `data` only when the group has such tasks
   #         pinFingerprint: sha256:<64 hex of the control plane Host's fingerprint>
   #         namePrefix: people        # the member names `people-0`, `people-1` …; the group's name by default
   #         groups: [people]          # the member groups asked for; the group's name by default

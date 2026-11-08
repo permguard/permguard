@@ -1063,9 +1063,22 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                 min_assurance,
                 name,
                 groups,
+                coordinator_address,
             } => {
                 let tasks: Vec<TaskView> =
                     read_json(&rooted_file(globals, &tasks), "membership tasks")?;
+                // Checked before anything is created: an invitation whose handoff cannot name
+                // where its member goes would be issued and never shown.
+                let coordinator_address = coordinator_address
+                    .map(|stated| {
+                        peer_address(&stated).map_err(|_| {
+                            Failure::usage(format!(
+                                "--coordinator-address `{stated}` is not where a member reaches \
+                                 this Host: https://<host>:<port>"
+                            ))
+                        })
+                    })
+                    .transpose()?;
                 let backend = online_host(globals, trace, false)?;
                 let identity = backend
                     .identity()
@@ -1084,13 +1097,19 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                         groups: (!groups.is_empty()).then_some(groups),
                     })
                     .map_err(|failure| Failure::from_client(&failure))?;
-                let store = crate::session::open_store(globals, trace)?;
-                let address = crate::session::resolve_endpoint_url(
-                    "host.endpoint",
-                    globals.host_endpoint.as_deref(),
-                    &store,
-                    trace,
-                )?;
+                // Where the members reach this Host: stated, or where this command reached it.
+                let address = match coordinator_address {
+                    Some(stated) => stated,
+                    None => {
+                        let store = crate::session::open_store(globals, trace)?;
+                        crate::session::resolve_endpoint_url(
+                            "host.endpoint",
+                            globals.host_endpoint.as_deref(),
+                            &store,
+                            trace,
+                        )?
+                    }
+                };
                 let address = peer_address(&address)?;
                 render_json(
                     &InvitationHandoff {

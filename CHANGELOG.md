@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **A Data Plane joins its coordinator by itself, from an invitation file.**
+  `host.join` (`PERMGUARD_HOST_JOIN_INVITATION_FILE`, `_PIN_FINGERPRINT`, `_NAME`, `_GROUPS`) names one invitation per membership and the coordinator's fingerprint, stated apart from them; the Host joins each once, reads them no more once it holds its memberships, and picks up its approval by itself.
+  The approval stays the coordinator's: `host members pending`, then `host members approve`.
+  The chart's `dataPlane.groups[].join` mounts the invitations from a Secret, `control-<ordinal>` and `data-<ordinal>` per replica, on Kubernetes 1.28 or later, and the group mirrors what its memberships grant (`dataPlane.mirrors.enabled` by default).
+  `host members invite create --coordinator-address` names where the members reach the coordinator when the operator came through a port-forward or a bastion.
+
 - **A member Host is one member record: an id, a name and groups the coordinator decides.**
   Every membership manifest carries it: a UUIDv7 `member_id` the coordinator makes at the Host's first approval, a `name` unique among the live members, and `groups` only the coordinator sets.
   An invitation may fix the name and groups (`host members invite create --name --group`), an enrollment may ask for them (`host members join --name --group`), the approval decides (`host members approve --name --group`).
@@ -98,6 +104,10 @@ is cut.
 
 ### Changed
 
+- **The chart states a Data Plane group's two memberships.**
+  A membership's tasks stay inside its selector, so a group's `policy.mirror`, which mirrors the Control Plane's ledgers, is on that tree and in a membership of its own: the `-membership` ConfigMap's `selector` and `tasks.json` become `control.selector` and `control.tasks.json`, and `data.selector` and `data.tasks.json` for the group's own tasks.
+  A stated `policy.mirror` under `plane/data` is refused: it mirrored nothing; state it under `plane/control`.
+
 - **The directory commands move under `permguard iam`.**
   `host grants list|issue|revoke`, `host roles`, `host users` (but `bootstrap`), `host providers` and `host recovery show|acknowledge` are now `iam grants`, `iam roles`, `iam users`, `iam providers` and `iam recovery`, reaching the IAM Host's listener; the offline `host grants bootstrap`, `host users bootstrap` and `host recovery start` stay where they were. The old paths are gone, not aliased.
 
@@ -124,6 +134,12 @@ is cut.
   The control plane no longer accepts batches on a public route: `POST /decisions/v1/batches`, `POST /events/v1alpha1/batches`, `DecisionLog/Ship` and `EventLog/IngestBatch` are removed, with the producer key files and the trust built on them; the discovery documents no longer name an ingest endpoint.
   `controlPlane.decisions.producer_keys`, `dataPlane.decisions.log.server`, `dataPlane.events.destination` and `dataPlane.decisions.log.batch` are refused at start whether or not their feature is on, and by the Helm chart, a group's `extraConfig` included: remove them.
   No deployment is in use, so nothing is migrated: a volume holding a version 1 spool or legacy event journals keeps them unsent.
+
+### Fixed
+
+- **Two mutations ending at the same moment no longer fail one of them.**
+  An operation that ended while another was writing its outcome made the other answer "the mutation may have been applied and its record could not be written", or refused new mutations as if the journal held an unresolved one; on a coordinator, two Hosts enrolling at once saw one enrollment recorded and answered as failed.
+  Only an intent no running call will end is now unresolved until the next start.
 
 ## [0.1.23] - 2026-11-07
 

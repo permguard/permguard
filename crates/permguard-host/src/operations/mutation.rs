@@ -681,6 +681,21 @@ impl Mutations {
                 .count()
     }
 
+    /// The intents no running call will end: left open by an uncertain domain write or an
+    /// unwritten commit, resolved only at the next start.
+    fn unresolved(&self) -> usize {
+        // Both read under one hold of the state: an operation that commits and leaves `running`
+        // between two separate reads would be counted open and not running.
+        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
+        state
+            .operations
+            .values()
+            .filter(|operation| operation.end.is_none())
+            .filter(|operation| !running.contains(&operation.intent.operation_id))
+            .count()
+    }
+
     /// Folds the journal after this many entries instead of [`COMPACT_AFTER`].
     #[cfg(test)]
     pub(crate) fn folding_after(mut self, entries: usize) -> Self {
@@ -1130,8 +1145,10 @@ impl Mutations {
             }
             crash::point("mutation.projected");
         }
-        // An intent left open by an uncertain domain write waits for the next start.
-        if outcome.is_ok() && self.pending() > 0 {
+        // An intent left open by an uncertain domain write waits for the next start. An operation
+        // that ended while this one settled is not one: its outcome is written by its own call's
+        // settle or, when that call does not settle, by the next mutation's.
+        if outcome.is_ok() && self.unresolved() > 0 {
             outcome = Err(Halt::Journal(
                 "an earlier mutation may have been applied and is unresolved until the next start"
                     .to_owned(),

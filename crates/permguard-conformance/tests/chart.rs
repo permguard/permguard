@@ -254,13 +254,21 @@ fn two_groups_render_disjoint_workloads_services_memberships_and_policies() {
             ])
         );
 
-        // Its membership: exactly its selector, on every task.
+        // Its memberships: exactly its selector, on every task of its own; the Control Plane
+        // tree's equivalent on the mirror's (TD-5: a membership's tasks stay inside its selector).
         let membership = rendered.get("ConfigMap", &format!("{base}-membership"));
-        assert_eq!(membership["data"]["selector"], selector);
-        let tasks: Value =
-            serde_json::from_str(membership["data"]["tasks.json"].as_str().unwrap()).unwrap();
-        for task in tasks.as_array().unwrap() {
-            assert_eq!(task["selector"], selector, "{name}: {task}");
+        let control = selector.replacen("plane/data", "plane/control", 1);
+        for (kind, wanted) in [("data", selector), ("control", control.as_str())] {
+            assert_eq!(membership["data"][format!("{kind}.selector")], wanted);
+            let tasks: Value = serde_json::from_str(
+                membership["data"][format!("{kind}.tasks.json")]
+                    .as_str()
+                    .unwrap(),
+            )
+            .unwrap();
+            for task in tasks.as_array().unwrap() {
+                assert_eq!(task["selector"], wanted, "{name} {kind}: {task}");
+            }
         }
     }
     // One public Service per group, and none shared: no Service named after the Plane alone.
@@ -751,14 +759,30 @@ dataPlane:
       selector: plane/data/zone/billing/*
       tasks:
         - type: policy.mirror
-          selector: plane/data/zone/billing/ledger/main
+          selector: plane/control/zone/billing/ledger/main
 ",
     );
     let membership = rendered.get("ConfigMap", "permguard-data-plane-billing-membership");
-    assert_eq!(membership["data"]["selector"], "plane/data/zone/billing/*");
+    assert_eq!(
+        membership["data"]["data.selector"],
+        "plane/data/zone/billing/*"
+    );
+    assert_eq!(
+        membership["data"]["control.selector"],
+        "plane/control/zone/billing/*"
+    );
     assert_eq!(membership["data"]["min_assurance"], "production");
-    let tasks: Value =
-        serde_json::from_str(membership["data"]["tasks.json"].as_str().unwrap()).unwrap();
+    let mut tasks: Vec<Value> = Vec::new();
+    for kind in ["control", "data"] {
+        let held: Value = serde_json::from_str(
+            membership["data"][format!("{kind}.tasks.json")]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        tasks.extend(held.as_array().unwrap().iter().cloned());
+    }
+    let tasks = Value::Array(tasks);
     let by_type: BTreeMap<String, &Value> = tasks
         .as_array()
         .unwrap()
@@ -771,7 +795,7 @@ dataPlane:
         "required evidence ships decisions; no temporal history, no events"
     );
     let mirror = by_type["policy.mirror"];
-    assert_eq!(mirror["selector"], "plane/data/zone/billing/ledger/main");
+    assert_eq!(mirror["selector"], "plane/control/zone/billing/ledger/main");
     assert_eq!(mirror["provider_role"], "coordinator");
     assert_eq!(mirror["consumer_role"], "member");
     assert_eq!(mirror["version"], 1);
@@ -833,7 +857,7 @@ dataPlane:
 ",
     );
     let membership = rendered.get("ConfigMap", "permguard-data-plane-history-membership");
-    let tasks = membership["data"]["tasks.json"].as_str().unwrap();
+    let tasks = membership["data"]["data.tasks.json"].as_str().unwrap();
     assert!(tasks.contains("\"events.ship\""), "{tasks}");
 }
 
@@ -952,9 +976,9 @@ dataPlane:
 #[test]
 fn a_task_selector_wider_than_its_group_is_refused() {
     for task in [
-        "plane/data/*",
-        "plane/data/zone/billing",
-        "plane/data/zone/other/*",
+        "plane/control/*",
+        "plane/control/zone/billing",
+        "plane/control/zone/other/*",
     ] {
         refused(
             &format!(
@@ -1316,7 +1340,8 @@ dataPlane:
     assert_eq!(workload["spec"]["replicas"], 2);
     assert_eq!(labels(workload)["permguard.com/group"], "default");
     let membership = rendered.get("ConfigMap", "permguard-data-plane-default-membership");
-    assert_eq!(membership["data"]["selector"], "plane/data/*");
+    assert_eq!(membership["data"]["data.selector"], "plane/data/*");
+    assert_eq!(membership["data"]["control.selector"], "plane/control/*");
     assert_eq!(
         rendered.get("PodDisruptionBudget", "permguard-data-plane-default")["spec"]["minAvailable"],
         1
@@ -1816,7 +1841,7 @@ dataPlane:
       selector: plane/data/zone/billing
       tasks:
         - type: policy.mirror
-          selector: plane/data/zone/billing/*
+          selector: plane/control/zone/billing/*
 ",
         "wider than its membership",
     );
@@ -1828,7 +1853,7 @@ dataPlane:
       selector: plane/data/zone/billing
       tasks:
         - type: policy.mirror
-          selector: plane/data/zone/billing
+          selector: plane/control/zone/billing
 ",
     );
 }
@@ -2422,13 +2447,10 @@ fn a_group_joins_from_an_invitation_secret_by_its_replicas_ordinal() {
     );
     assert_eq!(
         env("PERMGUARD_HOST_JOIN_INVITATION_FILE")["value"],
-        "/var/run/permguard/join/membership-$(POD_INDEX)",
-        "the one membership the group's ConfigMap states"
+        "/var/run/permguard/join/control-$(POD_INDEX),/var/run/permguard/join/data-$(POD_INDEX)",
+        "one invitation per membership the group's ConfigMap states"
     );
-    let named = render(&values.replace(
-        "join: { secret",
-        "join: { invitations: [control, data], secret",
-    ));
+    let named = render(&values.replace("join: { secret", "join: { invitations: [control], secret"));
     let only = named.get("StatefulSet", "permguard-data-plane-billing")["spec"]["template"]["spec"]
         ["containers"][0]["env"]
         .as_array()
@@ -2438,8 +2460,7 @@ fn a_group_joins_from_an_invitation_secret_by_its_replicas_ordinal() {
         .expect("the invitations")["value"]
         .clone();
     assert_eq!(
-        only,
-        "/var/run/permguard/join/control-$(POD_INDEX),/var/run/permguard/join/data-$(POD_INDEX)",
+        only, "/var/run/permguard/join/control-$(POD_INDEX)",
         "one file per named invitation"
     );
     assert_eq!(
@@ -2474,6 +2495,11 @@ fn a_group_joins_from_an_invitation_secret_by_its_replicas_ordinal() {
         !values.contains("token"),
         "the values name the Secret, never an invitation"
     );
+    assert_eq!(
+        rendered.config("permguard-data-plane-billing")["dataPlane"]["mirrors"]["enabled"],
+        "true",
+        "a group that joins by itself mirrors what its memberships grant"
+    );
 
     // A group that cannot join by its ordinal, or without its Host listener, is refused; a pin that
     // is no fingerprint is refused by the schema.
@@ -2489,4 +2515,22 @@ fn a_group_joins_from_an_invitation_secret_by_its_replicas_ordinal() {
         "needs dataPlane.hostListener.enabled",
     );
     assert!(render_with(&values.replace(&pin, "sha256:short"), &[]).is_err());
+}
+
+/// TD-5: a mirror mirrors the Control Plane's ledgers, so its task is on that tree; one stated on
+/// the Data Plane's would mirror nothing, and is refused.
+#[test]
+fn a_mirror_on_the_data_plane_tree_is_refused() {
+    refused(
+        "\
+dataPlane:
+  groups:
+    - name: billing
+      selector: plane/data/zone/billing/*
+      tasks:
+        - type: policy.mirror
+          selector: plane/data/zone/billing/ledger/main
+",
+        "mirrors the Control Plane's ledgers",
+    );
 }

@@ -294,6 +294,11 @@ evidence be deleted by Kubernetes rather than by a verified operation.
 {{- $seen := dict }}
 {{- $parsed := list }}
 {{- range $g := $resolved.groups }}
+{{- range $task := $g.tasks }}
+{{- if and (eq (toString $task.type) "policy.mirror") $task.selector (not (hasPrefix "plane/control" (toString $task.selector))) }}
+{{- fail (printf "dataPlane.groups[%s].tasks: policy.mirror mirrors the Control Plane's ledgers: its selector is under plane/control, not %s." $g.name $task.selector) }}
+{{- end }}
+{{- end }}
 {{- if $g.join }}
 {{- if not $g.persistence.enabled }}
 {{- fail (printf "dataPlane.groups[%s].join needs a stateful group (persistence.enabled): each replica joins with the invitation of its ordinal, and a Deployment's replicas have none." $g.name) }}
@@ -334,10 +339,13 @@ evidence be deleted by Kubernetes rather than by a verified operation.
 {{- fail (printf "dataPlane.groups[%s].tasks: %s states its resourceTypes: the chart has no default for it." $g.name $type) }}
 {{- end }}
 {{- with $task.selector }}
+{{- /* A mirror's membership is the Control Plane tree's equivalent of the group's (TD-5). */ -}}
+{{- $membershipText := ternary (printf "plane/control%s" (trimPrefix "plane/data" $g.selector)) $g.selector (eq $type "policy.mirror") }}
+{{- $membership := include "permguard.selector" $membershipText | fromJson }}
 {{- $narrow := include "permguard.selector" . | fromJson }}
-{{- $within := and $narrow.valid (include "permguard.selectorContains" (dict "selector" $selector "resource" $narrow.prefix)) (or (not $narrow.descendants) $selector.descendants) }}
+{{- $within := and $narrow.valid (include "permguard.selectorContains" (dict "selector" $membership "resource" $narrow.prefix)) (or (not $narrow.descendants) $membership.descendants) }}
 {{- if not $within }}
-{{- fail (printf "dataPlane.groups[%s].tasks: the %s selector %q is wider than its membership %q: a task selector is contained by the membership selector." $g.name $type . $g.selector) }}
+{{- fail (printf "dataPlane.groups[%s].tasks: the %s selector %q is wider than its membership %q: a task selector is contained by the membership selector." $g.name $type . $membershipText) }}
 {{- end }}
 {{- end }}
 {{- end }}

@@ -156,6 +156,9 @@ async fn join_one(
                         component = "host",
                         invitation = %file.display(),
                         reason = %error,
+                        // What the transport or the coordinator said: the operator's to diagnose
+                        // with, never a token or a secret.
+                        detail = error.internal_detail().unwrap_or_default(),
                         after_seconds = backoff.as_secs(),
                         "the coordinator did not take the join: trying again"
                     );

@@ -103,12 +103,21 @@ A member past half its list's lifetime without a fresher one reports `degraded: 
 A Data Plane joins its IAM Host over membership: an invitation, a join, and the coordinator's approval.
 In Kubernetes and Compose the join is automated from an invitation file; the approval stays the operator's.
 
+A Data Plane holds two memberships, since a membership's tasks stay inside its selector: `control`, on the Control Plane's tree, to mirror its ledgers, and `data`, on its own, to ship the decisions and events it records.
+The group's `-membership` ConfigMap states both.
+
 ```sh
-# On the IAM Host: one invitation per replica, with what the group's `-membership` ConfigMap states.
-permguard --host-endpoint https://iam.example:5444 host members invite create \
-  --selector "plane/data/zone/<zone-id>/*" --tasks tasks.json \
-  --name billing-0 --group billing > membership-0
-kubectl create secret generic billing-invitations --from-file=membership-0 --from-file=membership-1
+# On the IAM Host: per replica, one invitation per membership the group's ConfigMap states.
+# `--coordinator-address`: where the replicas reach it, when you came through a port-forward.
+for kind in control data; do
+  kubectl get configmap pg-permguard-data-plane-billing-membership \
+    -o jsonpath="{.data.${kind}\.tasks\.json}" > ${kind}-tasks.json
+  permguard --host-endpoint https://iam.example:5444 host members invite create \
+    --selector "$(kubectl get configmap pg-permguard-data-plane-billing-membership -o jsonpath="{.data.${kind}\.selector}")" \
+    --tasks ${kind}-tasks.json --name billing-0 --group billing \
+    --coordinator-address https://iam.internal:5444 > ${kind}-0
+done
+kubectl create secret generic billing-invitations --from-file=control-0 --from-file=data-0   # and -1 …
 ```
 
 ```yaml
@@ -123,10 +132,10 @@ dataPlane:
         pinFingerprint: sha256:<the IAM Host's fingerprint>
 ```
 
-Each replica reads the invitation of its ordinal, `membership-<ordinal>`, checks that it names the pinned IAM Host, and joins.
-The membership waits for the approval: list it with `permguard host members pending`, check its fingerprint, and approve it with `permguard host members approve`.
-The replica picks up its approval by itself within a minute, and never reads its invitation again: the Secret can then be removed.
-A join needs Kubernetes 1.28 or later, where a Pod's index names its invitation.
+Each replica reads the invitations of its ordinal, `control-<ordinal>` and `data-<ordinal>`, checks that they name the pinned IAM Host, and joins; it mirrors what its memberships grant.
+Each membership waits for its approval: list them with `permguard host members pending`, check each one's Host, and approve it with `permguard host members approve`.
+The replica picks up its approvals by itself within a minute, and never reads its invitations again: the Secret can then be removed.
+A join needs Kubernetes 1.28 or later, where a Pod's index names its invitations.
 Outside Kubernetes, set `PERMGUARD_HOST_JOIN_INVITATION_FILE`, `PERMGUARD_HOST_JOIN_PIN_FINGERPRINT` and, when the invitation leaves them open, `PERMGUARD_HOST_JOIN_NAME` and `PERMGUARD_HOST_JOIN_GROUPS`.
 
 ## Observing
