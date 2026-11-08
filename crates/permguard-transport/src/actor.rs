@@ -168,8 +168,25 @@ where
             .authenticate(peer.as_deref(), bearer.as_deref())
         {
             Ok(actor) => {
+                let by_token =
+                    matches!(&actor, Actor::Authenticated(context) if context.token().is_some());
                 request.extensions_mut().insert(Arc::new(actor));
-                Box::pin(self.inner.call(request))
+                let answer = self.inner.call(request);
+                if !by_token || grpc {
+                    return Box::pin(answer);
+                }
+                // A token caller refused for what it asked is told the token's scope or target is
+                // what fell short (RFC 6750 `insufficient_scope`).
+                Box::pin(async move {
+                    let mut response = answer.await?;
+                    if response.status() == http::StatusCode::FORBIDDEN {
+                        response.headers_mut().append(
+                            http::header::WWW_AUTHENTICATE,
+                            http::HeaderValue::from_static(permguard_core::api::SCOPE_CHALLENGE),
+                        );
+                    }
+                    Ok(response)
+                })
             }
             Err(denial) => {
                 tracing::warn!(
@@ -267,6 +284,19 @@ mod tests {
                     Credential::Oidc,
                     None,
                 ))),
+                (None, Some("scoped")) => Ok(Actor::Authenticated(ActorContext::of_token(
+                    Principal::new("sa:billing").expect("p"),
+                    permguard_core::authz::TokenGrant {
+                        family: "application".to_owned(),
+                        scope: std::collections::BTreeSet::new(),
+                        targets: Vec::new(),
+                        jti: "j".to_owned(),
+                        list_uri: "u".to_owned(),
+                        list_iat: 1,
+                        list_digest: [0; 32],
+                        authority: None,
+                    },
+                ))),
                 (None, Some(_)) => Err(AccessDenial::unauthenticated("bad token")),
                 (None, None) => Ok(Actor::Anonymous),
             }
@@ -283,6 +313,7 @@ mod tests {
                 "/who",
                 get(|ActorOf(actor): ActorOf| async move { actor.label() }),
             )
+            .route("/forbidden", get(|| async { http::StatusCode::FORBIDDEN }))
             .layer(ActorLayer::new(Arc::new(Rules)).refusing_clear_bearer(clear_bearer_refused))
     }
 
@@ -440,5 +471,42 @@ mod tests {
             *actor_of(&http::Extensions::new()),
             Actor::Unmapped { .. }
         ));
+    }
+
+    /// Step 9 of `2-security/8` On a member: a token caller refused for what it asked is told
+    /// `insufficient_scope`; any other caller's `403` carries no challenge.
+    #[tokio::test]
+    async fn a_token_callers_refusal_names_insufficient_scope() {
+        let challenges = |response: &Response<Body>| -> Vec<String> {
+            response
+                .headers()
+                .get_all(http::header::WWW_AUTHENTICATE)
+                .iter()
+                .map(|value| value.to_str().expect("ascii").to_owned())
+                .collect()
+        };
+        for (bearer, expected) in [
+            (
+                "scoped",
+                vec![permguard_core::api::SCOPE_CHALLENGE.to_owned()],
+            ),
+            ("good", Vec::new()),
+        ] {
+            let request = Request::get("/forbidden")
+                .header(http::header::AUTHORIZATION, format!("Bearer {bearer}"))
+                .body(Body::empty())
+                .expect("a request");
+            let response = router().oneshot(request).await.expect("answered");
+            assert_eq!(response.status(), http::StatusCode::FORBIDDEN);
+            assert_eq!(challenges(&response), expected, "{bearer}");
+        }
+        // A token caller answered `200` is not challenged.
+        let request = Request::get("/who")
+            .header(http::header::AUTHORIZATION, "Bearer scoped")
+            .body(Body::empty())
+            .expect("a request");
+        let response = router().oneshot(request).await.expect("answered");
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert!(challenges(&response).is_empty());
     }
 }

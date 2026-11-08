@@ -17,6 +17,7 @@
 //! answered as [`Authorization::not_found_or_forbidden`] says — not found only for a caller whose
 //! grants cover the whole Plane, the same refusal as out of scope for everybody else.
 
+pub mod access_tokens;
 pub mod credentials;
 pub mod directory;
 pub mod factor;
@@ -82,7 +83,9 @@ impl PublicGrant {
 ///
 /// Public grants are held for the reserved `anonymous` principal and consulted for every actor
 /// with a principal: what is public is public to an authenticated caller too. A credential no
-/// rule maps is unauthenticated whatever is public.
+/// rule maps is unauthenticated whatever is public. An access token's bearer is the exception
+/// (WP-12.2): it acts within its token, which public grants never widen; on a member, where the
+/// token decides alone, they are not consulted for it at all.
 pub struct Authorization {
     store: Option<Arc<GrantStore>>,
     /// The roles a principal acts with (WP-8.1); none, the principal alone.
@@ -90,6 +93,9 @@ pub struct Authorization {
     public: AllowSet,
     /// Where a grant's expiry is compared against (WP-2.12).
     time: Arc<crate::time::TimeGuard>,
+    /// Whether an access token's grant decides alone (a member, which holds no grants) or
+    /// within the grants (the IAM Host) (WP-12.2).
+    tokens_alone: bool,
 }
 
 impl std::fmt::Debug for Authorization {
@@ -111,6 +117,7 @@ impl Authorization {
             time: Arc::new(crate::time::TimeGuard::system(
                 permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
             )),
+            tokens_alone: false,
         }
     }
 
@@ -123,6 +130,7 @@ impl Authorization {
             time: Arc::new(crate::time::TimeGuard::system(
                 permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
             )),
+            tokens_alone: false,
         }
     }
 
@@ -144,6 +152,35 @@ impl Authorization {
         }
         subjects.push(Principal::anonymous());
         subjects
+    }
+
+    /// Decides an access token's bearer by the token's grant alone: a member, whose grants are
+    /// the IAM Host's and arrive in the token (WP-12.2). Without it, a token narrows the grants
+    /// and never widens them, as on the IAM Host.
+    pub fn with_tokens_alone(mut self, alone: bool) -> Self {
+        self.tokens_alone = alone;
+        self
+    }
+
+    /// The token's verdict for `actor`, when it bears one: refused when the token does not allow
+    /// it, `Some(subject)` when the token decides alone, `None` when the grants decide next.
+    fn token_decides(
+        &self,
+        actor: &Actor,
+        allowed: impl Fn(&permguard_core::authz::TokenGrant) -> bool,
+    ) -> Result<Option<Principal>, AccessDenial> {
+        let Actor::Authenticated(context) = actor else {
+            return Ok(None);
+        };
+        let Some(grant) = context.token() else {
+            return Ok(None);
+        };
+        if !allowed(grant) {
+            return Err(actor.without_grant());
+        }
+        Ok(self
+            .tokens_alone
+            .then(|| context.authorization_principal().clone()))
     }
 
     pub fn with_time(mut self, time: Arc<crate::time::TimeGuard>) -> Self {
@@ -205,6 +242,11 @@ impl Authorization {
         resource: &Resource,
     ) -> Result<Principal, AccessDenial> {
         let principal = actor.principal()?;
+        if let Some(decided) =
+            self.token_decides(actor, |grant| grant.permits(operation, resource))?
+        {
+            return Ok(decided);
+        }
         let allows = self.allows();
         self.subjects_of(&principal)
             .into_iter()
@@ -248,6 +290,14 @@ impl Authorization {
         scope: &Resource,
     ) -> Result<(), AccessDenial> {
         let principal = actor.principal()?;
+        if self
+            .token_decides(actor, |grant| {
+                grant.permits_anywhere_under(operation, scope)
+            })?
+            .is_some()
+        {
+            return Ok(());
+        }
         let allows = self.allows();
         if self
             .subjects_of(&principal)
@@ -265,6 +315,11 @@ impl Authorization {
         let Ok(principal) = actor.principal() else {
             return false;
         };
+        match self.token_decides(actor, |grant| grant.permits_whole(operation, scope)) {
+            Err(_) => return false,
+            Ok(Some(_)) => return true,
+            Ok(None) => {}
+        }
         let allows = self.allows();
         self.subjects_of(&principal)
             .iter()

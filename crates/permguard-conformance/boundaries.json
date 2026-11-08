@@ -542,6 +542,16 @@
     },
     {
       "crate": "permguard-host",
+      "source": "crates/permguard-host/src/authz/access_tokens.rs",
+      "item": "verify",
+      "entry": "permguard_host::authz::access_tokens::verify",
+      "max_input_bytes": 8192,
+      "limit": "`authz::access_tokens::MAX_TOKEN_BYTES`, checked before the token is split; the `Authorization` header arrives under the transport's header limits (WP-12.2). The fuzz target cannot forge a signature, so it reaches steps 1 to 3; the steps after it are covered by the unit tests",
+      "enforced_at_decoder": true,
+      "fuzz": "access_token"
+    },
+    {
+      "crate": "permguard-host",
       "source": "crates/permguard-host/src/session/record.rs",
       "item": "Presentation::decode",
       "entry": "permguard_host::session::record::Presentation::decode",

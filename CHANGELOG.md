@@ -59,6 +59,17 @@ is cut.
   An IAM Host offers `token.status` in every invitation and keeps it in the membership of every member that can take it; its manifest pins the IAM Host's `iam.tokens` ring.
   The member fetches the lists every pass, each verified under that pinned set and the coordinator's issuer, a list not fresher than the one held refused as a rollback, and keeps them on its volume, verified again at start, so it keeps deciding through a Control Plane outage until a list expires.
 
+- **A member accepts the IAM Host's access tokens, and its Data Plane decides by them alone.**
+  A bearer whose header says `at+jwt` is verified with nothing but what the member holds: the `iam.tokens` set its membership pins, the issuer and tenant, the times within 60 s of skew, an audience naming the member or one of its groups, `VALID` in the status list it holds, and, when bound, the connection's certificate.
+  Any step that fails answers `401` with `WWW-Authenticate: Bearer realm="permguard", error="invalid_token"` (gRPC `UNAUTHENTICATED`), logged `authz.token_refused` with the step; the caller learns nothing more.
+  The verified caller acts within the token's scope and targets only: a member holds no grant, and anything outside them is `403` with `error="insufficient_scope"`.
+  On the IAM Host, and on an all-in-one server whose Data Plane is its own member `member:<host_id>`, a token narrows the grants of its subject, never widens them.
+  A revoked token stops working on a member as soon as it holds the list that says so, within one refresh of `token.status`.
+  `aud: *` and a DPoP `cnf` are not served by this release: a member refuses both.
+  A token's family bounds it whatever its `scope` lists: an application token only evaluates and submits events on the Planes' resources; an administration token names exactly one member, targets its Host (its Planes' rings, audit, streams and collection included) and never evaluates; under `regulated` it must be bound to the client's certificate.
+  A member of several coordinators keeps them apart: each status list is held for the IAM Host that signed it, and an application token reaches only ledgers mirrored from the coordinator that issued it.
+  Only an `at+jwt` of an IAM Host the member pins is decided this way: a provider's own access token still goes to the configured OIDC rules.
+
 ### Changed
 
 - **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**

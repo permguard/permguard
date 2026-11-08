@@ -1618,10 +1618,13 @@ impl App {
             recovered_truncated_bytes = directory_recovery.truncated_bytes,
             "the directory is open"
         );
+        // A member decides an access token's bearer by the token alone: its grants are the IAM
+        // Host's, and arrive in the token (WP-12.2). The IAM Host holds them and checks both.
         let authorization = Arc::new(
             Authorization::new(Arc::clone(&store), &public)
                 .with_time(Arc::clone(time))
-                .with_directory(Arc::clone(&directory)),
+                .with_directory(Arc::clone(&directory))
+                .with_tokens_alone(!self.runs_plane(config, "control")),
         );
         let signin = self.signin_for(
             &auth.authentication,
@@ -2324,13 +2327,17 @@ impl App {
                     || format!("https://{configured}", configured = admin_addr_of(config)),
                     str::to_owned,
                 );
-                Some(Arc::new(permguard_host::api::tokens::Tokens::new(
-                    registry,
-                    ring as Arc<dyn permguard_core::keys::SigningRing>,
-                    &host_identity.host_id(),
-                    &base,
-                    config.assurance().profile(),
-                )))
+                Some(Arc::new(
+                    permguard_host::api::tokens::Tokens::new(
+                        registry,
+                        ring as Arc<dyn permguard_core::keys::SigningRing>,
+                        &host_identity.host_id(),
+                        &base,
+                        config.assurance().profile(),
+                    )
+                    // Its own Data Plane is a local member, `member:<host_id>` (WP-12.2).
+                    .serving_data(self.runs_plane(config, "data")),
+                ))
             }
             _ => None,
         };
@@ -2972,7 +2979,31 @@ impl App {
                     "the status lists kept on the volume were verified and restored"
                 );
             }
-            let api = api.with_held_lists(held_lists);
+            let api = api.with_held_lists(Arc::clone(&held_lists));
+            // Access tokens in front of every other credential (WP-12.2): the IAM Host trusts its
+            // own, a member those its memberships pin, their status read from its held lists.
+            let trust: Arc<dyn permguard_host::authz::access_tokens::Trust> =
+                match tokens_service.clone() {
+                    Some(tokens) => Arc::new(permguard_host::api::tokens::LocalTrust {
+                        tokens,
+                        time: Arc::clone(&time),
+                    }),
+                    None => Arc::new(permguard_host::authz::access_tokens::MemberTrust::new(
+                        Arc::clone(&members),
+                        held_lists,
+                        config.assurance().profile()
+                            == permguard_core::assurance::AssuranceProfile::Regulated,
+                    )),
+                };
+            if let Some(inner) = context.authenticator() {
+                context = context.with_authenticator(Arc::new(
+                    permguard_host::authz::access_tokens::TokenAuthenticator {
+                        trust,
+                        inner,
+                        time: Arc::clone(&time),
+                    },
+                ));
+            }
             let api = Arc::new(api);
             // What the directory decides of every live token, applied before anything is served:
             // a crash between a directory change and the statuses it implies is repaired here.

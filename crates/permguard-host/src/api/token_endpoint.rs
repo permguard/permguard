@@ -39,8 +39,8 @@ pub const ACCESS_TOKEN_TYPE: &str = "urn:ietf:params:oauth:token-type:access_tok
 /// RFC 7523's client assertion type.
 pub const JWT_BEARER: &str = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 /// The families of a token.
-pub const APPLICATION: &str = "application";
-pub const ADMINISTRATION: &str = "administration";
+pub const APPLICATION: &str = permguard_core::authz::families::APPLICATION;
+pub const ADMINISTRATION: &str = permguard_core::authz::families::ADMINISTRATION;
 /// The operations of an `application` token.
 pub const APPLICATION_OPERATIONS: &[&str] =
     &[operations::DECISION_EVALUATE, operations::EVENT_SUBMIT];
@@ -975,7 +975,13 @@ impl HostApi {
             .map(|service| service.store.live_members())
             .unwrap_or_default();
         for audience in &asked {
-            let held = if let Some(id) = audience.strip_prefix("member:") {
+            let local = self
+                .tokens
+                .as_deref()
+                .is_some_and(|tokens| tokens.is_local_member(audience));
+            let held = if local {
+                true
+            } else if let Some(id) = audience.strip_prefix("member:") {
                 members
                     .iter()
                     .any(|(record, _)| uuid_text(&record.member_id) == id)

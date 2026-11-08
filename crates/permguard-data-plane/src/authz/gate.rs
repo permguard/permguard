@@ -84,7 +84,16 @@ fn gated(
         return Ok(None);
     };
     match located(root, zone, ledger) {
-        Some((zone_id, ledger_id)) => {
+        Some((zone_id, ledger_id, authority)) => {
+            // An access token reaches only the ledgers of the coordinator that issued it, whatever
+            // its selectors say: a member of two coordinators keeps their trees apart (WP-12.3).
+            if let Actor::Authenticated(context) = actor
+                && let Some(issued_by) =
+                    context.token().and_then(|grant| grant.authority.as_deref())
+                && authority.as_deref() != Some(issued_by)
+            {
+                return Err(actor.without_grant());
+            }
             authorization.authorize(
                 actor,
                 operation,
@@ -101,15 +110,17 @@ fn gated(
 /// How long a resolved name is remembered before the volume is asked again.
 const LOCATED_FOR: std::time::Duration = std::time::Duration::from_secs(2);
 
-type Located =
-    std::collections::HashMap<(String, String), (std::time::Instant, Option<(String, String)>)>;
+/// A mirror's zone id, ledger id and authority.
+type Found = (String, String, Option<String>);
+
+type Located = std::collections::HashMap<(String, String), (std::time::Instant, Option<Found>)>;
 
 /// The ids the store names resolve to, remembered briefly: the decision path reads the volume
 /// for the same names moments later, and a hot path must not walk the mirror directory twice per
 /// request. Grants name ids, and the decision path refuses a mirror whose ids are not the ones
 /// authorized, so a stale answer within the window costs a retry, never a widened grant. The
 /// directory walk runs outside the lock.
-fn located(root: &Path, zone: &str, ledger: &str) -> Option<(String, String)> {
+fn located(root: &Path, zone: &str, ledger: &str) -> Option<Found> {
     static LOCATED: std::sync::OnceLock<std::sync::Mutex<Located>> = std::sync::OnceLock::new();
     let memo = LOCATED.get_or_init(|| std::sync::Mutex::new(Located::new()));
     let key = (format!("{}\0{zone}", root.display()), ledger.to_owned());
@@ -124,8 +135,13 @@ fn located(root: &Path, zone: &str, ledger: &str) -> Option<(String, String)> {
             return found.clone();
         }
     }
-    let found = store::find(root, zone, ledger)
-        .map(|mirror| (mirror.identity.zone_id, mirror.identity.ledger_id));
+    let found = store::find(root, zone, ledger).map(|mirror| {
+        (
+            mirror.identity.zone_id,
+            mirror.identity.ledger_id,
+            mirror.identity.authority,
+        )
+    });
     let mut remembered = memo
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -206,7 +222,7 @@ mod tests {
             &path,
             &store::Identity {
                 task: Some("00000000-0000-0000-0000-000000000000/local".to_owned()),
-                authority: Some("11111111111111111111111111111111".to_owned()),
+                authority: Some(AUTHORITY.to_owned()),
                 zone_id: format!("{zone}-id"),
                 zone_name: zone.to_owned(),
                 ledger_id: format!("{ledger}-id"),
@@ -225,6 +241,56 @@ mod tests {
         ))
     }
 
+    /// The authority every mirror of these tests lives under.
+    const AUTHORITY: &str = "11111111111111111111111111111111";
+
+    /// WP-12.3: an access token reaches only the ledgers its issuing coordinator's mirrors hold,
+    /// whatever its selectors name; a ledger of another authority is refused before the grant.
+    #[test]
+    fn a_token_reaches_only_its_coordinators_ledgers() {
+        let root = scratch("token-authority");
+        mirror(&root, "acme", "main");
+        let authorization = Authorization::closed().with_tokens_alone(true);
+        let token = |authority: &str| {
+            Actor::Authenticated(ActorContext::of_token(
+                Principal::new("sa:billing").expect("a principal"),
+                permguard_core::authz::TokenGrant {
+                    family: permguard_core::authz::families::APPLICATION.to_owned(),
+                    scope: std::iter::once(operations::DECISION_EVALUATE.to_owned()).collect(),
+                    targets: vec![
+                        permguard_core::authz::Selector::parse("plane/data/*").expect("a selector"),
+                    ],
+                    jti: "j".to_owned(),
+                    list_uri: "u".to_owned(),
+                    list_iat: 1,
+                    list_digest: [0; 32],
+                    authority: Some(authority.to_owned()),
+                },
+            ))
+        };
+        assert_eq!(
+            evaluation(
+                &authorization,
+                &token(AUTHORITY),
+                &root,
+                Some("acme"),
+                Some("main")
+            ),
+            Ok(Some(("acme-id".to_owned(), "main-id".to_owned())))
+        );
+        assert!(
+            evaluation(
+                &authorization,
+                &token("22222222222222222222222222222222"),
+                &root,
+                Some("acme"),
+                Some("main")
+            )
+            .is_err(),
+            "another coordinator's token"
+        );
+    }
+
     #[test]
     fn the_memo_remembers_a_name_briefly_and_keeps_roots_apart() {
         let root = scratch("memo");
@@ -232,7 +298,11 @@ mod tests {
         mirror(&root, "acme", "main");
         assert_eq!(
             located(&root, "acme", "main"),
-            Some(("acme-id".to_owned(), "main-id".to_owned()))
+            Some((
+                "acme-id".to_owned(),
+                "main-id".to_owned(),
+                Some(AUTHORITY.to_owned())
+            ))
         );
         assert_eq!(
             located(&other, "acme", "main"),
@@ -245,7 +315,11 @@ mod tests {
         std::thread::sleep(LOCATED_FOR + std::time::Duration::from_millis(50));
         assert_eq!(
             located(&other, "acme", "main"),
-            Some(("acme-id".to_owned(), "main-id".to_owned()))
+            Some((
+                "acme-id".to_owned(),
+                "main-id".to_owned(),
+                Some(AUTHORITY.to_owned())
+            ))
         );
     }
 

@@ -5566,3 +5566,92 @@ async fn a_decision_records_its_evidence_on_the_decision_path() {
         "and the scope ended with the decision"
     );
 }
+
+/// WP-12.3: on a member, a Data Plane caller acting by an access token is decided by the token
+/// alone, its scope and its targets, over the real decision route; the member holds no grant.
+#[tokio::test]
+async fn a_token_caller_evaluates_within_its_scope_and_targets_alone() {
+    use permguard_core::authz::{Actor, ActorContext, Principal, Selector, TokenGrant};
+
+    let root = scratch("token-caller").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let decider = decider(&root);
+    let actor = |scope: &str, target: &str| {
+        Arc::new(Actor::Authenticated(ActorContext::of_token(
+            Principal::new("sa:billing").expect("a principal"),
+            TokenGrant {
+                family: "application".to_owned(),
+                scope: std::iter::once(scope.to_owned()).collect(),
+                targets: vec![Selector::parse(target).expect("a selector")],
+                jti: "j".to_owned(),
+                list_uri: "https://iam.example/iam/v1/status-lists/l".to_owned(),
+                list_iat: 1,
+                list_digest: [0; 32],
+                authority: None,
+            },
+        )))
+    };
+    let ask = |actor: Arc<Actor>| {
+        let router = permguard_data_plane::authz::http::routes(http::Surface {
+            authorization: Arc::new(
+                permguard_host::composition::Authorization::closed().with_tokens_alone(true),
+            ),
+            decider: Arc::clone(&decider),
+            disclosure: Disclosure::Full,
+            base_url: "http://127.0.0.1:7443".to_owned(),
+            describer: permguard_core::stages::Describer::detached("data-plane"),
+        });
+        async move {
+            let request = Request::builder()
+                .method("POST")
+                .uri("/access/v1/evaluation")
+                .header("content-type", "application/json")
+                .extension(actor)
+                .body(Body::from(
+                    json!({
+                        "zone": "acme", "ledger": "main-ledger",
+                        "subject": {"type": "user", "id": "alice"},
+                        "resource": {"type": "document", "id": "budget"},
+                        "action": {"name": "read"},
+                    })
+                    .to_string(),
+                ))
+                .expect("the request builds");
+            router.oneshot(request).await.expect("answers").status()
+        }
+    };
+    let zone = uuid_of("acme");
+    assert_eq!(
+        ask(actor("decision.evaluate", "plane/data/*")).await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        ask(actor(
+            "decision.evaluate",
+            &format!("plane/data/zone/{zone}/*")
+        ))
+        .await,
+        StatusCode::OK,
+        "a target of the ledger's zone"
+    );
+    assert_eq!(
+        ask(actor("event.submit", "plane/data/*")).await,
+        StatusCode::FORBIDDEN,
+        "outside the token's scope"
+    );
+    assert_eq!(
+        ask(actor(
+            "decision.evaluate",
+            &format!("plane/data/zone/{}/*", uuid_of("other"))
+        ))
+        .await,
+        StatusCode::FORBIDDEN,
+        "outside the token's targets"
+    );
+}

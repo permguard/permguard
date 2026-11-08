@@ -499,6 +499,113 @@ pub enum Credential {
     Oidc,
     /// A session a local user opened with its password (WP-8.1).
     Password,
+    /// An access token the IAM Host signed (iteration 02, WP-12.2): what the actor may do is the
+    /// token's grant.
+    AccessToken,
+}
+
+/// What an access token lets its bearer do (iteration 02, `2-security/8`): its family, its
+/// operations and its targets, and the status list it was checked against.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenGrant {
+    /// `application` or `administration`.
+    pub family: String,
+    /// The operations, each a registered one.
+    pub scope: std::collections::BTreeSet<String>,
+    /// The resources it may act on: selectors of the member's own tree.
+    pub targets: Vec<Selector>,
+    pub jti: String,
+    /// The status list the token was found `VALID` in: its `uri`, `iat` and the SHA-256 of its
+    /// bytes, what a decision record names (WP-12.5).
+    pub list_uri: String,
+    pub list_iat: u64,
+    pub list_digest: [u8; 32],
+    /// The coordinator whose ledgers an `application` token reaches on a member: its host id in
+    /// lowercase hex without dashes, as its mirrors' directory is named. None on the IAM Host,
+    /// whose own grants decide alongside the token.
+    pub authority: Option<String>,
+}
+
+/// The families of an access token (`2-security/8` Families).
+pub mod families {
+    /// Evaluation and event submission, on a member's Data Plane tree.
+    pub const APPLICATION: &str = "application";
+    /// The per-Host operations of one member, on that member's Host.
+    pub const ADMINISTRATION: &str = "administration";
+
+    /// Whether `family` serves `operation`: an application token evaluates and submits events,
+    /// an administration token holds what a grant on a member may name, never an evaluation. A
+    /// family this release does not know serves nothing.
+    pub fn serves(family: &str, operation: &str) -> bool {
+        use super::{Resource, Selector, operation_fits, operations};
+
+        let evaluates = matches!(
+            operation,
+            operations::DECISION_EVALUATE | operations::EVENT_SUBMIT
+        );
+        match family {
+            APPLICATION => evaluates,
+            ADMINISTRATION => {
+                !evaluates && operation_fits(operation, &Selector::under(Resource::Members))
+            }
+            _ => false,
+        }
+    }
+}
+
+impl TokenGrant {
+    /// Whether the token allows `operation` on `resource`.
+    pub fn permits(&self, operation: &str, resource: &Resource) -> bool {
+        self.allows(operation, resource, |target| target.contains(resource))
+    }
+
+    /// Whether the token allows `operation` on something at or under `scope`.
+    pub fn permits_anywhere_under(&self, operation: &str, scope: &Resource) -> bool {
+        self.allows(operation, scope, |target| {
+            target.contains(scope) || target.reaches_under(scope)
+        })
+    }
+
+    /// Whether the token allows `operation` on everything under `scope`, whole.
+    pub fn permits_whole(&self, operation: &str, scope: &Resource) -> bool {
+        self.allows(operation, scope, |target| target.covers_whole(scope))
+    }
+
+    /// Step 9 of `2-security/8` On a member: the family serves the operation, the operation is in
+    /// `scope`, and the resource is the token's.
+    ///
+    /// An `application` token reaches what its targets select, for evaluation and event submission
+    /// only. An `administration` token's target is `host`, its member's Host as `member/<id>`
+    /// names it at the IAM Host: the Host itself and, for the per-Host operations that apply to a
+    /// Plane's resources (its rings, audit, streams, collection), the member's Planes; never an
+    /// evaluation, and never what the Host administers of other Hosts.
+    fn allows(
+        &self,
+        operation: &str,
+        resource: &Resource,
+        selected: impl Fn(&Selector) -> bool,
+    ) -> bool {
+        if !self.scope.contains(operation) || !families::serves(&self.family, operation) {
+            return false;
+        }
+        match self.family.as_str() {
+            families::APPLICATION => self.targets.iter().any(selected),
+            families::ADMINISTRATION => {
+                let own = match resource {
+                    Resource::Host => operation_fits(operation, &Selector::exactly(Resource::Host)),
+                    Resource::Plane { .. } | Resource::Zone { .. } | Resource::Ledger { .. } => {
+                        operation_fits(operation, &Selector::under(resource.clone()))
+                    }
+                    Resource::Members | Resource::Member { .. } => false,
+                };
+                own && self
+                    .targets
+                    .iter()
+                    .any(|target| *target == Selector::exactly(Resource::Host))
+            }
+            _ => false,
+        }
+    }
 }
 
 impl Credential {
@@ -510,6 +617,7 @@ impl Credential {
             Self::Certificate => "certificate",
             Self::Oidc => "oidc",
             Self::Password => "password",
+            Self::AccessToken => "access_token",
         }
     }
 }
@@ -522,6 +630,8 @@ pub struct ActorContext {
     principal: Principal,
     credential: Credential,
     display: Option<String>,
+    /// The token's grant, when the actor is an access token's bearer (WP-12.2).
+    token: Option<std::sync::Arc<TokenGrant>>,
 }
 
 impl ActorContext {
@@ -531,7 +641,23 @@ impl ActorContext {
             principal,
             credential,
             display,
+            token: None,
         }
+    }
+
+    /// The bearer of an access token: its subject, acting within `grant` (WP-12.2).
+    pub fn of_token(principal: Principal, grant: TokenGrant) -> Self {
+        Self {
+            principal,
+            credential: Credential::AccessToken,
+            display: None,
+            token: Some(std::sync::Arc::new(grant)),
+        }
+    }
+
+    /// The token's grant, when the actor bears one.
+    pub fn token(&self) -> Option<&TokenGrant> {
+        self.token.as_deref()
     }
 
     /// The identifier grant lookup uses, byte for byte.
@@ -1234,5 +1360,79 @@ mod tests {
             Actor::Unmapped { .. }
         ));
         assert!(NoRules.authenticate(None, Some("token")).is_err());
+    }
+
+    /// Step 9 of `2-security/8` On a member: a token permits only what its family serves, within
+    /// its scope and targets; an administration token's `host` is its member's Host and Planes.
+    #[test]
+    fn a_token_permits_only_what_its_family_serves() {
+        let grant = |family: &str, scope: &[&str], targets: &[&str]| TokenGrant {
+            family: family.to_owned(),
+            scope: scope.iter().map(|op| (*op).to_owned()).collect(),
+            targets: targets
+                .iter()
+                .map(|target| Selector::parse(target).expect("a selector"))
+                .collect(),
+            jti: "j".to_owned(),
+            list_uri: "u".to_owned(),
+            list_iat: 1,
+            list_digest: [0; 32],
+            authority: None,
+        };
+        let ledger = Resource::ledger("data", "z", "l");
+        let data = Resource::plane("data");
+
+        let application = grant(
+            families::APPLICATION,
+            &[operations::DECISION_EVALUATE, operations::KEYS_READ],
+            &["plane/data/*", "host"],
+        );
+        assert!(application.permits(operations::DECISION_EVALUATE, &ledger));
+        assert!(application.permits_anywhere_under(operations::DECISION_EVALUATE, &data));
+        assert!(application.permits_whole(operations::DECISION_EVALUATE, &data));
+        // A per-Host operation is not the application family's, whatever its scope says.
+        assert!(!application.permits(operations::KEYS_READ, &Resource::Host));
+        assert!(!application.permits(operations::KEYS_READ, &data));
+        assert!(
+            !application.permits(operations::EVENT_SUBMIT, &ledger),
+            "not in scope"
+        );
+
+        let administration = grant(
+            families::ADMINISTRATION,
+            &[
+                operations::KEYS_READ,
+                operations::GC_MANAGE,
+                operations::BACKUP_MANAGE,
+                operations::DECISION_EVALUATE,
+                operations::AUTHZ_ADMIN,
+            ],
+            &["host"],
+        );
+        assert!(administration.permits(operations::KEYS_READ, &Resource::Host));
+        assert!(
+            administration.permits(operations::KEYS_READ, &data),
+            "a Plane's rings"
+        );
+        assert!(administration.permits_anywhere_under(operations::KEYS_READ, &data));
+        assert!(administration.permits(operations::GC_MANAGE, &data));
+        assert!(!administration.permits(operations::GC_MANAGE, &Resource::Host));
+        assert!(administration.permits(operations::BACKUP_MANAGE, &Resource::Host));
+        assert!(!administration.permits(operations::BACKUP_MANAGE, &data));
+        // Never an evaluation, never the Host's own authorization, never another Host.
+        assert!(!administration.permits(operations::DECISION_EVALUATE, &ledger));
+        assert!(!administration.permits(operations::AUTHZ_ADMIN, &Resource::Host));
+        assert!(!administration.permits(operations::KEYS_READ, &Resource::member("m")));
+        assert!(!administration.permits(operations::KEYS_READ, &Resource::Members));
+        // An administration token whose target is not `host` permits nothing.
+        let elsewhere = grant(
+            families::ADMINISTRATION,
+            &[operations::KEYS_READ],
+            &["plane/data/*"],
+        );
+        assert!(!elsewhere.permits(operations::KEYS_READ, &data));
+        // A family this release does not know permits nothing.
+        let unknown = grant("other", &[operations::DECISION_EVALUATE], &["plane/data/*"]);
+        assert!(!unknown.permits(operations::DECISION_EVALUATE, &ledger));
     }
 }

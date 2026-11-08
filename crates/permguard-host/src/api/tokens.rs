@@ -68,6 +68,8 @@ struct SignedList {
     iat: u64,
     changed_at: u64,
     compact: String,
+    /// The same list as a member holds it: what the IAM Host's own Data Plane reads (WP-12.2).
+    held: Arc<crate::membership::token_status::HeldList>,
 }
 
 /// What the facade signs tokens and lists with, given once the server built it on the IAM Host.
@@ -83,6 +85,8 @@ pub struct Tokens {
     pub timing: ListTiming,
     /// The access tokens' lifetimes, by family.
     pub lifetimes: super::token_endpoint::Lifetimes,
+    /// Whether the IAM Host runs a Data Plane too: it is then its own member, `member:<host_id>`.
+    pub serves_data: bool,
     signed: Mutex<BTreeMap<[u8; 16], SignedList>>,
     /// The token endpoint's requests per client and per source (WP-11.4).
     pub(super) limiter: super::token_endpoint::Limiter,
@@ -105,10 +109,17 @@ impl Tokens {
             base_url: base_url.trim_end_matches('/').to_owned(),
             timing: ListTiming::of(profile),
             lifetimes: super::token_endpoint::Lifetimes::of(profile),
+            serves_data: false,
             signed: Mutex::default(),
             limiter: super::token_endpoint::Limiter::default(),
             replays: super::token_endpoint::Replays::default(),
         }
+    }
+
+    /// Whether the IAM Host runs a Data Plane too, its own member `member:<host_id>` (WP-12.2).
+    pub fn serving_data(mut self, serves: bool) -> Self {
+        self.serves_data = serves;
+        self
     }
 
     /// The `uri` of the list `list_id` names: its token's `sub`, and every token's
@@ -125,6 +136,17 @@ impl Tokens {
     /// changed and its `ttl` has not elapsed, a new one otherwise, its `iat` strictly after the
     /// previous one's.
     pub fn list_token(&self, list_id: &[u8; 16], now: u64) -> Result<Option<String>, TokenError> {
+        Ok(self
+            .signed_and_held(list_id, now)?
+            .map(|(compact, _)| compact))
+    }
+
+    /// The list `list_id` names as its signed token and as a member would hold it.
+    fn signed_and_held(
+        &self,
+        list_id: &[u8; 16],
+        now: u64,
+    ) -> Result<Option<(String, Arc<crate::membership::token_status::HeldList>)>, TokenError> {
         let Some(view) = self.registry.list(list_id) else {
             return Ok(None);
         };
@@ -135,7 +157,7 @@ impl Tokens {
             && held.changed_at == view.changed_at
             && now < held.iat.saturating_add(self.timing.ttl)
         {
-            return Ok(Some(held.compact.clone()));
+            return Ok(Some((held.compact.clone(), Arc::clone(&held.held))));
         }
         let iat = signed
             .get(list_id)
@@ -166,15 +188,106 @@ impl Tokens {
                 compact.len()
             )));
         }
+        let held = Arc::new(crate::membership::token_status::HeldList {
+            issuer: self.issuer.clone(),
+            uri: self.list_uri(list_id),
+            iat,
+            exp: iat.saturating_add(self.timing.lifetime),
+            ttl: self.timing.ttl,
+            list: view.list,
+            digest: <sha2::Sha256 as sha2::Digest>::digest(compact.as_bytes()).into(),
+            token: compact.clone(),
+        });
         signed.insert(
             *list_id,
             SignedList {
                 iat,
                 changed_at: view.changed_at,
                 compact: compact.clone(),
+                held: Arc::clone(&held),
             },
         );
-        Ok(Some(compact))
+        Ok(Some((compact, held)))
+    }
+
+    /// The IAM Host's own trust (WP-12.2): its issuer, its ring's published keys, itself as the
+    /// local member `member:<host_id>`, and its lists as signed now.
+    pub fn local_anchor(&self) -> crate::authz::access_tokens::Anchor {
+        let keys = self
+            .ring
+            .public_keys()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|jwk| serde_json::to_string(&jwk).ok())
+            .collect();
+        crate::authz::access_tokens::Anchor {
+            issuer: self.issuer.clone(),
+            tenant: TENANT.to_owned(),
+            keys: crate::membership::token_status::pinned_keys(&crate::composition::PinnedRing {
+                epoch: 0,
+                key_set_digest: [0; 32],
+                binding: Vec::new(),
+                keys,
+            }),
+            member: self.local_member(),
+            groups: Vec::new(),
+            // The IAM Host's own grants decide with its tokens: no authority confines them.
+            authority: None,
+            bound_administration: self.lifetimes.administration_bound,
+        }
+    }
+
+    /// The audience the IAM Host's own Data Plane answers to: `member:<host_id>`.
+    pub fn local_member(&self) -> String {
+        format!(
+            "member:{}",
+            self.issuer
+                .strip_prefix(permguard_core::domains::subject::IAM_ISSUER_PREFIX)
+                .unwrap_or_default()
+        )
+    }
+}
+
+/// The IAM Host's trust in its own tokens (WP-12.2), read on the Host's guarded clock.
+pub struct LocalTrust {
+    pub tokens: Arc<Tokens>,
+    pub time: Arc<crate::time::TimeGuard>,
+}
+
+/// The lists as the IAM Host's own Data Plane reads them: signed now, as a member holds them.
+impl crate::authz::access_tokens::StatusLists for LocalTrust {
+    fn list(
+        &self,
+        issuer: &str,
+        uri: &str,
+    ) -> Option<Arc<crate::membership::token_status::HeldList>> {
+        let id = crate::secrets::parse_uuid(uri.rsplit('/').next()?)?;
+        if issuer != self.tokens.issuer || self.tokens.list_uri(&id) != uri {
+            return None;
+        }
+        // A list is signed again only when it changed or its ttl elapsed.
+        self.tokens
+            .signed_and_held(&id, self.time.now_secs())
+            .ok()
+            .flatten()
+            .map(|(_, held)| held)
+    }
+}
+
+impl crate::authz::access_tokens::Trust for LocalTrust {
+    fn anchors(&self) -> Vec<crate::authz::access_tokens::Anchor> {
+        vec![self.tokens.local_anchor()]
+    }
+
+    fn lists(&self) -> &dyn crate::authz::access_tokens::StatusLists {
+        self
+    }
+}
+
+impl Tokens {
+    /// Whether this IAM Host's own Data Plane is the member `audience` names.
+    pub fn is_local_member(&self, audience: &str) -> bool {
+        self.serves_data && audience == self.local_member()
     }
 }
 

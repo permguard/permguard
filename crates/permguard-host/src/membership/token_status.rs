@@ -196,6 +196,9 @@ pub struct PinnedKey {
 /// One list a member holds, verified.
 #[derive(Clone, PartialEq, Eq)]
 pub struct HeldList {
+    /// The IAM Host that signed it, `urn:permguard:iam:<host_id>`: a list is held and read for
+    /// the issuer it verified under, so no coordinator's list stands for another's.
+    pub issuer: String,
     /// Its `sub`: the `uri` every token of it names.
     pub uri: String,
     pub iat: u64,
@@ -211,6 +214,7 @@ pub struct HeldList {
 impl std::fmt::Debug for HeldList {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HeldList")
+            .field("issuer", &self.issuer)
             .field("uri", &self.uri)
             .field("iat", &self.iat)
             .field("exp", &self.exp)
@@ -342,6 +346,7 @@ pub fn verify_list(
             },
         )?;
     Ok(HeldList {
+        issuer: issuer.to_owned(),
         uri: uri.to_owned(),
         iat,
         exp,
@@ -352,9 +357,9 @@ pub fn verify_list(
     })
 }
 
-/// The lists a member holds, by `uri`, and where they are kept.
+/// The lists a member holds, by issuer and `uri`, and where they are kept.
 pub struct HeldLists {
-    held: Mutex<BTreeMap<String, Arc<HeldList>>>,
+    held: Mutex<BTreeMap<(String, String), Arc<HeldList>>>,
     dir: Option<crate::storage::Dir>,
 }
 
@@ -369,9 +374,10 @@ impl std::fmt::Debug for HeldLists {
     }
 }
 
-/// The name a list is kept under: the SHA-256 of its `uri`, so no `uri` names a path.
-fn file_of(uri: &str) -> String {
-    let digest = Sha256::digest(uri.as_bytes());
+/// The name a list is kept under: the SHA-256 of its issuer and `uri`, so no `uri` names a path
+/// and no issuer's list takes another's place.
+fn file_of(issuer: &str, uri: &str) -> String {
+    let digest = Sha256::digest(format!("{issuer}\n{uri}").as_bytes());
     format!(
         "{}.jwt",
         digest
@@ -416,8 +422,8 @@ impl HeldLists {
                 .flatten()
                 .and_then(|bytes| String::from_utf8(bytes).ok());
             match token.as_deref().and_then(&verify) {
-                Some(list) if file_of(&list.uri) == *name => {
-                    held.insert(list.uri.clone(), Arc::new(list));
+                Some(list) if file_of(&list.issuer, &list.uri) == *name => {
+                    held.insert((list.issuer.clone(), list.uri.clone()), Arc::new(list));
                     restored += 1;
                 }
                 _ => {
@@ -428,18 +434,18 @@ impl HeldLists {
         restored
     }
 
-    /// The list `uri` names, while held.
-    pub fn get(&self, uri: &str) -> Option<Arc<HeldList>> {
+    /// The list of `issuer` that `uri` names, while held.
+    pub fn get(&self, issuer: &str, uri: &str) -> Option<Arc<HeldList>> {
         self.held
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .get(uri)
+            .get(&(issuer.to_owned(), uri.to_owned()))
             .cloned()
     }
 
-    /// The `iat` of the list held for `uri`.
-    pub fn iat_of(&self, uri: &str) -> Option<u64> {
-        self.get(uri).map(|list| list.iat)
+    /// The `iat` of the list of `issuer` held for `uri`.
+    pub fn iat_of(&self, issuer: &str, uri: &str) -> Option<u64> {
+        self.get(issuer, uri).map(|list| list.iat)
     }
 
     /// Every list held.
@@ -457,7 +463,8 @@ impl HeldLists {
     /// raced it.
     pub fn accept(&self, list: HeldList) -> Result<(), ListRefusal> {
         let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(current) = held.get(&list.uri)
+        let key = (list.issuer.clone(), list.uri.clone());
+        if let Some(current) = held.get(&key)
             && list.iat <= current.iat
         {
             return Err(ListRefusal::Rollback {
@@ -468,7 +475,7 @@ impl HeldLists {
         if let Some(dir) = &self.dir
             && let Err(error) = crate::storage::write::replace_bytes(
                 dir,
-                &file_of(&list.uri),
+                &file_of(&list.issuer, &list.uri),
                 list.token.as_bytes(),
             )
         {
@@ -479,7 +486,7 @@ impl HeldLists {
                 "a status list could not be kept on the volume: it is held in memory only"
             );
         }
-        held.insert(list.uri.clone(), Arc::new(list));
+        held.insert(key, Arc::new(list));
         Ok(())
     }
 }
@@ -660,7 +667,7 @@ impl super::member::Member<'_> {
                         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
                         .and_then(|claims| claims.get("sub")?.as_str().map(str::to_owned))
                 };
-                let held_iat = uri_of().and_then(|uri| lists.iat_of(&uri));
+                let held_iat = uri_of().and_then(|uri| lists.iat_of(&issuer, &uri));
                 let verified = verify_list(
                     &token,
                     &keys,
@@ -852,12 +859,12 @@ mod tests {
         let fresher =
             verify(&token(&pair, "statuslist+jwt", NOW, serde_json::json!({}))).expect("verified");
         lists.accept(fresher).expect("replaced");
-        assert_eq!(lists.iat_of(URI), Some(NOW));
+        assert_eq!(lists.iat_of(ISSUER, URI), Some(NOW));
         // A file nobody signed beside it is dropped at restore.
         std::fs::write(root.join("forged.jwt"), b"not.a.token").expect("written");
         let restored = HeldLists::kept_in(dir());
         assert_eq!(restored.restore(|token| verify(token).ok()), 1);
-        assert_eq!(restored.iat_of(URI), Some(NOW));
+        assert_eq!(restored.iat_of(ISSUER, URI), Some(NOW));
         assert!(!root.join("forged.jwt").exists());
         // Verified again later, past its expiry: dropped.
         let late = HeldLists::kept_in(dir());

@@ -565,6 +565,10 @@ struct Side {
     producer: Option<Arc<DecisionProducer>>,
     /// The Host's audit engine, sealing under its operations ring (WP-5.9).
     audit: Arc<permguard_host::audit::Engine>,
+    /// Its access tokens, as the IAM Host it is (WP-11.5).
+    tokens: Arc<permguard_host::api::tokens::Tokens>,
+    /// The authorization every route decides with: the IAM Host's grants.
+    authorization: Arc<Authorization>,
 }
 
 /// The decision log's producer, as the server registers it.
@@ -777,13 +781,17 @@ async fn side_with(
         permguard_host::authz::directory::Directory::open(&host.volume).expect("the directory");
     let (token_registry, _) =
         permguard_host::authz::tokens::TokenRegistry::open(&host.volume).expect("the tokens");
-    let tokens = Arc::new(permguard_host::api::tokens::Tokens::new(
-        token_registry,
-        Arc::clone(&iam_tokens) as Arc<dyn permguard_core::keys::SigningRing>,
-        &host.identity.host_id(),
-        "https://iam.example:7443",
-        AssuranceProfile::Production,
-    ));
+    let tokens = Arc::new(
+        permguard_host::api::tokens::Tokens::new(
+            token_registry,
+            Arc::clone(&iam_tokens) as Arc<dyn permguard_core::keys::SigningRing>,
+            &host.identity.host_id(),
+            "https://iam.example:7443",
+            AssuranceProfile::Production,
+        )
+        // Its own Data Plane is a local member, as on an all-in-one server (WP-12.2).
+        .serving_data(true),
+    );
     let ship: Arc<dyn permguard_host::membership::task::TaskHandler> = match &engine {
         Some((_, consumer)) => Arc::new(permguard_stream::engine::ingest::Ingest {
             consumer: Arc::clone(consumer),
@@ -883,10 +891,11 @@ async fn side_with(
             )) as Arc<dyn permguard_host::membership::member::Connector>
         });
     assert!(connector.is_some(), "a client CA makes a peer client");
+    let authorization = Arc::new(
+        Authorization::new(Arc::clone(&store), &[]).with_directory(Arc::clone(&directory)),
+    );
     let api = HostApi::new(Composition {
-        authorization: Arc::new(
-            Authorization::new(Arc::clone(&store), &[]).with_directory(Arc::clone(&directory)),
-        ),
+        authorization: Arc::clone(&authorization),
         store: Some(store),
         replay,
         keys: Arc::clone(&keys),
@@ -932,7 +941,7 @@ async fn side_with(
         min_length: 12,
     })
     .serving_iam(true)
-    .with_tokens(tokens)
+    .with_tokens(Arc::clone(&tokens))
     .with_held_lists(Arc::new(
         permguard_host::membership::token_status::HeldLists::in_memory(),
     ));
@@ -958,6 +967,8 @@ async fn side_with(
         tasks,
         producer: engine.map(|(producer, _)| producer),
         audit,
+        tokens,
+        authorization,
     }
 }
 
@@ -1380,11 +1391,23 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         tasks,
         producer,
         audit,
+        tokens,
+        authorization,
     } = member;
     listener.stop(Duration::from_secs(5)).await.expect("stops");
     // Everything of the old process goes, the volume's lock with it.
     drop((
-        host, api, members, mutations, keys, connector, tasks, producer, audit,
+        host,
+        api,
+        members,
+        mutations,
+        keys,
+        connector,
+        tasks,
+        producer,
+        audit,
+        tokens,
+        authorization,
     ));
     let member = side(
         &root.join("member"),
@@ -2355,10 +2378,23 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
         tasks,
         producer: _,
         audit,
+        tokens,
+        authorization,
     } = member;
     drop(producer);
     listener.stop(Duration::from_secs(5)).await.expect("stops");
-    drop((host, api, members, mutations, keys, connector, tasks, audit));
+    drop((
+        host,
+        api,
+        members,
+        mutations,
+        keys,
+        connector,
+        tasks,
+        audit,
+        tokens,
+        authorization,
+    ));
     let member = streaming_side(
         &root.join("member"),
         &pki,
@@ -3764,7 +3800,7 @@ async fn a_member_holds_the_iam_hosts_status_lists_over_token_status() {
                 ..TokenRequest::default()
             },
             &ClientProof {
-                basic: Some(("billing".to_owned(), secret)),
+                basic: Some(("billing".to_owned(), secret.clone())),
                 ..ClientProof::default()
             },
         )
@@ -3785,10 +3821,92 @@ async fn a_member_holds_the_iam_hosts_status_lists_over_token_status() {
     // The member fetches it, verified, and holds it.
     assert_eq!(member.api.token_status_due().await, 1);
     let lists = member.api.held_lists().expect("held lists").clone();
-    let first = lists.get(&uri).expect("the list is held");
+    let issuer = claims["iss"].as_str().expect("iss").to_owned();
+    let first = lists.get(&issuer, &uri).expect("the list is held");
     assert_eq!(first.list.get(index), Ok(0), "VALID");
     // The same list again is not news.
     assert_eq!(member.api.token_status_due().await, 0);
+
+    // WP-12.2/12.3: the member verifies the token with what it holds, and its Data Plane acts on
+    // the token alone, within its scope and targets.
+    use permguard_core::authz::{Actor, Authenticator as _, Resource, operations};
+    let authenticator = permguard_host::authz::access_tokens::TokenAuthenticator {
+        trust: Arc::new(permguard_host::authz::access_tokens::MemberTrust::new(
+            Arc::clone(&member.members),
+            Arc::clone(&lists),
+            false,
+        )),
+        inner: Arc::new(permguard_core::authz::NoRules),
+        time: Arc::new(permguard_host::time::TimeGuard::system(
+            std::time::Duration::from_secs(30),
+        )),
+    };
+    let actor = authenticator
+        .authenticate(None, Some(&issued.access_token))
+        .expect("the member accepts the IAM Host's token");
+    // The coordinator's own memberships are not a member's: it trusts no token through them.
+    {
+        use permguard_host::authz::access_tokens::Trust as _;
+        let coordinators = permguard_host::authz::access_tokens::MemberTrust::new(
+            Arc::clone(&coordinator.members),
+            Arc::clone(&lists),
+            false,
+        );
+        assert!(coordinators.anchors().is_empty());
+        let members = permguard_host::authz::access_tokens::MemberTrust::new(
+            Arc::clone(&member.members),
+            Arc::clone(&lists),
+            false,
+        );
+        let anchors = members.anchors();
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].issuer, issuer);
+        assert_eq!(
+            anchors[0].authority.as_deref(),
+            Some(
+                coordinator
+                    .host
+                    .identity
+                    .host_id_text()
+                    .replace('-', "")
+                    .as_str()
+            ),
+            "the coordinator's mirrors' authority"
+        );
+    }
+    let Actor::Authenticated(context) = &actor else {
+        panic!("an authenticated actor");
+    };
+    assert_eq!(context.authorization_principal().as_str(), "sa:billing");
+    assert_eq!(context.token().expect("a token grant").list_uri, uri);
+    let authorization = permguard_host::authz::Authorization::closed().with_tokens_alone(true);
+    let ledger = Resource::ledger("data", "billing", "l1");
+    assert!(
+        authorization
+            .authorize(&actor, operations::DECISION_EVALUATE, &ledger)
+            .is_ok()
+    );
+    assert!(
+        authorization
+            .authorize(&actor, operations::EVENT_SUBMIT, &ledger)
+            .is_err(),
+        "outside the token's scope"
+    );
+    assert!(
+        authorization
+            .authorize(
+                &actor,
+                operations::DECISION_EVALUATE,
+                &Resource::plane("control")
+            )
+            .is_err(),
+        "outside the token's targets"
+    );
+    // A token the member did not hold the issuer of, or a tampered one, is refused.
+    let mut tampered = issued.access_token.clone();
+    let last = tampered.pop().expect("a character");
+    tampered.push(if last == 'A' { 'B' } else { 'A' });
+    assert!(authenticator.authenticate(None, Some(&tampered)).is_err());
 
     // Revoked at the IAM Host: the next fetch carries it.
     api.revoke_token(
@@ -3801,12 +3919,93 @@ async fn a_member_holds_the_iam_hosts_status_lists_over_token_status() {
     .await
     .expect("revoked");
     assert_eq!(member.api.token_status_due().await, 1);
-    let second = lists.get(&uri).expect("still held");
+    let second = lists.get(&issuer, &uri).expect("still held");
     assert_eq!(second.list.get(index), Ok(1), "INVALID");
     assert!(
         second.iat > first.iat,
         "a fresher list replaced the held one"
     );
+    // Once the member holds the list that revokes it, the token is refused.
+    assert!(
+        authenticator
+            .authenticate(None, Some(&issued.access_token))
+            .is_err(),
+        "a revoked token is refused at step 7"
+    );
     // The older one is refused should it come back.
     assert!(lists.accept((*first).clone()).is_err());
+
+    // On the IAM Host, an all-in-one serving its own Data Plane: a token addressed to its local
+    // member is verified under its own set and lists, and narrows the subject's grants.
+    let local = permguard_host::authz::access_tokens::TokenAuthenticator {
+        trust: Arc::new(permguard_host::api::tokens::LocalTrust {
+            tokens: Arc::clone(&coordinator.tokens),
+            time: Arc::new(permguard_host::time::TimeGuard::system(
+                std::time::Duration::from_secs(30),
+            )),
+        }),
+        inner: Arc::new(permguard_core::authz::NoRules),
+        time: Arc::new(permguard_host::time::TimeGuard::system(
+            std::time::Duration::from_secs(30),
+        )),
+    };
+    let narrow = api
+        .issue_token(
+            &TokenRequest {
+                grant_type: "client_credentials".to_owned(),
+                scope: Some("decision.evaluate".to_owned()),
+                audience: vec![coordinator.tokens.local_member()],
+                target: vec!["plane/data/zone/billing/*".to_owned()],
+                ..TokenRequest::default()
+            },
+            &ClientProof {
+                basic: Some(("billing".to_owned(), secret.clone())),
+                ..ClientProof::default()
+            },
+        )
+        .expect("issued to the local member");
+    let actor = local
+        .authenticate(None, Some(&narrow.access_token))
+        .expect("the IAM Host accepts its own token");
+    let grants = &coordinator.authorization;
+    assert!(
+        grants
+            .authorize(
+                &actor,
+                operations::DECISION_EVALUATE,
+                &Resource::ledger("data", "billing", "l1")
+            )
+            .is_ok(),
+        "within the grants and the token"
+    );
+    assert!(
+        grants
+            .authorize(
+                &actor,
+                operations::DECISION_EVALUATE,
+                &Resource::ledger("data", "payroll", "l1")
+            )
+            .is_err(),
+        "the grants allow it, the token does not"
+    );
+    // Revoked: refused at once, from the issuer's own state, with no list to wait for.
+    let narrow_jti = jws_part(&narrow.access_token, 1)["jti"]
+        .as_str()
+        .expect("jti")
+        .to_owned();
+    api.revoke_token(
+        &admin(),
+        &narrow_jti,
+        RevokeToken {
+            request_id: "revoke-local".to_owned(),
+        },
+    )
+    .await
+    .expect("revoked");
+    assert!(
+        local
+            .authenticate(None, Some(&narrow.access_token))
+            .is_err(),
+        "a revoked token is refused on the IAM Host at once"
+    );
 }
